@@ -1,8 +1,8 @@
 {
     "name": "mission-gaming/tactician",
     "description": "A modern PHP library for generating structured tournament schedules with deterministic algorithms like Round Robin, Swiss, and Pool play",
-    "type": "library",
     "license": "MIT",
+    "type": "library",
     "keywords": [
         "tournament",
         "scheduling",
@@ -16,19 +16,24 @@
     "authors": [
         {
             "name": "Jamie Hollern",
-            "email": "jamie@mission-gaming.com"
+            "email": "jamie@missiongaming.com"
         }
     ],
     "require": {
         "php": "^8.2"
     },
     "require-dev": {
+        "ergebnis/composer-normalize": "^2.39",
+        "fakerphp/faker": "^1.23",
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "nunomaduro/collision": "^8.5",
         "pestphp/pest": "^2.0",
         "phpstan/phpstan": "^1.10",
-        "rector/rector": "^0.18",
-        "friendsofphp/php-cs-fixer": "^3.0",
-        "phpunit/phpunit": "^10.0"
+        "phpunit/phpunit": "^10.0",
+        "rector/rector": "^0.18"
     },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
     "autoload": {
         "psr-4": {
             "MissionGaming\\Tactician\\": "src/"
@@ -39,28 +44,30 @@
             "MissionGaming\\Tactician\\Tests\\": "tests/"
         }
     },
+    "config": {
+        "allow-plugins": {
+            "ergebnis/composer-normalize": true,
+            "pestphp/pest-plugin": true
+        },
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
     "scripts": {
-        "test": "pest",
-        "test-coverage": "pest --coverage",
-        "phpstan": "phpstan analyse",
-        "rector": "rector process --dry-run",
-        "rector-fix": "rector process",
-        "cs-fixer": "php-cs-fixer fix --dry-run --diff",
-        "cs-fixer-fix": "php-cs-fixer fix",
         "ci": [
+            "@normalize",
             "@phpstan",
             "@rector",
             "@cs-fixer",
             "@test"
-        ]
-    },
-    "config": {
-        "optimize-autoloader": true,
-        "sort-packages": true,
-        "allow-plugins": {
-            "pestphp/pest-plugin": true
-        }
-    },
-    "minimum-stability": "stable",
-    "prefer-stable": true
+        ],
+        "cs-fixer": "php-cs-fixer fix --dry-run --diff",
+        "cs-fixer-fix": "php-cs-fixer fix",
+        "normalize": "composer normalize --dry-run",
+        "normalize-fix": "composer normalize",
+        "phpstan": "phpstan analyse",
+        "rector": "rector process --dry-run",
+        "rector-fix": "rector process",
+        "test": "pest",
+        "test-coverage": "pest --coverage"
+    }
 }
