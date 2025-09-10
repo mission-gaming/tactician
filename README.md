@@ -8,14 +8,14 @@ A modern PHP library for generating structured tournament schedules with determi
 
 ## Sponsorship
 
-Initial development of this library was sponsored by **Tag1 Consulting**.
-
 <a href="https://www.tag1consulting.com" target="_blank">
   <img src="https://avatars.githubusercontent.com/u/386763?s=200&v=4" alt="Tag1 Consulting" width="200">
 </a>
 
-**[Tag1 Consulting](https://www.tag1consulting.com)**
+Initial development of this library was sponsored by **[Tag1 Consulting](https://www.tag1consulting.com)**.
+
 **<Tag1> Development & Infrastructure**
+
 [Tag1 blog](https://tag1.com/blog) & [Tag1TeamTalks Podcast](https://tag1.com/Tag1TeamTalks)
 
 ## Overview
