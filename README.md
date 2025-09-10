@@ -6,6 +6,16 @@ A modern PHP library for generating structured tournament schedules with determi
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-Pest-orange)](https://pestphp.com)
 
+## Sponsorship
+
+Initial development of this library was sponsored by **Tag1 Consulting**.
+
+<a href="https://www.tag1consulting.com" target="_blank">
+  <img src="https://www.tag1consulting.com/sites/default/files/tag1-logo.png" alt="Tag1 Consulting" width="200">
+</a>
+
+**Tag1 Consulting** - [https://www.tag1consulting.com](https://www.tag1consulting.com) | [GitHub](https://github.com/tag1consulting)
+
 ## Overview
 
 Tactician addresses the complexity of tournament scheduling in competitive gaming and sports. It provides reliable, deterministic algorithms to create fair, balanced schedules that follow sport-specific rules and constraints.
