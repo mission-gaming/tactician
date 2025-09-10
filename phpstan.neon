@@ -41,12 +41,7 @@ parameters:
 			- 'InvalidArgumentException'
 			- 'BadMethodCallException'
 	
-	# Ignore common Pest testing patterns
+	# Ignore common Pest testing patterns and test-specific issues
 	ignoreErrors:
-		- '#Call to an undefined method Pest\\.*#'
-		- '#Function expect\(\) not found\.#'
-		- '#Function test\(\) not found\.#'
-		- '#Function it\(\) not found\.#'
-		- '#Function describe\(\) not found\.#'
-		- '#Function beforeEach\(\) not found\.#'
-		- '#Function afterEach\(\) not found\.#'
+		- '#Undefined variable: \$this#'
+		- '#Call to static method mock\(\) on an unknown class Mockery#'
