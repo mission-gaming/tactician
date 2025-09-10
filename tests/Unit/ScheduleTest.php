@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Schedule;
 
 describe('Schedule', function () {
     beforeEach(function () {
         $this->participant1 = new Participant('p1', 'Alice');
         $this->participant2 = new Participant('p2', 'Bob');
         $this->participant3 = new Participant('p3', 'Carol');
-        
+
         $this->event1 = new Event([$this->participant1, $this->participant2], 1);
         $this->event2 = new Event([$this->participant2, $this->participant3], 2);
     });

@@ -22,7 +22,7 @@ readonly class ConstraintSet
     }
 
     /**
-     * Check if an event satisfies all constraints
+     * Check if an event satisfies all constraints.
      */
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
@@ -62,6 +62,7 @@ class ConstraintSetBuilder
     public function add(ConstraintInterface $constraint): self
     {
         $this->constraints[] = $constraint;
+
         return $this;
     }
 
@@ -86,7 +87,8 @@ class CallableConstraint implements ConstraintInterface
     public function __construct(
         private $predicate,
         private string $name
-    ) {}
+    ) {
+    }
 
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {

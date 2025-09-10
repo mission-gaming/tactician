@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Scheduling;
 
-use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Participant;
 
 readonly class SchedulingContext
 {
@@ -17,7 +17,8 @@ readonly class SchedulingContext
         private array $participants,
         private array $existingEvents = [],
         private array $metadata = []
-    ) {}
+    ) {
+    }
 
     /**
      * @return array<Participant>
@@ -51,7 +52,7 @@ readonly class SchedulingContext
     }
 
     /**
-     * Check if two participants have already played against each other
+     * Check if two participants have already played against each other.
      */
     public function haveParticipantsPlayed(Participant $participant1, Participant $participant2): bool
     {
@@ -65,19 +66,19 @@ readonly class SchedulingContext
     }
 
     /**
-     * Get all events involving a specific participant
+     * Get all events involving a specific participant.
      * @return array<Event>
      */
     public function getEventsForParticipant(Participant $participant): array
     {
         return array_filter(
             $this->existingEvents,
-            fn(Event $event) => $event->hasParticipant($participant)
+            fn (Event $event) => $event->hasParticipant($participant)
         );
     }
 
     /**
-     * Create a new context with additional events
+     * Create a new context with additional events.
      * @param array<Event> $newEvents
      */
     public function withEvents(array $newEvents): self

@@ -4,23 +4,24 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Scheduling;
 
-use MissionGaming\Tactician\DTO\Schedule;
+use InvalidArgumentException;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\DTO\Schedule;
 use Random\Randomizer;
-use InvalidArgumentException;
 
 readonly class RoundRobinScheduler implements SchedulerInterface
 {
     public function __construct(
         private ?ConstraintSet $constraints = null,
         private ?Randomizer $randomizer = null
-    ) {}
+    ) {
+    }
 
     /**
-     * Generate a round-robin schedule for the given participants
-     * 
+     * Generate a round-robin schedule for the given participants.
+     *
      * @param array<Participant> $participants
      */
     public function schedule(array $participants): Schedule
@@ -30,7 +31,7 @@ readonly class RoundRobinScheduler implements SchedulerInterface
         }
 
         $events = $this->generateRoundRobinEvents($participants);
-        
+
         return new Schedule($events, [
             'algorithm' => 'round-robin',
             'participant_count' => count($participants),
@@ -39,8 +40,8 @@ readonly class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
-     * Generate all round-robin events using circle method
-     * 
+     * Generate all round-robin events using circle method.
+     *
      * @param array<Participant> $participants
      * @return array<Event>
      */
@@ -54,7 +55,7 @@ readonly class RoundRobinScheduler implements SchedulerInterface
         $hasBye = $participantCount % 2 !== 0;
         if ($hasBye) {
             $participantList[] = null; // null represents "bye"
-            $participantCount++;
+            ++$participantCount;
         }
 
         $rounds = $participantCount - 1;
@@ -66,10 +67,10 @@ readonly class RoundRobinScheduler implements SchedulerInterface
         }
 
         // Generate pairings for each round using circle method
-        for ($round = 1; $round <= $rounds; $round++) {
+        for ($round = 1; $round <= $rounds; ++$round) {
             $context = new SchedulingContext($participants, $events);
-            
-            for ($pair = 0; $pair < $pairingsPerRound; $pair++) {
+
+            for ($pair = 0; $pair < $pairingsPerRound; ++$pair) {
                 $participant1 = $participantList[$pair];
                 $participant2 = $participantList[$participantCount - 1 - $pair];
 
@@ -94,8 +95,8 @@ readonly class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
-     * Shuffle participants using the provided randomizer
-     * 
+     * Shuffle participants using the provided randomizer.
+     *
      * @param array<Participant|null> $participants
      * @return array<Participant|null>
      */
@@ -117,8 +118,8 @@ readonly class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
-     * Rotate participants for circle method (keep first fixed, rotate others)
-     * 
+     * Rotate participants for circle method (keep first fixed, rotate others).
+     *
      * @param array<Participant|null> $participants
      */
     private function rotateParticipants(array &$participants): void
@@ -129,7 +130,7 @@ readonly class RoundRobinScheduler implements SchedulerInterface
         }
 
         $temp = $participants[1];
-        for ($i = 1; $i < count($participants) - 1; $i++) {
+        for ($i = 1; $i < count($participants) - 1; ++$i) {
             $participants[$i] = $participants[$i + 1];
         }
         $participants[count($participants) - 1] = $temp;

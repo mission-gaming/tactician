@@ -39,12 +39,12 @@ describe('Event', function () {
     });
 
     it('throws exception with less than 2 participants', function () {
-        expect(fn() => new Event([$this->participant1]))
+        expect(fn () => new Event([$this->participant1]))
             ->toThrow(InvalidArgumentException::class, 'An event must have at least 2 participants');
     });
 
     it('throws exception with no participants', function () {
-        expect(fn() => new Event([]))
+        expect(fn () => new Event([]))
             ->toThrow(InvalidArgumentException::class, 'An event must have at least 2 participants');
     });
 

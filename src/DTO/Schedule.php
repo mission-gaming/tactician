@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\DTO;
 
-use Iterator;
 use Countable;
+use Iterator;
 
 readonly class Schedule implements Iterator, Countable
 {
@@ -32,6 +32,7 @@ readonly class Schedule implements Iterator, Countable
     public function addEvent(Event $event): self
     {
         $newEvents = [...$this->events, $event];
+
         return new self($newEvents, $this->metadata);
     }
 
@@ -67,7 +68,7 @@ readonly class Schedule implements Iterator, Countable
 
     public function next(): void
     {
-        $this->position++;
+        ++$this->position;
     }
 
     public function rewind(): void
@@ -86,19 +87,19 @@ readonly class Schedule implements Iterator, Countable
     }
 
     /**
-     * Get events for a specific round
+     * Get events for a specific round.
      * @return array<Event>
      */
     public function getEventsForRound(int $round): array
     {
         return array_filter(
             $this->events,
-            fn(Event $event) => $event->getRound() === $round
+            fn (Event $event) => $event->getRound() === $round
         );
     }
 
     /**
-     * Get the maximum round number in the schedule
+     * Get the maximum round number in the schedule.
      */
     public function getMaxRound(): ?int
     {
@@ -107,12 +108,12 @@ readonly class Schedule implements Iterator, Countable
         }
 
         $rounds = array_map(
-            fn(Event $event) => $event->getRound(),
+            fn (Event $event) => $event->getRound(),
             $this->events
         );
 
-        $nonNullRounds = array_filter($rounds, fn($round) => $round !== null);
-        
+        $nonNullRounds = array_filter($rounds, fn ($round) => $round !== null);
+
         return empty($nonNullRounds) ? null : max($nonNullRounds);
     }
 }

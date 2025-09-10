@@ -11,7 +11,8 @@ readonly class Participant
         private string $name,
         private ?int $seed = null,
         private array $metadata = []
-    ) {}
+    ) {
+    }
 
     public function getId(): string
     {

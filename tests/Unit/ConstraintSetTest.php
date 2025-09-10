@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\ConstraintInterface;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
@@ -101,7 +101,7 @@ describe('ConstraintSetBuilder', function () {
 
     it('adds custom constraint', function () {
         $constraintSet = ConstraintSet::create()
-            ->custom(fn($event, $context) => true, 'Test Constraint')
+            ->custom(fn ($event, $context) => true, 'Test Constraint')
             ->build();
 
         expect($constraintSet->count())->toBe(1);
@@ -111,7 +111,7 @@ describe('ConstraintSetBuilder', function () {
     it('chains multiple constraints', function () {
         $constraintSet = ConstraintSet::create()
             ->noRepeatPairings()
-            ->custom(fn($event, $context) => true)
+            ->custom(fn ($event, $context) => true)
             ->build();
 
         expect($constraintSet->count())->toBe(2);
@@ -119,7 +119,7 @@ describe('ConstraintSetBuilder', function () {
 
     it('custom constraint with false predicate fails validation', function () {
         $constraintSet = ConstraintSet::create()
-            ->custom(fn($event, $context) => false, 'Always Fail')
+            ->custom(fn ($event, $context) => false, 'Always Fail')
             ->build();
 
         expect($constraintSet->isSatisfied($this->event, $this->context))->toBeFalse();

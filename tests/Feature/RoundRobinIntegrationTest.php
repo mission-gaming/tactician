@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 describe('Round Robin Integration', function () {
     it('generates complete round robin schedule for 4 participants', function () {
@@ -61,7 +61,7 @@ describe('Round Robin Integration', function () {
             $eventParticipants = $event->getParticipants();
             $pair = [
                 $eventParticipants[0]->getId(),
-                $eventParticipants[1]->getId()
+                $eventParticipants[1]->getId(),
             ];
             sort($pair);
             $pairKey = implode('-', $pair);
@@ -119,7 +119,7 @@ describe('Round Robin Integration', function () {
         $eventCount = 0;
         foreach ($schedule as $event) {
             expect($event->getParticipantCount())->toBe(2);
-            $eventCount++;
+            ++$eventCount;
         }
 
         expect($eventCount)->toBe(count($schedule));

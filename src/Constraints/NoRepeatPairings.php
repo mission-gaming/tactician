@@ -12,19 +12,19 @@ readonly class NoRepeatPairings implements ConstraintInterface
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
         $participants = $event->getParticipants();
-        
+
         // For events with more than 2 participants, check all pairs
-        for ($i = 0; $i < count($participants) - 1; $i++) {
-            for ($j = $i + 1; $j < count($participants); $j++) {
+        for ($i = 0; $i < count($participants) - 1; ++$i) {
+            for ($j = $i + 1; $j < count($participants); ++$j) {
                 if ($context->haveParticipantsPlayed($participants[$i], $participants[$j])) {
                     return false;
                 }
             }
         }
-        
+
         return true;
     }
-    
+
     public function getName(): string
     {
         return 'No Repeat Pairings';
