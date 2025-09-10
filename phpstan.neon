@@ -1,0 +1,52 @@
+parameters:
+	level: 8
+	paths:
+		- src
+		- tests
+	
+	# Exclude generated files and cache
+	excludePaths:
+		- tests/Pest.php
+	
+	# Enable strict rules for better type safety
+	checkMissingIterableValueType: true
+	checkGenericClassInNonGenericObjectType: true
+	checkMissingCallableSignature: true
+	checkMissingOverrideMethodAttribute: true
+	treatPhpDocTypesAsCertain: false
+	
+	# Error reporting
+	reportUnmatchedIgnoredErrors: true
+	reportStaticMethodSignatures: true
+	
+	# Type coverage settings
+	checkMaybeUndefinedVariables: true
+	
+	# Bleeding edge features for PHP 8.2+
+	polluteScopeWithLoopInitialAssignments: false
+	polluteScopeWithAlwaysIterableForeach: false
+	checkAlwaysTrueInstanceof: true
+	checkAlwaysTrueCheckTypeFunctionCall: true
+	checkAlwaysTrueStrictComparison: true
+	
+	# Exception analysis
+	exceptions:
+		check:
+			missingCheckedExceptionInThrows: true
+			tooWideThrowType: true
+		
+		# Define unchecked exception patterns
+		uncheckedExceptionClasses:
+			- 'LogicException'
+			- 'InvalidArgumentException'
+			- 'BadMethodCallException'
+	
+	# Ignore common Pest testing patterns
+	ignoreErrors:
+		- '#Call to an undefined method Pest\\.*#'
+		- '#Function expect\(\) not found\.#'
+		- '#Function test\(\) not found\.#'
+		- '#Function it\(\) not found\.#'
+		- '#Function describe\(\) not found\.#'
+		- '#Function beforeEach\(\) not found\.#'
+		- '#Function afterEach\(\) not found\.#'
