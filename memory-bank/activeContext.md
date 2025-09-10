@@ -1,28 +1,40 @@
 # Active Context: Tactician
 
 ## Current Work Focus
-- Initial project setup and memory bank initialization
-- Awaiting project requirements and direction
+- Composer package configuration and PHP project setup
+- Establishing development toolchain and dependencies
 
 ## Recent Changes
-- Created memory bank structure
-- Initialized core documentation files
+- Created comprehensive composer.json file for the project
+- Configured PHP 8.2+ requirements and development dependencies
+- Set up PSR-4 autoloading for MissionGaming\Tactician namespace
+- Added testing, static analysis, and code quality toolchain
 
 ## Next Steps
-1. Define project requirements in projectbrief.md
-2. Establish technical stack and architecture
-3. Begin core development
+1. Initialize project structure (src/, tests/ directories)
+2. Set up PHPStan, Rector, and PHP-CS-Fixer configuration files
+3. Create initial core DTOs and interfaces
+4. Begin implementing scheduling algorithms
 
 ## Active Decisions and Considerations
-- Project purpose and scope to be determined
-- Technology choices pending requirements
+- Chosen PHP 8.2+ as minimum version for modern language features
+- Selected Pest as primary testing framework with PHPUnit fallback
+- Established MissionGaming\Tactician as root namespace
+- Configured comprehensive CI script for automated quality checks
 
 ## Important Patterns and Preferences
-*To be documented as development patterns emerge*
+- Test-driven development approach using Pest
+- Strict static analysis with PHPStan
+- Automated code modernization with Rector
+- Consistent code style with PHP-CS-Fixer
+- Composer scripts for developer workflow automation
 
 ## Learnings and Project Insights
-- Project is in initial setup phase
-- Memory bank structure established per .clinerules
+- Project is a PHP library for tournament scheduling algorithms
+- Supports Round Robin, Swiss, and Pool play scheduling
+- Emphasizes deterministic algorithms with seeded randomness
+- Separates fixture generation from timeline assignment
+- Targets competitions up to ~50 participants for performance
 
 ---
-*Last Updated: 2025-01-09*
+*Last Updated: 2025-09-10*
