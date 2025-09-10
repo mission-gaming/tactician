@@ -62,6 +62,8 @@
         ],
         "cs-fixer": "php-cs-fixer fix --dry-run --diff",
         "cs-fixer-fix": "php-cs-fixer fix",
+        "norm": "composer normalize --dry-run",
+        "norm-fix": "composer normalize",
         "phpstan": "phpstan analyse",
         "rector": "rector process --dry-run",
         "rector-fix": "rector process",
