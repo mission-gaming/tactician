@@ -27,9 +27,12 @@
 ### Development
 - pestphp/pest: ^2.0
 - phpstan/phpstan: ^1.10
-- rector/rector: ^0.18
+- rector/rector: ^1.2
 - friendsofphp/php-cs-fixer: ^3.0
 - phpunit/phpunit: ^10.0
+- ergebnis/composer-normalize: ^2.39
+- fakerphp/faker: ^1.23
+- nunomaduro/collision: ^8.5
 
 ## Tool Usage Patterns
 - Memory bank documentation following .clinerules structure
@@ -46,4 +49,4 @@
 6. Maintain clear context for future sessions
 
 ---
-*Last Updated: 2025-09-10*
+*Last Updated: 2025-10-09*
