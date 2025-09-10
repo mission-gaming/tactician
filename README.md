@@ -11,10 +11,12 @@ A modern PHP library for generating structured tournament schedules with determi
 Initial development of this library was sponsored by **Tag1 Consulting**.
 
 <a href="https://www.tag1consulting.com" target="_blank">
-  <img src="https://www.tag1consulting.com/sites/default/files/tag1-logo.png" alt="Tag1 Consulting" width="200">
+  <img src="https://avatars.githubusercontent.com/u/386763?s=200&v=4" alt="Tag1 Consulting" width="200">
 </a>
 
-**Tag1 Consulting** - [https://www.tag1consulting.com](https://www.tag1consulting.com) | [GitHub](https://github.com/tag1consulting)
+**[Tag1 Consulting](https://www.tag1consulting.com)**
+**<Tag1> Development & Infrastructure**
+[Tag1 blog](https://tag1.com/blog) & [Tag1TeamTalks Podcast](https://tag1.com/Tag1TeamTalks)
 
 ## Overview
 
