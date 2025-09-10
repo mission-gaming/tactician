@@ -54,7 +54,7 @@
     },
     "scripts": {
         "ci": [
-            "@normalize",
+            "@norm",
             "@phpstan",
             "@rector",
             "@cs-fixer",
@@ -62,8 +62,8 @@
         ],
         "cs-fixer": "php-cs-fixer fix --dry-run --diff",
         "cs-fixer-fix": "php-cs-fixer fix",
-        "normalize": "composer normalize --dry-run",
-        "normalize-fix": "composer normalize",
+        "norm": "composer normalize --dry-run",
+        "norm-fix": "composer normalize",
         "phpstan": "phpstan analyse",
         "rector": "rector process --dry-run",
         "rector-fix": "rector process",
