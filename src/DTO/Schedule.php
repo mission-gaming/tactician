@@ -7,9 +7,9 @@ namespace MissionGaming\Tactician\DTO;
 use Countable;
 use Iterator;
 
-readonly class Schedule implements Iterator, Countable
+class Schedule implements Iterator, Countable
 {
-    private array $events;
+    private readonly array $events;
     private int $position;
 
     /**
@@ -92,10 +92,10 @@ readonly class Schedule implements Iterator, Countable
      */
     public function getEventsForRound(int $round): array
     {
-        return array_filter(
+        return array_values(array_filter(
             $this->events,
             fn (Event $event) => $event->getRound() === $round
-        );
+        ));
     }
 
     /**
