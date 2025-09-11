@@ -26,6 +26,13 @@
 - **✅ LATEST**: SupportsMultipleLegs trait for expanding single-leg schedules to multiple legs
 - **✅ LATEST**: Comprehensive multi-leg testing with continuous round numbering validation
 - **✅ LATEST**: Documentation updates reflecting multi-leg tournament capabilities
+- **✅ RECENT**: Advanced constraint system with sophisticated constraint types
+- **✅ RECENT**: MinimumRestPeriodsConstraint for enforcing rest periods between encounters
+- **✅ RECENT**: SeedProtectionConstraint for preventing early meetings between top seeds
+- **✅ RECENT**: ConsecutiveRoleConstraint for limiting consecutive positional assignments
+- **✅ RECENT**: MetadataConstraint with flexible factory methods for metadata-based rules
+- **✅ RECENT**: Multi-leg constraint validation with incremental context building
+- **✅ RECENT**: Complex constraint test scenarios validating real-world tournament requirements
 
 ## Next Steps
 1. **Swiss Tournament Scheduler** - Implement Swiss-system pairing algorithm
@@ -46,17 +53,21 @@
 - **Test-Driven Development**: Comprehensive Pest test coverage for all components
 - **Dependency Injection**: Constructor-based dependencies, no static methods
 - **Iterator/Countable**: Memory-efficient traversal of schedules and events
-- **Constraint Validation**: Flexible predicate-based constraint system with built-in and custom support
+- **Advanced Constraint System**: Sophisticated constraint validation with incremental context building
+- **Multi-Leg Constraint Continuity**: Constraints properly validated across tournament legs
+- **Factory Pattern**: Constraint factory methods for common use cases (home/away, metadata patterns)
 - **Deterministic Randomization**: Seeded randomization for reproducible results
 - **Separation of Concerns**: Clean separation between scheduling logic and data structures
 
 ## Learnings and Project Insights
 - **Architecture Quality**: Current implementation follows excellent SOLID principles and modern PHP patterns
 - **Algorithm Completeness**: Round-robin implementation handles edge cases (2, 3, 4+ participants, odd/even counts)
-- **Constraint System**: Sophisticated with both built-in constraints (NoRepeatPairings) and custom predicate support
+- **Advanced Constraint System**: Comprehensive constraint validation with time-based, positional, and metadata constraints
+- **Multi-Leg Constraint Validation**: Sophisticated incremental context building ensures constraints work across tournament legs
+- **Real-World Application**: Complex constraint scenarios validate tournament director requirements
 - **Test Coverage**: Comprehensive unit and integration tests verify mathematical correctness and constraint enforcement
 - **Memory Efficiency**: Iterator pattern allows efficient traversal of large schedules without loading all events into memory
-- **Extensibility**: Current architecture provides solid foundation for additional tournament systems
+- **Extensibility**: Current architecture provides solid foundation for additional tournament systems and constraint types
 
 ## Current Implementation Status
 **Phase**: Production-Ready Round-Robin System

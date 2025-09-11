@@ -26,9 +26,13 @@ src/Scheduling/
 ### **3. Constraint Layer**
 ```
 src/Constraints/
-├── ConstraintInterface.php      # Constraint contract
-├── ConstraintSet.php           # Builder pattern container
-├── NoRepeatPairings.php        # Built-in constraint
+├── ConstraintInterface.php             # Constraint contract
+├── ConstraintSet.php                  # Builder pattern container
+├── NoRepeatPairings.php               # Built-in no-repeat constraint
+├── MinimumRestPeriodsConstraint.php   # Time-based rest period enforcement
+├── SeedProtectionConstraint.php       # Tournament seeding protection
+├── ConsecutiveRoleConstraint.php      # Positional/role-based constraints
+├── MetadataConstraint.php             # Flexible metadata-based rules
 └── [Future] TimeConstraints/, VenueConstraints/
 ```
 
@@ -83,6 +87,11 @@ src/Exceptions/
 - Algorithm-specific steps overridden in concrete implementations
 - Future: `AbstractScheduler` base class
 
+### **Factory Pattern**
+- `MetadataConstraint` with factory methods for common patterns
+- `ConsecutiveRoleConstraint` with specialized factories (homeAway, position)
+- Simplified constraint creation for standard use cases
+
 ### **Command Pattern (Future)**
 - Constraint violations as command objects
 - Detailed reporting and resolution strategies
@@ -119,10 +128,12 @@ graph TD
 5. **Schedule Generation**: Create immutable Schedule with metadata
 
 ### **Constraint Validation Flow**
-1. **Context Creation**: Build SchedulingContext with current state
-2. **Constraint Iteration**: Check event against each constraint in set
-3. **Predicate Evaluation**: Built-in or custom predicate validation
-4. **Boolean Result**: All constraints must pass for event acceptance
+1. **Context Creation**: Build SchedulingContext with current tournament state
+2. **Incremental Updates**: Add each processed event to context for subsequent validation
+3. **Constraint Iteration**: Check proposed event against each constraint in set
+4. **Advanced Constraint Logic**: Time-based, positional, and metadata constraint evaluation
+5. **Multi-Leg Continuity**: Constraints work across tournament legs with continuous context
+6. **Boolean Result**: All constraints must pass for event acceptance
 
 ### **Schedule Iteration**
 1. **Iterator Interface**: Standard PHP iteration protocol

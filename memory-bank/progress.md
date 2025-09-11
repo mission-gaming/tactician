@@ -24,11 +24,16 @@
 - ✅ **Deterministic Randomization**: Seeded randomization with Mt19937 engine support
 - ✅ **Constraint Integration**: Real-time constraint validation during schedule generation
 
-### **Constraint System**
+### **Advanced Constraint System**
 - ✅ **ConstraintSet**: Fluent builder pattern with method chaining
 - ✅ **NoRepeatPairings**: Built-in constraint preventing duplicate matches
+- ✅ **MinimumRestPeriodsConstraint**: Enforces minimum rounds between participant encounters
+- ✅ **SeedProtectionConstraint**: Prevents high-seeded participants from meeting early in tournament
+- ✅ **ConsecutiveRoleConstraint**: Limits consecutive home/away or positional assignments
+- ✅ **MetadataConstraint**: Flexible metadata-based pairing rules with factory methods
 - ✅ **Custom Predicates**: CallableConstraint for user-defined validation logic
-- ✅ **SchedulingContext**: Historical state management for constraint evaluation
+- ✅ **SchedulingContext**: Historical state management with incremental updates
+- ✅ **Multi-Leg Constraint Validation**: Constraints work seamlessly across tournament legs
 
 ### **Quality Assurance**
 - ✅ **Comprehensive Test Suite**: Pest framework with 100% coverage of implemented features
@@ -102,6 +107,16 @@
 - **Modern PHP 8.2+**: Readonly classes, strict typing, constructor property promotion throughout
 - **CI/CD Integration**: GitHub Actions pipeline with automated testing and Codecov integration
 - **Enhanced Documentation**: Updated README with build badges and comprehensive project information
+
+### 2025-09-11 - Advanced Constraint System + Multi-Leg Enhancement
+- **Advanced Constraint Implementation**: Added sophisticated constraint types for real-world tournament scenarios
+- **MinimumRestPeriodsConstraint**: Enforces minimum rounds between participant encounters across legs
+- **SeedProtectionConstraint**: Prevents high-seeded participants from meeting early in tournament
+- **ConsecutiveRoleConstraint**: Limits consecutive home/away or positional assignments with factory methods
+- **MetadataConstraint**: Flexible metadata-based pairing rules with multiple factory methods
+- **Multi-Leg Constraint Validation**: Enhanced constraint application with incremental context building
+- **Complex Test Scenarios**: Comprehensive test cases validating constraint interaction and multi-leg behavior
+- **Documentation Enhancement**: Updated README and ARCHITECTURE.md to reflect advanced constraint capabilities
 
 ### 2025-09-11 - Round DTO Implementation + Documentation Updates
 - **Round DTO Integration**: Added immutable Round DTO with metadata support and utility methods
