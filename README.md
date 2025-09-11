@@ -6,23 +6,11 @@ A modern PHP library for solving tournament scheduling problems with reliable, m
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-Pest-orange)](https://pestphp.com)
 
-After struggling with unmaintained libraries and limited PHP scheduling options, we decided to build the tournament scheduling solution we wished existed—then open source it for the community. We're expanding to other games and building what we believe will be the premier esports tournament platform.
-
 ## Overview
 
-**Tournament scheduling is harder than it looks.** Creating fair, balanced tournaments that ensure every participant gets equal opportunities while respecting constraints (like "no team plays twice in a row" or "avoid repeat matchups") quickly becomes a complex mathematical problem.
+**Tournament scheduling is harder than it looks.** Creating fair, balanced tournaments that ensure every participant gets equal opportunities while respecting constraints (like "no team plays twice in a row" or "avoid repeat matchups") quickly becomes a complex mathematical problem. Unlike other languages that have mature constraint programming libraries and scheduling engines, PHP has been left behind - existing solutions are either unmaintained, limited to basic round-robin only, or built with outdated practices.
 
-**The PHP ecosystem has a gap.** Unlike other languages that have mature constraint programming libraries and scheduling engines, PHP has been left behind. Existing solutions are either unmaintained, limited to basic round-robin only, or built with outdated practices.
-
-**Tactician fills that gap.** Built from the ground up with modern PHP practices, Tactician provides battle-tested algorithms for the most common tournament formats:
-
-- **Round Robin**: Every participant plays every other participant exactly once (perfect for leagues)
-- **Swiss System**: Participants are paired based on performance after each round (ideal for large tournaments) 
-- **Pool/Group Play**: Divide participants into groups, with standings and advancement rules
-
-**Built for real-world use.** Tactician uses *deterministic* algorithms (meaning the same input always produces the same schedule) with *mathematical guarantees* of fairness. It's designed for small to medium tournaments (up to ~50 participants) where you need reliable scheduling without the complexity of enterprise constraint programming engines.
-
-**When to use something else:** For larger tournaments, complex multi-stage events, or advanced constraint optimization, consider dedicated scheduling engines or constraint programming solutions. Tactician prioritizes simplicity, maintainability, and PHP ecosystem integration over maximum theoretical performance.
+**Tactician fills that gap.** Built from the ground up with modern PHP practices, Tactician provides battle-tested algorithms for Round Robin (every participant plays every other participant exactly once), Swiss System (participants paired based on performance after each round), and Pool/Group Play (divide participants into groups with standings). It uses *deterministic* algorithms (meaning the same input always produces the same schedule) with mathematical guarantees of fairness, designed for small to medium tournaments (up to ~50 participants) where you need reliable scheduling without enterprise complexity. For larger tournaments or advanced constraint optimization, consider dedicated scheduling engines.
 
 **Key Features:**
 - 🏆 **Deterministic Algorithms**: Round Robin (complete), Swiss and Pool play (coming soon)
@@ -207,7 +195,9 @@ composer test-coverage
 
 ## About Mission Gaming
 
-**Mission Gaming** is an esports organization that runs competitive tournaments for EAFC Clubs (11v11 virtual football). Founded and operated by software engineers who are passionate about both competitive gaming and building exceptional technology, we created Tactician to solve our own scheduling challenges on our **Metronome** tournament platform.
+**[Mission Gaming](https://missiongaming.gg)** is an esports organization that runs competitive tournaments for EAFC Clubs (11v11 virtual football). Founded and operated by software engineers who are passionate about both competitive gaming and building exceptional technology, we created Tactician to solve our own scheduling challenges on our **Metronome** tournament platform.
+
+After struggling with unmaintained libraries and limited PHP scheduling options, we decided to build the tournament scheduling solution we wished existed—then open source it for the community. We're expanding to other games and building what we believe will be the premier esports tournament platform.
 
 ## Sponsorship
 
