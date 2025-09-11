@@ -10,21 +10,33 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
+use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use Override;
 use Random\Randomizer;
 
-readonly class RoundRobinScheduler implements SchedulerInterface
+class RoundRobinScheduler implements SchedulerInterface
 {
+    use SupportsMultipleLegs;
+
     public function __construct(
         private ?ConstraintSet $constraints = null,
-        private ?Randomizer $randomizer = null
+        private ?Randomizer $randomizer = null,
+        private int $legs = 1,
+        private ?LegStrategyInterface $legStrategy = null
     ) {
+    }
+
+    private function getLegStrategy(): LegStrategyInterface
+    {
+        return $this->legStrategy ?? new MirroredLegStrategy();
     }
 
     /**
      * Generate a round-robin schedule for the given participants.
      *
      * @param array<Participant> $participants
+     * @throws \DivisionByZeroError When roundsPerLeg is zero in multi-leg expansion
      */
     #[Override]
     public function schedule(array $participants): Schedule
@@ -33,12 +45,26 @@ readonly class RoundRobinScheduler implements SchedulerInterface
             throw new InvalidArgumentException('Round-robin scheduling requires at least 2 participants');
         }
 
-        $events = $this->generateRoundRobinEvents($participants);
+        // Generate base single-leg events
+        $baseEvents = $this->generateRoundRobinEvents($participants);
 
-        return new Schedule($events, [
+        // Expand to multiple legs if needed
+        $allEvents = $this->expandScheduleForLegs(
+            $baseEvents,
+            $this->legs,
+            $this->getLegStrategy(),
+            $this->randomizer
+        );
+
+        $roundsPerLeg = count($participants) - 1;
+        $totalRounds = $roundsPerLeg * $this->legs;
+
+        return new Schedule($allEvents, [
             'algorithm' => 'round-robin',
             'participant_count' => count($participants),
-            'total_rounds' => count($participants) - 1,
+            'legs' => $this->legs,
+            'rounds_per_leg' => $roundsPerLeg,
+            'total_rounds' => $totalRounds,
         ]);
     }
 
