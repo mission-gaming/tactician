@@ -35,7 +35,7 @@ Tactician is a modern PHP library for generating structured schedules between pa
   - Full Social Golfer Problem/generalized k-participant match solving
 
 ## Misc
-- Date formats in the memory bank files should follow the YYYY-MM-DD pattern.
+- **IMPORTANT**: Date formats in the memory bank files must ALWAYS follow the YYYY-MM-DD pattern (ISO 8601 format). Never use MM-DD-YYYY or DD-MM-YYYY formats.
 
 ## Status
 - **Project Stage**: Production-ready core system (Round-Robin complete)
