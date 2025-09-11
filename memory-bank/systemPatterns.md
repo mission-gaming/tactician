@@ -135,9 +135,13 @@ graph TD
 tactician/
 ├── .clinerules
 ├── .gitignore
+├── .php-cs-fixer.dist.php
 ├── composer.json
 ├── composer.lock
 ├── LICENSE
+├── phpstan.neon
+├── phpunit.xml
+├── README.md
 ├── rector.php
 ├── memory-bank/
 │   ├── projectbrief.md
@@ -148,26 +152,32 @@ tactician/
 │   └── progress.md
 ├── src/
 │   ├── DTO/
-│   │   ├── Participant.php
-│   │   ├── Event.php
-│   │   └── Schedule.php
+│   │   ├── Participant.php      # Advanced DTO with ID/label/seed/metadata
+│   │   ├── Event.php           # Multi-participant event with round tracking
+│   │   └── Schedule.php        # Iterator/Countable schedule collection
 │   ├── Scheduling/
-│   │   ├── SchedulerInterface.php
-│   │   ├── SchedulingContext.php
-│   │   └── RoundRobinScheduler.php
+│   │   ├── SchedulerInterface.php     # Contract for all schedulers
+│   │   ├── SchedulingContext.php      # Historical state management
+│   │   └── RoundRobinScheduler.php    # Circle method with constraints
 │   ├── Constraints/
-│   │   ├── ConstraintInterface.php
-│   │   ├── ConstraintSet.php
-│   │   └── NoRepeatPairings.php
+│   │   ├── ConstraintInterface.php    # Constraint contract
+│   │   ├── ConstraintSet.php         # Builder pattern with CallableConstraint
+│   │   └── NoRepeatPairings.php      # Built-in constraint implementation
 │   └── Exceptions/
-│       └── SchedulingException.php
+│       └── SchedulingException.php   # Domain-specific exceptions
 └── tests/
+    ├── Pest.php                      # Pest configuration
+    ├── TestCase.php                  # Base test case
     ├── Unit/
-    │   ├── ParticipantTest.php
-    │   ├── EventTest.php
-    │   ├── ScheduleTest.php
-    │   ├── ConstraintSetTest.php
-    │   └── RoundRobinSchedulerTest.php
+    │   ├── DTO/
+    │   │   ├── EventTest.php
+    │   │   ├── ParticipantTest.php
+    │   │   └── ScheduleTest.php
+    │   ├── Constraints/
+    │   │   └── ConstraintSetTest.php
+    │   ├── Exceptions/
+    │   └── Scheduling/
+    │       └── RoundRobinSchedulerTest.php
     └── Feature/
         └── RoundRobinIntegrationTest.php
 ```
@@ -201,4 +211,4 @@ src/Optimization/
 ```
 
 ---
-*Last Updated: 2025-10-09*
+*Last Updated: 2025-11-09*

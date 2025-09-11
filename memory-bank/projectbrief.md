@@ -34,10 +34,13 @@ Tactician is a modern PHP library for generating structured schedules between pa
   - Blackout dates, iCal RRULEs, or complex recurrence handling
   - Full Social Golfer Problem/generalized k-participant match solving
 
+## Misc
+- Date formats in the memory bank files should follow the YYYY-MM-DD pattern.
+
 ## Status
-- **Project Stage**: Initial setup
+- **Project Stage**: Production-ready core system (Round-Robin complete)
 - **Created**: 2025-09-10
-- **Last Updated**: 2025-09-10
+- **Last Updated**: 2025-09-11
 
 ## Notes
 This project brief will be expanded as the project requirements become clear through development and user input.
