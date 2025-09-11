@@ -6,6 +6,7 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
@@ -43,7 +44,7 @@ describe('RoundRobinScheduler', function (): void {
         $scheduler = new RoundRobinScheduler();
 
         expect(fn () => $scheduler->schedule([new Participant('p1', 'Alice')]))
-            ->toThrow(InvalidArgumentException::class, 'Round-robin scheduling requires at least 2 participants');
+            ->toThrow(InvalidConfigurationException::class, 'Invalid scheduler configuration: Round-robin scheduling requires at least 2 participants');
     });
 
     // Tests the minimal case of 2 participants, which should create exactly
