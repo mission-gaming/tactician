@@ -8,7 +8,7 @@ readonly class Participant
 {
     public function __construct(
         private string $id,
-        private string $name,
+        private string $label,
         private ?int $seed = null,
         private array $metadata = []
     ) {
@@ -19,9 +19,9 @@ readonly class Participant
         return $this->id;
     }
 
-    public function getName(): string
+    public function getLabel(): string
     {
-        return $this->name;
+        return $this->label;
     }
 
     public function getSeed(): ?int

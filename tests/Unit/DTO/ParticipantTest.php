@@ -9,7 +9,7 @@ describe('Participant', function () {
         $participant = new Participant('p1', 'Alice');
 
         expect($participant->getId())->toBe('p1');
-        expect($participant->getName())->toBe('Alice');
+        expect($participant->getLabel())->toBe('Alice');
         expect($participant->getSeed())->toBeNull();
         expect($participant->getMetadata())->toBe([]);
     });
@@ -19,7 +19,7 @@ describe('Participant', function () {
         $participant = new Participant('p1', 'Alice', 42, $metadata);
 
         expect($participant->getId())->toBe('p1');
-        expect($participant->getName())->toBe('Alice');
+        expect($participant->getLabel())->toBe('Alice');
         expect($participant->getSeed())->toBe(42);
         expect($participant->getMetadata())->toBe($metadata);
     });
