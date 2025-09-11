@@ -10,6 +10,7 @@
 ## Recent Changes
 - **✅ COMPLETE**: Advanced Participant DTO with seeding, metadata, and unique ID system
 - **✅ COMPLETE**: Event DTO with round tracking and participant management
+- **✅ COMPLETE**: Round DTO with immutable round representation and metadata system
 - **✅ COMPLETE**: Schedule DTO with Iterator/Countable, round filtering, and metadata
 - **✅ COMPLETE**: RoundRobinScheduler with circle method, bye handling, and constraint validation
 - **✅ COMPLETE**: ConstraintSet with builder pattern, built-in constraints, and custom predicates
@@ -19,6 +20,7 @@
 - **✅ RECENT**: CI/CD pipeline improvements with GitHub Actions
 - **✅ RECENT**: Updated README and project documentation
 - **✅ RECENT**: Added build and code coverage badges
+- **✅ RECENT**: Updated documentation examples to reflect Round DTO integration
 
 ## Next Steps
 1. **Swiss Tournament Scheduler** - Implement Swiss-system pairing algorithm

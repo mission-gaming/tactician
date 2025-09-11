@@ -9,6 +9,7 @@ The Tactician library follows a layered architecture with clear separation of co
 src/DTO/
 ├── Participant.php      # Immutable participant representation
 ├── Event.php           # Immutable match/event representation  
+├── Round.php           # Immutable round representation with metadata
 ├── Schedule.php        # Iterator/Countable collection of events
 └── [Future] TimeSlot.php, ScheduledEvent.php
 ```
@@ -154,6 +155,7 @@ tactician/
 │   ├── DTO/
 │   │   ├── Participant.php      # Advanced DTO with ID/label/seed/metadata
 │   │   ├── Event.php           # Multi-participant event with round tracking
+│   │   ├── Round.php           # Immutable round representation with metadata
 │   │   └── Schedule.php        # Iterator/Countable schedule collection
 │   ├── Scheduling/
 │   │   ├── SchedulerInterface.php     # Contract for all schedulers
@@ -172,6 +174,7 @@ tactician/
     │   ├── DTO/
     │   │   ├── EventTest.php
     │   │   ├── ParticipantTest.php
+    │   │   ├── RoundTest.php
     │   │   └── ScheduleTest.php
     │   ├── Constraints/
     │   │   └── ConstraintSetTest.php

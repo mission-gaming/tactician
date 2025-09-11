@@ -12,6 +12,7 @@
 ### **Core Data Transfer Objects**
 - ✅ **Advanced Participant DTO**: ID/label/seed/metadata with comprehensive accessor methods
 - ✅ **Event DTO**: Multi-participant support with round tracking and immutable design  
+- ✅ **Round DTO**: Immutable round representation with metadata system and utility methods
 - ✅ **Schedule DTO**: Iterator/Countable with round filtering, metadata access, and memory efficiency
 
 ### **Scheduling Engine**
@@ -98,6 +99,13 @@
 - **Modern PHP 8.2+**: Readonly classes, strict typing, constructor property promotion throughout
 - **CI/CD Integration**: GitHub Actions pipeline with automated testing and Codecov integration
 - **Enhanced Documentation**: Updated README with build badges and comprehensive project information
+
+### 2025-09-11 - Round DTO Implementation + Documentation Updates
+- **Round DTO Integration**: Added immutable Round DTO with metadata support and utility methods
+- **Event DTO Enhancement**: Updated Event DTO to accept Round objects instead of integer round numbers
+- **Documentation Updates**: Updated README examples and ARCHITECTURE.md to reflect Round DTO usage
+- **Memory Bank Maintenance**: Updated all memory bank files to reflect Round DTO implementation
+- **Test Coverage**: Added comprehensive RoundTest.php with full test coverage for Round DTO functionality
 
 ## Recent Milestones
 - **2025-01-09**: Memory bank initialization complete
