@@ -25,7 +25,7 @@ describe('ConstraintSet', function () {
     });
 
     it('creates constraint set with constraints', function () {
-        $constraint = Mockery::mock(ConstraintInterface::class);
+        $constraint = $this->createMock(ConstraintInterface::class);
         $constraintSet = new ConstraintSet([$constraint]);
 
         expect($constraintSet->isEmpty())->toBeFalse();
@@ -34,17 +34,17 @@ describe('ConstraintSet', function () {
     });
 
     it('validates event against all constraints', function () {
-        $constraint1 = Mockery::mock(ConstraintInterface::class);
-        $constraint1->shouldReceive('isSatisfied')
+        $constraint1 = $this->createMock(ConstraintInterface::class);
+        $constraint1->expects($this->once())
+                   ->method('isSatisfied')
                    ->with($this->event, $this->context)
-                   ->once()
-                   ->andReturn(true);
+                   ->willReturn(true);
 
-        $constraint2 = Mockery::mock(ConstraintInterface::class);
-        $constraint2->shouldReceive('isSatisfied')
+        $constraint2 = $this->createMock(ConstraintInterface::class);
+        $constraint2->expects($this->once())
+                   ->method('isSatisfied')
                    ->with($this->event, $this->context)
-                   ->once()
-                   ->andReturn(true);
+                   ->willReturn(true);
 
         $constraintSet = new ConstraintSet([$constraint1, $constraint2]);
 
@@ -52,17 +52,17 @@ describe('ConstraintSet', function () {
     });
 
     it('fails validation when any constraint fails', function () {
-        $constraint1 = Mockery::mock(ConstraintInterface::class);
-        $constraint1->shouldReceive('isSatisfied')
+        $constraint1 = $this->createMock(ConstraintInterface::class);
+        $constraint1->expects($this->once())
+                   ->method('isSatisfied')
                    ->with($this->event, $this->context)
-                   ->once()
-                   ->andReturn(true);
+                   ->willReturn(true);
 
-        $constraint2 = Mockery::mock(ConstraintInterface::class);
-        $constraint2->shouldReceive('isSatisfied')
+        $constraint2 = $this->createMock(ConstraintInterface::class);
+        $constraint2->expects($this->once())
+                   ->method('isSatisfied')
                    ->with($this->event, $this->context)
-                   ->once()
-                   ->andReturn(false);
+                   ->willReturn(false);
 
         $constraintSet = new ConstraintSet([$constraint1, $constraint2]);
 
