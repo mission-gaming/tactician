@@ -6,9 +6,11 @@ namespace MissionGaming\Tactician\Constraints;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
+use Override;
 
 readonly class NoRepeatPairings implements ConstraintInterface
 {
+    #[Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
         $participants = $event->getParticipants();
@@ -25,6 +27,7 @@ readonly class NoRepeatPairings implements ConstraintInterface
         return true;
     }
 
+    #[Override]
     public function getName(): string
     {
         return 'No Repeat Pairings';

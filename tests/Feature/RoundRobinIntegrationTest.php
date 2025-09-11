@@ -6,8 +6,8 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
-describe('Round Robin Integration', function () {
-    it('generates complete round robin schedule for 4 participants', function () {
+describe('Round Robin Integration', function (): void {
+    it('generates complete round robin schedule for 4 participants', function (): void {
         // Given: 4 participants
         $participants = [
             new Participant('alice', 'Alice'),
@@ -38,7 +38,7 @@ describe('Round Robin Integration', function () {
         }
     });
 
-    it('respects constraints during scheduling', function () {
+    it('respects constraints during scheduling', function (): void {
         // Given: Participants and no-repeat-pairings constraint
         $participants = [
             new Participant('p1', 'Player 1'),
@@ -71,7 +71,7 @@ describe('Round Robin Integration', function () {
         }
     });
 
-    it('handles odd number of participants with byes', function () {
+    it('handles odd number of participants with byes', function (): void {
         // Given: 5 participants (odd number)
         $participants = [
             new Participant('p1', 'Player 1'),
@@ -103,7 +103,7 @@ describe('Round Robin Integration', function () {
         }
     });
 
-    it('produces schedule that can be iterated and counted', function () {
+    it('produces schedule that can be iterated and counted', function (): void {
         // Given: Participants
         $participants = [
             new Participant('p1', 'Player 1'),
@@ -126,7 +126,7 @@ describe('Round Robin Integration', function () {
         expect($schedule->count())->toBe(3); // C(3,2) = 3 matches
     });
 
-    it('includes useful metadata in generated schedule', function () {
+    it('includes useful metadata in generated schedule', function (): void {
         // Given: Participants
         $participants = [
             new Participant('p1', 'Player 1'),

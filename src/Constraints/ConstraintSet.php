@@ -71,6 +71,9 @@ class ConstraintSetBuilder
         return $this->add(new NoRepeatPairings());
     }
 
+    /**
+     * @param callable(Event, SchedulingContext): bool $predicate
+     */
     public function custom(callable $predicate, string $name = 'Custom Constraint'): self
     {
         return $this->add(new CallableConstraint($predicate, $name));
@@ -84,17 +87,22 @@ class ConstraintSetBuilder
 
 class CallableConstraint implements ConstraintInterface
 {
+    /**
+     * @param callable(Event, SchedulingContext): bool $predicate
+     */
     public function __construct(
         private $predicate,
         private string $name
     ) {
     }
 
+    #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
         return ($this->predicate)($event, $context);
     }
 
+    #[\Override]
     public function getName(): string
     {
         return $this->name;

@@ -9,6 +9,7 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
+use Override;
 use Random\Randomizer;
 
 readonly class RoundRobinScheduler implements SchedulerInterface
@@ -24,6 +25,7 @@ readonly class RoundRobinScheduler implements SchedulerInterface
      *
      * @param array<Participant> $participants
      */
+    #[Override]
     public function schedule(array $participants): Schedule
     {
         if (count($participants) < 2) {
@@ -108,7 +110,7 @@ readonly class RoundRobinScheduler implements SchedulerInterface
             $bye = array_pop($participants);
         }
 
-        $this->randomizer->shuffleArray($participants);
+        $this->randomizer?->shuffleArray($participants);
 
         if ($bye !== null) {
             $participants[] = $bye;

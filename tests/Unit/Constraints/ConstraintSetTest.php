@@ -8,15 +8,15 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
-describe('ConstraintSet', function () {
-    beforeEach(function () {
+describe('ConstraintSet', function (): void {
+    beforeEach(function (): void {
         $this->participant1 = new Participant('p1', 'Alice');
         $this->participant2 = new Participant('p2', 'Bob');
         $this->event = new Event([$this->participant1, $this->participant2]);
         $this->context = new SchedulingContext([$this->participant1, $this->participant2]);
     });
 
-    it('creates an empty constraint set', function () {
+    it('creates an empty constraint set', function (): void {
         $constraintSet = new ConstraintSet();
 
         expect($constraintSet->isEmpty())->toBeTrue();
@@ -24,7 +24,7 @@ describe('ConstraintSet', function () {
         expect($constraintSet->getConstraints())->toBe([]);
     });
 
-    it('creates constraint set with constraints', function () {
+    it('creates constraint set with constraints', function (): void {
         $constraint = $this->createMock(ConstraintInterface::class);
         $constraintSet = new ConstraintSet([$constraint]);
 
@@ -33,7 +33,7 @@ describe('ConstraintSet', function () {
         expect($constraintSet->getConstraints())->toBe([$constraint]);
     });
 
-    it('validates event against all constraints', function () {
+    it('validates event against all constraints', function (): void {
         $constraint1 = $this->createMock(ConstraintInterface::class);
         $constraint1->expects($this->once())
                    ->method('isSatisfied')
@@ -51,7 +51,7 @@ describe('ConstraintSet', function () {
         expect($constraintSet->isSatisfied($this->event, $this->context))->toBeTrue();
     });
 
-    it('fails validation when any constraint fails', function () {
+    it('fails validation when any constraint fails', function (): void {
         $constraint1 = $this->createMock(ConstraintInterface::class);
         $constraint1->expects($this->once())
                    ->method('isSatisfied')
@@ -69,28 +69,28 @@ describe('ConstraintSet', function () {
         expect($constraintSet->isSatisfied($this->event, $this->context))->toBeFalse();
     });
 
-    it('passes validation with empty constraint set', function () {
+    it('passes validation with empty constraint set', function (): void {
         $constraintSet = new ConstraintSet();
 
         expect($constraintSet->isSatisfied($this->event, $this->context))->toBeTrue();
     });
 });
 
-describe('ConstraintSetBuilder', function () {
-    beforeEach(function () {
+describe('ConstraintSetBuilder', function (): void {
+    beforeEach(function (): void {
         $this->participant1 = new Participant('p1', 'Alice');
         $this->participant2 = new Participant('p2', 'Bob');
         $this->event = new Event([$this->participant1, $this->participant2]);
         $this->context = new SchedulingContext([$this->participant1, $this->participant2]);
     });
 
-    it('creates empty constraint set', function () {
+    it('creates empty constraint set', function (): void {
         $constraintSet = ConstraintSet::create()->build();
 
         expect($constraintSet->isEmpty())->toBeTrue();
     });
 
-    it('adds no repeat pairings constraint', function () {
+    it('adds no repeat pairings constraint', function (): void {
         $constraintSet = ConstraintSet::create()
             ->noRepeatPairings()
             ->build();
@@ -99,7 +99,7 @@ describe('ConstraintSetBuilder', function () {
         expect($constraintSet->getConstraints()[0])->toBeInstanceOf(\MissionGaming\Tactician\Constraints\NoRepeatPairings::class);
     });
 
-    it('adds custom constraint', function () {
+    it('adds custom constraint', function (): void {
         $constraintSet = ConstraintSet::create()
             ->custom(fn ($event, $context) => true, 'Test Constraint')
             ->build();
@@ -108,7 +108,7 @@ describe('ConstraintSetBuilder', function () {
         expect($constraintSet->isSatisfied($this->event, $this->context))->toBeTrue();
     });
 
-    it('chains multiple constraints', function () {
+    it('chains multiple constraints', function (): void {
         $constraintSet = ConstraintSet::create()
             ->noRepeatPairings()
             ->custom(fn ($event, $context) => true)
@@ -117,7 +117,7 @@ describe('ConstraintSetBuilder', function () {
         expect($constraintSet->count())->toBe(2);
     });
 
-    it('custom constraint with false predicate fails validation', function () {
+    it('custom constraint with false predicate fails validation', function (): void {
         $constraintSet = ConstraintSet::create()
             ->custom(fn ($event, $context) => false, 'Always Fail')
             ->build();

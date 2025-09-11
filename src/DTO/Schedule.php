@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\DTO;
 
 use Countable;
 use Iterator;
+use Override;
 
 /**
  * Represents a complete tournament schedule containing multiple events.
@@ -14,6 +15,8 @@ use Iterator;
  * It supports organizing events by rounds, adding metadata, and provides
  * utility methods for schedule analysis. The Schedule implements Iterator
  * and Countable for convenient traversal and counting operations.
+ *
+ * @implements Iterator<int, Event>
  */
 class Schedule implements Iterator, Countable
 {
@@ -101,6 +104,7 @@ class Schedule implements Iterator, Countable
      *
      * @return int The number of events in this schedule
      */
+    #[Override]
     public function count(): int
     {
         return count($this->events);
@@ -113,6 +117,7 @@ class Schedule implements Iterator, Countable
      *
      * @return Event The current event
      */
+    #[Override]
     public function current(): Event
     {
         return $this->events[$this->position];
@@ -125,6 +130,7 @@ class Schedule implements Iterator, Countable
      *
      * @return int The current position
      */
+    #[Override]
     public function key(): int
     {
         return $this->position;
@@ -137,6 +143,7 @@ class Schedule implements Iterator, Countable
      *
      * @return void
      */
+    #[Override]
     public function next(): void
     {
         ++$this->position;
@@ -149,6 +156,7 @@ class Schedule implements Iterator, Countable
      *
      * @return void
      */
+    #[Override]
     public function rewind(): void
     {
         $this->position = 0;
@@ -161,6 +169,7 @@ class Schedule implements Iterator, Countable
      *
      * @return bool True if the current position contains an event, false otherwise
      */
+    #[Override]
     public function valid(): bool
     {
         return isset($this->events[$this->position]);

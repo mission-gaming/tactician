@@ -6,8 +6,8 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 
-describe('Schedule', function () {
-    beforeEach(function () {
+describe('Schedule', function (): void {
+    beforeEach(function (): void {
         $this->participant1 = new Participant('p1', 'Alice');
         $this->participant2 = new Participant('p2', 'Bob');
         $this->participant3 = new Participant('p3', 'Carol');
@@ -16,7 +16,7 @@ describe('Schedule', function () {
         $this->event2 = new Event([$this->participant2, $this->participant3], 2);
     });
 
-    it('creates an empty schedule', function () {
+    it('creates an empty schedule', function (): void {
         $schedule = new Schedule();
 
         expect($schedule->getEvents())->toBe([]);
@@ -25,7 +25,7 @@ describe('Schedule', function () {
         expect($schedule->count())->toBe(0);
     });
 
-    it('creates a schedule with events', function () {
+    it('creates a schedule with events', function (): void {
         $events = [$this->event1, $this->event2];
         $schedule = new Schedule($events);
 
@@ -34,7 +34,7 @@ describe('Schedule', function () {
         expect($schedule->count())->toBe(2);
     });
 
-    it('creates a schedule with metadata', function () {
+    it('creates a schedule with metadata', function (): void {
         $metadata = ['algorithm' => 'round-robin', 'rounds' => 3];
         $schedule = new Schedule([], $metadata);
 
@@ -43,7 +43,7 @@ describe('Schedule', function () {
         expect($schedule->getMetadataValue('algorithm'))->toBe('round-robin');
     });
 
-    it('adds events immutably', function () {
+    it('adds events immutably', function (): void {
         $originalSchedule = new Schedule([$this->event1]);
         $newSchedule = $originalSchedule->addEvent($this->event2);
 
@@ -52,7 +52,7 @@ describe('Schedule', function () {
         expect($newSchedule->getEvents())->toBe([$this->event1, $this->event2]);
     });
 
-    it('implements Iterator interface', function () {
+    it('implements Iterator interface', function (): void {
         $events = [$this->event1, $this->event2];
         $schedule = new Schedule($events);
 
@@ -64,13 +64,13 @@ describe('Schedule', function () {
         expect($iteratedEvents)->toBe([0 => $this->event1, 1 => $this->event2]);
     });
 
-    it('implements Countable interface', function () {
+    it('implements Countable interface', function (): void {
         $schedule = new Schedule([$this->event1, $this->event2]);
 
         expect(count($schedule))->toBe(2);
     });
 
-    it('gets events for specific round', function () {
+    it('gets events for specific round', function (): void {
         $event3 = new Event([$this->participant1, $this->participant3], 1);
         $schedule = new Schedule([$this->event1, $this->event2, $event3]);
 
@@ -82,27 +82,27 @@ describe('Schedule', function () {
         expect($round2Events[0])->toBe($this->event2);
     });
 
-    it('gets maximum round number', function () {
+    it('gets maximum round number', function (): void {
         $event3 = new Event([$this->participant1, $this->participant3], 5);
         $schedule = new Schedule([$this->event1, $this->event2, $event3]);
 
         expect($schedule->getMaxRound())->toBe(5);
     });
 
-    it('returns null for max round with empty schedule', function () {
+    it('returns null for max round with empty schedule', function (): void {
         $schedule = new Schedule();
 
         expect($schedule->getMaxRound())->toBeNull();
     });
 
-    it('returns null for max round with no round numbers', function () {
+    it('returns null for max round with no round numbers', function (): void {
         $eventWithoutRound = new Event([$this->participant1, $this->participant2]);
         $schedule = new Schedule([$eventWithoutRound]);
 
         expect($schedule->getMaxRound())->toBeNull();
     });
 
-    it('handles metadata operations', function () {
+    it('handles metadata operations', function (): void {
         $metadata = ['tournament' => 'Championship'];
         $schedule = new Schedule([], $metadata);
 

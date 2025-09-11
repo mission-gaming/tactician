@@ -9,8 +9,8 @@ use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
-describe('RoundRobinScheduler', function () {
-    beforeEach(function () {
+describe('RoundRobinScheduler', function (): void {
+    beforeEach(function (): void {
         $this->participants = [
             new Participant('p1', 'Alice'),
             new Participant('p2', 'Bob'),
@@ -19,27 +19,27 @@ describe('RoundRobinScheduler', function () {
         ];
     });
 
-    it('creates scheduler with no constraints', function () {
+    it('creates scheduler with no constraints', function (): void {
         $scheduler = new RoundRobinScheduler();
 
         expect($scheduler)->toBeInstanceOf(RoundRobinScheduler::class);
     });
 
-    it('creates scheduler with constraints', function () {
+    it('creates scheduler with constraints', function (): void {
         $constraints = ConstraintSet::create()->noRepeatPairings()->build();
         $scheduler = new RoundRobinScheduler($constraints);
 
         expect($scheduler)->toBeInstanceOf(RoundRobinScheduler::class);
     });
 
-    it('throws exception with less than 2 participants', function () {
+    it('throws exception with less than 2 participants', function (): void {
         $scheduler = new RoundRobinScheduler();
 
         expect(fn () => $scheduler->schedule([new Participant('p1', 'Alice')]))
             ->toThrow(InvalidArgumentException::class, 'Round-robin scheduling requires at least 2 participants');
     });
 
-    it('generates correct schedule for 2 participants', function () {
+    it('generates correct schedule for 2 participants', function (): void {
         $participants = [
             new Participant('p1', 'Alice'),
             new Participant('p2', 'Bob'),
@@ -57,7 +57,7 @@ describe('RoundRobinScheduler', function () {
         expect($event->getRound())->toBe(1);
     });
 
-    it('generates correct schedule for 4 participants (even)', function () {
+    it('generates correct schedule for 4 participants (even)', function (): void {
         $scheduler = new RoundRobinScheduler();
         $schedule = $scheduler->schedule($this->participants);
 
@@ -71,7 +71,7 @@ describe('RoundRobinScheduler', function () {
         expect($schedule->getEventsForRound(3))->toHaveCount(2);
     });
 
-    it('generates correct schedule for 3 participants (odd)', function () {
+    it('generates correct schedule for 3 participants (odd)', function (): void {
         $participants = [
             new Participant('p1', 'Alice'),
             new Participant('p2', 'Bob'),
@@ -90,7 +90,7 @@ describe('RoundRobinScheduler', function () {
         expect($schedule->getEventsForRound(3))->toHaveCount(1);
     });
 
-    it('ensures each participant plays every other participant exactly once', function () {
+    it('ensures each participant plays every other participant exactly once', function (): void {
         $scheduler = new RoundRobinScheduler();
         $schedule = $scheduler->schedule($this->participants);
 
@@ -116,7 +116,7 @@ describe('RoundRobinScheduler', function () {
         expect($pairings)->toBe($expectedPairings);
     });
 
-    it('includes correct metadata in schedule', function () {
+    it('includes correct metadata in schedule', function (): void {
         $scheduler = new RoundRobinScheduler();
         $schedule = $scheduler->schedule($this->participants);
 
@@ -126,7 +126,7 @@ describe('RoundRobinScheduler', function () {
         expect($schedule->getMetadataValue('total_rounds'))->toBe(3);
     });
 
-    it('respects no repeat pairings constraint', function () {
+    it('respects no repeat pairings constraint', function (): void {
         $constraints = ConstraintSet::create()->noRepeatPairings()->build();
         $scheduler = new RoundRobinScheduler($constraints);
         $schedule = $scheduler->schedule($this->participants);
@@ -147,7 +147,7 @@ describe('RoundRobinScheduler', function () {
         }
     });
 
-    it('produces deterministic results with same seed', function () {
+    it('produces deterministic results with same seed', function (): void {
         $randomizer1 = new Randomizer(new Mt19937(42));
         $randomizer2 = new Randomizer(new Mt19937(42));
 

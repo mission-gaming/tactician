@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Participant;
 
-describe('Participant', function () {
-    it('creates a participant with required fields', function () {
+describe('Participant', function (): void {
+    it('creates a participant with required fields', function (): void {
         $participant = new Participant('p1', 'Alice');
 
         expect($participant->getId())->toBe('p1');
@@ -14,7 +14,7 @@ describe('Participant', function () {
         expect($participant->getMetadata())->toBe([]);
     });
 
-    it('creates a participant with optional fields', function () {
+    it('creates a participant with optional fields', function (): void {
         $metadata = ['rating' => 1500, 'country' => 'USA'];
         $participant = new Participant('p1', 'Alice', 42, $metadata);
 
@@ -24,7 +24,7 @@ describe('Participant', function () {
         expect($participant->getMetadata())->toBe($metadata);
     });
 
-    it('checks metadata existence', function () {
+    it('checks metadata existence', function (): void {
         $metadata = ['rating' => 1500];
         $participant = new Participant('p1', 'Alice', null, $metadata);
 
@@ -32,7 +32,7 @@ describe('Participant', function () {
         expect($participant->hasMetadata('country'))->toBeFalse();
     });
 
-    it('gets metadata values with defaults', function () {
+    it('gets metadata values with defaults', function (): void {
         $metadata = ['rating' => 1500];
         $participant = new Participant('p1', 'Alice', null, $metadata);
 
@@ -41,7 +41,7 @@ describe('Participant', function () {
         expect($participant->getMetadataValue('country', 'Unknown'))->toBe('Unknown');
     });
 
-    it('is readonly', function () {
+    it('is readonly', function (): void {
         $participant = new Participant('p1', 'Alice');
 
         expect($participant)->toBeInstanceOf(Participant::class);

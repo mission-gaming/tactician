@@ -12,6 +12,7 @@ readonly class SchedulingContext
     /**
      * @param array<Participant> $participants
      * @param array<Event> $existingEvents
+     * @param array<string, mixed> $metadata
      */
     public function __construct(
         private array $participants,
@@ -36,6 +37,9 @@ readonly class SchedulingContext
         return $this->existingEvents;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function getMetadata(): array
     {
         return $this->metadata;
