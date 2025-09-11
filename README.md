@@ -137,6 +137,15 @@ Perfect for group stages with standings and advancement rules.
 🛣️ **[Roadmap](docs/ROADMAP.md)** - Detailed development phases and use cases  
 📚 **[Background](docs/BACKGROUND.md)** - Mission Gaming story and problem space details
 
+## Sponsorship
+
+<a href="https://www.tag1consulting.com" target="_blank">
+  <img src="https://avatars.githubusercontent.com/u/386763?s=200&v=4" alt="Tag1 Consulting" width="200">
+</a>
+
+Initial development of this library was sponsored by **[Tag1 Consulting](https://www.tag1consulting.com)**, the absolute legends.  
+[Tag1 blog](https://tag1.com/blog) & [Tag1TeamTalks Podcast](https://tag1.com/Tag1TeamTalks)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
