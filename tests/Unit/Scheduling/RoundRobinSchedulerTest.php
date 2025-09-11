@@ -6,6 +6,7 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use Random\Engine\Mt19937;
 use Random\Randomizer;
 
 describe('RoundRobinScheduler', function () {
@@ -147,8 +148,8 @@ describe('RoundRobinScheduler', function () {
     });
 
     it('produces deterministic results with same seed', function () {
-        $randomizer1 = new Randomizer(42);
-        $randomizer2 = new Randomizer(42);
+        $randomizer1 = new Randomizer(new Mt19937(42));
+        $randomizer2 = new Randomizer(new Mt19937(42));
 
         $scheduler1 = new RoundRobinScheduler(null, $randomizer1);
         $scheduler2 = new RoundRobinScheduler(null, $randomizer2);
