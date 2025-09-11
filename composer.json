@@ -68,6 +68,6 @@
         "rector": "rector process --dry-run",
         "rector-fix": "rector process",
         "test": "pest",
-        "test-coverage": "pest --coverage"
+        "test-coverage": "mkdir -p build && pest --coverage --coverage-clover=build/clover.xml"
     }
 }

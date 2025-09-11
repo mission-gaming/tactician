@@ -25,7 +25,7 @@ jobs:
       with:
         php-version: ${{ matrix.php-version }}
         extensions: mbstring, xml, ctype, iconv, intl, pdo, dom, filter, gd, iconv, json, mbstring
-        coverage: none
+        coverage: xdebug
     
     - name: Validate composer.json and composer.lock
       run: composer validate --strict
@@ -70,6 +70,16 @@ jobs:
     
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
+
+    - name: Prepare build directory
+      run: mkdir -p build
     
     - name: Run tests with coverage
       run: composer test-coverage
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        files: build/clover.xml
+        fail_ci_if_error: true
+        flags: php
