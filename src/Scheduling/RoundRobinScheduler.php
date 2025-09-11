@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use Override;
 use Random\Randomizer;
@@ -81,7 +82,8 @@ readonly class RoundRobinScheduler implements SchedulerInterface
                     continue;
                 }
 
-                $event = new Event([$participant1, $participant2], $round);
+                $roundObject = new Round($round);
+                $event = new Event([$participant1, $participant2], $roundObject);
 
                 // Check constraints if provided
                 if ($this->constraints === null || $this->constraints->isSatisfied($event, $context)) {

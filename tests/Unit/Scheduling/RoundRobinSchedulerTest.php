@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use Random\Engine\Mt19937;
@@ -50,11 +51,17 @@ describe('RoundRobinScheduler', function (): void {
 
         expect($schedule)->toBeInstanceOf(Schedule::class);
         expect($schedule->count())->toBe(1); // 1 match
-        expect($schedule->getMaxRound())->toBe(1);
+
+        $maxRound = $schedule->getMaxRound();
+        assert($maxRound !== null);
+        expect($maxRound->getNumber())->toBe(1);
 
         $event = $schedule->getEvents()[0];
         expect($event->getParticipants())->toHaveCount(2);
-        expect($event->getRound())->toBe(1);
+
+        $round = $event->getRound();
+        assert($round !== null);
+        expect($round->getNumber())->toBe(1);
     });
 
     it('generates correct schedule for 4 participants (even)', function (): void {
@@ -63,12 +70,15 @@ describe('RoundRobinScheduler', function (): void {
 
         // 4 participants = 3 rounds, 2 matches per round = 6 total matches
         expect($schedule->count())->toBe(6);
-        expect($schedule->getMaxRound())->toBe(3);
+
+        $maxRound = $schedule->getMaxRound();
+        assert($maxRound !== null);
+        expect($maxRound->getNumber())->toBe(3);
 
         // Check that each round has 2 matches
-        expect($schedule->getEventsForRound(1))->toHaveCount(2);
-        expect($schedule->getEventsForRound(2))->toHaveCount(2);
-        expect($schedule->getEventsForRound(3))->toHaveCount(2);
+        expect($schedule->getEventsForRound(new Round(1)))->toHaveCount(2);
+        expect($schedule->getEventsForRound(new Round(2)))->toHaveCount(2);
+        expect($schedule->getEventsForRound(new Round(3)))->toHaveCount(2);
     });
 
     it('generates correct schedule for 3 participants (odd)', function (): void {
@@ -82,12 +92,15 @@ describe('RoundRobinScheduler', function (): void {
 
         // 3 participants = 3 rounds, 1 match per round (one bye each round) = 3 total matches
         expect($schedule->count())->toBe(3);
-        expect($schedule->getMaxRound())->toBe(3);
+
+        $maxRound = $schedule->getMaxRound();
+        assert($maxRound !== null);
+        expect($maxRound->getNumber())->toBe(3);
 
         // Each round should have exactly 1 match (the other participant has a bye)
-        expect($schedule->getEventsForRound(1))->toHaveCount(1);
-        expect($schedule->getEventsForRound(2))->toHaveCount(1);
-        expect($schedule->getEventsForRound(3))->toHaveCount(1);
+        expect($schedule->getEventsForRound(new Round(1)))->toHaveCount(1);
+        expect($schedule->getEventsForRound(new Round(2)))->toHaveCount(1);
+        expect($schedule->getEventsForRound(new Round(3)))->toHaveCount(1);
     });
 
     it('ensures each participant plays every other participant exactly once', function (): void {

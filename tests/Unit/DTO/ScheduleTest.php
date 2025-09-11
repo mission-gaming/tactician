@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 
 describe('Schedule', function (): void {
@@ -12,8 +13,10 @@ describe('Schedule', function (): void {
         $this->participant2 = new Participant('p2', 'Bob');
         $this->participant3 = new Participant('p3', 'Carol');
 
-        $this->event1 = new Event([$this->participant1, $this->participant2], 1);
-        $this->event2 = new Event([$this->participant2, $this->participant3], 2);
+        $this->round1 = new Round(1);
+        $this->round2 = new Round(2);
+        $this->event1 = new Event([$this->participant1, $this->participant2], $this->round1);
+        $this->event2 = new Event([$this->participant2, $this->participant3], $this->round2);
     });
 
     it('creates an empty schedule', function (): void {
@@ -71,11 +74,11 @@ describe('Schedule', function (): void {
     });
 
     it('gets events for specific round', function (): void {
-        $event3 = new Event([$this->participant1, $this->participant3], 1);
+        $event3 = new Event([$this->participant1, $this->participant3], $this->round1);
         $schedule = new Schedule([$this->event1, $this->event2, $event3]);
 
-        $round1Events = $schedule->getEventsForRound(1);
-        $round2Events = $schedule->getEventsForRound(2);
+        $round1Events = $schedule->getEventsForRound($this->round1);
+        $round2Events = $schedule->getEventsForRound($this->round2);
 
         expect($round1Events)->toHaveCount(2);
         expect($round2Events)->toHaveCount(1);
@@ -83,10 +86,11 @@ describe('Schedule', function (): void {
     });
 
     it('gets maximum round number', function (): void {
-        $event3 = new Event([$this->participant1, $this->participant3], 5);
+        $round5 = new Round(5);
+        $event3 = new Event([$this->participant1, $this->participant3], $round5);
         $schedule = new Schedule([$this->event1, $this->event2, $event3]);
 
-        expect($schedule->getMaxRound())->toBe(5);
+        expect($schedule->getMaxRound())->toBe($round5);
     });
 
     it('returns null for max round with empty schedule', function (): void {

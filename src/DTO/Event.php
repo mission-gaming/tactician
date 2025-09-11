@@ -17,14 +17,14 @@ readonly class Event
      * Create a new Event with the specified participants.
      *
      * @param array<Participant> $participants The participants competing in this event (minimum 2)
-     * @param int|null $round The round number this event belongs to (optional)
+     * @param Round|null $round The round this event belongs to (optional)
      * @param array<string, mixed> $metadata Additional custom data for this event
      *
      * @throws \InvalidArgumentException When fewer than 2 participants are provided
      */
     public function __construct(
         private array $participants,
-        private ?int $round = null,
+        private ?Round $round = null,
         private array $metadata = []
     ) {
         if (count($participants) < 2) {
@@ -60,11 +60,11 @@ readonly class Event
     }
 
     /**
-     * Get the round number this event belongs to.
+     * Get the round this event belongs to.
      *
-     * @return int|null The round number, or null if not assigned to a round
+     * @return Round|null The round, or null if not assigned to a round
      */
-    public function getRound(): ?int
+    public function getRound(): ?Round
     {
         return $this->round;
     }

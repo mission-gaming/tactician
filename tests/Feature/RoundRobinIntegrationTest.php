@@ -22,7 +22,10 @@ describe('Round Robin Integration', function (): void {
 
         // Then: Should generate correct number of matches
         expect($schedule->count())->toBe(6); // C(4,2) = 6 matches
-        expect($schedule->getMaxRound())->toBe(3); // 4-1 = 3 rounds
+
+        $maxRound = $schedule->getMaxRound();
+        assert($maxRound !== null);
+        expect($maxRound->getNumber())->toBe(3); // 4-1 = 3 rounds
 
         // And: Each participant should play exactly 3 matches
         $participantMatchCounts = [];
@@ -87,7 +90,10 @@ describe('Round Robin Integration', function (): void {
 
         // Then: Should generate correct schedule accounting for byes
         expect($schedule->count())->toBe(10); // C(5,2) = 10 matches
-        expect($schedule->getMaxRound())->toBe(5); // 5 rounds with byes
+
+        $maxRound = $schedule->getMaxRound();
+        assert($maxRound !== null);
+        expect($maxRound->getNumber())->toBe(5); // 5 rounds with byes
 
         // And: Each participant should play exactly 4 matches
         $participantMatchCounts = [];

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
 
 describe('Event', function (): void {
     beforeEach(function (): void {
@@ -23,10 +24,11 @@ describe('Event', function (): void {
 
     it('creates an event with optional fields', function (): void {
         $metadata = ['court' => 1, 'time' => '10:00'];
-        $event = new Event([$this->participant1, $this->participant2], 3, $metadata);
+        $round = new Round(3);
+        $event = new Event([$this->participant1, $this->participant2], $round, $metadata);
 
         expect($event->getParticipants())->toBe([$this->participant1, $this->participant2]);
-        expect($event->getRound())->toBe(3);
+        expect($event->getRound())->toBe($round);
         expect($event->getMetadata())->toBe($metadata);
     });
 

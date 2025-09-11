@@ -188,25 +188,25 @@ class Schedule implements Iterator, Countable
     /**
      * Get all events that belong to a specific round.
      *
-     * @param int $round The round number to filter by
+     * @param Round $round The round to filter by
      * @return array<Event> Events belonging to the specified round
      */
-    public function getEventsForRound(int $round): array
+    public function getEventsForRound(Round $round): array
     {
         return array_values(array_filter(
             $this->events,
-            fn (Event $event) => $event->getRound() === $round
+            fn (Event $event) => $event->getRound()?->equals($round) ?? false
         ));
     }
 
     /**
-     * Get the highest round number found in this schedule.
+     * Get the highest round found in this schedule.
      *
      * Useful for determining how many rounds the tournament contains.
      *
-     * @return int|null The maximum round number, or null if no events have round numbers
+     * @return Round|null The maximum round, or null if no events have rounds assigned
      */
-    public function getMaxRound(): ?int
+    public function getMaxRound(): ?Round
     {
         if (empty($this->events)) {
             return null;
@@ -219,6 +219,13 @@ class Schedule implements Iterator, Countable
 
         $nonNullRounds = array_filter($rounds, fn ($round) => $round !== null);
 
-        return empty($nonNullRounds) ? null : max($nonNullRounds);
+        if (empty($nonNullRounds)) {
+            return null;
+        }
+
+        return array_reduce(
+            $nonNullRounds,
+            fn (?Round $max, Round $current) => $max === null || $current->isAfter($max) ? $current : $max
+        );
     }
 }
