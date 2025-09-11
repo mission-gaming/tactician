@@ -1,23 +1,28 @@
 # Tactician
 
-A modern PHP library for generating structured tournament schedules with deterministic algorithms like Round Robin, Swiss, and Pool play.
+A modern PHP library for solving tournament scheduling problems with reliable, mathematically-sound algorithms. Generate fair, balanced tournament schedules for round-robin leagues, Swiss-style tournaments, and group-based competitions—all in pure PHP.
 
 [![PHP Version](https://img.shields.io/badge/php-%5E8.2-blue)](https://packagist.org/packages/mission-gaming/tactician)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-Pest-orange)](https://pestphp.com)
 
-## Sponsorship
-
-<a href="https://www.tag1consulting.com" target="_blank">
-  <img src="https://avatars.githubusercontent.com/u/386763?s=200&v=4" alt="Tag1 Consulting" width="200">
-</a>
-
-Initial development of this library was sponsored by **[Tag1 Consulting](https://www.tag1consulting.com)**.  
-[Tag1 blog](https://tag1.com/blog) & [Tag1TeamTalks Podcast](https://tag1.com/Tag1TeamTalks)
+After struggling with unmaintained libraries and limited PHP scheduling options, we decided to build the tournament scheduling solution we wished existed—then open source it for the community. We're expanding to other games and building what we believe will be the premier esports tournament platform.
 
 ## Overview
 
-Tactician addresses the complexity of tournament scheduling in competitive gaming and sports. It provides reliable, deterministic algorithms to create fair, balanced schedules that follow sport-specific rules and constraints.
+**Tournament scheduling is harder than it looks.** Creating fair, balanced tournaments that ensure every participant gets equal opportunities while respecting constraints (like "no team plays twice in a row" or "avoid repeat matchups") quickly becomes a complex mathematical problem.
+
+**The PHP ecosystem has a gap.** Unlike other languages that have mature constraint programming libraries and scheduling engines, PHP has been left behind. Existing solutions are either unmaintained, limited to basic round-robin only, or built with outdated practices.
+
+**Tactician fills that gap.** Built from the ground up with modern PHP practices, Tactician provides battle-tested algorithms for the most common tournament formats:
+
+- **Round Robin**: Every participant plays every other participant exactly once (perfect for leagues)
+- **Swiss System**: Participants are paired based on performance after each round (ideal for large tournaments) 
+- **Pool/Group Play**: Divide participants into groups, with standings and advancement rules
+
+**Built for real-world use.** Tactician uses *deterministic* algorithms (meaning the same input always produces the same schedule) with *mathematical guarantees* of fairness. It's designed for small to medium tournaments (up to ~50 participants) where you need reliable scheduling without the complexity of enterprise constraint programming engines.
+
+**When to use something else:** For larger tournaments, complex multi-stage events, or advanced constraint optimization, consider dedicated scheduling engines or constraint programming solutions. Tactician prioritizes simplicity, maintainability, and PHP ecosystem integration over maximum theoretical performance.
 
 **Key Features:**
 - 🏆 **Deterministic Algorithms**: Round Robin (complete), Swiss and Pool play (coming soon)
@@ -36,7 +41,7 @@ composer require mission-gaming/tactician
 ```
 
 **Requirements:**
-- PHP 8.2, 8.3, or 8.4
+- PHP 8.2+
 - No external dependencies in production
 
 ## Quick Start
@@ -50,15 +55,16 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 
 // Create participants
 $participants = [
-    new Participant('Alice'),
-    new Participant('Bob'),
-    new Participant('Charlie'),
-    new Participant('Diana'),
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
 ];
 
 // Configure constraints
 $constraints = ConstraintSet::create()
-    ->withNoRepeatPairings();
+    ->noRepeatPairings()
+    ->build();
 
 // Generate schedule
 $scheduler = new RoundRobinScheduler($constraints);
@@ -66,8 +72,8 @@ $schedule = $scheduler->schedule($participants);
 
 // Iterate through matches
 foreach ($schedule as $event) {
-    echo "Round {$event->round}: ";
-    echo "{$event->participants[0]->name} vs {$event->participants[1]->name}\n";
+    echo "Round {$event->getRound()}: ";
+    echo "{$event->getParticipants()[0]->getLabel()} vs {$event->getParticipants()[1]->getLabel()}\n";
 }
 ```
 
@@ -77,8 +83,8 @@ foreach ($schedule as $event) {
 
 ```php
 // Create participants with unique identifiers
-$player1 = new Participant('Alice', 'alice@example.com');
-$player2 = new Participant('Bob', 'bob@example.com');
+$player1 = new Participant('celtic', 'Celtic', 1, ['city' => 'Glasgow']);
+$player2 = new Participant('athletic', 'Athletic Bilbao', 2, ['city' => 'Bilbao']);
 
 // Events represent matches/games between participants
 $event = new Event(
@@ -93,11 +99,12 @@ $event = new Event(
 ```php
 // Built-in constraints
 $constraints = ConstraintSet::create()
-    ->withNoRepeatPairings()
-    ->withCustom(fn($event, $context) => 
+    ->noRepeatPairings()
+    ->custom(fn($event, $context) => 
         // Custom constraint logic
-        !$this->participantHasConflict($event->participants[0], $context)
-    );
+        !$this->participantHasConflict($event->getParticipants()[0], $context)
+    )
+    ->build();
 
 // Use constraints in scheduler
 $scheduler = new RoundRobinScheduler($constraints);
@@ -113,7 +120,7 @@ $context = new SchedulingContext();
 $context->addEvent($previousEvent);
 
 // Constraints can access this history
-$isValid = $constraints->satisfiedBy($newEvent, $context);
+$isValid = $constraints->isSatisfied($newEvent, $context);
 ```
 
 ## Available Algorithms
@@ -197,6 +204,19 @@ composer test-coverage
 - **Performance**: Iterator pattern enables efficient memory usage
 - **Determinism**: Seeded randomization produces reproducible results
 - **Extensibility**: Clean interfaces for adding new algorithms
+
+## About Mission Gaming
+
+**Mission Gaming** is an esports organization that runs competitive tournaments for EAFC Clubs (11v11 virtual football). Founded and operated by software engineers who are passionate about both competitive gaming and building exceptional technology, we created Tactician to solve our own scheduling challenges on our **Metronome** tournament platform.
+
+## Sponsorship
+
+<a href="https://www.tag1consulting.com" target="_blank">
+  <img src="https://avatars.githubusercontent.com/u/386763?s=200&v=4" alt="Tag1 Consulting" width="200">
+</a>
+
+Initial development of this library was sponsored by **[Tag1 Consulting](https://www.tag1consulting.com)**, the absolute legends.  
+[Tag1 blog](https://tag1.com/blog) & [Tag1TeamTalks Podcast](https://tag1.com/Tag1TeamTalks)
 
 ## Roadmap
 
