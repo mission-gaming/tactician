@@ -4,7 +4,8 @@ A modern PHP library for solving tournament scheduling problems with reliable, m
 
 [![PHP Version](https://img.shields.io/badge/php-%5E8.2-blue)](https://packagist.org/packages/mission-gaming/tactician)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-Pest-orange)](https://pestphp.com)
+[![Build Status](https://github.com/mission-gaming/tactician/actions/workflows/ci.yml/badge.svg)](https://github.com/mission-gaming/tactician/actions/workflows/ci.yml)
+[![Coverage Status](https://img.shields.io/badge/coverage-check%20workflow-blue)](https://github.com/mission-gaming/tactician/actions/workflows/ci.yml)
 
 ## Overview
 
