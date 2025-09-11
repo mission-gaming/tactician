@@ -5,6 +5,8 @@ use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
+// Tests that the scheduler can generate a 2-leg tournament where the second leg mirrors
+// the first leg (same pairings, roles reversed), doubling the total matches
 it('generates multi-leg schedule with mirrored strategy', function (): void {
     $participants = [
         new Participant('team-a', 'Team A'),
@@ -50,6 +52,8 @@ it('generates multi-leg schedule with mirrored strategy', function (): void {
     expect(count($leg2Events))->toBe(6);
 });
 
+// Tests that the scheduler can generate a 2-leg tournament using repeated strategy
+// where each leg repeats the same structure, creating consistent tournament rounds
 it('generates multi-leg schedule with repeated strategy', function (): void {
     $participants = [
         new Participant('team-a', 'Team A'),
@@ -70,6 +74,8 @@ it('generates multi-leg schedule with repeated strategy', function (): void {
     expect($schedule->getMetadataValue('total_rounds'))->toBe(6);
 });
 
+// Tests backward compatibility by ensuring single-leg scheduling (the default)
+// works exactly the same as it did before multi-leg functionality was added
 it('single leg schedule works same as before', function (): void {
     $participants = [
         new Participant('team-a', 'Team A'),

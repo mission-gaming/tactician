@@ -125,6 +125,34 @@ class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
+     * Check if an event should be added based on constraints.
+     *
+     * @param Event $event The event to validate
+     * @param array<Event> $existingEvents All events created so far
+     *
+     * @return bool True if the event should be added
+     */
+    #[Override]
+    protected function shouldAddEventWithConstraints(Event $event, array $existingEvents): bool
+    {
+        if ($this->constraints === null) {
+            return true;
+        }
+
+        // Create context with all participants and existing events
+        $allParticipants = [];
+        foreach ($existingEvents as $existingEvent) {
+            $allParticipants = [...$allParticipants, ...$existingEvent->getParticipants()];
+        }
+        $allParticipants = [...$allParticipants, ...$event->getParticipants()];
+        $allParticipants = array_unique($allParticipants, SORT_REGULAR);
+
+        $context = new SchedulingContext($allParticipants, $existingEvents);
+
+        return $this->constraints->isSatisfied($event, $context);
+    }
+
+    /**
      * Shuffle participants using the provided randomizer.
      *
      * @param array<Participant|null> $participants

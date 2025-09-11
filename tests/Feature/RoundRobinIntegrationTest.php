@@ -7,6 +7,8 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 describe('Round Robin Integration', function (): void {
+    // Tests that the round-robin algorithm generates the correct number of matches (6)
+    // and rounds (3) for 4 participants, with each participant playing exactly 3 matches
     it('generates complete round robin schedule for 4 participants', function (): void {
         // Given: 4 participants
         $participants = [
@@ -41,6 +43,8 @@ describe('Round Robin Integration', function (): void {
         }
     });
 
+    // Tests that the scheduler properly applies the no-repeat-pairings constraint,
+    // ensuring no two teams play each other more than once in the tournament
     it('respects constraints during scheduling', function (): void {
         // Given: Participants and no-repeat-pairings constraint
         $participants = [
@@ -74,6 +78,8 @@ describe('Round Robin Integration', function (): void {
         }
     });
 
+    // Tests round-robin scheduling with 5 participants (odd number), which requires
+    // automatic bye handling where one team sits out each round, creating 5 total rounds
     it('handles odd number of participants with byes', function (): void {
         // Given: 5 participants (odd number)
         $participants = [
@@ -109,6 +115,8 @@ describe('Round Robin Integration', function (): void {
         }
     });
 
+    // Tests that the generated schedule implements proper PHP interfaces (Iterator, Countable)
+    // allowing it to be used in foreach loops and with count() function
     it('produces schedule that can be iterated and counted', function (): void {
         // Given: Participants
         $participants = [
@@ -132,6 +140,8 @@ describe('Round Robin Integration', function (): void {
         expect($schedule->count())->toBe(3); // C(3,2) = 3 matches
     });
 
+    // Tests that the schedule includes descriptive metadata like algorithm type,
+    // participant count, and round information for tournament management purposes
     it('includes useful metadata in generated schedule', function (): void {
         // Given: Participants
         $participants = [

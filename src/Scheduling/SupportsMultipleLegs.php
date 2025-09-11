@@ -54,11 +54,12 @@ trait SupportsMultipleLegs
                 $randomizer
             );
 
-            // Convert pairings back to events with proper round numbering
-            $legEvents = $this->createEventsFromPairings(
+            // Apply constraints incrementally if they exist
+            $legEvents = $this->createEventsFromPairingsWithConstraints(
                 $legPairings,
                 $roundsPerLeg,
-                $leg
+                $leg,
+                $allEvents
             );
 
             $allEvents = [...$allEvents, ...$legEvents];
@@ -137,4 +138,65 @@ trait SupportsMultipleLegs
 
         return $events;
     }
+
+    /**
+     * Create events from participant pairings with constraint validation.
+     *
+     * @param array<array<\MissionGaming\Tactician\DTO\Participant>> $pairings The participant pairings
+     * @param int $roundsPerLeg The number of rounds in each leg
+     * @param int $leg The leg number (for round offset calculation)
+     * @param array<Event> $existingEvents All events created so far (for constraint context)
+     *
+     * @return array<Event> The valid events for this leg
+     * @throws \DivisionByZeroError When roundsPerLeg is zero
+     */
+    private function createEventsFromPairingsWithConstraints(
+        array $pairings,
+        int $roundsPerLeg,
+        int $leg,
+        array $existingEvents
+    ): array {
+        $roundOffset = ($leg - 1) * $roundsPerLeg;
+        $events = [];
+
+        // Group pairings by their original round (based on index pattern)
+        $pairingsPerRound = count($pairings) / $roundsPerLeg;
+
+        // Build incremental context as we go
+        $allEventsContext = $existingEvents;
+
+        for ($roundIndex = 0; $roundIndex < $roundsPerLeg; ++$roundIndex) {
+            $roundNumber = $roundIndex + 1 + $roundOffset;
+            $round = new Round($roundNumber);
+
+            $startIndex = $roundIndex * (int) $pairingsPerRound;
+            $endIndex = $startIndex + (int) $pairingsPerRound;
+
+            for ($i = $startIndex; $i < $endIndex; ++$i) {
+                if (isset($pairings[$i])) {
+                    $event = new Event($pairings[$i], $round);
+
+                    // Apply constraints if they exist (need to access from parent class)
+                    if ($this->shouldAddEventWithConstraints($event, $allEventsContext)) {
+                        $events[] = $event;
+                        $allEventsContext[] = $event; // Update context incrementally
+                    }
+                    // If constraint fails, skip the event (could log or handle differently)
+                }
+            }
+        }
+
+        return $events;
+    }
+
+    /**
+     * Check if an event should be added based on constraints.
+     * This method should be implemented by classes using this trait.
+     *
+     * @param Event $event The event to validate
+     * @param array<Event> $existingEvents All events created so far
+     *
+     * @return bool True if the event should be added
+     */
+    abstract protected function shouldAddEventWithConstraints(Event $event, array $existingEvents): bool;
 }

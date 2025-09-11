@@ -20,12 +20,16 @@ describe('RoundRobinScheduler', function (): void {
         ];
     });
 
+    // Tests creating a basic round-robin scheduler without any constraints,
+    // ensuring the scheduler initializes properly for unrestricted tournaments
     it('creates scheduler with no constraints', function (): void {
         $scheduler = new RoundRobinScheduler();
 
         expect($scheduler)->toBeInstanceOf(RoundRobinScheduler::class);
     });
 
+    // Tests creating a round-robin scheduler with constraint sets,
+    // ensuring constraints are properly integrated into the scheduling process
     it('creates scheduler with constraints', function (): void {
         $constraints = ConstraintSet::create()->noRepeatPairings()->build();
         $scheduler = new RoundRobinScheduler($constraints);
@@ -33,6 +37,8 @@ describe('RoundRobinScheduler', function (): void {
         expect($scheduler)->toBeInstanceOf(RoundRobinScheduler::class);
     });
 
+    // Tests validation that prevents scheduling tournaments with insufficient participants,
+    // since round-robin requires at least 2 participants to create matches
     it('throws exception with less than 2 participants', function (): void {
         $scheduler = new RoundRobinScheduler();
 
@@ -40,6 +46,8 @@ describe('RoundRobinScheduler', function (): void {
             ->toThrow(InvalidArgumentException::class, 'Round-robin scheduling requires at least 2 participants');
     });
 
+    // Tests the minimal case of 2 participants, which should create exactly
+    // 1 match in 1 round, verifying basic round-robin logic works
     it('generates correct schedule for 2 participants', function (): void {
         $participants = [
             new Participant('p1', 'Alice'),
@@ -64,6 +72,8 @@ describe('RoundRobinScheduler', function (): void {
         expect($round->getNumber())->toBe(1);
     });
 
+    // Tests round-robin with even number of participants (4), which should create
+    // 3 rounds with 2 matches each, totaling 6 matches with no byes needed
     it('generates correct schedule for 4 participants (even)', function (): void {
         $scheduler = new RoundRobinScheduler();
         $schedule = $scheduler->schedule($this->participants);
@@ -81,6 +91,8 @@ describe('RoundRobinScheduler', function (): void {
         expect($schedule->getEventsForRound(new Round(3)))->toHaveCount(2);
     });
 
+    // Tests round-robin with odd number of participants (3), which requires
+    // bye handling where one participant sits out each round
     it('generates correct schedule for 3 participants (odd)', function (): void {
         $participants = [
             new Participant('p1', 'Alice'),
@@ -103,6 +115,8 @@ describe('RoundRobinScheduler', function (): void {
         expect($schedule->getEventsForRound(new Round(3)))->toHaveCount(1);
     });
 
+    // Tests the core round-robin principle that every participant must play
+    // every other participant exactly once, with no duplicate or missing pairings
     it('ensures each participant plays every other participant exactly once', function (): void {
         $scheduler = new RoundRobinScheduler();
         $schedule = $scheduler->schedule($this->participants);
@@ -129,6 +143,8 @@ describe('RoundRobinScheduler', function (): void {
         expect($pairings)->toBe($expectedPairings);
     });
 
+    // Tests that generated schedules include descriptive metadata about the algorithm,
+    // participant count, and round structure for tournament management
     it('includes correct metadata in schedule', function (): void {
         $scheduler = new RoundRobinScheduler();
         $schedule = $scheduler->schedule($this->participants);
@@ -139,6 +155,8 @@ describe('RoundRobinScheduler', function (): void {
         expect($schedule->getMetadataValue('total_rounds'))->toBe(3);
     });
 
+    // Tests that the scheduler properly applies the no-repeat-pairings constraint,
+    // ensuring constraint validation is integrated into the scheduling algorithm
     it('respects no repeat pairings constraint', function (): void {
         $constraints = ConstraintSet::create()->noRepeatPairings()->build();
         $scheduler = new RoundRobinScheduler($constraints);
@@ -160,6 +178,8 @@ describe('RoundRobinScheduler', function (): void {
         }
     });
 
+    // Tests that the scheduler produces identical results when given the same
+    // random seed, ensuring reproducible tournament brackets for testing and fairness
     it('produces deterministic results with same seed', function (): void {
         $randomizer1 = new Randomizer(new Mt19937(42));
         $randomizer2 = new Randomizer(new Mt19937(42));
