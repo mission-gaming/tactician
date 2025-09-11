@@ -17,6 +17,9 @@
 
 ### **Scheduling Engine**
 - ✅ **RoundRobinScheduler**: Circle method algorithm with mathematical correctness
+- ✅ **Multi-Leg Tournament Support**: Complete implementation with strategy pattern
+- ✅ **Leg Strategies**: MirroredLegStrategy, RepeatedLegStrategy, ShuffledLegStrategy
+- ✅ **SupportsMultipleLegs Trait**: Common multi-leg functionality with continuous round numbering
 - ✅ **Bye System**: Proper handling of odd participant counts
 - ✅ **Deterministic Randomization**: Seeded randomization with Mt19937 engine support
 - ✅ **Constraint Integration**: Real-time constraint validation during schedule generation

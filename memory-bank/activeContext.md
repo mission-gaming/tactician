@@ -21,6 +21,11 @@
 - **✅ RECENT**: Updated README and project documentation
 - **✅ RECENT**: Added build and code coverage badges
 - **✅ RECENT**: Updated documentation examples to reflect Round DTO integration
+- **✅ LATEST**: Multi-leg tournament support with leg strategies implementation
+- **✅ LATEST**: LegStrategyInterface with MirroredLegStrategy, RepeatedLegStrategy, ShuffledLegStrategy
+- **✅ LATEST**: SupportsMultipleLegs trait for expanding single-leg schedules to multiple legs
+- **✅ LATEST**: Comprehensive multi-leg testing with continuous round numbering validation
+- **✅ LATEST**: Documentation updates reflecting multi-leg tournament capabilities
 
 ## Next Steps
 1. **Swiss Tournament Scheduler** - Implement Swiss-system pairing algorithm

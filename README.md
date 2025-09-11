@@ -132,6 +132,45 @@ $schedule = $scheduler->schedule($participants);
 // - 4+ participants: n-1 rounds using circle method
 ```
 
+#### Multi-Leg Tournaments
+Round Robin scheduler supports multi-leg tournaments where the same participants play multiple times with different arrangements:
+
+```php
+use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
+use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
+use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+
+// Home and away legs (participant order reversed in second leg)
+$scheduler = new RoundRobinScheduler(
+    legs: 2,
+    legStrategy: new MirroredLegStrategy()
+);
+
+// Repeated encounters (same pairings each leg)
+$scheduler = new RoundRobinScheduler(
+    legs: 3,
+    legStrategy: new RepeatedLegStrategy()
+);
+
+// Randomized encounters (shuffled participant order each leg)
+$scheduler = new RoundRobinScheduler(
+    legs: 2,
+    legStrategy: new ShuffledLegStrategy()
+);
+
+$schedule = $scheduler->schedule($participants);
+
+// Multi-leg schedules provide additional metadata
+echo "Total legs: " . $schedule->getMetadataValue('legs') . "\n";
+echo "Rounds per leg: " . $schedule->getMetadataValue('rounds_per_leg') . "\n";
+echo "Total rounds: " . $schedule->getMetadataValue('total_rounds') . "\n";
+```
+
+**Available Leg Strategies:**
+- 🏠 **MirroredLegStrategy**: Reverses participant order for home/away effect
+- 🔄 **RepeatedLegStrategy**: Maintains identical pairings across all legs  
+- 🎲 **ShuffledLegStrategy**: Randomizes participant order in each pairing per leg
+
 ### 🔄 Swiss System (Coming Soon)
 Ideal for tournaments where participants are paired based on performance.
 
