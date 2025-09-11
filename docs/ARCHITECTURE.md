@@ -7,6 +7,8 @@
 - **Constraints**: Comprehensive constraint system (`ConstraintSet`, `NoRepeatPairings`, `MinimumRestPeriodsConstraint`, `SeedProtectionConstraint`, `ConsecutiveRoleConstraint`, `MetadataConstraint`)
 - **Context**: Historical state management (`SchedulingContext`)
 - **Leg Strategies**: Multi-leg tournament behavior (`LegStrategyInterface`, `MirroredLegStrategy`, `RepeatedLegStrategy`, `ShuffledLegStrategy`)
+- **Validation System**: Schedule completeness validation (`ScheduleValidator`, `IncompleteScheduleException`, `ImpossibleConstraintsException`)
+- **Exception Hierarchy**: Comprehensive error handling with diagnostic capabilities
 
 ## Multi-Leg Tournament Architecture
 
@@ -75,6 +77,41 @@ Constraints work seamlessly across multiple legs through incremental context bui
 - Continuous round numbering maintains proper constraint evaluation
 - Complex scenarios (rest periods, seed protection) work across leg boundaries
 
+## Schedule Validation System
+
+Tactician includes a comprehensive validation system to ensure tournament completeness and prevent silent failures:
+
+### Validation Components
+
+- **ScheduleValidator**: Core validation logic with mathematical verification
+- **ExpectedEventCalculator**: Calculates theoretical event counts for completeness checking
+- **ConstraintViolationCollector**: Tracks and reports constraint violations
+- **Exception Hierarchy**: Structured error handling with diagnostic information
+
+### Validation Process
+
+1. **Mathematical Validation**: Verifies expected vs actual event counts using round-robin mathematics
+2. **Constraint Violation Tracking**: Monitors constraint failures during schedule generation
+3. **Completeness Verification**: Ensures all required pairings are present
+4. **Exception Generation**: Throws structured exceptions with diagnostic information
+
+### Exception Types
+
+- **IncompleteScheduleException**: Thrown when constraints prevent complete schedule generation
+  - Includes constraint violation details for debugging
+  - Provides actionable information for resolving issues
+- **ImpossibleConstraintsException**: Thrown when constraints are mathematically impossible
+  - Includes mathematical analysis of why constraints cannot be satisfied
+- **InvalidConfigurationException**: Thrown for invalid scheduler configuration
+
+### Integration
+
+The validation system is automatically integrated into all schedulers:
+- Runs after schedule generation to verify completeness
+- No performance impact during generation - validation occurs at the end
+- Provides immediate feedback on constraint conflicts
+- Enables fail-fast behavior instead of silent incomplete schedules
+
 ## Performance Considerations
 
 Tactician is designed for tournaments up to ~50 participants with efficient memory usage through:
@@ -83,3 +120,4 @@ Tactician is designed for tournaments up to ~50 participants with efficient memo
 - Immutable data structures preventing memory leaks
 - Efficient pairing extraction and transformation for multi-leg tournaments
 - Incremental constraint validation with historical context tracking
+- Post-generation validation with minimal performance overhead

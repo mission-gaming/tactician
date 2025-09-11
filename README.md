@@ -13,10 +13,12 @@ A modern PHP library for generating structured schedules between participants. I
 
 - 🏆 **Deterministic Algorithms**: Round Robin (complete), Swiss and Pool play (coming soon)
 - 🔧 **Flexible Constraints**: Built-in and custom predicate-based constraint system
+- ✅ **Schedule Validation**: Comprehensive validation prevents incomplete schedules
 - ⚡ **Memory Efficient**: Generator-based iteration for large tournaments
 - 🎯 **Modern PHP**: PHP 8.2+ with readonly classes and strict typing
 - 🧪 **Test-Driven**: Comprehensive test suite with Pest framework
 - 📐 **Mathematical Accuracy**: Circle method implementation for round-robin
+- 🛡️ **Production Ready**: PHPStan level 8 compliance with zero errors
 
 ## Installation
 
@@ -148,6 +150,54 @@ ConsecutiveRoleConstraint::homeAway(2)
 // Limit consecutive position assignments
 ConsecutiveRoleConstraint::position(3)
 ```
+
+### Schedule Validation
+
+Tactician includes comprehensive schedule validation to ensure complete tournaments and prevent silent failures:
+
+```php
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+
+// Create participants
+$participants = [
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
+];
+
+// Configure restrictive constraints
+$constraints = ConstraintSet::create()
+    ->add(ConsecutiveRoleConstraint::homeAway(2))  // Very restrictive with only 4 participants
+    ->build();
+
+try {
+    $scheduler = new RoundRobinScheduler($constraints, null, 2);
+    $schedule = $scheduler->schedule($participants);
+    
+    // If we get here, the schedule is complete and valid
+    foreach ($schedule as $event) {
+        echo "Round {$event->getRound()->getNumber()}: {$event->getParticipants()[0]->getLabel()} vs {$event->getParticipants()[1]->getLabel()}\n";
+    }
+} catch (IncompleteScheduleException $e) {
+    // Schedule validation caught an incomplete tournament
+    echo "Cannot generate complete schedule: " . $e->getMessage() . "\n";
+    
+    // Get diagnostic information
+    $violations = $e->getConstraintViolations();
+    foreach ($violations as $violation) {
+        echo "Violation: " . $violation->getDescription() . "\n";
+    }
+}
+```
+
+**Validation Features:**
+- ✅ **Mathematical Validation**: Verifies expected vs actual event counts
+- ✅ **Constraint Violation Tracking**: Detailed reporting of constraint conflicts  
+- ✅ **Exception-Based Errors**: Clear exceptions instead of silent incomplete schedules
+- ✅ **Diagnostic Reporting**: Actionable information for resolving constraint issues
 
 ### Scheduling Context
 
