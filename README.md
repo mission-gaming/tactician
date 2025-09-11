@@ -90,10 +90,22 @@ $event = new Event(
 
 ### Constraint System
 
+Tactician provides a sophisticated constraint system for controlling tournament pairings:
+
 ```php
-// Built-in constraints
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
+use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\MetadataConstraint;
+
+// Advanced constraint configuration
 $constraints = ConstraintSet::create()
-    ->noRepeatPairings()
+    ->noRepeatPairings()  // Built-in: prevent duplicate pairings
+    ->add(new MinimumRestPeriodsConstraint(2))  // 2 rounds minimum between repeat meetings
+    ->add(new SeedProtectionConstraint(2, 0.4))  // Protect top 2 seeds for 40% of tournament
+    ->add(ConsecutiveRoleConstraint::homeAway(3))  // Max 3 consecutive home/away games
+    ->add(MetadataConstraint::requireSameValue('division'))  // Only pair within same division
     ->custom(fn($event, $context) => 
         // Custom constraint logic
         !$this->participantHasConflict($event->getParticipants()[0], $context)
@@ -102,6 +114,39 @@ $constraints = ConstraintSet::create()
 
 // Use constraints in scheduler
 $scheduler = new RoundRobinScheduler($constraints);
+```
+
+#### Available Constraints
+
+**Built-in Constraints:**
+- 🚫 **NoRepeatPairings**: Prevents duplicate matches between participants
+- ⏱️ **MinimumRestPeriodsConstraint**: Ensures minimum rounds between participant meetings
+- 🏆 **SeedProtectionConstraint**: Prevents top seeds from meeting early in tournament
+- 🏠 **ConsecutiveRoleConstraint**: Limits consecutive home/away or positional assignments
+- 📊 **MetadataConstraint**: Flexible metadata-based pairing rules
+
+**Metadata Constraint Examples:**
+```php
+// Teams from same region only
+MetadataConstraint::requireSameValue('region')
+
+// Teams from different skill levels
+MetadataConstraint::requireDifferentValues('skill_level')
+
+// Maximum 2 equipment types per match
+MetadataConstraint::maxUniqueValues('equipment', 2)
+
+// Adjacent skill levels only (3 can play 2 or 4, not 1 or 5)
+MetadataConstraint::requireAdjacentValues('skill_level')
+```
+
+**Role Constraint Examples:**
+```php
+// Prevent more than 2 consecutive home games
+ConsecutiveRoleConstraint::homeAway(2)
+
+// Limit consecutive position assignments
+ConsecutiveRoleConstraint::position(3)
 ```
 
 ### Scheduling Context
