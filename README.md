@@ -58,7 +58,8 @@ $schedule = $scheduler->schedule($participants);
 
 // Iterate through matches
 foreach ($schedule as $event) {
-    echo "Round {$event->getRound()}: ";
+    $round = $event->getRound();
+    echo ($round ? "Round {$round->getNumber()}" : "No Round") . ": ";
     echo "{$event->getParticipants()[0]->getLabel()} vs {$event->getParticipants()[1]->getLabel()}\n";
 }
 ```
@@ -68,14 +69,21 @@ foreach ($schedule as $event) {
 ### Participants and Events
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Round;
+
 // Create participants with unique identifiers
 $player1 = new Participant('celtic', 'Celtic', 1, ['city' => 'Glasgow']);
 $player2 = new Participant('athletic', 'Athletic Bilbao', 2, ['city' => 'Bilbao']);
 
+// Create a round object with metadata
+$round = new Round(1, ['phase' => 'group-stage']);
+
 // Events represent matches/games between participants
 $event = new Event(
     participants: [$player1, $player2],
-    round: 1,
+    round: $round,
     metadata: ['court' => 'A', 'time' => '10:00']
 );
 ```

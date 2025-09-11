@@ -2,7 +2,7 @@
 
 ## Core Components
 
-- **DTOs**: Immutable value objects (`Participant`, `Event`, `Schedule`)
+- **DTOs**: Immutable value objects (`Participant`, `Event`, `Round`, `Schedule`)
 - **Schedulers**: Algorithm implementations (`RoundRobinScheduler`)
 - **Constraints**: Flexible predicate system (`ConstraintSet`, `NoRepeatPairings`)
 - **Context**: Historical state management (`SchedulingContext`)
