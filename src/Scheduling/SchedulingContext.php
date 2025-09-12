@@ -60,6 +60,11 @@ readonly class SchedulingContext
      */
     public function haveParticipantsPlayed(Participant $participant1, Participant $participant2): bool
     {
+        // A participant cannot play against themselves
+        if ($participant1->getId() === $participant2->getId()) {
+            return false;
+        }
+
         foreach ($this->existingEvents as $event) {
             if ($event->hasParticipant($participant1) && $event->hasParticipant($participant2)) {
                 return true;
