@@ -16,25 +16,34 @@ abstract class SchedulingException extends Exception
 
     public static function invalidParticipantCount(int $count): self
     {
+        $message = "Invalid participant count: {$count}. Must be at least 2.";
+
         return new InvalidConfigurationException(
-            "Invalid participant count: {$count}. Must be at least 2.",
-            ['participant_count' => $count, 'minimum_required' => 2]
+            $message,
+            ['participant_count' => $count, 'minimum_required' => 2],
+            $message
         );
     }
 
     public static function constraintViolation(string $constraint): self
     {
+        $message = "Constraint violation: {$constraint}";
+
         return new InvalidConfigurationException(
-            "Constraint violation: {$constraint}",
-            ['constraint' => $constraint]
+            $message,
+            ['constraint' => $constraint],
+            $message
         );
     }
 
     public static function invalidSchedule(string $reason): self
     {
+        $message = "Invalid schedule: {$reason}";
+
         return new InvalidConfigurationException(
-            "Invalid schedule: {$reason}",
-            ['reason' => $reason]
+            $message,
+            ['reason' => $reason],
+            $message
         );
     }
 }
