@@ -43,7 +43,6 @@ class RoundRobinScheduler implements SchedulerInterface
      *
      * @param array<Participant> $participants
      * @throws InvalidConfigurationException When configuration is invalid
-     * @throws \DivisionByZeroError When roundsPerLeg is zero in multi-leg expansion
      * @throws \MissionGaming\Tactician\Exceptions\IncompleteScheduleException When constraints prevent complete schedule generation
      */
     #[Override]

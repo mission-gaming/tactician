@@ -27,7 +27,6 @@ trait SupportsMultipleLegs
      * @param Randomizer|null $randomizer Optional randomizer for strategies that need it
      *
      * @return array<Event> All events across all legs with continuous round numbering
-     * @throws \DivisionByZeroError When roundsPerLeg is zero in createEventsFromPairings
      */
     private function expandScheduleForLegs(
         array $baseEvents,
@@ -109,13 +108,16 @@ trait SupportsMultipleLegs
      * @param int $leg The leg number (for round offset calculation)
      *
      * @return array<Event> The events for this leg
-     * @throws \DivisionByZeroError When roundsPerLeg is zero
      */
     private function createEventsFromPairings(
         array $pairings,
         int $roundsPerLeg,
         int $leg
     ): array {
+        if ($roundsPerLeg === 0) {
+            return []; // No rounds means no events
+        }
+
         $roundOffset = ($leg - 1) * $roundsPerLeg;
         $events = [];
 
@@ -148,7 +150,6 @@ trait SupportsMultipleLegs
      * @param array<Event> $existingEvents All events created so far (for constraint context)
      *
      * @return array<Event> The valid events for this leg
-     * @throws \DivisionByZeroError When roundsPerLeg is zero
      */
     private function createEventsFromPairingsWithConstraints(
         array $pairings,
@@ -156,6 +157,10 @@ trait SupportsMultipleLegs
         int $leg,
         array $existingEvents
     ): array {
+        if ($roundsPerLeg === 0) {
+            return []; // No rounds means no events
+        }
+
         $roundOffset = ($leg - 1) * $roundsPerLeg;
         $events = [];
 
