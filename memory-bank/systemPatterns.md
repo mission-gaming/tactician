@@ -77,9 +77,10 @@ src/Exceptions/
 
 ### **Multi-Leg First Principle**
 - All schedulers assume multi-leg tournaments by default (legs=1 is special case)
-- Leg strategies are core components, not optional add-ons
-- SchedulingContext inherently multi-leg aware without separate classes
+- Leg strategies are core components with integrated generation approach
+- SchedulingContext inherently multi-leg aware with full tournament context
 - All-or-nothing schedule generation prevents silent event skipping
+- Enhanced diagnostic reporting for constraint conflicts and generation failures
 
 ## Design Patterns in Use
 
@@ -199,7 +200,8 @@ tactician/
 │   ├── activeContext.md
 │   ├── systemPatterns.md
 │   ├── techContext.md
-│   └── progress.md
+│   ├── progress.md
+│   └── refactoringPlan.md        # NEW: Detailed technical specification
 ├── src/
 │   ├── DTO/
 │   │   ├── Participant.php      # Advanced DTO with ID/label/seed/metadata
@@ -263,4 +265,4 @@ src/Optimization/
 ```
 
 ---
-*Last Updated: 2025-01-10*
+*Last Updated: 2025-10-01*

@@ -1,10 +1,10 @@
 # Active Context: Tactician
 
 ## Current Work Focus
-- **ARCHITECTURAL REFACTORING PLANNED**: Critical redesign of multi-leg system to fix constraint handling
-- **CRITICAL ISSUE IDENTIFIED**: Current leg system can silently skip events when constraints fail - unacceptable for tournament scheduling
-- **NEW APPROACH**: Multi-leg tournaments as first-class citizens, not add-on features
-- **STATUS**: Production-ready round-robin system requires refactoring for robust multi-leg integration
+- **ARCHITECTURAL REFACTORING PLAN COMPLETE**: Comprehensive technical specification for multi-leg system redesign
+- **CRITICAL ISSUE ANALYZED**: Current leg system can silently skip events when constraints fail - detailed analysis complete
+- **NEW APPROACH DEFINED**: Multi-leg tournaments as default assumption, integrated generation approach
+- **STATUS**: Ready for implementation - detailed refactoring plan available in memory-bank/refactoringPlan.md
 
 ## Recent Changes
 - **✅ COMPLETE**: Advanced Participant DTO with seeding, metadata, and unique ID system
@@ -38,14 +38,16 @@
 - **✅ 2025-09-11**: **TYPE SAFETY COMPLETE** - Added missing array type specifications and imports
 - **✅ 2025-09-11**: **TEST VALIDATION** - Updated ComplexConstraintTest to properly expect exceptions
 - **✅ 2025-09-11**: **PRODUCTION READY** - Full CI pipeline passes with zero errors/warnings
+- **✅ 2025-10-01**: **REFACTORING ANALYSIS COMPLETE** - Comprehensive analysis of leg generation risks and architectural problems
+- **✅ 2025-10-01**: **REFACTORING PLAN COMPLETE** - Detailed technical specification created in refactoringPlan.md
 
 ## Next Steps
-**IMMEDIATE PRIORITY - Multi-Leg Architecture Refactoring**:
+**IMMEDIATE PRIORITY - Implementation Phase**:
 
-1. **🚨 CRITICAL**: Refactor multi-leg system to prevent silent event skipping
-2. **🚨 CRITICAL**: Integrate leg generation into core scheduling algorithm (not post-processing)
-3. **🚨 CRITICAL**: Make SchedulingContext inherently multi-leg aware
-4. **🚨 CRITICAL**: Implement all-or-nothing schedule generation with detailed diagnostics
+1. **🚨 READY**: Begin refactoring implementation following detailed plan in refactoringPlan.md
+2. **🚨 PHASE 1**: Enhance SchedulingContext with inherent multi-leg support
+3. **🚨 PHASE 2**: Create new LegStrategy interface and integrate into RoundRobinScheduler
+4. **🚨 PHASE 3**: Remove SupportsMultipleLegs trait and implement all-or-nothing generation
 
 **Future Enhancements** (after refactoring):
 1. **Swiss Tournament Scheduler** - Implement Swiss-system pairing algorithm
@@ -93,6 +95,8 @@
 - **🆕 ARCHITECTURAL INSIGHT**: Multi-leg support should be core assumption, not bolt-on feature
 - **🆕 CONSTRAINT CONTEXT LEARNING**: Full multi-leg context needed during generation, not post-processing validation
 - **🆕 DIAGNOSTIC IMPORTANCE**: Detailed failure reporting crucial for tournament schedule reliability
+- **🆕 REFACTORING PLAN COMPLETE**: Comprehensive technical specification addresses all identified risks and problems
+- **🆕 IMPLEMENTATION READY**: Clear implementation sequence defined with architectural principles established
 
 ## Current Implementation Status
 **Phase**: Production-Ready Round-Robin System
@@ -122,4 +126,4 @@
 - 🔄 Schedule Optimization
 
 ---
-*Last Updated: 2025-09-11*
+*Last Updated: 2025-10-01*
