@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace MissionGaming\Tactician\Tests\Unit\Scheduling;
+
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
@@ -13,7 +15,7 @@ use Random\Engine\Mt19937;
 use Random\Randomizer;
 
 // Test class that uses the trait to expose its functionality for testing
-class TestSchedulerWithMultipleLegs
+class SupportsMultipleLegsTestHelper
 {
     use SupportsMultipleLegs;
 
@@ -116,12 +118,12 @@ describe('SupportsMultipleLegs', function (): void {
             new Event([$this->participants[1], $this->participants[3]], new Round(2)),
         ];
 
-        $this->scheduler = new TestSchedulerWithMultipleLegs();
+        $this->scheduler = new SupportsMultipleLegsTestHelper();
     });
 
     describe('expandScheduleForLegs', function (): void {
         it('returns base events unchanged when legs is 1', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -145,7 +147,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('expands schedule for 2 legs with mirrored strategy', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -174,7 +176,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('expands schedule for 3 legs', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -204,7 +206,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('passes randomizer to leg strategy', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -230,7 +232,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('applies constraints during expansion', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -261,7 +263,7 @@ describe('SupportsMultipleLegs', function (): void {
 
     describe('calculateRoundsPerLeg', function (): void {
         it('calculates rounds correctly from events', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -280,7 +282,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('handles events with null rounds', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -297,13 +299,13 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('handles empty events array', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $rounds = $scheduler->testCalculateRoundsPerLeg([]);
             expect($rounds)->toBe(0);
         });
 
         it('handles non-consecutive round numbers', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -324,7 +326,7 @@ describe('SupportsMultipleLegs', function (): void {
 
     describe('extractPairings', function (): void {
         it('extracts participant pairings from events', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -353,13 +355,13 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('handles empty events array', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $pairings = $scheduler->testExtractPairings([]);
             expect($pairings)->toHaveCount(0);
         });
 
         it('extracts pairings from single event', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -375,7 +377,7 @@ describe('SupportsMultipleLegs', function (): void {
 
     describe('createEventsFromPairings', function (): void {
         it('creates events with correct round numbering for leg 1', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -403,7 +405,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('creates events with correct round numbering for leg 2', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -431,7 +433,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('creates events with correct round numbering for leg 3', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -459,7 +461,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('handles single round per leg', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -479,7 +481,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('handles division by zero gracefully when roundsPerLeg is zero', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -492,13 +494,13 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('handles empty pairings array', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $events = $scheduler->testCreateEventsFromPairings([], 2, 1);
             expect($events)->toHaveCount(0);
         });
 
         it('handles uneven pairings distribution', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -522,7 +524,7 @@ describe('SupportsMultipleLegs', function (): void {
 
     describe('createEventsFromPairingsWithConstraints', function (): void {
         it('creates events when constraints are satisfied', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -552,7 +554,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('skips events when constraints are not satisfied', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -596,7 +598,7 @@ describe('SupportsMultipleLegs', function (): void {
             ];
             /** @var array<int> $contextCalls */
             $contextCalls = [];
-            $customScheduler = new class ($contextCalls) extends TestSchedulerWithMultipleLegs {
+            $customScheduler = new class ($contextCalls) extends SupportsMultipleLegsTestHelper {
                 /** @var array<int> */
                 private array $contextCalls;
 
@@ -634,7 +636,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('handles division by zero gracefully when roundsPerLeg is zero', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -647,7 +649,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('handles empty pairings with constraints', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -682,7 +684,7 @@ describe('SupportsMultipleLegs', function (): void {
 
             // Create a scheduler that alternates between allowing and rejecting
             $callCount = 0;
-            $alternatingScheduler = new class ($callCount) extends TestSchedulerWithMultipleLegs {
+            $alternatingScheduler = new class ($callCount) extends SupportsMultipleLegsTestHelper {
                 private int $callCount;
 
                 public function __construct(int &$callCount)
@@ -713,7 +715,7 @@ describe('SupportsMultipleLegs', function (): void {
 
     describe('integration scenarios', function (): void {
         it('handles complete multi-leg expansion with constraints', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),
@@ -765,7 +767,7 @@ describe('SupportsMultipleLegs', function (): void {
         });
 
         it('handles edge case with single event base', function (): void {
-            $scheduler = new TestSchedulerWithMultipleLegs();
+            $scheduler = new SupportsMultipleLegsTestHelper();
             $participants = [
                 new Participant('p1', 'Alice'),
                 new Participant('p2', 'Bob'),

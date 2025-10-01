@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests;
+namespace MissionGaming\Tactician\Tests;
 
 use PHPUnit\Framework\TestCase as BaseTestCase;
 

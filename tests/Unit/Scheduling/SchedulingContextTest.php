@@ -24,13 +24,17 @@ describe('SchedulingContext', function (): void {
     });
 
     // Tests creating a basic scheduling context with only participants,
-    // verifying default values for optional existing events and metadata
+    // verifying default values for optional parameters and multi-leg awareness
     it('creates a context with only participants', function (): void {
         $context = new SchedulingContext($this->participants);
 
         expect($context->getParticipants())->toBe($this->participants);
         expect($context->getExistingEvents())->toBe([]);
         expect($context->getMetadata())->toBe([]);
+        expect($context->getCurrentLeg())->toBe(1);
+        expect($context->getTotalLegs())->toBe(1);
+        expect($context->getParticipantsPerEvent())->toBe(2);
+        expect($context->isMultiLeg())->toBeFalse();
     });
 
     // Tests creating a context with participants and existing events,
@@ -41,22 +45,36 @@ describe('SchedulingContext', function (): void {
         expect($context->getParticipants())->toBe($this->participants);
         expect($context->getExistingEvents())->toBe($this->existingEvents);
         expect($context->getMetadata())->toBe([]);
+        expect($context->getCurrentLeg())->toBe(1);
+        expect($context->getTotalLegs())->toBe(1);
+        expect($context->isMultiLeg())->toBeFalse();
     });
 
-    // Tests creating a context with all fields populated (participants, events, metadata),
-    // ensuring the context properly stores and returns all provided data
-    it('creates a context with all fields', function (): void {
-        $context = new SchedulingContext($this->participants, $this->existingEvents, $this->metadata);
+    // Tests creating a context with multi-leg tournament parameters,
+    // ensuring the context properly handles multi-leg configuration
+    it('creates a multi-leg context', function (): void {
+        $context = new SchedulingContext(
+            $this->participants,
+            $this->existingEvents,
+            currentLeg: 2,
+            totalLegs: 3,
+            participantsPerEvent: 2,
+            metadata: $this->metadata
+        );
 
         expect($context->getParticipants())->toBe($this->participants);
         expect($context->getExistingEvents())->toBe($this->existingEvents);
+        expect($context->getCurrentLeg())->toBe(2);
+        expect($context->getTotalLegs())->toBe(3);
+        expect($context->getParticipantsPerEvent())->toBe(2);
         expect($context->getMetadata())->toBe($this->metadata);
+        expect($context->isMultiLeg())->toBeTrue();
     });
 
     // Tests the hasMetadata method to verify it correctly identifies whether
     // specific metadata keys exist in the context or not
     it('checks metadata existence', function (): void {
-        $context = new SchedulingContext($this->participants, [], $this->metadata);
+        $context = new SchedulingContext($this->participants, [], metadata: $this->metadata);
 
         expect($context->hasMetadata('tournament'))->toBeTrue();
         expect($context->hasMetadata('round'))->toBeTrue();
@@ -74,7 +92,7 @@ describe('SchedulingContext', function (): void {
     // Tests retrieving metadata values with support for default values when
     // the requested metadata key doesn't exist in the context
     it('gets metadata values with defaults', function (): void {
-        $context = new SchedulingContext($this->participants, [], $this->metadata);
+        $context = new SchedulingContext($this->participants, [], metadata: $this->metadata);
 
         expect($context->getMetadataValue('tournament'))->toBe('test');
         expect($context->getMetadataValue('round'))->toBe(1);
@@ -173,7 +191,7 @@ describe('SchedulingContext', function (): void {
     // Tests that withEvents creates a new context instance with additional events
     // while preserving the original context's immutability
     it('creates new context with additional events', function (): void {
-        $originalContext = new SchedulingContext($this->participants, $this->existingEvents, $this->metadata);
+        $originalContext = new SchedulingContext($this->participants, $this->existingEvents, metadata: $this->metadata);
         $newEvents = [$this->event3];
 
         $newContext = $originalContext->withEvents($newEvents);
@@ -264,7 +282,7 @@ describe('SchedulingContext', function (): void {
 
     // Tests that SchedulingContext is readonly (immutable)
     it('is readonly', function (): void {
-        $context = new SchedulingContext($this->participants, $this->existingEvents, $this->metadata);
+        $context = new SchedulingContext($this->participants, $this->existingEvents, metadata: $this->metadata);
 
         expect($context)->toBeInstanceOf(SchedulingContext::class);
         // Readonly classes cannot have properties modified after construction

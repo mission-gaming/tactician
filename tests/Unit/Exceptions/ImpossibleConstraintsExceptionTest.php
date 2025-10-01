@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace MissionGaming\Tactician\Tests\Unit\Exceptions;
+
 use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
