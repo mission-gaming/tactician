@@ -61,49 +61,73 @@
 - ✅ **Exception Testing**: Tests properly expect exceptions for impossible scenarios
 - ✅ **CI Success**: Full pipeline passes (PHPStan, Rector, PHP CS Fixer, Tests: 108 passed, 340 assertions)
 
-## What's Left to Build
-### Core Scheduling Algorithms
-- Swiss Tournament Scheduler (Swiss-system pairing algorithm)
+## IMMEDIATE PRIORITY - Multi-Leg Architecture Refactoring
+
+### **🚨 CRITICAL REFACTORING TASKS** (Must complete before any new features)
+1. **Integrate Multi-Leg Generation**: Remove post-processing approach, integrate leg generation into core scheduling algorithm
+2. **Enhance SchedulingContext**: Make inherently multi-leg aware without separate inheritance hierarchy
+3. **All-or-Nothing Generation**: Implement complete schedule or clear failure with detailed diagnostics
+4. **Remove SupportsMultipleLegs Trait**: Replace with integrated approach where multi-leg is default assumption
+5. **Update Scheduler Interface**: Make legs parameter standard across all schedulers
+6. **Refactor Constraint System**: Ensure constraints work with full multi-leg context during generation
+7. **Enhanced Diagnostic Reporting**: Detailed failure analysis when constraints prevent complete schedules
+8. **Update Test Suite**: Ensure tests validate new integrated approach and diagnostic capabilities
+
+### **Future Development** (After refactoring is complete)
+#### Core Scheduling Algorithms
+- Swiss Tournament Scheduler (Swiss-system pairing algorithm) 
 - Pool/Group Scheduler (Group stage tournaments with standings)
 
-### Timeline Assignment System
+#### Timeline Assignment System
 - TimeAssignerInterface and implementations
 - PatternTimeline for slot-based scheduling
 - TimeSlot DTO for time/venue representation
 - ScheduledEvent DTO combining Event + time/venue
 
-### Enhanced Constraint System
+#### Enhanced Constraint System
 - Time-based constraints (blackout periods, time conflicts)
 - Venue-based constraints (capacity, availability, travel time)
 - Participant-specific constraints (availability, preferences)
 - ConstraintViolation reporting system
 
-### Advanced Features
+#### Advanced Features  
 - Schedule optimization layer
 - Conflict resolution algorithms
 - Quality metrics and assessment
 - Multi-stage tournament support
 - Seeding and ranking systems
 
-### Documentation & CI
+#### Documentation & CI
 - API documentation generation
 - Usage examples and tutorials
 - ✅ **GitHub Actions CI pipeline** (implemented with code coverage)
 - Performance benchmarks
 
 ## Current Status
-**Phase**: Production-Ready System with Complete Validation  
-**Progress**: 85% (Complete foundation with validation system, ready for additional tournament formats)
+**Phase**: **CRITICAL ARCHITECTURAL REFACTORING REQUIRED**  
+**Progress**: 70% (Solid foundation but requires multi-leg architecture redesign before proceeding)
 
-## Known Issues
-**All major issues resolved as of 2025-09-11** ✅
+## Critical Issues Identified
+**🚨 MAJOR ARCHITECTURAL FLAW DISCOVERED** - Requires immediate attention before continuing development
 
-### Previously Resolved
-- ❌ ~~Silent incomplete schedule generation when constraints are impossible~~ → ✅ **RESOLVED** with ScheduleValidator system
-- ❌ ~~Limited diagnostic information when scheduling fails~~ → ✅ **RESOLVED** with constraint violation reporting
-- ❌ ~~PHPStan level 8 compliance issues~~ → ✅ **RESOLVED** (25 errors → 0 errors)
-- ❌ ~~Malformed @throws annotations~~ → ✅ **RESOLVED** throughout codebase
-- ❌ ~~Missing array type specifications~~ → ✅ **RESOLVED** with proper type annotations
+### **Critical Issue: Multi-Leg Event Skipping**
+- ❌ **CRITICAL**: Current multi-leg system can silently skip events when constraints fail
+- ❌ **CRITICAL**: Post-processing approach to leg generation causes late constraint detection  
+- ❌ **CRITICAL**: SupportsMultipleLegs trait treats multi-leg as add-on feature instead of core principle
+- ❌ **CRITICAL**: Constraint validation occurs after leg expansion, not during generation
+
+### **Architectural Problems Identified**
+- ❌ **Design Flaw**: Multi-leg tournaments treated as optional extension rather than core system assumption
+- ❌ **Context Limitation**: SchedulingContext not inherently multi-leg aware
+- ❌ **Validation Timing**: Constraints applied post-processing instead of during integrated generation
+- ❌ **Silent Failures**: Events dropped without clear exception reporting when constraints conflict
+
+### Previously Resolved Issues
+- ✅ ~~Silent incomplete schedule generation when constraints are impossible~~ → **RESOLVED** with ScheduleValidator system
+- ✅ ~~Limited diagnostic information when scheduling fails~~ → **RESOLVED** with constraint violation reporting
+- ✅ ~~PHPStan level 8 compliance issues~~ → **RESOLVED** (25 errors → 0 errors)
+- ✅ ~~Malformed @throws annotations~~ → **RESOLVED** throughout codebase
+- ✅ ~~Missing array type specifications~~ → **RESOLVED** with proper type annotations
 
 ## Evolution of Project Decisions
 ### 2025-01-09 - Project Initialization
@@ -158,6 +182,13 @@
 - **Memory Bank Maintenance**: Updated all memory bank files to reflect Round DTO implementation
 - **Test Coverage**: Added comprehensive RoundTest.php with full test coverage for Round DTO functionality
 
+### 2025-01-10 - Critical Architectural Analysis + Memory Bank Updates
+- **CRITICAL DISCOVERY**: Identified fundamental flaw in multi-leg system that can silently skip events
+- **Architectural Analysis**: Comprehensive review of leg strategy system strengths and weaknesses
+- **New Approach Defined**: Multi-leg tournaments as first-class citizens, not add-on features  
+- **Refactoring Plan**: Detailed plan for integrated multi-leg generation with all-or-nothing guarantees
+- **Memory Bank Updates**: Updated activeContext.md and systemPatterns.md to reflect new architectural direction
+
 ## Recent Milestones
 - **2025-01-09**: Memory bank initialization complete
 - **2025-09-10**: Composer package configuration complete  
@@ -165,13 +196,15 @@
 - **2025-09-11**: CI/CD pipeline integration and enhanced documentation complete
 - **2025-09-11**: **Schedule validation system complete** - prevents silent incomplete schedules
 - **2025-09-11**: **CI pipeline excellence** - zero errors across all quality checks
+- **2025-10-01**: **Critical architectural analysis complete** - identified multi-leg system flaws
 
-## Upcoming Milestones
-- Swiss Tournament Scheduler implementation
-- Timeline assignment system development
-- Pool/Group scheduler with standings calculation
-- Enhanced constraint system with time/venue support
-- Schedule optimization and quality assessment features
+## Upcoming Milestones  
+- **🚨 IMMEDIATE**: Multi-leg architecture refactoring (critical for system reliability)
+- **🚨 IMMEDIATE**: Integrated constraint validation with detailed diagnostics
+- **Post-Refactoring**: Swiss Tournament Scheduler implementation
+- **Post-Refactoring**: Timeline assignment system development
+- **Post-Refactoring**: Pool/Group scheduler with standings calculation
+- **Post-Refactoring**: Enhanced constraint system with time/venue support
 
 ---
-*Last Updated: 2025-09-11*
+*Last Updated: 2025-01-10*

@@ -20,6 +20,7 @@ Tactician is a modern PHP library for generating structured schedules between pa
 - Provide a clean separation between pairing (who vs who) and timeline (when/where)
 - Offer high developer ergonomics: fluent APIs, runnable examples, strong documentation
 - Keep performance suitable for competitions up to ~50 participants
+- Backwards compatibility is not a consideration currently - breaking changes are acceptable
 
 ## Scope
 - In-scope:
@@ -35,12 +36,12 @@ Tactician is a modern PHP library for generating structured schedules between pa
   - Full Social Golfer Problem/generalized k-participant match solving
 
 ## Misc
-- **IMPORTANT**: Date formats in the memory bank files must ALWAYS follow the YYYY-MM-DD pattern (ISO 8601 format). Never use MM-DD-YYYY or DD-MM-YYYY formats.
+- **CRITICAL**: Date formats in the memory bank files must ALWAYS follow the ISO 8601 format (YYYY-MM-DD).
 
 ## Status
 - **Project Stage**: Production-ready core system (Round-Robin complete)
 - **Created**: 2025-09-10
-- **Last Updated**: 2025-09-11
+- **Last Updated**: 2025-10-01
 
 ## Notes
 This project brief will be expanded as the project requirements become clear through development and user input.

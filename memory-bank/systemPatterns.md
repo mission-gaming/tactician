@@ -17,13 +17,23 @@ src/DTO/
 ### **2. Scheduling Layer** 
 ```
 src/Scheduling/
-├── SchedulerInterface.php       # Contract for all schedulers
-├── SchedulingContext.php        # Historical state management
-├── RoundRobinScheduler.php      # Circle method implementation
+├── SchedulerInterface.php       # Contract for all schedulers (inherently multi-leg aware)
+├── SchedulingContext.php        # Multi-leg historical state management
+├── RoundRobinScheduler.php      # Circle method with integrated multi-leg generation
 └── [Future] SwissScheduler.php, PoolScheduler.php
 ```
 
-### **3. Constraint Layer**
+### **3. Leg Strategy Layer**
+```
+src/LegStrategies/
+├── LegStrategyInterface.php     # Strategy contract for leg generation
+├── MirroredLegStrategy.php      # Home/away role reversal strategy
+├── RepeatedLegStrategy.php      # Identical leg repetition strategy
+├── ShuffledLegStrategy.php      # Randomized pairing order strategy
+└── [Future] AdvancedLegStrategies/
+```
+
+### **4. Constraint Layer**
 ```
 src/Constraints/
 ├── ConstraintInterface.php             # Constraint contract
@@ -36,7 +46,7 @@ src/Constraints/
 └── [Future] TimeConstraints/, VenueConstraints/
 ```
 
-### **4. Exception Layer**
+### **5. Exception Layer**
 ```
 src/Exceptions/
 └── SchedulingException.php     # Domain-specific exceptions
@@ -64,6 +74,12 @@ src/Exceptions/
 - All dependencies injected through constructors
 - Enables proper unit testing with mocks
 - Supports different configurations per instance
+
+### **Multi-Leg First Principle**
+- All schedulers assume multi-leg tournaments by default (legs=1 is special case)
+- Leg strategies are core components, not optional add-ons
+- SchedulingContext inherently multi-leg aware without separate classes
+- All-or-nothing schedule generation prevents silent event skipping
 
 ## Design Patterns in Use
 
@@ -104,9 +120,11 @@ graph TD
     Scheduler[SchedulerInterface] --> Context[SchedulingContext]
     Scheduler --> ConstraintSet[ConstraintSet]
     Scheduler --> Schedule[Schedule]
+    Scheduler --> LegStrategy[LegStrategyInterface]
     
     Schedule --> Event[Event]
     Event --> Participant[Participant]
+    Event --> Round[Round]
     
     ConstraintSet --> ConstraintInterface[ConstraintInterface]
     ConstraintInterface --> NoRepeatPairings[NoRepeatPairings]
@@ -114,26 +132,46 @@ graph TD
     
     Context --> Participant
     Context --> Event
+    Context --> LegStrategy
+    
+    LegStrategy --> MirroredLeg[MirroredLegStrategy]
+    LegStrategy --> RepeatedLeg[RepeatedLegStrategy]
+    LegStrategy --> ShuffledLeg[ShuffledLegStrategy]
     
     RoundRobin[RoundRobinScheduler] -.implements.-> Scheduler
+    
+    subgraph "Multi-Leg Core"
+        Context
+        LegStrategy
+        Event
+        Round
+    end
 ```
 
 ## Critical Implementation Paths
 
-### **Round-Robin Scheduling Flow**
-1. **Input Validation**: Minimum 2 participants required
-2. **Bye Handling**: Add null participant for odd counts  
-3. **Circle Method**: Fix position 0, rotate others for each round
-4. **Constraint Validation**: Check each proposed event against constraints
-5. **Schedule Generation**: Create immutable Schedule with metadata
+### **Integrated Multi-Leg Round-Robin Scheduling Flow**
+1. **Input Validation**: Minimum 2 participants, valid leg count, and strategy required
+2. **Multi-Leg Context Setup**: Initialize SchedulingContext with full tournament parameters
+3. **Unified Generation Loop**: For each leg, for each round, generate events with strategy
+4. **Real-Time Constraint Validation**: Each event validated against complete multi-leg context
+5. **All-or-Nothing Result**: Complete schedule or immediate failure with detailed diagnostics
+6. **Bye Handling**: Null participants handled consistently across all legs
+7. **Circle Method Integration**: Traditional algorithm enhanced with leg strategy application
 
-### **Constraint Validation Flow**
-1. **Context Creation**: Build SchedulingContext with current tournament state
-2. **Incremental Updates**: Add each processed event to context for subsequent validation
-3. **Constraint Iteration**: Check proposed event against each constraint in set
-4. **Advanced Constraint Logic**: Time-based, positional, and metadata constraint evaluation
-5. **Multi-Leg Continuity**: Constraints work across tournament legs with continuous context
-6. **Boolean Result**: All constraints must pass for event acceptance
+### **Integrated Multi-Leg Scheduling Flow**
+1. **Multi-Leg Context Initialization**: Create SchedulingContext with full tournament parameters (legs, strategy)
+2. **Unified Generation Loop**: Generate events for all legs with full cross-leg constraint visibility
+3. **Incremental Validation**: Each event validated against complete multi-leg context
+4. **All-or-Nothing Result**: Complete schedule generation or clear failure with diagnostics
+5. **No Silent Skipping**: Constraint failures cause immediate exception with detailed reporting
+
+### **Enhanced Constraint Validation Flow**
+1. **Full Context Creation**: Build SchedulingContext with complete multi-leg tournament state
+2. **Cross-Leg Awareness**: Constraints see events from all legs during validation
+3. **Early Failure Detection**: Impossible constraints detected as soon as conflicts arise
+4. **Detailed Diagnostics**: Constraint violations include suggestions and conflict analysis
+5. **Continuous Context Updates**: Context maintained across all legs for accurate validation
 
 ### **Schedule Iteration**
 1. **Iterator Interface**: Standard PHP iteration protocol
@@ -225,4 +263,4 @@ src/Optimization/
 ```
 
 ---
-*Last Updated: 2025-09-11*
+*Last Updated: 2025-01-10*

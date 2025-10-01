@@ -1,13 +1,10 @@
 # Active Context: Tactician
 
 ## Current Work Focus
-- **PRODUCTION-READY**: Complete round-robin scheduler with advanced features implemented
-- **VALIDATION SYSTEM COMPLETE**: Schedule validation prevents silent incomplete schedule generation
-- Full constraint system with builder pattern and custom predicate support
-- Comprehensive test coverage achieving 100% of implemented features
-- Advanced features: seeding, metadata, deterministic randomization, memory efficiency
-- **CI/CD COMPLETE**: Full pipeline passes with zero errors/warnings (PHPStan, Rector, PHP CS Fixer, Tests)
-- **STATUS**: Core library complete and ready for extension with additional tournament formats
+- **ARCHITECTURAL REFACTORING PLANNED**: Critical redesign of multi-leg system to fix constraint handling
+- **CRITICAL ISSUE IDENTIFIED**: Current leg system can silently skip events when constraints fail - unacceptable for tournament scheduling
+- **NEW APPROACH**: Multi-leg tournaments as first-class citizens, not add-on features
+- **STATUS**: Production-ready round-robin system requires refactoring for robust multi-leg integration
 
 ## Recent Changes
 - **✅ COMPLETE**: Advanced Participant DTO with seeding, metadata, and unique ID system
@@ -43,14 +40,19 @@
 - **✅ 2025-09-11**: **PRODUCTION READY** - Full CI pipeline passes with zero errors/warnings
 
 ## Next Steps
-**Core System Complete** - All primary objectives achieved. Optional future enhancements:
+**IMMEDIATE PRIORITY - Multi-Leg Architecture Refactoring**:
 
+1. **🚨 CRITICAL**: Refactor multi-leg system to prevent silent event skipping
+2. **🚨 CRITICAL**: Integrate leg generation into core scheduling algorithm (not post-processing)
+3. **🚨 CRITICAL**: Make SchedulingContext inherently multi-leg aware
+4. **🚨 CRITICAL**: Implement all-or-nothing schedule generation with detailed diagnostics
+
+**Future Enhancements** (after refactoring):
 1. **Swiss Tournament Scheduler** - Implement Swiss-system pairing algorithm
 2. **Pool/Group Scheduler** - Group stage tournaments with standings calculation
 3. **Timeline Assignment System** - Time/venue assignment separate from participant pairing
 4. **Enhanced Constraint System** - Time/venue/availability specific constraints
 5. **Schedule Optimization** - Post-generation quality improvements and conflict resolution
-6. **Performance Optimization** - Benchmarking and optimization for 100+ participant tournaments
 
 ## Active Decisions and Considerations
 - **Modern PHP 8.2+**: Readonly classes, constructor property promotion, strict typing throughout
@@ -59,6 +61,9 @@
 - **Strategy Pattern**: Pluggable scheduling algorithms with consistent interface
 - **Builder Pattern**: Fluent constraint configuration with ConstraintSet::create()
 - **Circle Method Algorithm**: Proper round-robin implementation ensuring each participant plays all others exactly once
+- **🆕 MULTI-LEG FIRST PRINCIPLE**: Multi-leg tournaments are the default assumption, single-leg is special case where legs=1
+- **🆕 ALL-OR-NOTHING GENERATION**: No silent event skipping - complete schedule or clear failure with diagnostics
+- **🆕 INTEGRATED LEG GENERATION**: Legs generated during core algorithm, not as post-processing step
 
 ## Important Patterns and Preferences
 - **Test-Driven Development**: Comprehensive Pest test coverage for all components
@@ -84,6 +89,10 @@
 - **Exception Design**: Hierarchical exception structure with diagnostic capabilities provides excellent developer experience
 - **CI Pipeline Value**: Comprehensive automated checking ensures production readiness and prevents regressions
 - **Documentation Quality**: Proper @throws annotations and array type specifications crucial for maintainability
+- **🆕 CRITICAL FLAW IDENTIFIED**: Current multi-leg approach can silently skip events when constraints fail - fundamental reliability issue
+- **🆕 ARCHITECTURAL INSIGHT**: Multi-leg support should be core assumption, not bolt-on feature
+- **🆕 CONSTRAINT CONTEXT LEARNING**: Full multi-leg context needed during generation, not post-processing validation
+- **🆕 DIAGNOSTIC IMPORTANCE**: Detailed failure reporting crucial for tournament schedule reliability
 
 ## Current Implementation Status
 **Phase**: Production-Ready Round-Robin System
