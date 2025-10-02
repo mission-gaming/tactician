@@ -195,6 +195,14 @@
 - **Refactoring Plan**: Detailed plan for integrated multi-leg generation with all-or-nothing guarantees
 - **Memory Bank Updates**: Updated activeContext.md and systemPatterns.md to reflect new architectural direction
 
+### 2025-10-02 - Documentation Restructuring + API Accuracy Restoration
+- **CRITICAL DOCUMENTATION FIXES**: Resolved major API discrepancies that could mislead users
+- **Comprehensive Usage Guide**: Created docs/USAGE.md with 650+ lines of corrected examples and real-world patterns
+- **README Streamlining**: Reduced from 300+ to 85 lines with perfect Quick Start example using SeedProtectionConstraint
+- **Architecture Documentation**: Fixed LegStrategyInterface definition, removed SupportsMultipleLegs references, added missing components
+- **API Accuracy**: Corrected all method signatures and constructor calls to match actual implementation
+- **User Experience**: Improved documentation structure from quick start through advanced patterns
+
 ## Recent Milestones
 - **2025-01-09**: Memory bank initialization complete
 - **2025-09-10**: Composer package configuration complete  
@@ -204,6 +212,7 @@
 - **2025-09-11**: **CI pipeline excellence** - zero errors across all quality checks
 - **2025-10-01**: **Critical architectural analysis complete** - identified multi-leg system flaws
 - **2025-10-02**: **🎉 PHASE 2 ALGORITHM INTEGRATION COMPLETE** - multi-leg architecture transformation successful
+- **2025-10-02**: **📚 DOCUMENTATION RESTRUCTURING COMPLETE** - fixed API discrepancies, created comprehensive usage guide
 
 ## Upcoming Milestones  
 - **Phase 3**: Swiss Tournament Scheduler implementation with dynamic matchmaking
