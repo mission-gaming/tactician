@@ -3,13 +3,13 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 // Create teams for a mini league
 $teams = [
@@ -35,31 +35,32 @@ $scheduler = new RoundRobinScheduler($constraints);
 $schedulesToCompare['Home & Away (Mirrored)'] = [
     'schedule' => $scheduler->schedule($teams, 2, 2, new MirroredLegStrategy()),
     'strategy' => 'MirroredLegStrategy',
-    'description' => 'Each team plays every other team twice - once at home, once away. Second leg reverses the fixture order.'
+    'description' => 'Each team plays every other team twice - once at home, once away. Second leg reverses the fixture order.',
 ];
 
 $schedulesToCompare['Repeated Encounters'] = [
     'schedule' => $scheduler->schedule($teams, 2, 2, new RepeatedLegStrategy()),
-    'strategy' => 'RepeatedLegStrategy', 
-    'description' => 'Each team plays every other team twice with identical fixture order in both legs.'
+    'strategy' => 'RepeatedLegStrategy',
+    'description' => 'Each team plays every other team twice with identical fixture order in both legs.',
 ];
 
 $schedulesToCompare['Shuffled Legs'] = [
     'schedule' => $scheduler->schedule($teams, 2, 2, new ShuffledLegStrategy()),
     'strategy' => 'ShuffledLegStrategy',
-    'description' => 'Each team plays every other team twice with randomized fixture order in each leg.'
+    'description' => 'Each team plays every other team twice with randomized fixture order in each leg.',
 ];
 
 // Function to determine home/away for mirrored strategy
-function getHomeAway($event, $schedule, $strategy) {
+function getHomeAway($event, $schedule, $strategy)
+{
     if ($strategy !== 'MirroredLegStrategy') {
         return ['', ''];
     }
-    
+
     $roundsPerLeg = $schedule->getMetadataValue('rounds_per_leg');
     $roundNumber = $event->getRound()->getNumber();
     $participants = $event->getParticipants();
-    
+
     if ($roundNumber <= $roundsPerLeg) {
         // First leg
         return ['🏠 ' . $participants[0]->getLabel(), '✈️ ' . $participants[1]->getLabel()];
@@ -77,7 +78,7 @@ foreach ($schedulesToCompare as $name => $data) {
     $totalRounds = $schedule->getMetadataValue('total_rounds');
     $legs = $schedule->getMetadataValue('legs');
     $roundsPerLeg = $schedule->getMetadataValue('rounds_per_leg');
-    
+
     // Count events per leg
     $legCounts = [];
     foreach ($schedule as $event) {
@@ -85,7 +86,7 @@ foreach ($schedulesToCompare as $name => $data) {
         $leg = (int) ceil($roundNumber / $roundsPerLeg);
         $legCounts[$leg] = ($legCounts[$leg] ?? 0) + 1;
     }
-    
+
     $stats[$name] = [
         'total_events' => $totalEvents,
         'total_rounds' => $totalRounds,
@@ -93,7 +94,7 @@ foreach ($schedulesToCompare as $name => $data) {
         'rounds_per_leg' => $roundsPerLeg,
         'leg_counts' => $legCounts,
         'strategy' => $data['strategy'],
-        'description' => $data['description']
+        'description' => $data['description'],
     ];
 }
 ?>
@@ -140,7 +141,7 @@ foreach ($schedulesToCompare as $name => $data) {
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between">
                             <span class="text-gray-600">Teams:</span>
-                            <span class="font-medium"><?= count($teams) ?></span>
+                            <span class="font-medium"><?= count($teams); ?></span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Legs:</span>
@@ -148,11 +149,11 @@ foreach ($schedulesToCompare as $name => $data) {
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Total Matches:</span>
-                            <span class="font-medium"><?= $stats['Home & Away (Mirrored)']['total_events'] ?></span>
+                            <span class="font-medium"><?= $stats['Home & Away (Mirrored)']['total_events']; ?></span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Rounds per Leg:</span>
-                            <span class="font-medium"><?= $stats['Home & Away (Mirrored)']['rounds_per_leg'] ?></span>
+                            <span class="font-medium"><?= $stats['Home & Away (Mirrored)']['rounds_per_leg']; ?></span>
                         </div>
                     </div>
                 </div>
@@ -167,15 +168,15 @@ foreach ($schedulesToCompare as $name => $data) {
                     <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                         <div class="flex items-center justify-between mb-2">
                             <div>
-                                <h3 class="font-semibold text-gray-800"><?= htmlspecialchars($team->getLabel()) ?></h3>
-                                <p class="text-sm text-gray-500"><?= htmlspecialchars($team->getMetadataValue('city')) ?></p>
+                                <h3 class="font-semibold text-gray-800"><?= htmlspecialchars($team->getLabel()); ?></h3>
+                                <p class="text-sm text-gray-500"><?= htmlspecialchars($team->getMetadataValue('city')); ?></p>
                             </div>
                             <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-semibold">
-                                Seed #<?= $team->getSeed() ?>
+                                Seed #<?= $team->getSeed(); ?>
                             </span>
                         </div>
                         <div class="text-xs text-gray-400">
-                            ID: <?= htmlspecialchars($team->getId()) ?>
+                            ID: <?= htmlspecialchars($team->getId()); ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -188,22 +189,22 @@ foreach ($schedulesToCompare as $name => $data) {
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <?php foreach ($stats as $name => $data): ?>
                     <div class="border border-gray-200 rounded-lg p-4">
-                        <h3 class="font-semibold text-gray-800 mb-2"><?= htmlspecialchars($name) ?></h3>
-                        <p class="text-sm text-gray-600 mb-4"><?= htmlspecialchars($data['description']) ?></p>
+                        <h3 class="font-semibold text-gray-800 mb-2"><?= htmlspecialchars($name); ?></h3>
+                        <p class="text-sm text-gray-600 mb-4"><?= htmlspecialchars($data['description']); ?></p>
                         
                         <div class="space-y-3">
                             <div class="bg-blue-50 rounded p-3">
-                                <div class="text-lg font-bold text-blue-600"><?= $data['total_events'] ?></div>
+                                <div class="text-lg font-bold text-blue-600"><?= $data['total_events']; ?></div>
                                 <div class="text-sm text-blue-700">Total Matches</div>
                             </div>
                             
                             <div class="bg-green-50 rounded p-3">
-                                <div class="text-lg font-bold text-green-600"><?= $data['legs'] ?></div>
+                                <div class="text-lg font-bold text-green-600"><?= $data['legs']; ?></div>
                                 <div class="text-sm text-green-700">Legs</div>
                             </div>
                             
                             <div class="bg-purple-50 rounded p-3">
-                                <div class="text-lg font-bold text-purple-600"><?= $data['rounds_per_leg'] ?></div>
+                                <div class="text-lg font-bold text-purple-600"><?= $data['rounds_per_leg']; ?></div>
                                 <div class="text-sm text-purple-700">Rounds per Leg</div>
                             </div>
                         </div>
@@ -222,26 +223,26 @@ foreach ($schedulesToCompare as $name => $data) {
             
             <?php
             $homeAwaySchedule = $schedulesToCompare['Home & Away (Mirrored)']['schedule'];
-            $strategy = $schedulesToCompare['Home & Away (Mirrored)']['strategy'];
-            $roundsPerLeg = $homeAwaySchedule->getMetadataValue('rounds_per_leg');
-            
-            $sampleCount = 0;
-            $eventsByRound = [];
-            foreach ($homeAwaySchedule as $event) {
-                $roundNumber = $event->getRound()->getNumber();
-                if (!isset($eventsByRound[$roundNumber])) {
-                    $eventsByRound[$roundNumber] = [];
-                }
-                $eventsByRound[$roundNumber][] = $event;
-            }
-            ?>
+$strategy = $schedulesToCompare['Home & Away (Mirrored)']['strategy'];
+$roundsPerLeg = $homeAwaySchedule->getMetadataValue('rounds_per_leg');
+
+$sampleCount = 0;
+$eventsByRound = [];
+foreach ($homeAwaySchedule as $event) {
+    $roundNumber = $event->getRound()->getNumber();
+    if (!isset($eventsByRound[$roundNumber])) {
+        $eventsByRound[$roundNumber] = [];
+    }
+    $eventsByRound[$roundNumber][] = $event;
+}
+?>
             
             <div class="space-y-4">
                 <?php foreach (array_slice($eventsByRound, 0, 4, true) as $roundNumber => $roundEvents): ?>
                     <div class="border border-gray-200 rounded-lg p-4">
                         <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
                             <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm mr-3">
-                                Round <?= $roundNumber ?>
+                                Round <?= $roundNumber; ?>
                             </span>
                             <?php if ($roundNumber <= $roundsPerLeg): ?>
                                 <span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
@@ -256,8 +257,8 @@ foreach ($schedulesToCompare as $name => $data) {
                         
                         <div class="space-y-2">
                             <?php foreach ($roundEvents as $event): ?>
-                                <?php 
-                                $homeAway = getHomeAway($event, $homeAwaySchedule, $strategy);
+                                <?php
+                    $homeAway = getHomeAway($event, $homeAwaySchedule, $strategy);
                                 $participants = $event->getParticipants();
                                 ?>
                                 <div class="border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors">
@@ -265,19 +266,19 @@ foreach ($schedulesToCompare as $name => $data) {
                                         <div class="flex items-center space-x-6">
                                             <div class="text-center min-w-0 flex-1">
                                                 <div class="font-medium text-gray-800 truncate">
-                                                    <?= $homeAway[0] ?: htmlspecialchars($participants[0]->getLabel()) ?>
+                                                    <?= $homeAway[0] ?: htmlspecialchars($participants[0]->getLabel()); ?>
                                                 </div>
                                                 <div class="text-xs text-gray-500">
-                                                    Seed #<?= $participants[0]->getSeed() ?>
+                                                    Seed #<?= $participants[0]->getSeed(); ?>
                                                 </div>
                                             </div>
                                             <div class="text-gray-400 font-bold">VS</div>
                                             <div class="text-center min-w-0 flex-1">
                                                 <div class="font-medium text-gray-800 truncate">
-                                                    <?= $homeAway[1] ?: htmlspecialchars($participants[1]->getLabel()) ?>
+                                                    <?= $homeAway[1] ?: htmlspecialchars($participants[1]->getLabel()); ?>
                                                 </div>
                                                 <div class="text-xs text-gray-500">
-                                                    Seed #<?= $participants[1]->getSeed() ?>
+                                                    Seed #<?= $participants[1]->getSeed(); ?>
                                                 </div>
                                             </div>
                                         </div>
@@ -306,72 +307,75 @@ foreach ($schedulesToCompare as $name => $data) {
             <?php
             // Simulate league table with random results
             $leagueTable = [];
-            foreach ($teams as $team) {
-                $leagueTable[$team->getId()] = [
-                    'team' => $team,
-                    'played' => 0,
-                    'won' => 0,
-                    'drawn' => 0,
-                    'lost' => 0,
-                    'goals_for' => 0,
-                    'goals_against' => 0,
-                    'points' => 0
-                ];
-            }
-            
-            // Simulate results for each match
-            foreach ($homeAwaySchedule as $event) {
-                $participants = $event->getParticipants();
-                $team1 = $participants[0]->getId();
-                $team2 = $participants[1]->getId();
-                
-                // Random result (weighted by seed)
-                $seed1 = $participants[0]->getSeed();
-                $seed2 = $participants[1]->getSeed();
-                $team1Strength = 10 - $seed1; // Higher seed = lower number = higher strength
-                $team2Strength = 10 - $seed2;
-                
-                $goals1 = rand(0, 4);
-                $goals2 = rand(0, 4);
-                
-                // Adjust goals based on strength
-                if ($team1Strength > $team2Strength) {
-                    $goals1 += rand(0, 1);
-                } elseif ($team2Strength > $team1Strength) {
-                    $goals2 += rand(0, 1);
-                }
-                
-                // Update table
-                $leagueTable[$team1]['played']++;
-                $leagueTable[$team2]['played']++;
-                $leagueTable[$team1]['goals_for'] += $goals1;
-                $leagueTable[$team1]['goals_against'] += $goals2;
-                $leagueTable[$team2]['goals_for'] += $goals2;
-                $leagueTable[$team2]['goals_against'] += $goals1;
-                
-                if ($goals1 > $goals2) {
-                    $leagueTable[$team1]['won']++;
-                    $leagueTable[$team1]['points'] += 3;
-                    $leagueTable[$team2]['lost']++;
-                } elseif ($goals2 > $goals1) {
-                    $leagueTable[$team2]['won']++;
-                    $leagueTable[$team2]['points'] += 3;
-                    $leagueTable[$team1]['lost']++;
-                } else {
-                    $leagueTable[$team1]['drawn']++;
-                    $leagueTable[$team1]['points'] += 1;
-                    $leagueTable[$team2]['drawn']++;
-                    $leagueTable[$team2]['points'] += 1;
-                }
-            }
-            
-            // Sort by points, then goal difference
-            uasort($leagueTable, function($a, $b) {
-                $pointsDiff = $b['points'] - $a['points'];
-                if ($pointsDiff !== 0) return $pointsDiff;
-                return ($b['goals_for'] - $b['goals_against']) - ($a['goals_for'] - $a['goals_against']);
-            });
-            ?>
+foreach ($teams as $team) {
+    $leagueTable[$team->getId()] = [
+        'team' => $team,
+        'played' => 0,
+        'won' => 0,
+        'drawn' => 0,
+        'lost' => 0,
+        'goals_for' => 0,
+        'goals_against' => 0,
+        'points' => 0,
+    ];
+}
+
+// Simulate results for each match
+foreach ($homeAwaySchedule as $event) {
+    $participants = $event->getParticipants();
+    $team1 = $participants[0]->getId();
+    $team2 = $participants[1]->getId();
+
+    // Random result (weighted by seed)
+    $seed1 = $participants[0]->getSeed();
+    $seed2 = $participants[1]->getSeed();
+    $team1Strength = 10 - $seed1; // Higher seed = lower number = higher strength
+    $team2Strength = 10 - $seed2;
+
+    $goals1 = rand(0, 4);
+    $goals2 = rand(0, 4);
+
+    // Adjust goals based on strength
+    if ($team1Strength > $team2Strength) {
+        $goals1 += rand(0, 1);
+    } elseif ($team2Strength > $team1Strength) {
+        $goals2 += rand(0, 1);
+    }
+
+    // Update table
+    ++$leagueTable[$team1]['played'];
+    ++$leagueTable[$team2]['played'];
+    $leagueTable[$team1]['goals_for'] += $goals1;
+    $leagueTable[$team1]['goals_against'] += $goals2;
+    $leagueTable[$team2]['goals_for'] += $goals2;
+    $leagueTable[$team2]['goals_against'] += $goals1;
+
+    if ($goals1 > $goals2) {
+        ++$leagueTable[$team1]['won'];
+        $leagueTable[$team1]['points'] += 3;
+        ++$leagueTable[$team2]['lost'];
+    } elseif ($goals2 > $goals1) {
+        ++$leagueTable[$team2]['won'];
+        $leagueTable[$team2]['points'] += 3;
+        ++$leagueTable[$team1]['lost'];
+    } else {
+        ++$leagueTable[$team1]['drawn'];
+        $leagueTable[$team1]['points'] += 1;
+        ++$leagueTable[$team2]['drawn'];
+        $leagueTable[$team2]['points'] += 1;
+    }
+}
+
+// Sort by points, then goal difference
+uasort($leagueTable, function ($a, $b) {
+    $pointsDiff = $b['points'] - $a['points'];
+    if ($pointsDiff !== 0) {
+        return $pointsDiff;
+    }
+
+    return ($b['goals_for'] - $b['goals_against']) - ($a['goals_for'] - $a['goals_against']);
+});
+?>
             
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
@@ -392,8 +396,8 @@ foreach ($schedulesToCompare as $name => $data) {
                     <tbody>
                         <?php $position = 1; ?>
                         <?php foreach ($leagueTable as $row): ?>
-                            <?php 
-                            $goalDiff = $row['goals_for'] - $row['goals_against'];
+                            <?php
+                $goalDiff = $row['goals_for'] - $row['goals_against'];
                             $rowClass = '';
                             if ($position <= 2) {
                                 $rowClass = 'bg-green-50 border-l-4 border-green-500';
@@ -403,24 +407,24 @@ foreach ($schedulesToCompare as $name => $data) {
                                 $rowClass = 'bg-red-50 border-l-4 border-red-500';
                             }
                             ?>
-                            <tr class="<?= $rowClass ?> hover:bg-gray-50">
-                                <td class="p-2 font-medium"><?= $position ?></td>
+                            <tr class="<?= $rowClass; ?> hover:bg-gray-50">
+                                <td class="p-2 font-medium"><?= $position; ?></td>
                                 <td class="p-2">
-                                    <div class="font-medium"><?= htmlspecialchars($row['team']->getLabel()) ?></div>
-                                    <div class="text-xs text-gray-500">Seed #<?= $row['team']->getSeed() ?></div>
+                                    <div class="font-medium"><?= htmlspecialchars($row['team']->getLabel()); ?></div>
+                                    <div class="text-xs text-gray-500">Seed #<?= $row['team']->getSeed(); ?></div>
                                 </td>
-                                <td class="text-center p-2"><?= $row['played'] ?></td>
-                                <td class="text-center p-2"><?= $row['won'] ?></td>
-                                <td class="text-center p-2"><?= $row['drawn'] ?></td>
-                                <td class="text-center p-2"><?= $row['lost'] ?></td>
-                                <td class="text-center p-2"><?= $row['goals_for'] ?></td>
-                                <td class="text-center p-2"><?= $row['goals_against'] ?></td>
-                                <td class="text-center p-2 <?= $goalDiff > 0 ? 'text-green-600' : ($goalDiff < 0 ? 'text-red-600' : '') ?>">
-                                    <?= $goalDiff > 0 ? '+' : '' ?><?= $goalDiff ?>
+                                <td class="text-center p-2"><?= $row['played']; ?></td>
+                                <td class="text-center p-2"><?= $row['won']; ?></td>
+                                <td class="text-center p-2"><?= $row['drawn']; ?></td>
+                                <td class="text-center p-2"><?= $row['lost']; ?></td>
+                                <td class="text-center p-2"><?= $row['goals_for']; ?></td>
+                                <td class="text-center p-2"><?= $row['goals_against']; ?></td>
+                                <td class="text-center p-2 <?= $goalDiff > 0 ? 'text-green-600' : ($goalDiff < 0 ? 'text-red-600' : ''); ?>">
+                                    <?= $goalDiff > 0 ? '+' : ''; ?><?= $goalDiff; ?>
                                 </td>
-                                <td class="text-center p-2 font-bold"><?= $row['points'] ?></td>
+                                <td class="text-center p-2 font-bold"><?= $row['points']; ?></td>
                             </tr>
-                            <?php $position++; ?>
+                            <?php ++$position; ?>
                         <?php endforeach; ?>
                     </tbody>
                 </table>
@@ -479,7 +483,7 @@ foreach ($schedule as $event) {
     $roundNumber = $event->getRound()->getNumber();
     $leg = (int) ceil($roundNumber / $roundsPerLeg);
     echo "Round {$roundNumber} is in leg {$leg}";
-}') ?></code></pre>
+}'); ?></code></pre>
             </div>
         </div>
 

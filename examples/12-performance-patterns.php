@@ -3,21 +3,21 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Constraints\ConstraintSet;
 
 // Create different participant set sizes for performance comparison
 $participantSets = [
     'Small (6 teams)' => [],
     'Medium (12 teams)' => [],
     'Large (20 teams)' => [],
-    'Very Large (30 teams)' => []
+    'Very Large (30 teams)' => [],
 ];
 
 // Generate participants for each set size
-for ($i = 1; $i <= 30; $i++) {
-    $teamName = "Team " . chr(64 + (($i - 1) % 26) + 1) . ($i > 26 ? (int)(($i - 1) / 26) : '');
+for ($i = 1; $i <= 30; ++$i) {
+    $teamName = 'Team ' . chr(64 + (($i - 1) % 26) + 1) . ($i > 26 ? (int) (($i - 1) / 26) : '');
     $participant = new Participant(
         'team' . $i,
         $teamName,
@@ -26,10 +26,10 @@ for ($i = 1; $i <= 30; $i++) {
             'skill_rating' => rand(1000, 3000),
             'region' => ['North', 'South', 'East', 'West'][rand(0, 3)],
             'experience' => ['rookie', 'intermediate', 'veteran'][rand(0, 2)],
-            'budget' => ['low', 'medium', 'high'][rand(0, 2)]
+            'budget' => ['low', 'medium', 'high'][rand(0, 2)],
         ]
     );
-    
+
     if ($i <= 6) {
         $participantSets['Small (6 teams)'][] = $participant;
     }
@@ -43,18 +43,19 @@ for ($i = 1; $i <= 30; $i++) {
 }
 
 // Performance testing function
-function measurePerformance($participants, $constraints, $testName) {
+function measurePerformance($participants, $constraints, $testName)
+{
     $startTime = microtime(true);
     $startMemory = memory_get_usage(true);
-    
+
     try {
         $scheduler = new RoundRobinScheduler($constraints);
         $schedule = $scheduler->schedule($participants);
-        
+
         $endTime = microtime(true);
         $endMemory = memory_get_usage(true);
         $peakMemory = memory_get_peak_usage(true);
-        
+
         return [
             'success' => true,
             'time' => round(($endTime - $startTime) * 1000, 2), // milliseconds
@@ -64,12 +65,12 @@ function measurePerformance($participants, $constraints, $testName) {
             'total_rounds' => $schedule->getMetadataValue('total_rounds'),
             'events_per_round' => $schedule->getMetadataValue('events_per_round'),
             'error' => null,
-            'test_name' => $testName
+            'test_name' => $testName,
         ];
     } catch (Exception $e) {
         $endTime = microtime(true);
         $endMemory = memory_get_usage(true);
-        
+
         return [
             'success' => false,
             'time' => round(($endTime - $startTime) * 1000, 2),
@@ -79,7 +80,7 @@ function measurePerformance($participants, $constraints, $testName) {
             'total_rounds' => 0,
             'events_per_round' => 0,
             'error' => $e->getMessage(),
-            'test_name' => $testName
+            'test_name' => $testName,
         ];
     }
 }
@@ -88,13 +89,15 @@ function measurePerformance($participants, $constraints, $testName) {
 $performanceResults = [];
 
 foreach ($participantSets as $setName => $participants) {
-    if (empty($participants)) continue;
-    
+    if (empty($participants)) {
+        continue;
+    }
+
     // Test 1: Basic constraints
     $basicConstraints = ConstraintSet::create()
         ->noRepeatPairings()
         ->build();
-    
+
     $result = measurePerformance($participants, $basicConstraints, $setName . ' - Basic');
     $result['constraint_type'] = 'Basic (NoRepeatPairings only)';
     $result['participant_count'] = count($participants);
@@ -102,19 +105,22 @@ foreach ($participantSets as $setName => $participants) {
 }
 
 // Memory-efficient iteration patterns demonstration
-function demonstrateIterationPatterns($schedule) {
-    if (!$schedule) return null;
-    
+function demonstrateIterationPatterns($schedule)
+{
+    if (!$schedule) {
+        return null;
+    }
+
     // Pattern 1: Direct iteration (memory efficient)
     $start = microtime(true);
     $count1 = 0;
     foreach ($schedule as $event) {
-        $count1++;
+        ++$count1;
         // Simulate some processing
         $participants = $event->getParticipants();
     }
     $time1 = (microtime(true) - $start) * 1000;
-    
+
     // Pattern 2: Convert to array (memory intensive)
     $start = microtime(true);
     $eventsArray = iterator_to_array($schedule);
@@ -124,16 +130,16 @@ function demonstrateIterationPatterns($schedule) {
         $participants = $event->getParticipants();
     }
     $time2 = (microtime(true) - $start) * 1000;
-    
+
     // Pattern 3: Count only (most efficient)
     $start = microtime(true);
     $count3 = count($schedule);
     $time3 = (microtime(true) - $start) * 1000;
-    
+
     return [
         'direct_iteration' => ['time' => round($time1, 2), 'count' => $count1],
         'array_conversion' => ['time' => round($time2, 2), 'count' => $count2],
-        'count_only' => ['time' => round($time3, 2), 'count' => $count3]
+        'count_only' => ['time' => round($time3, 2), 'count' => $count3],
     ];
 }
 
@@ -149,26 +155,44 @@ try {
 $iterationResults = demonstrateIterationPatterns($mediumSchedule);
 
 // Helper functions
-function formatBytes($bytes) {
+function formatBytes($bytes)
+{
     $units = ['B', 'KB', 'MB', 'GB'];
     $bytes = max($bytes, 0);
     $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
     $pow = min($pow, count($units) - 1);
     $bytes /= pow(1024, $pow);
+
     return round($bytes, 2) . ' ' . $units[$pow];
 }
 
-function getPerformanceColor($time) {
-    if ($time < 10) return 'bg-green-100 text-green-800';
-    if ($time < 50) return 'bg-yellow-100 text-yellow-800';
-    if ($time < 200) return 'bg-orange-100 text-orange-800';
+function getPerformanceColor($time)
+{
+    if ($time < 10) {
+        return 'bg-green-100 text-green-800';
+    }
+    if ($time < 50) {
+        return 'bg-yellow-100 text-yellow-800';
+    }
+    if ($time < 200) {
+        return 'bg-orange-100 text-orange-800';
+    }
+
     return 'bg-red-100 text-red-800';
 }
 
-function getMemoryColor($memory) {
-    if ($memory < 1024 * 1024) return 'bg-green-100 text-green-800'; // < 1MB
-    if ($memory < 5 * 1024 * 1024) return 'bg-yellow-100 text-yellow-800'; // < 5MB
-    if ($memory < 10 * 1024 * 1024) return 'bg-orange-100 text-orange-800'; // < 10MB
+function getMemoryColor($memory)
+{
+    if ($memory < 1024 * 1024) {
+        return 'bg-green-100 text-green-800';
+    } // < 1MB
+    if ($memory < 5 * 1024 * 1024) {
+        return 'bg-yellow-100 text-yellow-800';
+    } // < 5MB
+    if ($memory < 10 * 1024 * 1024) {
+        return 'bg-orange-100 text-orange-800';
+    } // < 10MB
+
     return 'bg-red-100 text-red-800';
 }
 ?>
@@ -247,7 +271,7 @@ function getMemoryColor($memory) {
                 <?php foreach ($performanceResults as $result): ?>
                     <div class="border border-gray-200 rounded-lg p-4">
                         <div class="flex items-center justify-between mb-2">
-                            <h3 class="font-semibold text-gray-800"><?= $result['participant_count'] ?> Teams</h3>
+                            <h3 class="font-semibold text-gray-800"><?= $result['participant_count']; ?> Teams</h3>
                             <?php if ($result['success']): ?>
                                 <span class="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">Success</span>
                             <?php else: ?>
@@ -259,28 +283,28 @@ function getMemoryColor($memory) {
                             <div class="space-y-2 text-sm">
                                 <div class="flex justify-between">
                                     <span class="text-gray-500">Time:</span>
-                                    <span class="px-2 py-1 rounded text-xs <?= getPerformanceColor($result['time']) ?>">
-                                        <?= $result['time'] ?>ms
+                                    <span class="px-2 py-1 rounded text-xs <?= getPerformanceColor($result['time']); ?>">
+                                        <?= $result['time']; ?>ms
                                     </span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-500">Memory:</span>
-                                    <span class="px-2 py-1 rounded text-xs <?= getMemoryColor($result['memory_used']) ?>">
-                                        <?= formatBytes($result['memory_used']) ?>
+                                    <span class="px-2 py-1 rounded text-xs <?= getMemoryColor($result['memory_used']); ?>">
+                                        <?= formatBytes($result['memory_used']); ?>
                                     </span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-500">Events:</span>
-                                    <span class="font-medium"><?= $result['total_events'] ?></span>
+                                    <span class="font-medium"><?= $result['total_events']; ?></span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-500">Rounds:</span>
-                                    <span class="font-medium"><?= $result['total_rounds'] ?></span>
+                                    <span class="font-medium"><?= $result['total_rounds']; ?></span>
                                 </div>
                             </div>
                         <?php else: ?>
                             <div class="text-sm text-red-600">
-                                <?= htmlspecialchars($result['error']) ?>
+                                <?= htmlspecialchars($result['error']); ?>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -305,7 +329,7 @@ function getMemoryColor($memory) {
         <div class="bg-white rounded-lg shadow-md p-6 mb-8">
             <h2 class="text-xl font-bold text-gray-800 mb-4">Schedule Iteration Patterns</h2>
             <p class="text-gray-600 mb-4">
-                Comparison of different methods for accessing schedule data (tested on 12-team tournament with <?= $mediumSchedule->getMetadataValue('total_rounds') ?> rounds).
+                Comparison of different methods for accessing schedule data (tested on 12-team tournament with <?= $mediumSchedule->getMetadataValue('total_rounds'); ?> rounds).
             </p>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
@@ -317,11 +341,11 @@ function getMemoryColor($memory) {
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between">
                             <span class="text-gray-500">Time:</span>
-                            <span class="font-medium text-green-600"><?= $iterationResults['direct_iteration']['time'] ?>ms</span>
+                            <span class="font-medium text-green-600"><?= $iterationResults['direct_iteration']['time']; ?>ms</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-500">Events:</span>
-                            <span class="font-medium"><?= $iterationResults['direct_iteration']['count'] ?></span>
+                            <span class="font-medium"><?= $iterationResults['direct_iteration']['count']; ?></span>
                         </div>
                         <div class="text-xs text-gray-600 mt-2">
                             ✅ Most memory efficient<br>
@@ -339,11 +363,11 @@ function getMemoryColor($memory) {
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between">
                             <span class="text-gray-500">Time:</span>
-                            <span class="font-medium text-yellow-600"><?= $iterationResults['array_conversion']['time'] ?>ms</span>
+                            <span class="font-medium text-yellow-600"><?= $iterationResults['array_conversion']['time']; ?>ms</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-500">Events:</span>
-                            <span class="font-medium"><?= $iterationResults['array_conversion']['count'] ?></span>
+                            <span class="font-medium"><?= $iterationResults['array_conversion']['count']; ?></span>
                         </div>
                         <div class="text-xs text-gray-600 mt-2">
                             ⚠️ Higher memory usage<br>
@@ -361,11 +385,11 @@ function getMemoryColor($memory) {
                     <div class="space-y-2 text-sm">
                         <div class="flex justify-between">
                             <span class="text-gray-500">Time:</span>
-                            <span class="font-medium text-blue-600"><?= $iterationResults['count_only']['time'] ?>ms</span>
+                            <span class="font-medium text-blue-600"><?= $iterationResults['count_only']['time']; ?>ms</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-500">Events:</span>
-                            <span class="font-medium"><?= $iterationResults['count_only']['count'] ?></span>
+                            <span class="font-medium"><?= $iterationResults['count_only']['count']; ?></span>
                         </div>
                         <div class="text-xs text-gray-600 mt-2">
                             ✅ Fastest execution<br>
@@ -387,7 +411,7 @@ function getMemoryColor($memory) {
     
     // Process each event
     processEvent($event);
-}') ?></code></pre>
+}'); ?></code></pre>
                     </div>
                 </div>
                 
@@ -401,7 +425,7 @@ $firstEvent = $events[0];
 $lastEvent = $events[count($events) - 1];
 
 // Array functions
-$filtered = array_filter($events, $callback);') ?></code></pre>
+$filtered = array_filter($events, $callback);'); ?></code></pre>
                     </div>
                 </div>
                 
@@ -413,7 +437,7 @@ $totalEvents = count($schedule);
 
 // Get metadata
 $rounds = $schedule->getMetadataValue("total_rounds");
-$perRound = $schedule->getMetadataValue("events_per_round");') ?></code></pre>
+$perRound = $schedule->getMetadataValue("events_per_round");'); ?></code></pre>
                     </div>
                 </div>
             </div>
@@ -602,7 +626,7 @@ $results = $processor->processLargeTournament($participants);
 $processor->exportMatches($participants, function($match) {
     // Write to file, database, API, etc.
     file_put_contents(\'matches.json\', json_encode($match) . "\n", FILE_APPEND);
-});') ?></code></pre>
+});'); ?></code></pre>
             </div>
         </div>
 
@@ -654,7 +678,7 @@ $processor->exportMatches($participants, function($match) {
     <!-- Chart.js Scripts -->
     <script>
         // Performance charts
-        const performanceData = <?= json_encode($performanceResults) ?>;
+        const performanceData = <?= json_encode($performanceResults); ?>;
         
         // Time Chart
         const timeCtx = document.getElementById('timeChart').getContext('2d');

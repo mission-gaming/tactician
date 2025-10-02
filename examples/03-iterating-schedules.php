@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Constraints\ConstraintSet;
 
 // Create participants
 $participants = [
@@ -71,19 +71,19 @@ $eventsArray = iterator_to_array($schedule);
             <h2 class="text-xl font-bold text-gray-800 mb-4">Schedule Overview</h2>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="bg-blue-50 rounded-lg p-4">
-                    <div class="text-2xl font-bold text-blue-600"><?= count($participants) ?></div>
+                    <div class="text-2xl font-bold text-blue-600"><?= count($participants); ?></div>
                     <div class="text-gray-600">Teams</div>
                 </div>
                 <div class="bg-green-50 rounded-lg p-4">
-                    <div class="text-2xl font-bold text-green-600"><?= $totalEvents ?></div>
+                    <div class="text-2xl font-bold text-green-600"><?= $totalEvents; ?></div>
                     <div class="text-gray-600">Matches</div>
                 </div>
                 <div class="bg-purple-50 rounded-lg p-4">
-                    <div class="text-2xl font-bold text-purple-600"><?= $totalRounds ?></div>
+                    <div class="text-2xl font-bold text-purple-600"><?= $totalRounds; ?></div>
                     <div class="text-gray-600">Rounds</div>
                 </div>
                 <div class="bg-orange-50 rounded-lg p-4">
-                    <div class="text-2xl font-bold text-orange-600"><?= htmlspecialchars($algorithm) ?></div>
+                    <div class="text-2xl font-bold text-orange-600"><?= htmlspecialchars($algorithm); ?></div>
                     <div class="text-gray-600">Algorithm</div>
                 </div>
             </div>
@@ -104,7 +104,7 @@ $eventsArray = iterator_to_array($schedule);
     
     echo "Round {$round->getNumber()}: ";
     echo "{$participants[0]->getLabel()} vs {$participants[1]->getLabel()}";
-}') ?></code></pre>
+}'); ?></code></pre>
             </div>
 
             <div class="space-y-2">
@@ -112,16 +112,16 @@ $eventsArray = iterator_to_array($schedule);
                     <?php $eventParticipants = $event->getParticipants(); ?>
                     <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                         <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-                            Round <?= $event->getRound()->getNumber() ?>
+                            Round <?= $event->getRound()->getNumber(); ?>
                         </span>
                         <div class="flex items-center space-x-4">
-                            <span class="font-medium"><?= htmlspecialchars($eventParticipants[0]->getLabel()) ?></span>
+                            <span class="font-medium"><?= htmlspecialchars($eventParticipants[0]->getLabel()); ?></span>
                             <span class="text-gray-400">vs</span>
-                            <span class="font-medium"><?= htmlspecialchars($eventParticipants[1]->getLabel()) ?></span>
+                            <span class="font-medium"><?= htmlspecialchars($eventParticipants[1]->getLabel()); ?></span>
                         </div>
                         <span class="text-sm text-gray-500">
-                            <?= htmlspecialchars($eventParticipants[0]->getMetadataValue('city')) ?> vs
-                            <?= htmlspecialchars($eventParticipants[1]->getMetadataValue('city')) ?>
+                            <?= htmlspecialchars($eventParticipants[0]->getMetadataValue('city')); ?> vs
+                            <?= htmlspecialchars($eventParticipants[1]->getMetadataValue('city')); ?>
                         </span>
                     </div>
                 <?php endforeach; ?>
@@ -137,11 +137,11 @@ $eventsArray = iterator_to_array($schedule);
             
             <div class="bg-gray-900 text-gray-100 rounded-lg p-4 mb-4">
                 <pre><code><?= htmlspecialchars('$totalEvents = count($schedule);
-echo "Total events: " . $totalEvents;') ?></code></pre>
+echo "Total events: " . $totalEvents;'); ?></code></pre>
             </div>
 
             <div class="bg-blue-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-blue-600"><?= $totalEvents ?></div>
+                <div class="text-2xl font-bold text-blue-600"><?= $totalEvents; ?></div>
                 <div class="text-blue-800">Total events counted without loading into memory</div>
             </div>
         </div>
@@ -164,7 +164,7 @@ $lastEvent = $eventsArray[count($eventsArray) - 1];
 // Or use array functions
 $filteredEvents = array_filter($eventsArray, function($event) {
     return $event->getRound()->getNumber() <= 2;
-});') ?></code></pre>
+});'); ?></code></pre>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -173,8 +173,8 @@ $filteredEvents = array_filter($eventsArray, function($event) {
                     <?php $firstEvent = $eventsArray[0]; ?>
                     <?php $firstParticipants = $firstEvent->getParticipants(); ?>
                     <div class="text-sm">
-                        <div><strong>Round:</strong> <?= $firstEvent->getRound()->getNumber() ?></div>
-                        <div><strong>Match:</strong> <?= htmlspecialchars($firstParticipants[0]->getLabel()) ?> vs <?= htmlspecialchars($firstParticipants[1]->getLabel()) ?></div>
+                        <div><strong>Round:</strong> <?= $firstEvent->getRound()->getNumber(); ?></div>
+                        <div><strong>Match:</strong> <?= htmlspecialchars($firstParticipants[0]->getLabel()); ?> vs <?= htmlspecialchars($firstParticipants[1]->getLabel()); ?></div>
                     </div>
                 </div>
                 
@@ -183,29 +183,29 @@ $filteredEvents = array_filter($eventsArray, function($event) {
                     <?php $lastEvent = $eventsArray[count($eventsArray) - 1]; ?>
                     <?php $lastParticipants = $lastEvent->getParticipants(); ?>
                     <div class="text-sm">
-                        <div><strong>Round:</strong> <?= $lastEvent->getRound()->getNumber() ?></div>
-                        <div><strong>Match:</strong> <?= htmlspecialchars($lastParticipants[0]->getLabel()) ?> vs <?= htmlspecialchars($lastParticipants[1]->getLabel()) ?></div>
+                        <div><strong>Round:</strong> <?= $lastEvent->getRound()->getNumber(); ?></div>
+                        <div><strong>Match:</strong> <?= htmlspecialchars($lastParticipants[0]->getLabel()); ?> vs <?= htmlspecialchars($lastParticipants[1]->getLabel()); ?></div>
                     </div>
                 </div>
             </div>
 
             <div class="mt-4">
                 <h3 class="font-semibold text-gray-800 mb-2">First Two Rounds Only (using array_filter)</h3>
-                <?php 
-                $firstTwoRounds = array_filter($eventsArray, function($event) {
+                <?php
+                $firstTwoRounds = array_filter($eventsArray, function ($event) {
                     return $event->getRound()->getNumber() <= 2;
                 });
-                ?>
+?>
                 <div class="text-sm text-gray-600 mb-2">
-                    Filtered <?= count($firstTwoRounds) ?> events from first 2 rounds out of <?= count($eventsArray) ?> total events
+                    Filtered <?= count($firstTwoRounds); ?> events from first 2 rounds out of <?= count($eventsArray); ?> total events
                 </div>
                 <div class="space-y-1">
                     <?php foreach ($firstTwoRounds as $event): ?>
                         <?php $eventParticipants = $event->getParticipants(); ?>
                         <div class="text-sm p-2 bg-gray-100 rounded">
-                            Round <?= $event->getRound()->getNumber() ?>: 
-                            <?= htmlspecialchars($eventParticipants[0]->getLabel()) ?> vs 
-                            <?= htmlspecialchars($eventParticipants[1]->getLabel()) ?>
+                            Round <?= $event->getRound()->getNumber(); ?>: 
+                            <?= htmlspecialchars($eventParticipants[0]->getLabel()); ?> vs 
+                            <?= htmlspecialchars($eventParticipants[1]->getLabel()); ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -227,7 +227,7 @@ foreach ($schedule as $event) {
         $eventsByRound[$roundNumber] = [];
     }
     $eventsByRound[$roundNumber][] = $event;
-}') ?></code></pre>
+}'); ?></code></pre>
             </div>
 
             <div class="space-y-6">
@@ -235,9 +235,9 @@ foreach ($schedule as $event) {
                     <div class="border border-gray-200 rounded-lg p-4">
                         <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
                             <span class="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm mr-3">
-                                Round <?= $roundNumber ?>
+                                Round <?= $roundNumber; ?>
                             </span>
-                            <span class="text-gray-500 text-sm"><?= count($roundEvents) ?> match<?= count($roundEvents) === 1 ? '' : 'es' ?></span>
+                            <span class="text-gray-500 text-sm"><?= count($roundEvents); ?> match<?= count($roundEvents) === 1 ? '' : 'es'; ?></span>
                         </h3>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -245,13 +245,13 @@ foreach ($schedule as $event) {
                                 <?php $eventParticipants = $event->getParticipants(); ?>
                                 <div class="bg-gray-50 rounded p-3">
                                     <div class="flex items-center justify-between">
-                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[0]->getLabel()) ?></span>
+                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[0]->getLabel()); ?></span>
                                         <span class="text-gray-400 font-bold">VS</span>
-                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[1]->getLabel()) ?></span>
+                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[1]->getLabel()); ?></span>
                                     </div>
                                     <div class="text-xs text-gray-500 mt-1 text-center">
-                                        <?= htmlspecialchars($eventParticipants[0]->getMetadataValue('league')) ?> vs 
-                                        <?= htmlspecialchars($eventParticipants[1]->getMetadataValue('league')) ?>
+                                        <?= htmlspecialchars($eventParticipants[0]->getMetadataValue('league')); ?> vs 
+                                        <?= htmlspecialchars($eventParticipants[1]->getMetadataValue('league')); ?>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
@@ -276,33 +276,33 @@ $totalRounds = $schedule->getMetadataValue(\'total_rounds\');
 // Check if metadata exists
 if ($schedule->hasMetadata(\'creation_time\')) {
     $createdAt = $schedule->getMetadataValue(\'creation_time\');
-}') ?></code></pre>
+}'); ?></code></pre>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div class="bg-gray-50 rounded-lg p-4">
                     <div class="text-sm text-gray-600 mb-1">Algorithm</div>
-                    <div class="font-medium text-gray-800"><?= htmlspecialchars($schedule->getMetadataValue('algorithm')) ?></div>
+                    <div class="font-medium text-gray-800"><?= htmlspecialchars($schedule->getMetadataValue('algorithm')); ?></div>
                 </div>
                 <div class="bg-gray-50 rounded-lg p-4">
                     <div class="text-sm text-gray-600 mb-1">Participant Count</div>
-                    <div class="font-medium text-gray-800"><?= $schedule->getMetadataValue('participant_count') ?></div>
+                    <div class="font-medium text-gray-800"><?= $schedule->getMetadataValue('participant_count'); ?></div>
                 </div>
                 <div class="bg-gray-50 rounded-lg p-4">
                     <div class="text-sm text-gray-600 mb-1">Total Rounds</div>
-                    <div class="font-medium text-gray-800"><?= $schedule->getMetadataValue('total_rounds') ?></div>
+                    <div class="font-medium text-gray-800"><?= $schedule->getMetadataValue('total_rounds'); ?></div>
                 </div>
                 <div class="bg-gray-50 rounded-lg p-4">
                     <div class="text-sm text-gray-600 mb-1">Events per Round</div>
-                    <div class="font-medium text-gray-800"><?= $schedule->getMetadataValue('events_per_round') ?></div>
+                    <div class="font-medium text-gray-800"><?= $schedule->getMetadataValue('events_per_round'); ?></div>
                 </div>
                 <div class="bg-gray-50 rounded-lg p-4">
                     <div class="text-sm text-gray-600 mb-1">Default Value Example</div>
-                    <div class="font-medium text-gray-800"><?= htmlspecialchars($schedule->getMetadataValue('nonexistent_key', 'N/A')) ?></div>
+                    <div class="font-medium text-gray-800"><?= htmlspecialchars($schedule->getMetadataValue('nonexistent_key', 'N/A')); ?></div>
                 </div>
                 <div class="bg-gray-50 rounded-lg p-4">
                     <div class="text-sm text-gray-600 mb-1">Has Custom Metadata?</div>
-                    <div class="font-medium text-gray-800"><?= $schedule->hasMetadata('custom_field') ? 'Yes' : 'No' ?></div>
+                    <div class="font-medium text-gray-800"><?= $schedule->hasMetadata('custom_field') ? 'Yes' : 'No'; ?></div>
                 </div>
             </div>
         </div>

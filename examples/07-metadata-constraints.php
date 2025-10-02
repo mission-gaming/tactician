@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\MetadataConstraint;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 // Create participants with rich metadata
 $participants = [
@@ -15,42 +15,42 @@ $participants = [
         'skill_level' => 'Expert',
         'language' => 'English',
         'timezone' => 'UTC+1',
-        'platform' => 'PC'
+        'platform' => 'PC',
     ]),
     new Participant('team2', 'Tokyo Thunder', 2, [
         'region' => 'Asia',
-        'skill_level' => 'Expert', 
+        'skill_level' => 'Expert',
         'language' => 'Japanese',
         'timezone' => 'UTC+9',
-        'platform' => 'PC'
+        'platform' => 'PC',
     ]),
     new Participant('team3', 'California Kings', 3, [
         'region' => 'North America',
         'skill_level' => 'Advanced',
         'language' => 'English',
         'timezone' => 'UTC-8',
-        'platform' => 'Console'
+        'platform' => 'Console',
     ]),
     new Participant('team4', 'London Lions', 4, [
         'region' => 'Europe',
         'skill_level' => 'Advanced',
-        'language' => 'English', 
+        'language' => 'English',
         'timezone' => 'UTC+0',
-        'platform' => 'PC'
+        'platform' => 'PC',
     ]),
     new Participant('team5', 'São Paulo Squad', 5, [
         'region' => 'South America',
         'skill_level' => 'Intermediate',
         'language' => 'Portuguese',
         'timezone' => 'UTC-3',
-        'platform' => 'Console'
+        'platform' => 'Console',
     ]),
     new Participant('team6', 'Sydney Sharks', 6, [
         'region' => 'Oceania',
         'skill_level' => 'Advanced',
         'language' => 'English',
         'timezone' => 'UTC+10',
-        'platform' => 'PC'
+        'platform' => 'PC',
     ]),
 ];
 
@@ -61,7 +61,7 @@ $scenarios = [
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->build(),
-        'rules' => 'Any team can play against any other team'
+        'rules' => 'Any team can play against any other team',
     ],
     'Same Skill Level Only' => [
         'description' => 'Teams can only play against teams of the same skill level',
@@ -69,7 +69,7 @@ $scenarios = [
             ->noRepeatPairings()
             ->add(MetadataConstraint::mustMatch('skill_level'))
             ->build(),
-        'rules' => 'Expert vs Expert, Advanced vs Advanced, etc.'
+        'rules' => 'Expert vs Expert, Advanced vs Advanced, etc.',
     ],
     'Same Region Preference' => [
         'description' => 'Prefer matches within the same region when possible',
@@ -77,7 +77,7 @@ $scenarios = [
             ->noRepeatPairings()
             ->add(MetadataConstraint::preferMatch('region'))
             ->build(),
-        'rules' => 'European teams prefer to play other European teams'
+        'rules' => 'European teams prefer to play other European teams',
     ],
     'Cross-Platform Forbidden' => [
         'description' => 'PC teams cannot play against Console teams',
@@ -85,7 +85,7 @@ $scenarios = [
             ->noRepeatPairings()
             ->add(MetadataConstraint::mustMatch('platform'))
             ->build(),
-        'rules' => 'PC teams only play PC teams, Console only play Console'
+        'rules' => 'PC teams only play PC teams, Console only play Console',
     ],
     'Complex Rules' => [
         'description' => 'Multiple metadata constraints combined',
@@ -94,8 +94,8 @@ $scenarios = [
             ->add(MetadataConstraint::mustMatch('platform'))
             ->add(MetadataConstraint::preferMatch('region'))
             ->build(),
-        'rules' => 'Same platform required, same region preferred'
-    ]
+        'rules' => 'Same platform required, same region preferred',
+    ],
 ];
 
 $results = [];
@@ -105,14 +105,14 @@ foreach ($scenarios as $name => $scenario) {
     try {
         $scheduler = new RoundRobinScheduler($scenario['constraints']);
         $schedule = $scheduler->schedule($participants);
-        
+
         $results[$name] = [
             'status' => 'success',
             'schedule' => $schedule,
-            'description' => $scenario['description'], 
+            'description' => $scenario['description'],
             'rules' => $scenario['rules'],
             'total_events' => count($schedule),
-            'error' => null
+            'error' => null,
         ];
     } catch (Exception $e) {
         $results[$name] = [
@@ -121,13 +121,14 @@ foreach ($scenarios as $name => $scenario) {
             'description' => $scenario['description'],
             'rules' => $scenario['rules'],
             'total_events' => 0,
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
         ];
     }
 }
 
 // Helper functions
-function getRegionColor($region) {
+function getRegionColor($region)
+{
     return match($region) {
         'Europe' => 'bg-blue-100 text-blue-800',
         'Asia' => 'bg-red-100 text-red-800',
@@ -138,46 +139,48 @@ function getRegionColor($region) {
     };
 }
 
-function getSkillColor($skill) {
+function getSkillColor($skill)
+{
     return match($skill) {
         'Expert' => 'bg-red-100 text-red-800',
-        'Advanced' => 'bg-orange-100 text-orange-800', 
+        'Advanced' => 'bg-orange-100 text-orange-800',
         'Intermediate' => 'bg-yellow-100 text-yellow-800',
         default => 'bg-gray-100 text-gray-800'
     };
 }
 
-function analyzeMatchMetadata($schedule) {
+function analyzeMatchMetadata($schedule)
+{
     $sameRegion = 0;
     $samePlatform = 0;
     $sameSkill = 0;
     $total = 0;
-    
+
     foreach ($schedule as $event) {
         $participants = $event->getParticipants();
         $p1 = $participants[0];
         $p2 = $participants[1];
-        
+
         if ($p1->getMetadataValue('region') === $p2->getMetadataValue('region')) {
-            $sameRegion++;
+            ++$sameRegion;
         }
         if ($p1->getMetadataValue('platform') === $p2->getMetadataValue('platform')) {
-            $samePlatform++;
+            ++$samePlatform;
         }
         if ($p1->getMetadataValue('skill_level') === $p2->getMetadataValue('skill_level')) {
-            $sameSkill++;
+            ++$sameSkill;
         }
-        $total++;
+        ++$total;
     }
-    
+
     return [
         'same_region' => $sameRegion,
-        'same_platform' => $samePlatform, 
+        'same_platform' => $samePlatform,
         'same_skill' => $sameSkill,
         'total' => $total,
         'region_percentage' => $total > 0 ? round(($sameRegion / $total) * 100) : 0,
         'platform_percentage' => $total > 0 ? round(($samePlatform / $total) * 100) : 0,
-        'skill_percentage' => $total > 0 ? round(($sameSkill / $total) * 100) : 0
+        'skill_percentage' => $total > 0 ? round(($sameSkill / $total) * 100) : 0,
     ];
 }
 ?>
@@ -250,27 +253,27 @@ function analyzeMatchMetadata($schedule) {
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <?php foreach ($participants as $participant): ?>
                     <div class="border border-gray-200 rounded-lg p-4">
-                        <div class="font-semibold text-gray-800 mb-2"><?= htmlspecialchars($participant->getLabel()) ?></div>
+                        <div class="font-semibold text-gray-800 mb-2"><?= htmlspecialchars($participant->getLabel()); ?></div>
                         <div class="space-y-2 text-sm">
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Region:</span>
-                                <span class="px-2 py-1 rounded-full text-xs <?= getRegionColor($participant->getMetadataValue('region')) ?>">
-                                    <?= htmlspecialchars($participant->getMetadataValue('region')) ?>
+                                <span class="px-2 py-1 rounded-full text-xs <?= getRegionColor($participant->getMetadataValue('region')); ?>">
+                                    <?= htmlspecialchars($participant->getMetadataValue('region')); ?>
                                 </span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Skill:</span>
-                                <span class="px-2 py-1 rounded-full text-xs <?= getSkillColor($participant->getMetadataValue('skill_level')) ?>">
-                                    <?= htmlspecialchars($participant->getMetadataValue('skill_level')) ?>
+                                <span class="px-2 py-1 rounded-full text-xs <?= getSkillColor($participant->getMetadataValue('skill_level')); ?>">
+                                    <?= htmlspecialchars($participant->getMetadataValue('skill_level')); ?>
                                 </span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Platform:</span>
-                                <span class="text-gray-700"><?= htmlspecialchars($participant->getMetadataValue('platform')) ?></span>
+                                <span class="text-gray-700"><?= htmlspecialchars($participant->getMetadataValue('platform')); ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Language:</span>
-                                <span class="text-gray-700"><?= htmlspecialchars($participant->getMetadataValue('language')) ?></span>
+                                <span class="text-gray-700"><?= htmlspecialchars($participant->getMetadataValue('language')); ?></span>
                             </div>
                         </div>
                     </div>
@@ -290,14 +293,14 @@ function analyzeMatchMetadata($schedule) {
                                 <?php else: ?>
                                     <span class="mr-2">❌</span>
                                 <?php endif; ?>
-                                <?= htmlspecialchars($scenarioName) ?>
+                                <?= htmlspecialchars($scenarioName); ?>
                             </h3>
-                            <p class="text-gray-600"><?= htmlspecialchars($result['description']) ?></p>
-                            <p class="text-sm text-blue-600 mt-1"><strong>Rules:</strong> <?= htmlspecialchars($result['rules']) ?></p>
+                            <p class="text-gray-600"><?= htmlspecialchars($result['description']); ?></p>
+                            <p class="text-sm text-blue-600 mt-1"><strong>Rules:</strong> <?= htmlspecialchars($result['rules']); ?></p>
                         </div>
                         <?php if ($result['status'] === 'success'): ?>
                             <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
-                                <?= $result['total_events'] ?> matches
+                                <?= $result['total_events']; ?> matches
                             </span>
                         <?php else: ?>
                             <span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm">
@@ -312,19 +315,19 @@ function analyzeMatchMetadata($schedule) {
                         <!-- Metadata Analysis -->
                         <div class="grid grid-cols-3 gap-4 mb-6">
                             <div class="bg-blue-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-blue-600"><?= $analysis['region_percentage'] ?>%</div>
+                                <div class="text-2xl font-bold text-blue-600"><?= $analysis['region_percentage']; ?>%</div>
                                 <div class="text-blue-700 text-sm">Same Region Matches</div>
-                                <div class="text-xs text-blue-600"><?= $analysis['same_region'] ?>/<?= $analysis['total'] ?></div>
+                                <div class="text-xs text-blue-600"><?= $analysis['same_region']; ?>/<?= $analysis['total']; ?></div>
                             </div>
                             <div class="bg-green-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-green-600"><?= $analysis['platform_percentage'] ?>%</div>
+                                <div class="text-2xl font-bold text-green-600"><?= $analysis['platform_percentage']; ?>%</div>
                                 <div class="text-green-700 text-sm">Same Platform Matches</div>
-                                <div class="text-xs text-green-600"><?= $analysis['same_platform'] ?>/<?= $analysis['total'] ?></div>
+                                <div class="text-xs text-green-600"><?= $analysis['same_platform']; ?>/<?= $analysis['total']; ?></div>
                             </div>
                             <div class="bg-purple-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-purple-600"><?= $analysis['skill_percentage'] ?>%</div>
+                                <div class="text-2xl font-bold text-purple-600"><?= $analysis['skill_percentage']; ?>%</div>
                                 <div class="text-purple-700 text-sm">Same Skill Matches</div>
-                                <div class="text-xs text-purple-600"><?= $analysis['same_skill'] ?>/<?= $analysis['total'] ?></div>
+                                <div class="text-xs text-purple-600"><?= $analysis['same_skill']; ?>/<?= $analysis['total']; ?></div>
                             </div>
                         </div>
 
@@ -333,39 +336,41 @@ function analyzeMatchMetadata($schedule) {
                             <h4 class="font-medium text-gray-800">Sample Matches (First 6)</h4>
                             <?php
                             $sampleCount = 0;
-                            foreach ($result['schedule'] as $event):
-                                if ($sampleCount >= 6) break;
-                                $eventParticipants = $event->getParticipants();
-                                $p1 = $eventParticipants[0];
-                                $p2 = $eventParticipants[1];
-                                
-                                $sameRegion = $p1->getMetadataValue('region') === $p2->getMetadataValue('region');
-                                $samePlatform = $p1->getMetadataValue('platform') === $p2->getMetadataValue('platform');
-                                $sameSkill = $p1->getMetadataValue('skill_level') === $p2->getMetadataValue('skill_level');
-                                $sampleCount++;
+                        foreach ($result['schedule'] as $event):
+                            if ($sampleCount >= 6) {
+                                break;
+                            }
+                            $eventParticipants = $event->getParticipants();
+                            $p1 = $eventParticipants[0];
+                            $p2 = $eventParticipants[1];
+
+                            $sameRegion = $p1->getMetadataValue('region') === $p2->getMetadataValue('region');
+                            $samePlatform = $p1->getMetadataValue('platform') === $p2->getMetadataValue('platform');
+                            $sameSkill = $p1->getMetadataValue('skill_level') === $p2->getMetadataValue('skill_level');
+                            ++$sampleCount;
                             ?>
                                 <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                                     <div class="flex items-center space-x-6">
                                         <div class="text-center">
-                                            <div class="font-medium text-gray-800"><?= htmlspecialchars($p1->getLabel()) ?></div>
+                                            <div class="font-medium text-gray-800"><?= htmlspecialchars($p1->getLabel()); ?></div>
                                             <div class="text-xs space-x-1">
-                                                <span class="px-1 rounded <?= getRegionColor($p1->getMetadataValue('region')) ?>">
-                                                    <?= htmlspecialchars($p1->getMetadataValue('region')) ?>
+                                                <span class="px-1 rounded <?= getRegionColor($p1->getMetadataValue('region')); ?>">
+                                                    <?= htmlspecialchars($p1->getMetadataValue('region')); ?>
                                                 </span>
-                                                <span class="px-1 rounded <?= getSkillColor($p1->getMetadataValue('skill_level')) ?>">
-                                                    <?= htmlspecialchars($p1->getMetadataValue('skill_level')) ?>
+                                                <span class="px-1 rounded <?= getSkillColor($p1->getMetadataValue('skill_level')); ?>">
+                                                    <?= htmlspecialchars($p1->getMetadataValue('skill_level')); ?>
                                                 </span>
                                             </div>
                                         </div>
                                         <div class="text-gray-400 font-bold">VS</div>
                                         <div class="text-center">
-                                            <div class="font-medium text-gray-800"><?= htmlspecialchars($p2->getLabel()) ?></div>
+                                            <div class="font-medium text-gray-800"><?= htmlspecialchars($p2->getLabel()); ?></div>
                                             <div class="text-xs space-x-1">
-                                                <span class="px-1 rounded <?= getRegionColor($p2->getMetadataValue('region')) ?>">
-                                                    <?= htmlspecialchars($p2->getMetadataValue('region')) ?>
+                                                <span class="px-1 rounded <?= getRegionColor($p2->getMetadataValue('region')); ?>">
+                                                    <?= htmlspecialchars($p2->getMetadataValue('region')); ?>
                                                 </span>
-                                                <span class="px-1 rounded <?= getSkillColor($p2->getMetadataValue('skill_level')) ?>">
-                                                    <?= htmlspecialchars($p2->getMetadataValue('skill_level')) ?>
+                                                <span class="px-1 rounded <?= getSkillColor($p2->getMetadataValue('skill_level')); ?>">
+                                                    <?= htmlspecialchars($p2->getMetadataValue('skill_level')); ?>
                                                 </span>
                                             </div>
                                         </div>
@@ -390,7 +395,7 @@ function analyzeMatchMetadata($schedule) {
                         <!-- Failed scenario -->
                         <div class="bg-red-50 rounded-lg p-4">
                             <h4 class="font-semibold text-red-800 mb-2">❌ Schedule Generation Failed</h4>
-                            <p class="text-red-700 text-sm"><?= htmlspecialchars($result['error']) ?></p>
+                            <p class="text-red-700 text-sm"><?= htmlspecialchars($result['error']); ?></p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -438,7 +443,7 @@ $constraints = ConstraintSet::create()
         // Allow matches if timezone difference is <= 6 hours
         return abs($offset1 - $offset2) <= 6;
     }, \'Compatible Timezones\'))
-    ->build();') ?></code></pre>
+    ->build();'); ?></code></pre>
             </div>
         </div>
 

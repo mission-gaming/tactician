@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 // Create participants with different seeding levels
 $participants = [
@@ -47,17 +47,21 @@ $scheduler3 = new RoundRobinScheduler($constraints3);
 $schedulesToCompare['50% Protection'] = $scheduler3->schedule($participants);
 
 // Function to check if a match involves protected seeds
-function isProtectedSeedMatch($event, $protectedSeedCount = 2) {
+function isProtectedSeedMatch($event, $protectedSeedCount = 2)
+{
     $participants = $event->getParticipants();
-    return ($participants[0]->getSeed() <= $protectedSeedCount || 
-            $participants[1]->getSeed() <= $protectedSeedCount);
+
+    return $participants[0]->getSeed() <= $protectedSeedCount ||
+            $participants[1]->getSeed() <= $protectedSeedCount;
 }
 
 // Function to check if a match is between top seeds
-function isTopSeedClash($event, $protectedSeedCount = 2) {
+function isTopSeedClash($event, $protectedSeedCount = 2)
+{
     $participants = $event->getParticipants();
-    return ($participants[0]->getSeed() <= $protectedSeedCount && 
-            $participants[1]->getSeed() <= $protectedSeedCount);
+
+    return $participants[0]->getSeed() <= $protectedSeedCount &&
+            $participants[1]->getSeed() <= $protectedSeedCount;
 }
 
 // Calculate statistics for each schedule
@@ -68,7 +72,7 @@ foreach ($schedulesToCompare as $name => $schedule) {
     $earlyRounds = [];
     $lateRounds = [];
     $topSeedClashes = [];
-    
+
     foreach ($schedule as $event) {
         $roundNumber = $event->getRound()->getNumber();
         if ($roundNumber <= $protectedPeriod) {
@@ -76,12 +80,12 @@ foreach ($schedulesToCompare as $name => $schedule) {
         } else {
             $lateRounds[] = $event;
         }
-        
+
         if (isTopSeedClash($event)) {
             $topSeedClashes[] = $event;
         }
     }
-    
+
     $stats[$name] = [
         'schedule' => $schedule,
         'total_rounds' => $totalRounds,
@@ -89,8 +93,8 @@ foreach ($schedulesToCompare as $name => $schedule) {
         'early_rounds' => $earlyRounds,
         'late_rounds' => $lateRounds,
         'top_seed_clashes' => $topSeedClashes,
-        'early_clashes' => array_filter($earlyRounds, fn($e) => isTopSeedClash($e)),
-        'late_clashes' => array_filter($lateRounds, fn($e) => isTopSeedClash($e))
+        'early_clashes' => array_filter($earlyRounds, fn ($e) => isTopSeedClash($e)),
+        'late_clashes' => array_filter($lateRounds, fn ($e) => isTopSeedClash($e)),
     ];
 }
 ?>
@@ -147,11 +151,11 @@ foreach ($schedulesToCompare as $name => $schedule) {
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Total Rounds:</span>
-                            <span class="font-medium"><?= $stats['50% Protection']['total_rounds'] ?></span>
+                            <span class="font-medium"><?= $stats['50% Protection']['total_rounds']; ?></span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Protected Rounds:</span>
-                            <span class="font-medium">1 - <?= $stats['50% Protection']['protected_period'] ?></span>
+                            <span class="font-medium">1 - <?= $stats['50% Protection']['protected_period']; ?></span>
                         </div>
                     </div>
                 </div>
@@ -163,7 +167,7 @@ foreach ($schedulesToCompare as $name => $schedule) {
             <h2 class="text-xl font-bold text-gray-800 mb-4">Tournament Participants</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <?php foreach ($participants as $participant): ?>
-                    <?php 
+                    <?php
                     $seedClass = '';
                     $tierLabel = '';
                     if ($participant->getSeed() <= 2) {
@@ -177,12 +181,12 @@ foreach ($schedulesToCompare as $name => $schedule) {
                         $tierLabel = 'Lower Seed';
                     }
                     ?>
-                    <div class="border-2 rounded-lg p-4 <?= $seedClass ?>">
+                    <div class="border-2 rounded-lg p-4 <?= $seedClass; ?>">
                         <div class="flex items-center justify-between mb-2">
-                            <div class="font-semibold"><?= htmlspecialchars($participant->getLabel()) ?></div>
-                            <div class="text-sm font-bold">#{<?= $participant->getSeed() ?>}</div>
+                            <div class="font-semibold"><?= htmlspecialchars($participant->getLabel()); ?></div>
+                            <div class="text-sm font-bold">#{<?= $participant->getSeed(); ?>}</div>
                         </div>
-                        <div class="text-xs"><?= $tierLabel ?></div>
+                        <div class="text-xs"><?= $tierLabel; ?></div>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -194,23 +198,23 @@ foreach ($schedulesToCompare as $name => $schedule) {
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <?php foreach ($stats as $name => $data): ?>
                     <div class="border border-gray-200 rounded-lg p-4">
-                        <h3 class="font-semibold text-gray-800 mb-3"><?= htmlspecialchars($name) ?></h3>
+                        <h3 class="font-semibold text-gray-800 mb-3"><?= htmlspecialchars($name); ?></h3>
                         
                         <div class="space-y-3">
                             <div class="bg-red-50 rounded p-3">
-                                <div class="text-lg font-bold text-red-600"><?= count($data['early_clashes']) ?></div>
+                                <div class="text-lg font-bold text-red-600"><?= count($data['early_clashes']); ?></div>
                                 <div class="text-sm text-red-700">Early Top Seed Clashes</div>
-                                <div class="text-xs text-gray-500">Rounds 1-<?= $data['protected_period'] ?></div>
+                                <div class="text-xs text-gray-500">Rounds 1-<?= $data['protected_period']; ?></div>
                             </div>
                             
                             <div class="bg-green-50 rounded p-3">
-                                <div class="text-lg font-bold text-green-600"><?= count($data['late_clashes']) ?></div>
+                                <div class="text-lg font-bold text-green-600"><?= count($data['late_clashes']); ?></div>
                                 <div class="text-sm text-green-700">Late Top Seed Clashes</div>
-                                <div class="text-xs text-gray-500">Rounds <?= $data['protected_period'] + 1 ?>-<?= $data['total_rounds'] ?></div>
+                                <div class="text-xs text-gray-500">Rounds <?= $data['protected_period'] + 1; ?>-<?= $data['total_rounds']; ?></div>
                             </div>
                             
                             <div class="bg-blue-50 rounded p-3">
-                                <div class="text-lg font-bold text-blue-600"><?= count($data['top_seed_clashes']) ?></div>
+                                <div class="text-lg font-bold text-blue-600"><?= count($data['top_seed_clashes']); ?></div>
                                 <div class="text-sm text-blue-700">Total Top Seed Clashes</div>
                                 <div class="text-xs text-gray-500">Throughout tournament</div>
                             </div>
@@ -230,23 +234,23 @@ foreach ($schedulesToCompare as $name => $schedule) {
             
             <?php
             $sampleSchedule = $stats['50% Protection']['schedule'];
-            $sampleCount = 0;
-            $eventsByRound = [];
-            foreach ($sampleSchedule as $event) {
-                $roundNumber = $event->getRound()->getNumber();
-                if (!isset($eventsByRound[$roundNumber])) {
-                    $eventsByRound[$roundNumber] = [];
-                }
-                $eventsByRound[$roundNumber][] = $event;
-            }
-            ?>
+$sampleCount = 0;
+$eventsByRound = [];
+foreach ($sampleSchedule as $event) {
+    $roundNumber = $event->getRound()->getNumber();
+    if (!isset($eventsByRound[$roundNumber])) {
+        $eventsByRound[$roundNumber] = [];
+    }
+    $eventsByRound[$roundNumber][] = $event;
+}
+?>
             
             <div class="space-y-4">
                 <?php foreach (array_slice($eventsByRound, 0, 4, true) as $roundNumber => $roundEvents): ?>
                     <div class="border border-gray-200 rounded-lg p-4">
                         <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
                             <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm mr-3">
-                                Round <?= $roundNumber ?>
+                                Round <?= $roundNumber; ?>
                             </span>
                             <?php if ($roundNumber <= $stats['50% Protection']['protected_period']): ?>
                                 <span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
@@ -261,14 +265,14 @@ foreach ($schedulesToCompare as $name => $schedule) {
                         
                         <div class="space-y-2">
                             <?php foreach ($roundEvents as $event): ?>
-                                <?php 
-                                $eventParticipants = $event->getParticipants();
+                                <?php
+                    $eventParticipants = $event->getParticipants();
                                 $isTopClash = isTopSeedClash($event);
                                 $hasProtectedSeed = isProtectedSeedMatch($event);
-                                
+
                                 $cardClass = 'border border-gray-100 rounded-lg p-3';
                                 $indicator = '';
-                                
+
                                 if ($isTopClash && $roundNumber <= $stats['50% Protection']['protected_period']) {
                                     $cardClass = 'border-2 border-red-300 bg-red-50 rounded-lg p-3';
                                     $indicator = '<span class="bg-red-500 text-white px-2 py-1 rounded text-xs ml-2">⚠️ Protected Clash</span>';
@@ -281,13 +285,13 @@ foreach ($schedulesToCompare as $name => $schedule) {
                                 }
                                 ?>
                                 
-                                <div class="<?= $cardClass ?>">
+                                <div class="<?= $cardClass; ?>">
                                     <div class="flex items-center justify-between">
                                         <div class="flex items-center space-x-4">
                                             <div class="text-center">
-                                                <div class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[0]->getLabel()) ?></div>
+                                                <div class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[0]->getLabel()); ?></div>
                                                 <div class="text-xs text-gray-500">
-                                                    Seed #<?= $eventParticipants[0]->getSeed() ?>
+                                                    Seed #<?= $eventParticipants[0]->getSeed(); ?>
                                                     <?php if ($eventParticipants[0]->getSeed() <= 2): ?>
                                                         <span class="text-red-600 font-bold">★</span>
                                                     <?php endif; ?>
@@ -295,9 +299,9 @@ foreach ($schedulesToCompare as $name => $schedule) {
                                             </div>
                                             <div class="text-gray-400 font-bold">VS</div>
                                             <div class="text-center">
-                                                <div class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[1]->getLabel()) ?></div>
+                                                <div class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[1]->getLabel()); ?></div>
                                                 <div class="text-xs text-gray-500">
-                                                    Seed #<?= $eventParticipants[1]->getSeed() ?>
+                                                    Seed #<?= $eventParticipants[1]->getSeed(); ?>
                                                     <?php if ($eventParticipants[1]->getSeed() <= 2): ?>
                                                         <span class="text-red-600 font-bold">★</span>
                                                     <?php endif; ?>
@@ -305,7 +309,7 @@ foreach ($schedulesToCompare as $name => $schedule) {
                                             </div>
                                         </div>
                                         <div>
-                                            <?= $indicator ?>
+                                            <?= $indicator; ?>
                                         </div>
                                     </div>
                                 </div>
@@ -338,7 +342,7 @@ $scheduler = new RoundRobinScheduler($constraints);
 $schedule = $scheduler->schedule($participants);
 
 // The constraint ensures that seed #1 and seed #2 
-// won\'t meet until the second half of the tournament') ?></code></pre>
+// won\'t meet until the second half of the tournament'); ?></code></pre>
             </div>
         </div>
 

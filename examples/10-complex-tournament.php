@@ -3,12 +3,12 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use MissionGaming\Tactician\Constraints\CallableConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
+use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Constraints\ConstraintSet;
-use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
-use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
-use MissionGaming\Tactician\Constraints\CallableConstraint;
 
 // Create a complex gaming tournament with 8 teams
 $teams = [
@@ -20,7 +20,7 @@ $teams = [
         'avg_match_duration' => 32,
         'sponsor_tier' => 'premium',
         'streaming_platform' => 'twitch',
-        'coach_experience' => 'veteran'
+        'coach_experience' => 'veteran',
     ]),
     new Participant('tsm', 'Team SoloMid', 2, [
         'region' => 'North America',
@@ -30,7 +30,7 @@ $teams = [
         'avg_match_duration' => 28,
         'sponsor_tier' => 'premium',
         'streaming_platform' => 'twitch',
-        'coach_experience' => 'veteran'
+        'coach_experience' => 'veteran',
     ]),
     new Participant('skt', 'T1', 3, [
         'region' => 'Asia',
@@ -40,7 +40,7 @@ $teams = [
         'avg_match_duration' => 35,
         'sponsor_tier' => 'premium',
         'streaming_platform' => 'youtube',
-        'coach_experience' => 'veteran'
+        'coach_experience' => 'veteran',
     ]),
     new Participant('g2', 'G2 Esports', 4, [
         'region' => 'Europe',
@@ -50,7 +50,7 @@ $teams = [
         'avg_match_duration' => 30,
         'sponsor_tier' => 'standard',
         'streaming_platform' => 'twitch',
-        'coach_experience' => 'experienced'
+        'coach_experience' => 'experienced',
     ]),
     new Participant('cloud9', 'Cloud9', 5, [
         'region' => 'North America',
@@ -60,7 +60,7 @@ $teams = [
         'avg_match_duration' => 26,
         'sponsor_tier' => 'standard',
         'streaming_platform' => 'twitch',
-        'coach_experience' => 'experienced'
+        'coach_experience' => 'experienced',
     ]),
     new Participant('geng', 'Gen.G', 6, [
         'region' => 'Asia',
@@ -70,7 +70,7 @@ $teams = [
         'avg_match_duration' => 33,
         'sponsor_tier' => 'standard',
         'streaming_platform' => 'youtube',
-        'coach_experience' => 'experienced'
+        'coach_experience' => 'experienced',
     ]),
     new Participant('mad', 'MAD Lions', 7, [
         'region' => 'Europe',
@@ -80,7 +80,7 @@ $teams = [
         'avg_match_duration' => 29,
         'sponsor_tier' => 'basic',
         'streaming_platform' => 'twitch',
-        'coach_experience' => 'rookie'
+        'coach_experience' => 'rookie',
     ]),
     new Participant('100t', '100 Thieves', 8, [
         'region' => 'North America',
@@ -90,77 +90,80 @@ $teams = [
         'avg_match_duration' => 31,
         'sponsor_tier' => 'basic',
         'streaming_platform' => 'youtube',
-        'coach_experience' => 'rookie'
+        'coach_experience' => 'rookie',
     ]),
 ];
 
 // Complex constraint set combining multiple rules
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    
+
     // Protect top 3 seeds for 40% of tournament
     ->add(new SeedProtectionConstraint(3, 0.4))
-    
+
     // Minimum 1 round rest between matches (for player stamina)
     ->add(new MinimumRestPeriodsConstraint(1))
-    
+
     // Custom constraint: Tier balance
     ->add(new CallableConstraint(
-        function($event, $context) {
+        function ($event, $context) {
             $participants = $event->getParticipants();
             $round = $event->getRound()->getNumber();
-            
+
             // In early rounds (1-3), avoid S-tier vs B-tier matchups
             if ($round <= 3) {
                 $tier1 = $participants[0]->getMetadataValue('tier');
                 $tier2 = $participants[1]->getMetadataValue('tier');
-                
+
                 return !(
                     ($tier1 === 'S' && $tier2 === 'B') ||
                     ($tier1 === 'B' && $tier2 === 'S')
                 );
             }
+
             return true;
         },
         'Early Round Tier Balance'
     ))
-    
+
     // Custom constraint: Regional distribution
     ->add(new CallableConstraint(
-        function($event, $context) {
+        function ($event, $context) {
             $participants = $event->getParticipants();
             $round = $event->getRound()->getNumber();
-            
+
             // Prefer cross-regional matches in later rounds for variety
             if ($round >= 5) {
                 $region1 = $participants[0]->getMetadataValue('region');
                 $region2 = $participants[1]->getMetadataValue('region');
-                
+
                 // 70% preference for cross-regional matches in later rounds
                 if ($region1 !== $region2) {
                     return true; // Strongly prefer
                 }
+
                 return rand(0, 100) < 30; // 30% chance for same region
             }
+
             return true;
         },
         'Late Round Regional Diversity'
     ))
-    
+
     // Custom constraint: Streaming platform balance
     ->add(new CallableConstraint(
-        function($event, $context) {
+        function ($event, $context) {
             $participants = $event->getParticipants();
             $platform1 = $participants[0]->getMetadataValue('streaming_platform');
             $platform2 = $participants[1]->getMetadataValue('streaming_platform');
-            
+
             // For broadcast scheduling, prefer mixed platform matches
             // This helps with streaming rights and viewership distribution
             return $platform1 !== $platform2 || rand(0, 100) < 40;
         },
         'Streaming Platform Balance'
     ))
-    
+
     ->build();
 
 // Generate the complex tournament schedule
@@ -176,9 +179,12 @@ try {
 }
 
 // Analysis functions
-function analyzeTournamentComplexity($schedule, $teams) {
-    if (!$schedule) return null;
-    
+function analyzeTournamentComplexity($schedule, $teams)
+{
+    if (!$schedule) {
+        return null;
+    }
+
     $analysis = [
         'total_events' => count($schedule),
         'total_rounds' => $schedule->getMetadataValue('total_rounds'),
@@ -187,53 +193,53 @@ function analyzeTournamentComplexity($schedule, $teams) {
         'platform_distribution' => ['same_platform' => 0, 'mixed_platform' => 0],
         'seed_protection_violations' => 0,
         'early_mismatches' => [],
-        'late_regional_diversity' => 0
+        'late_regional_diversity' => 0,
     ];
-    
+
     $protectedPeriod = (int) ceil($analysis['total_rounds'] * 0.4);
-    
+
     foreach ($schedule as $event) {
         $participants = $event->getParticipants();
         $round = $event->getRound()->getNumber();
-        
+
         $tier1 = $participants[0]->getMetadataValue('tier');
         $tier2 = $participants[1]->getMetadataValue('tier');
         $region1 = $participants[0]->getMetadataValue('region');
         $region2 = $participants[1]->getMetadataValue('region');
         $platform1 = $participants[0]->getMetadataValue('streaming_platform');
         $platform2 = $participants[1]->getMetadataValue('streaming_platform');
-        
+
         // Tier analysis
         $tierKey = $tier1 . '_vs_' . $tier2;
         if ($tier1 > $tier2) {
             $tierKey = $tier2 . '_vs_' . $tier1;
         }
-        $analysis['tier_matchups'][$tierKey]++;
-        
+        ++$analysis['tier_matchups'][$tierKey];
+
         // Regional analysis
         if ($region1 === $region2) {
-            $analysis['regional_matchups']['same_region']++;
+            ++$analysis['regional_matchups']['same_region'];
         } else {
-            $analysis['regional_matchups']['cross_region']++;
+            ++$analysis['regional_matchups']['cross_region'];
             if ($round >= 5) {
-                $analysis['late_regional_diversity']++;
+                ++$analysis['late_regional_diversity'];
             }
         }
-        
+
         // Platform analysis
         if ($platform1 === $platform2) {
-            $analysis['platform_distribution']['same_platform']++;
+            ++$analysis['platform_distribution']['same_platform'];
         } else {
-            $analysis['platform_distribution']['mixed_platform']++;
+            ++$analysis['platform_distribution']['mixed_platform'];
         }
-        
+
         // Seed protection analysis
         $seed1 = $participants[0]->getSeed();
         $seed2 = $participants[1]->getSeed();
         if ($round <= $protectedPeriod && (($seed1 <= 3 && $seed2 <= 3) && $seed1 !== $seed2)) {
-            $analysis['seed_protection_violations']++;
+            ++$analysis['seed_protection_violations'];
         }
-        
+
         // Early mismatch analysis
         if ($round <= 3 && (($tier1 === 'S' && $tier2 === 'B') || ($tier1 === 'B' && $tier2 === 'S'))) {
             $analysis['early_mismatches'][] = [
@@ -241,15 +247,16 @@ function analyzeTournamentComplexity($schedule, $teams) {
                 'team1' => $participants[0]->getLabel(),
                 'team2' => $participants[1]->getLabel(),
                 'tier1' => $tier1,
-                'tier2' => $tier2
+                'tier2' => $tier2,
             ];
         }
     }
-    
+
     return $analysis;
 }
 
-function getTierColor($tier) {
+function getTierColor($tier)
+{
     return match($tier) {
         'S' => 'bg-red-100 text-red-800 border-red-300',
         'A' => 'bg-yellow-100 text-yellow-800 border-yellow-300',
@@ -258,7 +265,8 @@ function getTierColor($tier) {
     };
 }
 
-function getRegionColor($region) {
+function getRegionColor($region)
+{
     return match($region) {
         'Europe' => 'bg-blue-100 text-blue-800',
         'North America' => 'bg-green-100 text-green-800',
@@ -345,31 +353,31 @@ $analysis = $success ? analyzeTournamentComplexity($schedule, $teams) : null;
             <h2 class="text-xl font-bold text-gray-800 mb-4">Participating Teams</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <?php foreach ($teams as $team): ?>
-                    <div class="border-2 rounded-lg p-4 <?= getTierColor($team->getMetadataValue('tier')) ?>">
+                    <div class="border-2 rounded-lg p-4 <?= getTierColor($team->getMetadataValue('tier')); ?>">
                         <div class="flex items-center justify-between mb-2">
-                            <div class="font-semibold"><?= htmlspecialchars($team->getLabel()) ?></div>
-                            <div class="text-sm font-bold">Seed #<?= $team->getSeed() ?></div>
+                            <div class="font-semibold"><?= htmlspecialchars($team->getLabel()); ?></div>
+                            <div class="text-sm font-bold">Seed #<?= $team->getSeed(); ?></div>
                         </div>
                         <div class="space-y-1 text-xs">
                             <div class="flex justify-between">
                                 <span>Tier:</span>
-                                <span class="font-medium"><?= $team->getMetadataValue('tier') ?></span>
+                                <span class="font-medium"><?= $team->getMetadataValue('tier'); ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span>Region:</span>
-                                <span class="px-1 rounded <?= getRegionColor($team->getMetadataValue('region')) ?>"><?= htmlspecialchars($team->getMetadataValue('region')) ?></span>
+                                <span class="px-1 rounded <?= getRegionColor($team->getMetadataValue('region')); ?>"><?= htmlspecialchars($team->getMetadataValue('region')); ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span>Wins:</span>
-                                <span class="font-medium"><?= $team->getMetadataValue('wins') ?></span>
+                                <span class="font-medium"><?= $team->getMetadataValue('wins'); ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span>Platform:</span>
-                                <span class="font-medium"><?= ucfirst($team->getMetadataValue('streaming_platform')) ?></span>
+                                <span class="font-medium"><?= ucfirst($team->getMetadataValue('streaming_platform')); ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span>Sponsor:</span>
-                                <span class="font-medium"><?= ucfirst($team->getMetadataValue('sponsor_tier')) ?></span>
+                                <span class="font-medium"><?= ucfirst($team->getMetadataValue('sponsor_tier')); ?></span>
                             </div>
                         </div>
                     </div>
@@ -383,19 +391,19 @@ $analysis = $success ? analyzeTournamentComplexity($schedule, $teams) : null;
                 <h2 class="text-xl font-bold text-gray-800 mb-4">Tournament Analysis</h2>
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                     <div class="bg-blue-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-blue-600"><?= $analysis['total_events'] ?></div>
+                        <div class="text-2xl font-bold text-blue-600"><?= $analysis['total_events']; ?></div>
                         <div class="text-blue-700 text-sm">Total Matches</div>
                     </div>
                     <div class="bg-green-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-green-600"><?= $analysis['total_rounds'] ?></div>
+                        <div class="text-2xl font-bold text-green-600"><?= $analysis['total_rounds']; ?></div>
                         <div class="text-green-700 text-sm">Total Rounds</div>
                     </div>
                     <div class="bg-purple-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-purple-600"><?= $analysis['regional_matchups']['cross_region'] ?></div>
+                        <div class="text-2xl font-bold text-purple-600"><?= $analysis['regional_matchups']['cross_region']; ?></div>
                         <div class="text-purple-700 text-sm">Cross-Regional</div>
                     </div>
                     <div class="bg-orange-50 rounded-lg p-4">
-                        <div class="text-2xl font-bold text-orange-600"><?= count($analysis['early_mismatches']) ?></div>
+                        <div class="text-2xl font-bold text-orange-600"><?= count($analysis['early_mismatches']); ?></div>
                         <div class="text-orange-700 text-sm">Early Mismatches</div>
                     </div>
                 </div>
@@ -409,8 +417,8 @@ $analysis = $success ? analyzeTournamentComplexity($schedule, $teams) : null;
                             <?php foreach ($analysis['tier_matchups'] as $matchup => $count): ?>
                                 <?php if ($count > 0): ?>
                                     <div class="flex justify-between">
-                                        <span class="text-sm"><?= str_replace('_', ' ', $matchup) ?></span>
-                                        <span class="font-medium"><?= $count ?></span>
+                                        <span class="text-sm"><?= str_replace('_', ' ', $matchup); ?></span>
+                                        <span class="font-medium"><?= $count; ?></span>
                                     </div>
                                 <?php endif; ?>
                             <?php endforeach; ?>
@@ -423,15 +431,15 @@ $analysis = $success ? analyzeTournamentComplexity($schedule, $teams) : null;
                         <div class="space-y-2">
                             <div class="flex justify-between">
                                 <span class="text-sm">Same Region</span>
-                                <span class="font-medium"><?= $analysis['regional_matchups']['same_region'] ?></span>
+                                <span class="font-medium"><?= $analysis['regional_matchups']['same_region']; ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-sm">Cross Region</span>
-                                <span class="font-medium"><?= $analysis['regional_matchups']['cross_region'] ?></span>
+                                <span class="font-medium"><?= $analysis['regional_matchups']['cross_region']; ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-sm">Late Diversity</span>
-                                <span class="font-medium"><?= $analysis['late_regional_diversity'] ?></span>
+                                <span class="font-medium"><?= $analysis['late_regional_diversity']; ?></span>
                             </div>
                         </div>
                     </div>
@@ -442,16 +450,16 @@ $analysis = $success ? analyzeTournamentComplexity($schedule, $teams) : null;
                         <div class="space-y-2">
                             <div class="flex justify-between">
                                 <span class="text-sm">Same Platform</span>
-                                <span class="font-medium"><?= $analysis['platform_distribution']['same_platform'] ?></span>
+                                <span class="font-medium"><?= $analysis['platform_distribution']['same_platform']; ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-sm">Mixed Platform</span>
-                                <span class="font-medium"><?= $analysis['platform_distribution']['mixed_platform'] ?></span>
+                                <span class="font-medium"><?= $analysis['platform_distribution']['mixed_platform']; ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-sm">Mix Percentage</span>
                                 <span class="font-medium">
-                                    <?= round(($analysis['platform_distribution']['mixed_platform'] / $analysis['total_events']) * 100) ?>%
+                                    <?= round(($analysis['platform_distribution']['mixed_platform'] / $analysis['total_events']) * 100); ?>%
                                 </span>
                             </div>
                         </div>
@@ -470,30 +478,32 @@ $analysis = $success ? analyzeTournamentComplexity($schedule, $teams) : null;
                 <div class="space-y-3">
                     <?php
                     $sampleCount = 0;
-                    foreach ($schedule as $event):
-                        if ($sampleCount >= 8) break;
-                        $eventParticipants = $event->getParticipants();
-                        $p1 = $eventParticipants[0];
-                        $p2 = $eventParticipants[1];
-                        $round = $event->getRound()->getNumber();
-                        
-                        $tier1 = $p1->getMetadataValue('tier');
-                        $tier2 = $p2->getMetadataValue('tier');
-                        $region1 = $p1->getMetadataValue('region');
-                        $region2 = $p2->getMetadataValue('region');
-                        $platform1 = $p1->getMetadataValue('streaming_platform');
-                        $platform2 = $p2->getMetadataValue('streaming_platform');
-                        
-                        $isProtectedPeriod = $round <= ceil($analysis['total_rounds'] * 0.4);
-                        $isTierMismatch = ($tier1 === 'S' && $tier2 === 'B') || ($tier1 === 'B' && $tier2 === 'S');
-                        $isCrossRegional = $region1 !== $region2;
-                        $isMixedPlatform = $platform1 !== $platform2;
-                        $sampleCount++;
-                    ?>
+            foreach ($schedule as $event):
+                if ($sampleCount >= 8) {
+                    break;
+                }
+                $eventParticipants = $event->getParticipants();
+                $p1 = $eventParticipants[0];
+                $p2 = $eventParticipants[1];
+                $round = $event->getRound()->getNumber();
+
+                $tier1 = $p1->getMetadataValue('tier');
+                $tier2 = $p2->getMetadataValue('tier');
+                $region1 = $p1->getMetadataValue('region');
+                $region2 = $p2->getMetadataValue('region');
+                $platform1 = $p1->getMetadataValue('streaming_platform');
+                $platform2 = $p2->getMetadataValue('streaming_platform');
+
+                $isProtectedPeriod = $round <= ceil($analysis['total_rounds'] * 0.4);
+                $isTierMismatch = ($tier1 === 'S' && $tier2 === 'B') || ($tier1 === 'B' && $tier2 === 'S');
+                $isCrossRegional = $region1 !== $region2;
+                $isMixedPlatform = $platform1 !== $platform2;
+                ++$sampleCount;
+                ?>
                         <div class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                             <div class="flex items-center space-x-4">
                                 <span class="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm font-medium">
-                                    Round <?= $round ?>
+                                    Round <?= $round; ?>
                                 </span>
                                 <?php if ($isProtectedPeriod): ?>
                                     <span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">Protected</span>
@@ -502,20 +512,20 @@ $analysis = $success ? analyzeTournamentComplexity($schedule, $teams) : null;
                             
                             <div class="flex items-center space-x-6">
                                 <div class="text-center">
-                                    <div class="font-medium text-gray-800"><?= htmlspecialchars($p1->getLabel()) ?></div>
+                                    <div class="font-medium text-gray-800"><?= htmlspecialchars($p1->getLabel()); ?></div>
                                     <div class="text-xs space-x-1">
-                                        <span class="px-1 rounded <?= getTierColor($tier1) ?>"><?= $tier1 ?></span>
-                                        <span class="px-1 rounded <?= getRegionColor($region1) ?>"><?= substr($region1, 0, 3) ?></span>
-                                        <span class="text-gray-500">Seed #<?= $p1->getSeed() ?></span>
+                                        <span class="px-1 rounded <?= getTierColor($tier1); ?>"><?= $tier1; ?></span>
+                                        <span class="px-1 rounded <?= getRegionColor($region1); ?>"><?= substr($region1, 0, 3); ?></span>
+                                        <span class="text-gray-500">Seed #<?= $p1->getSeed(); ?></span>
                                     </div>
                                 </div>
                                 <div class="text-gray-400 font-bold">VS</div>
                                 <div class="text-center">
-                                    <div class="font-medium text-gray-800"><?= htmlspecialchars($p2->getLabel()) ?></div>
+                                    <div class="font-medium text-gray-800"><?= htmlspecialchars($p2->getLabel()); ?></div>
                                     <div class="text-xs space-x-1">
-                                        <span class="px-1 rounded <?= getTierColor($tier2) ?>"><?= $tier2 ?></span>
-                                        <span class="px-1 rounded <?= getRegionColor($region2) ?>"><?= substr($region2, 0, 3) ?></span>
-                                        <span class="text-gray-500">Seed #<?= $p2->getSeed() ?></span>
+                                        <span class="px-1 rounded <?= getTierColor($tier2); ?>"><?= $tier2; ?></span>
+                                        <span class="px-1 rounded <?= getRegionColor($region2); ?>"><?= substr($region2, 0, 3); ?></span>
+                                        <span class="text-gray-500">Seed #<?= $p2->getSeed(); ?></span>
                                     </div>
                                 </div>
                             </div>
@@ -543,7 +553,7 @@ $analysis = $success ? analyzeTournamentComplexity($schedule, $teams) : null;
             <div class="bg-white rounded-lg shadow-md p-6">
                 <div class="bg-red-50 rounded-lg p-6">
                     <h2 class="text-xl font-bold text-red-800 mb-4">❌ Tournament Generation Failed</h2>
-                    <p class="text-red-700 mb-4"><?= htmlspecialchars($error) ?></p>
+                    <p class="text-red-700 mb-4"><?= htmlspecialchars($error); ?></p>
                     
                     <div class="bg-red-100 rounded p-4 text-sm text-red-800">
                         <strong>Why this might have failed:</strong> The combination of constraints is too restrictive 
@@ -617,7 +627,7 @@ $constraints = ConstraintSet::create()
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
-$schedule = $scheduler->schedule($teams);') ?></code></pre>
+$schedule = $scheduler->schedule($teams);'); ?></code></pre>
             </div>
         </div>
 

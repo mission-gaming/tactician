@@ -3,16 +3,16 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Constraints\ConstraintSet;
-use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
-use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
-use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
+use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\ImpossibleConstraintsException;
+use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 // Create a small set of participants for demonstration
 $participants = [
@@ -29,7 +29,7 @@ $scenarios = [
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->build(),
-        'expected' => 'success'
+        'expected' => 'success',
     ],
     'Restrictive but Possible' => [
         'description' => 'Challenging but achievable constraints',
@@ -37,7 +37,7 @@ $scenarios = [
             ->noRepeatPairings()
             ->add(new SeedProtectionConstraint(2, 0.3))
             ->build(),
-        'expected' => 'success'
+        'expected' => 'success',
     ],
     'Very Restrictive' => [
         'description' => 'Very restrictive constraints that may cause issues',
@@ -46,7 +46,7 @@ $scenarios = [
             ->add(new MinimumRestPeriodsConstraint(3))
             ->add(ConsecutiveRoleConstraint::homeAway(1))
             ->build(),
-        'expected' => 'possible_failure'
+        'expected' => 'possible_failure',
     ],
     'Impossible Constraints' => [
         'description' => 'Mathematically impossible constraints',
@@ -54,8 +54,8 @@ $scenarios = [
             ->noRepeatPairings()
             ->add(new MinimumRestPeriodsConstraint(10)) // Impossible with only 4 teams
             ->build(),
-        'expected' => 'failure'
-    ]
+        'expected' => 'failure',
+    ],
 ];
 
 $results = [];
@@ -71,18 +71,17 @@ foreach ($scenarios as $name => $scenario) {
         'exception' => null,
         'error_type' => null,
         'error_message' => null,
-        'diagnostic_info' => []
+        'diagnostic_info' => [],
     ];
-    
+
     try {
         $scheduler = new RoundRobinScheduler($scenario['constraints']);
         $schedule = $scheduler->schedule($participants);
-        
+
         $result['status'] = 'success';
         $result['schedule'] = $schedule;
         $result['total_events'] = count($schedule);
         $result['total_rounds'] = $schedule->getMetadataValue('total_rounds');
-        
     } catch (IncompleteScheduleException $e) {
         $result['status'] = 'incomplete';
         $result['exception'] = $e;
@@ -91,39 +90,36 @@ foreach ($scenarios as $name => $scenario) {
         $result['diagnostic_info'] = [
             'expected_events' => $e->getExpectedEventCount(),
             'generated_events' => $e->getGeneratedEventCount(),
-            'constraint_violations' => count($e->getConstraintViolations())
+            'constraint_violations' => count($e->getConstraintViolations()),
         ];
-        
     } catch (ImpossibleConstraintsException $e) {
         $result['status'] = 'impossible';
         $result['exception'] = $e;
         $result['error_type'] = 'Impossible Constraints';
         $result['error_message'] = $e->getMessage();
-        
     } catch (InvalidConfigurationException $e) {
         $result['status'] = 'invalid_config';
         $result['exception'] = $e;
         $result['error_type'] = 'Invalid Configuration';
         $result['error_message'] = $e->getMessage();
-        
     } catch (SchedulingException $e) {
         $result['status'] = 'general_error';
         $result['exception'] = $e;
         $result['error_type'] = 'Scheduling Error';
         $result['error_message'] = $e->getMessage();
-        
     } catch (Exception $e) {
         $result['status'] = 'unexpected_error';
         $result['exception'] = $e;
         $result['error_type'] = 'Unexpected Error';
         $result['error_message'] = $e->getMessage();
     }
-    
+
     $results[] = $result;
 }
 
 // Function to get status badge styling
-function getStatusBadge($status) {
+function getStatusBadge($status)
+{
     switch ($status) {
         case 'success':
             return 'bg-green-100 text-green-800 border-green-300';
@@ -139,7 +135,8 @@ function getStatusBadge($status) {
     }
 }
 
-function getStatusIcon($status) {
+function getStatusIcon($status)
+{
     switch ($status) {
         case 'success':
             return '✅';
@@ -224,8 +221,8 @@ function getStatusIcon($status) {
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <?php foreach ($participants as $participant): ?>
                     <div class="border border-gray-200 rounded-lg p-3 text-center">
-                        <div class="font-semibold text-gray-800"><?= htmlspecialchars($participant->getLabel()) ?></div>
-                        <div class="text-sm text-gray-500">Seed #<?= $participant->getSeed() ?></div>
+                        <div class="font-semibold text-gray-800"><?= htmlspecialchars($participant->getLabel()); ?></div>
+                        <div class="text-sm text-gray-500">Seed #<?= $participant->getSeed(); ?></div>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -238,13 +235,13 @@ function getStatusIcon($status) {
                     <div class="flex items-start justify-between mb-4">
                         <div>
                             <h3 class="text-lg font-semibold text-gray-800 flex items-center">
-                                <span class="mr-2"><?= getStatusIcon($result['status']) ?></span>
-                                <?= htmlspecialchars($result['name']) ?>
+                                <span class="mr-2"><?= getStatusIcon($result['status']); ?></span>
+                                <?= htmlspecialchars($result['name']); ?>
                             </h3>
-                            <p class="text-gray-600"><?= htmlspecialchars($result['description']) ?></p>
+                            <p class="text-gray-600"><?= htmlspecialchars($result['description']); ?></p>
                         </div>
-                        <span class="px-3 py-1 rounded-full text-sm border <?= getStatusBadge($result['status']) ?>">
-                            <?= ucfirst(str_replace('_', ' ', $result['status'])) ?>
+                        <span class="px-3 py-1 rounded-full text-sm border <?= getStatusBadge($result['status']); ?>">
+                            <?= ucfirst(str_replace('_', ' ', $result['status'])); ?>
                         </span>
                     </div>
 
@@ -255,11 +252,11 @@ function getStatusIcon($status) {
                             <div class="grid grid-cols-3 gap-4 text-sm">
                                 <div>
                                     <span class="text-green-700">Total Events:</span>
-                                    <span class="font-medium ml-1"><?= $result['total_events'] ?></span>
+                                    <span class="font-medium ml-1"><?= $result['total_events']; ?></span>
                                 </div>
                                 <div>
                                     <span class="text-green-700">Total Rounds:</span>
-                                    <span class="font-medium ml-1"><?= $result['total_rounds'] ?></span>
+                                    <span class="font-medium ml-1"><?= $result['total_rounds']; ?></span>
                                 </div>
                                 <div>
                                     <span class="text-green-700">Status:</span>
@@ -272,20 +269,20 @@ function getStatusIcon($status) {
                         <!-- Incomplete Schedule -->
                         <div class="bg-yellow-50 rounded-lg p-4">
                             <h4 class="font-semibold text-yellow-800 mb-2">⚠️ Incomplete Schedule</h4>
-                            <p class="text-yellow-700 text-sm mb-3"><?= htmlspecialchars($result['error_message']) ?></p>
+                            <p class="text-yellow-700 text-sm mb-3"><?= htmlspecialchars($result['error_message']); ?></p>
                             
                             <div class="grid grid-cols-3 gap-4 text-sm mb-3">
                                 <div>
                                     <span class="text-yellow-700">Expected Events:</span>
-                                    <span class="font-medium ml-1"><?= $result['diagnostic_info']['expected_events'] ?></span>
+                                    <span class="font-medium ml-1"><?= $result['diagnostic_info']['expected_events']; ?></span>
                                 </div>
                                 <div>
                                     <span class="text-yellow-700">Generated Events:</span>
-                                    <span class="font-medium ml-1"><?= $result['diagnostic_info']['generated_events'] ?></span>
+                                    <span class="font-medium ml-1"><?= $result['diagnostic_info']['generated_events']; ?></span>
                                 </div>
                                 <div>
                                     <span class="text-yellow-700">Violations:</span>
-                                    <span class="font-medium ml-1"><?= $result['diagnostic_info']['constraint_violations'] ?></span>
+                                    <span class="font-medium ml-1"><?= $result['diagnostic_info']['constraint_violations']; ?></span>
                                 </div>
                             </div>
 
@@ -295,7 +292,7 @@ function getStatusIcon($status) {
                                     <div class="space-y-1">
                                         <?php foreach ($result['exception']->getConstraintViolations() as $violation): ?>
                                             <div class="bg-yellow-100 rounded px-2 py-1 text-xs text-yellow-800">
-                                                <?= htmlspecialchars($violation->getDescription()) ?>
+                                                <?= htmlspecialchars($violation->getDescription()); ?>
                                             </div>
                                         <?php endforeach; ?>
                                     </div>
@@ -306,8 +303,8 @@ function getStatusIcon($status) {
                     <?php else: ?>
                         <!-- Error Cases -->
                         <div class="bg-red-50 rounded-lg p-4">
-                            <h4 class="font-semibold text-red-800 mb-2">❌ <?= htmlspecialchars($result['error_type']) ?></h4>
-                            <p class="text-red-700 text-sm mb-3"><?= htmlspecialchars($result['error_message']) ?></p>
+                            <h4 class="font-semibold text-red-800 mb-2">❌ <?= htmlspecialchars($result['error_type']); ?></h4>
+                            <p class="text-red-700 text-sm mb-3"><?= htmlspecialchars($result['error_message']); ?></p>
                             
                             <?php if ($result['error_type'] === 'Impossible Constraints'): ?>
                                 <div class="bg-red-100 rounded p-3 text-sm text-red-800">
@@ -327,10 +324,10 @@ function getStatusIcon($status) {
                             </summary>
                             <div class="mt-2 bg-gray-100 rounded p-3 text-xs">
                                 <div class="font-medium mb-1">Exception Class:</div>
-                                <div class="mb-2 font-mono"><?= get_class($result['exception']) ?></div>
+                                <div class="mb-2 font-mono"><?= get_class($result['exception']); ?></div>
                                 
                                 <div class="font-medium mb-1">Stack Trace:</div>
-                                <pre class="bg-gray-200 p-2 rounded text-xs overflow-x-auto"><?= htmlspecialchars($result['exception']->getTraceAsString()) ?></pre>
+                                <pre class="bg-gray-200 p-2 rounded text-xs overflow-x-auto"><?= htmlspecialchars($result['exception']->getTraceAsString()); ?></pre>
                             </div>
                         </details>
                     <?php endif; ?>
@@ -427,7 +424,7 @@ try {
 } catch (Exception $e) {
     // Unexpected errors
     echo "Unexpected error: " . $e->getMessage();
-}') ?></code></pre>
+}'); ?></code></pre>
             </div>
         </div>
 

@@ -3,54 +3,54 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use MissionGaming\Tactician\Constraints\CallableConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Constraints\ConstraintSet;
-use MissionGaming\Tactician\Constraints\CallableConstraint;
 
 // Create participants with various metadata for custom constraint demonstrations
 $participants = [
     new Participant('team1', 'Fire Dragons', 1, [
         'experience' => 'veteran',
-        'preferred_time' => 'evening', 
+        'preferred_time' => 'evening',
         'region' => 'west',
         'budget' => 'high',
-        'team_size' => 5
+        'team_size' => 5,
     ]),
     new Participant('team2', 'Ice Phoenix', 2, [
         'experience' => 'rookie',
         'preferred_time' => 'afternoon',
-        'region' => 'east', 
+        'region' => 'east',
         'budget' => 'medium',
-        'team_size' => 4
+        'team_size' => 4,
     ]),
     new Participant('team3', 'Storm Hawks', 3, [
         'experience' => 'veteran',
         'preferred_time' => 'morning',
         'region' => 'west',
         'budget' => 'low',
-        'team_size' => 5
+        'team_size' => 5,
     ]),
     new Participant('team4', 'Thunder Wolves', 4, [
         'experience' => 'intermediate',
         'preferred_time' => 'evening',
         'region' => 'east',
         'budget' => 'high',
-        'team_size' => 3
+        'team_size' => 3,
     ]),
     new Participant('team5', 'Shadow Serpents', 5, [
-        'experience' => 'intermediate', 
+        'experience' => 'intermediate',
         'preferred_time' => 'afternoon',
         'region' => 'central',
         'budget' => 'medium',
-        'team_size' => 4
+        'team_size' => 4,
     ]),
     new Participant('team6', 'Lightning Lions', 6, [
         'experience' => 'rookie',
         'preferred_time' => 'morning',
         'region' => 'central',
         'budget' => 'low',
-        'team_size' => 5
+        'team_size' => 5,
     ]),
 ];
 
@@ -61,42 +61,44 @@ $customConstraints = [
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->build(),
-        'rules' => 'No special matching rules applied'
+        'rules' => 'No special matching rules applied',
     ],
-    
+
     'Experience Balance' => [
         'description' => 'Prevent veteran teams from being matched together early',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->add(new CallableConstraint(
-                function($event, $context) {
+                function ($event, $context) {
                     $participants = $event->getParticipants();
                     $round = $event->getRound()->getNumber();
-                    
+
                     // In first 2 rounds, prevent veteran vs veteran matches
                     if ($round <= 2) {
                         $exp1 = $participants[0]->getMetadataValue('experience');
                         $exp2 = $participants[1]->getMetadataValue('experience');
+
                         return !($exp1 === 'veteran' && $exp2 === 'veteran');
                     }
+
                     return true;
                 },
                 'Experience Balance'
             ))
             ->build(),
-        'rules' => 'Veteran teams avoid each other in rounds 1-2'
+        'rules' => 'Veteran teams avoid each other in rounds 1-2',
     ],
-    
+
     'Time Preference Matching' => [
         'description' => 'Teams with similar time preferences play together',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->add(new CallableConstraint(
-                function($event, $context) {
+                function ($event, $context) {
                     $participants = $event->getParticipants();
                     $time1 = $participants[0]->getMetadataValue('preferred_time');
                     $time2 = $participants[1]->getMetadataValue('preferred_time');
-                    
+
                     // Prefer matches between teams with same time preference
                     // This is a soft constraint - we score it rather than block it
                     return $time1 === $time2;
@@ -104,19 +106,19 @@ $customConstraints = [
                 'Time Preference Matching'
             ))
             ->build(),
-        'rules' => 'Teams with same preferred time are matched together'
+        'rules' => 'Teams with same preferred time are matched together',
     ],
-    
+
     'Budget Tier Separation' => [
         'description' => 'High budget teams cannot play low budget teams',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->add(new CallableConstraint(
-                function($event, $context) {
+                function ($event, $context) {
                     $participants = $event->getParticipants();
                     $budget1 = $participants[0]->getMetadataValue('budget');
                     $budget2 = $participants[1]->getMetadataValue('budget');
-                    
+
                     // Prevent high vs low budget matchups
                     return !(
                         ($budget1 === 'high' && $budget2 === 'low') ||
@@ -126,44 +128,44 @@ $customConstraints = [
                 'Budget Tier Separation'
             ))
             ->build(),
-        'rules' => 'High budget teams cannot face low budget teams'
+        'rules' => 'High budget teams cannot face low budget teams',
     ],
-    
+
     'Complex Multi-Factor' => [
         'description' => 'Multiple custom rules combined for balanced matchmaking',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->add(new CallableConstraint(
-                function($event, $context) {
+                function ($event, $context) {
                     $participants = $event->getParticipants();
                     $round = $event->getRound()->getNumber();
-                    
+
                     // Rule 1: Team size difference shouldn't exceed 1
                     $size1 = $participants[0]->getMetadataValue('team_size');
                     $size2 = $participants[1]->getMetadataValue('team_size');
                     if (abs($size1 - $size2) > 1) {
                         return false;
                     }
-                    
+
                     // Rule 2: In early rounds, prefer same experience level
                     if ($round <= 3) {
                         $exp1 = $participants[0]->getMetadataValue('experience');
                         $exp2 = $participants[1]->getMetadataValue('experience');
-                        
+
                         // Slight preference for same experience in early rounds
                         if ($exp1 !== $exp2) {
                             // Allow it but with lower priority
                             return true;
                         }
                     }
-                    
+
                     return true;
                 },
                 'Multi-Factor Constraint'
             ))
             ->build(),
-        'rules' => 'Team size difference ≤ 1, prefer same experience early'
-    ]
+        'rules' => 'Team size difference ≤ 1, prefer same experience early',
+    ],
 ];
 
 $results = [];
@@ -173,7 +175,7 @@ foreach ($customConstraints as $name => $scenario) {
     try {
         $scheduler = new RoundRobinScheduler($scenario['constraints']);
         $schedule = $scheduler->schedule($participants);
-        
+
         $results[$name] = [
             'status' => 'success',
             'schedule' => $schedule,
@@ -181,7 +183,7 @@ foreach ($customConstraints as $name => $scenario) {
             'rules' => $scenario['rules'],
             'total_events' => count($schedule),
             'total_rounds' => $schedule->getMetadataValue('total_rounds'),
-            'error' => null
+            'error' => null,
         ];
     } catch (Exception $e) {
         $results[$name] = [
@@ -191,68 +193,71 @@ foreach ($customConstraints as $name => $scenario) {
             'rules' => $scenario['rules'],
             'total_events' => 0,
             'total_rounds' => 0,
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
         ];
     }
 }
 
 // Analysis functions
-function analyzeExperienceMatches($schedule) {
+function analyzeExperienceMatches($schedule)
+{
     $veteranVsVeteran = 0;
     $rookieVsVeteran = 0;
     $sameExperience = 0;
     $total = 0;
-    
+
     foreach ($schedule as $event) {
         $participants = $event->getParticipants();
         $exp1 = $participants[0]->getMetadataValue('experience');
         $exp2 = $participants[1]->getMetadataValue('experience');
-        
+
         if ($exp1 === 'veteran' && $exp2 === 'veteran') {
-            $veteranVsVeteran++;
+            ++$veteranVsVeteran;
         }
-        if (($exp1 === 'rookie' && $exp2 === 'veteran') || 
+        if (($exp1 === 'rookie' && $exp2 === 'veteran') ||
             ($exp1 === 'veteran' && $exp2 === 'rookie')) {
-            $rookieVsVeteran++;
+            ++$rookieVsVeteran;
         }
         if ($exp1 === $exp2) {
-            $sameExperience++;
+            ++$sameExperience;
         }
-        $total++;
+        ++$total;
     }
-    
+
     return [
         'veteran_vs_veteran' => $veteranVsVeteran,
         'rookie_vs_veteran' => $rookieVsVeteran,
         'same_experience' => $sameExperience,
         'total' => $total,
-        'same_exp_percentage' => $total > 0 ? round(($sameExperience / $total) * 100) : 0
+        'same_exp_percentage' => $total > 0 ? round(($sameExperience / $total) * 100) : 0,
     ];
 }
 
-function analyzeTimePreferences($schedule) {
+function analyzeTimePreferences($schedule)
+{
     $sameTime = 0;
     $total = 0;
-    
+
     foreach ($schedule as $event) {
         $participants = $event->getParticipants();
         $time1 = $participants[0]->getMetadataValue('preferred_time');
         $time2 = $participants[1]->getMetadataValue('preferred_time');
-        
+
         if ($time1 === $time2) {
-            $sameTime++;
+            ++$sameTime;
         }
-        $total++;
+        ++$total;
     }
-    
+
     return [
         'same_time' => $sameTime,
         'total' => $total,
-        'percentage' => $total > 0 ? round(($sameTime / $total) * 100) : 0
+        'percentage' => $total > 0 ? round(($sameTime / $total) * 100) : 0,
     ];
 }
 
-function getExperienceColor($experience) {
+function getExperienceColor($experience)
+{
     return match($experience) {
         'veteran' => 'bg-red-100 text-red-800',
         'intermediate' => 'bg-yellow-100 text-yellow-800',
@@ -261,7 +266,8 @@ function getExperienceColor($experience) {
     };
 }
 
-function getBudgetColor($budget) {
+function getBudgetColor($budget)
+{
     return match($budget) {
         'high' => 'bg-purple-100 text-purple-800',
         'medium' => 'bg-blue-100 text-blue-800',
@@ -331,31 +337,31 @@ function getBudgetColor($budget) {
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <?php foreach ($participants as $participant): ?>
                     <div class="border border-gray-200 rounded-lg p-4">
-                        <div class="font-semibold text-gray-800 mb-3"><?= htmlspecialchars($participant->getLabel()) ?></div>
+                        <div class="font-semibold text-gray-800 mb-3"><?= htmlspecialchars($participant->getLabel()); ?></div>
                         <div class="space-y-2 text-sm">
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Experience:</span>
-                                <span class="px-2 py-1 rounded-full text-xs <?= getExperienceColor($participant->getMetadataValue('experience')) ?>">
-                                    <?= ucfirst($participant->getMetadataValue('experience')) ?>
+                                <span class="px-2 py-1 rounded-full text-xs <?= getExperienceColor($participant->getMetadataValue('experience')); ?>">
+                                    <?= ucfirst($participant->getMetadataValue('experience')); ?>
                                 </span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Budget:</span>
-                                <span class="px-2 py-1 rounded-full text-xs <?= getBudgetColor($participant->getMetadataValue('budget')) ?>">
-                                    <?= ucfirst($participant->getMetadataValue('budget')) ?>
+                                <span class="px-2 py-1 rounded-full text-xs <?= getBudgetColor($participant->getMetadataValue('budget')); ?>">
+                                    <?= ucfirst($participant->getMetadataValue('budget')); ?>
                                 </span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Time:</span>
-                                <span class="text-gray-700"><?= ucfirst($participant->getMetadataValue('preferred_time')) ?></span>
+                                <span class="text-gray-700"><?= ucfirst($participant->getMetadataValue('preferred_time')); ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Region:</span>
-                                <span class="text-gray-700"><?= ucfirst($participant->getMetadataValue('region')) ?></span>
+                                <span class="text-gray-700"><?= ucfirst($participant->getMetadataValue('region')); ?></span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Team Size:</span>
-                                <span class="text-gray-700"><?= $participant->getMetadataValue('team_size') ?> players</span>
+                                <span class="text-gray-700"><?= $participant->getMetadataValue('team_size'); ?> players</span>
                             </div>
                         </div>
                     </div>
@@ -375,14 +381,14 @@ function getBudgetColor($budget) {
                                 <?php else: ?>
                                     <span class="mr-2">❌</span>
                                 <?php endif; ?>
-                                <?= htmlspecialchars($constraintName) ?>
+                                <?= htmlspecialchars($constraintName); ?>
                             </h3>
-                            <p class="text-gray-600"><?= htmlspecialchars($result['description']) ?></p>
-                            <p class="text-sm text-blue-600 mt-1"><strong>Rules:</strong> <?= htmlspecialchars($result['rules']) ?></p>
+                            <p class="text-gray-600"><?= htmlspecialchars($result['description']); ?></p>
+                            <p class="text-sm text-blue-600 mt-1"><strong>Rules:</strong> <?= htmlspecialchars($result['rules']); ?></p>
                         </div>
                         <?php if ($result['status'] === 'success'): ?>
                             <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
-                                <?= $result['total_events'] ?> matches
+                                <?= $result['total_events']; ?> matches
                             </span>
                         <?php else: ?>
                             <span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm">
@@ -393,28 +399,28 @@ function getBudgetColor($budget) {
 
                     <?php if ($result['status'] === 'success'): ?>
                         <!-- Analysis Dashboard -->
-                        <?php 
+                        <?php
                         $expAnalysis = analyzeExperienceMatches($result['schedule']);
                         $timeAnalysis = analyzeTimePreferences($result['schedule']);
                         ?>
                         
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                             <div class="bg-blue-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-blue-600"><?= $result['total_events'] ?></div>
+                                <div class="text-2xl font-bold text-blue-600"><?= $result['total_events']; ?></div>
                                 <div class="text-blue-700 text-sm">Total Matches</div>
                             </div>
                             <div class="bg-green-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-green-600"><?= $expAnalysis['same_exp_percentage'] ?>%</div>
+                                <div class="text-2xl font-bold text-green-600"><?= $expAnalysis['same_exp_percentage']; ?>%</div>
                                 <div class="text-green-700 text-sm">Same Experience</div>
-                                <div class="text-xs text-green-600"><?= $expAnalysis['same_experience'] ?>/<?= $expAnalysis['total'] ?></div>
+                                <div class="text-xs text-green-600"><?= $expAnalysis['same_experience']; ?>/<?= $expAnalysis['total']; ?></div>
                             </div>
                             <div class="bg-purple-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-purple-600"><?= $timeAnalysis['percentage'] ?>%</div>
+                                <div class="text-2xl font-bold text-purple-600"><?= $timeAnalysis['percentage']; ?>%</div>
                                 <div class="text-purple-700 text-sm">Same Time Pref</div>
-                                <div class="text-xs text-purple-600"><?= $timeAnalysis['same_time'] ?>/<?= $timeAnalysis['total'] ?></div>
+                                <div class="text-xs text-purple-600"><?= $timeAnalysis['same_time']; ?>/<?= $timeAnalysis['total']; ?></div>
                             </div>
                             <div class="bg-orange-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-orange-600"><?= $expAnalysis['veteran_vs_veteran'] ?></div>
+                                <div class="text-2xl font-bold text-orange-600"><?= $expAnalysis['veteran_vs_veteran']; ?></div>
                                 <div class="text-orange-700 text-sm">Veteran Clashes</div>
                                 <div class="text-xs text-orange-600">High-exp matches</div>
                             </div>
@@ -425,48 +431,50 @@ function getBudgetColor($budget) {
                             <h4 class="font-medium text-gray-800">Sample Matches (First 6)</h4>
                             <?php
                             $sampleCount = 0;
-                            foreach ($result['schedule'] as $event):
-                                if ($sampleCount >= 6) break;
-                                $eventParticipants = $event->getParticipants();
-                                $p1 = $eventParticipants[0];
-                                $p2 = $eventParticipants[1];
-                                
-                                $sameExp = $p1->getMetadataValue('experience') === $p2->getMetadataValue('experience');
-                                $sameTime = $p1->getMetadataValue('preferred_time') === $p2->getMetadataValue('preferred_time');
-                                $teamSizeDiff = abs($p1->getMetadataValue('team_size') - $p2->getMetadataValue('team_size'));
-                                $budgetConflict = ($p1->getMetadataValue('budget') === 'high' && $p2->getMetadataValue('budget') === 'low') ||
-                                                 ($p1->getMetadataValue('budget') === 'low' && $p2->getMetadataValue('budget') === 'high');
-                                $sampleCount++;
+                        foreach ($result['schedule'] as $event):
+                            if ($sampleCount >= 6) {
+                                break;
+                            }
+                            $eventParticipants = $event->getParticipants();
+                            $p1 = $eventParticipants[0];
+                            $p2 = $eventParticipants[1];
+
+                            $sameExp = $p1->getMetadataValue('experience') === $p2->getMetadataValue('experience');
+                            $sameTime = $p1->getMetadataValue('preferred_time') === $p2->getMetadataValue('preferred_time');
+                            $teamSizeDiff = abs($p1->getMetadataValue('team_size') - $p2->getMetadataValue('team_size'));
+                            $budgetConflict = ($p1->getMetadataValue('budget') === 'high' && $p2->getMetadataValue('budget') === 'low') ||
+                                             ($p1->getMetadataValue('budget') === 'low' && $p2->getMetadataValue('budget') === 'high');
+                            ++$sampleCount;
                             ?>
                                 <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                                     <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-sm">
-                                        Round <?= $event->getRound()->getNumber() ?>
+                                        Round <?= $event->getRound()->getNumber(); ?>
                                     </span>
                                     
                                     <div class="flex items-center space-x-6">
                                         <div class="text-center">
-                                            <div class="font-medium text-gray-800"><?= htmlspecialchars($p1->getLabel()) ?></div>
+                                            <div class="font-medium text-gray-800"><?= htmlspecialchars($p1->getLabel()); ?></div>
                                             <div class="text-xs space-x-1">
-                                                <span class="px-1 rounded <?= getExperienceColor($p1->getMetadataValue('experience')) ?>">
-                                                    <?= ucfirst($p1->getMetadataValue('experience')) ?>
+                                                <span class="px-1 rounded <?= getExperienceColor($p1->getMetadataValue('experience')); ?>">
+                                                    <?= ucfirst($p1->getMetadataValue('experience')); ?>
                                                 </span>
-                                                <span class="px-1 rounded <?= getBudgetColor($p1->getMetadataValue('budget')) ?>">
-                                                    <?= ucfirst($p1->getMetadataValue('budget')) ?>
+                                                <span class="px-1 rounded <?= getBudgetColor($p1->getMetadataValue('budget')); ?>">
+                                                    <?= ucfirst($p1->getMetadataValue('budget')); ?>
                                                 </span>
-                                                <span class="text-gray-500"><?= $p1->getMetadataValue('team_size') ?>p</span>
+                                                <span class="text-gray-500"><?= $p1->getMetadataValue('team_size'); ?>p</span>
                                             </div>
                                         </div>
                                         <div class="text-gray-400 font-bold">VS</div>
                                         <div class="text-center">
-                                            <div class="font-medium text-gray-800"><?= htmlspecialchars($p2->getLabel()) ?></div>
+                                            <div class="font-medium text-gray-800"><?= htmlspecialchars($p2->getLabel()); ?></div>
                                             <div class="text-xs space-x-1">
-                                                <span class="px-1 rounded <?= getExperienceColor($p2->getMetadataValue('experience')) ?>">
-                                                    <?= ucfirst($p2->getMetadataValue('experience')) ?>
+                                                <span class="px-1 rounded <?= getExperienceColor($p2->getMetadataValue('experience')); ?>">
+                                                    <?= ucfirst($p2->getMetadataValue('experience')); ?>
                                                 </span>
-                                                <span class="px-1 rounded <?= getBudgetColor($p2->getMetadataValue('budget')) ?>">
-                                                    <?= ucfirst($p2->getMetadataValue('budget')) ?>
+                                                <span class="px-1 rounded <?= getBudgetColor($p2->getMetadataValue('budget')); ?>">
+                                                    <?= ucfirst($p2->getMetadataValue('budget')); ?>
                                                 </span>
-                                                <span class="text-gray-500"><?= $p2->getMetadataValue('team_size') ?>p</span>
+                                                <span class="text-gray-500"><?= $p2->getMetadataValue('team_size'); ?>p</span>
                                             </div>
                                         </div>
                                     </div>
@@ -493,7 +501,7 @@ function getBudgetColor($budget) {
                         <!-- Failed scenario -->
                         <div class="bg-red-50 rounded-lg p-4">
                             <h4 class="font-semibold text-red-800 mb-2">❌ Schedule Generation Failed</h4>
-                            <p class="text-red-700 text-sm"><?= htmlspecialchars($result['error']) ?></p>
+                            <p class="text-red-700 text-sm"><?= htmlspecialchars($result['error']); ?></p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -517,7 +525,7 @@ function getBudgetColor($budget) {
         return abs($skill1 - $skill2) <= 1;
     },
     \'Skill Balance\'
-)') ?></code></pre>
+)'); ?></code></pre>
                     </div>
                 </div>
                 
@@ -540,7 +548,7 @@ function getBudgetColor($budget) {
         return true;
     },
     \'Progressive Regional Matching\'
-)') ?></code></pre>
+)'); ?></code></pre>
                     </div>
                 </div>
                 
@@ -565,7 +573,7 @@ function getBudgetColor($budget) {
         return $timezoneOk && ($languageOk || rand(0, 100) < 70);
     },
     \'Timezone & Language Preference\'
-)') ?></code></pre>
+)'); ?></code></pre>
                     </div>
                 </div>
                 
@@ -588,7 +596,7 @@ function getBudgetColor($budget) {
         return count($recentMatches) < 3;
     },
     \'Avoid Frequent Opponents\'
-)') ?></code></pre>
+)'); ?></code></pre>
                     </div>
                 </div>
             </div>

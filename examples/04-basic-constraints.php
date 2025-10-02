@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Constraints\ConstraintSet;
 
 // Create participants
 $participants = [
@@ -22,34 +22,36 @@ $scenarios = [
     'No Constraints' => [
         'description' => 'Schedule without any constraints applied',
         'constraints' => ConstraintSet::create()->build(),
-        'explanation' => 'This allows any valid round-robin pairing without restrictions.'
+        'explanation' => 'This allows any valid round-robin pairing without restrictions.',
     ],
     'No Repeat Pairings' => [
         'description' => 'Prevent teams from playing each other more than once',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->build(),
-        'explanation' => 'The most common constraint - ensures each team plays every other team exactly once.'
+        'explanation' => 'The most common constraint - ensures each team plays every other team exactly once.',
     ],
     'Custom Constraint' => [
         'description' => 'Custom predicate function to control pairings',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->custom(
-                function($event, $context) {
+                function ($event, $context) {
                     $participants = $event->getParticipants();
                     // Don't allow the first and last seeded teams to play in early rounds
                     if ($event->getRound()->getNumber() <= 2) {
                         $seeds = [$participants[0]->getSeed(), $participants[1]->getSeed()];
+
                         return !(in_array(1, $seeds) && in_array(6, $seeds));
                     }
+
                     return true;
                 },
                 'Protect Seed Extremes'
             )
             ->build(),
-        'explanation' => 'Prevents the highest and lowest seeded teams from meeting in the first 2 rounds.'
-    ]
+        'explanation' => 'Prevents the highest and lowest seeded teams from meeting in the first 2 rounds.',
+    ],
 ];
 
 $results = [];
@@ -58,22 +60,24 @@ $results = [];
 foreach ($scenarios as $name => $scenario) {
     $scheduler = new RoundRobinScheduler($scenario['constraints']);
     $schedule = $scheduler->schedule($participants);
-    
+
     $results[$name] = [
         'schedule' => $schedule,
         'description' => $scenario['description'],
         'explanation' => $scenario['explanation'],
         'total_events' => count($schedule),
         'total_rounds' => $schedule->getMetadataValue('total_rounds'),
-        'constraints_count' => count($scenario['constraints']->getConstraints())
+        'constraints_count' => count($scenario['constraints']->getConstraints()),
     ];
 }
 
 // Function to check if an event has the extreme seed pairing
-function hasExtremeSeedPairing($event) {
+function hasExtremeSeedPairing($event)
+{
     $participants = $event->getParticipants();
     $seeds = [$participants[0]->getSeed(), $participants[1]->getSeed()];
-    return (in_array(1, $seeds) && in_array(6, $seeds));
+
+    return in_array(1, $seeds) && in_array(6, $seeds);
 }
 ?>
 <!DOCTYPE html>
@@ -145,8 +149,8 @@ function hasExtremeSeedPairing($event) {
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <?php foreach ($participants as $participant): ?>
                     <div class="border border-gray-200 rounded-lg p-4 text-center">
-                        <div class="font-semibold text-gray-800"><?= htmlspecialchars($participant->getLabel()) ?></div>
-                        <div class="text-sm text-gray-500">Seed #<?= $participant->getSeed() ?></div>
+                        <div class="font-semibold text-gray-800"><?= htmlspecialchars($participant->getLabel()); ?></div>
+                        <div class="text-sm text-gray-500">Seed #<?= $participant->getSeed(); ?></div>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -158,30 +162,30 @@ function hasExtremeSeedPairing($event) {
                 <div class="bg-white rounded-lg shadow-md p-6">
                     <div class="flex items-start justify-between mb-4">
                         <div>
-                            <h3 class="text-lg font-semibold text-gray-800"><?= htmlspecialchars($scenarioName) ?></h3>
-                            <p class="text-gray-600"><?= htmlspecialchars($result['description']) ?></p>
+                            <h3 class="text-lg font-semibold text-gray-800"><?= htmlspecialchars($scenarioName); ?></h3>
+                            <p class="text-gray-600"><?= htmlspecialchars($result['description']); ?></p>
                         </div>
                         <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                            <?= $result['constraints_count'] ?> constraint<?= $result['constraints_count'] === 1 ? '' : 's' ?>
+                            <?= $result['constraints_count']; ?> constraint<?= $result['constraints_count'] === 1 ? '' : 's'; ?>
                         </span>
                     </div>
 
                     <div class="bg-blue-50 rounded-lg p-4 mb-4">
                         <div class="text-sm text-blue-800 mb-2">
-                            <strong>How it works:</strong> <?= htmlspecialchars($result['explanation']) ?>
+                            <strong>How it works:</strong> <?= htmlspecialchars($result['explanation']); ?>
                         </div>
                         <div class="grid grid-cols-3 gap-4 text-sm">
                             <div>
                                 <span class="text-blue-700">Total Events:</span>
-                                <span class="font-medium ml-1"><?= $result['total_events'] ?></span>
+                                <span class="font-medium ml-1"><?= $result['total_events']; ?></span>
                             </div>
                             <div>
                                 <span class="text-blue-700">Total Rounds:</span>
-                                <span class="font-medium ml-1"><?= $result['total_rounds'] ?></span>
+                                <span class="font-medium ml-1"><?= $result['total_rounds']; ?></span>
                             </div>
                             <div>
                                 <span class="text-blue-700">Algorithm:</span>
-                                <span class="font-medium ml-1"><?= htmlspecialchars($result['schedule']->getMetadataValue('algorithm')) ?></span>
+                                <span class="font-medium ml-1"><?= htmlspecialchars($result['schedule']->getMetadataValue('algorithm')); ?></span>
                             </div>
                         </div>
                     </div>
@@ -191,25 +195,27 @@ function hasExtremeSeedPairing($event) {
                         <h4 class="font-medium text-gray-800">Sample Matches (First 6)</h4>
                         <?php
                         $sampleCount = 0;
-                        foreach ($result['schedule'] as $event):
-                            if ($sampleCount >= 6) break;
-                            $eventParticipants = $event->getParticipants();
-                            $isExtremePairing = hasExtremeSeedPairing($event);
-                            $sampleCount++;
-                        ?>
-                            <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg <?= $isExtremePairing ? 'bg-yellow-50 border-yellow-300' : 'hover:bg-gray-50' ?> transition-colors">
+                foreach ($result['schedule'] as $event):
+                    if ($sampleCount >= 6) {
+                        break;
+                    }
+                    $eventParticipants = $event->getParticipants();
+                    $isExtremePairing = hasExtremeSeedPairing($event);
+                    ++$sampleCount;
+                    ?>
+                            <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg <?= $isExtremePairing ? 'bg-yellow-50 border-yellow-300' : 'hover:bg-gray-50'; ?> transition-colors">
                                 <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-sm">
-                                    Round <?= $event->getRound()->getNumber() ?>
+                                    Round <?= $event->getRound()->getNumber(); ?>
                                 </span>
                                 <div class="flex items-center space-x-4">
                                     <div class="text-center">
-                                        <div class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[0]->getLabel()) ?></div>
-                                        <div class="text-xs text-gray-500">Seed #<?= $eventParticipants[0]->getSeed() ?></div>
+                                        <div class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[0]->getLabel()); ?></div>
+                                        <div class="text-xs text-gray-500">Seed #<?= $eventParticipants[0]->getSeed(); ?></div>
                                     </div>
                                     <div class="text-gray-400 font-bold">VS</div>
                                     <div class="text-center">
-                                        <div class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[1]->getLabel()) ?></div>
-                                        <div class="text-xs text-gray-500">Seed #<?= $eventParticipants[1]->getSeed() ?></div>
+                                        <div class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[1]->getLabel()); ?></div>
+                                        <div class="text-xs text-gray-500">Seed #<?= $eventParticipants[1]->getSeed(); ?></div>
                                     </div>
                                 </div>
                                 <?php if ($isExtremePairing): ?>
@@ -224,17 +230,17 @@ function hasExtremeSeedPairing($event) {
                         
                         <?php if ($scenarioName === 'Custom Constraint'): ?>
                             <?php
-                            // Count extreme pairings in early rounds for this scenario
-                            $earlyExtremeCount = 0;
+                        // Count extreme pairings in early rounds for this scenario
+                        $earlyExtremeCount = 0;
                             foreach ($result['schedule'] as $event) {
                                 if ($event->getRound()->getNumber() <= 2 && hasExtremeSeedPairing($event)) {
-                                    $earlyExtremeCount++;
+                                    ++$earlyExtremeCount;
                                 }
                             }
                             ?>
                             <div class="bg-green-50 border border-green-200 rounded p-3 text-sm text-green-800">
                                 <strong>Constraint Effect:</strong> 
-                                <?= $earlyExtremeCount === 0 ? 'Successfully prevented' : 'Found ' . $earlyExtremeCount ?> 
+                                <?= $earlyExtremeCount === 0 ? 'Successfully prevented' : 'Found ' . $earlyExtremeCount; ?> 
                                 extreme seed pairings (Seeds #1 vs #6) in rounds 1-2.
                             </div>
                         <?php endif; ?>
@@ -256,7 +262,7 @@ function hasExtremeSeedPairing($event) {
                     <div class="bg-gray-900 text-gray-100 rounded-lg p-4 text-sm">
                         <pre><code><?= htmlspecialchars('$constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->build();') ?></code></pre>
+    ->build();'); ?></code></pre>
                     </div>
                 </div>
                 
@@ -267,7 +273,7 @@ function hasExtremeSeedPairing($event) {
     ->noRepeatPairings()
     ->add(new SeedProtectionConstraint(2, 0.5))
     ->add(new MinimumRestPeriodsConstraint(2))
-    ->build();') ?></code></pre>
+    ->build();'); ?></code></pre>
                     </div>
                 </div>
                 
@@ -283,7 +289,7 @@ function hasExtremeSeedPairing($event) {
         },
         \'Custom Rule Name\'
     )
-    ->build();') ?></code></pre>
+    ->build();'); ?></code></pre>
                     </div>
                 </div>
                 
@@ -294,7 +300,7 @@ function hasExtremeSeedPairing($event) {
 $schedule = $scheduler->schedule($participants);
 
 // The scheduler validates all constraints
-// during schedule generation') ?></code></pre>
+// during schedule generation'); ?></code></pre>
                     </div>
                 </div>
             </div>

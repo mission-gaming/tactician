@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 // Create participants for a multi-day tournament
 $participants = [
@@ -25,7 +25,7 @@ $scheduleScenarios = [
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
             ->build(),
-        'rest_periods' => 0
+        'rest_periods' => 0,
     ],
     'Minimum 1 Round Rest' => [
         'description' => 'Teams must have at least 1 round between encounters',
@@ -33,7 +33,7 @@ $scheduleScenarios = [
             ->noRepeatPairings()
             ->add(new MinimumRestPeriodsConstraint(1))
             ->build(),
-        'rest_periods' => 1
+        'rest_periods' => 1,
     ],
     'Minimum 2 Rounds Rest' => [
         'description' => 'Teams must have at least 2 rounds between encounters',
@@ -41,7 +41,7 @@ $scheduleScenarios = [
             ->noRepeatPairings()
             ->add(new MinimumRestPeriodsConstraint(2))
             ->build(),
-        'rest_periods' => 2
+        'rest_periods' => 2,
     ],
     'Minimum 3 Rounds Rest' => [
         'description' => 'Teams must have at least 3 rounds between encounters (challenging)',
@@ -49,8 +49,8 @@ $scheduleScenarios = [
             ->noRepeatPairings()
             ->add(new MinimumRestPeriodsConstraint(3))
             ->build(),
-        'rest_periods' => 3
-    ]
+        'rest_periods' => 3,
+    ],
 ];
 
 $results = [];
@@ -60,7 +60,7 @@ foreach ($scheduleScenarios as $name => $scenario) {
     try {
         $scheduler = new RoundRobinScheduler($scenario['constraints']);
         $schedule = $scheduler->schedule($participants);
-        
+
         $results[$name] = [
             'status' => 'success',
             'schedule' => $schedule,
@@ -68,7 +68,7 @@ foreach ($scheduleScenarios as $name => $scenario) {
             'rest_periods' => $scenario['rest_periods'],
             'total_events' => count($schedule),
             'total_rounds' => $schedule->getMetadataValue('total_rounds'),
-            'error' => null
+            'error' => null,
         ];
     } catch (Exception $e) {
         $results[$name] = [
@@ -78,13 +78,14 @@ foreach ($scheduleScenarios as $name => $scenario) {
             'rest_periods' => $scenario['rest_periods'],
             'total_events' => 0,
             'total_rounds' => 0,
-            'error' => $e->getMessage()
+            'error' => $e->getMessage(),
         ];
     }
 }
 
 // Function to analyze rest periods between team encounters
-function analyzeRestPeriods($schedule, $teamId) {
+function analyzeRestPeriods($schedule, $teamId)
+{
     $teamEvents = [];
     foreach ($schedule as $event) {
         $participants = $event->getParticipants();
@@ -95,19 +96,19 @@ function analyzeRestPeriods($schedule, $teamId) {
             }
         }
     }
-    
+
     sort($teamEvents);
     $restPeriods = [];
-    for ($i = 1; $i < count($teamEvents); $i++) {
-        $restPeriods[] = $teamEvents[$i] - $teamEvents[$i-1] - 1;
+    for ($i = 1; $i < count($teamEvents); ++$i) {
+        $restPeriods[] = $teamEvents[$i] - $teamEvents[$i - 1] - 1;
     }
-    
+
     return [
         'rounds' => $teamEvents,
         'rest_periods' => $restPeriods,
         'min_rest' => !empty($restPeriods) ? min($restPeriods) : 0,
         'max_rest' => !empty($restPeriods) ? max($restPeriods) : 0,
-        'avg_rest' => !empty($restPeriods) ? round(array_sum($restPeriods) / count($restPeriods), 1) : 0
+        'avg_rest' => !empty($restPeriods) ? round(array_sum($restPeriods) / count($restPeriods), 1) : 0,
     ];
 }
 ?>
@@ -188,10 +189,10 @@ function analyzeRestPeriods($schedule, $teamId) {
                         default => 'bg-gray-100 border-gray-300 text-gray-800'
                     };
                     ?>
-                    <div class="border-2 rounded-lg p-4 <?= $enduranceClass ?>">
-                        <div class="font-semibold"><?= htmlspecialchars($participant->getLabel()) ?></div>
-                        <div class="text-sm">Seed #<?= $participant->getSeed() ?></div>
-                        <div class="text-xs mt-1">Endurance: <?= ucfirst($endurance) ?></div>
+                    <div class="border-2 rounded-lg p-4 <?= $enduranceClass; ?>">
+                        <div class="font-semibold"><?= htmlspecialchars($participant->getLabel()); ?></div>
+                        <div class="text-sm">Seed #<?= $participant->getSeed(); ?></div>
+                        <div class="text-xs mt-1">Endurance: <?= ucfirst($endurance); ?></div>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -209,12 +210,12 @@ function analyzeRestPeriods($schedule, $teamId) {
                                 <?php else: ?>
                                     <span class="mr-2">❌</span>
                                 <?php endif; ?>
-                                <?= htmlspecialchars($scenarioName) ?>
+                                <?= htmlspecialchars($scenarioName); ?>
                             </h3>
-                            <p class="text-gray-600"><?= htmlspecialchars($result['description']) ?></p>
+                            <p class="text-gray-600"><?= htmlspecialchars($result['description']); ?></p>
                         </div>
                         <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                            <?= $result['rest_periods'] ?> round<?= $result['rest_periods'] === 1 ? '' : 's' ?> rest
+                            <?= $result['rest_periods']; ?> round<?= $result['rest_periods'] === 1 ? '' : 's'; ?> rest
                         </span>
                     </div>
 
@@ -222,15 +223,15 @@ function analyzeRestPeriods($schedule, $teamId) {
                         <!-- Success - Show schedule analysis -->
                         <div class="grid grid-cols-3 gap-4 mb-6">
                             <div class="bg-green-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-green-600"><?= $result['total_events'] ?></div>
+                                <div class="text-2xl font-bold text-green-600"><?= $result['total_events']; ?></div>
                                 <div class="text-green-700 text-sm">Total Matches</div>
                             </div>
                             <div class="bg-blue-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-blue-600"><?= $result['total_rounds'] ?></div>
+                                <div class="text-2xl font-bold text-blue-600"><?= $result['total_rounds']; ?></div>
                                 <div class="text-blue-700 text-sm">Total Rounds</div>
                             </div>
                             <div class="bg-purple-50 rounded-lg p-4">
-                                <div class="text-2xl font-bold text-purple-600"><?= $result['rest_periods'] ?></div>
+                                <div class="text-2xl font-bold text-purple-600"><?= $result['rest_periods']; ?></div>
                                 <div class="text-purple-700 text-sm">Min Rest Required</div>
                             </div>
                         </div>
@@ -242,23 +243,23 @@ function analyzeRestPeriods($schedule, $teamId) {
                                 <?php foreach ($participants as $participant): ?>
                                     <?php $analysis = analyzeRestPeriods($result['schedule'], $participant->getId()); ?>
                                     <div class="border border-gray-200 rounded-lg p-3">
-                                        <div class="font-medium text-gray-800 mb-2"><?= htmlspecialchars($participant->getLabel()) ?></div>
+                                        <div class="font-medium text-gray-800 mb-2"><?= htmlspecialchars($participant->getLabel()); ?></div>
                                         <div class="text-xs space-y-1">
                                             <div class="flex justify-between">
                                                 <span class="text-gray-500">Matches:</span>
-                                                <span class="font-medium"><?= count($analysis['rounds']) ?></span>
+                                                <span class="font-medium"><?= count($analysis['rounds']); ?></span>
                                             </div>
                                             <div class="flex justify-between">
                                                 <span class="text-gray-500">Min Rest:</span>
-                                                <span class="font-medium"><?= $analysis['min_rest'] ?> rounds</span>
+                                                <span class="font-medium"><?= $analysis['min_rest']; ?> rounds</span>
                                             </div>
                                             <div class="flex justify-between">
                                                 <span class="text-gray-500">Max Rest:</span>
-                                                <span class="font-medium"><?= $analysis['max_rest'] ?> rounds</span>
+                                                <span class="font-medium"><?= $analysis['max_rest']; ?> rounds</span>
                                             </div>
                                             <div class="flex justify-between">
                                                 <span class="text-gray-500">Avg Rest:</span>
-                                                <span class="font-medium"><?= $analysis['avg_rest'] ?> rounds</span>
+                                                <span class="font-medium"><?= $analysis['avg_rest']; ?> rounds</span>
                                             </div>
                                         </div>
                                         
@@ -268,7 +269,7 @@ function analyzeRestPeriods($schedule, $teamId) {
                                             <div class="flex flex-wrap gap-1">
                                                 <?php foreach ($analysis['rounds'] as $round): ?>
                                                     <span class="bg-blue-100 text-blue-800 px-1 py-0.5 rounded text-xs">
-                                                        <?= $round ?>
+                                                        <?= $round; ?>
                                                     </span>
                                                 <?php endforeach; ?>
                                             </div>
@@ -285,30 +286,30 @@ function analyzeRestPeriods($schedule, $teamId) {
                                 <div class="flex space-x-2 pb-2">
                                     <?php
                                     $roundEvents = [];
-                                    foreach ($result['schedule'] as $event) {
-                                        $roundNumber = $event->getRound()->getNumber();
-                                        if ($roundNumber <= 8) {
-                                            if (!isset($roundEvents[$roundNumber])) {
-                                                $roundEvents[$roundNumber] = [];
-                                            }
-                                            $roundEvents[$roundNumber][] = $event;
-                                        }
-                                    }
-                                    ?>
+                        foreach ($result['schedule'] as $event) {
+                            $roundNumber = $event->getRound()->getNumber();
+                            if ($roundNumber <= 8) {
+                                if (!isset($roundEvents[$roundNumber])) {
+                                    $roundEvents[$roundNumber] = [];
+                                }
+                                $roundEvents[$roundNumber][] = $event;
+                            }
+                        }
+                        ?>
                                     
-                                    <?php for ($round = 1; $round <= min(8, $result['total_rounds']); $round++): ?>
+                                    <?php for ($round = 1; $round <= min(8, $result['total_rounds']); ++$round): ?>
                                         <div class="min-w-32 bg-gray-100 rounded-lg p-2">
                                             <div class="text-center font-medium text-gray-800 mb-2 text-sm">
-                                                Round <?= $round ?>
+                                                Round <?= $round; ?>
                                             </div>
                                             <?php if (isset($roundEvents[$round])): ?>
                                                 <div class="space-y-1">
                                                     <?php foreach ($roundEvents[$round] as $event): ?>
                                                         <?php $eventParticipants = $event->getParticipants(); ?>
                                                         <div class="bg-white rounded p-1 text-xs text-center">
-                                                            <?= htmlspecialchars(substr($eventParticipants[0]->getLabel(), 0, 8)) ?><br>
+                                                            <?= htmlspecialchars(substr($eventParticipants[0]->getLabel(), 0, 8)); ?><br>
                                                             <span class="text-gray-400">vs</span><br>
-                                                            <?= htmlspecialchars(substr($eventParticipants[1]->getLabel(), 0, 8)) ?>
+                                                            <?= htmlspecialchars(substr($eventParticipants[1]->getLabel(), 0, 8)); ?>
                                                         </div>
                                                     <?php endforeach; ?>
                                                 </div>
@@ -325,11 +326,11 @@ function analyzeRestPeriods($schedule, $teamId) {
                         <!-- Failed - Show error -->
                         <div class="bg-red-50 rounded-lg p-4">
                             <h4 class="font-semibold text-red-800 mb-2">❌ Schedule Generation Failed</h4>
-                            <p class="text-red-700 text-sm mb-3"><?= htmlspecialchars($result['error']) ?></p>
+                            <p class="text-red-700 text-sm mb-3"><?= htmlspecialchars($result['error']); ?></p>
                             
                             <div class="bg-red-100 rounded p-3 text-sm text-red-800">
-                                <strong>Why this failed:</strong> With <?= count($participants) ?> teams and a requirement 
-                                for <?= $result['rest_periods'] ?> round<?= $result['rest_periods'] === 1 ? '' : 's' ?> rest 
+                                <strong>Why this failed:</strong> With <?= count($participants); ?> teams and a requirement 
+                                for <?= $result['rest_periods']; ?> round<?= $result['rest_periods'] === 1 ? '' : 's'; ?> rest 
                                 between encounters, the scheduling becomes mathematically impossible. There aren't 
                                 enough rounds to properly space out all the required matches.
                             </div>
@@ -381,7 +382,7 @@ try {
 } catch (IncompleteScheduleException $e) {
     echo "Could not generate schedule with current rest requirements";
     echo "Consider reducing the minimum rest period";
-}') ?></code></pre>
+}'); ?></code></pre>
             </div>
         </div>
 
