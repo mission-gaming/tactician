@@ -17,7 +17,7 @@ use Override;
  * suitable for tournaments where the same encounters should
  * happen multiple times without variation.
  */
-readonly class RepeatedLegStrategy implements LegStrategy
+readonly class RepeatedLegStrategy implements LegStrategyInterface
 {
     /**
      * Plan the generation strategy for a multi-leg tournament.

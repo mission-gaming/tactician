@@ -6,7 +6,6 @@ namespace MissionGaming\Tactician\LegStrategies;
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
-use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use Override;
@@ -19,7 +18,7 @@ use Random\Randomizer;
  * for every leg, creating varied encounters across legs while maintaining
  * the same participant combinations.
  */
-readonly class ShuffledLegStrategy implements LegStrategy
+readonly class ShuffledLegStrategy implements LegStrategyInterface
 {
     public function __construct(
         private ?Randomizer $randomizer = null

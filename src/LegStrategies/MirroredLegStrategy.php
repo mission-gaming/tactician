@@ -18,7 +18,7 @@ use Override;
  * the order is reversed to [Away, Home], simulating home and away fixtures
  * common in sports tournaments.
  */
-readonly class MirroredLegStrategy implements LegStrategy
+readonly class MirroredLegStrategy implements LegStrategyInterface
 {
     /**
      * Plan the generation strategy for a multi-leg tournament.

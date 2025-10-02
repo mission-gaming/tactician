@@ -11,7 +11,7 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
-use MissionGaming\Tactician\LegStrategies\LegStrategy;
+use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
@@ -37,7 +37,7 @@ class RoundRobinScheduler implements SchedulerInterface
      * @param array<Participant> $participants Tournament participants
      * @param int $participantsPerEvent Number of participants per event
      * @param int $legs Number of legs in the tournament
-     * @param LegStrategy|null $strategy Strategy for multi-leg generation
+     * @param LegStrategyInterface|null $strategy Strategy for multi-leg generation
      *
      * @throws InvalidConfigurationException When configuration is invalid
      * @throws IncompleteScheduleException When constraints prevent complete schedule generation
@@ -47,7 +47,7 @@ class RoundRobinScheduler implements SchedulerInterface
         array $participants,
         int $participantsPerEvent = 2,
         int $legs = 1,
-        ?LegStrategy $strategy = null
+        ?LegStrategyInterface $strategy = null
     ): Schedule {
         $this->validateInputs($participants, $participantsPerEvent, $legs);
 
@@ -126,7 +126,7 @@ class RoundRobinScheduler implements SchedulerInterface
         array $participants,
         int $participantsPerEvent,
         int $legs,
-        LegStrategy $strategy
+        LegStrategyInterface $strategy
     ): array {
         $allEvents = [];
         $context = new SchedulingContext($participants, [], 1, $legs, $participantsPerEvent);
@@ -168,7 +168,7 @@ class RoundRobinScheduler implements SchedulerInterface
         array $participants,
         int $participantsPerEvent,
         int $leg,
-        LegStrategy $strategy,
+        LegStrategyInterface $strategy,
         SchedulingContext $context
     ): array {
         if ($leg === 1) {

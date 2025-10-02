@@ -6,7 +6,7 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
-use MissionGaming\Tactician\LegStrategies\LegStrategy;
+use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
 
 interface SchedulerInterface
@@ -17,7 +17,7 @@ interface SchedulerInterface
      * @param array<Participant> $participants Tournament participants
      * @param int $participantsPerEvent Number of participants per event (future-proofing for N-participant events)
      * @param int $legs Number of legs in the tournament
-     * @param LegStrategy|null $strategy Strategy for multi-leg generation (null uses default)
+     * @param LegStrategyInterface|null $strategy Strategy for multi-leg generation (null uses default)
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When configuration is invalid
      * @throws \MissionGaming\Tactician\Exceptions\IncompleteScheduleException When constraints prevent complete schedule generation
@@ -27,7 +27,7 @@ interface SchedulerInterface
         array $participants,
         int $participantsPerEvent = 2,
         int $legs = 1,
-        ?LegStrategy $strategy = null
+        ?LegStrategyInterface $strategy = null
     ): Schedule;
 
     /**

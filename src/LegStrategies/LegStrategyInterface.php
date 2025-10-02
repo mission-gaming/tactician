@@ -16,7 +16,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * generation, allowing strategies to participate in real-time constraint
  * validation and all-or-nothing schedule generation.
  */
-interface LegStrategy
+interface LegStrategyInterface
 {
     /**
      * Plan the generation strategy for a multi-leg tournament.
