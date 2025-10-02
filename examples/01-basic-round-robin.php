@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
@@ -15,13 +14,8 @@ $participants = [
     new Participant('redstar', 'Red Star FC'),
 ];
 
-// Set up basic constraints
-$constraints = ConstraintSet::create()
-    ->noRepeatPairings()
-    ->build();
-
-// Generate the schedule
-$scheduler = new RoundRobinScheduler($constraints);
+// Generate the schedule (no constraints needed for basic single-leg round robin)
+$scheduler = new RoundRobinScheduler();
 $schedule = $scheduler->schedule($participants);
 
 // Calculate some statistics
@@ -138,9 +132,8 @@ foreach ($schedule as $event) {
             <h2 class="text-xl font-bold text-gray-800 mb-4">Code Example</h2>
             <div class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto">
                 <pre><code><?= htmlspecialchars('<?php
-use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\\Tactician\\DTO\\Participant;
+use MissionGaming\\Tactician\\Scheduling\\RoundRobinScheduler;
 
 // Create participants
 $participants = [
@@ -150,13 +143,8 @@ $participants = [
     new Participant(\'redstar\', \'Red Star FC\'),
 ];
 
-// Set up constraints
-$constraints = ConstraintSet::create()
-    ->noRepeatPairings()
-    ->build();
-
-// Generate schedule
-$scheduler = new RoundRobinScheduler($constraints);
+// Generate schedule (no constraints needed for basic round robin)
+$scheduler = new RoundRobinScheduler();
 $schedule = $scheduler->schedule($participants);
 
 // Iterate through matches
@@ -164,7 +152,7 @@ foreach ($schedule as $event) {
     $round = $event->getRound();
     $participants = $event->getParticipants();
     echo "Round {$round->getNumber()}: ";
-    echo "{$participants[0]->getLabel()} vs {$participants[1]->getLabel()}\n";
+    echo "{$participants[0]->getLabel()} vs {$participants[1]->getLabel()}\\n";
 }'); ?></code></pre>
             </div>
         </div>
