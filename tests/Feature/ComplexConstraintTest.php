@@ -35,15 +35,15 @@ describe('Complex Constraint Test Cases', function (): void {
             ->add(ConsecutiveRoleConstraint::homeAway(2)) // No more than 2 consecutive home/away roles
             ->build();
 
-        $scheduler = new RoundRobinScheduler(
-            constraints: $constraints,
-            legs: 3,
-            legStrategy: new MirroredLegStrategy()
-        );
+        $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule($participants))
-            ->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
+        expect(fn () => $scheduler->schedule(
+            $participants,
+            2, // participantsPerEvent
+            3, // legs
+            new MirroredLegStrategy()
+        ))->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 
     // Tests seed protection constraint where top 2 seeds are protected for 60% of the tournament
@@ -64,15 +64,15 @@ describe('Complex Constraint Test Cases', function (): void {
             ->add(new MinimumRestPeriodsConstraint(1))
             ->build();
 
-        $scheduler = new RoundRobinScheduler(
-            constraints: $constraints,
-            legs: 2,
-            legStrategy: new MirroredLegStrategy()
-        );
+        $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule($participants))
-            ->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
+        expect(fn () => $scheduler->schedule(
+            $participants,
+            2, // participantsPerEvent
+            2, // legs
+            new MirroredLegStrategy()
+        ))->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 
     // Tests complex metadata constraints: teams must have adjacent skill levels, same equipment,
@@ -94,10 +94,7 @@ describe('Complex Constraint Test Cases', function (): void {
             ->add(MetadataConstraint::requireDifferentValues('region', 'Different regions')) // Must be cross-regional
             ->build();
 
-        $scheduler = new RoundRobinScheduler(
-            constraints: $constraints,
-            legs: 1
-        );
+        $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
         expect(fn () => $scheduler->schedule($participants))
@@ -118,13 +115,14 @@ describe('Complex Constraint Test Cases', function (): void {
             ->add(new MinimumRestPeriodsConstraint(3))
             ->build();
 
-        $scheduler = new RoundRobinScheduler(
-            constraints: $constraints,
-            legs: 4,
-            legStrategy: new RepeatedLegStrategy()
-        );
+        $scheduler = new RoundRobinScheduler($constraints);
 
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->schedule(
+            $participants,
+            2, // participantsPerEvent
+            4, // legs
+            new RepeatedLegStrategy()
+        );
 
         // With 4 participants: 3 rounds per leg = 12 total rounds
         // Incremental context building ensures 3-round gaps are maintained
@@ -154,14 +152,14 @@ describe('Complex Constraint Test Cases', function (): void {
             ->add(new MinimumRestPeriodsConstraint(1))
             ->build();
 
-        $scheduler = new RoundRobinScheduler(
-            constraints: $constraints,
-            legs: 2,
-            legStrategy: new ShuffledLegStrategy()
-        );
+        $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule($participants))
-            ->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
+        expect(fn () => $scheduler->schedule(
+            $participants,
+            2, // participantsPerEvent
+            2, // legs
+            new ShuffledLegStrategy()
+        ))->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 });

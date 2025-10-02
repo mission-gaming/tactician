@@ -15,12 +15,14 @@ it('generates multi-leg schedule with mirrored strategy', function (): void {
         new Participant('team-d', 'Team D'),
     ];
 
-    $scheduler = new RoundRobinScheduler(
-        legs: 2,
-        legStrategy: new MirroredLegStrategy()
-    );
+    $scheduler = new RoundRobinScheduler();
 
-    $schedule = $schedule = $scheduler->schedule($participants);
+    $schedule = $scheduler->schedule(
+        $participants,
+        2, // participantsPerEvent
+        2, // legs
+        new MirroredLegStrategy()
+    );
 
     // Should have 2 legs worth of events
     expect(count($schedule))->toBe(12); // 6 events per leg × 2 legs
@@ -62,12 +64,14 @@ it('generates multi-leg schedule with repeated strategy', function (): void {
         new Participant('team-d', 'Team D'),
     ];
 
-    $scheduler = new RoundRobinScheduler(
-        legs: 2,
-        legStrategy: new RepeatedLegStrategy()
-    );
+    $scheduler = new RoundRobinScheduler();
 
-    $schedule = $scheduler->schedule($participants);
+    $schedule = $scheduler->schedule(
+        $participants,
+        2, // participantsPerEvent
+        2, // legs
+        new RepeatedLegStrategy()
+    );
 
     expect(count($schedule))->toBe(12); // 6 events per leg × 2 legs
     expect($schedule->getMetadataValue('legs'))->toBe(2);

@@ -25,12 +25,15 @@ describe('Schedule Validation Integration', function (): void {
             ->add(ConsecutiveRoleConstraint::homeAway(2))
             ->build();
 
-        $scheduler = new RoundRobinScheduler($constraints, null, 2);
+        $scheduler = new RoundRobinScheduler($constraints);
 
         // When: Attempting to generate schedule
         // Then: Should throw IncompleteScheduleException instead of silently generating partial schedule
-        expect(fn () => $scheduler->schedule($this->participants))
-            ->toThrow(IncompleteScheduleException::class, 'Incomplete schedule generated');
+        expect(fn () => $scheduler->schedule(
+            $this->participants,
+            2, // participantsPerEvent
+            2 // legs
+        ))->toThrow(IncompleteScheduleException::class);
     });
 
     // Tests that the validation system provides detailed diagnostic information
@@ -40,11 +43,15 @@ describe('Schedule Validation Integration', function (): void {
             ->add(ConsecutiveRoleConstraint::homeAway(2))
             ->build();
 
-        $scheduler = new RoundRobinScheduler($constraints, null, 2);
+        $scheduler = new RoundRobinScheduler($constraints);
 
         try {
             // When: Attempting to generate schedule
-            $scheduler->schedule($this->participants);
+            $scheduler->schedule(
+                $this->participants,
+                2, // participantsPerEvent
+                2 // legs
+            );
 
             // Should not reach here
             expect(false)->toBeTrue('Expected IncompleteScheduleException to be thrown');
@@ -75,10 +82,14 @@ describe('Schedule Validation Integration', function (): void {
             ->add(ConsecutiveRoleConstraint::homeAway(4)) // More relaxed limit
             ->build();
 
-        $scheduler = new RoundRobinScheduler($constraints, null, 2);
+        $scheduler = new RoundRobinScheduler($constraints);
 
         // When: Generating schedule
-        $schedule = $scheduler->schedule($this->participants);
+        $schedule = $scheduler->schedule(
+            $this->participants,
+            2, // participantsPerEvent
+            2 // legs
+        );
 
         // Then: Should generate complete schedule without throwing exception
         expect($schedule->count())->toBe(12); // Full schedule
@@ -92,11 +103,15 @@ describe('Schedule Validation Integration', function (): void {
             ->add(ConsecutiveRoleConstraint::homeAway(1)) // Very restrictive
             ->build();
 
-        $scheduler = new RoundRobinScheduler($constraints, null, 2);
+        $scheduler = new RoundRobinScheduler($constraints);
 
         try {
             // When: Attempting to generate schedule
-            $scheduler->schedule($this->participants);
+            $scheduler->schedule(
+                $this->participants,
+                2, // participantsPerEvent
+                2 // legs
+            );
             expect(false)->toBeTrue('Expected exception to be thrown');
         } catch (IncompleteScheduleException $e) {
             // Then: Should have detailed violation tracking
@@ -126,10 +141,14 @@ describe('Schedule Validation Integration', function (): void {
     it('generates complete schedules without constraints', function (): void {
         // Given: No constraints applied
         $constraints = ConstraintSet::create()->build();
-        $scheduler = new RoundRobinScheduler($constraints, null, 2);
+        $scheduler = new RoundRobinScheduler($constraints);
 
         // When: Generating schedule
-        $schedule = $scheduler->schedule($this->participants);
+        $schedule = $scheduler->schedule(
+            $this->participants,
+            2, // participantsPerEvent
+            2 // legs
+        );
 
         // Then: Should generate complete schedule
         expect($schedule->count())->toBe(12);
@@ -157,10 +176,14 @@ describe('Schedule Validation Integration', function (): void {
             ->add(ConsecutiveRoleConstraint::homeAway(1))
             ->build();
 
-        $scheduler = new RoundRobinScheduler($constraints, null, 2);
+        $scheduler = new RoundRobinScheduler($constraints);
 
         // When: Generating schedule
-        $schedule = $scheduler->schedule($minParticipants);
+        $schedule = $scheduler->schedule(
+            $minParticipants,
+            2, // participantsPerEvent
+            2 // legs
+        );
 
         // Then: Should generate complete schedule (constraint not restrictive enough to prevent)
         expect($schedule->count())->toBe(2); // 2 participants, 2 legs = 1*2 = 2 events
@@ -173,11 +196,15 @@ describe('Schedule Validation Integration', function (): void {
             ->add(ConsecutiveRoleConstraint::homeAway(1))
             ->build();
 
-        $scheduler = new RoundRobinScheduler($constraints, null, 2);
+        $scheduler = new RoundRobinScheduler($constraints);
 
         try {
             // When: Schedule fails due to consecutive role constraints
-            $scheduler->schedule($this->participants);
+            $scheduler->schedule(
+                $this->participants,
+                2, // participantsPerEvent
+                2 // legs
+            );
             expect(false)->toBeTrue('Expected exception');
         } catch (IncompleteScheduleException $e) {
             // Then: Suggestions should be relevant to consecutive role constraints
@@ -203,11 +230,15 @@ describe('Schedule Validation Integration', function (): void {
         ];
 
         foreach ($testCases as $legs => $expectedEvents) {
-            $scheduler = new RoundRobinScheduler($constraints, null, $legs);
+            $scheduler = new RoundRobinScheduler($constraints);
 
             try {
                 // When: Attempting to schedule with different leg counts
-                $schedule = $scheduler->schedule($this->participants);
+                $schedule = $scheduler->schedule(
+                    $this->participants,
+                    2, // participantsPerEvent
+                    $legs
+                );
 
                 // If successful, should have correct event count
                 expect($schedule->count())->toBe($expectedEvents);
@@ -226,11 +257,15 @@ describe('Schedule Validation Integration', function (): void {
             ->add(ConsecutiveRoleConstraint::homeAway(2))
             ->build();
 
-        $scheduler = new RoundRobinScheduler($constraints, null, 2);
+        $scheduler = new RoundRobinScheduler($constraints);
 
         try {
             // When: Failing to generate complete schedule
-            $scheduler->schedule($this->participants);
+            $scheduler->schedule(
+                $this->participants,
+                2, // participantsPerEvent
+                2 // legs
+            );
             expect(false)->toBeTrue('Expected exception');
         } catch (IncompleteScheduleException $e) {
             // Then: Should identify home/away consecutive constraint as the issue

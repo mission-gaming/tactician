@@ -233,14 +233,14 @@ describe('Round Robin Integration', function (): void {
         $constraints = ConstraintSet::create()->build();
 
         // When: Creating multi-leg schedule with mirrored strategy
-        $scheduler = new RoundRobinScheduler(
-            $constraints,
-            null,
-            2,
+        $scheduler = new RoundRobinScheduler($constraints);
+
+        $mirroredSchedule = $scheduler->schedule(
+            $participants,
+            2, // participantsPerEvent
+            2, // legs
             new MissionGaming\Tactician\LegStrategies\MirroredLegStrategy()
         );
-
-        $mirroredSchedule = $scheduler->schedule($participants);
 
         // Then: Should have continuous round numbering
         expect($mirroredSchedule->count())->toBe(30); // C(6,2) * 2 = 30 matches
@@ -483,17 +483,16 @@ describe('Round Robin Integration', function (): void {
             ->build();
 
         // When: Creating multi-leg schedule
-        $scheduler = new RoundRobinScheduler(
-            $constraints,
-            null,
-            2,
-            new MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy()
-        );
+        $scheduler = new RoundRobinScheduler($constraints);
 
         // Then: Should throw IncompleteScheduleException because NoRepeatPairings constraint
         // prevents duplicate pairings across legs, making full multi-leg schedule impossible
-        expect(fn () => $scheduler->schedule($participants))
-            ->toThrow(MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
+        expect(fn () => $scheduler->schedule(
+            $participants,
+            2, // participantsPerEvent
+            2, // legs
+            new MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy()
+        ))->toThrow(MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 
     // Tests invalid configuration scenarios to validate proper exception handling
