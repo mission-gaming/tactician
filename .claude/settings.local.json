@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/jamiehollern/Projects/**)",
+      "Bash(./vendor/bin/pest tests/Unit/Positioning --colors=never)",
+      "Bash(./vendor/bin/pest:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

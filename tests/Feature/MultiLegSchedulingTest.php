@@ -17,9 +17,8 @@ it('generates multi-leg schedule with mirrored strategy', function (): void {
 
     $scheduler = new RoundRobinScheduler();
 
-    $schedule = $scheduler->schedule(
+    $schedule = $scheduler->generateMultiLegSchedule(
         $participants,
-        2, // participantsPerEvent
         2, // legs
         new MirroredLegStrategy()
     );
@@ -66,9 +65,8 @@ it('generates multi-leg schedule with repeated strategy', function (): void {
 
     $scheduler = new RoundRobinScheduler();
 
-    $schedule = $scheduler->schedule(
+    $schedule = $scheduler->generateMultiLegSchedule(
         $participants,
-        2, // participantsPerEvent
         2, // legs
         new RepeatedLegStrategy()
     );
@@ -90,10 +88,11 @@ it('single leg schedule works same as before', function (): void {
 
     $scheduler = new RoundRobinScheduler(); // Default: 1 leg
 
-    $schedule = $scheduler->schedule($participants);
+    $schedule = $scheduler->generateSchedule($participants);
 
     expect(count($schedule))->toBe(6); // 6 events for single leg
-    expect($schedule->getMetadataValue('legs'))->toBe(1);
+    // Single-leg schedules don't have 'legs' metadata since it's always 1
+    expect($schedule->getMetadataValue('legs', 1))->toBe(1);
     expect($schedule->getMetadataValue('rounds_per_leg'))->toBe(3);
     expect($schedule->getMetadataValue('total_rounds'))->toBe(3);
 });

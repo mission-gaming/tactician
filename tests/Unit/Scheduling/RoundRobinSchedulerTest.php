@@ -43,8 +43,8 @@ describe('RoundRobinScheduler', function (): void {
     it('throws exception with less than 2 participants', function (): void {
         $scheduler = new RoundRobinScheduler();
 
-        expect(fn () => $scheduler->schedule([new Participant('p1', 'Alice')]))
-            ->toThrow(InvalidConfigurationException::class, 'Invalid scheduler configuration: Round-robin scheduling requires at least 2 participants');
+        expect(fn () => $scheduler->generateSchedule([new Participant('p1', 'Alice')]))
+            ->toThrow(InvalidConfigurationException::class, 'Round-robin scheduling requires at least 2 participants');
     });
 
     // Tests the minimal case of 2 participants, which should create exactly
@@ -56,7 +56,7 @@ describe('RoundRobinScheduler', function (): void {
         ];
         $scheduler = new RoundRobinScheduler();
 
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         expect($schedule)->toBeInstanceOf(Schedule::class);
         expect($schedule->count())->toBe(1); // 1 match
@@ -77,7 +77,7 @@ describe('RoundRobinScheduler', function (): void {
     // 3 rounds with 2 matches each, totaling 6 matches with no byes needed
     it('generates correct schedule for 4 participants (even)', function (): void {
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($this->participants);
+        $schedule = $scheduler->generateSchedule($this->participants);
 
         // 4 participants = 3 rounds, 2 matches per round = 6 total matches
         expect($schedule->count())->toBe(6);
@@ -101,7 +101,7 @@ describe('RoundRobinScheduler', function (): void {
             new Participant('p3', 'Carol'),
         ];
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         // 3 participants = 3 rounds, 1 match per round (one bye each round) = 3 total matches
         expect($schedule->count())->toBe(3);
@@ -120,7 +120,7 @@ describe('RoundRobinScheduler', function (): void {
     // every other participant exactly once, with no duplicate or missing pairings
     it('ensures each participant plays every other participant exactly once', function (): void {
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($this->participants);
+        $schedule = $scheduler->generateSchedule($this->participants);
 
         $pairings = [];
         foreach ($schedule as $event) {
@@ -148,7 +148,7 @@ describe('RoundRobinScheduler', function (): void {
     // participant count, and round structure for tournament management
     it('includes correct metadata in schedule', function (): void {
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($this->participants);
+        $schedule = $scheduler->generateSchedule($this->participants);
 
         expect($schedule->hasMetadata('algorithm'))->toBeTrue();
         expect($schedule->getMetadataValue('algorithm'))->toBe('round-robin');
@@ -161,7 +161,7 @@ describe('RoundRobinScheduler', function (): void {
     it('respects no repeat pairings constraint', function (): void {
         $constraints = ConstraintSet::create()->noRepeatPairings()->build();
         $scheduler = new RoundRobinScheduler($constraints);
-        $schedule = $scheduler->schedule($this->participants);
+        $schedule = $scheduler->generateSchedule($this->participants);
 
         // Verify no duplicate pairings
         $pairings = [];
@@ -188,8 +188,8 @@ describe('RoundRobinScheduler', function (): void {
         $scheduler1 = new RoundRobinScheduler(null, $randomizer1);
         $scheduler2 = new RoundRobinScheduler(null, $randomizer2);
 
-        $schedule1 = $scheduler1->schedule($this->participants);
-        $schedule2 = $scheduler2->schedule($this->participants);
+        $schedule1 = $scheduler1->generateSchedule($this->participants);
+        $schedule2 = $scheduler2->generateSchedule($this->participants);
 
         // Both schedules should have the same events in the same order
         expect($schedule1->count())->toBe($schedule2->count());

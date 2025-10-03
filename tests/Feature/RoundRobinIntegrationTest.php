@@ -20,7 +20,7 @@ describe('Round Robin Integration', function (): void {
 
         // When: Generating round robin schedule
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         // Then: Should generate correct number of matches
         expect($schedule->count())->toBe(6); // C(4,2) = 6 matches
@@ -60,7 +60,7 @@ describe('Round Robin Integration', function (): void {
 
         // When: Generating schedule with constraints
         $scheduler = new RoundRobinScheduler($constraints);
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         // Then: No pairings should repeat
         $pairingSeen = [];
@@ -92,7 +92,7 @@ describe('Round Robin Integration', function (): void {
 
         // When: Generating schedule
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         // Then: Should generate correct schedule accounting for byes
         expect($schedule->count())->toBe(10); // C(5,2) = 10 matches
@@ -127,7 +127,7 @@ describe('Round Robin Integration', function (): void {
 
         // When: Generating schedule
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         // Then: Schedule should be iterable and countable
         $eventCount = 0;
@@ -153,7 +153,7 @@ describe('Round Robin Integration', function (): void {
 
         // When: Generating schedule
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         // Then: Schedule should contain useful metadata
         expect($schedule->hasMetadata('algorithm'))->toBeTrue();
@@ -178,7 +178,7 @@ describe('Round Robin Integration', function (): void {
 
         // When: Generating schedule with complex constraints
         $scheduler = new RoundRobinScheduler($constraints);
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         // Then: Should generate mathematically correct schedule
         expect($schedule->count())->toBe(28); // C(8,2) = 28 matches
@@ -235,9 +235,8 @@ describe('Round Robin Integration', function (): void {
         // When: Creating multi-leg schedule with mirrored strategy
         $scheduler = new RoundRobinScheduler($constraints);
 
-        $mirroredSchedule = $scheduler->schedule(
+        $mirroredSchedule = $scheduler->generateMultiLegSchedule(
             $participants,
-            2, // participantsPerEvent
             2, // legs
             new MissionGaming\Tactician\LegStrategies\MirroredLegStrategy()
         );
@@ -274,7 +273,7 @@ describe('Round Robin Integration', function (): void {
 
         // When: Generating schedule
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         // Then: Should generate mathematically correct large schedule
         expect($schedule->count())->toBe(120); // C(16,2) = 120 matches
@@ -326,7 +325,7 @@ describe('Round Robin Integration', function (): void {
 
         // When/Then: System generates schedule despite impossible constraint
         // The constraint system may not validate impossibility until actual scheduling
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
         expect($schedule->count())->toBe(3); // System generates full schedule despite impossible constraint
     });
 
@@ -346,7 +345,7 @@ describe('Round Robin Integration', function (): void {
 
         // When: Generating seeded tournament
         $scheduler = new RoundRobinScheduler($constraints);
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         // Then: Should generate correct number of matches
         expect($schedule->count())->toBe(66); // C(12,2) = 66 matches
@@ -396,7 +395,7 @@ describe('Round Robin Integration', function (): void {
 
         // Then: Should throw IncompleteScheduleException because metadata constraint
         // fundamentally reduces possible matches (only cross-division matches allowed)
-        expect(fn () => $scheduler->schedule($participants))
+        expect(fn () => $scheduler->generateSchedule($participants))
             ->toThrow(MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 
@@ -410,7 +409,7 @@ describe('Round Robin Integration', function (): void {
         ];
 
         $scheduler = new RoundRobinScheduler();
-        $twoPersonSchedule = $scheduler->schedule($twoParticipants);
+        $twoPersonSchedule = $scheduler->generateSchedule($twoParticipants);
 
         expect($twoPersonSchedule->count())->toBe(1); // Only one possible match
 
@@ -425,7 +424,7 @@ describe('Round Robin Integration', function (): void {
             new Participant('p3', 'Player 3'),
         ];
 
-        $threePersonSchedule = $scheduler->schedule($threeParticipants);
+        $threePersonSchedule = $scheduler->generateSchedule($threeParticipants);
         expect($threePersonSchedule->count())->toBe(3); // C(3,2) = 3 matches
 
         $maxRound = $threePersonSchedule->getMaxRound();
@@ -465,7 +464,7 @@ describe('Round Robin Integration', function (): void {
 
         // Then: Should throw IncompleteScheduleException because consecutive role constraint
         // prevents some matches to avoid violating role assignment limits
-        expect(fn () => $scheduler->schedule($participants))
+        expect(fn () => $scheduler->generateSchedule($participants))
             ->toThrow(MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 
@@ -487,9 +486,8 @@ describe('Round Robin Integration', function (): void {
 
         // Then: Should throw IncompleteScheduleException because NoRepeatPairings constraint
         // prevents duplicate pairings across legs, making full multi-leg schedule impossible
-        expect(fn () => $scheduler->schedule(
+        expect(fn () => $scheduler->generateMultiLegSchedule(
             $participants,
-            2, // participantsPerEvent
             2, // legs
             new MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy()
         ))->toThrow(MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
@@ -501,11 +499,11 @@ describe('Round Robin Integration', function (): void {
         $scheduler = new RoundRobinScheduler();
 
         // Test empty participant list
-        expect(fn () => $scheduler->schedule([]))
+        expect(fn () => $scheduler->generateSchedule([]))
             ->toThrow(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class);
 
         // Test single participant
-        expect(fn () => $scheduler->schedule([new Participant('p1', 'Player 1')]))
+        expect(fn () => $scheduler->generateSchedule([new Participant('p1', 'Player 1')]))
             ->toThrow(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class);
 
         // Test duplicate participant IDs
@@ -514,7 +512,7 @@ describe('Round Robin Integration', function (): void {
             new Participant('same_id', 'Player 2'),
         ];
 
-        expect(fn () => $scheduler->schedule($duplicateParticipants))
+        expect(fn () => $scheduler->generateSchedule($duplicateParticipants))
             ->toThrow(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class);
 
         // Test invalid constraint parameters

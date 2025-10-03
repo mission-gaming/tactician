@@ -38,9 +38,8 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule(
+        expect(fn () => $scheduler->generateMultiLegSchedule(
             $participants,
-            2, // participantsPerEvent
             3, // legs
             new MirroredLegStrategy()
         ))->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
@@ -67,9 +66,8 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule(
+        expect(fn () => $scheduler->generateMultiLegSchedule(
             $participants,
-            2, // participantsPerEvent
             2, // legs
             new MirroredLegStrategy()
         ))->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
@@ -97,7 +95,7 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule($participants))
+        expect(fn () => $scheduler->generateSchedule($participants))
             ->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 
@@ -117,9 +115,8 @@ describe('Complex Constraint Test Cases', function (): void {
 
         $scheduler = new RoundRobinScheduler($constraints);
 
-        $schedule = $scheduler->schedule(
+        $schedule = $scheduler->generateMultiLegSchedule(
             $participants,
-            2, // participantsPerEvent
             4, // legs
             new RepeatedLegStrategy()
         );
@@ -155,9 +152,8 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule(
+        expect(fn () => $scheduler->generateMultiLegSchedule(
             $participants,
-            2, // participantsPerEvent
             2, // legs
             new ShuffledLegStrategy()
         ))->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
