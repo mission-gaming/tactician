@@ -67,6 +67,7 @@ readonly class PositionalPairing
     /**
      * Get a human-readable string representation of this pairing.
      */
+    #[\Override]
     public function __toString(): string
     {
         return "{$this->position1} vs {$this->position2}";

@@ -33,6 +33,7 @@ describe('PositionalPairing', function (): void {
         $resolved = $pairing->resolve($resolver);
 
         expect($resolved)->not->toBeNull();
+        assert($resolved !== null); // For PHPStan
         expect($resolved[0]->getId())->toBe('team1');
         expect($resolved[1]->getId())->toBe('team2');
     });

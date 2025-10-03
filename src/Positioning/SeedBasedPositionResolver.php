@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Positioning;
 
 use MissionGaming\Tactician\DTO\Participant;
+use Override;
 
 /**
  * Resolves positions based on static seeding order.
@@ -27,6 +28,7 @@ readonly class SeedBasedPositionResolver implements PositionResolver
     {
     }
 
+    #[Override]
     public function resolve(Position $position): ?Participant
     {
         if (!$this->canResolve($position)) {
@@ -39,6 +41,7 @@ readonly class SeedBasedPositionResolver implements PositionResolver
         return $this->participants[$index] ?? null;
     }
 
+    #[Override]
     public function canResolve(Position $position): bool
     {
         return $position->getType() === PositionType::SEED;

@@ -7,8 +7,8 @@ use MissionGaming\Tactician\Ordering\EventOrderingContext;
 use MissionGaming\Tactician\Ordering\StaticParticipantOrderer;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
-describe('StaticParticipantOrderer', function () {
-    it('maintains original participant order', function () {
+describe('StaticParticipantOrderer', function (): void {
+    it('maintains original participant order', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
@@ -22,7 +22,7 @@ describe('StaticParticipantOrderer', function () {
         expect($ordered)->toBe([$participant1, $participant2]);
     });
 
-    it('handles reversed input order without changing it', function () {
+    it('handles reversed input order without changing it', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant2, $participant1]; // reversed
@@ -36,7 +36,7 @@ describe('StaticParticipantOrderer', function () {
         expect($ordered)->toBe([$participant2, $participant1]);
     });
 
-    it('maintains same order across multiple calls with different contexts', function () {
+    it('maintains same order across multiple calls with different contexts', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
@@ -55,7 +55,7 @@ describe('StaticParticipantOrderer', function () {
         expect($ordered2)->toBe([$participant1, $participant2]);
     });
 
-    it('reindexes array when receiving associative array', function () {
+    it('reindexes array when receiving associative array', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [5 => $participant1, 'key' => $participant2]; // associative

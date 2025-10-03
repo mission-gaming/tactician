@@ -352,6 +352,8 @@ class RoundRobinScheduler implements SchedulerInterface
      *
      * @param array<Participant> $participants
      * @return array<Event>
+     * @throws IncompleteScheduleException
+     * @throws InvalidConfigurationException
      */
     private function generateMultiLegEvents(
         array $participants,
@@ -391,6 +393,7 @@ class RoundRobinScheduler implements SchedulerInterface
      *
      * @param array<Participant> $participants
      * @return array<Event>
+     * @throws InvalidConfigurationException
      */
     private function generateLegWithFullContext(
         array $participants,
@@ -441,6 +444,7 @@ class RoundRobinScheduler implements SchedulerInterface
      * @param array<Participant> $participants
      * @param int $leg The current leg number (for orderer context)
      * @return array<Event>
+     * @throws InvalidConfigurationException
      */
     private function generateRoundRobinEvents(array $participants, int $leg = 1): array
     {
@@ -608,6 +612,8 @@ class RoundRobinScheduler implements SchedulerInterface
 
     /**
      * Filter schedule events by constraints, keeping only valid events.
+     *
+     * @param array<Participant> $participants
      */
     private function filterEventsByConstraints(Schedule $schedule, array $participants): Schedule
     {
@@ -615,7 +621,7 @@ class RoundRobinScheduler implements SchedulerInterface
         $context = new SchedulingContext($participants, [], 1, 1, 2);
 
         foreach ($schedule->getEvents() as $event) {
-            if ($this->constraints->isSatisfied($event, $context)) {
+            if ($this->constraints === null || $this->constraints->isSatisfied($event, $context)) {
                 $filteredEvents[] = $event;
                 $context = $context->withEvents([$event]);
             } else {
@@ -647,6 +653,7 @@ class RoundRobinScheduler implements SchedulerInterface
      * Filter event array by constraints.
      *
      * @param array<Event> $events
+     * @param array<Participant> $participants
      * @return array<Event>
      */
     private function filterEventArrayByConstraints(array $events, array $participants, int $round): array
@@ -655,7 +662,7 @@ class RoundRobinScheduler implements SchedulerInterface
         $context = new SchedulingContext($participants, [], 1, 1, 2);
 
         foreach ($events as $event) {
-            if ($this->constraints->isSatisfied($event, $context)) {
+            if ($this->constraints === null || $this->constraints->isSatisfied($event, $context)) {
                 $filteredEvents[] = $event;
             }
         }

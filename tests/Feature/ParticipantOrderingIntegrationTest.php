@@ -8,10 +8,9 @@ use MissionGaming\Tactician\Ordering\BalancedParticipantOrderer;
 use MissionGaming\Tactician\Ordering\SeededRandomParticipantOrderer;
 use MissionGaming\Tactician\Ordering\StaticParticipantOrderer;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use Random\Engine\Mt19937;
 
-describe('Participant Ordering Integration', function () {
-    it('demonstrates deterministic ordering with StaticParticipantOrderer', function () {
+describe('Participant Ordering Integration', function (): void {
+    it('demonstrates deterministic ordering with StaticParticipantOrderer', function (): void {
         $celtic = new Participant('1', 'Celtic');
         $athletic = new Participant('2', 'Athletic');
         $livorno = new Participant('3', 'Livorno');
@@ -42,7 +41,7 @@ describe('Participant Ordering Integration', function () {
         expect(array_sum($homeCounts))->toBe(6);
     });
 
-    it('redistributes home/away with AlternatingParticipantOrderer', function () {
+    it('redistributes home/away with AlternatingParticipantOrderer', function (): void {
         $celtic = new Participant('1', 'Celtic');
         $athletic = new Participant('2', 'Athletic');
         $livorno = new Participant('3', 'Livorno');
@@ -80,7 +79,7 @@ describe('Participant Ordering Integration', function () {
         expect(array_sum($homeCounts))->toBe(6);
     });
 
-    it('achieves perfect balance with BalancedParticipantOrderer', function () {
+    it('achieves perfect balance with BalancedParticipantOrderer', function (): void {
         $celtic = new Participant('1', 'Celtic');
         $athletic = new Participant('2', 'Athletic');
         $livorno = new Participant('3', 'Livorno');
@@ -119,7 +118,7 @@ describe('Participant Ordering Integration', function () {
         expect($totalHomeCount)->toBe(6); // 6 events in 4-team round robin
     });
 
-    it('provides deterministic randomization with SeededRandomParticipantOrderer', function () {
+    it('provides deterministic randomization with SeededRandomParticipantOrderer', function (): void {
         $celtic = new Participant('1', 'Celtic');
         $athletic = new Participant('2', 'Athletic');
         $livorno = new Participant('3', 'Livorno');
@@ -131,14 +130,14 @@ describe('Participant Ordering Integration', function () {
         $scheduler1 = new RoundRobinScheduler(
             null,
             null,
-            new SeededRandomParticipantOrderer(new Mt19937(12345))
+            new SeededRandomParticipantOrderer()
         );
         $schedule1 = $scheduler1->generateSchedule($participants);
 
         $scheduler2 = new RoundRobinScheduler(
             null,
             null,
-            new SeededRandomParticipantOrderer(new Mt19937(12345))
+            new SeededRandomParticipantOrderer()
         );
         $schedule2 = $scheduler2->generateSchedule($participants);
 
@@ -157,7 +156,7 @@ describe('Participant Ordering Integration', function () {
         }
     });
 
-    it('demonstrates ordering works across multiple rounds', function () {
+    it('demonstrates ordering works across multiple rounds', function (): void {
         $teams = [];
         for ($i = 1; $i <= 6; ++$i) {
             $teams[] = new Participant((string) $i, "Team {$i}");
@@ -198,7 +197,7 @@ describe('Participant Ordering Integration', function () {
         }
     });
 
-    it('shows ordering is independent of leg strategies', function () {
+    it('shows ordering is independent of leg strategies', function (): void {
         $celtic = new Participant('1', 'Celtic');
         $athletic = new Participant('2', 'Athletic');
         $livorno = new Participant('3', 'Livorno');
@@ -235,7 +234,7 @@ describe('Participant Ordering Integration', function () {
         }
     });
 
-    it('maintains backward compatibility with default StaticParticipantOrderer', function () {
+    it('maintains backward compatibility with default StaticParticipantOrderer', function (): void {
         $participants = [
             new Participant('1', 'Team A'),
             new Participant('2', 'Team B'),

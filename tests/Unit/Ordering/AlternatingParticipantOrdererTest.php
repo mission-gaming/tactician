@@ -7,8 +7,8 @@ use MissionGaming\Tactician\Ordering\AlternatingParticipantOrderer;
 use MissionGaming\Tactician\Ordering\EventOrderingContext;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
-describe('AlternatingParticipantOrderer', function () {
-    it('maintains original order for even event indices', function () {
+describe('AlternatingParticipantOrderer', function (): void {
+    it('maintains original order for even event indices', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
@@ -32,7 +32,7 @@ describe('AlternatingParticipantOrderer', function () {
         expect($ordered)->toBe([$participant1, $participant2]);
     });
 
-    it('reverses order for odd event indices', function () {
+    it('reverses order for odd event indices', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
@@ -56,7 +56,7 @@ describe('AlternatingParticipantOrderer', function () {
         expect($ordered)->toBe([$participant2, $participant1]);
     });
 
-    it('creates alternating pattern for sequential events', function () {
+    it('creates alternating pattern for sequential events', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
@@ -79,7 +79,7 @@ describe('AlternatingParticipantOrderer', function () {
         expect($results[5])->toBe([$participant2, $participant1]);
     });
 
-    it('alternates independently of round number', function () {
+    it('alternates independently of round number', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
@@ -98,7 +98,7 @@ describe('AlternatingParticipantOrderer', function () {
         expect($ordered2)->toBe([$participant2, $participant1]);
     });
 
-    it('reindexes array when receiving associative array', function () {
+    it('reindexes array when receiving associative array', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [5 => $participant1, 'key' => $participant2];

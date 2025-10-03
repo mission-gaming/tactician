@@ -9,8 +9,8 @@ use MissionGaming\Tactician\Ordering\BalancedParticipantOrderer;
 use MissionGaming\Tactician\Ordering\EventOrderingContext;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
-describe('BalancedParticipantOrderer', function () {
-    it('maintains original order when both participants have zero home count', function () {
+describe('BalancedParticipantOrderer', function (): void {
+    it('maintains original order when both participants have zero home count', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
@@ -24,7 +24,7 @@ describe('BalancedParticipantOrderer', function () {
         expect($ordered)->toBe([$participant1, $participant2]);
     });
 
-    it('puts participant with fewer home appearances first', function () {
+    it('puts participant with fewer home appearances first', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participant3 = new Participant('3', 'Team C');
@@ -50,7 +50,7 @@ describe('BalancedParticipantOrderer', function () {
         expect($ordered)->toBe([$participant2, $participant1]);
     });
 
-    it('balances home/away distribution across multiple events', function () {
+    it('balances home/away distribution across multiple events', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
 
@@ -84,7 +84,7 @@ describe('BalancedParticipantOrderer', function () {
         expect($ordered3)->toBe([$participant1, $participant2]);
     });
 
-    it('handles tie by preserving original order', function () {
+    it('handles tie by preserving original order', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participant3 = new Participant('3', 'Team C');
@@ -109,7 +109,7 @@ describe('BalancedParticipantOrderer', function () {
         expect($ordered2)->toBe([$participant2, $participant1]);
     });
 
-    it('only counts home appearances (first position in event)', function () {
+    it('only counts home appearances (first position in event)', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participant3 = new Participant('3', 'Team C');
@@ -133,7 +133,7 @@ describe('BalancedParticipantOrderer', function () {
         expect($ordered)->toBe([$participant1, $participant2]);
     });
 
-    it('returns original array for non-2-participant events', function () {
+    it('returns original array for non-2-participant events', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participant3 = new Participant('3', 'Team C');

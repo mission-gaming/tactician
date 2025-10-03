@@ -49,6 +49,7 @@ describe('PositionalSchedule', function (): void {
 
         $retrievedRound = $schedule->getRound(2);
         expect($retrievedRound)->not->toBeNull();
+        assert($retrievedRound !== null); // For PHPStan
         expect($retrievedRound->getRoundNumber())->toBe(2);
 
         $nonExistentRound = $schedule->getRound(5);

@@ -53,6 +53,7 @@ readonly class Position
     /**
      * Get a human-readable string representation of this position.
      */
+    #[\Override]
     public function __toString(): string
     {
         return match ($this->type) {

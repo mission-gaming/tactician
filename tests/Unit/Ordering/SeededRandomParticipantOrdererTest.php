@@ -6,10 +6,9 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Ordering\EventOrderingContext;
 use MissionGaming\Tactician\Ordering\SeededRandomParticipantOrderer;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
-use Random\Engine\Mt19937;
 
-describe('SeededRandomParticipantOrderer', function () {
-    it('produces deterministic results for same context', function () {
+describe('SeededRandomParticipantOrderer', function (): void {
+    it('produces deterministic results for same context', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
@@ -17,22 +16,22 @@ describe('SeededRandomParticipantOrderer', function () {
         $context = new SchedulingContext([$participant1, $participant2]);
         $orderingContext = new EventOrderingContext(1, 0, null, $context);
 
-        $orderer1 = new SeededRandomParticipantOrderer(new Mt19937(12345));
+        $orderer1 = new SeededRandomParticipantOrderer();
         $ordered1 = $orderer1->order($participants, $orderingContext);
 
-        $orderer2 = new SeededRandomParticipantOrderer(new Mt19937(12345));
+        $orderer2 = new SeededRandomParticipantOrderer();
         $ordered2 = $orderer2->order($participants, $orderingContext);
 
         expect($ordered1)->toBe($ordered2);
     });
 
-    it('produces different results for different event indices', function () {
+    it('produces different results for different event indices', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
 
         $context = new SchedulingContext([$participant1, $participant2]);
-        $orderer = new SeededRandomParticipantOrderer(new Mt19937(12345));
+        $orderer = new SeededRandomParticipantOrderer();
 
         $results = [];
         for ($eventIndex = 0; $eventIndex < 10; ++$eventIndex) {
@@ -57,13 +56,13 @@ describe('SeededRandomParticipantOrderer', function () {
         expect($hasReversed)->toBeTrue();
     });
 
-    it('produces different results for different round numbers', function () {
+    it('produces different results for different round numbers', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
 
         $context = new SchedulingContext([$participant1, $participant2]);
-        $orderer = new SeededRandomParticipantOrderer(new Mt19937(12345));
+        $orderer = new SeededRandomParticipantOrderer();
 
         $results = [];
         for ($round = 1; $round <= 10; ++$round) {
@@ -88,13 +87,13 @@ describe('SeededRandomParticipantOrderer', function () {
         expect($hasReversed)->toBeTrue();
     });
 
-    it('produces different results for different legs', function () {
+    it('produces different results for different legs', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
 
         $context = new SchedulingContext([$participant1, $participant2], [], 1, 5, 2);
-        $orderer = new SeededRandomParticipantOrderer(new Mt19937(12345));
+        $orderer = new SeededRandomParticipantOrderer();
 
         $results = [];
         for ($leg = 1; $leg <= 5; ++$leg) {
@@ -119,7 +118,7 @@ describe('SeededRandomParticipantOrderer', function () {
         expect($hasReversed)->toBeTrue();
     });
 
-    it('uses default randomizer when no engine provided', function () {
+    it('uses default randomizer when no engine provided', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
@@ -134,13 +133,13 @@ describe('SeededRandomParticipantOrderer', function () {
         expect($ordered === [$participant1, $participant2] || $ordered === [$participant2, $participant1])->toBeTrue();
     });
 
-    it('creates unique seed from context components', function () {
+    it('creates unique seed from context components', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [$participant1, $participant2];
 
         $context = new SchedulingContext([$participant1, $participant2]);
-        $orderer = new SeededRandomParticipantOrderer(new Mt19937(12345));
+        $orderer = new SeededRandomParticipantOrderer();
 
         // Same seed = same result
         $context1 = new EventOrderingContext(5, 3, 2, $context);
@@ -152,7 +151,7 @@ describe('SeededRandomParticipantOrderer', function () {
         expect($ordered1)->toBe($ordered2);
     });
 
-    it('reindexes array when receiving associative array', function () {
+    it('reindexes array when receiving associative array', function (): void {
         $participant1 = new Participant('1', 'Team A');
         $participant2 = new Participant('2', 'Team B');
         $participants = [5 => $participant1, 'key' => $participant2];
@@ -160,7 +159,7 @@ describe('SeededRandomParticipantOrderer', function () {
         $context = new SchedulingContext([$participant1, $participant2]);
         $orderingContext = new EventOrderingContext(1, 0, null, $context);
 
-        $orderer = new SeededRandomParticipantOrderer(new Mt19937(12345));
+        $orderer = new SeededRandomParticipantOrderer();
         $ordered = $orderer->order($participants, $orderingContext);
 
         expect(array_keys($ordered))->toBe([0, 1]);

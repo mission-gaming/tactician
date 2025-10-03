@@ -5,14 +5,12 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Ordering;
 
 use Override;
-use Random\Engine;
-use Random\Randomizer;
 
 /**
  * Provides deterministic randomization of participant order per event.
  *
- * This orderer uses a seeded random number generator to randomly determine
- * participant order, but does so deterministically based on:
+ * This orderer uses deterministic hashing to randomly determine participant order
+ * based on the event context:
  * - Round number
  * - Event index within round
  * - Leg number (if applicable)
@@ -20,21 +18,16 @@ use Random\Randomizer;
  * The same inputs will always produce the same ordering, making this suitable
  * for reproducible tournament generation with varied participant positions.
  *
- * Each event gets its own random decision, creating natural variation while
- * maintaining full reproducibility.
+ * Each event gets its own random decision (via CRC32 hash), creating natural
+ * variation while maintaining full reproducibility.
  */
 readonly class SeededRandomParticipantOrderer implements ParticipantOrderer
 {
-    private Randomizer $randomizer;
-
     /**
      * Create a new seeded random participant orderer.
-     *
-     * @param Engine|null $engine Optional random engine (uses Mt19937 if not provided)
      */
-    public function __construct(?Engine $engine = null)
+    public function __construct()
     {
-        $this->randomizer = new Randomizer($engine);
     }
 
     /**
