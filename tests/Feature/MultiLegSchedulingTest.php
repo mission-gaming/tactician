@@ -17,7 +17,7 @@ it('generates multi-leg schedule with mirrored strategy', function (): void {
 
     $scheduler = new RoundRobinScheduler();
 
-    $schedule = $scheduler->generateMultiLegSchedule(
+    $schedule = $scheduler->generateSchedule(
         $participants,
         2, // legs
         new MirroredLegStrategy()
@@ -65,7 +65,7 @@ it('generates multi-leg schedule with repeated strategy', function (): void {
 
     $scheduler = new RoundRobinScheduler();
 
-    $schedule = $scheduler->generateMultiLegSchedule(
+    $schedule = $scheduler->generateSchedule(
         $participants,
         2, // legs
         new RepeatedLegStrategy()

@@ -235,7 +235,7 @@ describe('Round Robin Integration', function (): void {
         // When: Creating multi-leg schedule with mirrored strategy
         $scheduler = new RoundRobinScheduler($constraints);
 
-        $mirroredSchedule = $scheduler->generateMultiLegSchedule(
+        $mirroredSchedule = $scheduler->generateSchedule(
             $participants,
             2, // legs
             new MissionGaming\Tactician\LegStrategies\MirroredLegStrategy()
@@ -486,7 +486,7 @@ describe('Round Robin Integration', function (): void {
 
         // Then: Should throw IncompleteScheduleException because NoRepeatPairings constraint
         // prevents duplicate pairings across legs, making full multi-leg schedule impossible
-        expect(fn () => $scheduler->generateMultiLegSchedule(
+        expect(fn () => $scheduler->generateSchedule(
             $participants,
             2, // legs
             new MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy()

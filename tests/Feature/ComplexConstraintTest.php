@@ -38,7 +38,7 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->generateMultiLegSchedule(
+        expect(fn () => $scheduler->generateSchedule(
             $participants,
             3, // legs
             new MirroredLegStrategy()
@@ -66,7 +66,7 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->generateMultiLegSchedule(
+        expect(fn () => $scheduler->generateSchedule(
             $participants,
             2, // legs
             new MirroredLegStrategy()
@@ -115,7 +115,7 @@ describe('Complex Constraint Test Cases', function (): void {
 
         $scheduler = new RoundRobinScheduler($constraints);
 
-        $schedule = $scheduler->generateMultiLegSchedule(
+        $schedule = $scheduler->generateSchedule(
             $participants,
             4, // legs
             new RepeatedLegStrategy()
@@ -152,7 +152,7 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->generateMultiLegSchedule(
+        expect(fn () => $scheduler->generateSchedule(
             $participants,
             2, // legs
             new ShuffledLegStrategy()

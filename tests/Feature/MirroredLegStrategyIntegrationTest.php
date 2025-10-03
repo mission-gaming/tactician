@@ -14,7 +14,7 @@ describe('MirroredLegStrategy Integration', function (): void {
         ];
 
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->generateMultiLegSchedule(
+        $schedule = $scheduler->generateSchedule(
             participants: $participants,
             legs: 2,
             legStrategy: new MirroredLegStrategy()
@@ -71,7 +71,7 @@ describe('MirroredLegStrategy Integration', function (): void {
         ];
 
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->generateMultiLegSchedule(
+        $schedule = $scheduler->generateSchedule(
             participants: $participants,
             legs: 2,
             legStrategy: new MirroredLegStrategy()

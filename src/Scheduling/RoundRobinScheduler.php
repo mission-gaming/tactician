@@ -84,82 +84,23 @@ class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
-     * Generate a complete single-leg round-robin schedule.
+     * Generate a complete round-robin schedule.
      *
-     * Creates all events for a complete round-robin tournament where each
-     * participant plays every other participant once.
-     */
-    #[Override]
-    public function generateSchedule(array $participants): Schedule
-    {
-        $this->validateParticipants($participants);
-        $this->clearViolations();
-
-        // Apply random shuffling if randomizer is provided
-        $orderedParticipants = $this->randomizer !== null
-            ? $this->shuffleParticipants($participants)
-            : $participants;
-
-        // Generate positional structure
-        $structure = $this->generateStructure(count($orderedParticipants));
-
-        // Resolve positions to participants
-        $resolver = new SeedBasedPositionResolver(array_values($orderedParticipants));
-
-        // Get metadata from structure and add single-leg specific metadata
-        $metadata = $structure->getMetadata();
-        $metadata['total_rounds'] = $metadata['rounds'];
-        $metadata['legs'] = 1;
-        $metadata['rounds_per_leg'] = $metadata['rounds'];
-
-        // Resolve with updated metadata
-        $allEvents = [];
-        $context = new SchedulingContext($orderedParticipants, [], 1, 1, 2);
-
-        foreach ($structure->getRounds() as $positionalRound) {
-            $resolvedEvents = $positionalRound->resolve(
-                $resolver,
-                $this->participantOrderer,
-                $context,
-                null // single-leg, so leg is null
-            );
-            $allEvents = [...$allEvents, ...$resolvedEvents];
-            $context = $context->withEvents($resolvedEvents);
-        }
-
-        $schedule = new Schedule($allEvents, [
-            ...$metadata,
-            'fully_resolved' => true,
-            'positional_structure' => $structure,
-        ]);
-
-        // Apply constraints if provided
-        if ($this->constraints !== null) {
-            $schedule = $this->filterEventsByConstraints($schedule, $orderedParticipants);
-        }
-
-        // Validate completeness
-        $this->validateGeneratedSchedule($schedule, $orderedParticipants, 1);
-
-        return $schedule;
-    }
-
-    /**
-     * Generate a multi-leg round-robin schedule with leg-specific variations.
-     *
-     * This is a round-robin-specific method that supports home/away fixtures
-     * and other multi-leg tournament formats.
+     * Creates all events for a round-robin tournament where each
+     * participant plays every other participant. Supports single-leg
+     * and multi-leg tournaments with leg-specific variations.
      *
      * @param array<Participant> $participants Tournament participants
-     * @param int $legs Number of legs in the tournament
+     * @param int $legs Number of legs in the tournament (default: 1)
      * @param LegStrategyInterface|null $legStrategy Strategy for handling multiple legs
      *
      * @throws InvalidConfigurationException When configuration is invalid
      * @throws IncompleteScheduleException When constraints prevent complete schedule generation
      */
-    public function generateMultiLegSchedule(
+    #[Override]
+    public function generateSchedule(
         array $participants,
-        int $legs,
+        int $legs = 1,
         ?LegStrategyInterface $legStrategy = null
     ): Schedule {
         $this->validateParticipants($participants);
@@ -173,12 +114,18 @@ class RoundRobinScheduler implements SchedulerInterface
 
         $this->clearViolations();
 
-        $legStrategy ??= new MirroredLegStrategy();
-
         // Apply random shuffling if randomizer is provided
         $orderedParticipants = $this->randomizer !== null
             ? $this->shuffleParticipants($participants)
             : $participants;
+
+        // Single-leg case - simpler logic
+        if ($legs === 1) {
+            return $this->generateSingleLegSchedule($orderedParticipants);
+        }
+
+        // Multi-leg case
+        $legStrategy ??= new MirroredLegStrategy();
 
         // Generate all events using leg strategy
         $allEvents = $this->generateMultiLegEvents($orderedParticipants, $legs, $legStrategy);
@@ -497,6 +444,60 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         return $allEvents;
+    }
+
+    /**
+     * Generate a single-leg schedule.
+     *
+     * @param array<Participant> $participants
+     * @return Schedule
+     * @throws InvalidConfigurationException When configuration is invalid
+     * @throws IncompleteScheduleException When constraints prevent complete schedule generation
+     */
+    private function generateSingleLegSchedule(array $participants): Schedule
+    {
+        // Generate positional structure
+        $structure = $this->generateStructure(count($participants));
+
+        // Resolve positions to participants
+        $resolver = new SeedBasedPositionResolver(array_values($participants));
+
+        // Get metadata from structure and add single-leg specific metadata
+        $metadata = $structure->getMetadata();
+        $metadata['total_rounds'] = $metadata['rounds'];
+        $metadata['legs'] = 1;
+        $metadata['rounds_per_leg'] = $metadata['rounds'];
+
+        // Resolve with updated metadata
+        $allEvents = [];
+        $context = new SchedulingContext($participants, [], 1, 1, 2);
+
+        foreach ($structure->getRounds() as $positionalRound) {
+            $resolvedEvents = $positionalRound->resolve(
+                $resolver,
+                $this->participantOrderer,
+                $context,
+                null // single-leg, so leg is null
+            );
+            $allEvents = [...$allEvents, ...$resolvedEvents];
+            $context = $context->withEvents($resolvedEvents);
+        }
+
+        $schedule = new Schedule($allEvents, [
+            ...$metadata,
+            'fully_resolved' => true,
+            'positional_structure' => $structure,
+        ]);
+
+        // Apply constraints if provided
+        if ($this->constraints !== null) {
+            $schedule = $this->filterEventsByConstraints($schedule, $participants);
+        }
+
+        // Validate completeness
+        $this->validateGeneratedSchedule($schedule, $participants, 1);
+
+        return $schedule;
     }
 
     /**

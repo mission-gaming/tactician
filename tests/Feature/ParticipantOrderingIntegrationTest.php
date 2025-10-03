@@ -211,7 +211,7 @@ describe('Participant Ordering Integration', function (): void {
             null,
             new BalancedParticipantOrderer()
         );
-        $schedule = $scheduler->generateMultiLegSchedule($participants, 2);
+        $schedule = $scheduler->generateSchedule($participants, 2);
 
         // Get events from first leg only
         $firstLegEvents = array_filter(

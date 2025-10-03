@@ -29,7 +29,7 @@ describe('Schedule Validation Integration', function (): void {
 
         // When: Attempting to generate schedule
         // Then: Should throw IncompleteScheduleException instead of silently generating partial schedule
-        expect(fn () => $scheduler->generateMultiLegSchedule(
+        expect(fn () => $scheduler->generateSchedule(
             $this->participants,
             2 // legs
         ))->toThrow(IncompleteScheduleException::class);
@@ -46,7 +46,7 @@ describe('Schedule Validation Integration', function (): void {
 
         try {
             // When: Attempting to generate schedule
-            $scheduler->generateMultiLegSchedule(
+            $scheduler->generateSchedule(
                 $this->participants,
                 2 // legs
             );
@@ -83,7 +83,7 @@ describe('Schedule Validation Integration', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // When: Generating schedule
-        $schedule = $scheduler->generateMultiLegSchedule(
+        $schedule = $scheduler->generateSchedule(
             $this->participants,
             2 // legs
         );
@@ -104,7 +104,7 @@ describe('Schedule Validation Integration', function (): void {
 
         try {
             // When: Attempting to generate schedule
-            $scheduler->generateMultiLegSchedule(
+            $scheduler->generateSchedule(
                 $this->participants,
                 2 // legs
             );
@@ -140,7 +140,7 @@ describe('Schedule Validation Integration', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // When: Generating schedule
-        $schedule = $scheduler->generateMultiLegSchedule(
+        $schedule = $scheduler->generateSchedule(
             $this->participants,
             2 // legs
         );
@@ -174,7 +174,7 @@ describe('Schedule Validation Integration', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // When: Generating schedule
-        $schedule = $scheduler->generateMultiLegSchedule(
+        $schedule = $scheduler->generateSchedule(
             $minParticipants,
             2 // legs
         );
@@ -194,7 +194,7 @@ describe('Schedule Validation Integration', function (): void {
 
         try {
             // When: Schedule fails due to consecutive role constraints
-            $scheduler->generateMultiLegSchedule(
+            $scheduler->generateSchedule(
                 $this->participants,
                 2 // legs
             );
@@ -227,7 +227,7 @@ describe('Schedule Validation Integration', function (): void {
 
             try {
                 // When: Attempting to schedule with different leg counts
-                $schedule = $scheduler->generateMultiLegSchedule(
+                $schedule = $scheduler->generateSchedule(
                     $this->participants,
                     $legs
                 );
@@ -253,7 +253,7 @@ describe('Schedule Validation Integration', function (): void {
 
         try {
             // When: Failing to generate complete schedule
-            $scheduler->generateMultiLegSchedule(
+            $scheduler->generateSchedule(
                 $this->participants,
                 2 // legs
             );
