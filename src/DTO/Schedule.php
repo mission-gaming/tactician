@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\DTO;
 
 use Countable;
 use Iterator;
+use MissionGaming\Tactician\Positioning\PositionalSchedule;
 use Override;
 
 /**
@@ -72,6 +73,32 @@ class Schedule implements Iterator, Countable
     public function getMetadata(): array
     {
         return $this->metadata;
+    }
+
+    /**
+     * Get the positional structure that generated this schedule.
+     *
+     * This returns the tournament blueprint showing which positions
+     * played against each other, independent of actual participant assignment.
+     *
+     * @return PositionalSchedule|null The positional structure, or null if not available
+     */
+    public function getPositionalStructure(): ?PositionalSchedule
+    {
+        return $this->metadata['positional_structure'] ?? null;
+    }
+
+    /**
+     * Check if all positions in this schedule have been resolved to actual participants.
+     *
+     * For static schedules (round-robin, seeded Swiss), this is always true.
+     * For dynamic schedules being built round-by-round, this may be false until complete.
+     *
+     * @return bool True if fully resolved
+     */
+    public function isFullyResolved(): bool
+    {
+        return $this->metadata['fully_resolved'] ?? false;
     }
 
     /**

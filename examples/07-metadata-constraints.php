@@ -67,7 +67,7 @@ $scenarios = [
         'description' => 'Teams can only play against teams of the same skill level',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
-            ->add(MetadataConstraint::mustMatch('skill_level'))
+            ->add(MetadataConstraint::requireSameValue('skill_level'))
             ->build(),
         'rules' => 'Expert vs Expert, Advanced vs Advanced, etc.',
     ],
@@ -75,7 +75,7 @@ $scenarios = [
         'description' => 'Prefer matches within the same region when possible',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
-            ->add(MetadataConstraint::preferMatch('region'))
+            ->add(MetadataConstraint::requireSameValue('region'))
             ->build(),
         'rules' => 'European teams prefer to play other European teams',
     ],
@@ -83,7 +83,7 @@ $scenarios = [
         'description' => 'PC teams cannot play against Console teams',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
-            ->add(MetadataConstraint::mustMatch('platform'))
+            ->add(MetadataConstraint::requireSameValue('platform'))
             ->build(),
         'rules' => 'PC teams only play PC teams, Console only play Console',
     ],
@@ -91,8 +91,8 @@ $scenarios = [
         'description' => 'Multiple metadata constraints combined',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
-            ->add(MetadataConstraint::mustMatch('platform'))
-            ->add(MetadataConstraint::preferMatch('region'))
+            ->add(MetadataConstraint::requireSameValue('platform'))
+            ->add(MetadataConstraint::requireSameValue('region'))
             ->build(),
         'rules' => 'Same platform required, same region preferred',
     ],
@@ -104,7 +104,7 @@ $results = [];
 foreach ($scenarios as $name => $scenario) {
     try {
         $scheduler = new RoundRobinScheduler($scenario['constraints']);
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         $results[$name] = [
             'status' => 'success',
@@ -228,11 +228,11 @@ function analyzeMatchMetadata($schedule)
                     <div class="space-y-2 text-sm">
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
-                            <span>mustMatch() - Strict requirement</span>
+                            <span>requireSameValue() - Strict requirement</span>
                         </div>
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-yellow-500 rounded-full mr-2"></span>
-                            <span>preferMatch() - Soft preference</span>
+                            <span>requireSameValue() - Soft preference</span>
                         </div>
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>
@@ -413,13 +413,13 @@ use MissionGaming\\Tactician\\Constraints\\MetadataConstraint;
 // Require teams to have matching platforms
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(MetadataConstraint::mustMatch(\'platform\'))
+    ->add(MetadataConstraint::requireSameValue(\'platform\'))
     ->build();
 
 // Prefer teams from the same region, but allow cross-region if needed
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(MetadataConstraint::preferMatch(\'region\'))
+    ->add(MetadataConstraint::requireSameValue(\'region\'))
     ->build();
 
 // Prevent teams with different skill levels from playing

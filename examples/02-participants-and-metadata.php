@@ -65,7 +65,7 @@ $constraints = ConstraintSet::create()
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
-$schedule = $scheduler->schedule($participants);
+$schedule = $scheduler->generateSchedule($participants);
 
 // Calculate statistics
 $totalEvents = count($schedule);

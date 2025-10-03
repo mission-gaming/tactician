@@ -16,7 +16,7 @@ $participants = [
 
 // Generate the schedule (no constraints needed for basic single-leg round robin)
 $scheduler = new RoundRobinScheduler();
-$schedule = $scheduler->schedule($participants);
+$schedule = $scheduler->generateSchedule($participants);
 
 // Calculate some statistics
 $totalEvents = count($schedule);
@@ -145,7 +145,7 @@ $participants = [
 
 // Generate schedule (no constraints needed for basic round robin)
 $scheduler = new RoundRobinScheduler();
-$schedule = $scheduler->schedule($participants);
+$schedule = $scheduler->generateSchedule($participants);
 
 // Iterate through matches
 foreach ($schedule as $event) {

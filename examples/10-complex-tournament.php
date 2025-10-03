@@ -169,7 +169,7 @@ $constraints = ConstraintSet::create()
 // Generate the complex tournament schedule
 try {
     $scheduler = new RoundRobinScheduler($constraints);
-    $schedule = $scheduler->schedule($teams);
+    $schedule = $scheduler->generateSchedule($teams);
     $success = true;
     $error = null;
 } catch (Exception $e) {
@@ -627,7 +627,7 @@ $constraints = ConstraintSet::create()
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
-$schedule = $scheduler->schedule($teams);'); ?></code></pre>
+$schedule = $scheduler->generateSchedule($teams);'); ?></code></pre>
             </div>
         </div>
 

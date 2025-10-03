@@ -65,4 +65,4 @@
 - **Extensibility**: Clean extension points for additional tournament formats
 
 ---
-*Last Updated: 2025-09-11*
+*Last Updated: 2025-10-03 (No technical changes - architecture updates in systemPatterns.md)*
