@@ -174,7 +174,7 @@ $results = [];
 foreach ($customConstraints as $name => $scenario) {
     try {
         $scheduler = new RoundRobinScheduler($scenario['constraints']);
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         $results[$name] = [
             'status' => 'success',

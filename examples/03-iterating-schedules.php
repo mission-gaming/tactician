@@ -22,7 +22,7 @@ $constraints = ConstraintSet::create()
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
-$schedule = $scheduler->schedule($participants);
+$schedule = $scheduler->generateSchedule($participants);
 
 // Different ways to access schedule data
 $totalEvents = count($schedule);

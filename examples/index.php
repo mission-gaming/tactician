@@ -45,6 +45,11 @@ require_once __DIR__ . '/../vendor/autoload.php';
                         <p class="text-sm text-gray-600 mb-3">Simple 4-team tournament demonstrating core scheduling</p>
                         <span class="inline-block px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Beginner</span>
                     </a>
+                    <a href="01b-basic-home-away.php" class="block p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all">
+                        <h4 class="font-semibold text-gray-800 mb-2">Home & Away (Basic)</h4>
+                        <p class="text-sm text-gray-600 mb-3">Simple 2-leg mirrored schedule demonstration</p>
+                        <span class="inline-block px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Beginner</span>
+                    </a>
                     <a href="02-participants-and-metadata.php" class="block p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all">
                         <h4 class="font-semibold text-gray-800 mb-2">Participants & Metadata</h4>
                         <p class="text-sm text-gray-600 mb-3">Working with seeded participants and custom data</p>
@@ -116,6 +121,16 @@ require_once __DIR__ . '/../vendor/autoload.php';
                     <a href="12-performance-patterns.php" class="block p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all">
                         <h4 class="font-semibold text-gray-800 mb-2">Performance Patterns</h4>
                         <p class="text-sm text-gray-600 mb-3">Memory-efficient iteration for large tournaments</p>
+                        <span class="inline-block px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">Advanced</span>
+                    </a>
+                    <a href="13-participant-ordering.php" class="block p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all">
+                        <h4 class="font-semibold text-gray-800 mb-2">Participant Ordering</h4>
+                        <p class="text-sm text-gray-600 mb-3">Control home/away assignments with ordering strategies</p>
+                        <span class="inline-block px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">Advanced</span>
+                    </a>
+                    <a href="14-position-based-scheduling.php" class="block p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all">
+                        <h4 class="font-semibold text-gray-800 mb-2">Position-Based Scheduling</h4>
+                        <p class="text-sm text-gray-600 mb-3">Tournament blueprints and round-by-round generation</p>
                         <span class="inline-block px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">Advanced</span>
                     </a>
                 </div>

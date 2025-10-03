@@ -25,30 +25,60 @@ $teams = [
 $schedulesToCompare = [];
 
 // Premier League style: Home and Away (Mirrored)
+// Using basic constraints - seed protection can be too restrictive for multi-leg
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(new SeedProtectionConstraint(2, 0.3))
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
 
-$schedulesToCompare['Home & Away (Mirrored)'] = [
-    'schedule' => $scheduler->schedule($teams, 2, 2, new MirroredLegStrategy()),
-    'strategy' => 'MirroredLegStrategy',
-    'description' => 'Each team plays every other team twice - once at home, once away. Second leg reverses the fixture order.',
-];
+try {
+    $schedulesToCompare['Home & Away (Mirrored)'] = [
+        'status' => 'success',
+        'schedule' => $scheduler->generateSchedule($teams, 2, new MirroredLegStrategy()),
+        'strategy' => 'MirroredLegStrategy',
+        'description' => 'Each team plays every other team twice - once at home, once away. Second leg reverses the fixture order.',
+    ];
+} catch (Exception $e) {
+    $schedulesToCompare['Home & Away (Mirrored)'] = [
+        'status' => 'failed',
+        'error' => $e->getMessage(),
+        'strategy' => 'MirroredLegStrategy',
+        'description' => 'Failed to generate schedule.',
+    ];
+}
 
-$schedulesToCompare['Repeated Encounters'] = [
-    'schedule' => $scheduler->schedule($teams, 2, 2, new RepeatedLegStrategy()),
-    'strategy' => 'RepeatedLegStrategy',
-    'description' => 'Each team plays every other team twice with identical fixture order in both legs.',
-];
+try {
+    $schedulesToCompare['Repeated Encounters'] = [
+        'status' => 'success',
+        'schedule' => $scheduler->generateSchedule($teams, 2, new RepeatedLegStrategy()),
+        'strategy' => 'RepeatedLegStrategy',
+        'description' => 'Each team plays every other team twice with identical fixture order in both legs.',
+    ];
+} catch (Exception $e) {
+    $schedulesToCompare['Repeated Encounters'] = [
+        'status' => 'failed',
+        'error' => $e->getMessage(),
+        'strategy' => 'RepeatedLegStrategy',
+        'description' => 'Failed to generate schedule.',
+    ];
+}
 
-$schedulesToCompare['Shuffled Legs'] = [
-    'schedule' => $scheduler->schedule($teams, 2, 2, new ShuffledLegStrategy()),
-    'strategy' => 'ShuffledLegStrategy',
-    'description' => 'Each team plays every other team twice with randomized fixture order in each leg.',
-];
+try {
+    $schedulesToCompare['Shuffled Legs'] = [
+        'status' => 'success',
+        'schedule' => $scheduler->generateSchedule($teams, 2, new ShuffledLegStrategy()),
+        'strategy' => 'ShuffledLegStrategy',
+        'description' => 'Each team plays every other team twice with randomized fixture order in each leg.',
+    ];
+} catch (Exception $e) {
+    $schedulesToCompare['Shuffled Legs'] = [
+        'status' => 'failed',
+        'error' => $e->getMessage(),
+        'strategy' => 'ShuffledLegStrategy',
+        'description' => 'Failed to generate schedule.',
+    ];
+}
 
 // Function to determine home/away for mirrored strategy
 function getHomeAway($event, $schedule, $strategy)
@@ -73,6 +103,14 @@ function getHomeAway($event, $schedule, $strategy)
 // Calculate statistics
 $stats = [];
 foreach ($schedulesToCompare as $name => $data) {
+    if ($data['status'] === 'failed') {
+        $stats[$name] = [
+            'status' => 'failed',
+            'error' => $data['error'],
+        ];
+        continue;
+    }
+
     $schedule = $data['schedule'];
     $totalEvents = count($schedule);
     $totalRounds = $schedule->getMetadataValue('total_rounds');
@@ -88,6 +126,7 @@ foreach ($schedulesToCompare as $name => $data) {
     }
 
     $stats[$name] = [
+        'status' => 'success',
         'total_events' => $totalEvents,
         'total_rounds' => $totalRounds,
         'legs' => $legs,
@@ -149,11 +188,11 @@ foreach ($schedulesToCompare as $name => $data) {
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Total Matches:</span>
-                            <span class="font-medium"><?= $stats['Home & Away (Mirrored)']['total_events']; ?></span>
+                            <span class="font-medium"><?= isset($stats['Home & Away (Mirrored)']['total_events']) ? $stats['Home & Away (Mirrored)']['total_events'] : 'N/A'; ?></span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Rounds per Leg:</span>
-                            <span class="font-medium"><?= $stats['Home & Away (Mirrored)']['rounds_per_leg']; ?></span>
+                            <span class="font-medium"><?= isset($stats['Home & Away (Mirrored)']['rounds_per_leg']) ? $stats['Home & Away (Mirrored)']['rounds_per_leg'] : 'N/A'; ?></span>
                         </div>
                     </div>
                 </div>
@@ -465,11 +504,10 @@ $constraints = ConstraintSet::create()
 $scheduler = new RoundRobinScheduler($constraints);
 
 // Generate 2-leg tournament with mirrored fixtures
-$schedule = $scheduler->schedule(
+$schedule = $scheduler->generateSchedule(
     participants: $teams,
-    participantsPerEvent: 2,
     legs: 2,
-    strategy: new MirroredLegStrategy()
+    legStrategy: new MirroredLegStrategy()
 );
 
 // Access multi-leg metadata

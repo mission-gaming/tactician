@@ -58,17 +58,27 @@ $results = [];
 
 // Generate schedules for each scenario
 foreach ($scenarios as $name => $scenario) {
-    $scheduler = new RoundRobinScheduler($scenario['constraints']);
-    $schedule = $scheduler->schedule($participants);
+    try {
+        $scheduler = new RoundRobinScheduler($scenario['constraints']);
+        $schedule = $scheduler->generateSchedule($participants);
 
-    $results[$name] = [
-        'schedule' => $schedule,
-        'description' => $scenario['description'],
-        'explanation' => $scenario['explanation'],
-        'total_events' => count($schedule),
-        'total_rounds' => $schedule->getMetadataValue('total_rounds'),
-        'constraints_count' => count($scenario['constraints']->getConstraints()),
-    ];
+        $results[$name] = [
+            'status' => 'success',
+            'schedule' => $schedule,
+            'description' => $scenario['description'],
+            'explanation' => $scenario['explanation'],
+            'total_events' => count($schedule),
+            'total_rounds' => $schedule->getMetadataValue('total_rounds'),
+            'constraints_count' => count($scenario['constraints']->getConstraints()),
+        ];
+    } catch (Exception $e) {
+        $results[$name] = [
+            'status' => 'failed',
+            'description' => $scenario['explanation'],
+            'explanation' => $scenario['explanation'],
+            'error' => $e->getMessage(),
+        ];
+    }
 }
 
 // Function to check if an event has the extreme seed pairing
@@ -165,37 +175,57 @@ function hasExtremeSeedPairing($event)
                             <h3 class="text-lg font-semibold text-gray-800"><?= htmlspecialchars($scenarioName); ?></h3>
                             <p class="text-gray-600"><?= htmlspecialchars($result['description']); ?></p>
                         </div>
-                        <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                            <?= $result['constraints_count']; ?> constraint<?= $result['constraints_count'] === 1 ? '' : 's'; ?>
-                        </span>
+                        <?php if ($result['status'] === 'success'): ?>
+                            <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                                <?= $result['constraints_count']; ?> constraint<?= $result['constraints_count'] === 1 ? '' : 's'; ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm">
+                                Failed
+                            </span>
+                        <?php endif; ?>
                     </div>
 
-                    <div class="bg-blue-50 rounded-lg p-4 mb-4">
-                        <div class="text-sm text-blue-800 mb-2">
-                            <strong>How it works:</strong> <?= htmlspecialchars($result['explanation']); ?>
-                        </div>
-                        <div class="grid grid-cols-3 gap-4 text-sm">
-                            <div>
-                                <span class="text-blue-700">Total Events:</span>
-                                <span class="font-medium ml-1"><?= $result['total_events']; ?></span>
+                    <?php if ($result['status'] === 'failed'): ?>
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                            <div class="text-sm text-red-800 mb-2">
+                                <strong>Constraint Failure:</strong> This constraint configuration cannot generate a complete schedule.
                             </div>
-                            <div>
-                                <span class="text-blue-700">Total Rounds:</span>
-                                <span class="font-medium ml-1"><?= $result['total_rounds']; ?></span>
+                            <div class="text-xs text-red-700 mt-2">
+                                <?= htmlspecialchars($result['error']); ?>
                             </div>
-                            <div>
-                                <span class="text-blue-700">Algorithm:</span>
-                                <span class="font-medium ml-1"><?= htmlspecialchars($result['schedule']->getMetadataValue('algorithm')); ?></span>
+                            <div class="mt-3 text-xs text-red-700">
+                                <strong>Why:</strong> The "seed extremes" constraint prevents seed #1 and #6 from playing in rounds 1-2, but with 6 teams,
+                                it's mathematically impossible to create a complete schedule without this pairing occurring in early rounds.
                             </div>
                         </div>
-                    </div>
+                    <?php else: ?>
+                        <div class="bg-blue-50 rounded-lg p-4 mb-4">
+                            <div class="text-sm text-blue-800 mb-2">
+                                <strong>How it works:</strong> <?= htmlspecialchars($result['explanation']); ?>
+                            </div>
+                            <div class="grid grid-cols-3 gap-4 text-sm">
+                                <div>
+                                    <span class="text-blue-700">Total Events:</span>
+                                    <span class="font-medium ml-1"><?= $result['total_events']; ?></span>
+                                </div>
+                                <div>
+                                    <span class="text-blue-700">Total Rounds:</span>
+                                    <span class="font-medium ml-1"><?= $result['total_rounds']; ?></span>
+                                </div>
+                                <div>
+                                    <span class="text-blue-700">Algorithm:</span>
+                                    <span class="font-medium ml-1"><?= htmlspecialchars($result['schedule']->getMetadataValue('algorithm')); ?></span>
+                                </div>
+                            </div>
+                        </div>
 
-                    <!-- Show first few matches to demonstrate constraint effects -->
-                    <div class="space-y-3">
-                        <h4 class="font-medium text-gray-800">Sample Matches (First 6)</h4>
-                        <?php
-                        $sampleCount = 0;
-                foreach ($result['schedule'] as $event):
+                        <!-- Show first few matches to demonstrate constraint effects -->
+                        <div class="space-y-3">
+                            <h4 class="font-medium text-gray-800">Sample Matches (First 6)</h4>
+                            <?php
+                            $sampleCount = 0;
+                    foreach ($result['schedule'] as $event):
                     if ($sampleCount >= 6) {
                         break;
                     }
@@ -245,6 +275,7 @@ function hasExtremeSeedPairing($event)
                             </div>
                         <?php endif; ?>
                     </div>
+                    <?php endif; ?>
                 </div>
             <?php endforeach; ?>
         </div>
@@ -297,7 +328,7 @@ function hasExtremeSeedPairing($event)
                     <h3 class="font-semibold text-gray-800 mb-3">Using the Constraint Set</h3>
                     <div class="bg-gray-900 text-gray-100 rounded-lg p-4 text-sm">
                         <pre><code><?= htmlspecialchars('$scheduler = new RoundRobinScheduler($constraints);
-$schedule = $scheduler->schedule($participants);
+$schedule = $scheduler->generateSchedule($participants);
 
 // The scheduler validates all constraints
 // during schedule generation'); ?></code></pre>

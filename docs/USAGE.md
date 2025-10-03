@@ -39,7 +39,7 @@ $constraints = ConstraintSet::create()
 
 // Generate schedule
 $scheduler = new RoundRobinScheduler($constraints);
-$schedule = $scheduler->schedule($participants);
+$schedule = $scheduler->generateSchedule($participants);
 
 // Iterate through matches
 foreach ($schedule as $event) {
@@ -64,7 +64,7 @@ $participants = [
 ];
 
 $scheduler = new RoundRobinScheduler();
-$schedule = $scheduler->schedule($participants);
+$schedule = $scheduler->generateSchedule($participants);
 
 // Access schedule metadata
 echo "Algorithm: " . $schedule->getMetadataValue('algorithm') . "\n";
@@ -250,27 +250,24 @@ $participants = [
 $scheduler = new RoundRobinScheduler();
 
 // Home and away legs (participant order reversed in second leg)
-$mirroredSchedule = $scheduler->schedule(
+$mirroredSchedule = $scheduler->generateSchedule(
     participants: $participants,
-    participantsPerEvent: 2,
     legs: 2,
-    strategy: new MirroredLegStrategy()
+    legStrategy: new MirroredLegStrategy()
 );
 
 // Repeated encounters (same pairings each leg)
-$repeatedSchedule = $scheduler->schedule(
+$repeatedSchedule = $scheduler->generateSchedule(
     participants: $participants,
-    participantsPerEvent: 2,
     legs: 3,
-    strategy: new RepeatedLegStrategy()
+    legStrategy: new RepeatedLegStrategy()
 );
 
 // Randomized encounters (shuffled participant order each leg)
-$shuffledSchedule = $scheduler->schedule(
+$shuffledSchedule = $scheduler->generateSchedule(
     participants: $participants,
-    participantsPerEvent: 2,
     legs: 2,
-    strategy: new ShuffledLegStrategy()
+    legStrategy: new ShuffledLegStrategy()
 );
 ```
 
@@ -309,11 +306,10 @@ $constraints = ConstraintSet::create()
 
 $scheduler = new RoundRobinScheduler($constraints);
 
-$schedule = $scheduler->schedule(
+$schedule = $scheduler->generateSchedule(
     participants: $participants,
-    participantsPerEvent: 2,
     legs: 2,
-    strategy: new MirroredLegStrategy()
+    legStrategy: new MirroredLegStrategy()
 );
 ```
 
@@ -342,7 +338,7 @@ $constraints = ConstraintSet::create()
 
 try {
     $scheduler = new RoundRobinScheduler($constraints);
-    $schedule = $scheduler->schedule($participants);
+    $schedule = $scheduler->generateSchedule($participants);
     
     // If we get here, the schedule is complete and valid
     echo "Schedule generated successfully with " . count($schedule) . " events\n";
@@ -371,7 +367,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 
 try {
     $scheduler = new RoundRobinScheduler($constraints);
-    $schedule = $scheduler->schedule($participants);
+    $schedule = $scheduler->generateSchedule($participants);
     
 } catch (ImpossibleConstraintsException $e) {
     // Constraints are mathematically impossible
@@ -405,7 +401,7 @@ use MissionGaming\Tactician\Exceptions\ImpossibleConstraintsException;
 
 try {
     $scheduler = new RoundRobinScheduler($constraints);
-    $schedule = $scheduler->schedule($participants);
+    $schedule = $scheduler->generateSchedule($participants);
     
 } catch (InvalidConfigurationException $e) {
     // Handle configuration errors
@@ -507,7 +503,7 @@ use Random\Engine\Mt19937;
 $randomizer = new Randomizer(new Mt19937(12345));
 
 $scheduler = new RoundRobinScheduler(null, $randomizer);
-$schedule = $scheduler->schedule($participants);
+$schedule = $scheduler->generateSchedule($participants);
 
 // Same seed will always produce the same schedule
 ```
@@ -533,11 +529,10 @@ $constraints = ConstraintSet::create()
 $scheduler = new RoundRobinScheduler($constraints);
 
 // Generate full season: 2 legs (home and away)
-$season = $scheduler->schedule(
+$season = $scheduler->generateSchedule(
     participants: $teams,
-    participantsPerEvent: 2,
     legs: 2,
-    strategy: new MirroredLegStrategy()
+    legStrategy: new MirroredLegStrategy()
 );
 
 echo "Premier League season: " . count($season) . " matches\n";
@@ -564,7 +559,7 @@ $constraints = ConstraintSet::create()
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
-$tournament = $scheduler->schedule($players);
+$tournament = $scheduler->generateSchedule($players);
 ```
 
 ### Corporate Team Building Tournament
@@ -585,7 +580,7 @@ $constraints = ConstraintSet::create()
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
-$teamBuilding = $scheduler->schedule($departments);
+$teamBuilding = $scheduler->generateSchedule($departments);
 ```
 
 ### Multi-Day Tournament with Rest Periods
@@ -609,7 +604,7 @@ $constraints = ConstraintSet::create()
 
 try {
     $scheduler = new RoundRobinScheduler($constraints);
-    $tournament = $scheduler->schedule($teams);
+    $tournament = $scheduler->generateSchedule($teams);
     
     echo "Tournament scheduled successfully!\n";
     echo "Total matches: " . count($tournament) . "\n";
@@ -627,7 +622,7 @@ try {
 
 ```php
 // For large tournaments, iterate efficiently
-$largeSchedule = $scheduler->schedule($manyParticipants);
+$largeSchedule = $scheduler->generateSchedule($manyParticipants);
 
 // Memory-efficient iteration (doesn't load all events at once)
 foreach ($largeSchedule as $event) {
