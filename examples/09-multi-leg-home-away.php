@@ -4,7 +4,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
-use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
@@ -188,11 +187,11 @@ foreach ($schedulesToCompare as $name => $data) {
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Total Matches:</span>
-                            <span class="font-medium"><?= isset($stats['Home & Away (Mirrored)']['total_events']) ? $stats['Home & Away (Mirrored)']['total_events'] : 'N/A'; ?></span>
+                            <span class="font-medium"><?= $stats['Home & Away (Mirrored)']['total_events'] ?? 'N/A'; ?></span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Rounds per Leg:</span>
-                            <span class="font-medium"><?= isset($stats['Home & Away (Mirrored)']['rounds_per_leg']) ? $stats['Home & Away (Mirrored)']['rounds_per_leg'] : 'N/A'; ?></span>
+                            <span class="font-medium"><?= $stats['Home & Away (Mirrored)']['rounds_per_leg'] ?? 'N/A'; ?></span>
                         </div>
                     </div>
                 </div>

@@ -73,8 +73,8 @@ function analyzeHomeAwayDistribution($schedule, $participants)
     foreach ($schedule as $event) {
         $eventParticipants = $event->getParticipants();
         if (count($eventParticipants) === 2) {
-            $stats[$eventParticipants[0]->getId()]['home']++;
-            $stats[$eventParticipants[1]->getId()]['away']++;
+            ++$stats[$eventParticipants[0]->getId()]['home'];
+            ++$stats[$eventParticipants[1]->getId()]['away'];
         }
     }
 
@@ -175,11 +175,13 @@ foreach ($schedules as $name => $data) {
                         <div class="space-y-2">
                             <?php
                             $count = 0;
-                            foreach ($schedule as $event):
-                                if (++$count > 3) break;
-                                $eventParticipants = $event->getParticipants();
-                                $round = $event->getRound();
-                            ?>
+                foreach ($schedule as $event):
+                    if (++$count > 3) {
+                        break;
+                    }
+                    $eventParticipants = $event->getParticipants();
+                    $round = $event->getRound();
+                    ?>
                                 <div class="flex items-center justify-between bg-gray-50 rounded-lg p-3">
                                     <span class="text-xs text-gray-500 w-16">R<?= $round->getNumber(); ?></span>
                                     <div class="flex-1 flex items-center justify-between">

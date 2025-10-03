@@ -31,7 +31,7 @@ try {
     $scheduler1 = new RoundRobinScheduler($constraints1);
     $schedulesToCompare['No Protection'] = [
         'status' => 'success',
-        'schedule' => $scheduler1->generateSchedule($participants)
+        'schedule' => $scheduler1->generateSchedule($participants),
     ];
 } catch (Exception $e) {
     $schedulesToCompare['No Protection'] = ['status' => 'failed', 'error' => $e->getMessage()];
@@ -46,7 +46,7 @@ try {
     $scheduler2 = new RoundRobinScheduler($constraints2);
     $schedulesToCompare['25% Protection'] = [
         'status' => 'success',
-        'schedule' => $scheduler2->generateSchedule($participants)
+        'schedule' => $scheduler2->generateSchedule($participants),
     ];
 } catch (Exception $e) {
     $schedulesToCompare['25% Protection'] = ['status' => 'failed', 'error' => $e->getMessage()];
@@ -61,7 +61,7 @@ try {
     $scheduler3 = new RoundRobinScheduler($constraints3);
     $schedulesToCompare['50% Protection'] = [
         'status' => 'success',
-        'schedule' => $scheduler3->generateSchedule($participants)
+        'schedule' => $scheduler3->generateSchedule($participants),
     ];
 } catch (Exception $e) {
     $schedulesToCompare['50% Protection'] = ['status' => 'failed', 'error' => $e->getMessage()];

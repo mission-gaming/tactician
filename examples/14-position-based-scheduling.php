@@ -134,9 +134,9 @@ echo "Total pairings: " . $structure->getTotalPairingCount();'); ?></code></pre>
                 <div class="space-y-2">
                     <?php
                     $roundsToShow = array_slice($structure->getRounds(), 0, 3);
-                    foreach ($roundsToShow as $round):
-                        $pairings = $round->getPairings();
-                    ?>
+foreach ($roundsToShow as $round):
+    $pairings = $round->getPairings();
+    ?>
                         <div class="bg-white rounded p-3">
                             <div class="font-medium text-indigo-800 mb-2">Round <?= $round->getRoundNumber(); ?></div>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
@@ -176,12 +176,14 @@ foreach ($schedule as $event) {
                 <h3 class="font-semibold text-green-900 mb-3">Complete Schedule (First 6 Matches)</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <?php
-                    $count = 0;
-                    foreach ($completeSchedule as $event):
-                        if (++$count > 6) break;
-                        $eventParticipants = $event->getParticipants();
-                        $round = $event->getRound();
-                    ?>
+    $count = 0;
+foreach ($completeSchedule as $event):
+    if (++$count > 6) {
+        break;
+    }
+    $eventParticipants = $event->getParticipants();
+    $round = $event->getRound();
+    ?>
                         <div class="bg-white rounded p-3 flex items-center justify-between">
                             <span class="text-xs text-gray-500">R<?= $round->getNumber(); ?></span>
                             <div class="flex items-center gap-2 text-sm">

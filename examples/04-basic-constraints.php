@@ -225,14 +225,14 @@ function hasExtremeSeedPairing($event)
                             <h4 class="font-medium text-gray-800">Sample Matches (First 6)</h4>
                             <?php
                             $sampleCount = 0;
-                    foreach ($result['schedule'] as $event):
-                    if ($sampleCount >= 6) {
-                        break;
-                    }
-                    $eventParticipants = $event->getParticipants();
-                    $isExtremePairing = hasExtremeSeedPairing($event);
-                    ++$sampleCount;
-                    ?>
+                        foreach ($result['schedule'] as $event):
+                            if ($sampleCount >= 6) {
+                                break;
+                            }
+                            $eventParticipants = $event->getParticipants();
+                            $isExtremePairing = hasExtremeSeedPairing($event);
+                            ++$sampleCount;
+                            ?>
                             <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg <?= $isExtremePairing ? 'bg-yellow-50 border-yellow-300' : 'hover:bg-gray-50'; ?> transition-colors">
                                 <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-sm">
                                     Round <?= $event->getRound()->getNumber(); ?>
@@ -260,8 +260,8 @@ function hasExtremeSeedPairing($event)
                         
                         <?php if ($scenarioName === 'Custom Constraint'): ?>
                             <?php
-                        // Count extreme pairings in early rounds for this scenario
-                        $earlyExtremeCount = 0;
+                                // Count extreme pairings in early rounds for this scenario
+                                $earlyExtremeCount = 0;
                             foreach ($result['schedule'] as $event) {
                                 if ($event->getRound()->getNumber() <= 2 && hasExtremeSeedPairing($event)) {
                                     ++$earlyExtremeCount;
