@@ -89,7 +89,13 @@ readonly class PositionalRound
                     $participants = $orderer->order($participants, $orderingContext);
                 }
 
-                $events[] = new Event($participants, $roundObject);
+                $event = new Event($participants, $roundObject);
+                $events[] = $event;
+
+                // Update context with this event for subsequent events in the same round
+                if ($context !== null) {
+                    $context = $context->withEvents([$event]);
+                }
             }
         }
 

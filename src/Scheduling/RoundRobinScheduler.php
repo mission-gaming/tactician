@@ -14,6 +14,7 @@ use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
+use MissionGaming\Tactician\Ordering\EventOrderingContext;
 use MissionGaming\Tactician\Ordering\ParticipantOrderer;
 use MissionGaming\Tactician\Ordering\StaticParticipantOrderer;
 use MissionGaming\Tactician\Positioning\Position;
@@ -312,24 +313,54 @@ class RoundRobinScheduler implements SchedulerInterface
 
         $expectedEventsPerLeg = $this->getExpectedEventCount(count($participants));
 
-        for ($leg = 1; $leg <= $legs; ++$leg) {
-            $legEvents = $this->generateLegWithFullContext($participants, $leg, $legStrategy, $context);
+        // Generate Leg 1
+        $leg1Events = $this->generateLegWithFullContext($participants, 1, $legStrategy, $context);
 
-            // Check if we generated the expected number of events for this leg
-            if (count($legEvents) < $expectedEventsPerLeg) {
-                throw new IncompleteScheduleException(
-                    $expectedEventsPerLeg * $legs,
-                    count($allEvents) + count($legEvents),
-                    $this->violationCollector,
-                    $this->getExpectedEventCalculator(),
-                    $participants,
-                    $legs,
-                    "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}."
-                );
+        if (count($leg1Events) < $expectedEventsPerLeg) {
+            throw new IncompleteScheduleException(
+                $expectedEventsPerLeg * $legs,
+                count($leg1Events),
+                $this->violationCollector,
+                $this->getExpectedEventCalculator(),
+                $participants,
+                $legs,
+                "Failed to generate complete schedule for leg 1. Generated " . count($leg1Events) . " events, expected {$expectedEventsPerLeg}."
+            );
+        }
+
+        $allEvents = [...$leg1Events];
+        $context = new SchedulingContext($participants, $allEvents, 2, $legs, 2);
+
+        // For subsequent legs with MirroredLegStrategy, directly mirror Leg 1 events
+        if ($legStrategy instanceof MirroredLegStrategy && $legs > 1) {
+            $participantCount = count($participants);
+            $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
+
+            for ($leg = 2; $leg <= $legs; ++$leg) {
+                $legEvents = $this->mirrorLegEvents($leg1Events, $leg, $roundsPerLeg);
+                $allEvents = [...$allEvents, ...$legEvents];
+                $context = new SchedulingContext($participants, $allEvents, $leg + 1, $legs, 2);
             }
+        } else {
+            // For other strategies, generate each leg independently
+            for ($leg = 2; $leg <= $legs; ++$leg) {
+                $legEvents = $this->generateLegWithFullContext($participants, $leg, $legStrategy, $context);
 
-            $allEvents = [...$allEvents, ...$legEvents];
-            $context = new SchedulingContext($participants, $allEvents, $leg + 1, $legs, 2);
+                if (count($legEvents) < $expectedEventsPerLeg) {
+                    throw new IncompleteScheduleException(
+                        $expectedEventsPerLeg * $legs,
+                        count($allEvents) + count($legEvents),
+                        $this->violationCollector,
+                        $this->getExpectedEventCalculator(),
+                        $participants,
+                        $legs,
+                        "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}."
+                    );
+                }
+
+                $allEvents = [...$allEvents, ...$legEvents];
+                $context = new SchedulingContext($participants, $allEvents, $leg + 1, $legs, 2);
+            }
         }
 
         return $allEvents;
@@ -365,8 +396,22 @@ class RoundRobinScheduler implements SchedulerInterface
             // Get all participants that need to play in this round
             $participantPairs = $this->getParticipantPairsForRound($participants, $round);
 
-            foreach ($participantPairs as $pair) {
-                $event = $legStrategy->generateEventForLeg($pair, $leg, $globalRound, $context);
+            foreach ($participantPairs as $eventIndex => $pair) {
+                // For MirroredLegStrategy, don't apply ordering in Leg 2+ as the strategy
+                // handles the mirroring itself based on the original pairing order
+                $pairToUse = $pair;
+                if (!($legStrategy instanceof MirroredLegStrategy && $leg > 1)) {
+                    // Apply participant ordering for other strategies or Leg 1
+                    $orderingContext = new EventOrderingContext(
+                        $globalRound,
+                        $eventIndex,
+                        $leg,
+                        $context
+                    );
+                    $pairToUse = $this->participantOrderer->order($pair, $orderingContext);
+                }
+
+                $event = $legStrategy->generateEventForLeg($pairToUse, $leg, $globalRound, $context);
 
                 if ($event !== null) {
                     // Check constraints with full tournament context
@@ -669,6 +714,40 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         return $filteredEvents;
+    }
+
+    /**
+     * Mirror Leg 1 events to create subsequent legs.
+     *
+     * @param array<Event> $leg1Events Events from Leg 1 to mirror
+     * @param int $leg The leg number to generate (2+)
+     * @param int $roundsPerLeg Number of rounds per leg
+     * @return array<Event> Mirrored events with reversed participants
+     */
+    private function mirrorLegEvents(array $leg1Events, int $leg, int $roundsPerLeg): array
+    {
+        $mirroredEvents = [];
+        $roundOffset = ($leg - 1) * $roundsPerLeg;
+
+        foreach ($leg1Events as $leg1Event) {
+            $participants = $leg1Event->getParticipants();
+            $leg1Round = $leg1Event->getRound();
+
+            if (count($participants) !== 2 || $leg1Round === null) {
+                continue;
+            }
+
+            // Reverse participants for mirror effect
+            $mirroredParticipants = [$participants[1], $participants[0]];
+
+            // Calculate new round number for this leg
+            $newRoundNumber = $leg1Round->getNumber() + $roundOffset;
+            $newRound = new Round($newRoundNumber);
+
+            $mirroredEvents[] = new Event($mirroredParticipants, $newRound);
+        }
+
+        return $mirroredEvents;
     }
 
     /**
