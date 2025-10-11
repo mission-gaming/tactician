@@ -14,11 +14,10 @@ describe('MirroredLegStrategy Integration', function (): void {
         ];
 
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule(
+        $schedule = $scheduler->generateSchedule(
             participants: $participants,
-            participantsPerEvent: 2,
             legs: 2,
-            strategy: new MirroredLegStrategy()
+            legStrategy: new MirroredLegStrategy()
         );
 
         $roundsPerLeg = $schedule->getMetadataValue('rounds_per_leg');
@@ -72,11 +71,10 @@ describe('MirroredLegStrategy Integration', function (): void {
         ];
 
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule(
+        $schedule = $scheduler->generateSchedule(
             participants: $participants,
-            participantsPerEvent: 2,
             legs: 2,
-            strategy: new MirroredLegStrategy()
+            legStrategy: new MirroredLegStrategy()
         );
 
         $celticHomeCount = 0;

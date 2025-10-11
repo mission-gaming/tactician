@@ -24,27 +24,48 @@ $participants = [
 $schedulesToCompare = [];
 
 // Schedule without seed protection
-$constraints1 = ConstraintSet::create()
-    ->noRepeatPairings()
-    ->build();
-$scheduler1 = new RoundRobinScheduler($constraints1);
-$schedulesToCompare['No Protection'] = $scheduler1->schedule($participants);
+try {
+    $constraints1 = ConstraintSet::create()
+        ->noRepeatPairings()
+        ->build();
+    $scheduler1 = new RoundRobinScheduler($constraints1);
+    $schedulesToCompare['No Protection'] = [
+        'status' => 'success',
+        'schedule' => $scheduler1->generateSchedule($participants),
+    ];
+} catch (Exception $e) {
+    $schedulesToCompare['No Protection'] = ['status' => 'failed', 'error' => $e->getMessage()];
+}
 
 // Schedule with 25% seed protection
-$constraints2 = ConstraintSet::create()
-    ->noRepeatPairings()
-    ->add(new SeedProtectionConstraint(2, 0.25))
-    ->build();
-$scheduler2 = new RoundRobinScheduler($constraints2);
-$schedulesToCompare['25% Protection'] = $scheduler2->schedule($participants);
+try {
+    $constraints2 = ConstraintSet::create()
+        ->noRepeatPairings()
+        ->add(new SeedProtectionConstraint(2, 0.25))
+        ->build();
+    $scheduler2 = new RoundRobinScheduler($constraints2);
+    $schedulesToCompare['25% Protection'] = [
+        'status' => 'success',
+        'schedule' => $scheduler2->generateSchedule($participants),
+    ];
+} catch (Exception $e) {
+    $schedulesToCompare['25% Protection'] = ['status' => 'failed', 'error' => $e->getMessage()];
+}
 
-// Schedule with 50% seed protection
-$constraints3 = ConstraintSet::create()
-    ->noRepeatPairings()
-    ->add(new SeedProtectionConstraint(2, 0.5))
-    ->build();
-$scheduler3 = new RoundRobinScheduler($constraints3);
-$schedulesToCompare['50% Protection'] = $scheduler3->schedule($participants);
+// Schedule with 50% seed protection (may fail - too restrictive)
+try {
+    $constraints3 = ConstraintSet::create()
+        ->noRepeatPairings()
+        ->add(new SeedProtectionConstraint(2, 0.5))
+        ->build();
+    $scheduler3 = new RoundRobinScheduler($constraints3);
+    $schedulesToCompare['50% Protection'] = [
+        'status' => 'success',
+        'schedule' => $scheduler3->generateSchedule($participants),
+    ];
+} catch (Exception $e) {
+    $schedulesToCompare['50% Protection'] = ['status' => 'failed', 'error' => $e->getMessage()];
+}
 
 // Function to check if a match involves protected seeds
 function isProtectedSeedMatch($event, $protectedSeedCount = 2)
@@ -66,7 +87,16 @@ function isTopSeedClash($event, $protectedSeedCount = 2)
 
 // Calculate statistics for each schedule
 $stats = [];
-foreach ($schedulesToCompare as $name => $schedule) {
+foreach ($schedulesToCompare as $name => $data) {
+    if ($data['status'] === 'failed') {
+        $stats[$name] = [
+            'status' => 'failed',
+            'error' => $data['error'],
+        ];
+        continue;
+    }
+
+    $schedule = $data['schedule'];
     $totalRounds = $schedule->getMetadataValue('total_rounds');
     $protectedPeriod = (int) ceil($totalRounds * 0.5); // 50% protection period
     $earlyRounds = [];
@@ -87,6 +117,7 @@ foreach ($schedulesToCompare as $name => $schedule) {
     }
 
     $stats[$name] = [
+        'status' => 'success',
         'schedule' => $schedule,
         'total_rounds' => $totalRounds,
         'protected_period' => $protectedPeriod,
@@ -199,26 +230,33 @@ foreach ($schedulesToCompare as $name => $schedule) {
                 <?php foreach ($stats as $name => $data): ?>
                     <div class="border border-gray-200 rounded-lg p-4">
                         <h3 class="font-semibold text-gray-800 mb-3"><?= htmlspecialchars($name); ?></h3>
-                        
-                        <div class="space-y-3">
-                            <div class="bg-red-50 rounded p-3">
-                                <div class="text-lg font-bold text-red-600"><?= count($data['early_clashes']); ?></div>
-                                <div class="text-sm text-red-700">Early Top Seed Clashes</div>
-                                <div class="text-xs text-gray-500">Rounds 1-<?= $data['protected_period']; ?></div>
+
+                        <?php if ($data['status'] === 'failed'): ?>
+                            <div class="bg-red-50 border border-red-200 rounded p-3">
+                                <div class="text-sm font-bold text-red-800 mb-2">Failed</div>
+                                <div class="text-xs text-red-700">This constraint configuration is too restrictive and cannot generate a complete schedule.</div>
+                            </div>
+                        <?php else: ?>
+                            <div class="space-y-3">
+                                <div class="bg-red-50 rounded p-3">
+                                    <div class="text-lg font-bold text-red-600"><?= count($data['early_clashes']); ?></div>
+                                    <div class="text-sm text-red-700">Early Top Seed Clashes</div>
+                                    <div class="text-xs text-gray-500">Rounds 1-<?= $data['protected_period']; ?></div>
+                                </div>
+
+                                <div class="bg-green-50 rounded p-3">
+                                    <div class="text-lg font-bold text-green-600"><?= count($data['late_clashes']); ?></div>
+                                    <div class="text-sm text-green-700">Late Top Seed Clashes</div>
+                                    <div class="text-xs text-gray-500">Rounds <?= $data['protected_period'] + 1; ?>-<?= $data['total_rounds']; ?></div>
                             </div>
                             
-                            <div class="bg-green-50 rounded p-3">
-                                <div class="text-lg font-bold text-green-600"><?= count($data['late_clashes']); ?></div>
-                                <div class="text-sm text-green-700">Late Top Seed Clashes</div>
-                                <div class="text-xs text-gray-500">Rounds <?= $data['protected_period'] + 1; ?>-<?= $data['total_rounds']; ?></div>
+                                <div class="bg-blue-50 rounded p-3">
+                                    <div class="text-lg font-bold text-blue-600"><?= count($data['top_seed_clashes']); ?></div>
+                                    <div class="text-sm text-blue-700">Total Top Seed Clashes</div>
+                                    <div class="text-xs text-gray-500">Throughout tournament</div>
+                                </div>
                             </div>
-                            
-                            <div class="bg-blue-50 rounded p-3">
-                                <div class="text-lg font-bold text-blue-600"><?= count($data['top_seed_clashes']); ?></div>
-                                <div class="text-sm text-blue-700">Total Top Seed Clashes</div>
-                                <div class="text-xs text-gray-500">Throughout tournament</div>
-                            </div>
-                        </div>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -339,9 +377,9 @@ $constraints = ConstraintSet::create()
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
-$schedule = $scheduler->schedule($participants);
+$schedule = $scheduler->generateSchedule($participants);
 
-// The constraint ensures that seed #1 and seed #2 
+// The constraint ensures that seed #1 and seed #2
 // won\'t meet until the second half of the tournament'); ?></code></pre>
             </div>
         </div>

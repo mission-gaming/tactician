@@ -50,7 +50,7 @@ function measurePerformance($participants, $constraints, $testName)
 
     try {
         $scheduler = new RoundRobinScheduler($constraints);
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         $endTime = microtime(true);
         $endMemory = memory_get_usage(true);
@@ -147,7 +147,7 @@ function demonstrateIterationPatterns($schedule)
 $mediumSchedule = null;
 try {
     $scheduler = new RoundRobinScheduler(ConstraintSet::create()->noRepeatPairings()->build());
-    $mediumSchedule = $scheduler->schedule($participantSets['Medium (12 teams)']);
+    $mediumSchedule = $scheduler->generateSchedule($participantSets['Medium (12 teams)']);
 } catch (Exception $e) {
     // Handle error
 }
@@ -563,7 +563,7 @@ class TournamentProcessor {
     }
     
     public function processLargeTournament(array $participants): array {
-        $schedule = $this->scheduler->schedule($participants);
+        $schedule = $this->scheduler->generateSchedule($participants);
         
         // Get basic stats without loading all events
         $stats = [
@@ -599,7 +599,7 @@ class TournamentProcessor {
     }
     
     public function exportMatches(array $participants, callable $exporter): void {
-        $schedule = $this->scheduler->schedule($participants);
+        $schedule = $this->scheduler->generateSchedule($participants);
         
         // Stream events to exporter without storing in memory
         foreach ($schedule as $event) {

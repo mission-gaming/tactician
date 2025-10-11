@@ -8,22 +8,46 @@ The Tactician library follows a layered architecture with clear separation of co
 ```
 src/DTO/
 ├── Participant.php      # Immutable participant representation
-├── Event.php           # Immutable match/event representation  
+├── Event.php           # Immutable match/event representation
 ├── Round.php           # Immutable round representation with metadata
+├── RoundSchedule.php   # Single round representation for round-by-round generation
 ├── Schedule.php        # Iterator/Countable collection of events
 └── [Future] TimeSlot.php, ScheduledEvent.php
 ```
 
-### **2. Scheduling Layer** 
+### **2. Position-Based Scheduling Layer** ✅ **NEW (2025-10-03)**
+```
+src/Positioning/
+├── Position.php                  # Abstract position reference (seed/standing)
+├── PositionType.php             # Enum: SEED, STANDING, STANDING_AFTER_ROUND
+├── PositionalPairing.php        # Position-based pairing that resolves to participants
+├── PositionalRound.php          # Round structure in positional terms
+├── PositionalSchedule.php       # Tournament blueprint independent of participants
+├── PositionResolver.php         # Interface for resolving positions to participants
+└── SeedBasedPositionResolver.php # Resolves seed positions (for static tournaments)
+```
+
+### **3. Participant Ordering Layer** ✅ **NEW (2025-10-03)**
+```
+src/Ordering/
+├── ParticipantOrderer.php           # Interface for ordering participants in events
+├── EventOrderingContext.php         # Context with round/event/leg/scheduling info
+├── StaticParticipantOrderer.php     # Maintains array order (default)
+├── AlternatingParticipantOrderer.php # Alternates based on event index
+├── BalancedParticipantOrderer.php   # Balances home/away by history (Swiss-ready)
+└── SeededRandomParticipantOrderer.php # Deterministic randomization per event
+```
+
+### **4. Scheduling Layer**
 ```
 src/Scheduling/
-├── SchedulerInterface.php       # Contract for all schedulers (inherently multi-leg aware)
+├── SchedulerInterface.php       # Unified contract for all schedulers
 ├── SchedulingContext.php        # Multi-leg historical state management
-├── RoundRobinScheduler.php      # Circle method with integrated multi-leg generation
+├── RoundRobinScheduler.php      # Circle method with position-based generation
 └── [Future] SwissScheduler.php, PoolScheduler.php
 ```
 
-### **3. Leg Strategy Layer**
+### **5. Leg Strategy Layer** (Round-Robin Specific)
 ```
 src/LegStrategies/
 ├── LegStrategyInterface.php     # Strategy contract for leg generation
@@ -33,7 +57,7 @@ src/LegStrategies/
 └── [Future] AdvancedLegStrategies/
 ```
 
-### **4. Constraint Layer**
+### **6. Constraint Layer**
 ```
 src/Constraints/
 ├── ConstraintInterface.php             # Constraint contract
@@ -46,10 +70,14 @@ src/Constraints/
 └── [Future] TimeConstraints/, VenueConstraints/
 ```
 
-### **5. Exception Layer**
+### **7. Exception Layer**
 ```
 src/Exceptions/
-└── SchedulingException.php     # Domain-specific exceptions
+├── SchedulingException.php           # Abstract base for domain exceptions
+├── InvalidConfigurationException.php # Configuration/input errors
+├── IncompleteScheduleException.php   # Schedule generation failures
+├── ImpossibleConstraintsException.php # Mathematically impossible constraints
+└── UnsupportedOperationException.php # Unsupported scheduler operations
 ```
 
 ## Key Technical Decisions
@@ -75,19 +103,36 @@ src/Exceptions/
 - Enables proper unit testing with mocks
 - Supports different configurations per instance
 
-### **Multi-Leg First Principle**
-- All schedulers assume multi-leg tournaments by default (legs=1 is special case)
-- Leg strategies are core components with integrated generation approach
+### **Position-Based Scheduling Architecture** ✅ **NEW (2025-10-03)**
+- Tournament structures defined as positions (SEED, STANDING, STANDING_AFTER_ROUND)
+- Structures can be generated and inspected before participant assignment
+- Positions resolve to participants via PositionResolver strategy pattern
+- Enables both static (round-robin) and dynamic (Swiss) tournament generation
+- Universal abstraction works across all tournament formats
+
+### **Participant Ordering System** ✅ **NEW (2025-10-03)**
+- Participant order within events controlled via ParticipantOrderer strategy
+- Separate concern from leg strategies (home/away ≠ participant ordering)
+- Four built-in orderers: Static, Alternating, Balanced, SeededRandom
+- BalancedParticipantOrderer tracks history for Swiss-ready home/away balancing
+- Universal applicability across all tournament algorithms
+
+### **Leg Strategies** (Round-Robin Specific)
+- Leg strategies are round-robin specific (not universal to all algorithms)
+- Integrated generation approach prevents silent event skipping
 - SchedulingContext inherently multi-leg aware with full tournament context
-- All-or-nothing schedule generation prevents silent event skipping
-- Enhanced diagnostic reporting for constraint conflicts and generation failures
+- All-or-nothing schedule generation with enhanced diagnostics
+- Composable with any participant orderer
 
 ## Design Patterns in Use
 
 ### **Strategy Pattern**
 - `SchedulerInterface` with multiple implementations (`RoundRobinScheduler`, future Swiss/Pool)
-- Allows runtime algorithm selection
-- Easy to add new tournament formats
+- `PositionResolver` with implementations (SeedBased, future StandingsBased)
+- `ParticipantOrderer` with four implementations (Static, Alternating, Balanced, SeededRandom)
+- `LegStrategyInterface` with three implementations (Mirrored, Repeated, Shuffled)
+- Allows runtime algorithm/strategy selection
+- Easy to add new tournament formats and ordering strategies
 
 ### **Builder Pattern**
 - `ConstraintSet::create()` provides fluent constraint configuration
@@ -118,67 +163,102 @@ src/Exceptions/
 
 ```mermaid
 graph TD
-    Scheduler[SchedulerInterface] --> Context[SchedulingContext]
+    Scheduler[SchedulerInterface] --> PositionalSchedule[PositionalSchedule]
+    Scheduler --> Context[SchedulingContext]
     Scheduler --> ConstraintSet[ConstraintSet]
     Scheduler --> Schedule[Schedule]
-    Scheduler --> LegStrategy[LegStrategyInterface]
-    
+    Scheduler --> Orderer[ParticipantOrderer]
+
+    PositionalSchedule --> PositionalRound[PositionalRound]
+    PositionalRound --> PositionalPairing[PositionalPairing]
+    PositionalPairing --> Position[Position]
+    Position --> PositionType[PositionType Enum]
+
+    PositionalRound -.resolves via.-> PositionResolver[PositionResolver]
+    PositionResolver --> SeedBased[SeedBasedPositionResolver]
+    PositionResolver -.future.-> StandingsBased[StandingsBasedPositionResolver]
+
+    PositionalRound -.orders via.-> Orderer
+    Orderer --> Static[StaticParticipantOrderer]
+    Orderer --> Alternating[AlternatingParticipantOrderer]
+    Orderer --> Balanced[BalancedParticipantOrderer]
+    Orderer --> SeededRandom[SeededRandomParticipantOrderer]
+
     Schedule --> Event[Event]
     Event --> Participant[Participant]
     Event --> Round[Round]
-    
+
     ConstraintSet --> ConstraintInterface[ConstraintInterface]
     ConstraintInterface --> NoRepeatPairings[NoRepeatPairings]
     ConstraintInterface --> CallableConstraint[CallableConstraint]
-    
+
     Context --> Participant
     Context --> Event
-    Context --> LegStrategy
-    
+
+    RoundRobin[RoundRobinScheduler] -.implements.-> Scheduler
+    RoundRobin --> LegStrategy[LegStrategyInterface]
     LegStrategy --> MirroredLeg[MirroredLegStrategy]
     LegStrategy --> RepeatedLeg[RepeatedLegStrategy]
     LegStrategy --> ShuffledLeg[ShuffledLegStrategy]
-    
-    RoundRobin[RoundRobinScheduler] -.implements.-> Scheduler
-    
-    subgraph "Multi-Leg Core"
-        Context
+
+    subgraph "Position-Based Core"
+        PositionalSchedule
+        PositionalRound
+        PositionalPairing
+        Position
+        PositionResolver
+    end
+
+    subgraph "Participant Ordering"
+        Orderer
+        Static
+        Alternating
+        Balanced
+        SeededRandom
+    end
+
+    subgraph "Round-Robin Specific"
         LegStrategy
-        Event
-        Round
+        MirroredLeg
+        RepeatedLeg
+        ShuffledLeg
     end
 ```
 
 ## Critical Implementation Paths
 
-### **Integrated Multi-Leg Round-Robin Scheduling Flow**
-1. **Input Validation**: Minimum 2 participants, valid leg count, and strategy required
-2. **Multi-Leg Context Setup**: Initialize SchedulingContext with full tournament parameters
-3. **Unified Generation Loop**: For each leg, for each round, generate events with strategy
-4. **Real-Time Constraint Validation**: Each event validated against complete multi-leg context
-5. **All-or-Nothing Result**: Complete schedule or immediate failure with detailed diagnostics
-6. **Bye Handling**: Null participants handled consistently across all legs
-7. **Circle Method Integration**: Traditional algorithm enhanced with leg strategy application
+### **Position-Based Scheduling Flow** ✅ **NEW (2025-10-03)**
+1. **Structure Generation**: Generate PositionalSchedule with Position references
+2. **Position Resolution**: Resolve positions to participants via PositionResolver
+3. **Participant Ordering**: Apply ParticipantOrderer to control event-level ordering
+4. **Event Creation**: Create Event objects with properly ordered participants
+5. **Context Updates**: Maintain SchedulingContext with complete tournament history
+6. **Constraint Validation**: Validate events against constraints with full context
+7. **All-or-Nothing Result**: Complete schedule or detailed failure diagnostics
 
-### **Integrated Multi-Leg Scheduling Flow**
-1. **Multi-Leg Context Initialization**: Create SchedulingContext with full tournament parameters (legs, strategy)
-2. **Unified Generation Loop**: Generate events for all legs with full cross-leg constraint visibility
-3. **Incremental Validation**: Each event validated against complete multi-leg context
-4. **All-or-Nothing Result**: Complete schedule generation or clear failure with diagnostics
-5. **No Silent Skipping**: Constraint failures cause immediate exception with detailed reporting
+### **Round-Robin with Position System**
+1. **Input Validation**: Minimum 2 participants, valid configuration
+2. **Positional Structure**: Generate position-based pairings using circle method
+3. **Seed Resolution**: Use SeedBasedPositionResolver to map positions to participants
+4. **Participant Ordering**: Apply configured ParticipantOrderer (default: Static)
+5. **Multi-Leg Generation** (if applicable): Apply LegStrategy with full context
+6. **Constraint Validation**: Real-time validation with incremental context building
+7. **Schedule Assembly**: Return complete Schedule with metadata and positional structure
+
+### **Participant Ordering Application** ✅ **NEW (2025-10-03)**
+1. **Context Creation**: Build EventOrderingContext with round/event/leg/scheduling data
+2. **Orderer Invocation**: Call ParticipantOrderer.order() with participants and context
+3. **Order Application**: Use ordered participants for Event creation
+4. **History Tracking** (Balanced): Track participant home/away counts across events
+5. **Deterministic Randomization** (SeededRandom): Use CRC32 hash for consistent randomness
+6. **Composition**: Works independently with any LegStrategy
 
 ### **Enhanced Constraint Validation Flow**
-1. **Full Context Creation**: Build SchedulingContext with complete multi-leg tournament state
+1. **Full Context Creation**: Build SchedulingContext with complete tournament state
 2. **Cross-Leg Awareness**: Constraints see events from all legs during validation
-3. **Early Failure Detection**: Impossible constraints detected as soon as conflicts arise
-4. **Detailed Diagnostics**: Constraint violations include suggestions and conflict analysis
-5. **Continuous Context Updates**: Context maintained across all legs for accurate validation
-
-### **Schedule Iteration**
-1. **Iterator Interface**: Standard PHP iteration protocol
-2. **Lazy Evaluation**: Events stored in array but iterated efficiently  
-3. **Round Filtering**: Filter events by specific round numbers
-4. **Metadata Access**: Schedule-level metadata for algorithm info
+3. **Early Failure Detection**: Impossible constraints detected as conflicts arise
+4. **Detailed Diagnostics**: Constraint violations include suggestions and analysis
+5. **Continuous Context Updates**: Context maintained across all legs and rounds
 
 ## File Structure
 
@@ -207,17 +287,40 @@ tactician/
 │   │   ├── Participant.php      # Advanced DTO with ID/label/seed/metadata
 │   │   ├── Event.php           # Multi-participant event with round tracking
 │   │   ├── Round.php           # Immutable round representation with metadata
+│   │   ├── RoundSchedule.php   # Single round for round-by-round generation
 │   │   └── Schedule.php        # Iterator/Countable schedule collection
+│   ├── Positioning/            # Position-based scheduling (NEW 2025-10-03)
+│   │   ├── Position.php
+│   │   ├── PositionType.php
+│   │   ├── PositionalPairing.php
+│   │   ├── PositionalRound.php
+│   │   ├── PositionalSchedule.php
+│   │   ├── PositionResolver.php
+│   │   └── SeedBasedPositionResolver.php
+│   ├── Ordering/              # Participant ordering (NEW 2025-10-03)
+│   │   ├── ParticipantOrderer.php
+│   │   ├── EventOrderingContext.php
+│   │   ├── StaticParticipantOrderer.php
+│   │   ├── AlternatingParticipantOrderer.php
+│   │   ├── BalancedParticipantOrderer.php
+│   │   └── SeededRandomParticipantOrderer.php
 │   ├── Scheduling/
-│   │   ├── SchedulerInterface.php     # Contract for all schedulers
+│   │   ├── SchedulerInterface.php     # Unified contract for all schedulers
 │   │   ├── SchedulingContext.php      # Historical state management
-│   │   └── RoundRobinScheduler.php    # Circle method with constraints
+│   │   └── RoundRobinScheduler.php    # Position-based with multi-leg support
+│   ├── LegStrategies/         # Round-robin specific leg strategies
+│   │   ├── LegStrategyInterface.php
+│   │   ├── MirroredLegStrategy.php
+│   │   ├── RepeatedLegStrategy.php
+│   │   └── ShuffledLegStrategy.php
 │   ├── Constraints/
-│   │   ├── ConstraintInterface.php    # Constraint contract
-│   │   ├── ConstraintSet.php         # Builder pattern with CallableConstraint
-│   │   └── NoRepeatPairings.php      # Built-in constraint implementation
+│   │   ├── ConstraintInterface.php
+│   │   ├── ConstraintSet.php
+│   │   └── [Multiple constraint implementations]
+│   ├── Validation/
+│   │   └── [Validation components]
 │   └── Exceptions/
-│       └── SchedulingException.php   # Domain-specific exceptions
+│       └── [Exception hierarchy]
 └── tests/
     ├── Pest.php                      # Pest configuration
     ├── TestCase.php                  # Base test case
@@ -238,7 +341,21 @@ tactician/
 
 ## Future Architecture Extensions
 
-### **Timeline System**
+### **Swiss Tournament System** (Phase 4 - Next)
+```
+src/Scheduling/
+├── SwissScheduler.php                    # Swiss tournament scheduler
+├── SwissPairingAlgorithm.php            # Interface for Swiss pairing
+├── SeededSwissAlgorithm.php             # Pre-determined Swiss (UEFA CL style)
+└── StandingsBasedSwissAlgorithm.php     # Dynamic Swiss (traditional)
+
+src/Positioning/
+├── StandingsBasedPositionResolver.php   # Resolves STANDING positions
+├── ParticipantStanding.php              # Participant with standing data
+└── StandingsContext.php                 # Current standings for resolver
+```
+
+### **Timeline System** (Phase 5)
 ```
 src/Timeline/
 ├── TimeAssignerInterface.php
@@ -247,7 +364,7 @@ src/Timeline/
 └── ScheduledEvent.php
 ```
 
-### **Advanced Constraints**
+### **Advanced Constraints** (Future)
 ```
 src/Constraints/
 ├── TimeConstraints/
@@ -256,7 +373,7 @@ src/Constraints/
 └── ConstraintViolation.php
 ```
 
-### **Optimization Layer**
+### **Optimization Layer** (Future)
 ```
 src/Optimization/
 ├── ScheduleOptimizer.php
@@ -265,4 +382,4 @@ src/Optimization/
 ```
 
 ---
-*Last Updated: 2025-10-01*
+*Last Updated: 2025-10-03 (Phase 3 Complete - Participant Ordering)*

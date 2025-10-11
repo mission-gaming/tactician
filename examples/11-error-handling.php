@@ -76,7 +76,7 @@ foreach ($scenarios as $name => $scenario) {
 
     try {
         $scheduler = new RoundRobinScheduler($scenario['constraints']);
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         $result['status'] = 'success';
         $result['schedule'] = $schedule;
@@ -89,8 +89,8 @@ foreach ($scenarios as $name => $scenario) {
         $result['error_message'] = $e->getMessage();
         $result['diagnostic_info'] = [
             'expected_events' => $e->getExpectedEventCount(),
-            'generated_events' => $e->getGeneratedEventCount(),
-            'constraint_violations' => count($e->getConstraintViolations()),
+            'generated_events' => $e->getActualEventCount(),
+            'constraint_violations' => count($e->getViolationCollector()->getViolations()),
         ];
     } catch (ImpossibleConstraintsException $e) {
         $result['status'] = 'impossible';
@@ -290,7 +290,7 @@ function getStatusIcon($status)
                                 <div class="mt-3">
                                     <h5 class="font-medium text-yellow-800 mb-2">Constraint Violations:</h5>
                                     <div class="space-y-1">
-                                        <?php foreach ($result['exception']->getConstraintViolations() as $violation): ?>
+                                        <?php foreach ($result['exception']->getViolationCollector()->getViolations() as $violation): ?>
                                             <div class="bg-yellow-100 rounded px-2 py-1 text-xs text-yellow-800">
                                                 <?= htmlspecialchars($violation->getDescription()); ?>
                                             </div>
@@ -396,19 +396,19 @@ use MissionGaming\\Tactician\\Exceptions\\SchedulingException;
 
 try {
     $scheduler = new RoundRobinScheduler($constraints);
-    $schedule = $scheduler->schedule($participants);
-    
+    $schedule = $scheduler->generateSchedule($participants);
+
     // Success - proceed with schedule
     echo "Schedule generated successfully with " . count($schedule) . " events";
     
 } catch (IncompleteScheduleException $e) {
     // Schedule incomplete due to constraint conflicts
     echo "Incomplete schedule: " . $e->getMessage();
-    echo "Generated: " . $e->getGeneratedEventCount();
+    echo "Generated: " . $e->getActualEventCount();
     echo "Expected: " . $e->getExpectedEventCount();
     
     // Show constraint violations
-    foreach ($e->getConstraintViolations() as $violation) {
+    foreach ($e->getViolationCollector()->getViolations() as $violation) {
         echo "Violation: " . $violation->getDescription();
     }
     

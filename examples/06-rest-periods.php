@@ -59,7 +59,7 @@ $results = [];
 foreach ($scheduleScenarios as $name => $scenario) {
     try {
         $scheduler = new RoundRobinScheduler($scenario['constraints']);
-        $schedule = $scheduler->schedule($participants);
+        $schedule = $scheduler->generateSchedule($participants);
 
         $results[$name] = [
             'status' => 'success',
@@ -358,7 +358,7 @@ $constraints = ConstraintSet::create()
 $scheduler = new RoundRobinScheduler($constraints);
 
 try {
-    $schedule = $scheduler->schedule($participants);
+    $schedule = $scheduler->generateSchedule($participants);
     echo "Schedule generated successfully!";
     
     // Analyze rest periods for a specific team
