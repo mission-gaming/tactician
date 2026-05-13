@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 describe('SchedulingContext', function (): void {
@@ -69,6 +70,46 @@ describe('SchedulingContext', function (): void {
         expect($context->getParticipantsPerEvent())->toBe(2);
         expect($context->getMetadata())->toBe($this->metadata);
         expect($context->isMultiLeg())->toBeTrue();
+    });
+
+    it('uses configured total rounds instead of inferring from generated events', function (): void {
+        $context = new SchedulingContext(
+            $this->participants,
+            [],
+            metadata: ['algorithm' => 'simple-swiss', 'total_rounds' => 5]
+        );
+
+        expect($context->getTotalRounds())->toBe(5);
+    });
+
+    it('uses explicit expected event metadata before round-robin fallback', function (): void {
+        $context = new SchedulingContext(
+            $this->participants,
+            [],
+            metadata: ['algorithm' => 'simple-swiss', 'expected_event_count' => 6]
+        );
+
+        expect($context->getExpectedEventCount())->toBe(6);
+    });
+
+    it('classifies partial multi-leg events using configured rounds per leg', function (): void {
+        $events = [
+            new Event([$this->participant1, $this->participant2], new Round(1)),
+            new Event([$this->participant2, $this->participant3], new Round(2)),
+            new Event([$this->participant1, $this->participant3], new Round(3)),
+        ];
+
+        $context = new SchedulingContext(
+            $this->participants,
+            $events,
+            currentLeg: 2,
+            totalLegs: 2,
+            participantsPerEvent: 2,
+            metadata: ['algorithm' => 'round-robin', 'rounds_per_leg' => 3, 'total_rounds' => 6]
+        );
+
+        expect($context->getEventsForLeg(1))->toHaveCount(3);
+        expect($context->getEventsForLeg(2))->toBe([]);
     });
 
     // Tests the hasMetadata method to verify it correctly identifies whether

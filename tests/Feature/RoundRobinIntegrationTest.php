@@ -3,8 +3,12 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use Random\Engine\Mt19937;
+use Random\Randomizer;
 
 describe('Round Robin Integration', function (): void {
     // Tests that the round-robin algorithm generates the correct number of matches (6)
@@ -112,6 +116,104 @@ describe('Round Robin Integration', function (): void {
 
         foreach ($participantMatchCounts as $count) {
             expect($count)->toBe(4);
+        }
+    });
+
+    it('generates complete multi-leg schedules for odd participant counts', function (): void {
+        $participants = [];
+        for ($i = 1; $i <= 5; ++$i) {
+            $participants[] = new Participant("p{$i}", "Player {$i}");
+        }
+
+        $scheduler = new RoundRobinScheduler();
+        $schedule = $scheduler->schedule($participants, 2, 2);
+
+        expect($schedule->count())->toBe(20);
+        expect($schedule->getMetadataValue('rounds_per_leg'))->toBe(5);
+        expect($schedule->getMetadataValue('total_rounds'))->toBe(10);
+        expect($schedule->getMaxRound()?->getNumber())->toBe(10);
+
+        for ($round = 1; $round <= 10; ++$round) {
+            $eventsInRound = array_filter(
+                $schedule->getEvents(),
+                fn ($event) => $event->getRound()?->getNumber() === $round
+            );
+            expect(count($eventsInRound))->toBe(2);
+        }
+
+        $pairingCounts = [];
+        $participantMatchCounts = [];
+        foreach ($schedule as $event) {
+            $eventParticipants = $event->getParticipants();
+            $pair = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
+            sort($pair);
+            $pairingKey = implode('-', $pair);
+            $pairingCounts[$pairingKey] = ($pairingCounts[$pairingKey] ?? 0) + 1;
+
+            foreach ($eventParticipants as $participant) {
+                $participantMatchCounts[$participant->getId()] = ($participantMatchCounts[$participant->getId()] ?? 0) + 1;
+            }
+        }
+
+        expect($pairingCounts)->toHaveCount(10);
+        foreach ($pairingCounts as $count) {
+            expect($count)->toBe(2);
+        }
+
+        expect($participantMatchCounts)->toHaveCount(5);
+        foreach ($participantMatchCounts as $count) {
+            expect($count)->toBe(8);
+        }
+    });
+
+    it('keeps bye slots intact when randomizing odd participant schedules', function (): void {
+        $participants = [];
+        for ($i = 1; $i <= 5; ++$i) {
+            $participants[] = new Participant("p{$i}", "Player {$i}");
+        }
+
+        $scheduler = new RoundRobinScheduler(null, new Randomizer(new Mt19937(42)));
+        $schedule = $scheduler->schedule($participants);
+
+        $pairingCounts = [];
+        foreach ($schedule as $event) {
+            $eventParticipants = $event->getParticipants();
+            $pair = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
+            sort($pair);
+            $pairingKey = implode('-', $pair);
+            $pairingCounts[$pairingKey] = ($pairingCounts[$pairingKey] ?? 0) + 1;
+        }
+
+        expect($schedule->count())->toBe(10);
+        expect($schedule->getMaxRound()?->getNumber())->toBe(5);
+        expect($pairingCounts)->toHaveCount(10);
+        foreach ($pairingCounts as $count) {
+            expect($count)->toBe(1);
+        }
+    });
+
+    it('applies seed protection against the real multi-leg round window', function (): void {
+        $participants = [
+            new Participant('seed1', 'Seed 1', 1),
+            new Participant('seed2', 'Seed 2', 2),
+            new Participant('seed3', 'Seed 3', 3),
+            new Participant('seed4', 'Seed 4', 4),
+        ];
+
+        $constraints = ConstraintSet::create()
+            ->add(new SeedProtectionConstraint(2, 0.5))
+            ->build();
+
+        $scheduler = new RoundRobinScheduler($constraints);
+
+        try {
+            $scheduler->schedule($participants, 2, 2);
+            expect(false)->toBeTrue('Expected seed protection to reject the round-2 top-seed pairing');
+        } catch (IncompleteScheduleException $e) {
+            $violationsByConstraint = $e->getViolationCollector()->getViolationsByConstraint();
+
+            expect($violationsByConstraint)->toHaveKey('Seed Protection (top 2, 0.5% period)');
+            expect($e->getViolationCollector()->getAffectedRounds())->toContain(2);
         }
     });
 

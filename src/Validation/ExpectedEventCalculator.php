@@ -14,12 +14,15 @@ interface ExpectedEventCalculator
     /**
      * Calculate the expected number of events for complete scheduling.
      *
+     * The integer argument is algorithm-specific: round robin treats it as legs,
+     * while round-based algorithms such as Simple Swiss treat it as rounds.
+     *
      * @param array<Participant> $participants
      * @param array<string, mixed> $algorithmSpecificParams
      */
     public function calculateExpectedEvents(
         array $participants,
-        int $legs = 1,
+        int $scheduleUnits = 1,
         array $algorithmSpecificParams = []
     ): int;
 

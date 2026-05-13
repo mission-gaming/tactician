@@ -25,19 +25,42 @@ class ScheduleValidator
         ConstraintViolationCollector $violations,
         ExpectedEventCalculator $eventCalculator,
         array $participants,
-        int $legs
+        int|ScheduleValidationContext $validationContext
     ): void {
+        $context = $validationContext instanceof ScheduleValidationContext
+            ? $validationContext
+            : ScheduleValidationContext::forRoundRobin($validationContext);
+
         $actualEventCount = count($generated);
 
-        if ($actualEventCount < $expectedEventCount) {
+        if ($actualEventCount !== $expectedEventCount) {
             throw new IncompleteScheduleException(
                 $expectedEventCount,
                 $actualEventCount,
                 $violations,
                 $eventCalculator,
                 $participants,
-                $legs
+                $context
             );
+        }
+
+        if ($eventCalculator instanceof ScheduleIntegrityValidator) {
+            $integrityViolations = $eventCalculator->validateScheduleIntegrity($generated, $participants, $context);
+            if ($integrityViolations !== []) {
+                throw new IncompleteScheduleException(
+                    $expectedEventCount,
+                    $actualEventCount,
+                    $violations,
+                    $eventCalculator,
+                    $participants,
+                    $context,
+                    sprintf(
+                        'Generated schedule failed %s integrity validation: %s',
+                        $eventCalculator->getAlgorithmName(),
+                        implode(' ', array_slice($integrityViolations, 0, 3))
+                    )
+                );
+            }
         }
     }
 

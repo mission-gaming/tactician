@@ -8,11 +8,13 @@ use MissionGaming\Tactician\Constraints\NoRepeatPairings;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
+use MissionGaming\Tactician\Validation\RoundRobinEventCalculator;
 use MissionGaming\Tactician\Validation\ScheduleValidator;
 
 describe('ScheduleValidator', function (): void {
@@ -257,6 +259,66 @@ describe('ScheduleValidator', function (): void {
                 1
             );
             expect(true)->toBeTrue(); // Test passes if no exception is thrown
+        });
+
+        it('rejects duplicate round-robin pairings even when event count matches', function (): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+            $eventCalculator = new RoundRobinEventCalculator();
+
+            $participant1 = new Participant('p1', 'Alice');
+            $participant2 = new Participant('p2', 'Bob');
+            $participant3 = new Participant('p3', 'Carol');
+            $participants = [$participant1, $participant2, $participant3];
+
+            $schedule = new Schedule([
+                new Event([$participant1, $participant2], new Round(1)),
+                new Event([$participant1, $participant2], new Round(2)),
+                new Event([$participant1, $participant2], new Round(3)),
+            ]);
+
+            expect(fn () => $validator->validateScheduleCompleteness(
+                $schedule,
+                3,
+                $violations,
+                $eventCalculator,
+                $participants,
+                1
+            ))->toThrow(
+                IncompleteScheduleException::class,
+                'Generated schedule failed Round Robin integrity validation'
+            );
+        });
+
+        it('passes round-robin integrity validation for exact multi-leg pairing counts', function (): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+            $eventCalculator = new RoundRobinEventCalculator();
+
+            $participant1 = new Participant('p1', 'Alice');
+            $participant2 = new Participant('p2', 'Bob');
+            $participant3 = new Participant('p3', 'Carol');
+            $participants = [$participant1, $participant2, $participant3];
+
+            $schedule = new Schedule([
+                new Event([$participant1, $participant2], new Round(1)),
+                new Event([$participant2, $participant3], new Round(2)),
+                new Event([$participant1, $participant3], new Round(3)),
+                new Event([$participant2, $participant1], new Round(4)),
+                new Event([$participant3, $participant2], new Round(5)),
+                new Event([$participant3, $participant1], new Round(6)),
+            ]);
+
+            $validator->validateScheduleCompleteness(
+                $schedule,
+                6,
+                $violations,
+                $eventCalculator,
+                $participants,
+                2
+            );
+
+            expect(true)->toBeTrue();
         });
     });
 

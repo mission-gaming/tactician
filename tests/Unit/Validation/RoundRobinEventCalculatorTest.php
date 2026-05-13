@@ -2,8 +2,12 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Validation\RoundRobinEventCalculator;
+use MissionGaming\Tactician\Validation\ScheduleValidationContext;
 
 describe('RoundRobinEventCalculator', function (): void {
     beforeEach(function (): void {
@@ -163,5 +167,47 @@ describe('RoundRobinEventCalculator', function (): void {
             // Then: Should match mathematical expectation
             expect($result)->toBe($expectedResult);
         }
+    });
+
+    it('reports no integrity violations for complete pairings', function (): void {
+        $participant1 = new Participant('p1', 'Team A');
+        $participant2 = new Participant('p2', 'Team B');
+        $participant3 = new Participant('p3', 'Team C');
+        $participants = [$participant1, $participant2, $participant3];
+
+        $schedule = new Schedule([
+            new Event([$participant1, $participant2], new Round(1)),
+            new Event([$participant2, $participant3], new Round(2)),
+            new Event([$participant1, $participant3], new Round(3)),
+        ]);
+
+        expect($this->calculator->validateScheduleIntegrity(
+            $schedule,
+            $participants,
+            ScheduleValidationContext::forRoundRobin(1, 3)
+        ))->toBe([]);
+    });
+
+    it('reports duplicate and missing round-robin pairings', function (): void {
+        $participant1 = new Participant('p1', 'Team A');
+        $participant2 = new Participant('p2', 'Team B');
+        $participant3 = new Participant('p3', 'Team C');
+        $participants = [$participant1, $participant2, $participant3];
+
+        $schedule = new Schedule([
+            new Event([$participant1, $participant2], new Round(1)),
+            new Event([$participant1, $participant2], new Round(2)),
+            new Event([$participant1, $participant2], new Round(3)),
+        ]);
+
+        $violations = $this->calculator->validateScheduleIntegrity(
+            $schedule,
+            $participants,
+            ScheduleValidationContext::forRoundRobin(1, 3)
+        );
+
+        expect($violations)->toContain('Pairing Team A vs Team B appears 3 time(s), expected 1.');
+        expect($violations)->toContain('Pairing Team A vs Team C appears 0 time(s), expected 1.');
+        expect($violations)->toContain('Pairing Team B vs Team C appears 0 time(s), expected 1.');
     });
 });

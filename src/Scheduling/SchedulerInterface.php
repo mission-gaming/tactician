@@ -6,18 +6,17 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
-use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
 
 interface SchedulerInterface
 {
     /**
-     * Generate a schedule for the given participants with multi-leg support.
+     * Generate a schedule for the given participants.
      *
      * @param array<Participant> $participants Tournament participants
      * @param int $participantsPerEvent Number of participants per event (future-proofing for N-participant events)
-     * @param int $legs Number of legs in the tournament
-     * @param LegStrategyInterface|null $strategy Strategy for multi-leg generation (null uses default)
+     * @param int $rounds Algorithm-specific round count or repetition count
+     * @param mixed $options Algorithm-specific scheduling options
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When configuration is invalid
      * @throws \MissionGaming\Tactician\Exceptions\IncompleteScheduleException When constraints prevent complete schedule generation
@@ -26,8 +25,8 @@ interface SchedulerInterface
     public function schedule(
         array $participants,
         int $participantsPerEvent = 2,
-        int $legs = 1,
-        ?LegStrategyInterface $strategy = null
+        int $rounds = 1,
+        mixed $options = null
     ): Schedule;
 
     /**
@@ -38,7 +37,7 @@ interface SchedulerInterface
      * @throws \MissionGaming\Tactician\Exceptions\ImpossibleConstraintsException
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException
      */
-    public function validateConstraints(array $participants, int $legs): void;
+    public function validateConstraints(array $participants, int $rounds): void;
 
     /**
      * Get the expected number of events for a complete schedule.
@@ -47,7 +46,7 @@ interface SchedulerInterface
      */
     public function getExpectedEventCount(
         array $participants,
-        int $legs,
+        int $rounds,
         int $participantsPerEvent = 2
     ): int;
 

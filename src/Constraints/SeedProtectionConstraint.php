@@ -71,21 +71,18 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
      */
     private function estimateTotalRounds(SchedulingContext $context): int
     {
+        $configuredTotalRounds = $context->getTotalRounds();
+        if ($configuredTotalRounds > 0) {
+            return $configuredTotalRounds;
+        }
+
         $participantCount = count($context->getParticipants());
         if ($participantCount < 2) {
             return 1;
         }
 
-        // For round-robin: n-1 rounds per leg
-        // We don't know the exact number of legs, so we estimate based on existing events
-        $maxRound = 0;
-        foreach ($context->getExistingEvents() as $event) {
-            $roundNumber = $event->getRound()?->getNumber() ?? 0;
-            $maxRound = max($maxRound, $roundNumber);
-        }
+        $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
 
-        // If we have events, use the maximum round seen + some buffer
-        // Otherwise, estimate single-leg round-robin
-        return $maxRound > 0 ? max($maxRound * 2, $participantCount - 1) : $participantCount - 1;
+        return $roundsPerLeg * $context->getTotalLegs();
     }
 }

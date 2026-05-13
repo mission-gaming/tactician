@@ -8,19 +8,19 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 
 /**
- * Context for tournament scheduling with inherent multi-leg awareness.
+ * Context for tournament scheduling across algorithms.
  *
- * This class provides complete tournament state including multi-leg support,
- * allowing constraints and schedulers to have full visibility into the
- * tournament structure during generation.
+ * This class provides generated tournament state plus algorithm metadata,
+ * allowing constraints and schedulers to reason about rounds, legs, and
+ * expected size without assuming every algorithm is round robin.
  */
 readonly class SchedulingContext
 {
     /**
      * @param array<Participant> $allParticipants All participants in the tournament
-     * @param array<Event> $allEvents Events from all legs generated so far
-     * @param int $currentLeg The current leg being generated (1-based)
-     * @param int $totalLegs The total number of legs in the tournament
+     * @param array<Event> $allEvents Events generated so far
+     * @param int $currentLeg The current leg being generated (1-based), for algorithms with legs
+     * @param int $totalLegs The total number of legs, or 1 for algorithms without legs
      * @param int $participantsPerEvent Number of participants per event (usually 2)
      * @param array<string, mixed> $metadata Additional context metadata
      */
@@ -85,6 +85,26 @@ readonly class SchedulingContext
     }
 
     /**
+     * Get the total configured rounds when the scheduler exposes them.
+     */
+    public function getTotalRounds(): int
+    {
+        $configuredRounds = $this->getPositiveIntMetadata('total_rounds')
+            ?? $this->getPositiveIntMetadata('rounds');
+
+        if ($configuredRounds !== null) {
+            return $configuredRounds;
+        }
+
+        $roundsPerLeg = $this->getPositiveIntMetadata('rounds_per_leg');
+        if ($roundsPerLeg !== null) {
+            return $roundsPerLeg * $this->totalLegs;
+        }
+
+        return $this->getMaxGeneratedRound();
+    }
+
+    /**
      * Get the number of participants per event.
      */
     public function getParticipantsPerEvent(): int
@@ -102,8 +122,10 @@ readonly class SchedulingContext
 
     /**
      * Get events from a specific leg.
+     *
+     * Algorithms without legs use the default single leg and return all events for leg 1.
+     *
      * @return array<Event>
-     * @throws \DivisionByZeroError
      */
     public function getEventsForLeg(int $leg): array
     {
@@ -111,23 +133,29 @@ readonly class SchedulingContext
             return [];
         }
 
+        if ($this->totalLegs === 1) {
+            return $leg === 1 ? $this->allEvents : [];
+        }
+
+        $roundsPerLeg = $this->getRoundsPerLeg();
+        if ($roundsPerLeg === 0) {
+            return [];
+        }
+
+        $firstRound = (($leg - 1) * $roundsPerLeg) + 1;
+        $lastRound = $leg * $roundsPerLeg;
+
         return array_filter(
             $this->allEvents,
-            function (Event $event) use ($leg) {
+            function (Event $event) use ($firstRound, $lastRound) {
                 $round = $event->getRound();
                 if ($round === null) {
                     return false;
                 }
 
-                // Calculate which leg this round belongs to
-                $roundsPerLeg = $this->calculateRoundsPerLeg();
-                if ($roundsPerLeg === 0) {
-                    return false;
-                }
+                $roundNumber = $round->getNumber();
 
-                $eventLeg = (int) ceil($round->getNumber() / $roundsPerLeg);
-
-                return $eventLeg === $leg;
+                return $roundNumber >= $firstRound && $roundNumber <= $lastRound;
             }
         );
     }
@@ -230,13 +258,23 @@ readonly class SchedulingContext
      */
     public function getExpectedEventCount(): int
     {
+        $configuredExpectedEvents = $this->getPositiveIntMetadata('expected_event_count');
+        if ($configuredExpectedEvents !== null) {
+            return $configuredExpectedEvents;
+        }
+
+        if ($this->participantsPerEvent !== 2) {
+            return 0;
+        }
+
         $participantCount = count($this->allParticipants);
 
         if ($participantCount < $this->participantsPerEvent) {
             return 0;
         }
 
-        // Round-robin formula: n * (n-1) / 2 for each leg, multiplied by number of legs
+        // Backward-compatible default for legacy round-robin callers.
+        // New algorithms should provide expected_event_count metadata.
         $eventsPerLeg = (int) ($participantCount * ($participantCount - 1) / 2);
 
         return $eventsPerLeg * $this->totalLegs;
@@ -273,14 +311,47 @@ readonly class SchedulingContext
         );
     }
 
-    /**
-     * Calculate rounds per leg based on current events.
-     *
-     * @throws \DivisionByZeroError
-     */
-    private function calculateRoundsPerLeg(): int
+    private function getRoundsPerLeg(): int
     {
-        if (empty($this->allEvents)) {
+        $configuredRoundsPerLeg = $this->getPositiveIntMetadata('rounds_per_leg');
+        if ($configuredRoundsPerLeg !== null) {
+            return $configuredRoundsPerLeg;
+        }
+
+        $configuredRounds = $this->getPositiveIntMetadata('total_rounds')
+            ?? $this->getPositiveIntMetadata('rounds');
+
+        if ($configuredRounds !== null) {
+            return $this->totalLegs > 1
+                ? (int) ceil($configuredRounds / $this->totalLegs)
+                : $configuredRounds;
+        }
+
+        $maxRound = $this->getMaxGeneratedRound();
+        if ($maxRound === 0) {
+            return 0;
+        }
+
+        return $this->totalLegs > 1 ? (int) ceil($maxRound / $this->totalLegs) : $maxRound;
+    }
+
+    private function getPositiveIntMetadata(string $key): ?int
+    {
+        $value = $this->metadata[$key] ?? null;
+        if (is_int($value) && $value > 0) {
+            return $value;
+        }
+
+        if (is_numeric($value) && (int) $value > 0) {
+            return (int) $value;
+        }
+
+        return null;
+    }
+
+    private function getMaxGeneratedRound(): int
+    {
+        if ($this->allEvents === []) {
             return 0;
         }
 
@@ -289,8 +360,6 @@ readonly class SchedulingContext
             $this->allEvents
         );
 
-        $maxRound = max($roundNumbers);
-
-        return (int) ($maxRound / $this->totalLegs);
+        return max($roundNumbers);
     }
 }

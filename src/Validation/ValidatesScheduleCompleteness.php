@@ -46,10 +46,19 @@ trait ValidatesScheduleCompleteness
     protected function validateGeneratedSchedule(
         Schedule $schedule,
         array $participants,
-        int $legs
+        int|ScheduleValidationContext $validationContext,
+        ?int $expectedEventCount = null
     ): void {
+        $context = $validationContext instanceof ScheduleValidationContext
+            ? $validationContext
+            : ScheduleValidationContext::forRoundRobin($validationContext);
+
         $expectedEventCalculator = $this->getExpectedEventCalculator();
-        $expectedEventCount = $expectedEventCalculator->calculateExpectedEvents($participants, $legs);
+        $expectedEventCount ??= $expectedEventCalculator->calculateExpectedEvents(
+            $participants,
+            $context->getRounds(),
+            $context->getParameters()
+        );
 
         $this->validator->validateScheduleCompleteness(
             $schedule,
@@ -57,7 +66,7 @@ trait ValidatesScheduleCompleteness
             $this->violationCollector,
             $expectedEventCalculator,
             $participants,
-            $legs
+            $context
         );
     }
 

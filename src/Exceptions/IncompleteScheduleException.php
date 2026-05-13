@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Exceptions;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
+use MissionGaming\Tactician\Validation\ScheduleValidationContext;
 
 /**
  * Exception thrown when a scheduler cannot generate a complete schedule due to constraint violations.
@@ -25,22 +26,28 @@ class IncompleteScheduleException extends SchedulingException
         private readonly ConstraintViolationCollector $violationCollector,
         private readonly ExpectedEventCalculator $eventCalculator,
         private readonly array $participants,
-        private readonly int $legs,
+        int|ScheduleValidationContext $legs,
         string $message = '',
         int $code = 0,
         ?\Throwable $previous = null
     ) {
+        $this->validationContext = $legs instanceof ScheduleValidationContext
+            ? $legs
+            : ScheduleValidationContext::forRoundRobin($legs);
+
         if ($message === '') {
             $message = sprintf(
                 'Incomplete schedule generated: %d events created out of %d expected (%d missing)',
                 $this->actualEventCount,
                 $this->expectedEventCount,
-                $this->expectedEventCount - $this->actualEventCount
+                $this->getMissingEventCount()
             );
         }
 
         parent::__construct($message, $code, $previous);
     }
+
+    private readonly ScheduleValidationContext $validationContext;
 
     public function getExpectedEventCount(): int
     {
@@ -54,7 +61,7 @@ class IncompleteScheduleException extends SchedulingException
 
     public function getMissingEventCount(): int
     {
-        return $this->expectedEventCount - $this->actualEventCount;
+        return max(0, $this->expectedEventCount - $this->actualEventCount);
     }
 
     public function getViolationCollector(): ConstraintViolationCollector
@@ -62,9 +69,11 @@ class IncompleteScheduleException extends SchedulingException
         return $this->violationCollector;
     }
 
-    /**
-     * @throws \DivisionByZeroError
-     */
+    public function getValidationContext(): ScheduleValidationContext
+    {
+        return $this->validationContext;
+    }
+
     #[\Override]
     public function getDiagnosticReport(): string
     {
@@ -73,13 +82,16 @@ class IncompleteScheduleException extends SchedulingException
         $report[] = '';
         $report[] = sprintf('Algorithm: %s', $this->eventCalculator->getAlgorithmName());
         $report[] = sprintf('Participants: %d', count($this->participants));
-        $report[] = sprintf('Legs: %d', $this->legs);
+        $report[] = sprintf('Rounds: %d', $this->validationContext->getRounds());
+        if ($this->validationContext->hasParameter('legs')) {
+            $report[] = sprintf('Legs: %d', $this->validationContext->getParameter('legs'));
+        }
         $report[] = sprintf('Expected Events: %d', $this->expectedEventCount);
         $report[] = sprintf('Generated Events: %d', $this->actualEventCount);
         $report[] = sprintf(
             'Missing Events: %d (%.1f%%)',
             $this->getMissingEventCount(),
-            ($this->getMissingEventCount() / $this->expectedEventCount) * 100
+            $this->expectedEventCount === 0 ? 0.0 : ($this->getMissingEventCount() / $this->expectedEventCount) * 100
         );
         $report[] = '';
 
@@ -165,7 +177,9 @@ class IncompleteScheduleException extends SchedulingException
                 case 'ConsecutiveRoleConstraint':
                     $suggestions[] = '• Try reducing the consecutive role constraint limit';
                     $suggestions[] = '• Consider increasing the number of participants';
-                    $suggestions[] = '• Add more legs to provide more scheduling flexibility';
+                    $suggestions[] = $this->validationContext->hasParameter('legs')
+                        ? '• Add more legs to provide more scheduling flexibility'
+                        : '• Add more rounds to provide more scheduling flexibility';
                     break;
 
                 case 'MinimumRestPeriodsConstraint':
@@ -190,7 +204,9 @@ class IncompleteScheduleException extends SchedulingException
 
         if (empty($suggestions)) {
             $suggestions[] = '• Try relaxing constraint requirements';
-            $suggestions[] = '• Increase the number of participants or legs';
+            $suggestions[] = $this->validationContext->hasParameter('legs')
+                ? '• Increase the number of participants or legs'
+                : '• Increase the number of participants or rounds';
             $suggestions[] = '• Review constraint combinations for conflicts';
         }
 
