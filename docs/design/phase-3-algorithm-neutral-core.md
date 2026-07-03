@@ -212,6 +212,30 @@ Implementations: `RoundRobinPlan` (pairwise, knows everything), `SwissPlan`
 totals, stage structure, and — with two-legged ties — events per tie),
 `GroupStagePlan` (composes per-pool plans).
 
+✅ **Nullability semantics.** The interface carries two distinct null
+meanings, each stated in its accessor's docblock:
+
+- On `getLegs()` / `getRoundsPerLeg()`, **null means the concept does not
+  apply to this format** (Swiss, brackets). Plans never fabricate shape
+  facts — returning `legs = 1` for Swiss would assert "every pairing meets
+  once", which is false under the glossary definition of a leg, and a
+  fabricated-but-plausible value flowing into downstream arithmetic is
+  exactly the silent-wrongness bug class this abstraction exists to kill.
+  A consumer wanting a display default writes `?? 1` at its own edge,
+  where context justifies it. When `getLegs()` is non-null,
+  `legs × roundsPerLeg = totalRounds` holds, and `getRoundsPerLeg()` is
+  null precisely when `getLegs()` is. Formats that *have* legs always
+  return an integer (round robin reports 1 for a single leg — the
+  multi-leg-first principle is unaffected).
+- On `getTotalRounds()` / `getExpectedEventCount()`, **null means
+  unknowable up front** (a double-elimination bracket's round count varies
+  with a possible grand-final reset).
+
+Two-legged ties do not give brackets legs: `legsPerTie` is a tie-structure
+fact exposed as `EliminationPlan::getLegsPerTie()`, and stage-level
+`getLegs()` remains null for brackets — conflating the two would recreate
+the legs/rounds overload this design removes.
+
 **What it replaces:** `ExpectedEventCalculator`,
 `ScheduleIntegrityValidator`, `ScheduleValidationContext`, the shape-related
 metadata keys, and the shape half of `GenerationPlan`. `SchedulingContext`
