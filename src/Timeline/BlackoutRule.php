@@ -145,11 +145,15 @@ final readonly class BlackoutRule implements TimelineRule
 
             foreach ($this->windows as $window) {
                 if ($kickoff >= $window['from'] && $kickoff < $window['to']) {
-                    $participants = $scheduledEvent->getEvent()->getParticipants();
+                    // Events carry at least two participants but may carry
+                    // more (nothing forecloses N-participant events)
+                    $labels = array_map(
+                        fn ($participant) => $participant->getLabel(),
+                        $scheduledEvent->getEvent()->getParticipants()
+                    );
                     $violations[] = sprintf(
-                        '%s vs %s kicks off at %s, inside %s (%s to %s).',
-                        $participants[0]->getLabel(),
-                        $participants[1]->getLabel(),
+                        '%s kicks off at %s, inside %s (%s to %s).',
+                        implode(' vs ', $labels),
                         $kickoff->format('Y-m-d H:i \U\T\C'),
                         $window['label'],
                         $window['from']->format('Y-m-d H:i'),

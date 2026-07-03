@@ -171,6 +171,25 @@ describe('BlackoutRule', function (): void {
             'label' => 42,
         ]]]))->toThrow(InvalidConfigurationException::class, 'labels must be strings');
     });
+
+    // Nothing forecloses N-participant events: diagnostics name every
+    // participant rather than assuming a pairwise event
+    it('names every participant of an N-participant event in violations', function (): void {
+        $carol = new Participant('p3', 'Carol');
+        $rule = new BlackoutRule([[
+            'from' => utc('2026-11-09 00:00'),
+            'to' => utc('2026-11-17 00:00'),
+        ]]);
+
+        $scheduled = new ScheduledSchedule([new ScheduledEvent(
+            new Event([$this->alice, $this->bob, $carol], new Round(1)),
+            utc('2026-11-10 18:00')
+        )]);
+
+        $violations = $rule->validate($scheduled);
+        expect($violations)->toHaveCount(1);
+        expect($violations[0])->toContain('Alice vs Bob vs Carol');
+    });
 });
 
 describe('TimelineAssigner with rules', function (): void {
