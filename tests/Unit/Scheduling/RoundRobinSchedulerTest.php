@@ -211,6 +211,64 @@ describe('RoundRobinScheduler', function (): void {
         }
     });
 
+    // Tests that odd participant counts record which participant sits out each
+    // round in the schedule metadata, across every leg
+    it('records byes for odd participant counts', function (): void {
+        $participants = [
+            new Participant('p1', 'Alice'),
+            new Participant('p2', 'Bob'),
+            new Participant('p3', 'Carol'),
+            new Participant('p4', 'Dave'),
+            new Participant('p5', 'Eve'),
+        ];
+
+        $schedule = (new RoundRobinScheduler())->schedule($participants, 2, 2);
+        $byes = $schedule->getMetadataValue('byes');
+
+        // 5 participants => 5 rounds per leg, one bye per round
+        expect($byes)->toBeArray();
+        expect(array_keys($byes))->toBe(range(1, 10));
+
+        // Each participant sits out exactly once per leg
+        $byesPerParticipant = array_count_values($byes);
+        expect($byesPerParticipant)->toHaveCount(5);
+        foreach ($byesPerParticipant as $count) {
+            expect($count)->toBe(2);
+        }
+
+        // The bye participant plays no event in that round
+        foreach ($schedule as $event) {
+            $round = $event->getRound()?->getNumber();
+            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            expect($ids)->not->toContain($byes[$round]);
+        }
+    });
+
+    it('records byes consistently with a randomized participant order', function (): void {
+        $participants = [
+            new Participant('p1', 'Alice'),
+            new Participant('p2', 'Bob'),
+            new Participant('p3', 'Carol'),
+        ];
+
+        $scheduler = new RoundRobinScheduler(null, new Randomizer(new Mt19937(42)));
+        $schedule = $scheduler->schedule($participants);
+        $byes = $schedule->getMetadataValue('byes');
+
+        expect(array_keys($byes))->toBe([1, 2, 3]);
+        foreach ($schedule as $event) {
+            $round = $event->getRound()?->getNumber();
+            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            expect($ids)->not->toContain($byes[$round]);
+        }
+    });
+
+    it('records no byes for even participant counts', function (): void {
+        $schedule = (new RoundRobinScheduler())->schedule($this->participants);
+
+        expect($schedule->getMetadataValue('byes'))->toBe([]);
+    });
+
     // Tests that the scheduler consults the strategy's satisfiability preflight
     // and rejects vetoed configurations before generating any events
     it('rejects configurations the leg strategy cannot satisfy', function (): void {

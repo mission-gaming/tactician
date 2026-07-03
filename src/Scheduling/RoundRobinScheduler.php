@@ -31,6 +31,9 @@ class RoundRobinScheduler implements SchedulerInterface
      */
     private const MAX_GENERATION_ATTEMPTS = 25;
 
+    /** @var array<int, string> Participant IDs receiving a bye, keyed by round number */
+    private array $roundByes = [];
+
     public function __construct(
         private ?ConstraintSet $constraints = null,
         private ?Randomizer $randomizer = null
@@ -91,6 +94,7 @@ class RoundRobinScheduler implements SchedulerInterface
         // rotated participant orderings when constraints reject the pairings
         // implied by a particular circle-method order.
         $allEvents = $this->generateScheduleWithRetries($participants, $participantsPerEvent, $legs, $strategy);
+        ksort($this->roundByes);
 
         $roundsPerLeg = $this->calculateRoundsPerLeg($participants);
         $totalRounds = $roundsPerLeg * $legs;
@@ -102,6 +106,7 @@ class RoundRobinScheduler implements SchedulerInterface
             'rounds_per_leg' => $roundsPerLeg,
             'total_rounds' => $totalRounds,
             'expected_event_count' => $this->getExpectedEventCalculator()->calculateExpectedEvents($participants, $legs),
+            'byes' => $this->roundByes,
         ]);
 
         // Validate schedule completeness with all-or-nothing guarantee
@@ -215,6 +220,7 @@ class RoundRobinScheduler implements SchedulerInterface
         LegStrategyInterface $strategy
     ): array {
         $allEvents = [];
+        $this->roundByes = [];
         $metadata = $this->createSchedulingMetadata($participants, $legs);
         $context = new SchedulingContext($participants, [], 1, $legs, $participantsPerEvent, $metadata);
 
@@ -304,6 +310,8 @@ class RoundRobinScheduler implements SchedulerInterface
         for ($round = 1; $round <= $roundsPerLeg; ++$round) {
             $globalRound = $round + $roundOffset;
 
+            $this->recordByeForRound($participantList, $globalRound);
+
             // Get all participants that need to play in this round
             $participantPairs = $this->getPairsFromParticipantList($participantList);
 
@@ -334,6 +342,26 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         return $legEvents;
+    }
+
+    /**
+     * Record which participant sits out the given round, if the circle
+     * ordering contains a "bye" (null) slot.
+     *
+     * @param array<Participant|null> $participantList Participants in circle order
+     */
+    private function recordByeForRound(array $participantList, int $round): void
+    {
+        $byeIndex = array_search(null, $participantList, true);
+        if ($byeIndex === false) {
+            return;
+        }
+
+        // Circle pairing matches seat i with seat (count - 1 - i)
+        $sittingOut = $participantList[count($participantList) - 1 - (int) $byeIndex];
+        if ($sittingOut !== null) {
+            $this->roundByes[$round] = $sittingOut->getId();
+        }
     }
 
     /**
@@ -405,8 +433,12 @@ class RoundRobinScheduler implements SchedulerInterface
                 $participant1 = $participantList[$pair];
                 $participant2 = $participantList[$participantCount - 1 - $pair];
 
-                // Skip if one participant is "bye" (null)
+                // Skip if one participant is "bye" (null), recording who sits out
                 if ($participant1 === null || $participant2 === null) {
+                    $sittingOut = $participant1 ?? $participant2;
+                    if ($sittingOut !== null) {
+                        $this->roundByes[$round] = $sittingOut->getId();
+                    }
                     continue;
                 }
 
