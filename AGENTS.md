@@ -41,8 +41,9 @@ sets of concurrent events. Swiss has rounds but no legs.
 ## Rules
 
 - Every PHP file declares `strict_types=1`; DTOs are readonly; PHPStan level 8 with zero errors is mandatory.
-- Write tests for every behavior change. The engines have property/invariant tests (`tests/Feature/EliminationInvariantsTest.php`, `tests/Feature/ScheduleCompletenessTest.php`) — extend those when touching generation logic rather than only pinning single examples.
-- **No example ships without validation**: `tests/Feature/ExamplesTest.php` auto-runs every script in `examples/` under full error reporting. If you add an example, it is covered automatically and must pass.
+- **Every feature ships fully documented** — a human or an LLM must be able to understand and use it without reading the source: usage docs with executed snippets, contracts in docblocks (not restated signatures), and glossary entries for new terms.
+- **Every feature and path carries automated tests** unless a genuine technical or harness limitation prevents it; record the reason next to the gap so absence is distinguishable from oversight. The engines have property/invariant tests (`tests/Feature/EliminationInvariantsTest.php`, `tests/Feature/ScheduleCompletenessTest.php`) — extend those when touching generation logic rather than only pinning single examples.
+- **No example ships without validation**: `tests/Feature/ExamplesTest.php` auto-runs every script in `examples/` under full error reporting. If you add an example, it is covered automatically and must pass. Adding runnable examples for valuable new capabilities is encouraged (optional).
 - **Execute documentation snippets before committing them.** Stale, never-run docs and examples have caused real bugs in this repo (a wrong constructor sample in the architecture docs matched an actual shipped bug). If a README/docs snippet changes, run it.
 - Never commit directly to `main` — branch and open a PR. Prefer small, single-purpose commits with descriptive messages.
 - Constraints are hard filters evaluated during greedy generation; a complete round robin needs every pair to meet, so a constraint that forbids some pairing fails generation loudly (`IncompleteScheduleException` with diagnostics) rather than silently dropping matches. The scheduler retries bounded rotated orderings before giving up.

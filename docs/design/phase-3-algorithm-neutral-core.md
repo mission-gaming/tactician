@@ -553,6 +553,32 @@ Candidates considered for the shape object, with the reasoning:
 | `PointsSystem` | ✅ Generalized to `RankingStrategy` with `WinDrawLossRanking` as the first implementation (section 8); sport-named presets become named constructors |
 | Shape metadata keys on `Schedule` | Kept for serialization/display, but written *from* the plan |
 
+## Implementation principles
+
+Every milestone below is held to these standards before it ships — they are
+acceptance criteria, not aspirations:
+
+1. **Fully documented, for humans and LLMs alike.** Every feature must be
+   understandable and usable *without reading the source*: what it is, when
+   to use it, its contract (inputs, outputs, failure modes), and a working
+   example. Per milestone that means: `docs/USAGE.md` sections with
+   executed snippets, `docs/ARCHITECTURE.md` updated, glossary entries for
+   every new term (`StagePlan`, `StageState`, `StageOutcome`, selector,
+   ranking strategy, ...), docblocks that state contracts rather than
+   restate signatures, and `AGENTS.md` kept current so agent sessions
+   orient correctly.
+2. **Fully tested, or the gap is documented.** Every feature and path is
+   covered by automated tests unless a genuine technical or harness
+   limitation prevents it — in which case the reason is recorded where the
+   gap lives, so absence is always distinguishable from oversight. For this
+   phase specifically: extend the property/invariant suites when touching
+   generation logic, assert every new exception path, and round-trip test
+   every config-constructible object (`fromArray()`).
+3. **Examples where valuable (encouraged, optional).** New capabilities
+   that benefit from a runnable demonstration get one in `examples/`,
+   where the examples test suite validates it automatically — an example
+   added is an example maintained.
+
 ## Sequencing
 
 Five milestones, each shippable green:
