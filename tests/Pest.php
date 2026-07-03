@@ -34,12 +34,51 @@ expect()->extend('toBeOne', function () {
 |--------------------------------------------------------------------------
 |
 | While Pest is very powerful out-of-the-box, you may have some testing code specific to your
-| project that you don't want to repeat in every file. Here you can also expose helpers as
+| project that you don't want to repeat in every line. Here you can also expose helpers as
 | global functions to help you to reduce the number of lines of code in your test files.
 |
 */
 
-function something()
-{
-    // ..
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
+use MissionGaming\Tactician\Stage\RoundRobinPlan;
+use MissionGaming\Tactician\Stage\SwissPlan;
+
+/**
+ * Build a scheduling context carrying a round-robin stage plan.
+ *
+ * @param array<Participant> $participants
+ * @param array<Event> $events
+ */
+function roundRobinContext(
+    array $participants,
+    array $events = [],
+    int $legs = 1,
+    int $currentLeg = 1
+): SchedulingContext {
+    return new SchedulingContext(
+        $participants,
+        new RoundRobinPlan($participants, $legs),
+        $events,
+        $currentLeg
+    );
+}
+
+/**
+ * Build a scheduling context carrying a Swiss stage plan.
+ *
+ * @param array<Participant> $participants
+ * @param array<Event> $events
+ */
+function swissContext(
+    array $participants,
+    array $events = [],
+    ?int $rounds = null
+): SchedulingContext {
+    return new SchedulingContext(
+        $participants,
+        new SwissPlan($participants, $rounds),
+        $events
+    );
 }

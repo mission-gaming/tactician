@@ -12,10 +12,8 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\SwissPlan;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
-use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
-use MissionGaming\Tactician\Validation\ScheduleValidationContext;
-use MissionGaming\Tactician\Validation\SimpleSwissEventCalculator;
 use MissionGaming\Tactician\Validation\ValidatesScheduleCompleteness;
 use Override;
 use Random\Randomizer;
@@ -53,8 +51,8 @@ class SimpleSwissScheduler implements SchedulerInterface
         $this->validateInputs($participants, $participantsPerEvent, $rounds, $options);
         $this->clearViolations();
 
-        $metadata = $this->createSchedulingMetadata($participants, $participantsPerEvent, $rounds);
-        $context = new SchedulingContext($participants, [], 1, 1, $participantsPerEvent, $metadata);
+        $plan = new SwissPlan($participants, $rounds);
+        $context = new SchedulingContext($participants, $plan, [], 1, $participantsPerEvent);
         $events = [];
         $playedPairings = [];
         $byeCounts = array_fill_keys(array_map(fn (Participant $participant) => $participant->getId(), $participants), 0);
@@ -62,14 +60,13 @@ class SimpleSwissScheduler implements SchedulerInterface
         for ($round = 1; $round <= $rounds; ++$round) {
             $roundEvents = $this->generateRound($participants, $round, $playedPairings, $byeCounts, $context);
 
-            if (count($roundEvents) !== intdiv(count($participants), 2)) {
+            if (count($roundEvents) !== $plan->getEventsPerRound()) {
                 throw new IncompleteScheduleException(
-                    $this->getExpectedEventCount($participants, $rounds, $participantsPerEvent),
+                    $plan->getExpectedEventCount() ?? 0,
                     count($events) + count($roundEvents),
                     $this->violationCollector,
-                    $this->getExpectedEventCalculator(),
+                    $plan,
                     $participants,
-                    $this->createValidationContext($rounds, $participantsPerEvent),
                     "Failed to generate complete simple Swiss schedule for round {$round}."
                 );
             }
@@ -80,18 +77,39 @@ class SimpleSwissScheduler implements SchedulerInterface
                 $playedPairings[$this->pairingKey($eventParticipants[0], $eventParticipants[1])] = true;
             }
 
-            $context = new SchedulingContext($participants, $events, 1, 1, $participantsPerEvent, $metadata);
+            $context = new SchedulingContext($participants, $plan, $events, 1, $participantsPerEvent);
         }
 
-        $schedule = new Schedule($events, $metadata);
+        $schedule = new Schedule($events, [
+            'algorithm' => $plan->getAlgorithm(),
+            'participant_count' => count($participants),
+            'participants_per_event' => $participantsPerEvent,
+            'rounds' => $plan->getTotalRounds(),
+            'total_rounds' => $plan->getTotalRounds(),
+            'expected_event_count' => $plan->getExpectedEventCount(),
+        ]);
 
-        $this->validateGeneratedSchedule(
-            $schedule,
-            $participants,
-            $this->createValidationContext($rounds, $participantsPerEvent)
-        );
+        $this->validateGeneratedSchedule($schedule, $participants, $plan);
 
         return $schedule;
+    }
+
+    /**
+     * Build the Swiss stage plan for the given configuration.
+     *
+     * @param array<Participant> $participants
+     * @param int $rounds Number of Swiss rounds (the interface's $legs parameter)
+     * @throws InvalidConfigurationException
+     */
+    #[Override]
+    public function getPlan(
+        array $participants,
+        int $rounds,
+        int $participantsPerEvent = 2
+    ): SwissPlan {
+        $this->validateInputs($participants, $participantsPerEvent, $rounds, null);
+
+        return new SwissPlan($participants, $rounds);
     }
 
     /**
@@ -324,31 +342,6 @@ class SimpleSwissScheduler implements SchedulerInterface
 
     /**
      * @param array<Participant> $participants
-     * @return array<string, int|string>
-     */
-    private function createSchedulingMetadata(array $participants, int $participantsPerEvent, int $rounds): array
-    {
-        return [
-            'algorithm' => 'simple-swiss',
-            'participant_count' => count($participants),
-            'participants_per_event' => $participantsPerEvent,
-            'rounds' => $rounds,
-            'total_rounds' => $rounds,
-            'expected_event_count' => $this->getExpectedEventCount($participants, $rounds, $participantsPerEvent),
-        ];
-    }
-
-    private function createValidationContext(int $rounds, int $participantsPerEvent): ScheduleValidationContext
-    {
-        return ScheduleValidationContext::forAlgorithm(
-            $this->getExpectedEventCalculator()->getAlgorithmName(),
-            $rounds,
-            $participantsPerEvent
-        );
-    }
-
-    /**
-     * @param array<Participant> $participants
      *
      * @throws InvalidConfigurationException
      */
@@ -356,20 +349,5 @@ class SimpleSwissScheduler implements SchedulerInterface
     public function validateConstraints(array $participants, int $rounds): void
     {
         $this->validateInputs($participants, 2, $rounds, null);
-    }
-
-    /**
-     * @param array<Participant> $participants
-     */
-    #[Override]
-    public function getExpectedEventCount(array $participants, int $rounds, int $participantsPerEvent = 2): int
-    {
-        return $this->getExpectedEventCalculator()->calculateExpectedEvents($participants, $rounds);
-    }
-
-    #[Override]
-    public function getExpectedEventCalculator(): ExpectedEventCalculator
-    {
-        return new SimpleSwissEventCalculator();
     }
 }

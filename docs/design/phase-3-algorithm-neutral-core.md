@@ -1,9 +1,13 @@
 # Design: Phase 3 — Algorithm-Neutral Core
 
-**Status: ACCEPTED — implementation-ready (revision 4)** — nothing in this
-document is implemented yet. Code blocks are design sketches, not executable
-examples. All open questions have been resolved with the maintainer
-(decisions marked ✅ throughout; see "Resolved decisions" at the end).
+**Status: ACCEPTED — in implementation (revision 4)** — milestone 1 (plan
+introduction: `StagePlan`/`PairwisePlan` with `RoundRobinPlan` and
+`SwissPlan`, `LegPlanContribution` replacing `planGeneration()`/
+`canSatisfyConstraints()`, plan-carrying `SchedulingContext`, calculators
+and validation-context classes removed) is implemented; milestones 2–5 are
+not. Code blocks are design sketches, not executable examples. All open
+questions have been resolved with the maintainer (decisions marked ✅
+throughout; see "Resolved decisions" at the end).
 
 ## Why
 

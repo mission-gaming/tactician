@@ -64,7 +64,7 @@ describe('Schedule Validation Integration', function (): void {
             $report = $e->getDiagnosticReport();
             expect($report)->toContain('INCOMPLETE SCHEDULE DIAGNOSTIC REPORT');
             expect($report)->toContain('Expected Events: 12');
-            expect($report)->toContain('Algorithm: Round Robin');
+            expect($report)->toContain('Algorithm: round-robin');
             expect($report)->toContain('Participants: 4');
             expect($report)->toContain('Rounds: 6');
             expect($report)->toContain('Legs: 2');

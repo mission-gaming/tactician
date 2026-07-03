@@ -21,7 +21,7 @@ describe('SimpleSwissScheduler', function (): void {
         $schedule = $scheduler->schedule($participants, 2, 3);
 
         expect($schedule->count())->toBe(12);
-        expect($schedule->getMetadataValue('algorithm'))->toBe('simple-swiss');
+        expect($schedule->getMetadataValue('algorithm'))->toBe('swiss');
         expect($schedule->getMetadataValue('rounds'))->toBe(3);
         expect($schedule->getMetadataValue('total_rounds'))->toBe(3);
         expect($schedule->getMetadataValue('expected_event_count'))->toBe(12);
@@ -133,8 +133,8 @@ describe('SimpleSwissScheduler', function (): void {
             (new SimpleSwissScheduler($constraints))->schedule($participants, 2, 1);
             expect(false)->toBeTrue('Expected IncompleteScheduleException');
         } catch (IncompleteScheduleException $e) {
-            expect($e->getValidationContext()->getRounds())->toBe(1);
-            expect($e->getValidationContext()->hasParameter('legs'))->toBeFalse();
+            expect($e->getPlan()->getTotalRounds())->toBe(1);
+            expect($e->getPlan()->getLegs())->toBeNull();
             expect($e->getDiagnosticReport())->toContain('Rounds: 1');
             expect($e->getDiagnosticReport())->not->toContain('Legs:');
         }

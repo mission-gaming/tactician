@@ -13,10 +13,8 @@ use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
+use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
-use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
-use MissionGaming\Tactician\Validation\RoundRobinEventCalculator;
-use MissionGaming\Tactician\Validation\ScheduleValidationContext;
 use MissionGaming\Tactician\Validation\ValidatesScheduleCompleteness;
 use Override;
 use Random\Randomizer;
@@ -70,54 +68,93 @@ class RoundRobinScheduler implements SchedulerInterface
 
         $strategy ??= new MirroredLegStrategy();
 
-        // Preflight: let the strategy reject configurations it cannot satisfy
-        // before any events are generated.
-        $satisfiabilityReport = $strategy->canSatisfyConstraints(
-            $participants,
-            $legs,
-            $participantsPerEvent,
-            $this->constraints ?? ConstraintSet::create()->build()
-        );
-        if (!$satisfiabilityReport->canSatisfyConstraints()) {
-            throw new InvalidConfigurationException(
-                'Leg strategy cannot satisfy the requested configuration: ' . $satisfiabilityReport->getSummary(),
-                [
-                    'strategy' => $strategy::class,
-                    'unsatisfiable_constraints' => $satisfiabilityReport->getUnsatisfiableConstraints(),
-                    'conflicting_constraints' => $satisfiabilityReport->getConflictingConstraints(),
-                    'suggestions' => $satisfiabilityReport->getSuggestions(),
-                ]
-            );
-        }
+        // Build the plan first: the strategy contributes its facts, an
+        // unsatisfiable configuration fails here with diagnostics, and
+        // generation, validation, and diagnostics all read shape facts
+        // from the resulting plan.
+        $plan = $this->buildPlan($participants, $legs, $strategy);
 
         // Generate complete schedule using integrated approach, retrying with
         // rotated participant orderings when constraints reject the pairings
         // implied by a particular circle-method order.
-        $allEvents = $this->generateScheduleWithRetries($participants, $participantsPerEvent, $legs, $strategy);
+        $allEvents = $this->generateScheduleWithRetries($participants, $participantsPerEvent, $strategy, $plan);
         ksort($this->roundByes);
 
-        $roundsPerLeg = $this->calculateRoundsPerLeg($participants);
-        $totalRounds = $roundsPerLeg * $legs;
-
         $schedule = new Schedule($allEvents, [
-            'algorithm' => 'round-robin',
+            'algorithm' => $plan->getAlgorithm(),
             'participant_count' => count($participants),
-            'legs' => $legs,
-            'rounds_per_leg' => $roundsPerLeg,
-            'total_rounds' => $totalRounds,
-            'expected_event_count' => $this->getExpectedEventCalculator()->calculateExpectedEvents($participants, $legs),
+            'legs' => $plan->getLegs(),
+            'rounds_per_leg' => $plan->getRoundsPerLeg(),
+            'total_rounds' => $plan->getTotalRounds(),
+            'expected_event_count' => $plan->getExpectedEventCount(),
             'byes' => $this->roundByes,
         ]);
 
         // Validate schedule completeness with all-or-nothing guarantee
-        $this->validateGeneratedSchedule(
-            $schedule,
-            $participants,
-            ScheduleValidationContext::forRoundRobin($legs, $totalRounds, $participantsPerEvent),
-            $this->getExpectedEventCalculator()->calculateExpectedEvents($participants, $legs)
-        );
+        $this->validateGeneratedSchedule($schedule, $participants, $plan);
 
         return $schedule;
+    }
+
+    /**
+     * Build the round-robin stage plan for the given configuration.
+     *
+     * The strategy-specific facts (role mirroring, randomization) reflect
+     * the default MirroredLegStrategy; shape facts (rounds, event counts)
+     * are strategy-independent. schedule() builds its plan from the
+     * strategy actually in use.
+     *
+     * @param array<Participant> $participants
+     * @throws InvalidConfigurationException When the configuration is unsatisfiable
+     */
+    #[Override]
+    public function getPlan(
+        array $participants,
+        int $legs,
+        int $participantsPerEvent = 2
+    ): RoundRobinPlan {
+        $this->validateInputs($participants, $participantsPerEvent, $legs);
+
+        return $this->buildPlan($participants, $legs, new MirroredLegStrategy());
+    }
+
+    /**
+     * Build the plan from the leg strategy's contribution, failing loudly
+     * when the strategy reports the configuration unsatisfiable.
+     *
+     * @param array<Participant> $participants
+     * @throws InvalidConfigurationException
+     */
+    private function buildPlan(
+        array $participants,
+        int $legs,
+        LegStrategyInterface $strategy
+    ): RoundRobinPlan {
+        $contribution = $strategy->planLegs(
+            $participants,
+            $legs,
+            $this->constraints ?? ConstraintSet::create()->build()
+        );
+
+        if ($contribution->unsatisfiableReasons !== []) {
+            throw new InvalidConfigurationException(
+                'Leg strategy cannot satisfy the requested configuration: '
+                    . implode(' | ', $contribution->unsatisfiableReasons),
+                [
+                    'strategy' => $strategy::class,
+                    'unsatisfiable_reasons' => $contribution->unsatisfiableReasons,
+                    'warnings' => $contribution->warnings,
+                ]
+            );
+        }
+
+        return new RoundRobinPlan(
+            $participants,
+            $legs,
+            $contribution->rolesMirrorAcrossLegs,
+            $contribution->requiresRandomization,
+            $contribution->warnings
+        );
     }
 
     /**
@@ -177,8 +214,8 @@ class RoundRobinScheduler implements SchedulerInterface
     private function generateScheduleWithRetries(
         array $participants,
         int $participantsPerEvent,
-        int $legs,
-        LegStrategyInterface $strategy
+        LegStrategyInterface $strategy,
+        RoundRobinPlan $plan
     ): array {
         $participants = array_values($participants);
         $maxAttempts = $this->constraints === null
@@ -195,7 +232,7 @@ class RoundRobinScheduler implements SchedulerInterface
             $this->clearViolations();
 
             try {
-                return $this->generateIntegratedSchedule($ordered, $participantsPerEvent, $legs, $strategy);
+                return $this->generateIntegratedSchedule($ordered, $participantsPerEvent, $strategy, $plan);
             } catch (IncompleteScheduleException $exception) {
                 if ($attempt === $maxAttempts - 1) {
                     throw $exception;
@@ -216,39 +253,33 @@ class RoundRobinScheduler implements SchedulerInterface
     private function generateIntegratedSchedule(
         array $participants,
         int $participantsPerEvent,
-        int $legs,
-        LegStrategyInterface $strategy
+        LegStrategyInterface $strategy,
+        RoundRobinPlan $plan
     ): array {
         $allEvents = [];
         $this->roundByes = [];
-        $metadata = $this->createSchedulingMetadata($participants, $legs);
-        $context = new SchedulingContext($participants, [], 1, $legs, $participantsPerEvent, $metadata);
+        $legs = $plan->getLegs();
+        $context = new SchedulingContext($participants, $plan, [], 1, $participantsPerEvent);
 
-        // Calculate expected events per leg
-        $expectedEventsPerLeg = (int) (count($participants) * (count($participants) - 1) / 2);
+        $expectedEventsPerLeg = $plan->getEventsPerLeg();
 
         for ($leg = 1; $leg <= $legs; ++$leg) {
-            $legEvents = $this->generateLegWithFullContext($participants, $participantsPerEvent, $leg, $strategy, $context);
+            $legEvents = $this->generateLegWithFullContext($participants, $leg, $strategy, $plan, $context);
 
             // Check if we generated the expected number of events for this leg
             if (count($legEvents) < $expectedEventsPerLeg) {
                 throw new IncompleteScheduleException(
-                    $expectedEventsPerLeg * $legs, // Total expected events for all legs
-                    count($allEvents) + count($legEvents), // Total events generated so far
+                    $plan->getExpectedEventCount(),
+                    count($allEvents) + count($legEvents),
                     $this->violationCollector,
-                    $this->getExpectedEventCalculator(),
+                    $plan,
                     $participants,
-                    ScheduleValidationContext::forRoundRobin(
-                        $legs,
-                        $this->calculateRoundsPerLeg($participants) * $legs,
-                        $participantsPerEvent
-                    ),
                     "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. Constraints may be preventing complete schedule generation."
                 );
             }
 
             $allEvents = [...$allEvents, ...$legEvents];
-            $context = new SchedulingContext($participants, $allEvents, $leg + 1, $legs, $participantsPerEvent, $metadata);
+            $context = new SchedulingContext($participants, $plan, $allEvents, $leg + 1, $participantsPerEvent);
         }
 
         return $allEvents;
@@ -263,9 +294,9 @@ class RoundRobinScheduler implements SchedulerInterface
      */
     private function generateLegWithFullContext(
         array $participants,
-        int $participantsPerEvent,
         int $leg,
         LegStrategyInterface $strategy,
+        RoundRobinPlan $plan,
         SchedulingContext $context
     ): array {
         if ($leg === 1) {
@@ -273,21 +304,14 @@ class RoundRobinScheduler implements SchedulerInterface
             $legEvents = $this->generateRoundRobinEvents($participants, $context);
 
             // Validate that we got the expected number of events for the first leg
-            $expectedEventsPerLeg = (int) (count($participants) * (count($participants) - 1) / 2);
+            $expectedEventsPerLeg = $plan->getEventsPerLeg();
             if (count($legEvents) < $expectedEventsPerLeg) {
-                // Get total legs from context to report correct expected events
-                $totalLegs = $context->getTotalLegs();
                 throw new IncompleteScheduleException(
-                    $expectedEventsPerLeg * $totalLegs, // Total expected events for all legs
+                    $plan->getExpectedEventCount(),
                     count($legEvents), // Events generated for first leg only
                     $this->violationCollector,
-                    $this->getExpectedEventCalculator(),
+                    $plan,
                     $participants,
-                    ScheduleValidationContext::forRoundRobin(
-                        $totalLegs,
-                        $this->calculateRoundsPerLeg($participants) * $totalLegs,
-                        $participantsPerEvent
-                    ),
                     "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. Constraints may be preventing complete schedule generation."
                 );
             }
@@ -297,7 +321,7 @@ class RoundRobinScheduler implements SchedulerInterface
 
         // For subsequent legs, use the strategy to generate events
         $legEvents = [];
-        $roundsPerLeg = $this->calculateRoundsPerLeg($participants);
+        $roundsPerLeg = $plan->getRoundsPerLeg();
         $roundOffset = ($leg - 1) * $roundsPerLeg;
 
         // Maintain the circle-method ordering across rounds so each round only
@@ -401,7 +425,7 @@ class RoundRobinScheduler implements SchedulerInterface
      * @param array<Participant> $participants
      * @return array<Event>
      */
-    private function generateRoundRobinEvents(array $participants, ?SchedulingContext $baseContext = null): array
+    private function generateRoundRobinEvents(array $participants, SchedulingContext $baseContext): array
     {
         $participantList = array_values($participants);
         $participantCount = count($participantList);
@@ -424,16 +448,13 @@ class RoundRobinScheduler implements SchedulerInterface
 
         // Generate pairings for each round using circle method
         for ($round = 1; $round <= $rounds; ++$round) {
-            $context = $baseContext === null
-                ? new SchedulingContext($participants, $events, 1, 1, 2, $this->createSchedulingMetadata($participants, 1))
-                : new SchedulingContext(
-                    $participants,
-                    $events,
-                    $baseContext->getCurrentLeg(),
-                    $baseContext->getTotalLegs(),
-                    $baseContext->getParticipantsPerEvent(),
-                    $baseContext->getMetadata()
-                );
+            $context = new SchedulingContext(
+                $participants,
+                $baseContext->getPlan(),
+                $events,
+                $baseContext->getCurrentLeg(),
+                $baseContext->getParticipantsPerEvent()
+            );
 
             for ($pair = 0; $pair < $pairingsPerRound; ++$pair) {
                 $participant1 = $participantList[$pair];
@@ -568,32 +589,6 @@ class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
-     * @param array<Participant> $participants
-     * @return array<string, int|string>
-     */
-    private function createSchedulingMetadata(array $participants, int $legs): array
-    {
-        $roundsPerLeg = $this->calculateRoundsPerLeg($participants);
-
-        return [
-            'algorithm' => 'round-robin',
-            'rounds_per_leg' => $roundsPerLeg,
-            'total_rounds' => $roundsPerLeg * $legs,
-            'expected_event_count' => $this->getExpectedEventCalculator()->calculateExpectedEvents($participants, $legs),
-        ];
-    }
-
-    /**
-     * @param array<Participant> $participants
-     */
-    private function calculateRoundsPerLeg(array $participants): int
-    {
-        $participantCount = count($participants);
-
-        return $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
-    }
-
-    /**
      * Rotate participants for circle method (keep first fixed, rotate others).
      *
      * @param array<Participant|null> $participants
@@ -610,15 +605,6 @@ class RoundRobinScheduler implements SchedulerInterface
             $participants[$i] = $participants[$i + 1];
         }
         $participants[count($participants) - 1] = $temp;
-    }
-
-    /**
-     * Get the expected event calculator for Round Robin scheduling.
-     */
-    #[Override]
-    public function getExpectedEventCalculator(): ExpectedEventCalculator
-    {
-        return new RoundRobinEventCalculator();
     }
 
     /**
@@ -657,19 +643,5 @@ class RoundRobinScheduler implements SchedulerInterface
         // TODO: Add advanced constraint validation here
         // This could include checking for mathematically impossible constraints
         // For now, we'll let the scheduling process detect violations
-    }
-
-    /**
-     * Get the expected number of events for a complete schedule.
-     *
-     * @param array<Participant> $participants
-     */
-    #[Override]
-    public function getExpectedEventCount(
-        array $participants,
-        int $legs,
-        int $participantsPerEvent = 2
-    ): int {
-        return $this->getExpectedEventCalculator()->calculateExpectedEvents($participants, $legs);
     }
 }

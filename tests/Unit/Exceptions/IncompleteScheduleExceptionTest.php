@@ -6,9 +6,9 @@ use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
-use MissionGaming\Tactician\Validation\RoundRobinEventCalculator;
 
 describe('IncompleteScheduleException', function (): void {
     beforeEach(function (): void {
@@ -18,7 +18,7 @@ describe('IncompleteScheduleException', function (): void {
         $this->participant4 = new Participant('p4', 'Dave');
 
         $this->participants = [$this->participant1, $this->participant2, $this->participant3, $this->participant4];
-        $this->eventCalculator = new RoundRobinEventCalculator();
+        $this->plan = new RoundRobinPlan($this->participants, 2);
         $this->constraint = ConsecutiveRoleConstraint::homeAway(2);
     });
 
@@ -40,9 +40,8 @@ describe('IncompleteScheduleException', function (): void {
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: $violationCollector,
-            eventCalculator: $this->eventCalculator,
-            participants: $this->participants,
-            legs: 2
+            plan: $this->plan,
+            participants: $this->participants
         );
 
         // Then: Should store all information correctly
@@ -68,9 +67,8 @@ describe('IncompleteScheduleException', function (): void {
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: $violationCollector,
-            eventCalculator: $this->eventCalculator,
-            participants: $this->participants,
-            legs: 2
+            plan: $this->plan,
+            participants: $this->participants
         );
 
         // When: Getting diagnostic report
@@ -93,9 +91,8 @@ describe('IncompleteScheduleException', function (): void {
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: new ConstraintViolationCollector(),
-            eventCalculator: $this->eventCalculator,
-            participants: $this->participants,
-            legs: 2
+            plan: $this->plan,
+            participants: $this->participants
         );
 
         // When: Getting missing event count
@@ -112,9 +109,8 @@ describe('IncompleteScheduleException', function (): void {
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: new ConstraintViolationCollector(),
-            eventCalculator: $this->eventCalculator,
-            participants: $this->participants,
-            legs: 2
+            plan: $this->plan,
+            participants: $this->participants
         );
 
         // When: Getting diagnostic report
@@ -133,9 +129,8 @@ describe('IncompleteScheduleException', function (): void {
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: new ConstraintViolationCollector(),
-            eventCalculator: $this->eventCalculator,
-            participants: $this->participants,
-            legs: 2
+            plan: $this->plan,
+            participants: $this->participants
         );
 
         // When: Getting exception message
@@ -155,9 +150,8 @@ describe('IncompleteScheduleException', function (): void {
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: new ConstraintViolationCollector(),
-            eventCalculator: $this->eventCalculator,
+            plan: $this->plan,
             participants: $this->participants,
-            legs: 2,
             message: $customMessage
         );
 
@@ -175,9 +169,8 @@ describe('IncompleteScheduleException', function (): void {
             expectedEventCount: 2,
             actualEventCount: 2, // Same as expected
             violationCollector: new ConstraintViolationCollector(),
-            eventCalculator: $this->eventCalculator,
-            participants: $this->participants,
-            legs: 1
+            plan: new RoundRobinPlan($this->participants, 1),
+            participants: $this->participants
         );
 
         // When: Getting missing event count
@@ -227,9 +220,8 @@ describe('IncompleteScheduleException', function (): void {
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: $violationCollector,
-            eventCalculator: $this->eventCalculator,
-            participants: $this->participants,
-            legs: 2
+            plan: $this->plan,
+            participants: $this->participants
         );
 
         // When: Getting diagnostic report
@@ -245,23 +237,22 @@ describe('IncompleteScheduleException', function (): void {
         expect($report)->toContain('Affected rounds: 4 (1)'); // Position violations
     });
 
-    // Tests that diagnostic report includes algorithm information
+    // Tests that diagnostic report includes the plan's algorithm identifier
     it('includes algorithm information in diagnostic report', function (): void {
         // Given: Exception with round robin calculator
         $exception = new IncompleteScheduleException(
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: new ConstraintViolationCollector(),
-            eventCalculator: $this->eventCalculator,
-            participants: $this->participants,
-            legs: 2
+            plan: $this->plan,
+            participants: $this->participants
         );
 
         // When: Getting diagnostic report
         $report = $exception->getDiagnosticReport();
 
         // Then: Should include algorithm name
-        expect($report)->toContain('Algorithm: Round Robin');
+        expect($report)->toContain('Algorithm: round-robin');
     });
 
     // Tests that diagnostic report provides suggestions section
@@ -280,9 +271,8 @@ describe('IncompleteScheduleException', function (): void {
             expectedEventCount: 12,
             actualEventCount: 2,
             violationCollector: $violationCollector,
-            eventCalculator: $this->eventCalculator,
-            participants: $this->participants,
-            legs: 2
+            plan: $this->plan,
+            participants: $this->participants
         );
 
         // When: Getting diagnostic report

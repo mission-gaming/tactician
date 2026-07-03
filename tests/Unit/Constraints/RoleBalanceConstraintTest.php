@@ -8,7 +8,6 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 describe('RoleBalanceConstraint', function (): void {
     beforeEach(function (): void {
@@ -26,7 +25,7 @@ describe('RoleBalanceConstraint', function (): void {
 
     it('accepts an event that keeps roles within the imbalance limit', function (): void {
         // Alice: 1 home, 1 away so far
-        $context = new SchedulingContext($this->participants, [
+        $context = roundRobinContext($this->participants, [
             new Event([$this->alice, $this->bob], new Round(1)),
             new Event([$this->carol, $this->alice], new Round(2)),
         ]);
@@ -41,7 +40,7 @@ describe('RoleBalanceConstraint', function (): void {
         $constraint = RoleBalanceConstraint::homeAway(2);
 
         // Alice: 1 home, 0 away so far -> a second home game reaches the limit
-        $context = new SchedulingContext($this->participants, [
+        $context = roundRobinContext($this->participants, [
             new Event([$this->alice, $this->bob], new Round(1)),
         ]);
         $secondHome = new Event([$this->alice, $this->carol], new Round(2)); // would be 2 home, 0 away
@@ -57,7 +56,7 @@ describe('RoleBalanceConstraint', function (): void {
 
     it('rejects an event that pushes a participant past the away limit', function (): void {
         // Bob: 0 home, 2 away so far
-        $context = new SchedulingContext($this->participants, [
+        $context = roundRobinContext($this->participants, [
             new Event([$this->alice, $this->bob], new Round(1)),
             new Event([$this->carol, $this->bob], new Round(2)),
         ]);
@@ -69,7 +68,7 @@ describe('RoleBalanceConstraint', function (): void {
     });
 
     it('ignores events with more than two participants', function (): void {
-        $context = new SchedulingContext($this->participants, []);
+        $context = roundRobinContext($this->participants, []);
         $constraint = RoleBalanceConstraint::homeAway(1);
 
         $event = new Event([$this->alice, $this->bob, $this->carol], new Round(1));

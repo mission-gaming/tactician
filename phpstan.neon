@@ -8,6 +8,11 @@ parameters:
 	excludePaths:
 		- tests/Pest.php
 
+	# Pest.php is excluded from analysis but declares the shared test
+	# helpers (plan-carrying context builders), so scan it for symbols
+	scanFiles:
+		- tests/Pest.php
+
 	# Strict rules for better type safety. Note: the PHPStan 1.x options
 	# checkMissingIterableValueType, checkGenericClassInNonGenericObjectType,
 	# and the checkAlwaysTrue* family were removed in PHPStan 2 (their

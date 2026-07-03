@@ -10,6 +10,12 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 /**
  * Prevents top-seeded participants from meeting each other early in the tournament.
+ *
+ * The protection window is a fraction of the stage's total rounds, read
+ * from the stage plan. When the plan cannot know its total rounds up
+ * front (getTotalRounds() returns null), no window can be computed and
+ * the constraint is satisfied — protection is effectively off for such
+ * stages rather than guessed from a fabricated round count.
  */
 readonly class SeedProtectionConstraint implements ConstraintInterface
 {
@@ -28,9 +34,13 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
+        $totalRounds = $context->getPlan()->getTotalRounds();
+        if ($totalRounds === null) {
+            return true; // No knowable stage length, so no protection window
+        }
+
         $participants = $event->getParticipants();
         $currentRound = $event->getRound()?->getNumber() ?? 0;
-        $totalRounds = $this->estimateTotalRounds($context);
 
         $protectedRound = (int) ($totalRounds * $this->protectionPeriod);
 
@@ -63,26 +73,5 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
         usort($seededParticipants, fn ($a, $b) => $a->getSeed() <=> $b->getSeed());
 
         return array_slice($seededParticipants, 0, $this->topSeedsToProtect);
-    }
-
-    /**
-     * Estimate total rounds in the tournament.
-     * This is a rough estimate based on current context.
-     */
-    private function estimateTotalRounds(SchedulingContext $context): int
-    {
-        $configuredTotalRounds = $context->getTotalRounds();
-        if ($configuredTotalRounds > 0) {
-            return $configuredTotalRounds;
-        }
-
-        $participantCount = count($context->getParticipants());
-        if ($participantCount < 2) {
-            return 1;
-        }
-
-        $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
-
-        return $roundsPerLeg * $context->getTotalLegs();
     }
 }

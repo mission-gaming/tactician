@@ -6,6 +6,9 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
+use MissionGaming\Tactician\Stage\RoundRobinPlan;
+use MissionGaming\Tactician\Stage\StagePlan;
+use MissionGaming\Tactician\Stage\SwissPlan;
 
 describe('SchedulingContext', function (): void {
     beforeEach(function (): void {
@@ -21,101 +24,84 @@ describe('SchedulingContext', function (): void {
         $this->event3 = new Event([$this->participant1, $this->participant3]);
 
         $this->existingEvents = [$this->event1, $this->event2];
-        $this->metadata = ['tournament' => 'test', 'round' => 1];
     });
 
-    // Tests creating a basic scheduling context with only participants,
+    // Tests creating a basic scheduling context with only participants and a plan,
     // verifying default values for optional parameters and multi-leg awareness
-    it('creates a context with only participants', function (): void {
-        $context = new SchedulingContext($this->participants);
+    it('creates a context with participants and a plan', function (): void {
+        $context = roundRobinContext($this->participants);
 
         expect($context->getParticipants())->toBe($this->participants);
         expect($context->getExistingEvents())->toBe([]);
-        expect($context->getMetadata())->toBe([]);
         expect($context->getCurrentLeg())->toBe(1);
         expect($context->getTotalLegs())->toBe(1);
         expect($context->getParticipantsPerEvent())->toBe(2);
         expect($context->isMultiLeg())->toBeFalse();
+        expect($context->getPlan())->toBeInstanceOf(StagePlan::class);
     });
 
     // Tests creating a context with participants and existing events,
     // verifying the context properly stores both required and optional data
     it('creates a context with participants and existing events', function (): void {
-        $context = new SchedulingContext($this->participants, $this->existingEvents);
+        $context = roundRobinContext($this->participants, $this->existingEvents);
 
         expect($context->getParticipants())->toBe($this->participants);
         expect($context->getExistingEvents())->toBe($this->existingEvents);
-        expect($context->getMetadata())->toBe([]);
         expect($context->getCurrentLeg())->toBe(1);
         expect($context->getTotalLegs())->toBe(1);
         expect($context->isMultiLeg())->toBeFalse();
     });
 
     // Tests creating a context with multi-leg tournament parameters,
-    // ensuring the context properly handles multi-leg configuration
+    // ensuring the context reads the leg count from the plan
     it('creates a multi-leg context', function (): void {
-        $context = new SchedulingContext(
-            $this->participants,
-            $this->existingEvents,
-            currentLeg: 2,
-            totalLegs: 3,
-            participantsPerEvent: 2,
-            metadata: $this->metadata
-        );
+        $context = roundRobinContext($this->participants, $this->existingEvents, legs: 3, currentLeg: 2);
 
         expect($context->getParticipants())->toBe($this->participants);
         expect($context->getExistingEvents())->toBe($this->existingEvents);
         expect($context->getCurrentLeg())->toBe(2);
         expect($context->getTotalLegs())->toBe(3);
         expect($context->getParticipantsPerEvent())->toBe(2);
-        expect($context->getMetadata())->toBe($this->metadata);
         expect($context->isMultiLeg())->toBeTrue();
     });
 
-    it('uses configured total rounds instead of inferring from generated events', function (): void {
-        $context = new SchedulingContext(
-            $this->participants,
-            [],
-            metadata: ['algorithm' => 'simple-swiss', 'total_rounds' => 5]
-        );
+    // The context exposes the plan; shape facts are read from it rather than
+    // inferred from metadata or generated events
+    it('exposes the stage plan its shape facts come from', function (): void {
+        $plan = new SwissPlan($this->participants, 5);
+        $context = new SchedulingContext($this->participants, $plan);
 
-        expect($context->getTotalRounds())->toBe(5);
+        expect($context->getPlan())->toBe($plan);
+        expect($context->getPlan()->getTotalRounds())->toBe(5);
+        expect($context->getPlan()->getLegs())->toBeNull();
     });
 
-    it('uses explicit expected event metadata before round-robin fallback', function (): void {
-        $context = new SchedulingContext(
-            $this->participants,
-            [],
-            metadata: ['algorithm' => 'simple-swiss', 'expected_event_count' => 6]
-        );
+    // Formats without a legs concept run as a single generation leg
+    it('treats a plan without legs as a single generation leg', function (): void {
+        $context = swissContext($this->participants, [], 3);
 
-        expect($context->getExpectedEventCount())->toBe(6);
+        expect($context->getTotalLegs())->toBe(1);
+        expect($context->isMultiLeg())->toBeFalse();
+        expect($context->getEventsForLeg(1))->toBe([]);
     });
 
-    it('classifies partial multi-leg events using configured rounds per leg', function (): void {
+    it('classifies partial multi-leg events using the plan rounds per leg', function (): void {
         $events = [
             new Event([$this->participant1, $this->participant2], new Round(1)),
             new Event([$this->participant2, $this->participant3], new Round(2)),
             new Event([$this->participant1, $this->participant3], new Round(3)),
         ];
 
-        $context = new SchedulingContext(
-            $this->participants,
-            $events,
-            currentLeg: 2,
-            totalLegs: 2,
-            participantsPerEvent: 2,
-            metadata: ['algorithm' => 'round-robin', 'rounds_per_leg' => 3, 'total_rounds' => 6]
-        );
+        $context = roundRobinContext($this->participants, $events, legs: 2, currentLeg: 2);
 
         expect($context->getEventsForLeg(1))->toHaveCount(3);
         expect($context->getEventsForLeg(2))->toBe([]);
     });
 
-    // Regression: without metadata the fallback derived rounds per leg from the
+    // Regression: the pre-plan fallback derived rounds per leg from the
     // maximum generated round, misclassifying partially generated schedules
     // (leg 1 of a 4-participant, 2-leg tournament reported 4 and 2 events).
-    it('classifies partial multi-leg events without metadata using the participant count', function (): void {
+    it('classifies partial multi-leg events for an even field', function (): void {
         $participants = [
             $this->participant1,
             $this->participant2,
@@ -133,53 +119,23 @@ describe('SchedulingContext', function (): void {
             new Event([$this->participant2, $this->participant3], new Round(3)),
         ];
 
-        $context = new SchedulingContext($participants, $events, currentLeg: 2, totalLegs: 2);
+        $context = roundRobinContext($participants, $events, legs: 2, currentLeg: 2);
 
         expect($context->getEventsForLeg(1))->toHaveCount(6);
         expect($context->getEventsForLeg(2))->toBe([]);
     });
 
-    // Tests the hasMetadata method to verify it correctly identifies whether
-    // specific metadata keys exist in the context or not
-    it('checks metadata existence', function (): void {
-        $context = new SchedulingContext($this->participants, [], metadata: $this->metadata);
+    it('returns no events for out-of-range legs', function (): void {
+        $context = roundRobinContext($this->participants, $this->existingEvents, legs: 2);
 
-        expect($context->hasMetadata('tournament'))->toBeTrue();
-        expect($context->hasMetadata('round'))->toBeTrue();
-        expect($context->hasMetadata('nonexistent'))->toBeFalse();
-    });
-
-    // Tests that hasMetadata returns false for empty metadata
-    it('checks metadata existence with empty metadata', function (): void {
-        $context = new SchedulingContext($this->participants);
-
-        expect($context->hasMetadata('tournament'))->toBeFalse();
-        expect($context->hasMetadata('round'))->toBeFalse();
-    });
-
-    // Tests retrieving metadata values with support for default values when
-    // the requested metadata key doesn't exist in the context
-    it('gets metadata values with defaults', function (): void {
-        $context = new SchedulingContext($this->participants, [], metadata: $this->metadata);
-
-        expect($context->getMetadataValue('tournament'))->toBe('test');
-        expect($context->getMetadataValue('round'))->toBe(1);
-        expect($context->getMetadataValue('nonexistent'))->toBeNull();
-        expect($context->getMetadataValue('nonexistent', 'default'))->toBe('default');
-    });
-
-    // Tests getMetadataValue with empty metadata returns defaults properly
-    it('gets metadata values with empty metadata', function (): void {
-        $context = new SchedulingContext($this->participants);
-
-        expect($context->getMetadataValue('tournament'))->toBeNull();
-        expect($context->getMetadataValue('tournament', 'default'))->toBe('default');
+        expect($context->getEventsForLeg(0))->toBe([]);
+        expect($context->getEventsForLeg(3))->toBe([]);
     });
 
     // Tests that haveParticipantsPlayed correctly identifies when two participants
     // have competed against each other in previous events
     it('identifies when participants have played together', function (): void {
-        $context = new SchedulingContext($this->participants, $this->existingEvents);
+        $context = roundRobinContext($this->participants, $this->existingEvents);
 
         // participant1 and participant2 played in event1
         expect($context->haveParticipantsPlayed($this->participant1, $this->participant2))->toBeTrue();
@@ -196,7 +152,7 @@ describe('SchedulingContext', function (): void {
 
     // Tests haveParticipantsPlayed returns false when no existing events are present
     it('returns false when no existing events', function (): void {
-        $context = new SchedulingContext($this->participants);
+        $context = roundRobinContext($this->participants);
 
         expect($context->haveParticipantsPlayed($this->participant1, $this->participant2))->toBeFalse();
         expect($context->haveParticipantsPlayed($this->participant2, $this->participant3))->toBeFalse();
@@ -204,7 +160,7 @@ describe('SchedulingContext', function (): void {
 
     // Tests haveParticipantsPlayed with participants not in any existing events
     it('returns false when participants are not in any existing events', function (): void {
-        $context = new SchedulingContext($this->participants, $this->existingEvents);
+        $context = roundRobinContext($this->participants, $this->existingEvents);
 
         expect($context->haveParticipantsPlayed($this->participant1, $this->participant4))->toBeFalse();
         expect($context->haveParticipantsPlayed($this->participant4, $this->participant2))->toBeFalse();
@@ -212,7 +168,7 @@ describe('SchedulingContext', function (): void {
 
     // Tests haveParticipantsPlayed when participant played with themselves (edge case)
     it('handles same participant comparison', function (): void {
-        $context = new SchedulingContext($this->participants, $this->existingEvents);
+        $context = roundRobinContext($this->participants, $this->existingEvents);
 
         expect($context->haveParticipantsPlayed($this->participant1, $this->participant1))->toBeFalse();
     });
@@ -220,7 +176,7 @@ describe('SchedulingContext', function (): void {
     // Tests getEventsForParticipant returns all events where a specific participant
     // is involved, filtering the existing events correctly
     it('gets events for specific participant', function (): void {
-        $context = new SchedulingContext($this->participants, $this->existingEvents);
+        $context = roundRobinContext($this->participants, $this->existingEvents);
 
         // participant1 is in event1 only
         $eventsForP1 = $context->getEventsForParticipant($this->participant1);
@@ -242,7 +198,7 @@ describe('SchedulingContext', function (): void {
     // Tests getEventsForParticipant returns empty array when participant
     // is not involved in any existing events
     it('gets empty events for participant not in any events', function (): void {
-        $context = new SchedulingContext($this->participants, $this->existingEvents);
+        $context = roundRobinContext($this->participants, $this->existingEvents);
 
         $eventsForP4 = $context->getEventsForParticipant($this->participant4);
         expect($eventsForP4)->toBeEmpty();
@@ -250,7 +206,7 @@ describe('SchedulingContext', function (): void {
 
     // Tests getEventsForParticipant with no existing events returns empty array
     it('gets empty events when no existing events', function (): void {
-        $context = new SchedulingContext($this->participants);
+        $context = roundRobinContext($this->participants);
 
         $eventsForP1 = $context->getEventsForParticipant($this->participant1);
         expect($eventsForP1)->toBeEmpty();
@@ -259,7 +215,7 @@ describe('SchedulingContext', function (): void {
     // Tests that withEvents creates a new context instance with additional events
     // while preserving the original context's immutability
     it('creates new context with additional events', function (): void {
-        $originalContext = new SchedulingContext($this->participants, $this->existingEvents, metadata: $this->metadata);
+        $originalContext = roundRobinContext($this->participants, $this->existingEvents);
         $newEvents = [$this->event3];
 
         $newContext = $originalContext->withEvents($newEvents);
@@ -274,14 +230,14 @@ describe('SchedulingContext', function (): void {
         expect($newContext->getExistingEvents())->toContain($this->event2);
         expect($newContext->getExistingEvents())->toContain($this->event3);
 
-        // Other properties preserved
+        // Other properties preserved, including the plan
         expect($newContext->getParticipants())->toBe($this->participants);
-        expect($newContext->getMetadata())->toBe($this->metadata);
+        expect($newContext->getPlan())->toBe($originalContext->getPlan());
     });
 
     // Tests withEvents with empty array still creates new instance
     it('creates new context with empty events array', function (): void {
-        $originalContext = new SchedulingContext($this->participants, $this->existingEvents);
+        $originalContext = roundRobinContext($this->participants, $this->existingEvents);
         $newContext = $originalContext->withEvents([]);
 
         // Should be different instances
@@ -293,7 +249,7 @@ describe('SchedulingContext', function (): void {
 
     // Tests withEvents maintains immutability - original context is unchanged
     it('maintains immutability when adding events', function (): void {
-        $originalContext = new SchedulingContext($this->participants, [$this->event1]);
+        $originalContext = roundRobinContext($this->participants, [$this->event1]);
         $originalEventCount = count($originalContext->getExistingEvents());
 
         $newContext = $originalContext->withEvents([$this->event2, $this->event3]);
@@ -303,9 +259,21 @@ describe('SchedulingContext', function (): void {
         expect($newContext->getExistingEvents())->toHaveCount($originalEventCount + 2);
     });
 
+    // Tests withNextLeg advances the current leg while preserving everything else
+    it('advances to the next leg immutably', function (): void {
+        $originalContext = roundRobinContext($this->participants, $this->existingEvents, legs: 2);
+
+        $nextLegContext = $originalContext->withNextLeg();
+
+        expect($originalContext->getCurrentLeg())->toBe(1);
+        expect($nextLegContext->getCurrentLeg())->toBe(2);
+        expect($nextLegContext->getExistingEvents())->toBe($this->existingEvents);
+        expect($nextLegContext->getPlan())->toBe($originalContext->getPlan());
+    });
+
     // Tests withEvents functionality affects haveParticipantsPlayed results
     it('withEvents affects participant played status', function (): void {
-        $originalContext = new SchedulingContext($this->participants, [$this->event1]);
+        $originalContext = roundRobinContext($this->participants, [$this->event1]);
 
         // Initially participant1 and participant3 haven't played
         expect($originalContext->haveParticipantsPlayed($this->participant1, $this->participant3))->toBeFalse();
@@ -319,7 +287,7 @@ describe('SchedulingContext', function (): void {
 
     // Tests withEvents functionality affects getEventsForParticipant results
     it('withEvents affects events for participant', function (): void {
-        $originalContext = new SchedulingContext($this->participants, [$this->event1]);
+        $originalContext = roundRobinContext($this->participants, [$this->event1]);
 
         // Initially participant3 has no events
         expect($originalContext->getEventsForParticipant($this->participant3))->toBeEmpty();
@@ -335,7 +303,7 @@ describe('SchedulingContext', function (): void {
     // Tests that SchedulingContext handles complex event relationships correctly
     it('handles complex event relationships', function (): void {
         $multiParticipantEvent = new Event([$this->participant1, $this->participant2, $this->participant3]);
-        $context = new SchedulingContext($this->participants, [$multiParticipantEvent]);
+        $context = roundRobinContext($this->participants, [$multiParticipantEvent]);
 
         // All participants should have played with each other in the multi-participant event
         expect($context->haveParticipantsPlayed($this->participant1, $this->participant2))->toBeTrue();
@@ -350,9 +318,13 @@ describe('SchedulingContext', function (): void {
 
     // Tests that SchedulingContext is readonly (immutable)
     it('is readonly', function (): void {
-        $context = new SchedulingContext($this->participants, $this->existingEvents, metadata: $this->metadata);
+        $context = roundRobinContext($this->participants, $this->existingEvents);
 
         expect($context)->toBeInstanceOf(SchedulingContext::class);
         // Readonly classes cannot have properties modified after construction
     });
+
+    it('rejects a plan for fewer than 2 participants', function (): void {
+        new RoundRobinPlan([$this->participant1], 1);
+    })->throws(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class);
 });

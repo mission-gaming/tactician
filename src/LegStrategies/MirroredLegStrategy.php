@@ -6,58 +6,32 @@ namespace MissionGaming\Tactician\LegStrategies;
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
-use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use Override;
 
 /**
- * Leg strategy that mirrors participant order for home/away effect.
+ * Leg strategy that mirrors participant roles between legs.
  *
- * In the first leg, participants appear as [Home, Away]. In subsequent legs,
- * the order is reversed to [Away, Home], simulating home and away fixtures
- * common in sports tournaments.
+ * In the first leg, participants appear in their given positional order.
+ * In subsequent legs, the order is reversed — read as home/away in
+ * football, red/blue corner in combat sports; the core concept is the
+ * position within the event.
  */
 readonly class MirroredLegStrategy implements LegStrategyInterface
 {
-    /**
-     * Plan the generation strategy for a multi-leg tournament.
-     */
     #[Override]
-    public function planGeneration(
+    public function planLegs(
         array $participants,
-        int $totalLegs,
-        int $participantsPerEvent,
+        int $legs,
         ConstraintSet $constraints
-    ): GenerationPlan {
-        $participantCount = count($participants);
-        $eventsPerLeg = (int) ($participantCount * ($participantCount - 1) / 2);
-        $totalEvents = $eventsPerLeg * $totalLegs;
-        // Odd participant counts need an extra round for the bye rotation
-        $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
-
-        // For mirrored strategy, we simply reverse the participant order in each leg
-        $legPlans = [];
-        for ($leg = 1; $leg <= $totalLegs; ++$leg) {
-            $legPlans[$leg] = [
-                'strategy' => 'mirrored',
-                'reverse_order' => $leg > 1, // Reverse order for legs 2+
-            ];
-        }
-
-        return new GenerationPlan(
-            $totalEvents,
-            $eventsPerLeg,
-            $roundsPerLeg,
-            false, // No randomization required
-            ['leg_plans' => $legPlans], // Strategy data
-            [] // No warnings
+    ): LegPlanContribution {
+        return new LegPlanContribution(
+            rolesMirrorAcrossLegs: true,
+            requiresRandomization: false
         );
     }
 
-    /**
-     * Generate a specific event for a given leg and round.
-     */
     #[Override]
     public function generateEventForLeg(
         array $participants,
@@ -74,42 +48,12 @@ readonly class MirroredLegStrategy implements LegStrategyInterface
         if ($leg === 1) {
             // First leg: use original order
             return new Event($participants, $roundObject);
-        } else {
-            // Subsequent legs: reverse the order for home/away effect
-            return new Event([
-                $participants[1], // Away becomes Home
-                $participants[0],  // Home becomes Away
-            ], $roundObject);
-        }
-    }
-
-    /**
-     * Check if the strategy can satisfy the given constraints.
-     */
-    #[Override]
-    public function canSatisfyConstraints(
-        array $participants,
-        int $legs,
-        int $participantsPerEvent,
-        ConstraintSet $constraints
-    ): ConstraintSatisfiabilityReport {
-        // Mirrored strategy is compatible with most constraints
-        // The main consideration is that it creates exactly the same number of events per leg
-        $canSatisfy = true;
-        $reasons = [];
-
-        if ($participantsPerEvent !== 2) {
-            $canSatisfy = false;
-            $reasons[] = 'Mirrored strategy only supports 2 participants per event';
         }
 
-        if (count($participants) < 2) {
-            $canSatisfy = false;
-            $reasons[] = 'Mirrored strategy requires at least 2 participants';
-        }
-
-        return $canSatisfy
-            ? ConstraintSatisfiabilityReport::success()
-            : ConstraintSatisfiabilityReport::failure(unsatisfiableConstraints: $reasons);
+        // Subsequent legs: reverse the positional roles
+        return new Event([
+            $participants[1],
+            $participants[0],
+        ], $roundObject);
     }
 }

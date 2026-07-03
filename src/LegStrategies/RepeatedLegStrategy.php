@@ -19,35 +19,18 @@ use Override;
  */
 readonly class RepeatedLegStrategy implements LegStrategyInterface
 {
-    /**
-     * Plan the generation strategy for a multi-leg tournament.
-     */
     #[Override]
-    public function planGeneration(
+    public function planLegs(
         array $participants,
-        int $totalLegs,
-        int $participantsPerEvent,
+        int $legs,
         ConstraintSet $constraints
-    ): GenerationPlan {
-        $participantCount = count($participants);
-        $eventsPerLeg = (int) ($participantCount * ($participantCount - 1) / 2);
-        $totalEvents = $eventsPerLeg * $totalLegs;
-        // Odd participant counts need an extra round for the bye rotation
-        $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
-
-        return new GenerationPlan(
-            $totalEvents,
-            $eventsPerLeg,
-            $roundsPerLeg,
-            false, // No randomization required
-            ['strategy' => 'repeated'], // Strategy data
-            [] // No warnings
+    ): LegPlanContribution {
+        return new LegPlanContribution(
+            rolesMirrorAcrossLegs: false,
+            requiresRandomization: false
         );
     }
 
-    /**
-     * Generate a specific event for a given leg and round.
-     */
     #[Override]
     public function generateEventForLeg(
         array $participants,
@@ -59,37 +42,7 @@ readonly class RepeatedLegStrategy implements LegStrategyInterface
             return null; // Repeated strategy only works with 2 participants
         }
 
-        $roundObject = new Round($round);
-
         // For repeated strategy, always use the same order regardless of leg
-        return new Event($participants, $roundObject);
-    }
-
-    /**
-     * Check if the strategy can satisfy the given constraints.
-     */
-    #[Override]
-    public function canSatisfyConstraints(
-        array $participants,
-        int $legs,
-        int $participantsPerEvent,
-        ConstraintSet $constraints
-    ): ConstraintSatisfiabilityReport {
-        $canSatisfy = true;
-        $reasons = [];
-
-        if ($participantsPerEvent !== 2) {
-            $canSatisfy = false;
-            $reasons[] = 'Repeated strategy only supports 2 participants per event';
-        }
-
-        if (count($participants) < 2) {
-            $canSatisfy = false;
-            $reasons[] = 'Repeated strategy requires at least 2 participants';
-        }
-
-        return $canSatisfy
-            ? ConstraintSatisfiabilityReport::success()
-            : ConstraintSatisfiabilityReport::failure(unsatisfiableConstraints: $reasons);
+        return new Event($participants, new Round($round));
     }
 }

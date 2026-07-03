@@ -19,7 +19,7 @@ describe('MetadataConstraint', function (): void {
         $this->south1 = new Participant('s1', 'South One', null, ['region' => 'south', 'tier' => 3]);
         $this->untagged = new Participant('u1', 'Untagged');
         $this->untagged2 = new Participant('u2', 'Untagged Two');
-        $this->context = new SchedulingContext([$this->north1, $this->north2, $this->south1, $this->untagged, $this->untagged2]);
+        $this->context = roundRobinContext([$this->north1, $this->north2, $this->south1, $this->untagged, $this->untagged2]);
     });
 
     it('rejects a non-callable validator', function (): void {

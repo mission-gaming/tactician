@@ -12,11 +12,11 @@ use Override;
 use Random\Randomizer;
 
 /**
- * Strategy that shuffles participant pairings for each leg.
+ * Strategy that shuffles participant roles for each leg.
  *
- * This strategy randomizes the order of participants in each pairing
- * for every leg, creating varied encounters across legs while maintaining
- * the same participant combinations.
+ * This strategy randomizes the positional order of participants in each
+ * pairing for every leg after the first, creating varied encounters
+ * across legs while maintaining the same participant combinations.
  */
 readonly class ShuffledLegStrategy implements LegStrategyInterface
 {
@@ -25,35 +25,18 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
     ) {
     }
 
-    /**
-     * Plan the generation strategy for a multi-leg tournament.
-     */
     #[Override]
-    public function planGeneration(
+    public function planLegs(
         array $participants,
-        int $totalLegs,
-        int $participantsPerEvent,
+        int $legs,
         ConstraintSet $constraints
-    ): GenerationPlan {
-        $participantCount = count($participants);
-        $eventsPerLeg = (int) ($participantCount * ($participantCount - 1) / 2);
-        $totalEvents = $eventsPerLeg * $totalLegs;
-        // Odd participant counts need an extra round for the bye rotation
-        $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
-
-        return new GenerationPlan(
-            $totalEvents,
-            $eventsPerLeg,
-            $roundsPerLeg,
-            true, // Requires randomization
-            ['strategy' => 'shuffled'], // Strategy data
-            [] // No warnings
+    ): LegPlanContribution {
+        return new LegPlanContribution(
+            rolesMirrorAcrossLegs: false,
+            requiresRandomization: true
         );
     }
 
-    /**
-     * Generate a specific event for a given leg and round.
-     */
     #[Override]
     public function generateEventForLeg(
         array $participants,
@@ -70,48 +53,18 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
         if ($leg === 1) {
             // First leg: use original order
             return new Event($participants, $roundObject);
-        } else {
-            // Subsequent legs: randomly shuffle the pairing order
-            $randomizer = $this->randomizer ?? new Randomizer();
-
-            if ($randomizer->getInt(0, 1) === 1) {
-                // Reverse the order
-                return new Event([
-                    $participants[1],
-                    $participants[0],
-                ], $roundObject);
-            } else {
-                // Keep original order
-                return new Event($participants, $roundObject);
-            }
-        }
-    }
-
-    /**
-     * Check if the strategy can satisfy the given constraints.
-     */
-    #[Override]
-    public function canSatisfyConstraints(
-        array $participants,
-        int $legs,
-        int $participantsPerEvent,
-        ConstraintSet $constraints
-    ): ConstraintSatisfiabilityReport {
-        $canSatisfy = true;
-        $reasons = [];
-
-        if ($participantsPerEvent !== 2) {
-            $canSatisfy = false;
-            $reasons[] = 'Shuffled strategy only supports 2 participants per event';
         }
 
-        if (count($participants) < 2) {
-            $canSatisfy = false;
-            $reasons[] = 'Shuffled strategy requires at least 2 participants';
+        // Subsequent legs: randomly shuffle the pairing order
+        $randomizer = $this->randomizer ?? new Randomizer();
+
+        if ($randomizer->getInt(0, 1) === 1) {
+            return new Event([
+                $participants[1],
+                $participants[0],
+            ], $roundObject);
         }
 
-        return $canSatisfy
-            ? ConstraintSatisfiabilityReport::success()
-            : ConstraintSatisfiabilityReport::failure(unsatisfiableConstraints: $reasons);
+        return new Event($participants, $roundObject);
     }
 }

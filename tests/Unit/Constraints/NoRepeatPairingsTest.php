@@ -8,7 +8,6 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 describe('NoRepeatPairings', function (): void {
     beforeEach(function (): void {
@@ -21,14 +20,14 @@ describe('NoRepeatPairings', function (): void {
 
     it('allows a first meeting', function (): void {
         $constraint = new NoRepeatPairings();
-        $context = new SchedulingContext($this->participants, []);
+        $context = roundRobinContext($this->participants, []);
 
         expect($constraint->isSatisfied(new Event([$this->alice, $this->bob], new Round(1)), $context))->toBeTrue();
     });
 
     it('rejects a repeat pairing within the same leg', function (): void {
         $constraint = new NoRepeatPairings();
-        $context = new SchedulingContext($this->participants, [
+        $context = roundRobinContext($this->participants, [
             new Event([$this->alice, $this->bob], new Round(1)),
         ]);
 
@@ -47,13 +46,11 @@ describe('NoRepeatPairings', function (): void {
             new Event([$this->alice, $this->dave], new Round(3)),
             new Event([$this->bob, $this->carol], new Round(3)),
         ];
-        $context = new SchedulingContext(
+        $context = roundRobinContext(
             $this->participants,
             $legOneEvents,
-            currentLeg: 2,
-            totalLegs: 2,
-            participantsPerEvent: 2,
-            metadata: ['algorithm' => 'round-robin', 'rounds_per_leg' => 3, 'total_rounds' => 6]
+            legs: 2,
+            currentLeg: 2
         );
 
         // The same pairing in leg 2 is allowed...
@@ -91,13 +88,11 @@ describe('NoRepeatPairings', function (): void {
     it('forbids repeats in any leg with the across-legs variant', function (): void {
         $constraint = new NoRepeatPairings(acrossLegs: true);
 
-        $context = new SchedulingContext(
+        $context = roundRobinContext(
             $this->participants,
             [new Event([$this->alice, $this->bob], new Round(1))],
-            currentLeg: 2,
-            totalLegs: 2,
-            participantsPerEvent: 2,
-            metadata: ['algorithm' => 'round-robin', 'rounds_per_leg' => 3, 'total_rounds' => 6]
+            legs: 2,
+            currentLeg: 2
         );
 
         expect($constraint->isSatisfied(new Event([$this->bob, $this->alice], new Round(4)), $context))->toBeFalse();

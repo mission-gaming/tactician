@@ -12,11 +12,21 @@
 All DTOs support `toArray()`/`fromArray()`; `Schedule` additionally implements
 `JsonSerializable` with `toJson()`/`fromJson()` round-tripping.
 
+### Stage Plans
+A **stage plan** is an algorithm's declaration of the shape of one stage,
+built before generation and consumed everywhere shape facts are needed —
+context, validation, diagnostics, and constraints read the plan instead of
+inferring round-robin formulas:
+- **StagePlan**: The shape contract — algorithm identifier, total rounds, legs, rounds per leg, expected event count, and format-specific `validateIntegrity()`. Nullability is meaningful: null legs means the concept does not apply (Swiss); null totals mean unknowable up front. Plans never fabricate shape facts.
+- **PairwisePlan**: Capability interface for round-robin-family plans that can guarantee pairwise meeting counts (`getExpectedMeetings()`)
+- **RoundRobinPlan**: Knows everything up front — bye-aware rounds per leg (n-1 even, n odd), event counts, meeting multiplicities, and the leg strategy's contribution facts. The single home of round-robin arithmetic.
+- **SwissPlan**: Knows rounds and per-round event counts; legs are null, and an open-ended (engine-driven) stage may have null totals
+
 ### Scheduling System
-- **SchedulerInterface**: Contract for whole-schedule generators with integrated multi-leg support
-- **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, round-parity home/away role alternation, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule
-- **SimpleSwissScheduler**: Whole-schedule Swiss generation with random non-repeat pairing
-- **SchedulingContext**: Multi-leg aware historical state management
+- **SchedulerInterface**: Contract for whole-schedule generators with integrated multi-leg support; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
+- **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, round-parity home/away role alternation, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first and generates from it.
+- **SimpleSwissScheduler**: Whole-schedule Swiss generation with random non-repeat pairing, planned by a `SwissPlan`
+- **SchedulingContext**: Multi-leg aware historical state management carrying the stage plan (`getPlan()`)
 
 ### Results-Driven Engines
 Formats whose later rounds depend on results cannot be generated whole; these
@@ -38,8 +48,7 @@ engines resolve tournament state from recorded results on every call:
 - **MirroredLegStrategy**: Home/away role reversal strategy
 - **RepeatedLegStrategy**: Identical leg repetition strategy  
 - **ShuffledLegStrategy**: Randomized pairing order strategy
-- **GenerationPlan**: Comprehensive generation planning with pairings and constraints
-- **ConstraintSatisfiabilityReport**: Detailed constraint satisfaction analysis
+- **LegPlanContribution**: The facts a strategy contributes to plan construction (role mirroring, randomization, unsatisfiable reasons, warnings) — strategies never compute schedule shape themselves
 
 ### Constraint System
 - **ConstraintInterface**: Constraint contract for validation
@@ -75,14 +84,15 @@ Defines integrated generation strategies for multi-leg tournaments:
 interface LegStrategyInterface
 {
     /**
-     * Plan the generation strategy for a multi-leg tournament.
+     * Contribute strategy facts to round-robin plan construction.
+     * Non-empty unsatisfiable reasons fail plan construction with
+     * diagnostics before any event is generated.
      */
-    public function planGeneration(
+    public function planLegs(
         array $participants,
-        int $totalLegs,
-        int $participantsPerEvent,
+        int $legs,
         ConstraintSet $constraints
-    ): GenerationPlan;
+    ): LegPlanContribution;
 
     /**
      * Generate a specific event for a given leg and round.
@@ -93,18 +103,12 @@ interface LegStrategyInterface
         int $round,
         SchedulingContext $context
     ): ?Event;
-
-    /**
-     * Check if the strategy can satisfy the given constraints.
-     */
-    public function canSatisfyConstraints(
-        array $participants,
-        int $legs,
-        int $participantsPerEvent,
-        ConstraintSet $constraints
-    ): ConstraintSatisfiabilityReport;
 }
 ```
+
+Strategies contribute *facts*, never schedule shape: the rounds-per-leg and
+event-count arithmetic lives solely in `RoundRobinPlan`, so plan/generator
+drift is impossible by construction.
 
 ### Core Architectural Principles
 
@@ -193,8 +197,8 @@ Tactician includes a sophisticated validation system ensuring tournament complet
 
 #### Core Validation Components
 - **ValidatesScheduleCompleteness**: Trait providing common validation functionality
-- **ExpectedEventCalculator**: Interface for calculating theoretical event counts
-- **RoundRobinEventCalculator**: Round-robin specific event count calculation
+- **StagePlan**: Supplies the expected event count and format-specific integrity checks (`validateIntegrity()`) that validation runs against
+- **ScheduleValidator**: Validates a schedule against its plan — no algorithm-specific arithmetic of its own
 - **ConstraintViolationCollector**: Tracks and aggregates constraint violations during generation
 
 #### Diagnostic Infrastructure  
@@ -206,7 +210,7 @@ Tactician includes a sophisticated validation system ensuring tournament complet
 
 #### 1. Pre-Generation Validation
 - Input parameter validation (participant counts, leg counts, configuration)
-- Constraint satisfiability analysis using `ConstraintSatisfiabilityReport`
+- Plan construction: the leg strategy's `LegPlanContribution` can declare the configuration unsatisfiable, failing with diagnostics before any event exists
 - Early detection of impossible constraint combinations
 
 #### 2. Real-Time Generation Validation
@@ -251,32 +255,32 @@ abstract class SchedulingException extends Exception
 
 The architecture includes several value objects that support the core scheduling functionality:
 
-### GenerationPlan
-Comprehensive planning object created by leg strategies, exposing the
-expected shape of generation through accessors:
+### StagePlan
+The algorithm's declaration of a stage's shape, built by the scheduler and
+readable from the scheduling context, exceptions, and diagnostics:
 ```php
-$plan = $strategy->planGeneration($participants, $totalLegs, 2, $constraints);
-$plan->getTotalEvents();
-$plan->getEventsPerLeg();
-$plan->getRoundsPerLeg();
-$plan->requiresRandomization();
-$plan->getWarnings();
+$plan = $scheduler->getPlan($participants, legs: 2);
+$plan->getAlgorithm();          // 'round-robin' — stable identifier
+$plan->getTotalRounds();        // 6 (null when unknowable up front)
+$plan->getLegs();               // 2 (null when legs do not apply, e.g. Swiss)
+$plan->getRoundsPerLeg();       // 3 (null precisely when getLegs() is)
+$plan->getExpectedEventCount(); // 12 (null when unknowable up front)
+$plan->validateIntegrity($schedule); // format-specific violation strings
+
+// Round-robin-family plans additionally guarantee pairwise meetings:
+$plan->getExpectedMeetings($alice, $bob); // 2
 ```
 
-### ConstraintSatisfiabilityReport
-Analysis of whether constraints can be satisfied. Build reports with the
-named factories (the constructor takes six positional collections, which is
-easy to misuse):
+### LegPlanContribution
+The facts a leg strategy hands to plan construction — an immutable value
+returned by `planLegs()`, never a builder mutated by the strategy:
 ```php
-ConstraintSatisfiabilityReport::success();
-ConstraintSatisfiabilityReport::failure(
-    unsatisfiableConstraints: ['Strategy only supports 2 participants per event'],
+new LegPlanContribution(
+    rolesMirrorAcrossLegs: true,
+    requiresRandomization: false,
+    unsatisfiableReasons: [],   // non-empty fails plan construction loudly
+    warnings: [],               // carried onto the plan
 );
-
-$report->canSatisfyConstraints();
-$report->getUnsatisfiableConstraints();
-$report->getConflictingConstraints();
-$report->getSummary();
 ```
 
 ### DiagnosticReport
@@ -361,10 +365,10 @@ well under a second) with several performance features:
 
 ### Data Flow
 1. **Input**: Participants, constraints, leg strategy
-2. **Planning**: Leg strategy creates GenerationPlan
-3. **Generation**: Integrated multi-leg event generation with real-time validation
-4. **Validation**: Mathematical verification and constraint satisfaction checking
-5. **Output**: Complete Schedule or detailed exception with diagnostics
+2. **Planning**: Scheduler builds the StagePlan from the strategy's LegPlanContribution; unsatisfiable configurations fail here with diagnostics
+3. **Generation**: Integrated multi-leg event generation reading shape facts from the plan, with real-time validation
+4. **Validation**: The schedule is verified against the plan (event counts and format integrity)
+5. **Output**: Complete Schedule or detailed exception carrying the plan and diagnostics
 
 ### Key Integration Points
 - **SchedulerInterface**: Entry point supporting multi-leg as first-class feature

@@ -7,6 +7,9 @@ use MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Stage\RoundRobinPlan;
+use MissionGaming\Tactician\Stage\StagePlan;
 
 describe('SchedulingDiagnostics', function (): void {
     beforeEach(function (): void {
@@ -32,7 +35,7 @@ describe('SchedulingDiagnostics', function (): void {
             $this->participants,
             $this->constraints,
             $events,
-            1
+            new RoundRobinPlan($this->participants, 1)
         );
 
         expect($report->getMissingPairings())->toBe([]);
@@ -51,7 +54,7 @@ describe('SchedulingDiagnostics', function (): void {
             $this->participants,
             $this->constraints,
             $events,
-            1
+            new RoundRobinPlan($this->participants, 1)
         );
 
         expect($report->getMissingPairings())->toBe(['Alice vs Carol (Leg 1)']);
@@ -70,7 +73,7 @@ describe('SchedulingDiagnostics', function (): void {
             [$this->alice, $this->bob],
             $this->constraints,
             $events,
-            2
+            new RoundRobinPlan([$this->alice, $this->bob], 2)
         );
 
         expect($report->getMissingPairings())->toBe([]);
@@ -85,7 +88,7 @@ describe('SchedulingDiagnostics', function (): void {
             [$this->alice, $this->bob],
             $this->constraints,
             $events,
-            3
+            new RoundRobinPlan([$this->alice, $this->bob], 3)
         );
 
         expect($report->getMissingPairings())->toBe([
@@ -110,21 +113,70 @@ describe('SchedulingDiagnostics', function (): void {
             [$this->alice, $this->bob],
             $this->constraints,
             $events,
-            2
+            new RoundRobinPlan([$this->alice, $this->bob], 2)
         );
 
         expect($report->getMissingPairings())->toBe(['Alice vs Bob (Leg 2)']);
     });
 
-    it('flags insufficient participants and small multi-leg fields as conflicts', function (): void {
+    it('flags small multi-leg fields as conflicts', function (): void {
+        $conflicts = $this->diagnostics->identifyConstraintConflicts(
+            $this->participants,
+            $this->constraints,
+            new RoundRobinPlan($this->participants, 2)
+        );
+
+        expect($conflicts)->toContain('Multi-leg tournaments require at least 4 participants for meaningful scheduling');
+    });
+
+    // Library plans refuse to construct for fields that cannot play at all,
+    // but a custom plan may still declare zero expected events
+    it('flags plans declaring zero expected events as insufficient', function (): void {
+        $emptyPlan = new readonly class () implements StagePlan {
+            #[Override]
+            public function getAlgorithm(): string
+            {
+                return 'custom';
+            }
+
+            #[Override]
+            public function getTotalRounds(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getLegs(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getRoundsPerLeg(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getExpectedEventCount(): int
+            {
+                return 0;
+            }
+
+            #[Override]
+            public function validateIntegrity(Schedule $schedule): array
+            {
+                return [];
+            }
+        };
+
         $conflicts = $this->diagnostics->identifyConstraintConflicts(
             [$this->alice],
             $this->constraints,
-            2
+            $emptyPlan
         );
 
         expect($conflicts)->toContain('Insufficient participants for tournament generation');
-        expect($conflicts)->toContain('Multi-leg tournaments require at least 4 participants for meaningful scheduling');
     });
 
     it('suggests adjustments proportional to the failure', function (): void {
@@ -132,7 +184,7 @@ describe('SchedulingDiagnostics', function (): void {
             $this->participants,
             $this->constraints,
             [],
-            1,
+            new RoundRobinPlan($this->participants, 1),
             ['leg' => 2]
         );
 

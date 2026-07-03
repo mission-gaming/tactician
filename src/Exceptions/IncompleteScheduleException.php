@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Exceptions;
 
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Stage\StagePlan;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
-use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
-use MissionGaming\Tactician\Validation\ScheduleValidationContext;
 
 /**
  * Exception thrown when a scheduler cannot generate a complete schedule due to constraint violations.
  *
  * This exception provides detailed diagnostic information about why the schedule is incomplete,
- * including violated constraints, affected participants, and suggestions for resolution.
+ * including the stage plan that was being generated, violated constraints, affected participants,
+ * and suggestions for resolution.
  */
 class IncompleteScheduleException extends SchedulingException
 {
@@ -24,17 +24,12 @@ class IncompleteScheduleException extends SchedulingException
         private readonly int $expectedEventCount,
         private readonly int $actualEventCount,
         private readonly ConstraintViolationCollector $violationCollector,
-        private readonly ExpectedEventCalculator $eventCalculator,
+        private readonly StagePlan $plan,
         private readonly array $participants,
-        int|ScheduleValidationContext $legs,
         string $message = '',
         int $code = 0,
         ?\Throwable $previous = null
     ) {
-        $this->validationContext = $legs instanceof ScheduleValidationContext
-            ? $legs
-            : ScheduleValidationContext::forRoundRobin($legs);
-
         if ($message === '') {
             $message = sprintf(
                 'Incomplete schedule generated: %d events created out of %d expected (%d missing)',
@@ -46,8 +41,6 @@ class IncompleteScheduleException extends SchedulingException
 
         parent::__construct($message, $code, $previous);
     }
-
-    private readonly ScheduleValidationContext $validationContext;
 
     public function getExpectedEventCount(): int
     {
@@ -69,9 +62,12 @@ class IncompleteScheduleException extends SchedulingException
         return $this->violationCollector;
     }
 
-    public function getValidationContext(): ScheduleValidationContext
+    /**
+     * The stage plan whose shape the generated schedule failed to match.
+     */
+    public function getPlan(): StagePlan
     {
-        return $this->validationContext;
+        return $this->plan;
     }
 
     #[\Override]
@@ -80,12 +76,19 @@ class IncompleteScheduleException extends SchedulingException
         $report = [];
         $report[] = '=== INCOMPLETE SCHEDULE DIAGNOSTIC REPORT ===';
         $report[] = '';
-        $report[] = sprintf('Algorithm: %s', $this->eventCalculator->getAlgorithmName());
+        $report[] = sprintf('Algorithm: %s', $this->plan->getAlgorithm());
         $report[] = sprintf('Participants: %d', count($this->participants));
-        $report[] = sprintf('Rounds: %d', $this->validationContext->getRounds());
-        if ($this->validationContext->hasParameter('legs')) {
-            $report[] = sprintf('Legs: %d', $this->validationContext->getParameter('legs'));
+
+        $totalRounds = $this->plan->getTotalRounds();
+        if ($totalRounds !== null) {
+            $report[] = sprintf('Rounds: %d', $totalRounds);
         }
+
+        $legs = $this->plan->getLegs();
+        if ($legs !== null) {
+            $report[] = sprintf('Legs: %d', $legs);
+        }
+
         $report[] = sprintf('Expected Events: %d', $this->expectedEventCount);
         $report[] = sprintf('Generated Events: %d', $this->actualEventCount);
         $report[] = sprintf(
@@ -159,6 +162,7 @@ class IncompleteScheduleException extends SchedulingException
     private function generateSuggestions(): string
     {
         $suggestions = [];
+        $hasLegs = $this->plan->getLegs() !== null;
 
         // Analyze the types of violations to provide specific suggestions
         $violations = $this->violationCollector->getViolations();
@@ -177,7 +181,7 @@ class IncompleteScheduleException extends SchedulingException
                 case 'ConsecutiveRoleConstraint':
                     $suggestions[] = '• Try reducing the consecutive role constraint limit';
                     $suggestions[] = '• Consider increasing the number of participants';
-                    $suggestions[] = $this->validationContext->hasParameter('legs')
+                    $suggestions[] = $hasLegs
                         ? '• Add more legs to provide more scheduling flexibility'
                         : '• Add more rounds to provide more scheduling flexibility';
                     break;
@@ -204,7 +208,7 @@ class IncompleteScheduleException extends SchedulingException
 
         if (empty($suggestions)) {
             $suggestions[] = '• Try relaxing constraint requirements';
-            $suggestions[] = $this->validationContext->hasParameter('legs')
+            $suggestions[] = $hasLegs
                 ? '• Increase the number of participants or legs'
                 : '• Increase the number of participants or rounds';
             $suggestions[] = '• Review constraint combinations for conflicts';
