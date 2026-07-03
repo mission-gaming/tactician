@@ -45,6 +45,17 @@ composer test-coverage
 ./vendor/bin/pest tests/Unit/Scheduling/RoundRobinSchedulerTest.php
 ```
 
+## Examples
+
+Example scripts in `examples/` are executable documentation and must never
+ship without tests validating them. `tests/Feature/ExamplesTest.php`
+auto-discovers and runs every example under full error reporting as part of
+`composer test`, so a new example is covered the moment it is added —
+failures (non-zero exit, warnings, notices, deprecations) fail the suite.
+`composer examples` smoke-runs them directly for a faster loop. If an
+example would need interactive input or external services to run, it does
+not belong in `examples/`.
+
 ## Contributing Guidelines
 
 1. Fork the repository
