@@ -73,6 +73,24 @@ describe('StageState', function (): void {
             ->withRoundPlayed($pairing, [new Result($event, $this->alice)]);
     })->throws(InvalidConfigurationException::class);
 
+    it('rejects rounds recorded out of play order', function (): void {
+        $state = StageState::start($this->participants)
+            ->withRoundPlayed(new RoundPairing(2, null, [
+                new Event([$this->alice, $this->bob], new Round(2)),
+            ]), []);
+
+        $state->withRoundPlayed(new RoundPairing(2, null, [
+            new Event([$this->carol, $this->dave], new Round(2)),
+        ]), []);
+    })->throws(InvalidConfigurationException::class, 'play order');
+
+    it('rejects pairings whose events carry a different round number', function (): void {
+        StageState::start($this->participants)->withRoundPlayed(
+            new RoundPairing(1, null, [new Event([$this->alice, $this->bob], new Round(3))]),
+            []
+        );
+    })->throws(InvalidConfigurationException::class, 'different round');
+
     it('accumulates byes across rounds', function (): void {
         $state = StageState::start($this->participants)
             ->withRoundPlayed(new RoundPairing(1, null, [

@@ -73,13 +73,35 @@ final readonly class StageState
      *
      * Recording no results is legal — the pairing's events still count as
      * played, which is what whole-schedule generation without outcomes
-     * relies on.
+     * relies on. Rounds are recorded in play order: each pairing's round
+     * number must exceed the last recorded one, and every event and result
+     * in the pairing must carry that round number, so the history can
+     * never contradict itself.
      *
      * @param array<Result> $results
-     * @throws InvalidConfigurationException When a result belongs to a different round than the pairing
+     * @throws InvalidConfigurationException When the pairing does not follow the recorded rounds,
+     *                                       or an event or result belongs to a different round
      */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self
     {
+        $lastRound = $this->getLastRound();
+        if ($lastRound !== null && $pairing->getRoundNumber() <= $lastRound->getRoundNumber()) {
+            throw new InvalidConfigurationException(
+                'Rounds must be recorded in play order with increasing round numbers',
+                ['last_round' => $lastRound->getRoundNumber(), 'pairing_round' => $pairing->getRoundNumber()]
+            );
+        }
+
+        foreach ($pairing->getEvents() as $event) {
+            $eventRound = $event->getRound()?->getNumber();
+            if ($eventRound !== $pairing->getRoundNumber()) {
+                throw new InvalidConfigurationException(
+                    'Pairing contains an event from a different round',
+                    ['pairing_round' => $pairing->getRoundNumber(), 'event_round' => $eventRound]
+                );
+            }
+        }
+
         foreach ($results as $result) {
             $resultRound = $result->getEvent()->getRound()?->getNumber();
             if ($resultRound !== $pairing->getRoundNumber()) {
