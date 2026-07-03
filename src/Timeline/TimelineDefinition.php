@@ -28,6 +28,9 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
  */
 final readonly class TimelineDefinition
 {
+    /** @var array<string> Re-indexed 0..N-1 so index-based access always agrees with the capacity */
+    private array $resources;
+
     /**
      * @param DateTimeImmutable $start The first round's first slot, in the stage's timezone
      * @param DateInterval $roundInterval Time between one round's first slot and the next's
@@ -44,7 +47,7 @@ final readonly class TimelineDefinition
         private DateInterval $roundInterval,
         private int $slotsPerRound = 1,
         private ?DateInterval $slotInterval = null,
-        private array $resources = []
+        array $resources = []
     ) {
         if ($slotsPerRound < 1) {
             throw new InvalidConfigurationException(
@@ -89,6 +92,10 @@ final readonly class TimelineDefinition
                 ['resources' => $resources]
             );
         }
+
+        // Index-based access (getResourceAt) must agree with the capacity,
+        // so keys are normalized to 0..N-1 whatever the caller passed
+        $this->resources = array_values($resources);
     }
 
     /**
@@ -130,7 +137,7 @@ final readonly class TimelineDefinition
             isset($config['slot_interval'])
                 ? self::parseInterval($config['slot_interval'], 'slot_interval')
                 : null,
-            array_values($resources)
+            $resources
         );
     }
 

@@ -226,4 +226,19 @@ describe('TimelineDefinition', function (): void {
             'resources' => 'Pitch 1',
         ]))->toThrow(InvalidConfigurationException::class, 'list of names');
     });
+
+    // Index-based access must agree with the capacity even when the
+    // caller passes string keys
+    it('re-indexes associative resource arrays', function (): void {
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
+            new DateInterval('P7D'),
+            resources: ['north' => 'Pitch 1', 'south' => 'Pitch 2']
+        );
+
+        expect($timeline->getCapacityPerSlot())->toBe(2);
+        expect($timeline->getResourceAt(0))->toBe('Pitch 1');
+        expect($timeline->getResourceAt(1))->toBe('Pitch 2');
+        expect($timeline->getResources())->toBe(['Pitch 1', 'Pitch 2']);
+    });
 });
