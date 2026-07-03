@@ -186,7 +186,9 @@ final readonly class StageState
     {
         $events = [];
         foreach ($this->roundsPlayed as $pairing) {
-            $events = [...$events, ...$pairing->getEvents()];
+            foreach ($pairing->getEvents() as $event) {
+                $events[] = $event;
+            }
         }
 
         return $events;

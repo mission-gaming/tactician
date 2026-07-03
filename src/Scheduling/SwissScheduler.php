@@ -71,7 +71,9 @@ class SwissScheduler implements SchedulerInterface
         try {
             while (!$engine->isComplete($state)) {
                 $pairing = $engine->pairNextRound($state);
-                $events = [...$events, ...$pairing->getEvents()];
+                foreach ($pairing->getEvents() as $event) {
+                    $events[] = $event;
+                }
                 foreach ($pairing->getByes() as $bye) {
                     $byes[$pairing->getRoundNumber()] = $bye->getId();
                 }
