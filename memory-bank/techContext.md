@@ -1,7 +1,7 @@
 # Technical Context: Tactician
 
 ## Technologies Used
-- **Core Language**: PHP 8.2+ (CI matrix: 8.2, 8.3, 8.4)
+- **Core Language**: PHP 8.3+ (CI matrix: 8.3, 8.4, 8.5)
 - **Testing Framework**: Pest (on PHPUnit)
 - **Static Analysis**: PHPStan (level 8, zero errors enforced)
 - **Code Modernization**: Rector
@@ -12,10 +12,10 @@
 ## Development Setup
 - **Autoloading**: PSR-4 standard
 - **License**: MIT
-- **Production dependencies**: none (php ^8.2 only); see composer.json for dev dependencies
+- **Production dependencies**: none (php ^8.3 only); see composer.json for dev dependencies
 
 ## Technical Constraints
-- PHP 8.2+ minimum version requirement
+- PHP 8.3+ minimum version requirement
 - Performance: comfortable into the hundreds of participants (a 200-participant two-leg round robin generates in well under a second)
 - Deterministic algorithms with seeded randomness (`Random\Randomizer` + `Mt19937` in tests)
 - Separation of fixture generation from timeline assignment (timeline is future work)

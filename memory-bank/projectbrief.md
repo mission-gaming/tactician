@@ -3,10 +3,10 @@
 ## Project Overview
 *This is the foundation document for the Tactician project. All other memory bank files build upon this brief.*
 
-Tactician is a modern PHP library for generating structured schedules between participants. It provides deterministic tournament formats — round robin (single and multi-leg), Swiss pairing, single and double elimination, and group stages — plus results, standings with pluggable tiebreakers, and a flexible constraint system for rules like "no repeat pairings" or "protect top seeds from early meetings". Fixture generation is kept separate from time assignment (timeline assignment is future work). Designed for PHP 8.2+, it is dependency-free in production, Composer-compatible, and built test-first.
+Tactician is a modern PHP library for generating structured schedules between participants. It provides deterministic tournament formats — round robin (single and multi-leg), Swiss pairing, single and double elimination, and group stages — plus results, standings with pluggable tiebreakers, and a flexible constraint system for rules like "no repeat pairings" or "protect top seeds from early meetings". Fixture generation is kept separate from time assignment (timeline assignment is future work). Designed for PHP 8.3+, it is dependency-free in production, Composer-compatible, and built test-first.
 
 ## Core Requirements
-- PHP library, Composer-compatible, targeting PHP 8.2, 8.3, and 8.4
+- PHP library, Composer-compatible, targeting PHP 8.3, 8.4, and 8.5
 - Deterministic scheduling: same input always produces the same schedule (seeded randomness where randomization is wanted)
 - Whole-schedule generators for formats that can be precomputed; results-driven engines for formats whose later rounds depend on outcomes (Swiss, brackets, group qualification)
 - Constraints via a flexible predicate system with loud, diagnostic failure (never silently incomplete schedules)

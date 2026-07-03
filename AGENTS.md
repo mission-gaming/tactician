@@ -1,6 +1,6 @@
 # Tactician — Agent Guide
 
-Tournament scheduling library for PHP 8.2+: round robin (single and
+Tournament scheduling library for PHP 8.3+: round robin (single and
 multi-leg), Swiss pairing, single/double elimination, group stages, and
 standings with tiebreakers. No production dependencies.
 

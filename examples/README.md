@@ -72,7 +72,7 @@ php -S localhost:0
 
 ## Requirements
 
-- **PHP 8.2+** - Required for the Tactician library
+- **PHP 8.3+** - Required for the Tactician library
 - **Composer dependencies** - Run `composer install` from the project root before starting
 - **Modern web browser** - For optimal viewing experience
 
@@ -105,7 +105,7 @@ ls -la
 
 You should see output similar to:
 ```
-PHP 8.2.x Development Server (http://localhost:8000) started
+PHP 8.3.x Development Server (http://localhost:8000) started
 ```
 
 ### Stopping the Server

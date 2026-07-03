@@ -1,6 +1,6 @@
 # Tactician
 
-[![PHP Version](https://img.shields.io/badge/php-%5E8.2-blue)](https://packagist.org/packages/mission-gaming/tactician)
+[![PHP Version](https://img.shields.io/badge/php-%5E8.3-blue)](https://packagist.org/packages/mission-gaming/tactician)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Build Status](https://github.com/mission-gaming/tactician/actions/workflows/ci.yml/badge.svg)](https://github.com/mission-gaming/tactician/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/mission-gaming/tactician/graph/badge.svg?token=B5QQBW434A)](https://codecov.io/github/mission-gaming/tactician)
@@ -16,7 +16,7 @@ A modern PHP library for generating structured schedules between participants. I
 - 🔧 **Flexible Constraints**: Built-in and custom predicate-based constraint system
 - ✅ **Schedule Validation**: Comprehensive validation prevents incomplete schedules
 - 💾 **Serialization**: JSON round-tripping for schedules and participants
-- 🎯 **Modern PHP**: PHP 8.2+ with readonly classes and strict typing
+- 🎯 **Modern PHP**: PHP 8.3+ with readonly classes and strict typing
 - 🧪 **Test-Driven**: Comprehensive test suite with Pest framework
 - 📐 **Mathematical Accuracy**: Circle method implementation for round-robin
 - 🛡️ **Production Ready**: PHPStan level 8 compliance with zero errors
@@ -30,7 +30,7 @@ composer require mission-gaming/tactician
 ```
 
 **Requirements:**
-- PHP 8.2+
+- PHP 8.3+
 - No external dependencies in production
 
 ## Quick Start
