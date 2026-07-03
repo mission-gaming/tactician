@@ -28,6 +28,16 @@ front; engines resolve tournament state from recorded results on every call
 results against the events the engines produce — round numbers are 1-based,
 continuous across legs, and assigned by the engine.
 
+## Terminology and verbiage
+
+The glossary in `docs/USAGE.md` ("Terminology") is canonical. In particular:
+say **participant(s)**, never "team(s)", in library code, API naming, and
+documentation prose — participants can be players, clubs, squads, or anything
+that competes (domain-specific sample data in examples may naturally use
+teams). **Legs** is the default term for the number of times each participant
+meets each other participant; **rounds** are the 1-based, cross-leg-continuous
+sets of concurrent events. Swiss has rounds but no legs.
+
 ## Rules
 
 - Every PHP file declares `strict_types=1`; DTOs are readonly; PHPStan level 8 with zero errors is mandatory.
