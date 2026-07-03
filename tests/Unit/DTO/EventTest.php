@@ -91,4 +91,22 @@ describe('Event', function (): void {
         expect($event->getMetadataValue('time'))->toBeNull();
         expect($event->getMetadataValue('time', '12:00'))->toBe('12:00');
     });
+
+    it('rejects malformed serialized data and round-trips metadata', function (): void {
+        $alice = new Participant('p1', 'Alice');
+        $bob = new Participant('p2', 'Bob');
+        $registry = ['p1' => $alice, 'p2' => $bob];
+
+        expect(fn () => Event::fromArray(['round' => null, 'metadata' => []], $registry))
+            ->toThrow(InvalidArgumentException::class, 'participants array');
+        expect(fn () => Event::fromArray(['participants' => ['p1', 'p2'], 'round' => 'first'], $registry))
+            ->toThrow(InvalidArgumentException::class, 'round');
+        expect(fn () => Event::fromArray(['participants' => ['p1', 'p2'], 'round' => null, 'metadata' => 'nope'], $registry))
+            ->toThrow(InvalidArgumentException::class, 'metadata');
+
+        $event = new Event([$alice, $bob], new Round(2), ['pitch' => 'A']);
+        $rebuilt = Event::fromArray($event->toArray(), $registry);
+        expect($rebuilt->getMetadataValue('pitch'))->toBe('A');
+        expect($rebuilt->getRound()?->getNumber())->toBe(2);
+    });
 });

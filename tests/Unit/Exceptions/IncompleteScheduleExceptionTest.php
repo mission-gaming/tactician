@@ -276,6 +276,39 @@ describe('IncompleteScheduleException', function (): void {
         expect($report)->toContain('Algorithm: round-robin');
     });
 
+    // Each known constraint family gets targeted suggestions; unknown
+    // constraints get the generic review line
+    it('suggests per constraint family in the diagnostic report', function (): void {
+        $event = new Event([$this->participant1, $this->participant2]);
+        $violationCollector = new ConstraintViolationCollector();
+        foreach ([
+            new MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint(3),
+            new MissionGaming\Tactician\Constraints\NoRepeatPairings(),
+            new MissionGaming\Tactician\Constraints\SeedProtectionConstraint(2, 0.5),
+            new MissionGaming\Tactician\Constraints\CallableConstraint(fn () => false, 'Mystery Rule'),
+        ] as $constraint) {
+            $violationCollector->recordViolation(new ConstraintViolation(
+                $constraint,
+                $event,
+                'violated',
+                [$this->participant1]
+            ));
+        }
+
+        $report = (new IncompleteScheduleException(
+            expectedEventCount: 12,
+            actualEventCount: 2,
+            violationCollector: $violationCollector,
+            plan: $this->plan,
+            participants: $this->participants
+        ))->getDiagnosticReport();
+
+        expect($report)->toContain('Reduce the minimum rest period requirement');
+        expect($report)->toContain('may be mathematically impossible');
+        expect($report)->toContain('Adjust seed protection settings');
+        expect($report)->toContain('Review CallableConstraint settings');
+    });
+
     // Tests that diagnostic report provides suggestions section
     it('provides suggestions in diagnostic report', function (): void {
         // Given: Exception with constraint violations
@@ -304,5 +337,26 @@ describe('IncompleteScheduleException', function (): void {
         expect($report)->toContain('Try reducing the consecutive role constraint limit');
         expect($report)->toContain('Consider increasing the number of participants');
         expect($report)->toContain('Add more legs to provide more scheduling flexibility');
+    });
+
+    it('suggests rounds rather than legs for formats without legs', function (): void {
+        $violationCollector = new ConstraintViolationCollector();
+        $violationCollector->recordViolation(new ConstraintViolation(
+            MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint::homeAway(1),
+            new Event([$this->participant1, $this->participant2]),
+            'violated',
+            [$this->participant1]
+        ));
+
+        $report = (new IncompleteScheduleException(
+            expectedEventCount: 6,
+            actualEventCount: 2,
+            violationCollector: $violationCollector,
+            plan: new MissionGaming\Tactician\Stage\SwissPlan($this->participants, 3),
+            participants: $this->participants
+        ))->getDiagnosticReport();
+
+        expect($report)->toContain('Add more rounds to provide more scheduling flexibility');
+        expect($report)->not->toContain('Add more legs');
     });
 });

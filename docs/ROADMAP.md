@@ -28,13 +28,13 @@
 
 **Design (implemented): [docs/design/phase-3-algorithm-neutral-core.md](design/phase-3-algorithm-neutral-core.md)**
 
-## Phase 4: Timeline Assignment 📅
-- Slot-based time assignment: round-aligned (all of a round's events together) and staggered kickoffs from one declarative slot model
+## Phase 4: Timeline Assignment 🔄
+- ✅ Slot-based time assignment: round-aligned (all of a round's events together) and staggered kickoffs from one declarative slot model (`TimelineDefinition` + `TimelineAssigner` + serializable `ScheduledEvent`/`ScheduledSchedule`; deterministic filling, DST-safe wall-clock arithmetic, UTC out, loud validation, engine bridge via `assignRound()`)
 - Time-aware validation (double-booking, hour-based rest, blackout periods) with the library's diagnostic character
 - Mechanism only — slot patterns in, timestamped events out; config parsing, persistence, and notification policy stay application-side
 - Venue/resource modelling
 
-**Position paper: [docs/design/timeline-assignment.md](design/timeline-assignment.md)**
+**Design (first cut implemented): [docs/design/timeline-assignment.md](design/timeline-assignment.md)**
 
 ## Phase 5: Advanced Features 🚀
 - Schedule optimization algorithms and quality metrics

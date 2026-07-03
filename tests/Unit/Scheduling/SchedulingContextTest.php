@@ -316,6 +316,75 @@ describe('SchedulingContext', function (): void {
         expect($context->getEventsForParticipant($this->participant3))->toContain($multiParticipantEvent);
     });
 
+    it('detects whether an event exists between exact participant sets', function (): void {
+        $context = roundRobinContext($this->participants, [$this->event1]); // alice vs bob
+
+        expect($context->hasEventBetween([$this->participant1, $this->participant2]))->toBeTrue();
+        expect($context->hasEventBetween([$this->participant2, $this->participant1]))->toBeTrue();
+        expect($context->hasEventBetween([$this->participant1, $this->participant3]))->toBeFalse();
+        // Wrong cardinality for this context's participants-per-event
+        expect($context->hasEventBetween([$this->participant1]))->toBeFalse();
+    });
+
+    it('counts its events', function (): void {
+        expect(roundRobinContext($this->participants)->getEventCount())->toBe(0);
+        expect(roundRobinContext($this->participants, $this->existingEvents)->getEventCount())->toBe(2);
+    });
+
+    it('excludes round-less events from leg views', function (): void {
+        $roundless = new Event([$this->participant1, $this->participant2]); // no round
+        $context = roundRobinContext($this->participants, [$roundless], legs: 2);
+
+        expect($context->getEventsForLeg(1))->toBe([]);
+    });
+
+    // Defensive: getLegs() non-null contractually implies getRoundsPerLeg()
+    // non-null, but a contract-violating plan must yield nothing rather
+    // than fabricate leg boundaries
+    it('returns no leg events for a plan without rounds per leg', function (): void {
+        $brokenPlan = new readonly class () implements StagePlan {
+            #[Override]
+            public function getAlgorithm(): string
+            {
+                return 'broken';
+            }
+
+            #[Override]
+            public function getTotalRounds(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getLegs(): int
+            {
+                return 2;
+            }
+
+            #[Override]
+            public function getRoundsPerLeg(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getExpectedEventCount(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function validateIntegrity(\MissionGaming\Tactician\DTO\Schedule $schedule): array
+            {
+                return [];
+            }
+        };
+
+        $context = new SchedulingContext($this->participants, $brokenPlan, $this->existingEvents);
+
+        expect($context->getEventsForLeg(1))->toBe([]);
+    });
+
     // Tests that SchedulingContext is readonly (immutable)
     it('is readonly', function (): void {
         $context = roundRobinContext($this->participants, $this->existingEvents);
@@ -327,4 +396,16 @@ describe('SchedulingContext', function (): void {
     it('rejects a plan for fewer than 2 participants', function (): void {
         new RoundRobinPlan([$this->participant1], 1);
     })->throws(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class);
+
+    it('filters events by round number across legs', function (): void {
+        $events = [
+            new Event([$this->participant1, $this->participant2], new Round(1)),
+            new Event([$this->participant2, $this->participant3], new Round(2)),
+            new Event([$this->participant1, $this->participant3]), // no round
+        ];
+        $context = roundRobinContext($this->participants, $events);
+
+        expect($context->getEventsInRound(1))->toHaveCount(1);
+        expect($context->getEventsInRound(3))->toBe([]);
+    });
 });

@@ -309,4 +309,34 @@ describe('RoundRobinScheduler', function (): void {
         expect(fn () => $scheduler->schedule($this->participants, new RoundRobinOptions(legs: 2, strategy: $vetoStrategy)))
             ->toThrow(InvalidConfigurationException::class, 'Vetoed by test strategy');
     });
+
+    // The randomized shuffle must keep the bye slot pinned to the end of
+    // the circle, or odd fields would rotate a phantom participant
+    it('randomizes odd fields while preserving the bye rotation', function (): void {
+        $participants = [
+            new Participant('p1', 'Alice'),
+            new Participant('p2', 'Bob'),
+            new Participant('p3', 'Carol'),
+            new Participant('p4', 'Dave'),
+            new Participant('p5', 'Eve'),
+        ];
+
+        $scheduler = new RoundRobinScheduler(null, new Randomizer(new Mt19937(2024)));
+        $schedule = $scheduler->schedule($participants);
+
+        expect($schedule->count())->toBe(10); // C(5,2)
+        expect($schedule->getMetadataValue('byes'))->toHaveCount(5); // one bye per round
+        expect($scheduler->getViolationCollector()->getViolationCount())->toBe(0);
+    });
+
+    it('schedules a two-participant multi-leg tournament', function (): void {
+        $pair = [new Participant('p1', 'Alice'), new Participant('p2', 'Bob')];
+
+        $schedule = (new RoundRobinScheduler())->schedule($pair, new RoundRobinOptions(legs: 2));
+
+        expect($schedule->count())->toBe(2);
+        // Mirrored roles across the legs
+        expect($schedule->getEvents()[0]->getParticipants()[0]->getId())->toBe('p1');
+        expect($schedule->getEvents()[1]->getParticipants()[0]->getId())->toBe('p2');
+    });
 });

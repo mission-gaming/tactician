@@ -57,4 +57,24 @@ describe('Participant', function (): void {
         expect($participant)->toBeInstanceOf(Participant::class);
         // Readonly classes cannot have properties modified after construction
     });
+
+    it('reseeds via withSeed while preserving identity', function (): void {
+        $participant = new Participant('p1', 'Alice', 5, ['club' => 'north']);
+        $reseeded = $participant->withSeed(1);
+
+        expect($reseeded->getSeed())->toBe(1);
+        expect($reseeded->getId())->toBe('p1');
+        expect($reseeded->getLabel())->toBe('Alice');
+        expect($reseeded->getMetadata())->toBe(['club' => 'north']);
+        expect($participant->getSeed())->toBe(5); // original untouched
+    });
+
+    it('rejects malformed serialized seed and metadata', function (): void {
+        $valid = ['id' => 'p1', 'label' => 'Alice', 'seed' => null, 'metadata' => []];
+
+        expect(fn () => Participant::fromArray([...$valid, 'seed' => 'first']))
+            ->toThrow(InvalidArgumentException::class, 'seed');
+        expect(fn () => Participant::fromArray([...$valid, 'metadata' => 'nope']))
+            ->toThrow(InvalidArgumentException::class, 'metadata');
+    });
 });
