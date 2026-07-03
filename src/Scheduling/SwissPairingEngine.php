@@ -13,6 +13,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Stage\SwissPlan;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 
 /**
  * Pairs Swiss rounds incrementally from recorded results.
@@ -224,9 +225,15 @@ readonly class SwissPairingEngine
      * credited as wins (the Swiss convention) so bye recipients pair among
      * the winners.
      *
+     * Crediting a bye "as a win" is only meaningful under a win/draw/loss
+     * ranking, so byes require the standings calculator to use a
+     * WinDrawLossRanking; anything else fails loudly rather than guessing
+     * what a win is worth under an unknown ranking scale.
+     *
      * @param array<\MissionGaming\Tactician\Standings\StandingEntry> $entries Standings entries, best first
      * @param array<string> $previousByeIds
      * @return array<Participant>
+     * @throws InvalidConfigurationException When byes were awarded but the ranking strategy has no win value
      */
     private function orderForPairing(array $entries, array $previousByeIds): array
     {
@@ -235,21 +242,29 @@ readonly class SwissPairingEngine
             return array_map(fn ($entry) => $entry->getParticipant(), $entries);
         }
 
-        $winPoints = $this->standingsCalculator->getPointsSystem()->getWinPoints();
+        $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
+        if (!$rankingStrategy instanceof WinDrawLossRanking) {
+            throw new InvalidConfigurationException(
+                'Swiss bye crediting requires a win/draw/loss ranking strategy; the Swiss convention of counting a bye as a win is undefined under other ranking scales',
+                ['ranking_strategy' => $rankingStrategy::class]
+            );
+        }
+
+        $winValue = $rankingStrategy->getWinValue();
 
         $indexed = [];
         foreach ($entries as $index => $entry) {
             $byeCount = $byeCounts[$entry->getParticipant()->getId()] ?? 0;
             $indexed[] = [
                 'participant' => $entry->getParticipant(),
-                'points' => $entry->getPoints() + $byeCount * $winPoints,
+                'ranking_value' => $entry->getRankingValue() + $byeCount * $winValue,
                 'index' => $index,
             ];
         }
 
         usort(
             $indexed,
-            fn (array $first, array $second): int => ($second['points'] <=> $first['points'])
+            fn (array $first, array $second): int => ($second['ranking_value'] <=> $first['ranking_value'])
                 ?: ($first['index'] <=> $second['index'])
         );
 

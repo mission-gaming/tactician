@@ -11,25 +11,27 @@ use MissionGaming\Tactician\DTO\Result;
 /**
  * Calculates an ordered standings table from recorded results.
  *
- * Entries are ranked by points, then by each configured tiebreaker in order,
- * then by score difference and score for, then by seed (seeded participants
- * first), and finally by natural-order label and ID comparison for a
- * deterministic ordering.
+ * Entries are ranked by the ranking strategy's primary value, then by each
+ * configured tiebreaker in order, then by score difference and score for,
+ * then by seed (seeded participants first), and finally by natural-order
+ * label and ID comparison for a deterministic ordering.
  */
 readonly class StandingsCalculator
 {
     /**
-     * @param array<TiebreakerInterface> $tiebreakers Applied in order after points
+     * @param RankingStrategy $rankingStrategy Computes the primary ranking value
+     *                                         (default: 3/1/0 win-draw-loss points)
+     * @param array<TiebreakerInterface> $tiebreakers Applied in order after the primary ranking value
      */
     public function __construct(
-        private PointsSystem $pointsSystem = new PointsSystem(),
+        private RankingStrategy $rankingStrategy = new WinDrawLossRanking(),
         private array $tiebreakers = []
     ) {
     }
 
-    public function getPointsSystem(): PointsSystem
+    public function getRankingStrategy(): RankingStrategy
     {
-        return $this->pointsSystem;
+        return $this->rankingStrategy;
     }
 
     /**
@@ -59,6 +61,8 @@ readonly class StandingsCalculator
 
         /** @var array<string, Participant> $participantsById */
         $participantsById = [];
+        /** @var array<string, array<Result>> $resultsByParticipant */
+        $resultsByParticipant = [];
         /** @var array<string, array{played: int, wins: int, draws: int, losses: int, for: float, against: float}> $tallies */
         $tallies = [];
 
@@ -85,6 +89,7 @@ readonly class StandingsCalculator
                     );
                 }
 
+                $resultsByParticipant[$id][] = $result;
                 ++$tallies[$id]['played'];
                 if ($result->isDraw()) {
                     ++$tallies[$id]['draws'];
@@ -114,9 +119,10 @@ readonly class StandingsCalculator
         /** @var array<string, StandingEntry> $entries */
         $entries = [];
         foreach ($tallies as $id => $tally) {
-            $points = $tally['wins'] * $this->pointsSystem->getWinPoints()
-                + $tally['draws'] * $this->pointsSystem->getDrawPoints()
-                + $tally['losses'] * $this->pointsSystem->getLossPoints();
+            $rankingValue = $this->rankingStrategy->rank(
+                $participantsById[$id],
+                $resultsByParticipant[$id] ?? []
+            );
 
             $entries[$id] = new StandingEntry(
                 $participantsById[$id],
@@ -124,7 +130,7 @@ readonly class StandingsCalculator
                 $tally['wins'],
                 $tally['draws'],
                 $tally['losses'],
-                $points,
+                $rankingValue,
                 $tally['for'],
                 $tally['against']
             );
@@ -147,7 +153,7 @@ readonly class StandingsCalculator
 
         $ordered = array_values($entries);
         usort($ordered, function (StandingEntry $a, StandingEntry $b): int {
-            $comparison = $b->getPoints() <=> $a->getPoints();
+            $comparison = $b->getRankingValue() <=> $a->getRankingValue();
             if ($comparison !== 0) {
                 return $comparison;
             }

@@ -7,9 +7,9 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
-use MissionGaming\Tactician\Standings\PointsSystem;
 use MissionGaming\Tactician\Standings\SonnebornBergerTiebreaker;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use MissionGaming\Tactician\Standings\WinsTiebreaker;
 
 describe('Result', function (): void {
@@ -89,18 +89,18 @@ describe('StandingsCalculator', function (): void {
         $aliceEntry = $standings->getEntryFor($this->alice);
         expect($aliceEntry?->getPlayed())->toBe(2);
         expect($aliceEntry?->getWins())->toBe(2);
-        expect($aliceEntry?->getPoints())->toBe(6.0);
+        expect($aliceEntry?->getRankingValue())->toBe(6.0);
         expect($standings->getPosition($this->alice))->toBe(1);
 
         $carolEntry = $standings->getEntryFor($this->carol);
         expect($carolEntry?->getDraws())->toBe(1);
         expect($carolEntry?->getLosses())->toBe(1);
-        expect($carolEntry?->getPoints())->toBe(1.0);
+        expect($carolEntry?->getRankingValue())->toBe(1.0);
 
         // Bob never played a result... except the round 1 loss
         $bobEntry = $standings->getEntryFor($this->bob);
         expect($bobEntry?->getLosses())->toBe(1);
-        expect($bobEntry?->getPoints())->toBe(0.0);
+        expect($bobEntry?->getRankingValue())->toBe(0.0);
     });
 
     it('includes participants with no results at zero', function (): void {
@@ -109,7 +109,7 @@ describe('StandingsCalculator', function (): void {
         expect($standings)->toHaveCount(4);
         foreach ($standings as $entry) {
             expect($entry->getPlayed())->toBe(0);
-            expect($entry->getPoints())->toBe(0.0);
+            expect($entry->getRankingValue())->toBe(0.0);
         }
     });
 
@@ -136,11 +136,11 @@ describe('StandingsCalculator', function (): void {
             new Result(new Event([$this->carol, $this->dave], new Round(1))), // draw
         ];
 
-        $calculator = new StandingsCalculator(PointsSystem::chess());
+        $calculator = new StandingsCalculator(WinDrawLossRanking::oneHalfZero());
         $standings = $calculator->calculate($this->participants, $results);
 
-        expect($standings->getEntryFor($this->alice)?->getPoints())->toBe(1.0);
-        expect($standings->getEntryFor($this->carol)?->getPoints())->toBe(0.5);
+        expect($standings->getEntryFor($this->alice)?->getRankingValue())->toBe(1.0);
+        expect($standings->getEntryFor($this->carol)?->getRankingValue())->toBe(0.5);
     });
 
     it('rejects two results for the same event', function (): void {
@@ -179,7 +179,7 @@ describe('StandingsCalculator', function (): void {
         ];
 
         $calculator = new StandingsCalculator(
-            PointsSystem::football(),
+            WinDrawLossRanking::threeOneZero(),
             [new WinsTiebreaker(), new BuchholzTiebreaker()]
         );
         $standings = $calculator->calculate($this->participants, $results);
@@ -205,7 +205,7 @@ describe('StandingsCalculator', function (): void {
         ];
 
         $calculator = new StandingsCalculator(
-            PointsSystem::chess(),
+            WinDrawLossRanking::oneHalfZero(),
             [new SonnebornBergerTiebreaker()]
         );
         $standings = $calculator->calculate($this->participants, $results);
@@ -213,7 +213,7 @@ describe('StandingsCalculator', function (): void {
         // Chess points: Alice 1.5 (win + draw), Bob 1 (loss + win), Carol 0.5 (draw + loss)
         // Alice SB: beat Bob (1.0) + drew Carol (0.5 * 0.5) = 1.25
         $aliceEntry = $standings->getEntryFor($this->alice);
-        expect($aliceEntry?->getPoints())->toBe(1.5);
+        expect($aliceEntry?->getRankingValue())->toBe(1.5);
         expect($aliceEntry?->getTiebreakerValue('sonneborn-berger'))->toBe(1.25);
     });
 

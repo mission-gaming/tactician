@@ -38,8 +38,9 @@ engines resolve tournament state from recorded results on every call:
 - **SwissRoundPairing / EliminationRoundPairing**: Value objects carrying a round's events and byes
 
 ### Standings System
-- **StandingsCalculator**: Ordered league tables from results with a configurable points system
-- **PointsSystem**: Win/draw/loss point values with football (3/1/0) and chess (1/0.5/0) presets
+- **StandingsCalculator**: Ordered league tables from results with a pluggable ranking strategy
+- **RankingStrategy**: Computes the primary ranking value ordering the table — ordering is the contract, points are one means of producing it
+- **WinDrawLossRanking**: The first implementation; sport conventions as named constructors (`threeOneZero()`, `oneHalfZero()`), config-constructible via `fromArray()`
 - **TiebreakerInterface**: Pluggable tiebreakers — **WinsTiebreaker**, **BuchholzTiebreaker**, **SonnebornBergerTiebreaker**
 - **Standings / StandingEntry**: Immutable table and per-participant line
 

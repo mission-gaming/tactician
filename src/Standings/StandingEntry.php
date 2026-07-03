@@ -20,7 +20,7 @@ readonly class StandingEntry
         private int $wins,
         private int $draws,
         private int $losses,
-        private float $points,
+        private float $rankingValue,
         private float $scoreFor = 0.0,
         private float $scoreAgainst = 0.0,
         private array $tiebreakers = []
@@ -52,9 +52,15 @@ readonly class StandingEntry
         return $this->losses;
     }
 
-    public function getPoints(): float
+    /**
+     * The strategy-computed primary ranking value ordering the table.
+     *
+     * Under the default WinDrawLossRanking this is the familiar points
+     * total; other strategies may aggregate different quantities.
+     */
+    public function getRankingValue(): float
     {
-        return $this->points;
+        return $this->rankingValue;
     }
 
     public function getScoreFor(): float
@@ -98,7 +104,7 @@ readonly class StandingEntry
             $this->wins,
             $this->draws,
             $this->losses,
-            $this->points,
+            $this->rankingValue,
             $this->scoreFor,
             $this->scoreAgainst,
             $tiebreakers

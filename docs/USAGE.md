@@ -38,7 +38,8 @@ anything else that competes.
 | **Seed** | A participant's ranking, used for bracket placement, serpentine group distribution, and seed-protection constraints. Lower numbers are better; 1 is the top seed. |
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
 | **Result** | The recorded outcome of a played event: a winner or a draw, with optional per-participant scores. |
-| **Standings** | The ordered table computed from results by `StandingsCalculator` — points, records, and tiebreakers. |
+| **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
+| **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
 | **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
 | **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out. Composed via `GroupStageEngine` qualifiers and the elimination engines. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
@@ -369,8 +370,8 @@ Record outcomes with `Result` and build league tables with `StandingsCalculator`
 ```php
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
-use MissionGaming\Tactician\Standings\PointsSystem;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use MissionGaming\Tactician\Standings\WinsTiebreaker;
 
 // A win, a draw (no winner), and a scored win
@@ -380,9 +381,9 @@ $results = [
     new Result($eventThree, $carol, ['carol' => 3, 'dave' => 1]),
 ];
 
-// Football points (3/1/0) with tiebreakers applied in order
+// The 3/1/0 convention with tiebreakers applied in order
 $calculator = new StandingsCalculator(
-    PointsSystem::football(),
+    WinDrawLossRanking::threeOneZero(),
     [new WinsTiebreaker(), new BuchholzTiebreaker()]
 );
 $standings = $calculator->calculate($participants, $results);
@@ -390,13 +391,21 @@ $standings = $calculator->calculate($participants, $results);
 foreach ($standings as $entry) {
     $position = $standings->getPosition($entry->getParticipant());
     echo "{$position}. {$entry->getParticipant()->getLabel()}: "
-        . "{$entry->getPoints()} pts "
+        . "{$entry->getRankingValue()} pts "
         . "({$entry->getWins()}W {$entry->getDraws()}D {$entry->getLosses()}L)\n";
 }
 ```
 
-`PointsSystem::chess()` (1/0.5/0) and `SonnebornBergerTiebreaker` are also
-available. Ties beyond the configured tiebreakers fall back to score
+The table is ordered by a pluggable **ranking strategy**: "points from
+wins, draws, and losses" is one way to order a table, not the definition
+of ordering, so `StandingsCalculator` takes a `RankingStrategy` and each
+entry exposes the strategy-computed value via `getRankingValue()` alongside
+its W/D/L record. `WinDrawLossRanking` is the built-in implementation, with
+the sport conventions as named constructors — `threeOneZero()`
+(association football) and `oneHalfZero()` (chess) — and plain-data
+construction via `WinDrawLossRanking::fromArray(['win' => 3, 'draw' => 1,
+'loss' => 0])` for config-driven platforms. `SonnebornBergerTiebreaker` is
+also available. Ties beyond the configured tiebreakers fall back to score
 difference, score for, seed, and natural-order label comparison. Each event
 may have at most one result; recording two results for the same event throws.
 
