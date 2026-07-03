@@ -24,6 +24,7 @@ composer test              # Run tests
 composer phpstan          # Static analysis
 composer cs-fixer         # Code style check
 composer rector           # Modernization check
+composer examples         # Smoke-run every example script
 
 # Fix issues automatically
 composer cs-fixer-fix     # Fix code style
@@ -41,7 +42,7 @@ composer test
 composer test-coverage
 
 # Run specific tests
-./vendor/bin/pest tests/Unit/RoundRobinSchedulerTest.php
+./vendor/bin/pest tests/Unit/Scheduling/RoundRobinSchedulerTest.php
 ```
 
 ## Contributing Guidelines
@@ -58,5 +59,5 @@ composer test-coverage
 - Follow PSR-12 coding standards
 - Write tests for all new features
 - Update documentation for API changes
-- Ensure PHPStan level 9 compliance
+- Ensure PHPStan level 8 compliance
 - Use meaningful commit messages
