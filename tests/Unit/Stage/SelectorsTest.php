@@ -188,6 +188,20 @@ describe('MatchOutcomeSelector', function (): void {
             ->toThrow(InvalidConfigurationException::class, 'draw');
     });
 
+    it('rejects round-less events instead of colliding them', function (): void {
+        $event = new Event([$this->alice, $this->bob]); // no round
+        $standings = (new StandingsCalculator())->calculate([$this->alice, $this->bob], []);
+        $outcome = new StageOutcome(
+            $standings,
+            [new Result($event, $this->alice)],
+            [],
+            new RoundPairing(1, 'final', [new Event([$this->alice, $this->bob], new Round(1))])
+        );
+
+        expect(fn () => MatchOutcomeSelector::winners()->select($outcome))
+            ->toThrow(InvalidConfigurationException::class, 'round numbers');
+    });
+
     it('reports no fixed size and round-trips through configuration', function (): void {
         expect(MatchOutcomeSelector::winners()->getSelectionSize())->toBeNull();
         expect(MatchOutcomeSelector::winners()->toArray())->toBe(['mode' => 'winners']);

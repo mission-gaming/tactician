@@ -172,13 +172,27 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
         return $index;
     }
 
+    /**
+     * @throws InvalidConfigurationException When the event has no round number
+     */
     private function eventKey(Event $event): string
     {
+        $round = $event->getRound()?->getNumber();
+        if ($round === null) {
+            // Selectors read recorded outcomes with certainty; a round-less
+            // event cannot be matched to its result and must not silently
+            // collide with other rounds
+            throw new InvalidConfigurationException(
+                'Match outcome selection requires events with round numbers',
+                ['participants' => array_map(fn (Participant $p) => $p->getId(), $event->getParticipants())]
+            );
+        }
+
         $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
         sort($ids);
 
         $leg = $event->getMetadataValue('tie_leg');
 
-        return ($event->getRound()?->getNumber() ?? 0) . ':' . implode('|', $ids) . ':' . (is_int($leg) ? $leg : 1);
+        return $round . ':' . implode('|', $ids) . ':' . (is_int($leg) ? $leg : 1);
     }
 }
