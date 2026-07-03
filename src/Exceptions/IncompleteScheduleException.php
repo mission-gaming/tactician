@@ -18,10 +18,14 @@ use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 class IncompleteScheduleException extends SchedulingException
 {
     /**
+     * @param int|null $expectedEventCount Null when the plan cannot know its
+     *                                     expected events up front (e.g. an
+     *                                     open-ended stage failing integrity
+     *                                     validation)
      * @param Participant[] $participants
      */
     public function __construct(
-        private readonly int $expectedEventCount,
+        private readonly ?int $expectedEventCount,
         private readonly int $actualEventCount,
         private readonly ConstraintViolationCollector $violationCollector,
         private readonly StagePlan $plan,
@@ -31,18 +35,26 @@ class IncompleteScheduleException extends SchedulingException
         ?\Throwable $previous = null
     ) {
         if ($message === '') {
-            $message = sprintf(
-                'Incomplete schedule generated: %d events created out of %d expected (%d missing)',
-                $this->actualEventCount,
-                $this->expectedEventCount,
-                $this->getMissingEventCount()
-            );
+            $message = $this->expectedEventCount === null
+                ? sprintf(
+                    'Schedule failed validation with %d events generated (expected count unknowable up front)',
+                    $this->actualEventCount
+                )
+                : sprintf(
+                    'Incomplete schedule generated: %d events created out of %d expected (%d missing)',
+                    $this->actualEventCount,
+                    $this->expectedEventCount,
+                    $this->getMissingEventCount()
+                );
         }
 
         parent::__construct($message, $code, $previous);
     }
 
-    public function getExpectedEventCount(): int
+    /**
+     * Null when the plan could not know its expected events up front.
+     */
+    public function getExpectedEventCount(): ?int
     {
         return $this->expectedEventCount;
     }
@@ -52,8 +64,16 @@ class IncompleteScheduleException extends SchedulingException
         return $this->actualEventCount;
     }
 
+    /**
+     * Zero when the expected count is unknowable: no missing-event claim
+     * can honestly be made for an open-ended stage.
+     */
     public function getMissingEventCount(): int
     {
+        if ($this->expectedEventCount === null) {
+            return 0;
+        }
+
         return max(0, $this->expectedEventCount - $this->actualEventCount);
     }
 
@@ -89,13 +109,18 @@ class IncompleteScheduleException extends SchedulingException
             $report[] = sprintf('Legs: %d', $legs);
         }
 
-        $report[] = sprintf('Expected Events: %d', $this->expectedEventCount);
-        $report[] = sprintf('Generated Events: %d', $this->actualEventCount);
-        $report[] = sprintf(
-            'Missing Events: %d (%.1f%%)',
-            $this->getMissingEventCount(),
-            $this->expectedEventCount === 0 ? 0.0 : ($this->getMissingEventCount() / $this->expectedEventCount) * 100
-        );
+        if ($this->expectedEventCount === null) {
+            $report[] = 'Expected Events: unknown (not knowable up front for this stage)';
+            $report[] = sprintf('Generated Events: %d', $this->actualEventCount);
+        } else {
+            $report[] = sprintf('Expected Events: %d', $this->expectedEventCount);
+            $report[] = sprintf('Generated Events: %d', $this->actualEventCount);
+            $report[] = sprintf(
+                'Missing Events: %d (%.1f%%)',
+                $this->getMissingEventCount(),
+                $this->expectedEventCount === 0 ? 0.0 : ($this->getMissingEventCount() / $this->expectedEventCount) * 100
+            );
+        }
         $report[] = '';
 
         if ($this->violationCollector->hasViolations()) {

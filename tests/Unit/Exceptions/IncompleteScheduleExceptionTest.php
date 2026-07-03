@@ -142,6 +142,27 @@ describe('IncompleteScheduleException', function (): void {
         expect($message)->toContain('10 missing');
     });
 
+    // An unknowable expected count (open-ended stage failing integrity
+    // validation) must never be reported as a known, exactly-met expectation
+    it('handles an unknowable expected count honestly', function (): void {
+        $exception = new IncompleteScheduleException(
+            expectedEventCount: null,
+            actualEventCount: 3,
+            violationCollector: new ConstraintViolationCollector(),
+            plan: $this->plan,
+            participants: $this->participants
+        );
+
+        expect($exception->getExpectedEventCount())->toBeNull();
+        expect($exception->getMissingEventCount())->toBe(0);
+        expect($exception->getMessage())->toContain('expected count unknowable up front');
+
+        $report = $exception->getDiagnosticReport();
+        expect($report)->toContain('Expected Events: unknown (not knowable up front for this stage)');
+        expect($report)->toContain('Generated Events: 3');
+        expect($report)->not->toContain('Missing Events:');
+    });
+
     // Tests that exception allows custom messages
     it('allows custom exception messages', function (): void {
         // Given: Exception with custom message

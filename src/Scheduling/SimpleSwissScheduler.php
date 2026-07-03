@@ -62,7 +62,7 @@ class SimpleSwissScheduler implements SchedulerInterface
 
             if (count($roundEvents) !== $plan->getEventsPerRound()) {
                 throw new IncompleteScheduleException(
-                    $plan->getExpectedEventCount() ?? 0,
+                    $plan->getExpectedEventCount(),
                     count($events) + count($roundEvents),
                     $this->violationCollector,
                     $plan,

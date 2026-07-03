@@ -50,7 +50,7 @@ class ScheduleValidator
         $integrityViolations = $plan->validateIntegrity($generated);
         if ($integrityViolations !== []) {
             throw new IncompleteScheduleException(
-                $expectedEventCount ?? $actualEventCount,
+                $expectedEventCount,
                 $actualEventCount,
                 $violations,
                 $plan,

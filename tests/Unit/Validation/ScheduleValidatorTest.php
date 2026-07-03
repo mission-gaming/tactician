@@ -18,14 +18,22 @@ use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 use MissionGaming\Tactician\Validation\ScheduleValidator;
 
 /**
- * A stub plan with a fixed expected event count and no integrity checks,
- * isolating the validator's own logic from concrete plan implementations.
+ * A stub plan with a fixed expected event count and canned integrity
+ * violations, isolating the validator's own logic from concrete plan
+ * implementations.
+ *
+ * @param array<string> $integrityViolations
  */
-function fixedCountPlan(?int $expectedEventCount): StagePlan
+function fixedCountPlan(?int $expectedEventCount, array $integrityViolations = []): StagePlan
 {
-    return new readonly class ($expectedEventCount) implements StagePlan {
-        public function __construct(private ?int $expectedEventCount)
-        {
+    return new readonly class ($expectedEventCount, $integrityViolations) implements StagePlan {
+        /**
+         * @param array<string> $integrityViolations
+         */
+        public function __construct(
+            private ?int $expectedEventCount,
+            private array $integrityViolations = []
+        ) {
         }
 
         #[Override]
@@ -61,7 +69,7 @@ function fixedCountPlan(?int $expectedEventCount): StagePlan
         #[Override]
         public function validateIntegrity(Schedule $schedule): array
         {
-            return [];
+            return $this->integrityViolations;
         }
     };
 }
@@ -174,6 +182,36 @@ describe('ScheduleValidator', function (): void {
 
             $validator->validateScheduleCompleteness($schedule, fixedCountPlan(null), $violations, $participants);
             expect(true)->toBeTrue();
+        });
+
+        // Regression: an integrity failure on a plan with an unknowable
+        // expected count used to report the actual count as expected,
+        // implying the expectation was known and exactly met
+        it('reports an unknowable expected count honestly when integrity fails', function (): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+
+            $participant1 = new Participant('p1', 'Alice');
+            $participant2 = new Participant('p2', 'Bob');
+            $participants = [$participant1, $participant2];
+
+            $schedule = new Schedule([new Event([$participant1, $participant2])]);
+            $plan = fixedCountPlan(null, ['Pairing p1 vs p2 appears 2 time(s).']);
+
+            try {
+                $validator->validateScheduleCompleteness($schedule, $plan, $violations, $participants);
+                expect(false)->toBeTrue('Expected IncompleteScheduleException was not thrown');
+            } catch (IncompleteScheduleException $e) {
+                expect($e->getExpectedEventCount())->toBeNull();
+                expect($e->getActualEventCount())->toBe(1);
+                expect($e->getMissingEventCount())->toBe(0);
+                expect($e->getMessage())->toContain('failed test-algorithm integrity validation');
+
+                $report = $e->getDiagnosticReport();
+                expect($report)->toContain('Expected Events: unknown (not knowable up front for this stage)');
+                expect($report)->toContain('Generated Events: 1');
+                expect($report)->not->toContain('Missing Events:');
+            }
         });
 
         it('rejects duplicate round-robin pairings even when event count matches', function (): void {
