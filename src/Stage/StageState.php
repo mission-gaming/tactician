@@ -102,6 +102,29 @@ final readonly class StageState
             }
         }
 
+        $this->assertResultsBelongTo($pairing, $results);
+
+        return new self(
+            $this->participants,
+            [...$this->roundsPlayed, $pairing],
+            [...$this->results, ...array_values($results)]
+        );
+    }
+
+    /**
+     * Every result must reference one of the pairing's events — accepting
+     * results for unrelated events would silently corrupt engine replay.
+     *
+     * @param array<Result> $results
+     * @throws InvalidConfigurationException When a result references an event outside the pairing
+     */
+    private function assertResultsBelongTo(RoundPairing $pairing, array $results): void
+    {
+        $pairingEventKeys = [];
+        foreach ($pairing->getEvents() as $event) {
+            $pairingEventKeys[$this->eventKey($event)] = true;
+        }
+
         foreach ($results as $result) {
             $resultRound = $result->getEvent()->getRound()?->getNumber();
             if ($resultRound !== $pairing->getRoundNumber()) {
@@ -110,13 +133,28 @@ final readonly class StageState
                     ['pairing_round' => $pairing->getRoundNumber(), 'result_round' => $resultRound]
                 );
             }
-        }
 
-        return new self(
-            $this->participants,
-            [...$this->roundsPlayed, $pairing],
-            [...$this->results, ...array_values($results)]
-        );
+            if (!isset($pairingEventKeys[$this->eventKey($result->getEvent())])) {
+                throw new InvalidConfigurationException(
+                    'Result references an event that is not part of the pairing being recorded',
+                    ['pairing_round' => $pairing->getRoundNumber(), 'event' => $this->eventKey($result->getEvent())]
+                );
+            }
+        }
+    }
+
+    /**
+     * Identify an event by round, participants, and tie leg — object
+     * identity does not survive serialization round-trips.
+     */
+    private function eventKey(Event $event): string
+    {
+        $ids = array_map(fn (Participant $participant) => $participant->getId(), $event->getParticipants());
+        sort($ids);
+
+        $leg = $event->getMetadataValue('tie_leg');
+
+        return ($event->getRound()?->getNumber() ?? 0) . ':' . implode('|', $ids) . ':' . (is_int($leg) ? $leg : 1);
     }
 
     /**
@@ -140,15 +178,7 @@ final readonly class StageState
             );
         }
 
-        foreach ($results as $result) {
-            $resultRound = $result->getEvent()->getRound()?->getNumber();
-            if ($resultRound !== $lastRound->getRoundNumber()) {
-                throw new InvalidConfigurationException(
-                    'Additional results must belong to the last recorded round',
-                    ['last_round' => $lastRound->getRoundNumber(), 'result_round' => $resultRound]
-                );
-            }
-        }
+        $this->assertResultsBelongTo($lastRound, $results);
 
         return new self(
             $this->participants,
