@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\RoundPairing;
 
 /**
  * Pairs single elimination rounds incrementally from recorded results.
@@ -34,7 +35,7 @@ readonly class SingleEliminationEngine
      * @throws InvalidConfigurationException When inputs are malformed, a round is partially
      *                                       resolved, a result is drawn, or the tournament is complete
      */
-    public function pairNextRound(array $participants, array $results): EliminationRoundPairing
+    public function pairNextRound(array $participants, array $results): RoundPairing
     {
         $resolution = $this->resolveBracket($participants, $results);
 
@@ -66,7 +67,7 @@ readonly class SingleEliminationEngine
             }
         }
 
-        return new EliminationRoundPairing($roundNumber, $stage, $events, $byes);
+        return new RoundPairing($roundNumber, $stage, $events, $byes);
     }
 
     /**

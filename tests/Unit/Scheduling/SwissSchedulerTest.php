@@ -6,19 +6,19 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
-use MissionGaming\Tactician\Scheduling\SimpleSwissScheduler;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
+use MissionGaming\Tactician\Scheduling\SwissScheduler;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
-describe('SimpleSwissScheduler', function (): void {
-    it('generates the requested number of simple Swiss rounds', function (): void {
+describe('SwissScheduler', function (): void {
+    it('generates the requested number of Swiss rounds', function (): void {
         $participants = [];
         for ($i = 1; $i <= 8; ++$i) {
             $participants[] = new Participant("p{$i}", "Player {$i}");
         }
 
-        $scheduler = new SimpleSwissScheduler(null, new Randomizer(new Mt19937(123)));
+        $scheduler = new SwissScheduler(null, new Randomizer(new Mt19937(123)));
         $schedule = $scheduler->schedule($participants, new SwissOptions(rounds: 3));
 
         expect($schedule->count())->toBe(12);
@@ -56,7 +56,7 @@ describe('SimpleSwissScheduler', function (): void {
             $participants[] = new Participant("p{$i}", "Player {$i}");
         }
 
-        $scheduler = new SimpleSwissScheduler(null, new Randomizer(new Mt19937(321)));
+        $scheduler = new SwissScheduler(null, new Randomizer(new Mt19937(321)));
         $schedule = $scheduler->schedule($participants, new SwissOptions(rounds: 3));
 
         expect($schedule->count())->toBe(6);
@@ -89,9 +89,9 @@ describe('SimpleSwissScheduler', function (): void {
             $participants[] = new Participant("p{$i}", "Player {$i}");
         }
 
-        $firstSchedule = (new SimpleSwissScheduler(null, new Randomizer(new Mt19937(777))))
+        $firstSchedule = (new SwissScheduler(null, new Randomizer(new Mt19937(777))))
             ->schedule($participants, new SwissOptions(rounds: 3));
-        $secondSchedule = (new SimpleSwissScheduler(null, new Randomizer(new Mt19937(777))))
+        $secondSchedule = (new SwissScheduler(null, new Randomizer(new Mt19937(777))))
             ->schedule($participants, new SwissOptions(rounds: 3));
 
         $firstPairings = array_map(
@@ -112,7 +112,7 @@ describe('SimpleSwissScheduler', function (): void {
             $participants[] = new Participant("p{$i}", "Player {$i}");
         }
 
-        $schedule = (new SimpleSwissScheduler(null, new Randomizer(new Mt19937(99))))
+        $schedule = (new SwissScheduler(null, new Randomizer(new Mt19937(99))))
             ->schedule($participants);
 
         expect($schedule->getMetadataValue('rounds'))->toBe(3);
@@ -120,7 +120,7 @@ describe('SimpleSwissScheduler', function (): void {
     });
 
     it('rejects fewer than 2 participants', function (): void {
-        expect(fn () => (new SimpleSwissScheduler())->schedule([new Participant('p1', 'Player 1')]))
+        expect(fn () => (new SwissScheduler())->schedule([new Participant('p1', 'Player 1')]))
             ->toThrow(InvalidConfigurationException::class, 'at least 2 participants');
     });
 
@@ -132,7 +132,7 @@ describe('SimpleSwissScheduler', function (): void {
             new Participant('p3', 'Player 3'),
         ];
 
-        expect(fn () => (new SimpleSwissScheduler())->schedule($participants, new SwissOptions(rounds: 2)))
+        expect(fn () => (new SwissScheduler())->schedule($participants, new SwissOptions(rounds: 2)))
             ->toThrow(InvalidConfigurationException::class, 'unique IDs');
     });
 
@@ -144,7 +144,7 @@ describe('SimpleSwissScheduler', function (): void {
             new Participant('p4', 'Player 4'),
         ];
 
-        expect(fn () => (new SimpleSwissScheduler())->schedule($participants, new SwissOptions(rounds: 4)))
+        expect(fn () => (new SwissScheduler())->schedule($participants, new SwissOptions(rounds: 4)))
             ->toThrow(InvalidConfigurationException::class);
     });
 
@@ -161,7 +161,7 @@ describe('SimpleSwissScheduler', function (): void {
             ->build();
 
         try {
-            (new SimpleSwissScheduler($constraints))->schedule($participants, new SwissOptions(rounds: 1));
+            (new SwissScheduler($constraints))->schedule($participants, new SwissOptions(rounds: 1));
             expect(false)->toBeTrue('Expected IncompleteScheduleException');
         } catch (IncompleteScheduleException $e) {
             expect($e->getPlan()->getTotalRounds())->toBe(1);

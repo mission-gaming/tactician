@@ -197,7 +197,7 @@ describe('GroupStageEngine', function (): void {
         expect($qualifiers)->toHaveCount(4);
 
         $semifinals = $knockoutEngine->pairNextRound($qualifiers, []);
-        expect($semifinals->getStage())->toBe('semifinal');
+        expect($semifinals->getLabel())->toBe('semifinal');
 
         // Cross-group semifinals: each group winner meets the other group's runner-up
         foreach ($semifinals->getEvents() as $event) {
@@ -208,7 +208,7 @@ describe('GroupStageEngine', function (): void {
 
         $knockoutResults = playFavourites($semifinals->getEvents());
         $final = $knockoutEngine->pairNextRound($qualifiers, $knockoutResults);
-        expect($final->getStage())->toBe('final');
+        expect($final->getLabel())->toBe('final');
 
         $knockoutResults = [...$knockoutResults, ...playFavourites($final->getEvents())];
         $champion = $knockoutEngine->getChampion($qualifiers, $knockoutResults);
