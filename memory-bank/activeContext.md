@@ -6,11 +6,11 @@
 - Documentation was audited end-to-end: README, ROADMAP, ARCHITECTURE, USAGE, CONTRIBUTING, and BACKGROUND all match the shipped code, and every docs/example snippet has been executed
 
 ## Next Steps
-- **Phase 3 implementation is underway** per the accepted design (`docs/design/phase-3-algorithm-neutral-core.md`). Milestones 1 (StagePlan introduction) and 2 (typed `RoundRobinOptions`/`SwissOptions` killing the legs/rounds overload; `RankingStrategy` replacing `PointsSystem`) are done. Next: engine unification (M3: `StageState`/`RoundPairing`/`StageEngineInterface`/`StageOutcome`, `SimpleSwissScheduler` removal), then progression/pools/bracket presets (M4), sweep (M5).
+- **Phase 3 implementation is underway** per the accepted design (`docs/design/phase-3-algorithm-neutral-core.md`). Milestones 1 (StagePlan), 2 (typed options + `RankingStrategy`), and 3 (engine unification: serializable `StageState`, `RoundPairing`, `StageEngineInterface`/`StageOutcome`, Swiss engine conforming, `SwissScheduler` preset replacing `SimpleSwissScheduler`) are done. Next: M4 (progression selectors, composition validator, `PoolDistributor`, `GroupStageEngine` retirement, elimination engines as presets, two-legged ties), then sweep (M5).
 - Backtracking generation for constraint configurations the greedy generator cannot satisfy (known limitation, recorded in ROADMAP Phase 5)
 
 ## Active Decisions and Considerations
-- Two generation models still coexist until Phase 3 milestone 3 unifies the results-driven engines behind `StageEngineInterface`; all design questions are resolved in the design doc (stage-scoped naming, no trophy vocabulary, selectors optional, `PointsSystem` → `RankingStrategy`).
+- The Swiss engine now conforms to `StageEngineInterface`; the elimination and group engines keep their participants-and-results signatures until M4 rebuilds them as presets over composed single-round stages. StageState records pairings (not just results), which is what makes the results-free `SwissScheduler` preset avoid repeats.
 - Stage plans never fabricate shape facts: null legs = concept does not apply (Swiss); null totals = unknowable up front. Consumers wanting display defaults write `?? 1` at their own edge.
 - Timeline assignment (Phase 4) stays per-stage and consumes `Schedule::getEventsByRound()`; nothing in Phase 3 may block it — plans carrying round structure keep that bridge intact.
 - Constraints are hard filters with loud, diagnostic failure; soft/preference constraints are intentionally unsupported.

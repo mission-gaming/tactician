@@ -7,16 +7,21 @@ namespace MissionGaming\Tactician\Scheduling;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
+use MissionGaming\Tactician\Stage\RoundPairing;
+use MissionGaming\Tactician\Stage\StageEngineInterface;
+use MissionGaming\Tactician\Stage\StageOutcome;
+use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
+use Override;
+use Random\Randomizer;
 
 /**
- * Pairs Swiss rounds incrementally from recorded results.
+ * Pairs Swiss rounds incrementally from the recorded stage state.
  *
  * Unlike whole-schedule generators, Swiss pairings depend on results: each
  * round is paired from the current standings. This engine implements
@@ -26,29 +31,40 @@ use MissionGaming\Tactician\Standings\WinDrawLossRanking;
  * participant who has had the fewest, and home/away roles go to whichever
  * participant has had fewer home assignments.
  *
- * Byes recorded in previousByeIds are credited as wins when computing the
+ * Byes recorded on the state are credited as wins when computing the
  * pairing order (the Swiss convention), so a bye recipient is paired among
  * the winners in the following round even though no Result exists for the
  * bye.
  *
- * Withdrawals are supported: pass only the still-active participants to
- * pairNextRound(). Results involving withdrawn participants still count
- * toward the remaining participants' standings.
+ * Withdrawals are supported via StageState::withoutParticipant(): the
+ * participant leaves the active list, and their recorded pairings and
+ * results still count toward the remaining participants' standings.
+ *
+ * Repeat avoidance reads the pairings recorded on the state, not the
+ * results - so driving the engine while recording no results produces
+ * random non-repeat pairing (with a Randomizer), which is the
+ * whole-schedule Swiss preset SwissScheduler wraps.
  *
  * Constraints that reason about the tournament length (e.g.
  * SeedProtectionConstraint) need to know the planned number of rounds;
  * provide it via the plannedRounds constructor argument.
  */
-readonly class SwissPairingEngine
+readonly class SwissPairingEngine implements StageEngineInterface
 {
     /**
      * @param int|null $plannedRounds Total rounds the tournament will run, exposed to
-     *                                constraints via the stage plan on the scheduling context
+     *                                constraints via the stage plan on the scheduling context;
+     *                                null leaves the stage open-ended (isComplete() only
+     *                                becomes true when too few participants remain)
+     * @param Randomizer|null $randomizer Shuffles pairing order within equal-ranking groups;
+     *                                    with no recorded rounds the whole field ties at zero,
+     *                                    so the entire pairing order is shuffled
      */
     public function __construct(
         private ?ConstraintSet $constraints = null,
         private StandingsCalculator $standingsCalculator = new StandingsCalculator(),
-        private ?int $plannedRounds = null
+        private ?int $plannedRounds = null,
+        private ?Randomizer $randomizer = null
     ) {
         if ($plannedRounds !== null && $plannedRounds < 1) {
             throw new \InvalidArgumentException('Planned rounds must be at least 1');
@@ -56,26 +72,33 @@ readonly class SwissPairingEngine
     }
 
     /**
-     * Pair the next round from the given results.
+     * The shape declaration for this stage: rounds when planned, no legs.
      *
-     * @param array<Participant> $participants Active participants to pair
-     * @param array<Result> $results Results of every round played so far
-     * @param array<string> $previousByeIds Participant IDs that already received a bye (repeat an ID for multiple byes)
-     * @param int|null $roundNumber The round to pair; derived from the results when null
+     * The plan covers every participant the stage has seen - active ones
+     * plus withdrawn participants still referenced by recorded rounds.
      *
-     * @throws InvalidConfigurationException When the inputs are malformed
+     * @throws InvalidConfigurationException When fewer than 2 participants have been seen
+     */
+    #[Override]
+    public function getPlan(StageState $state): SwissPlan
+    {
+        return new SwissPlan($this->collectStageParticipants($state), $this->plannedRounds);
+    }
+
+    /**
+     * Pair the next round from the recorded state.
+     *
+     * @throws InvalidConfigurationException When fewer than 2 active participants remain
      * @throws NoValidPairingException When no complete pairing exists for the round
      */
-    public function pairNextRound(
-        array $participants,
-        array $results,
-        array $previousByeIds = [],
-        ?int $roundNumber = null
-    ): SwissRoundPairing {
-        $participants = array_values($participants);
+    #[Override]
+    public function pairNextRound(StageState $state): RoundPairing
+    {
+        $participants = array_values($state->getParticipants());
         $this->validateParticipants($participants);
 
-        $roundNumber ??= $this->deriveNextRoundNumber($results);
+        $roundNumber = $state->getNextRoundNumber();
+        $results = $state->getResults();
 
         // Include withdrawn participants referenced by results so their games
         // still count toward standings, then keep only active participants
@@ -85,30 +108,24 @@ readonly class SwissPairingEngine
             $activeIds[$participant->getId()] = true;
         }
 
-        $standingsParticipants = $participants;
-        $knownIds = $activeIds;
-        foreach ($results as $result) {
-            foreach ($result->getEvent()->getParticipants() as $resultParticipant) {
-                if (!isset($knownIds[$resultParticipant->getId()])) {
-                    $knownIds[$resultParticipant->getId()] = true;
-                    $standingsParticipants[] = $resultParticipant;
-                }
-            }
-        }
-
-        $standings = $this->standingsCalculator->calculate($standingsParticipants, $results);
+        $standings = $this->standingsCalculator->calculate(
+            $this->collectStageParticipants($state),
+            $results
+        );
         $activeEntries = array_values(array_filter(
             $standings->getEntries(),
             fn ($entry) => isset($activeIds[$entry->getParticipant()->getId()])
         ));
-        $orderedParticipants = $this->orderForPairing($activeEntries, $previousByeIds);
+        $orderedParticipants = $this->orderForPairing($activeEntries, $state->getByeIds());
 
-        $playedPairings = $this->collectPlayedPairings($results);
-        $homeCounts = $this->collectHomeCounts($results);
-        $priorEvents = array_map(fn (Result $result) => $result->getEvent(), $results);
+        // Repeat avoidance and home balancing read the recorded pairings,
+        // not the results, so rounds recorded without results still count.
+        $playedEvents = $state->getPlayedEvents();
+        $playedPairings = $this->collectPlayedPairings($playedEvents);
+        $homeCounts = $this->collectHomeCounts($playedEvents);
 
-        $plan = new SwissPlan($participants, $this->plannedRounds);
-        $context = new SchedulingContext($participants, $plan, $priorEvents, 1, 2);
+        $plan = new SwissPlan($this->collectStageParticipants($state), $this->plannedRounds);
+        $context = new SchedulingContext($participants, $plan, $playedEvents);
 
         if (count($orderedParticipants) % 2 === 0) {
             $events = $this->pairOrderedParticipants(
@@ -120,13 +137,13 @@ readonly class SwissPairingEngine
             );
 
             if ($events !== null) {
-                return new SwissRoundPairing($roundNumber, $events);
+                return new RoundPairing($roundNumber, null, $events);
             }
 
             throw new NoValidPairingException($roundNumber, $participants);
         }
 
-        foreach ($this->orderByeCandidates($orderedParticipants, $previousByeIds) as $byeCandidate) {
+        foreach ($this->orderByeCandidates($orderedParticipants, $state->getByeIds()) as $byeCandidate) {
             $remaining = array_values(array_filter(
                 $orderedParticipants,
                 fn (Participant $participant) => $participant->getId() !== $byeCandidate->getId()
@@ -141,7 +158,7 @@ readonly class SwissPairingEngine
             );
 
             if ($events !== null) {
-                return new SwissRoundPairing($roundNumber, $events, $byeCandidate);
+                return new RoundPairing($roundNumber, null, $events, [$byeCandidate]);
             }
         }
 
@@ -149,6 +166,101 @@ readonly class SwissPairingEngine
     }
 
     /**
+     * A Swiss stage is complete when its planned rounds have all been
+     * played, or when too few active participants remain to pair another
+     * round. An open-ended stage (no planned rounds) with enough
+     * participants never reports complete - the application decides when
+     * to stop, or pairNextRound() throws when no valid pairing remains.
+     */
+    #[Override]
+    public function isComplete(StageState $state): bool
+    {
+        if (count($state->getParticipants()) < 2) {
+            return true;
+        }
+
+        return $this->plannedRounds !== null
+            && $state->getNextRoundNumber() > $this->plannedRounds;
+    }
+
+    /**
+     * The uniform completion product; null while the stage is unfinished.
+     *
+     * Standings cover every participant the stage has seen, including
+     * withdrawn ones - their played games remain part of the record.
+     */
+    #[Override]
+    public function getOutcome(StageState $state): ?StageOutcome
+    {
+        if (!$this->isComplete($state)) {
+            return null;
+        }
+
+        $standings = $this->standingsCalculator->calculate(
+            $this->collectStageParticipants($state),
+            $state->getResults()
+        );
+
+        return new StageOutcome(
+            $standings,
+            $state->getResults(),
+            $state->getByeCounts(),
+            $state->getLastRound()
+        );
+    }
+
+    /**
+     * Every participant the stage has seen: the active list plus withdrawn
+     * participants still referenced by recorded rounds (events or byes) or
+     * results.
+     *
+     * @return array<Participant>
+     */
+    private function collectStageParticipants(StageState $state): array
+    {
+        $participants = array_values($state->getParticipants());
+        $knownIds = [];
+        foreach ($participants as $participant) {
+            $knownIds[$participant->getId()] = true;
+        }
+
+        foreach ($state->getRoundsPlayed() as $pairing) {
+            foreach ($pairing->getEvents() as $event) {
+                foreach ($event->getParticipants() as $participant) {
+                    if (!isset($knownIds[$participant->getId()])) {
+                        $knownIds[$participant->getId()] = true;
+                        $participants[] = $participant;
+                    }
+                }
+            }
+
+            // A participant can be referenced by a bye alone (bye in one
+            // round, withdrawn before ever playing) and must still appear
+            // in the plan, standings, and outcome.
+            foreach ($pairing->getByes() as $participant) {
+                if (!isset($knownIds[$participant->getId()])) {
+                    $knownIds[$participant->getId()] = true;
+                    $participants[] = $participant;
+                }
+            }
+        }
+
+        foreach ($state->getResults() as $result) {
+            foreach ($result->getEvent()->getParticipants() as $participant) {
+                if (!isset($knownIds[$participant->getId()])) {
+                    $knownIds[$participant->getId()] = true;
+                    $participants[] = $participant;
+                }
+            }
+        }
+
+        return $participants;
+    }
+
+    /**
+     * ID uniqueness is StageState's invariant (start() validates it and
+     * every transition preserves it), so only the size needs checking.
+     *
      * @param array<Participant> $participants
      *
      * @throws InvalidConfigurationException
@@ -161,39 +273,17 @@ readonly class SwissPairingEngine
                 ['participant_count' => count($participants), 'minimum_required' => 2]
             );
         }
-
-        $ids = array_map(fn (Participant $participant) => $participant->getId(), $participants);
-        if (count($ids) !== count(array_unique($ids))) {
-            throw new InvalidConfigurationException(
-                'All participants must have unique IDs',
-                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))]
-            );
-        }
     }
 
     /**
-     * @param array<Result> $results
-     */
-    private function deriveNextRoundNumber(array $results): int
-    {
-        $maxRound = 0;
-        foreach ($results as $result) {
-            $round = $result->getEvent()->getRound()?->getNumber() ?? 0;
-            $maxRound = max($maxRound, $round);
-        }
-
-        return $maxRound + 1;
-    }
-
-    /**
-     * @param array<Result> $results
+     * @param array<Event> $playedEvents
      * @return array<string, bool>
      */
-    private function collectPlayedPairings(array $results): array
+    private function collectPlayedPairings(array $playedEvents): array
     {
         $playedPairings = [];
-        foreach ($results as $result) {
-            $eventParticipants = $result->getEvent()->getParticipants();
+        foreach ($playedEvents as $event) {
+            $eventParticipants = $event->getParticipants();
             if (count($eventParticipants) === 2) {
                 $playedPairings[$this->pairingKey($eventParticipants[0], $eventParticipants[1])] = true;
             }
@@ -203,14 +293,14 @@ readonly class SwissPairingEngine
     }
 
     /**
-     * @param array<Result> $results
+     * @param array<Event> $playedEvents
      * @return array<string, int>
      */
-    private function collectHomeCounts(array $results): array
+    private function collectHomeCounts(array $playedEvents): array
     {
         $homeCounts = [];
-        foreach ($results as $result) {
-            $eventParticipants = $result->getEvent()->getParticipants();
+        foreach ($playedEvents as $event) {
+            $eventParticipants = $event->getParticipants();
             if (count($eventParticipants) === 2) {
                 $homeId = $eventParticipants[0]->getId();
                 $homeCounts[$homeId] = ($homeCounts[$homeId] ?? 0) + 1;
@@ -223,7 +313,8 @@ readonly class SwissPairingEngine
     /**
      * Order participants for pairing: standings order, with previous byes
      * credited as wins (the Swiss convention) so bye recipients pair among
-     * the winners.
+     * the winners, and - when a randomizer is configured - shuffled within
+     * equal-ranking groups.
      *
      * Crediting a bye "as a win" is only meaningful under a win/draw/loss
      * ranking, so byes require the standings calculator to use a
@@ -238,19 +329,19 @@ readonly class SwissPairingEngine
     private function orderForPairing(array $entries, array $previousByeIds): array
     {
         $byeCounts = array_count_values($previousByeIds);
-        if ($byeCounts === []) {
-            return array_map(fn ($entry) => $entry->getParticipant(), $entries);
-        }
 
-        $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
-        if (!$rankingStrategy instanceof WinDrawLossRanking) {
-            throw new InvalidConfigurationException(
-                'Swiss bye crediting requires a win/draw/loss ranking strategy; the Swiss convention of counting a bye as a win is undefined under other ranking scales',
-                ['ranking_strategy' => $rankingStrategy::class]
-            );
-        }
+        $winValue = 0.0;
+        if ($byeCounts !== []) {
+            $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
+            if (!$rankingStrategy instanceof WinDrawLossRanking) {
+                throw new InvalidConfigurationException(
+                    'Swiss bye crediting requires a win/draw/loss ranking strategy; the Swiss convention of counting a bye as a win is undefined under other ranking scales',
+                    ['ranking_strategy' => $rankingStrategy::class]
+                );
+            }
 
-        $winValue = $rankingStrategy->getWinValue();
+            $winValue = $rankingStrategy->getWinValue();
+        }
 
         $indexed = [];
         foreach ($entries as $index => $entry) {
@@ -268,7 +359,44 @@ readonly class SwissPairingEngine
                 ?: ($first['index'] <=> $second['index'])
         );
 
+        if ($this->randomizer !== null) {
+            $indexed = $this->shuffleWithinEqualRankings($indexed);
+        }
+
         return array_map(fn (array $entry) => $entry['participant'], $indexed);
+    }
+
+    /**
+     * Shuffle each run of equal ranking values, preserving the order
+     * between runs. With no recorded rounds every participant ties at
+     * zero, so this shuffles the whole field - which is what makes
+     * results-free driving produce random non-repeat pairings.
+     *
+     * @param array<array{participant: Participant, ranking_value: float, index: int}> $indexed Ordered best first
+     * @return array<array{participant: Participant, ranking_value: float, index: int}>
+     */
+    private function shuffleWithinEqualRankings(array $indexed): array
+    {
+        assert($this->randomizer !== null);
+
+        $shuffled = [];
+        $group = [];
+        $groupValue = null;
+
+        foreach ($indexed as $entry) {
+            if ($groupValue !== null && $entry['ranking_value'] !== $groupValue) {
+                $shuffled = [...$shuffled, ...$this->randomizer->shuffleArray($group)];
+                $group = [];
+            }
+            $groupValue = $entry['ranking_value'];
+            $group[] = $entry;
+        }
+
+        if ($group !== []) {
+            $shuffled = [...$shuffled, ...$this->randomizer->shuffleArray($group)];
+        }
+
+        return $shuffled;
     }
 
     /**

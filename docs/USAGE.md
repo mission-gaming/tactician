@@ -43,6 +43,10 @@ anything else that competes.
 | **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
 | **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out. Composed via `GroupStageEngine` qualifiers and the elimination engines. |
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
+| **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
+| **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`. |
+| **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary — those are consumer interpretations of the outcome. |
+| **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
 ## Basic Usage
@@ -413,40 +417,63 @@ may have at most one result; recording two results for the same event throws.
 
 ## Swiss Tournaments
 
-`SwissPairingEngine` pairs one round at a time from recorded results:
-participants are ordered by standings and paired adjacently (Monrad style),
-backtracking past repeat pairings. Byes rotate to the lowest-placed
-participant with the fewest so far and are credited as wins when ordering
-the next round.
+`SwissPairingEngine` is a **stage engine** (`StageEngineInterface`): it
+pairs one round at a time from the recorded `StageState`. Participants are
+ordered by standings and paired adjacently (Monrad style), backtracking
+past repeat pairings. Byes rotate to the lowest-placed participant with
+the fewest so far and are credited as wins when ordering the next round.
+
+Every results-driven format shares one driver loop — the single
+integration a platform writes:
 
 ```php
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\StageState;
 
 // plannedRounds lets length-aware constraints (e.g. seed protection) size
-// their windows correctly
+// their windows correctly, and tells isComplete() when the stage ends
 $engine = new SwissPairingEngine(plannedRounds: 5);
 
-$results = [];
-$byeIds = [];
-for ($round = 1; $round <= 5; ++$round) {
-    $pairing = $engine->pairNextRound($participants, $results, $byeIds);
+$state = StageState::start($participants);
+while (!$engine->isComplete($state)) {
+    $pairing = $engine->pairNextRound($state);
 
-    if ($pairing->hasBye()) {
-        $byeIds[] = $pairing->getBye()->getId();
-    }
-
+    // ...play the round, then record the pairing with its results...
+    $results = [];
     foreach ($pairing->getEvents() as $event) {
-        // ...play the match, then record the outcome...
         $results[] = new Result($event, $event->getParticipants()[0]);
     }
+
+    $state = $state->withRoundPlayed($pairing, $results);
 }
+
+// The uniform completion product: standings, results, byes, final round
+$outcome = $engine->getOutcome($state);
+$leader = $outcome->getStandings()->getEntries()[0];
 ```
 
-Withdrawals are supported: pass only the still-active participants to
-`pairNextRound()` — results involving withdrawn participants still count
-toward standings. When repeat avoidance leaves no complete pairing, a
-`NoValidPairingException` is thrown with a diagnostic report.
+`StageState` absorbs the between-round bookkeeping (bye threading, round
+numbers, played pairings) and serializes — `toArray()`/`fromArray()` and
+`toJson()`/`fromJson()` — so platforms persist it between rounds instead
+of re-deriving it. Withdrawals are a first-class verb:
+`$state->withoutParticipant($p)` removes a participant from pairing while
+their recorded games still count toward standings. When repeat avoidance
+leaves no complete pairing, a `NoValidPairingException` is thrown with a
+diagnostic report.
+
+For a whole Swiss schedule without recorded results — random non-repeat
+pairing over N rounds — use the `SwissScheduler` preset, which drives this
+engine through the same loop while recording no results:
+
+```php
+use MissionGaming\Tactician\Scheduling\SwissOptions;
+use MissionGaming\Tactician\Scheduling\SwissScheduler;
+use Random\Randomizer;
+
+$schedule = (new SwissScheduler(null, new Randomizer()))
+    ->schedule($participants, new SwissOptions(rounds: 3));
+```
 
 ## Elimination Brackets
 
@@ -465,7 +492,7 @@ $results = [];
 $champion = $engine->getChampion($participants, $results);
 while ($champion === null) {
     $pairing = $engine->pairNextRound($participants, $results);
-    echo "{$pairing->getStage()}\n"; // 'quarterfinal', 'semifinal', 'final', ...
+    echo "{$pairing->getLabel()}\n"; // 'quarterfinal', 'semifinal', 'final', ...
 
     foreach ($pairing->getEvents() as $event) {
         // ...play the match; elimination results cannot be draws...
@@ -476,6 +503,12 @@ while ($champion === null) {
 
 echo "Champion: {$champion->getLabel()}\n";
 ```
+
+Both elimination engines emit the same `RoundPairing` value the Swiss
+engine does — round number, label, events, and byes. (Their
+participants-and-results signatures and `getChampion()` predate the stage
+driver loop; the Phase 3 redesign rebuilds them as presets over composed
+single-round stages.)
 
 `DoubleEliminationEngine` adds a losers bracket and a grand final: everyone
 must lose twice to be eliminated, so when the losers champion wins the grand
@@ -693,7 +726,7 @@ plan is what validation, diagnostics, and shape-aware constraints (e.g.
 ```php
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Scheduling\SimpleSwissScheduler;
+use MissionGaming\Tactician\Scheduling\SwissScheduler;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 
 $plan = (new RoundRobinScheduler())->getPlan($participants, new RoundRobinOptions(legs: 2));
@@ -709,7 +742,7 @@ $plan->getExpectedMeetings($participants[0], $participants[1]); // 2
 
 // Swiss has rounds but no legs: the legs accessors are null because the
 // concept does not apply — never a fabricated 1
-$swissPlan = (new SimpleSwissScheduler())->getPlan($participants, new SwissOptions(rounds: 3));
+$swissPlan = (new SwissScheduler())->getPlan($participants, new SwissOptions(rounds: 3));
 $swissPlan->getAlgorithm();     // 'swiss'
 $swissPlan->getTotalRounds();   // 3
 $swissPlan->getLegs();          // null

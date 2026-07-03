@@ -49,7 +49,7 @@ describe('DoubleEliminationEngine', function (): void {
         $champion = null;
         while ($champion === null) {
             $pairing = $engine->pairNextRound($participants, $results);
-            $stages[$pairing->getRoundNumber()] = $pairing->getStage();
+            $stages[$pairing->getRoundNumber()] = $pairing->getLabel();
             $results = [...$results, ...doubleElimFavourites($pairing->getEvents())];
             $champion = $engine->getChampion($participants, $results);
         }
@@ -74,7 +74,7 @@ describe('DoubleEliminationEngine', function (): void {
 
         $losersRound = $engine->pairNextRound($participants, $results);
 
-        expect($losersRound->getStage())->toBe('losers round 1');
+        expect($losersRound->getLabel())->toBe('losers round 1');
         $ids = array_map(
             fn (Participant $p) => $p->getId(),
             $losersRound->getEvents()[0]->getParticipants()
@@ -89,18 +89,18 @@ describe('DoubleEliminationEngine', function (): void {
 
         // Winners round: s1 beats s2, sending s2 to the losers side
         $winnersRound = $engine->pairNextRound($participants, []);
-        expect($winnersRound->getStage())->toBe('winners final');
+        expect($winnersRound->getLabel())->toBe('winners final');
         $results = doubleElimFavourites($winnersRound->getEvents());
 
         // Grand final: s2 wins, so both finalists have one loss
         $grandFinal = $engine->pairNextRound($participants, $results);
-        expect($grandFinal->getStage())->toBe('grand final');
+        expect($grandFinal->getLabel())->toBe('grand final');
         $results[] = new Result($grandFinal->getEvents()[0], $participants[1]);
 
         expect($engine->getChampion($participants, $results))->toBeNull();
 
         $reset = $engine->pairNextRound($participants, $results);
-        expect($reset->getStage())->toBe('grand final reset');
+        expect($reset->getLabel())->toBe('grand final reset');
         $results[] = new Result($reset->getEvents()[0], $participants[1]);
 
         expect($engine->getChampion($participants, $results)?->getId())->toBe('s2');
@@ -144,8 +144,8 @@ describe('DoubleEliminationEngine', function (): void {
         $champion = null;
         while ($champion === null) {
             $pairing = $engine->pairNextRound($participants, $results);
-            $stages[$pairing->getRoundNumber()] = $pairing->getStage();
-            $byesByStage[$pairing->getStage()] = array_map(
+            $stages[$pairing->getRoundNumber()] = $pairing->getLabel();
+            $byesByStage[$pairing->getLabel()] = array_map(
                 fn (Participant $p) => $p->getId(),
                 $pairing->getByes()
             );
@@ -174,7 +174,7 @@ describe('DoubleEliminationEngine', function (): void {
         $champion = null;
         while ($champion === null) {
             $pairing = $engine->pairNextRound($participants, $results);
-            $stages[] = $pairing->getStage();
+            $stages[] = $pairing->getLabel();
             $results = [...$results, ...doubleElimFavourites($pairing->getEvents())];
             $champion = $engine->getChampion($participants, $results);
         }
@@ -210,7 +210,7 @@ describe('DoubleEliminationEngine', function (): void {
                 sort($ids);
                 // s2 beats s1 in the winners final; s1 wins everything else
                 $winnerId = match (true) {
-                    $pairing->getStage() === 'winners final' => 's2',
+                    $pairing->getLabel() === 'winners final' => 's2',
                     in_array('s1', $ids, true) => 's1',
                     default => $ids[0],
                 };

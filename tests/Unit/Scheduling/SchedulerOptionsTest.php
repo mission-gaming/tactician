@@ -9,8 +9,8 @@ use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use MissionGaming\Tactician\Scheduling\SimpleSwissScheduler;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
+use MissionGaming\Tactician\Scheduling\SwissScheduler;
 
 describe('RoundRobinOptions', function (): void {
     it('defaults to a single mirrored leg', function (): void {
@@ -101,7 +101,7 @@ describe('Scheduler options type checks', function (): void {
     });
 
     it('rejects another algorithm options type on the Swiss scheduler', function (): void {
-        expect(fn () => (new SimpleSwissScheduler())->schedule($this->participants, new RoundRobinOptions()))
+        expect(fn () => (new SwissScheduler())->schedule($this->participants, new RoundRobinOptions()))
             ->toThrow(InvalidConfigurationException::class, 'SwissOptions');
     });
 
@@ -118,7 +118,7 @@ describe('Scheduler options type checks', function (): void {
     });
 
     it('builds the Swiss plan from the configured rounds', function (): void {
-        $plan = (new SimpleSwissScheduler())->getPlan($this->participants, new SwissOptions(rounds: 2));
+        $plan = (new SwissScheduler())->getPlan($this->participants, new SwissOptions(rounds: 2));
 
         expect($plan->getTotalRounds())->toBe(2);
         expect($plan->getLegs())->toBeNull();

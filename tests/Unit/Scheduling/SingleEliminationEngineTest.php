@@ -38,7 +38,7 @@ describe('SingleEliminationEngine', function (): void {
         $pairing = (new SingleEliminationEngine())->pairNextRound(seededField(8), []);
 
         expect($pairing->getRoundNumber())->toBe(1);
-        expect($pairing->getStage())->toBe('quarterfinal');
+        expect($pairing->getLabel())->toBe('quarterfinal');
         expect($pairing->hasByes())->toBeFalse();
         expect(eventIdPairs($pairing->getEvents()))->toBe([
             ['s1', 's8'],
@@ -51,7 +51,7 @@ describe('SingleEliminationEngine', function (): void {
     it('gives byes to the top seeds when the field is not a power of two', function (): void {
         $pairing = (new SingleEliminationEngine())->pairNextRound(seededField(6), []);
 
-        expect($pairing->getStage())->toBe('quarterfinal');
+        expect($pairing->getLabel())->toBe('quarterfinal');
         expect(array_map(fn (Participant $p) => $p->getId(), $pairing->getByes()))->toBe(['s1', 's2']);
         expect(eventIdPairs($pairing->getEvents()))->toBe([
             ['s4', 's5'],
@@ -73,7 +73,7 @@ describe('SingleEliminationEngine', function (): void {
         $round2 = $engine->pairNextRound($participants, $results);
 
         expect($round2->getRoundNumber())->toBe(2);
-        expect($round2->getStage())->toBe('semifinal');
+        expect($round2->getLabel())->toBe('semifinal');
         expect($round2->hasByes())->toBeFalse();
         expect(eventIdPairs($round2->getEvents()))->toBe([
             ['s1', 's5'],
@@ -86,7 +86,7 @@ describe('SingleEliminationEngine', function (): void {
         $participants = seededField(16);
 
         expect($engine->getTotalRounds($participants))->toBe(4);
-        expect($engine->pairNextRound($participants, [])->getStage())->toBe('round of 16');
+        expect($engine->pairNextRound($participants, [])->getLabel())->toBe('round of 16');
     });
 
     it('crowns a champion once the final is resolved', function (): void {
@@ -104,7 +104,7 @@ describe('SingleEliminationEngine', function (): void {
         expect($engine->getChampion($participants, $results))->toBeNull();
 
         $final = $engine->pairNextRound($participants, $results);
-        expect($final->getStage())->toBe('final');
+        expect($final->getLabel())->toBe('final');
         expect(eventIdPairs($final->getEvents()))->toBe([['s1', 's2']]);
 
         $results[] = new Result($final->getEvents()[0], $participants[1]); // s2 wins the final
