@@ -98,4 +98,65 @@ readonly class Result
     {
         return $this->scores[$participant->getId()] ?? null;
     }
+
+    /**
+     * Convert this result to a serializable array.
+     *
+     * The event is embedded in its own array form (participants referenced
+     * by ID); pair with a participant registry to rehydrate.
+     *
+     * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>}
+     */
+    public function toArray(): array
+    {
+        return [
+            'event' => $this->event->toArray(),
+            'winner' => $this->winner?->getId(),
+            'scores' => $this->scores,
+        ];
+    }
+
+    /**
+     * Recreate a result from its array representation.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, Participant> $participantsById Registry resolving participant IDs
+     *
+     * @throws InvalidArgumentException When fields are malformed or a participant ID is unknown
+     */
+    public static function fromArray(array $data, array $participantsById): self
+    {
+        $eventData = $data['event'] ?? null;
+        if (!is_array($eventData)) {
+            throw new InvalidArgumentException('Result data requires an event array');
+        }
+        /** @var array<string, mixed> $eventData */
+        $event = Event::fromArray($eventData, $participantsById);
+
+        $winnerId = $data['winner'] ?? null;
+        if ($winnerId !== null && !is_string($winnerId)) {
+            throw new InvalidArgumentException('Result winner must be a participant ID or null');
+        }
+        $winner = null;
+        if ($winnerId !== null) {
+            if (!isset($participantsById[$winnerId])) {
+                throw new InvalidArgumentException("Result references unknown winner {$winnerId}");
+            }
+            $winner = $participantsById[$winnerId];
+        }
+
+        $rawScores = $data['scores'] ?? [];
+        if (!is_array($rawScores)) {
+            throw new InvalidArgumentException('Result scores must be an array');
+        }
+        $scores = [];
+        foreach ($rawScores as $participantId => $score) {
+            if (!is_int($score) && !is_float($score)) {
+                throw new InvalidArgumentException('Result scores must be numeric');
+            }
+            $scores[$participantId] = $score;
+        }
+
+        return new self($event, $winner, $scores);
+    }
 }
