@@ -26,7 +26,6 @@ interface SchedulerInterface
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the configuration (or options type) is invalid
      * @throws \MissionGaming\Tactician\Exceptions\IncompleteScheduleException When constraints prevent complete schedule generation
-     * @throws \MissionGaming\Tactician\Exceptions\ImpossibleConstraintsException When constraints are mathematically impossible
      */
     public function schedule(
         array $participants,

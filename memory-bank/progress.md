@@ -19,7 +19,7 @@ tracks the current shape only, to avoid duplicating what rots.*
 
 ## What's Left to Build
 See docs/ROADMAP.md:
-- **Phase 3** (milestones 1-4 of 5 done — see the design doc): only the final sweep (M5: docs/examples/memory-bank polish) remains
+- **Phase 4**: timeline assignment (slot model, round-aligned + staggered kickoffs, time-aware constraints) — position paper in `docs/design/timeline-assignment.md`
 - **Phase 4**: timeline assignment (time/venue slots, blackout periods)
 - **Phase 5**: optimization, backtracking generation, framework integration examples
 

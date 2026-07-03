@@ -8,7 +8,6 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Exceptions\ImpossibleConstraintsException;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
@@ -92,11 +91,6 @@ foreach ($scenarios as $name => $scenario) {
             'generated_events' => $e->getActualEventCount(),
             'constraint_violations' => $e->getViolationCollector()->getViolationCount(),
         ];
-    } catch (ImpossibleConstraintsException $e) {
-        $result['status'] = 'impossible';
-        $result['exception'] = $e;
-        $result['error_type'] = 'Impossible Constraints';
-        $result['error_message'] = $e->getMessage();
     } catch (InvalidConfigurationException $e) {
         $result['status'] = 'invalid_config';
         $result['exception'] = $e;
@@ -201,10 +195,6 @@ function getStatusIcon($status)
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-yellow-500 rounded-full mr-2"></span>
                             <span>IncompleteScheduleException</span>
-                        </div>
-                        <div class="flex items-center">
-                            <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
-                            <span>ImpossibleConstraintsException</span>
                         </div>
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-orange-500 rounded-full mr-2"></span>

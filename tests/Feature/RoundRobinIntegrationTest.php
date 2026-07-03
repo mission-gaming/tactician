@@ -415,9 +415,10 @@ describe('Round Robin Integration', function (): void {
         expect($iterationCount)->toBe(120);
     });
 
-    // Tests impossible constraint scenarios that should throw ImpossibleConstraintsException
-    // with proper diagnostic information for tournament directors
-    it('throws exception for impossible constraint combinations', function (): void {
+    // An unsatisfiable-in-spirit constraint that never actually rejects an
+    // event still yields a complete schedule; genuinely rejecting
+    // constraints fail loudly via IncompleteScheduleException instead
+    it('generates a complete schedule when an extreme constraint never rejects', function (): void {
         // Given: Small participant pool with very restrictive constraints
         $participants = [
             new Participant('p1', 'Player 1'),

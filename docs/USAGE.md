@@ -12,7 +12,7 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Results and Standings](#results-and-standings)
 - [Swiss Tournaments](#swiss-tournaments)
 - [Elimination Brackets](#elimination-brackets)
-- [Group Stages and Multi-Stage Tournaments](#group-stages-and-multi-stage-tournaments)
+- [Pools, Progression, and Multi-Stage Tournaments](#pools-progression-and-multi-stage-tournaments)
 - [Serialization](#serialization)
 - [Schedule Validation](#schedule-validation)
 - [Error Handling](#error-handling)
@@ -695,17 +695,11 @@ try {
 ### Validation Features
 
 ```php
-use MissionGaming\Tactician\Exceptions\ImpossibleConstraintsException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 
 try {
     $scheduler = new RoundRobinScheduler($constraints);
     $schedule = $scheduler->schedule($participants);
-    
-} catch (ImpossibleConstraintsException $e) {
-    // Constraints are mathematically impossible
-    echo "Impossible constraints: " . $e->getMessage() . "\n";
-    echo "Constraint analysis: " . $e->getConstraintAnalysis() . "\n";
     
 } catch (InvalidConfigurationException $e) {
     // Invalid scheduler configuration
@@ -730,7 +724,6 @@ try {
 use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
-use MissionGaming\Tactician\Exceptions\ImpossibleConstraintsException;
 
 try {
     $scheduler = new RoundRobinScheduler($constraints);
@@ -739,10 +732,6 @@ try {
 } catch (InvalidConfigurationException $e) {
     // Handle configuration errors
     handleConfigurationError($e);
-    
-} catch (ImpossibleConstraintsException $e) {
-    // Handle impossible constraints
-    handleImpossibleConstraints($e);
     
 } catch (IncompleteScheduleException $e) {
     // Handle incomplete schedules

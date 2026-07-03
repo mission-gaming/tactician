@@ -1,23 +1,16 @@
 # Design: Phase 3 — Algorithm-Neutral Core
 
-**Status: ACCEPTED — in implementation (revision 4)** — milestone 1 (plan
-introduction: `StagePlan`/`PairwisePlan` with `RoundRobinPlan` and
-`SwissPlan`, `LegPlanContribution` replacing `planGeneration()`/
-`canSatisfyConstraints()`, plan-carrying `SchedulingContext`, calculators
-and validation-context classes removed) milestone 2 (typed
-config-constructible `RoundRobinOptions`/`SwissOptions` retiring the
-legs/rounds overload and folding `validateConstraints()`/
-`getExpectedEventCount()` into `getPlan()`; `PointsSystem` generalized to
-`RankingStrategy` with `WinDrawLossRanking`), milestone 3 (serializable
-`StageState`, unified `RoundPairing`, `StageEngineInterface` +
-`StageOutcome` with the Swiss engine conforming, `SimpleSwissScheduler`
-replaced by the `SwissScheduler` preset over the randomized engine), and
-milestone 4 (progression selectors with cardinality validation, the
-composition validator, `PoolDistributor` + pooled outcomes retiring
-`GroupStageEngine`, the elimination engines rebuilt as
-`StageEngineInterface` presets with positional seeding and fixed vs
-re-seeded paths, and two-legged ties decided app-side) are implemented;
-milestone 5 (sweep) is not. Code blocks are design sketches, not executable examples. All open
+**Status: IMPLEMENTED (revision 4)** — all five milestones shipped: plan
+introduction (M1), typed options + `RankingStrategy` (M2), engine
+unification behind `StageState`/`RoundPairing`/`StageEngineInterface`/
+`StageOutcome` (M3), progression/pools/bracket presets/two-legged ties
+(M4), and the final sweep (M5). `docs/USAGE.md` and `docs/ARCHITECTURE.md`
+document the shipped shapes, which follow this design with one refinement
+worth noting: the elimination presets keep their bracket walks internally
+(reading the recorded `StageState`) rather than literally chaining
+separate single-round stage objects — the observable contract (one driver
+loop, `RoundPairing` in bracket order, outcome selectors, positional
+seeding, fixed vs re-seeded paths) is exactly as designed. Code blocks are design sketches, not executable examples. All open
 questions have been resolved with the maintainer (decisions marked ✅
 throughout; see "Resolved decisions" at the end).
 

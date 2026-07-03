@@ -12,7 +12,7 @@ A modern PHP library for generating structured schedules between participants. I
 **Key Features:**
 
 - 🏆 **Tournament Formats**: Round robin (single & multi-leg), Swiss pairing, single & double elimination, group stages
-- 📊 **Results & Standings**: Points systems, league tables, and pluggable tiebreakers (wins, Buchholz, Sonneborn–Berger)
+- 📊 **Results & Standings**: Pluggable ranking strategies, league tables, and tiebreakers (wins, Buchholz, Sonneborn–Berger)
 - 🔧 **Flexible Constraints**: Built-in and custom predicate-based constraint system
 - ✅ **Schedule Validation**: Comprehensive validation prevents incomplete schedules
 - 💾 **Serialization**: JSON round-tripping for schedules and participants
@@ -78,33 +78,38 @@ pairing, elimination brackets, and multi-stage tournaments:
 ```php
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
-use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Stage\StageState;
 
-$engine = new SwissPairingEngine();
-$round1 = $engine->pairNextRound($participants, []);
+$engine = new SwissPairingEngine(plannedRounds: 5);
 
-// Record results as play completes...
-$results = [new Result($round1->getEvents()[0], $winner) /* ... */];
+// One driver loop covers every results-driven format
+$state = StageState::start($participants);
+while (!$engine->isComplete($state)) {
+    $pairing = $engine->pairNextRound($state);
+    $results = playRound($pairing); // application-side
+    $state = $state->withRoundPlayed($pairing, $results);
+}
 
-// ...then pair the next round from the live standings
-$round2 = $engine->pairNextRound($participants, $results);
-
-// League table at any point
-$standings = (new StandingsCalculator())->calculate($participants, $results);
+// Every format finishes as an outcome you can select from
+$outcome = $engine->getOutcome($state);
+$table = $outcome->getStandings();
 ```
 
 Single and double elimination (`SingleEliminationEngine`,
-`DoubleEliminationEngine`) and group stages feeding seeded knockouts
-(`GroupStageEngine`) follow the same results-driven pattern. Schedules
-serialize to JSON via `$schedule->toJson()` / `Schedule::fromJson()`.
+`DoubleEliminationEngine`) drive through the same loop, and group stages
+compose from pools and progression selectors (`PoolDistributor`,
+`RankRangeSelector`, `MatchOutcomeSelector`) — see the
+[usage guide](docs/USAGE.md). Stage state and schedules serialize to JSON
+(`StageState::toJson()`, `$schedule->toJson()`), so platforms persist
+between rounds instead of re-deriving.
 
 ## Key Features
 
 - **🏆 Round Robin Tournaments**: Circle method algorithm with balanced home/away roles
 - **♟️ Swiss Pairing**: Standings-aware Monrad pairing with repeat avoidance, bye rotation, home/away balancing, and withdrawal handling
-- **🥊 Elimination Brackets**: Single and double elimination with fold seeding, byes, stage names, and optional grand-final reset
-- **🏟️ Group Stages**: Serpentine-seeded groups with per-group standings and cross-group knockout qualification
-- **📊 Results & Standings**: Configurable points systems with wins, Buchholz, and Sonneborn–Berger tiebreakers
+- **🥊 Elimination Brackets**: Single and double elimination with positional fold seeding, byes, round labels, fixed or re-seeded paths, one- or two-legged ties, and optional grand-final reset
+- **🏟️ Pools & Progression**: Serpentine-seeded pools, per-pool standings, and progression selectors with ahead-of-time composition validation
+- **📊 Results & Standings**: Pluggable ranking strategies (win/draw/loss presets included) with wins, Buchholz, and Sonneborn–Berger tiebreakers
 - **🔧 Flexible Constraints**: Built-in constraints (rest periods, seed protection, role limits, role balance, metadata rules) plus custom predicates
 - **🏠 Multi-Leg Support**: Home/away leagues with mirrored, repeated, or shuffled strategies and first-class byes
 - **✅ Schedule Validation**: Mathematical validation prevents incomplete tournaments, with automatic retries over alternative orderings when constraints reject a schedule

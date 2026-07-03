@@ -6,7 +6,8 @@
 - Documentation was audited end-to-end: README, ROADMAP, ARCHITECTURE, USAGE, CONTRIBUTING, and BACKGROUND all match the shipped code, and every docs/example snippet has been executed
 
 ## Next Steps
-- **Phase 3 implementation is nearly complete** per the accepted design (`docs/design/phase-3-algorithm-neutral-core.md`). Milestones 1-4 are done: StagePlan, typed options + `RankingStrategy`, engine unification, and M4's compositions (selectors, `CompositionValidator`, `PoolDistributor` + pooled outcomes, elimination presets with positional seeding/reseed/two-legged ties, `GroupStageEngine` retired). Only M5 (final docs/examples sweep) remains.
+- **Phase 3 (algorithm-neutral core) is complete** — all five milestones of `docs/design/phase-3-algorithm-neutral-core.md` shipped: StagePlan, typed options + `RankingStrategy`, the stage engine model, compositions (pools/selectors/validator/elimination presets/two-legged ties), and the sweep.
+- **Next: Phase 4 (timeline assignment)** per `docs/design/timeline-assignment.md` — the slot model consuming `Schedule::getEventsByRound()`, round-aligned then staggered assignment, then time-aware constraints. The Phase 3 abstractions were kept timeline-compatible (plans carry round structure; events stay immutable for decoration).
 - Backtracking generation for constraint configurations the greedy generator cannot satisfy (known limitation, recorded in ROADMAP Phase 5)
 
 ## Active Decisions and Considerations
