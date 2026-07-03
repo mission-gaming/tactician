@@ -14,13 +14,13 @@ tracks the current shape only, to avoid duplicating what rots.*
 - **Stage engine model** (`src/Stage/`): serializable `StageState` (toArray/fromArray/JSON, pairings + results + byes, withdrawals first-class), unified `RoundPairing` (round number, nullable label, events, byes — used by Swiss and both elimination engines), `StageEngineInterface` (getPlan/pairNextRound/isComplete/getOutcome), and `StageOutcome` (standings, results, byes, final round; no trophy vocabulary); `Result` gained toArray/fromArray
 - **Typed options** (`SchedulerOptions`): `RoundRobinOptions` (legs + strategy) and `SwissOptions` (rounds), config-constructible with stable strategy identifiers; `SchedulerInterface` is `schedule(participants, ?options)` + `getPlan(participants, ?options)` — the legs/rounds overload and `validateConstraints()` are gone
 - **Ranking strategies** (`RankingStrategy`): standings ordered by a pluggable primary value; `WinDrawLossRanking` (named presets `threeOneZero`/`oneHalfZero`, `fromArray()`) replaces `PointsSystem`; `StandingEntry::getRankingValue()` alongside the W/D/L record
-- **Timelines** (`src/Timeline/`): declarative per-stage slot model (`TimelineDefinition`, config-constructible, wall-clock arithmetic in the stage timezone, UTC kickoffs out) with deterministic assignment (`TimelineAssigner`) over whole schedules or engine round pairings; serializable `ScheduledEvent`/`ScheduledSchedule` decorations
+- **Timelines** (`src/Timeline/`): declarative per-stage slot model (`TimelineDefinition`, config-constructible, wall-clock arithmetic in the stage timezone, UTC kickoffs out) with deterministic assignment (`TimelineAssigner`) over whole schedules or engine round pairings; serializable `ScheduledEvent`/`ScheduledSchedule` decorations; time-aware `TimelineRule`s (`MinimumRestRule`, `BlackoutRule`) failing assignment loudly post-assignment
 - **Serialization**: `toArray()`/`fromArray()` on all DTOs; `Schedule` JSON round-tripping
 - **Quality gates**: ~620 Pest tests including property/invariant suites, PHPStan level 8, Rector, CS-Fixer, auto-validated examples (`tests/Feature/ExamplesTest.php` + `composer examples` in CI)
 
 ## What's Left to Build
 See docs/ROADMAP.md:
-- **Phase 4 remainder**: time-aware constraints (hour-based rest, blackouts), cross-stage clash validation, venue/resource modelling with slot capacity — design note in `docs/design/timeline-assignment.md`
+- **Phase 4 remainder**: cross-stage clash validation (only if a consumer needs it) and venue/resource modelling with slot capacity — design note in `docs/design/timeline-assignment.md`
 - **Phase 5**: optimization, backtracking generation, framework integration examples
 
 ## Known Issues / Limitations

@@ -26,10 +26,24 @@ use MissionGaming\Tactician\Stage\RoundPairing;
 final readonly class TimelineAssigner
 {
     /**
+     * @param array<TimelineRule> $rules Time-aware rules every assignment must satisfy
+     */
+    public function __construct(
+        private array $rules = []
+    ) {
+    }
+
+    /**
      * Assign kickoff times to every event of a complete schedule.
      *
-     * @throws InvalidConfigurationException When the schedule carries round-less events
-     *                                       or a round has more events than the timeline has slots
+     * When the assigner carries time-aware rules, the assigned timeline is
+     * validated against every rule and assignment fails loudly with all
+     * violations — a deterministic mapping cannot route around a broken
+     * rule, only report it.
+     *
+     * @throws InvalidConfigurationException When the schedule carries round-less events,
+     *                                       a round has more events than the timeline has
+     *                                       slots, or a time-aware rule is violated
      */
     public function assign(Schedule $schedule, TimelineDefinition $timeline): ScheduledSchedule
     {
@@ -52,7 +66,24 @@ final readonly class TimelineAssigner
             }
         }
 
-        return new ScheduledSchedule($scheduledEvents);
+        $scheduled = new ScheduledSchedule($scheduledEvents);
+
+        $violations = [];
+        foreach ($this->rules as $rule) {
+            foreach ($rule->validate($scheduled) as $violation) {
+                $violations[] = "[{$rule->getName()}] {$violation}";
+            }
+        }
+
+        if ($violations !== []) {
+            throw new InvalidConfigurationException(
+                'The assigned timeline violates ' . count($violations) . ' time rule(s): '
+                    . implode(' ', array_slice($violations, 0, 3)),
+                ['violations' => $violations]
+            );
+        }
+
+        return $scheduled;
     }
 
     /**

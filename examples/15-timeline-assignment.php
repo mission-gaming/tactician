@@ -7,6 +7,8 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Timeline\BlackoutRule;
+use MissionGaming\Tactician\Timeline\MinimumRestRule;
 use MissionGaming\Tactician\Timeline\ScheduledSchedule;
 use MissionGaming\Tactician\Timeline\TimelineAssigner;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
@@ -37,7 +39,20 @@ $timeline = TimelineDefinition::fromArray([
     'slot_interval' => 'PT1H',
 ]);
 
-$scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+// Time-aware rules guard the assignment: weekly rounds comfortably give
+// every team 48 hours' rest, and no match day falls in the late-August
+// representative break - a violated rule would fail loudly instead
+$assigner = new TimelineAssigner([
+    MinimumRestRule::fromArray(['rest' => 'PT48H']),
+    BlackoutRule::fromArray(['windows' => [[
+        'from' => '2026-08-31 00:00:00',
+        'to' => '2026-09-01 00:00:00',
+        'timezone' => 'Europe/London',
+        'label' => 'representative break',
+    ]]]),
+]);
+
+$scheduled = $assigner->assign($schedule, $timeline);
 
 echo "=== Season calendar (kickoffs in UTC) ===\n\n";
 foreach ($scheduled->getEventsByRound() as $round => $scheduledEvents) {
