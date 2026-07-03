@@ -61,6 +61,26 @@ class RoundRobinScheduler implements SchedulerInterface
 
         $strategy ??= new MirroredLegStrategy();
 
+        // Preflight: let the strategy reject configurations it cannot satisfy
+        // before any events are generated.
+        $satisfiabilityReport = $strategy->canSatisfyConstraints(
+            $participants,
+            $legs,
+            $participantsPerEvent,
+            $this->constraints ?? ConstraintSet::create()->build()
+        );
+        if (!$satisfiabilityReport->canSatisfyConstraints()) {
+            throw new InvalidConfigurationException(
+                'Leg strategy cannot satisfy the requested configuration: ' . $satisfiabilityReport->getSummary(),
+                [
+                    'strategy' => $strategy::class,
+                    'unsatisfiable_constraints' => $satisfiabilityReport->getUnsatisfiableConstraints(),
+                    'conflicting_constraints' => $satisfiabilityReport->getConflictingConstraints(),
+                    'suggestions' => $satisfiabilityReport->getSuggestions(),
+                ]
+            );
+        }
+
         // Clear previous violations
         $this->clearViolations();
 
