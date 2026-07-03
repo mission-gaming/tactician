@@ -133,7 +133,7 @@ interface LegStrategyInterface
 ### Modern PHP Architecture
 - **Immutability**: All DTOs are readonly classes preventing mutation after construction
 - **Strict Typing**: `declare(strict_types=1)` throughout with union types and nullable types
-- **Constructor Property Promotion**: Cleaner code with modern PHP 8.2+ features
+- **Constructor Property Promotion**: Cleaner code with modern PHP 8.3+ features
 - **Interface Segregation**: Clean contracts for schedulers and constraints
 
 ### Architectural Patterns

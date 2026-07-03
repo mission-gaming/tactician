@@ -10,27 +10,25 @@ use MissionGaming\Tactician\Validation\ScheduleValidationContext;
 use MissionGaming\Tactician\Validation\SimpleSwissEventCalculator;
 
 describe('SimpleSwissEventCalculator', function (): void {
-    beforeEach(function (): void {
-        $this->calculator = new SimpleSwissEventCalculator();
-    });
-
     it('calculates expected events from rounds rather than legs', function (): void {
+        $calculator = new SimpleSwissEventCalculator();
         $participants = [];
         for ($i = 1; $i <= 8; ++$i) {
             $participants[] = new Participant("p{$i}", "Player {$i}");
         }
 
-        expect($this->calculator->calculateExpectedEvents($participants, 3))->toBe(12);
-        expect($this->calculator->calculateExpectedEvents($participants, 0))->toBe(0);
+        expect($calculator->calculateExpectedEvents($participants, 3))->toBe(12);
+        expect($calculator->calculateExpectedEvents($participants, 0))->toBe(0);
     });
 
     it('handles odd participant counts with one bye per round', function (): void {
+        $calculator = new SimpleSwissEventCalculator();
         $participants = [];
         for ($i = 1; $i <= 5; ++$i) {
             $participants[] = new Participant("p{$i}", "Player {$i}");
         }
 
-        expect($this->calculator->calculateExpectedEvents($participants, 3))->toBe(6);
+        expect($calculator->calculateExpectedEvents($participants, 3))->toBe(6);
     });
 
     it('passes integrity validation for a non-repeat subset of opponents', function (): void {
@@ -47,7 +45,8 @@ describe('SimpleSwissEventCalculator', function (): void {
             new Event([$participant2, $participant4], new Round(2)),
         ]);
 
-        $violations = $this->calculator->validateScheduleIntegrity(
+        $calculator = new SimpleSwissEventCalculator();
+        $violations = $calculator->validateScheduleIntegrity(
             $schedule,
             $participants,
             ScheduleValidationContext::forAlgorithm('Simple Swiss', 2)
@@ -70,7 +69,8 @@ describe('SimpleSwissEventCalculator', function (): void {
             new Event([$participant3, $participant4], new Round(2)),
         ]);
 
-        $violations = $this->calculator->validateScheduleIntegrity(
+        $calculator = new SimpleSwissEventCalculator();
+        $violations = $calculator->validateScheduleIntegrity(
             $schedule,
             $participants,
             ScheduleValidationContext::forAlgorithm('Simple Swiss', 2)
