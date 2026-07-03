@@ -398,13 +398,38 @@ recorded results with certainty — are library-guaranteed. All selectors are
 config-constructible with stable identifiers.
 
 ✅ **Selectors are optional machinery, not a gate.** The entry contract of
-any stage is simply an ordered, reseeded participant list. Consumers that
-compute their own qualification — a platform deriving "best third-placed"
-from its own domain tables and tiebreaker rules — hand the next stage that
-list directly and bypass selectors entirely, with no penalty and no
-second-class path. This keeps the role boundary crisp: Tactician owns
-structure and offers generic selection; the consumer owns domain scoring
-and may own selection too.
+any stage is simply an ordered participant list. Consumers that compute
+their own qualification — a platform deriving "best third-placed" from its
+own domain tables and tiebreaker rules — hand the next stage that list
+directly and bypass selectors entirely, with no penalty and no second-class
+path. This keeps the role boundary crisp: Tactician owns structure and
+offers generic selection; the consumer owns domain scoring and may own
+selection too.
+
+Three rules make the two selection paths coexist without friction:
+
+1. **Order is authoritative; entry seeding derives from it.** Earlier
+   revisions had library selectors reseed via `withSeed()` while
+   consumer-supplied lists had to remember to do the same — two sources of
+   truth (list order and carried seeds) and a silent footgun: a consumer
+   list carrying stale seeds from the previous stage would fold-pair and
+   pool-distribute wrongly. ✅ Resolved: a stage seeds its entrants **from
+   their position in the supplied list** — position 1 is seed 1. Library
+   selectors and consumer-derived lists then behave identically by
+   construction, and `withSeed()` becomes an internal detail rather than a
+   hand-off requirement.
+2. **Validation participation is opt-in, not mandatory.** The composition
+   validator uses selector-declared cardinalities. A consumer-derived
+   selection participates either by implementing `ProgressionSelector`
+   (one method plus `getSelectionSize()`) or by declaring expected entrant
+   counts per stage; a bare ordered list still gets stage-entry validation
+   (count, uniqueness), just not ahead-of-time telescoping checks.
+3. **One ranking authority per selection decision.** Tactician's rank
+   selectors read Tactician's standings; a consumer's selection reads its
+   own tables, whose tiebreakers may legitimately differ. Mixing the two
+   *within a single decision* (library selector for one qualifier,
+   consumer table for another, from the same pool) invites contradictory
+   qualification. Per decision, pick one authority — either is fine.
 
 ### 6. Pools as a generic composition primitive
 
@@ -560,8 +585,9 @@ All previously open questions are now resolved with the maintainer:
 3. **Combined `StageOutcome`** for pooled stages, optionally carrying pool
    structure, so intra-pool slices and cross-pool queries share one input
    type. Selectors remain optional machinery — the stage entry contract is
-   an ordered participant list, so consumers computing their own
-   qualification bypass them cleanly (section 5).
+   an ordered participant list with seeding derived from list position, so
+   consumer-derived selections behave identically to library selectors by
+   construction (section 5, coexistence rules).
 
 Earlier resolutions: `StagePlan` naming family, `StageState` serialization
 in the first cut, `StageOutcome` on the engine interface with no trophy
