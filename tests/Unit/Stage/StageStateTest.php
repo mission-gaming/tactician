@@ -173,6 +173,28 @@ describe('StageState', function (): void {
         StageState::fromArray(['participants' => 'nope']);
     })->throws(InvalidArgumentException::class);
 
+    it('rejects malformed rounds and results collections', function (): void {
+        $base = [
+            'participants' => [['id' => 'p1', 'label' => 'Alice', 'seed' => null, 'metadata' => []]],
+            'active' => ['p1'],
+        ];
+
+        expect(fn () => StageState::fromArray([...$base, 'rounds' => 'nope', 'results' => []]))
+            ->toThrow(InvalidArgumentException::class, 'rounds');
+        expect(fn () => StageState::fromArray([...$base, 'rounds' => ['nope'], 'results' => []]))
+            ->toThrow(InvalidArgumentException::class, 'round');
+        expect(fn () => StageState::fromArray([...$base, 'rounds' => [], 'results' => 'nope']))
+            ->toThrow(InvalidArgumentException::class, 'results');
+        expect(fn () => StageState::fromArray([...$base, 'rounds' => [], 'results' => ['nope']]))
+            ->toThrow(InvalidArgumentException::class, 'result');
+        expect(fn () => StageState::fromArray([...$base, 'active' => 'nope', 'rounds' => [], 'results' => []]))
+            ->toThrow(InvalidArgumentException::class, 'active');
+    });
+
+    it('rejects JSON that does not decode to an array', function (): void {
+        StageState::fromJson('"just a string"');
+    })->throws(InvalidArgumentException::class);
+
     // start() enforces unique IDs; rehydration must uphold the same
     // invariant instead of silently letting later entries win
     it('rejects duplicate participant IDs in serialized data', function (): void {
