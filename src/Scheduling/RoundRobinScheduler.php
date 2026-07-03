@@ -313,7 +313,7 @@ class RoundRobinScheduler implements SchedulerInterface
             $this->recordByeForRound($participantList, $globalRound);
 
             // Get all participants that need to play in this round
-            $participantPairs = $this->getPairsFromParticipantList($participantList);
+            $participantPairs = $this->getPairsFromParticipantList($participantList, $round);
 
             $roundEvents = [];
             foreach ($participantPairs as $pair) {
@@ -367,10 +367,14 @@ class RoundRobinScheduler implements SchedulerInterface
     /**
      * Get participant pairs from the current circle-method ordering.
      *
+     * Roles alternate with the (leg-local) round parity, matching first-leg
+     * generation so leg strategies mirror true roles.
+     *
      * @param array<Participant|null> $participantList Participants in circle order, including any "bye" (null)
+     * @param int $round Leg-local round number, used for role alternation
      * @return array<array<Participant>>
      */
-    private function getPairsFromParticipantList(array $participantList): array
+    private function getPairsFromParticipantList(array $participantList, int $round): array
     {
         $participantCount = count($participantList);
         $pairingsPerRound = intdiv($participantCount, 2);
@@ -382,7 +386,9 @@ class RoundRobinScheduler implements SchedulerInterface
 
             // Skip if one participant is "bye" (null)
             if ($participant1 !== null && $participant2 !== null) {
-                $pairs[] = [$participant1, $participant2];
+                $pairs[] = $round % 2 === 0
+                    ? [$participant2, $participant1]
+                    : [$participant1, $participant2];
             }
         }
 
@@ -440,6 +446,14 @@ class RoundRobinScheduler implements SchedulerInterface
                         $this->roundByes[$round] = $sittingOut->getId();
                     }
                     continue;
+                }
+
+                // Alternate every pairing's roles with the round parity;
+                // without this the circle method keeps the fixed seat at home
+                // all leg and gives rotating players home/away streaks of
+                // half the field size (this bounds running imbalance at 3)
+                if ($round % 2 === 0) {
+                    [$participant1, $participant2] = [$participant2, $participant1];
                 }
 
                 $roundObject = new Round($round);

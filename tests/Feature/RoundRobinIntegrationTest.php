@@ -573,11 +573,30 @@ describe('Round Robin Integration', function (): void {
 
         // When: Generating schedule with role constraints
         $scheduler = new RoundRobinScheduler($constraints);
+        $schedule = $scheduler->schedule($participants);
 
-        // Then: Should throw IncompleteScheduleException because consecutive role constraint
-        // prevents some matches to avoid violating role assignment limits
-        expect(fn () => $scheduler->schedule($participants))
-            ->toThrow(MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
+        // Then: Round-parity role alternation keeps same-role streaks at 2 or
+        // fewer, so the limit of 3 is satisfied and the schedule completes
+        expect($schedule->count())->toBe(15);
+
+        $roleHistory = [];
+        foreach ($schedule as $event) {
+            $eventParticipants = $event->getParticipants();
+            $round = $event->getRound()?->getNumber() ?? 0;
+            $roleHistory[$eventParticipants[0]->getId()][$round] = 'home';
+            $roleHistory[$eventParticipants[1]->getId()][$round] = 'away';
+        }
+
+        foreach ($roleHistory as $rounds) {
+            ksort($rounds);
+            $streak = 0;
+            $previousRole = null;
+            foreach ($rounds as $role) {
+                $streak = $role === $previousRole ? $streak + 1 : 1;
+                $previousRole = $role;
+                expect($streak)->toBeLessThanOrEqual(3);
+            }
+        }
     });
 
     // Tests multi-leg constraint validation with incremental context building

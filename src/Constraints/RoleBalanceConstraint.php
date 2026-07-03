@@ -15,8 +15,11 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * The imbalance is evaluated on the running totals as the schedule is
  * generated, so like all constraints it is subject to the greedy generator:
  * tight limits may reject orderings that a completed schedule would balance
- * out. Mirrored multi-leg schedules balance totals across legs, so the limit
- * only needs to absorb the imbalance accumulated within a single leg.
+ * out. RoundRobinScheduler alternates roles with round parity, bounding the
+ * running imbalance at 3 for even field sizes and 4 for odd ones (the bye
+ * shifts one player's parity), so limits at or above those bounds are always
+ * satisfiable with the built-in generator; mirrored multi-leg schedules
+ * additionally end perfectly balanced.
  */
 readonly class RoleBalanceConstraint implements ConstraintInterface
 {

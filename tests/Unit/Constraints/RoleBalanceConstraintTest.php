@@ -107,4 +107,28 @@ describe('RoleBalanceConstraint', function (): void {
             expect($homeCounts[$id] ?? 0)->toBe($awayCounts[$id] ?? 0);
         }
     });
+
+    // Regression: before round-parity role alternation, the circle method's
+    // fixed seat was home every round of a leg and rotating players had
+    // half-field-length role streaks, making any meaningful limit
+    // unsatisfiable with RoundRobinScheduler.
+    it('is satisfiable at the documented limits for any field size', function (int $fieldSize, int $limit): void {
+        $participants = [];
+        for ($i = 1; $i <= $fieldSize; ++$i) {
+            $participants[] = new Participant("p{$i}", "Player {$i}");
+        }
+
+        $constraints = ConstraintSet::create()
+            ->add(RoleBalanceConstraint::homeAway($limit))
+            ->build();
+
+        foreach ([1, 2] as $legs) {
+            $schedule = (new RoundRobinScheduler($constraints))->schedule($participants, 2, $legs);
+
+            $expectedEvents = intdiv($fieldSize * ($fieldSize - 1), 2) * $legs;
+            expect(count($schedule))->toBe($expectedEvents);
+        }
+    })
+        // Limit 3 for even fields; the bye shifts one parity, so odd fields need 4
+        ->with([[4, 3], [6, 3], [12, 3], [5, 4], [9, 4]]);
 });

@@ -69,9 +69,10 @@ it('produces identical unconstrained schedules with retries available', function
         $pairings[] = $round . ':' . implode('-', $ids);
     }
 
+    // Even rounds have their roles swapped by the round-parity alternation
     expect($pairings)->toBe([
         '1:p1-p4', '1:p2-p3',
-        '2:p1-p2', '2:p3-p4',
+        '2:p2-p1', '2:p4-p3',
         '3:p1-p3', '3:p4-p2',
     ]);
 });
