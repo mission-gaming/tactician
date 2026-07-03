@@ -327,6 +327,17 @@ readonly class SchedulingContext
                 : $configuredRounds;
         }
 
+        // Backward-compatible default for legacy round-robin callers without
+        // metadata; mirrors getExpectedEventCount(). Deriving from the maximum
+        // generated round instead would misclassify partially generated
+        // schedules. New algorithms should provide rounds_per_leg metadata.
+        if ($this->participantsPerEvent === 2) {
+            $participantCount = count($this->allParticipants);
+            if ($participantCount >= 2) {
+                return $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
+            }
+        }
+
         $maxRound = $this->getMaxGeneratedRound();
         if ($maxRound === 0) {
             return 0;
