@@ -28,6 +28,10 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  * pairing order (the Swiss convention), so a bye recipient is paired among
  * the winners in the following round even though no Result exists for the
  * bye.
+ *
+ * Withdrawals are supported: pass only the still-active participants to
+ * pairNextRound(). Results involving withdrawn participants still count
+ * toward the remaining participants' standings.
  */
 readonly class SwissPairingEngine
 {
@@ -59,12 +63,36 @@ readonly class SwissPairingEngine
 
         $roundNumber ??= $this->deriveNextRoundNumber($results);
 
-        $standings = $this->standingsCalculator->calculate($participants, $results);
-        $orderedParticipants = $this->orderForPairing($standings->getEntries(), $previousByeIds);
+        // Include withdrawn participants referenced by results so their games
+        // still count toward standings, then keep only active participants
+        // for pairing.
+        $activeIds = [];
+        foreach ($participants as $participant) {
+            $activeIds[$participant->getId()] = true;
+        }
+
+        $standingsParticipants = $participants;
+        $knownIds = $activeIds;
+        foreach ($results as $result) {
+            foreach ($result->getEvent()->getParticipants() as $resultParticipant) {
+                if (!isset($knownIds[$resultParticipant->getId()])) {
+                    $knownIds[$resultParticipant->getId()] = true;
+                    $standingsParticipants[] = $resultParticipant;
+                }
+            }
+        }
+
+        $standings = $this->standingsCalculator->calculate($standingsParticipants, $results);
+        $activeEntries = array_values(array_filter(
+            $standings->getEntries(),
+            fn ($entry) => isset($activeIds[$entry->getParticipant()->getId()])
+        ));
+        $orderedParticipants = $this->orderForPairing($activeEntries, $previousByeIds);
 
         $playedPairings = $this->collectPlayedPairings($results);
         $homeCounts = $this->collectHomeCounts($results);
         $priorEvents = array_map(fn (Result $result) => $result->getEvent(), $results);
+
         $context = new SchedulingContext($participants, $priorEvents, 1, 1, 2, ['algorithm' => 'swiss']);
 
         if (count($orderedParticipants) % 2 === 0) {

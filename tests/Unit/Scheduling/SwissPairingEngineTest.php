@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -150,6 +151,26 @@ describe('SwissPairingEngine', function (): void {
 
         expect($round2->getBye()?->getId())->toBe('p6'); // lowest-placed without a bye
         expect($pairKeys)->toBe(['p1-p3', 'p2-p4', 'p5-p7']);
+    });
+
+    it('continues pairing after a participant withdraws', function (): void {
+        // Round 1 played by all four; Dave then withdraws
+        $results = [
+            new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
+            new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->dave),
+        ];
+        $active = [$this->alice, $this->bob, $this->carol];
+
+        $pairing = (new SwissPairingEngine())->pairNextRound($active, $results);
+
+        expect($pairing->getRoundNumber())->toBe(2);
+        expect($pairing->getEvents())->toHaveCount(1);
+        expect($pairing->hasBye())->toBeTrue();
+
+        // Dave is never paired despite appearing in the results
+        $pairedIds = array_map(fn (Participant $p) => $p->getId(), $pairing->getEvents()[0]->getParticipants());
+        expect($pairedIds)->not->toContain('p4');
+        expect($pairing->getBye()?->getId())->not->toBe('p4');
     });
 
     it('throws when every pairing has already been played', function (): void {
