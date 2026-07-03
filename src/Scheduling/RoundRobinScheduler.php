@@ -25,6 +25,12 @@ class RoundRobinScheduler implements SchedulerInterface
 {
     use ValidatesScheduleCompleteness;
 
+    /**
+     * Upper bound on rotated-ordering attempts when constraints reject the
+     * pairings implied by a given participant order.
+     */
+    private const MAX_GENERATION_ATTEMPTS = 25;
+
     public function __construct(
         private ?ConstraintSet $constraints = null,
         private ?Randomizer $randomizer = null
@@ -81,11 +87,10 @@ class RoundRobinScheduler implements SchedulerInterface
             );
         }
 
-        // Clear previous violations
-        $this->clearViolations();
-
-        // Generate complete schedule using integrated approach
-        $allEvents = $this->generateIntegratedSchedule($participants, $participantsPerEvent, $legs, $strategy);
+        // Generate complete schedule using integrated approach, retrying with
+        // rotated participant orderings when constraints reject the pairings
+        // implied by a particular circle-method order.
+        $allEvents = $this->generateScheduleWithRetries($participants, $participantsPerEvent, $legs, $strategy);
 
         $roundsPerLeg = $this->calculateRoundsPerLeg($participants);
         $totalRounds = $roundsPerLeg * $legs;
@@ -147,6 +152,53 @@ class RoundRobinScheduler implements SchedulerInterface
                 ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))]
             );
         }
+    }
+
+    /**
+     * Generate the schedule, retrying with rotated participant orderings when
+     * constraints reject the pairings implied by a particular order.
+     *
+     * The circle method fixes which pairings share a round purely by list
+     * order, so a constraint can reject one ordering while another ordering
+     * yields a complete schedule (e.g. seed protection failing only because
+     * two seeds happen to meet in an early round). Attempts are deterministic
+     * rotations of the input order and bounded, so genuinely unsatisfiable
+     * configurations still fail fast with the diagnostics of the last attempt.
+     *
+     * @param array<Participant> $participants
+     * @return array<Event>
+     * @throws IncompleteScheduleException When no ordering produces a complete schedule
+     */
+    private function generateScheduleWithRetries(
+        array $participants,
+        int $participantsPerEvent,
+        int $legs,
+        LegStrategyInterface $strategy
+    ): array {
+        $participants = array_values($participants);
+        $maxAttempts = $this->constraints === null
+            ? 1
+            : min(count($participants), self::MAX_GENERATION_ATTEMPTS);
+
+        for ($attempt = 0; $attempt < $maxAttempts; ++$attempt) {
+            $ordered = $attempt === 0
+                ? $participants
+                : [...array_slice($participants, $attempt), ...array_slice($participants, 0, $attempt)];
+
+            // Reset diagnostics so a successful retry does not report stale
+            // violations, and a failure reports only the final attempt.
+            $this->clearViolations();
+
+            try {
+                return $this->generateIntegratedSchedule($ordered, $participantsPerEvent, $legs, $strategy);
+            } catch (IncompleteScheduleException $exception) {
+                if ($attempt === $maxAttempts - 1) {
+                    throw $exception;
+                }
+            }
+        }
+
+        throw new \LogicException('Schedule generation loop must return or throw');
     }
 
     /**
