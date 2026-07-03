@@ -211,7 +211,8 @@ readonly class SwissPairingEngine implements StageEngineInterface
 
     /**
      * Every participant the stage has seen: the active list plus withdrawn
-     * participants still referenced by recorded rounds or results.
+     * participants still referenced by recorded rounds (events or byes) or
+     * results.
      *
      * @return array<Participant>
      */
@@ -223,8 +224,20 @@ readonly class SwissPairingEngine implements StageEngineInterface
             $knownIds[$participant->getId()] = true;
         }
 
-        foreach ($state->getPlayedEvents() as $event) {
-            foreach ($event->getParticipants() as $participant) {
+        foreach ($state->getRoundsPlayed() as $pairing) {
+            foreach ($pairing->getEvents() as $event) {
+                foreach ($event->getParticipants() as $participant) {
+                    if (!isset($knownIds[$participant->getId()])) {
+                        $knownIds[$participant->getId()] = true;
+                        $participants[] = $participant;
+                    }
+                }
+            }
+
+            // A participant can be referenced by a bye alone (bye in one
+            // round, withdrawn before ever playing) and must still appear
+            // in the plan, standings, and outcome.
+            foreach ($pairing->getByes() as $participant) {
                 if (!isset($knownIds[$participant->getId()])) {
                     $knownIds[$participant->getId()] = true;
                     $participants[] = $participant;

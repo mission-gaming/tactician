@@ -438,6 +438,29 @@ describe('SwissPairingEngine', function (): void {
         expect($plan->getExpectedEventCount())->toBe(10);
     });
 
+    // Regression: a participant referenced only by a bye (bye in one round,
+    // withdrawn before ever playing) vanished from the plan and standings
+    // even though the outcome's bye counts still listed them
+    it('keeps bye-only withdrawn participants in the plan and outcome', function (): void {
+        $participants = [...$this->participants, $this->eve];
+        $engine = new SwissPairingEngine(plannedRounds: 1);
+
+        // Round 1: Eve has the bye and never plays; she then withdraws
+        $state = withSwissRound(StageState::start($participants), 1, [
+            new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
+            new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
+        ], [$this->eve]);
+        $state = $state->withoutParticipant($this->eve);
+
+        expect($engine->getPlan($state)->getParticipants())->toHaveCount(5);
+
+        $outcome = $engine->getOutcome($state);
+        expect($outcome)->not->toBeNull();
+        assert($outcome !== null);
+        expect($outcome->getByes())->toBe(['p5' => 1]);
+        expect($outcome->getStandings()->getEntryFor($this->eve)?->getPlayed())->toBe(0);
+    });
+
     it('keeps withdrawn participants in the outcome standings', function (): void {
         $engine = new SwissPairingEngine(plannedRounds: 1);
         $state = withSwissRound(StageState::start($this->participants), 1, [
