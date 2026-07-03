@@ -15,12 +15,11 @@ tracks the current shape only, to avoid duplicating what rots.*
 - **Typed options** (`SchedulerOptions`): `RoundRobinOptions` (legs + strategy) and `SwissOptions` (rounds), config-constructible with stable strategy identifiers; `SchedulerInterface` is `schedule(participants, ?options)` + `getPlan(participants, ?options)` — the legs/rounds overload and `validateConstraints()` are gone
 - **Ranking strategies** (`RankingStrategy`): standings ordered by a pluggable primary value; `WinDrawLossRanking` (named presets `threeOneZero`/`oneHalfZero`, `fromArray()`) replaces `PointsSystem`; `StandingEntry::getRankingValue()` alongside the W/D/L record
 - **Serialization**: `toArray()`/`fromArray()` on all DTOs; `Schedule` JSON round-tripping
-- **Quality gates**: ~490 Pest tests including property/invariant suites, PHPStan level 8, Rector, CS-Fixer, auto-validated examples (`tests/Feature/ExamplesTest.php` + `composer examples` in CI)
+- **Quality gates**: ~620 Pest tests including property/invariant suites, PHPStan level 8, Rector, CS-Fixer, auto-validated examples (`tests/Feature/ExamplesTest.php` + `composer examples` in CI)
 
 ## What's Left to Build
 See docs/ROADMAP.md:
-- **Phase 4**: timeline assignment (slot model, round-aligned + staggered kickoffs, time-aware constraints) — position paper in `docs/design/timeline-assignment.md`
-- **Phase 4**: timeline assignment (time/venue slots, blackout periods)
+- **Phase 4**: timeline assignment (slot model, round-aligned + staggered kickoffs, time-aware constraints, venue/resource modelling) — position paper in `docs/design/timeline-assignment.md`
 - **Phase 5**: optimization, backtracking generation, framework integration examples
 
 ## Known Issues / Limitations
