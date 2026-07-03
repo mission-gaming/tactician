@@ -106,6 +106,21 @@ final readonly class TimelineDefinition
             );
         }
 
+        // A timezone or offset embedded in the start string overrides the
+        // declared zone during parsing, which would silently run the
+        // wall-clock arithmetic in the wrong zone. The 'timezone' field is
+        // authoritative: an embedded zone that contradicts it is rejected.
+        if ($start->getTimezone()->getName() !== $timezone->getName()) {
+            throw new InvalidConfigurationException(
+                "The start string carries its own timezone; declare the zone only via the 'timezone' field",
+                [
+                    'start' => $startValue,
+                    'timezone' => $timezoneValue,
+                    'embedded_timezone' => $start->getTimezone()->getName(),
+                ]
+            );
+        }
+
         $slotsPerRound = $config['slots_per_round'] ?? 1;
         if (!is_int($slotsPerRound)) {
             throw new InvalidConfigurationException(

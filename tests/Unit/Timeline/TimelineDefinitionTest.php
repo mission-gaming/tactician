@@ -154,4 +154,22 @@ describe('TimelineDefinition', function (): void {
         expect(fn () => TimelineDefinition::fromArray([...$valid, 'slots_per_round' => 'three']))
             ->toThrow(InvalidConfigurationException::class, 'integer');
     });
+
+    // The declared timezone field is authoritative for wall-clock
+    // arithmetic; an embedded zone in the start string would silently
+    // win during parsing and undermine the DST guarantee
+    it('rejects start strings carrying their own timezone', function (): void {
+        $base = ['round_interval' => 'P7D', 'timezone' => 'Europe/London'];
+
+        expect(fn () => TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01T19:00:00Z']))
+            ->toThrow(InvalidConfigurationException::class, 'carries its own timezone');
+        expect(fn () => TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01 19:00:00 +02:00']))
+            ->toThrow(InvalidConfigurationException::class, 'carries its own timezone');
+        expect(fn () => TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01 19:00:00 America/New_York']))
+            ->toThrow(InvalidConfigurationException::class, 'carries its own timezone');
+
+        // A redundant-but-consistent embedded zone is fine
+        $consistent = TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01 19:00:00 Europe/London']);
+        expect($consistent->getSlotTime(1)->format('H:i'))->toBe('18:00'); // BST -> UTC
+    });
 });
