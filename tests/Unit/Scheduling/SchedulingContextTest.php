@@ -112,6 +112,33 @@ describe('SchedulingContext', function (): void {
         expect($context->getEventsForLeg(2))->toBe([]);
     });
 
+    // Regression: without metadata the fallback derived rounds per leg from the
+    // maximum generated round, misclassifying partially generated schedules
+    // (leg 1 of a 4-participant, 2-leg tournament reported 4 and 2 events).
+    it('classifies partial multi-leg events without metadata using the participant count', function (): void {
+        $participants = [
+            $this->participant1,
+            $this->participant2,
+            $this->participant3,
+            $this->participant4,
+        ];
+
+        // Only leg 1 generated so far: 3 rounds, 6 events
+        $events = [
+            new Event([$this->participant1, $this->participant2], new Round(1)),
+            new Event([$this->participant3, $this->participant4], new Round(1)),
+            new Event([$this->participant1, $this->participant3], new Round(2)),
+            new Event([$this->participant2, $this->participant4], new Round(2)),
+            new Event([$this->participant1, $this->participant4], new Round(3)),
+            new Event([$this->participant2, $this->participant3], new Round(3)),
+        ];
+
+        $context = new SchedulingContext($participants, $events, currentLeg: 2, totalLegs: 2);
+
+        expect($context->getEventsForLeg(1))->toHaveCount(6);
+        expect($context->getEventsForLeg(2))->toBe([]);
+    });
+
     // Tests the hasMetadata method to verify it correctly identifies whether
     // specific metadata keys exist in the context or not
     it('checks metadata existence', function (): void {
