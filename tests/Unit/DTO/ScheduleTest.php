@@ -99,6 +99,37 @@ describe('Schedule', function (): void {
         expect($round2Events[0])->toBe($this->event2);
     });
 
+    // Tests grouping events by round number - the natural shape for consumers
+    // that process a schedule round by round (dates per round, matchday views)
+    it('groups events by round in ascending order', function (): void {
+        $round5 = new Round(5);
+        $event3 = new Event([$this->participant1, $this->participant3], $this->round1);
+        $event4 = new Event([$this->participant2, $this->participant3], $round5);
+        // Deliberately out of round order
+        $schedule = new Schedule([$event4, $this->event2, $this->event1, $event3]);
+
+        $byRound = $schedule->getEventsByRound();
+
+        expect(array_keys($byRound))->toBe([1, 2, 5]);
+        expect($byRound[1])->toBe([$this->event1, $event3]);
+        expect($byRound[2])->toBe([$this->event2]);
+        expect($byRound[5])->toBe([$event4]);
+    });
+
+    it('excludes round-less events from the round grouping', function (): void {
+        $roundless = new Event([$this->participant1, $this->participant3]);
+        $schedule = new Schedule([$this->event1, $roundless]);
+
+        $byRound = $schedule->getEventsByRound();
+
+        expect($byRound)->toBe([1 => [$this->event1]]);
+        expect($schedule->getEvents())->toHaveCount(2);
+    });
+
+    it('returns an empty round grouping for an empty schedule', function (): void {
+        expect((new Schedule())->getEventsByRound())->toBe([]);
+    });
+
     // Tests finding the highest round number in the schedule, useful for
     // determining tournament length and current tournament progress
     it('gets maximum round number', function (): void {
