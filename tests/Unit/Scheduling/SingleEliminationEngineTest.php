@@ -237,6 +237,30 @@ describe('SingleEliminationEngine', function (): void {
             ->toThrow(InvalidConfigurationException::class, 'same elimination match');
     });
 
+    // Normal recording cannot produce these, but hand-crafted serialized
+    // state can: results must reference round-numbered pairwise events
+    it('rejects malformed results arriving via rehydrated state', function (): void {
+        $engine = new SingleEliminationEngine();
+
+        $base = [
+            'participants' => [
+                ['id' => 's1', 'label' => 'Seed 1', 'seed' => null, 'metadata' => []],
+                ['id' => 's2', 'label' => 'Seed 2', 'seed' => null, 'metadata' => []],
+            ],
+            'active' => ['s1', 's2'],
+            'rounds' => [],
+        ];
+
+        $roundless = StageState::fromArray([...$base, 'results' => [[
+            'event' => ['participants' => ['s1', 's2'], 'round' => null, 'metadata' => []],
+            'winner' => 's1',
+            'scores' => [],
+            'metadata' => [],
+        ]]]);
+        expect(fn () => $engine->pairNextRound($roundless))
+            ->toThrow(InvalidConfigurationException::class, 'round number');
+    });
+
     it('rejects fewer than two participants', function (): void {
         $engine = new SingleEliminationEngine();
 

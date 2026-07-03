@@ -33,7 +33,7 @@ final readonly class EliminationPlan implements StagePlan
 
     /**
      * @param array<Participant> $participants
-     * @param 'single-elimination'|'double-elimination' $algorithm
+     * @param string $algorithm 'single-elimination' or 'double-elimination'; anything else is rejected
      * @param int $legsPerTie Events per knockout tie (1 or 2)
      * @throws InvalidConfigurationException When the configuration cannot form a bracket
      */

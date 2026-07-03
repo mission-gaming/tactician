@@ -198,8 +198,11 @@ describe('StageState', function (): void {
     });
 
     it('rejects malformed serialized data', function (): void {
-        StageState::fromArray(['participants' => 'nope']);
-    })->throws(InvalidArgumentException::class);
+        expect(fn () => StageState::fromArray(['participants' => 'nope']))
+            ->toThrow(InvalidArgumentException::class);
+        expect(fn () => StageState::fromArray(['participants' => ['nope']]))
+            ->toThrow(InvalidArgumentException::class, 'must be an array');
+    });
 
     it('rejects malformed rounds and results collections', function (): void {
         $base = [

@@ -109,6 +109,8 @@ describe('DoubleEliminationEngine', function (): void {
         $engine = new DoubleEliminationEngine();
         $state = StageState::start(doubleElimField(4));
 
+        expect($engine->getOutcome($state))->toBeNull();
+
         $round1 = $engine->pairNextRound($state);
         $state = $state->withRoundPlayed($round1, doubleElimFavourites($round1->getEvents()));
 

@@ -33,6 +33,7 @@ describe('EliminationPlan', function (): void {
         expect($plan->getTotalRounds())->toBe(3);
         expect($plan->getExpectedEventCount())->toBe(5); // n-1 ties
         expect($plan->getLegsPerTie())->toBe(1);
+        expect($plan->getParticipants())->toHaveCount(6);
         expect($plan)->not->toBeInstanceOf(PairwisePlan::class);
     });
 

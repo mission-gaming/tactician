@@ -161,6 +161,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
 
     /**
      * @return array<string, \MissionGaming\Tactician\DTO\Result>
+     * @throws InvalidConfigurationException When a result's event has no round number
      */
     private function indexResultsByEvent(StageOutcome $outcome): array
     {
