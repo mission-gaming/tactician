@@ -74,7 +74,7 @@ class RoundRobinScheduler implements SchedulerInterface
             if (!$options->backtracking) {
                 throw $greedyFailure;
             }
-            $allEvents = $this->generateWithBacktracking($participants, $strategy, $plan);
+            $allEvents = $this->generateWithBacktracking($participants, $strategy, $plan, $greedyFailure);
         }
         ksort($this->roundByes);
 
@@ -259,9 +259,13 @@ class RoundRobinScheduler implements SchedulerInterface
     private function generateWithBacktracking(
         array $participants,
         LegStrategyInterface $strategy,
-        RoundRobinPlan $plan
+        RoundRobinPlan $plan,
+        IncompleteScheduleException $greedyFailure
     ): array {
-        $this->clearViolations();
+        // The greedy final attempt's violations stay in the collector: if
+        // the search also fails, callers still get constraint-level
+        // diagnostics alongside the search-level message (the greedy
+        // failure itself rides along as the previous exception).
         $this->roundByes = [];
 
         $field = array_values($participants);
@@ -281,7 +285,9 @@ class RoundRobinScheduler implements SchedulerInterface
                     ? 'Backtracking search exhausted its step budget ('
                         . BacktrackingRoundRobinGenerator::STEP_BUDGET
                         . ' pairing attempts) without finding a complete schedule. The configuration may be unsatisfiable or may need a different participant order.'
-                    : 'Backtracking search exhausted the search space: no round decomposition of the first leg satisfies the constraints, so the configuration is unsatisfiable.'
+                    : 'Backtracking search exhausted the search space: no round decomposition of the first leg satisfies the constraints, so the configuration is unsatisfiable.',
+                0,
+                $greedyFailure
             );
         }
 
@@ -316,7 +322,9 @@ class RoundRobinScheduler implements SchedulerInterface
                         $this->violationCollector,
                         $plan,
                         $participants,
-                        "Backtracking found a first leg, but constraints reject its leg {$leg} derivation and the search does not cross leg boundaries. Relax the constraints on later legs or change the leg strategy."
+                        "Backtracking found a first leg, but constraints reject its leg {$leg} derivation and the search does not cross leg boundaries. Relax the constraints on later legs or change the leg strategy.",
+                        0,
+                        $greedyFailure
                     );
                 }
 
@@ -329,6 +337,10 @@ class RoundRobinScheduler implements SchedulerInterface
 
             $allEvents = [...$allEvents, ...$legEvents];
         }
+
+        // The search succeeded: the greedy attempt's violations would be
+        // stale diagnostics on a complete schedule.
+        $this->clearViolations();
 
         return $allEvents;
     }

@@ -128,6 +128,31 @@ describe('Backtracking round-robin generation', function (): void {
             ->toThrow(IncompleteScheduleException::class, 'exhausted the search space');
     });
 
+    // A failed search must not be a diagnostic regression against the
+    // greedy failure it followed: constraint-level violations stay in the
+    // collector and the greedy failure rides along as previous
+    it('preserves greedy diagnostics when the search also fails', function (): void {
+        $never = ConstraintSet::create()->custom(fn () => false, 'Reject Everything')->build();
+        $scheduler = new RoundRobinScheduler($never);
+
+        try {
+            $scheduler->schedule(backtrackingField(4), new RoundRobinOptions(backtracking: true));
+            expect(false)->toBeTrue('Expected IncompleteScheduleException was not thrown');
+        } catch (IncompleteScheduleException $e) {
+            expect($e->getPrevious())->toBeInstanceOf(IncompleteScheduleException::class);
+            expect($e->getViolationCollector()->getViolationCount())->toBeGreaterThan(0);
+            expect($e->getDiagnosticReport())->toContain('Reject Everything');
+        }
+    });
+
+    it('clears stale greedy diagnostics when the search succeeds', function (): void {
+        $scheduler = new RoundRobinScheduler(fixturePlacementConstraints());
+        $schedule = $scheduler->schedule(backtrackingField(4), new RoundRobinOptions(backtracking: true));
+
+        expect($schedule)->toHaveCount(6);
+        expect($scheduler->getViolationCollector()->getViolationCount())->toBe(0);
+    });
+
     it('fails loudly when the step budget runs out', function (): void {
         // Forbidding the final round is unsatisfiable, but the search space
         // for 12 participants is astronomic - the budget trips first
