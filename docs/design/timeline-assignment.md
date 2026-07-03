@@ -1,8 +1,32 @@
 # Design note: Timeline Assignment (dates and times)
 
-**Status: POSITION + EARLY SKETCH** — this documents *whether and where*
-date/time assignment belongs, ahead of ROADMAP Phase 4. Code blocks are
-design sketches, not executable examples.
+**Status: IMPLEMENTING — first cut shipped (slot model + assignment)** —
+the position below was accepted and the design anchors settled during the
+Phase 4 implementation pass. The first cut ships `src/Timeline/`:
+`TimelineDefinition` (the declarative slot model, config-constructible),
+`TimelineAssigner` (deterministic assignment over
+`Schedule::getEventsByRound()` and, for results-driven stages, a
+`RoundPairing`), and the `ScheduledEvent`/`ScheduledSchedule` decorations
+(serializable). Round-aligned and staggered kickoffs both come from the
+one slot model, as sketched. Time-aware constraints are the next Phase 4
+milestone; cross-stage clash validation and venue/resource modelling stay
+open. Settled decisions beyond the sketch:
+
+- **One event per slot** in this cut: a round with more events than slots
+  fails loudly (concurrent kickoffs per slot arrive with venue/capacity
+  modelling, which needs a capacity concept to validate against).
+- **Deterministic filling**: a round's events fill its slots in schedule
+  order against slot time order.
+- **Wall-clock interval arithmetic** in the definition's timezone: a
+  weekly 19:00 kickoff stays 19:00 across DST transitions; kickoffs are
+  then emitted in UTC (`timezone-explicit in, UTC-normalized out`).
+- **Round numbers are absolute offsets**: round N lands at
+  start + (N−1) round intervals whether or not earlier rounds exist in
+  the schedule, so cross-leg-continuous numbering and partial schedules
+  map stably.
+- **Round-less events fail loudly**: the round-grouped view silently
+  excludes them, so the assigner refuses schedules whose flat event count
+  disagrees with the grouped view rather than silently dropping fixtures.
 
 ## The question
 

@@ -46,6 +46,14 @@ engines resolve tournament state on every call:
 - **DoubleEliminationEngine**: `StageEngineInterface` preset — winners/losers routes with dropper rematch deferral, grand final, and optional bracket reset; the same graph an application could compose by hand
 - All engines emit **RoundPairing** values and finish as a **StageOutcome** (see the stage model); group stages are compositions (PoolDistributor + per-pool stages + selectors), not an engine
 
+### Timeline System
+Maps generated schedules onto dates and times — the mechanism only; slot
+patterns come from application config, and persistence/notification
+policy stays app-side:
+- **TimelineDefinition**: The declarative per-stage slot model (zoned start, round interval, slots per round, slot interval), config-constructible with ISO 8601 durations. Wall-clock arithmetic in the stage's timezone (DST-safe weekly kickoffs); slot times emit in UTC.
+- **TimelineAssigner**: Deterministic slot filling over `Schedule::getEventsByRound()` (whole schedules) or a `RoundPairing` (results-driven stages). Loud validation: round overflow and round-less events fail with diagnostics.
+- **ScheduledEvent / ScheduledSchedule**: Decorations wrapping untouched events with their UTC kickoffs; serializable, so re-assignment is cheap and platforms persist assigned times.
+
 ### Standings System
 - **StandingsCalculator**: Ordered league tables from results with a pluggable ranking strategy
 - **RankingStrategy**: Computes the primary ranking value ordering the table — ordering is the contract, points are one means of producing it

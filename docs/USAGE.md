@@ -13,6 +13,7 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Swiss Tournaments](#swiss-tournaments)
 - [Elimination Brackets](#elimination-brackets)
 - [Pools, Progression, and Multi-Stage Tournaments](#pools-progression-and-multi-stage-tournaments)
+- [Timeline Assignment](#timeline-assignment)
 - [Serialization](#serialization)
 - [Schedule Validation](#schedule-validation)
 - [Error Handling](#error-handling)
@@ -50,6 +51,9 @@ anything else that competes.
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary — those are consumer interpretations of the outcome. |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
+| **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
+| **Slot** | One kickoff time within a round, holding one event. A round's events fill its slots in schedule order against slot time order, deterministically. |
+| **Kickoff** | The assigned time of a scheduled event, always emitted in UTC (`ScheduledEvent::getKickoff()`); the timeline's wall-clock arithmetic happens in the stage's declared timezone. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
 ## Basic Usage
@@ -630,6 +634,82 @@ Consumer-derived selections participate by declaring expected entrant
 counts (a transition without a selector); concurrent routes (winners
 forward, losers to a repechage) validate as separate chains from the same
 source.
+
+## Timeline Assignment
+
+`TimelineAssigner` maps a generated schedule onto real dates and times.
+The mechanism is Tactician's; the policy is yours — you translate your
+competition config into a declarative **slot model**, and the assigner
+produces timestamped events deterministically. Round-aligned scheduling
+("everyone plays round N at time T") is the one-slot case; staggered
+kickoffs are the same model with more slots:
+
+```php
+use MissionGaming\Tactician\Timeline\TimelineAssigner;
+use MissionGaming\Tactician\Timeline\TimelineDefinition;
+
+// Weekly match days with three staggered kickoffs, an hour apart
+$timeline = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('Europe/London')),
+    roundInterval: new DateInterval('P7D'),
+    slotsPerRound: 3,
+    slotInterval: new DateInterval('PT1H'),
+);
+
+$scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+
+foreach ($scheduled->getEventsByRound() as $round => $scheduledEvents) {
+    foreach ($scheduledEvents as $scheduledEvent) {
+        // ScheduledEvent wraps the untouched Event with its UTC kickoff
+        $when = $scheduledEvent->getKickoff();   // DateTimeImmutable, UTC
+        $event = $scheduledEvent->getEvent();
+    }
+}
+```
+
+The rules of the mechanism:
+
+- **Timezone-explicit in, UTC out.** The definition's start carries the
+  stage's timezone; interval arithmetic is wall-clock in that zone (a
+  weekly 19:00 kickoff stays 19:00 across DST transitions), and assigned
+  kickoffs are emitted in UTC. Display-timezone policy stays app-side.
+- **Deterministic filling.** A round's events fill its slots in schedule
+  order against slot time order — the same schedule and timeline always
+  produce the same kickoffs.
+- **Loud validation.** A round with more events than the timeline has
+  slots fails with diagnostics (each slot holds one event in this cut),
+  and a schedule carrying round-less events is refused rather than
+  silently dropping fixtures.
+- **Round numbers are absolute offsets.** Round N lands at
+  start + (N−1) round intervals whether or not earlier rounds exist, so
+  cross-leg-continuous numbering maps stably.
+- **Decoration, not mutation.** `ScheduledEvent`/`ScheduledSchedule`
+  wrap events without touching them; re-assignment against a different
+  timeline is cheap, and the decorated view serializes
+  (`toArray()`/`fromArray()`/JSON) so platforms persist assigned
+  kickoffs.
+
+Timelines are **per stage** — a group stage playing weekly slots and a
+finals weekend are two `TimelineDefinition`s. For results-driven stages,
+assign round by round through the engine bridge:
+
+```php
+$pairing = $engine->pairNextRound($state);
+$scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
+```
+
+Definitions are plain-data constructible for config-driven platforms,
+with ISO 8601 durations:
+
+```php
+$timeline = TimelineDefinition::fromArray([
+    'start' => '2026-08-01 18:00:00',
+    'timezone' => 'Europe/London',
+    'round_interval' => 'P7D',
+    'slots_per_round' => 3,
+    'slot_interval' => 'PT1H',
+]);
+```
 
 ## Serialization
 
