@@ -233,7 +233,7 @@ readonly class SwissPairingEngine
      * @param array<\MissionGaming\Tactician\Standings\StandingEntry> $entries Standings entries, best first
      * @param array<string> $previousByeIds
      * @return array<Participant>
-     * @throws InvalidConfigurationException When byes were awarded but the ranking strategy has no win value
+     * @throws InvalidConfigurationException When byes were awarded but the ranking strategy is not a WinDrawLossRanking
      */
     private function orderForPairing(array $entries, array $previousByeIds): array
     {
