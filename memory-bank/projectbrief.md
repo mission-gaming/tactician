@@ -3,45 +3,33 @@
 ## Project Overview
 *This is the foundation document for the Tactician project. All other memory bank files build upon this brief.*
 
-Tactician is a modern PHP library for generating structured schedules between participants. It provides deterministic algorithms such as Round Robin, Swiss, and Pool play to decide who is paired with whom, along with a flexible constraint system for rules like “no repeat pairings” or “participants should not be scheduled at the same time.” Fixture generation is kept separate from time assignment, allowing events to be mapped onto dates and slots using simple timeline patterns. Designed for PHP 8.2+, it is lightweight, Composer-compatible, and built with test-driven development to ensure reliability and extensibility.
-
+Tactician is a modern PHP library for generating structured schedules between participants. It provides deterministic tournament formats — round robin (single and multi-leg), Swiss pairing, single and double elimination, and group stages — plus results, standings with pluggable tiebreakers, and a flexible constraint system for rules like "no repeat pairings" or "protect top seeds from early meetings". Fixture generation is kept separate from time assignment (timeline assignment is future work). Designed for PHP 8.2+, it is dependency-free in production, Composer-compatible, and built test-first.
 
 ## Core Requirements
 - PHP library, Composer-compatible, targeting PHP 8.2, 8.3, and 8.4
-- Provides deterministic tournament scheduling algorithms (Round Robin, Swiss, Pools)
-- Supports constraints via a flexible predicate DSL (hard boolean, soft scoring)
-- Generates schedules as iterables/generators for efficiency
-- Test-driven development using Pest, PHPStan, Rector, PHP-CS-Fixer
+- Deterministic scheduling: same input always produces the same schedule (seeded randomness where randomization is wanted)
+- Whole-schedule generators for formats that can be precomputed; results-driven engines for formats whose later rounds depend on outcomes (Swiss, brackets, group qualification)
+- Constraints via a flexible predicate system with loud, diagnostic failure (never silently incomplete schedules)
+- Test-driven development using Pest, PHPStan level 8, Rector, PHP-CS-Fixer
 - Licensed under MIT, open source, with GitHub Actions CI
 
 ## Goals
-- Deliver a modern, extensible scheduling engine usable in PHP projects projects
-- Ensure deterministic, reproducible fixture generation with seeded randomness
-- Provide a clean separation between pairing (who vs who) and timeline (when/where)
-- Offer high developer ergonomics: fluent APIs, runnable examples, strong documentation
-- Keep performance suitable for competitions up to ~50 participants
-- Backwards compatibility is not a consideration currently - breaking changes are acceptable
+- Deliver a modern, extensible scheduling engine usable in PHP projects
+- Clean separation between pairing (who vs who) and timeline (when/where)
+- High developer ergonomics: fluent APIs, runnable (and tested) examples, executable documentation
+- Performance suitable for competitions into the hundreds of participants
+- Backwards compatibility is not a consideration currently — breaking changes are acceptable (unreleased, no tags)
 
 ## Scope
-- In-scope:
-  - Core DTOs: Participant, Event, Schedule, MatchContext
-  - ConstraintSet with built-in and custom predicates
-  - Scheduling algorithms: CircleScheduler (Round Robin), SwissScheduler, PoolScheduler
-  - Timeline assignment: PatternTimeline and TimeAssigner for slot-based scheduling
-  - Examples, CI, and documentation
-- Out of scope (for v1, may come later):
-  - External solver integrations (CP-SAT, MILP)
-  - Venue routing and advanced travel minimization
-  - Blackout dates, iCal RRULEs, or complex recurrence handling
-  - Full Social Golfer Problem/generalized k-participant match solving
+- In scope (shipped): core DTOs (Participant, Event, Round, Schedule, Result), ConstraintSet with built-in and custom predicates, RoundRobinScheduler, SimpleSwissScheduler, SwissPairingEngine, Single/DoubleEliminationEngine, GroupStageEngine, standings/tiebreakers, JSON serialization, examples, CI, documentation
+- In scope (next): algorithm-neutral core abstraction (`ExpectedSchedule`/`AlgorithmPlan`) — see docs/ROADMAP.md Phase 3
+- Out of scope for now: timeline/venue assignment (Phase 4), external solver integrations, venue routing, iCal recurrence, generalized k-participant matching
 
 ## Misc
 - **CRITICAL**: Date formats in the memory bank files must ALWAYS follow the ISO 8601 format (YYYY-MM-DD).
+- Project conventions for agents live in AGENTS.md (CLAUDE.md symlinks to it).
 
 ## Status
-- **Project Stage**: Production-ready core system (Round-Robin complete)
+- **Project Stage**: Feature-complete through Roadmap Phase 2 (all major tournament formats shipped)
 - **Created**: 2025-09-10
-- **Last Updated**: 2025-10-01
-
-## Notes
-This project brief will be expanded as the project requirements become clear through development and user input.
+- **Last Updated**: 2026-07-03

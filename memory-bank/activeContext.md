@@ -1,154 +1,25 @@
 # Active Context: Tactician
 
 ## Current Work Focus
-- **✅ PHASE 1 COMPLETE**: Multi-leg architecture foundation implemented with full test coverage and PHPStan compliance
-- **✅ PHASE 2 COMPLETE**: Algorithm Integration successfully implemented with integrated multi-leg generation
-- **✅ ARCHITECTURE TRANSFORMATION**: Eliminated silent event skipping, removed legacy SupportsMultipleLegs trait, integrated constraint validation
-- **✅ QUALITY STANDARDS**: 252/252 tests passing, 1,028 assertions, 0 PHPStan errors, production-ready reliability
-- **STATUS**: Phase 2 complete (2025-10-02) - Ready for Phase 3: Next enhancement phase
-
-## Recent Changes
-- **✅ COMPLETE**: Advanced Participant DTO with seeding, metadata, and unique ID system
-- **✅ COMPLETE**: Event DTO with round tracking and participant management
-- **✅ COMPLETE**: Round DTO with immutable round representation and metadata system
-- **✅ COMPLETE**: Schedule DTO with Iterator/Countable, round filtering, and metadata
-- **✅ COMPLETE**: RoundRobinScheduler with circle method, bye handling, and constraint validation
-- **✅ COMPLETE**: ConstraintSet with builder pattern, built-in constraints, and custom predicates
-- **✅ COMPLETE**: SchedulingContext with participant and event history tracking
-- **✅ COMPLETE**: Comprehensive Pest test suite with edge case coverage and deterministic validation
-- **✅ RECENT**: Code coverage integration with Codecov
-- **✅ RECENT**: CI/CD pipeline improvements with GitHub Actions
-- **✅ RECENT**: Updated README and project documentation
-- **✅ RECENT**: Added build and code coverage badges
-- **✅ RECENT**: Updated documentation examples to reflect Round DTO integration
-- **✅ LATEST**: Multi-leg tournament support with leg strategies implementation
-- **✅ LATEST**: LegStrategyInterface with MirroredLegStrategy, RepeatedLegStrategy, ShuffledLegStrategy
-- **✅ LATEST**: SupportsMultipleLegs trait for expanding single-leg schedules to multiple legs
-- **✅ LATEST**: Comprehensive multi-leg testing with continuous round numbering validation
-- **✅ LATEST**: Documentation updates reflecting multi-leg tournament capabilities
-- **✅ RECENT**: Advanced constraint system with sophisticated constraint types
-- **✅ RECENT**: MinimumRestPeriodsConstraint for enforcing rest periods between encounters
-- **✅ RECENT**: SeedProtectionConstraint for preventing early meetings between top seeds
-- **✅ RECENT**: ConsecutiveRoleConstraint for limiting consecutive positional assignments
-- **✅ RECENT**: MetadataConstraint with flexible factory methods for metadata-based rules
-- **✅ RECENT**: Multi-leg constraint validation with incremental context building
-- **✅ RECENT**: Complex constraint test scenarios validating real-world tournament requirements
-- **✅ 2025-09-11**: **SCHEDULE VALIDATION SYSTEM COMPLETE** - Prevents silent incomplete schedule generation
-- **✅ 2025-09-11**: **CI PIPELINE SUCCESS** - All PHPStan level 8 errors resolved (25 → 0)
-- **✅ 2025-09-11**: **CODE QUALITY COMPLETE** - Fixed malformed @throws annotations throughout codebase
-- **✅ 2025-09-11**: **TYPE SAFETY COMPLETE** - Added missing array type specifications and imports
-- **✅ 2025-09-11**: **TEST VALIDATION** - Updated ComplexConstraintTest to properly expect exceptions
-- **✅ 2025-09-11**: **PRODUCTION READY** - Full CI pipeline passes with zero errors/warnings
-- **✅ 2025-10-01**: **REFACTORING ANALYSIS COMPLETE** - Comprehensive analysis of leg generation risks and architectural problems
-- **✅ 2025-10-01**: **REFACTORING PLAN COMPLETE** - Detailed technical specification created in refactoringPlan.md
-- **✅ 2025-10-01**: **PHASE 1 COMPLETE** - Multi-leg architecture foundation implemented with comprehensive test coverage
-- **✅ 2025-10-01**: **ENHANCED SCHEDULINGCONTEXT** - Multi-leg aware with cross-leg event visibility and context evolution
-- **✅ 2025-10-01**: **NEW LEGSTRATEGY INTERFACE** - Integrated generation with constraint planning and satisfiability reporting
-- **✅ 2025-10-01**: **SUPPORTING VALUE OBJECTS** - GenerationPlan, ConstraintSatisfiabilityReport, DiagnosticReport implemented
-- **✅ 2025-10-01**: **COMPREHENSIVE DIAGNOSTICS** - SchedulingDiagnostics system for detailed failure analysis
-- **✅ 2025-10-01**: **QUALITY STANDARDS ACHIEVED** - PHPStan 0 errors, PSR-4 compliance, 100% test coverage
-- **✅ 2025-10-02**: **PHASE 2 ALGORITHM INTEGRATION COMPLETE** - Integrated multi-leg generation eliminates silent event skipping
-- **✅ 2025-10-02**: **LEGACY TRAIT REMOVED** - SupportsMultipleLegs trait eliminated, replaced with integrated approach
-- **✅ 2025-10-02**: **SCHEDULER INTERFACE UPDATED** - New signature: schedule($participants, $participantsPerEvent=2, $legs=1, $strategy=null)
-- **✅ 2025-10-02**: **ALL LEG STRATEGIES UPDATED** - MirroredLegStrategy, RepeatedLegStrategy, ShuffledLegStrategy refactored
-- **✅ 2025-10-02**: **ALL-OR-NOTHING GENERATION** - Complete schedules or comprehensive failure reporting with diagnostics
-- **✅ 2025-10-02**: **CONSTRAINT VALIDATION ENHANCED** - Full tournament context available during generation
-- **✅ 2025-10-02**: **TEST SUITE COMPLETE** - 252/252 tests passing, 1,028 assertions, all constructor signatures updated
-- **✅ 2025-10-02**: **PHPSTAN COMPLIANCE** - All static analysis errors resolved, unused methods removed, proper annotations
-- **✅ 2025-10-02**: **PRODUCTION READY** - System ready for production use with guaranteed reliability
+- **Roadmap Phases 1 and 2 are complete** (see docs/ROADMAP.md): round robin core plus Swiss pairing, single/double elimination brackets, group stages, standings/tiebreakers, and JSON serialization all shipped with full CI (Pest, PHPStan level 8, Rector, CS-Fixer, example smoke-runs)
+- A high-effort code review of the feature work surfaced 10 confirmed defects; all were fixed. Notable: Swiss withdrawal support, round-parity home/away role alternation in the round-robin generator, conflicting/round-less elimination result rejection, and group-play completeness checks before knockout qualification
+- Documentation was audited end-to-end: README, ROADMAP, ARCHITECTURE, USAGE, CONTRIBUTING, and BACKGROUND all match the shipped code, and every docs/example snippet has been executed
 
 ## Next Steps
-**PHASE 2 COMPLETE - Ready for Next Enhancement Phase**:
-
-**Future Enhancements** (Phase 3 and beyond):
-1. **Swiss Tournament Scheduler** - Implement Swiss-system pairing algorithm with dynamic matchmaking
-2. **Pool/Group Scheduler** - Group stage tournaments with standings calculation and advancement
-3. **Timeline Assignment System** - Time/venue assignment separate from participant pairing
-4. **Enhanced Constraint System** - Time/venue/availability specific constraints with calendar integration
-5. **Schedule Optimization** - Post-generation quality improvements and conflict resolution
-6. **Tournament Management** - Registration, seeding, and bracket management systems
-7. **Real-time Updates** - Live tournament updates and dynamic schedule adjustments
-8. **Performance Optimization** - Large-scale tournament handling and caching strategies
+- **Phase 3 (docs/ROADMAP.md)**: the algorithm-neutral core — `ExpectedSchedule`/`AlgorithmPlan` abstraction, plan-driven generation via `LegStrategyInterface::planGeneration()` (currently consulted only for its satisfiability preflight), and a unified interface for the results-driven engines. This reshapes public APIs and needs a dedicated design pass before implementation.
+- Backtracking generation for constraint configurations the greedy generator cannot satisfy (known limitation, recorded in ROADMAP Phase 5)
 
 ## Active Decisions and Considerations
-- **Modern PHP 8.2+**: Readonly classes, constructor property promotion, strict typing throughout
-- **Immutable Value Objects**: All DTOs are immutable for thread safety and predictability
-- **Interface Segregation**: Clean contracts for schedulers (SchedulerInterface) and constraints (ConstraintInterface)
-- **Strategy Pattern**: Pluggable scheduling algorithms with consistent interface
-- **Builder Pattern**: Fluent constraint configuration with ConstraintSet::create()
-- **Circle Method Algorithm**: Proper round-robin implementation ensuring each participant plays all others exactly once
-- **🆕 MULTI-LEG FIRST PRINCIPLE**: Multi-leg tournaments are the default assumption, single-leg is special case where legs=1
-- **🆕 ALL-OR-NOTHING GENERATION**: No silent event skipping - complete schedule or clear failure with diagnostics
-- **🆕 INTEGRATED LEG GENERATION**: Legs generated during core algorithm, not as post-processing step
-
-## Important Patterns and Preferences
-- **Test-Driven Development**: Comprehensive Pest test coverage for all components
-- **Dependency Injection**: Constructor-based dependencies, no static methods
-- **Iterator/Countable**: Memory-efficient traversal of schedules and events
-- **Advanced Constraint System**: Sophisticated constraint validation with incremental context building
-- **Multi-Leg Constraint Continuity**: Constraints properly validated across tournament legs
-- **Factory Pattern**: Constraint factory methods for common use cases (home/away, metadata patterns)
-- **Deterministic Randomization**: Seeded randomization for reproducible results
-- **Separation of Concerns**: Clean separation between scheduling logic and data structures
+- Two generation models deliberately coexist: whole-schedule generators (round robin, simple Swiss) and results-driven engines (Swiss pairing, brackets, groups). Do not force them into one interface ahead of the Phase 3 design pass.
+- Constraints are hard filters with loud, diagnostic failure; soft/preference constraints are intentionally unsupported.
+- The greedy generator retries bounded rotated orderings when constraints reject a schedule; configurations that fail every rotation throw `IncompleteScheduleException` even when satisfiable in principle.
+- `NoRepeatPairings` scopes to the current leg by default (`acrossLegs: true` for the strict variant) — multi-leg tournaments repeat pairings per leg by design.
 
 ## Learnings and Project Insights
-- **Architecture Quality**: Current implementation follows excellent SOLID principles and modern PHP patterns
-- **Algorithm Completeness**: Round-robin implementation handles edge cases (2, 3, 4+ participants, odd/even counts)
-- **Advanced Constraint System**: Comprehensive constraint validation with time-based, positional, and metadata constraints
-- **Multi-Leg Constraint Validation**: Sophisticated incremental context building ensures constraints work across tournament legs
-- **Real-World Application**: Complex constraint scenarios validate tournament director requirements
-- **Test Coverage**: Comprehensive unit and integration tests verify mathematical correctness and constraint enforcement
-- **Memory Efficiency**: Iterator pattern allows efficient traversal of large schedules without loading all events into memory
-- **Extensibility**: Current architecture provides solid foundation for additional tournament systems and constraint types
-- **Schedule Validation Success**: Mathematical validation approach (expected vs actual events) proves highly effective
-- **PHPStan Value**: Level 8 static analysis catches subtle type and documentation issues before they become problems
-- **Exception Design**: Hierarchical exception structure with diagnostic capabilities provides excellent developer experience
-- **CI Pipeline Value**: Comprehensive automated checking ensures production readiness and prevents regressions
-- **Documentation Quality**: Proper @throws annotations and array type specifications crucial for maintainability
-- **🆕 CRITICAL FLAW IDENTIFIED**: Current multi-leg approach can silently skip events when constraints fail - fundamental reliability issue
-- **🆕 ARCHITECTURAL INSIGHT**: Multi-leg support should be core assumption, not bolt-on feature
-- **🆕 CONSTRAINT CONTEXT LEARNING**: Full multi-leg context needed during generation, not post-processing validation
-- **🆕 DIAGNOSTIC IMPORTANCE**: Detailed failure reporting crucial for tournament schedule reliability
-- **🆕 REFACTORING PLAN COMPLETE**: Comprehensive technical specification addresses all identified risks and problems
-- **🆕 IMPLEMENTATION READY**: Clear implementation sequence defined with architectural principles established
+- **Documentation and examples rot into bugs here.** Three examples shipped fatal errors from stale APIs, and a wrong constructor sample in ARCHITECTURE.md matched an actual shipped bug. Countermeasures now in place: `tests/Feature/ExamplesTest.php` auto-validates every example, `composer ci` smoke-runs them, and the rule (AGENTS.md) is to execute every doc snippet before committing it.
+- Tests that pin observed behavior rather than intent can entrench bugs — a test once asserted the broken cross-leg `NoRepeatPairings` semantics as correct.
+- Property/invariant tests (elimination match counts and loss counts, round-robin pairing multiplicity) catch what example-pinning tests miss; prefer extending `tests/Feature/EliminationInvariantsTest.php` and `tests/Feature/ScheduleCompletenessTest.php` when touching generation logic.
+- Immutable-context copying inside generation loops caused an O(events²) blowup once; batch context updates per round, not per event.
 
-## Current Implementation Status
-**Phase**: Algorithm Integration Complete (Phase 2) - Production Ready Multi-Leg Tournament System
-**Progress**: 100% (Foundation architecture + Algorithm integration complete)
-
-**Implemented Components:**
-- ✅ **Advanced Participant DTO**: ID/label/seed/metadata with comprehensive accessor methods
-- ✅ **Event DTO**: Multi-participant support with round tracking and immutable design
-- ✅ **Schedule DTO**: Iterator/Countable with round filtering, metadata, and memory efficiency
-- ✅ **RoundRobinScheduler**: Circle method algorithm with bye handling, constraint validation, and deterministic randomization
-- ✅ **ConstraintSet**: Fluent builder pattern with NoRepeatPairings and custom predicate support
-- ✅ **SchedulingContext**: Complete historical state management for constraint validation
-- ✅ **Comprehensive Test Suite**: Pest framework with 100% coverage, edge cases, and deterministic validation
-
-**Advanced Features Implemented:**
-- ✅ **Seeded Randomization**: Deterministic results with Randomizer support
-- ✅ **Metadata System**: Flexible key-value storage on participants and schedules
-- ✅ **Constraint Validation**: Real-time constraint checking during schedule generation
-- ✅ **Memory Efficiency**: Iterator-based schedule traversal without loading all events
-- ✅ **Edge Case Handling**: 2, 3, 4+ participants with proper bye management
-
-**Phase 1 Multi-Leg Foundation Implemented:**
-- ✅ **Enhanced SchedulingContext**: Multi-leg awareness with cross-leg event visibility
-- ✅ **LegStrategy Interface**: Integrated generation with constraint planning
-- ✅ **GenerationPlan**: Comprehensive generation planning with pairings and constraints
-- ✅ **ConstraintSatisfiabilityReport**: Detailed constraint satisfaction analysis
-- ✅ **DiagnosticReport**: Rich failure analysis and reporting system
-- ✅ **SchedulingDiagnostics**: Comprehensive diagnostic infrastructure
-- ✅ **Complete Test Coverage**: 100% coverage for all new foundation components
-- ✅ **PHPStan Compliance**: 0 static analysis errors with proper type annotations
-- ✅ **PSR-4 Compliance**: Proper autoloading namespace structure
-
-**Ready for Implementation:**
-- 🔄 Swiss Tournament System
-- 🔄 Pool/Group Tournament System
-- 🔄 Timeline Assignment (time/venue mapping)
-- 🔄 Enhanced Constraints (time/venue specific)
-- 🔄 Schedule Optimization
-
----
-*Last Updated: 2025-10-01*
+## Status
+- **Last Updated**: 2026-07-03

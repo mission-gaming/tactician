@@ -1,68 +1,45 @@
 # Technical Context: Tactician
 
 ## Technologies Used
-- **Core Language**: PHP 8.2+ (supports 8.2, 8.3, 8.4)
-- **Testing Framework**: Pest (primary), PHPUnit (fallback)
-- **Static Analysis**: PHPStan
+- **Core Language**: PHP 8.2+ (CI matrix: 8.2, 8.3, 8.4)
+- **Testing Framework**: Pest (on PHPUnit)
+- **Static Analysis**: PHPStan (level 8, zero errors enforced)
 - **Code Modernization**: Rector
 - **Code Style**: PHP-CS-Fixer
-- **Package Management**: Composer
+- **Package Management**: Composer (normalized via ergebnis/composer-normalize)
 - **Namespace**: MissionGaming\Tactician
 
 ## Development Setup
 - **Autoloading**: PSR-4 standard
 - **License**: MIT
+- **Production dependencies**: none (php ^8.2 only); see composer.json for dev dependencies
 
 ## Technical Constraints
 - PHP 8.2+ minimum version requirement
-- Performance target: competitions up to ~50 participants
-- Deterministic algorithms with seeded randomness
-- Separation of fixture generation from timeline assignment
-- Generator/iterable-based scheduling for memory efficiency
-
-## Dependencies
-### Production
-- php: ^8.2
-
-### Development
-- pestphp/pest: ^2.0
-- phpstan/phpstan: ^1.10
-- rector/rector: ^1.2
-- friendsofphp/php-cs-fixer: ^3.0
-- phpunit/phpunit: ^10.0
-- ergebnis/composer-normalize: ^2.39
-- fakerphp/faker: ^1.23
-- nunomaduro/collision: ^8.5
+- Performance: comfortable into the hundreds of participants (a 200-participant two-leg round robin generates in well under a second)
+- Deterministic algorithms with seeded randomness (`Random\Randomizer` + `Mt19937` in tests)
+- Separation of fixture generation from timeline assignment (timeline is future work)
+- Iterator-based schedules for memory efficiency
 
 ## Tool Usage Patterns
-- Memory bank documentation following .clinerules structure
-- Test-driven development approach using Pest
-- Automated CI pipeline with composer scripts
-- Code quality enforcement via static analysis and formatting
+- `composer ci` before every commit: normalize check, PHPStan, Rector, CS-Fixer, tests, example smoke-run
+- `composer test` during development; `composer examples` for a fast example check
+- Auto-fixers: `composer cs-fixer-fix`, `composer rector-fix`, `composer norm-fix`
+- Examples are validated automatically by `tests/Feature/ExamplesTest.php` — no example ships without it
 
 ## Development Workflow
-1. Read memory bank files at start of each session
-2. Run `composer ci` for quality checks before commits
-3. Use `composer test` for test-driven development  
-4. Apply `composer rector-fix` and `composer cs-fixer-fix` for maintenance
-5. Update documentation as development progresses
-6. Maintain clear context for future sessions
+1. Read the memory bank (start with projectbrief.md and activeContext.md) and AGENTS.md at the start of each session
+2. Branch from main — never commit to main directly; open a PR
+3. Test-driven development with Pest; extend the property/invariant suites when touching generation logic
+4. Execute any documentation snippet you change before committing it
+5. Run `composer ci` before commits; keep commits small and single-purpose
+6. Update activeContext.md and progress.md after significant work
 
 ## Implementation Quality Standards
-- **Test Coverage**: 100% coverage of all implemented features using Pest framework
-- **Static Analysis**: Zero PHPStan errors at maximum level  
-- **Code Style**: Consistent formatting with PHP-CS-Fixer
-- **Modern PHP**: Readonly classes, strict typing, constructor property promotion
-- **Immutability**: All DTOs are immutable value objects
-- **Memory Efficiency**: Iterator-based patterns for large data sets
-- **Deterministic Results**: Seeded randomization for reproducible outcomes
+- **Static Analysis**: zero PHPStan errors at level 8 (checked exceptions enforced — keep @throws accurate)
+- **Modern PHP**: readonly classes, strict typing, constructor property promotion
+- **Immutability**: all DTOs are immutable value objects
+- **Deterministic Results**: seeded randomization for reproducible outcomes; no Date/random calls in generation logic outside injected randomizers
 
-## Architecture Principles
-- **SOLID Principles**: Single responsibility, interface segregation, dependency injection
-- **Strategy Pattern**: Pluggable algorithms through clean interfaces
-- **Builder Pattern**: Fluent APIs for complex object construction
-- **Separation of Concerns**: Clear boundaries between data, logic, and constraints
-- **Extensibility**: Clean extension points for additional tournament formats
-
----
-*Last Updated: 2025-09-11*
+## Status
+- **Last Updated**: 2026-07-03
