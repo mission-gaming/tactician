@@ -55,6 +55,15 @@ describe('EliminationPlan', function (): void {
         expect($plan->getExpectedEventCount())->toBeNull();
     });
 
+    // Invalid identifiers were silently treated as double elimination
+    // (null totals); invalid leg counts produced nonsensical event counts
+    it('rejects unknown algorithm identifiers and invalid leg counts', function (): void {
+        expect(fn () => new EliminationPlan(eliminationPlanField(4), 'triple-elimination'))
+            ->toThrow(InvalidConfigurationException::class, 'algorithm');
+        expect(fn () => new EliminationPlan(eliminationPlanField(4), 'single-elimination', 3))
+            ->toThrow(InvalidConfigurationException::class, '1 or 2');
+    });
+
     it('rejects fewer than 2 participants', function (): void {
         new EliminationPlan(eliminationPlanField(1), 'single-elimination');
     })->throws(InvalidConfigurationException::class);

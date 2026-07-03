@@ -42,6 +42,20 @@ final readonly class EliminationPlan implements StagePlan
         private string $algorithm,
         private int $legsPerTie = 1
     ) {
+        if (!in_array($algorithm, ['single-elimination', 'double-elimination'], true)) {
+            throw new InvalidConfigurationException(
+                'Unknown elimination algorithm identifier',
+                ['algorithm' => $algorithm, 'known' => ['single-elimination', 'double-elimination']]
+            );
+        }
+
+        if ($legsPerTie !== 1 && $legsPerTie !== 2) {
+            throw new InvalidConfigurationException(
+                'Ties are played over 1 or 2 legs',
+                ['legs_per_tie' => $legsPerTie]
+            );
+        }
+
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Elimination brackets require at least 2 participants',
