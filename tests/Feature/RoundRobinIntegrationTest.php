@@ -415,9 +415,10 @@ describe('Round Robin Integration', function (): void {
         expect($iterationCount)->toBe(120);
     });
 
-    // Tests impossible constraint scenarios that should throw ImpossibleConstraintsException
-    // with proper diagnostic information for tournament directors
-    it('throws exception for impossible constraint combinations', function (): void {
+    // MinimumRestPeriodsConstraint only spaces out repeat meetings; a
+    // single-leg round robin has none, so even an extreme rest period is
+    // satisfiable (trivially - it never applies) and the schedule completes
+    it('generates a complete schedule when a rest constraint has no repeats to space out', function (): void {
         // Given: Small participant pool with very restrictive constraints
         $participants = [
             new Participant('p1', 'Player 1'),

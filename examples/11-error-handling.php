@@ -8,7 +8,6 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Exceptions\ImpossibleConstraintsException;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
@@ -48,11 +47,10 @@ $scenarios = [
             ->build(),
         'expected' => 'possible_failure',
     ],
-    'Impossible Constraints' => [
-        'description' => 'Mathematically impossible constraints',
+    'Unsatisfiable Constraints' => [
+        'description' => 'A constraint that rejects every pairing',
         'constraints' => ConstraintSet::create()
-            ->noRepeatPairings()
-            ->add(new MinimumRestPeriodsConstraint(10)) // Impossible with only 4 teams
+            ->custom(fn () => false, 'Reject Everything') // No schedule can satisfy this
             ->build(),
         'expected' => 'failure',
     ],
@@ -92,11 +90,6 @@ foreach ($scenarios as $name => $scenario) {
             'generated_events' => $e->getActualEventCount(),
             'constraint_violations' => $e->getViolationCollector()->getViolationCount(),
         ];
-    } catch (ImpossibleConstraintsException $e) {
-        $result['status'] = 'impossible';
-        $result['exception'] = $e;
-        $result['error_type'] = 'Impossible Constraints';
-        $result['error_message'] = $e->getMessage();
     } catch (InvalidConfigurationException $e) {
         $result['status'] = 'invalid_config';
         $result['exception'] = $e;
@@ -125,7 +118,6 @@ function getStatusBadge($status)
             return 'bg-green-100 text-green-800 border-green-300';
         case 'incomplete':
             return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-        case 'impossible':
         case 'general_error':
             return 'bg-red-100 text-red-800 border-red-300';
         case 'invalid_config':
@@ -142,7 +134,6 @@ function getStatusIcon($status)
             return '✅';
         case 'incomplete':
             return '⚠️';
-        case 'impossible':
         case 'general_error':
             return '❌';
         case 'invalid_config':
@@ -201,10 +192,6 @@ function getStatusIcon($status)
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-yellow-500 rounded-full mr-2"></span>
                             <span>IncompleteScheduleException</span>
-                        </div>
-                        <div class="flex items-center">
-                            <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
-                            <span>ImpossibleConstraintsException</span>
                         </div>
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-orange-500 rounded-full mr-2"></span>
@@ -298,6 +285,14 @@ function getStatusIcon($status)
                                     </div>
                                 </div>
                             <?php endif; ?>
+
+                            <?php if ($result['name'] === 'Unsatisfiable Constraints'): ?>
+                                <div class="bg-yellow-100 rounded p-3 text-sm text-yellow-800 mt-3">
+                                    <strong>Why this failed:</strong> The custom constraint rejects every pairing, so no
+                                    complete schedule exists. The scheduler retried alternative orderings, then failed
+                                    loudly with diagnostics instead of silently dropping matches.
+                                </div>
+                            <?php endif; ?>
                         </div>
 
                     <?php else: ?>
@@ -305,14 +300,6 @@ function getStatusIcon($status)
                         <div class="bg-red-50 rounded-lg p-4">
                             <h4 class="font-semibold text-red-800 mb-2">❌ <?= htmlspecialchars($result['error_type']); ?></h4>
                             <p class="text-red-700 text-sm mb-3"><?= htmlspecialchars($result['error_message']); ?></p>
-                            
-                            <?php if ($result['error_type'] === 'Impossible Constraints'): ?>
-                                <div class="bg-red-100 rounded p-3 text-sm text-red-800">
-                                    <strong>Why this failed:</strong> The constraints are mathematically impossible to satisfy. 
-                                    With only 4 teams and a 10-round minimum rest period constraint, there aren't enough 
-                                    rounds to space out encounters properly.
-                                </div>
-                            <?php endif; ?>
                         </div>
                     <?php endif; ?>
 
@@ -391,7 +378,6 @@ function getStatusIcon($status)
                 <pre><code><?= htmlspecialchars('<?php
 use MissionGaming\\Tactician\\Scheduling\\RoundRobinScheduler;
 use MissionGaming\\Tactician\\Exceptions\\IncompleteScheduleException;
-use MissionGaming\\Tactician\\Exceptions\\ImpossibleConstraintsException;
 use MissionGaming\\Tactician\\Exceptions\\SchedulingException;
 
 try {
@@ -411,11 +397,6 @@ try {
     foreach ($e->getViolationCollector()->getViolations() as $violation) {
         echo "Violation: " . $violation->getDescription();
     }
-    
-} catch (ImpossibleConstraintsException $e) {
-    // Constraints are mathematically impossible
-    echo "Impossible constraints: " . $e->getMessage();
-    echo "Consider relaxing constraints or using fewer participants";
     
 } catch (SchedulingException $e) {
     // Other scheduling errors

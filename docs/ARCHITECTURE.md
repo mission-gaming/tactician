@@ -81,7 +81,6 @@ engines resolve tournament state on every call:
 - **SchedulingException**: Base class for all scheduling exceptions
 - **InvalidConfigurationException**: Invalid scheduler configuration
 - **IncompleteScheduleException**: Schedule incomplete due to constraint conflicts
-- **ImpossibleConstraintsException**: Mathematically impossible constraints
 - **NoValidPairingException**: No complete Swiss pairing exists for a round
 
 ## Integrated Multi-Leg Tournament Architecture
@@ -245,7 +244,6 @@ abstract class SchedulingException extends Exception
 
 #### Specific Exception Types
 - **InvalidConfigurationException**: Invalid scheduler configuration with context data
-- **ImpossibleConstraintsException**: Mathematically impossible constraints with analysis
 - **IncompleteScheduleException**: Schedule incomplete due to constraint conflicts with diagnostics
 
 ### Integration Features
@@ -371,6 +369,26 @@ well under a second) with several performance features:
 ┌─────────────────┐
 │     Round       │
 └─────────────────┘
+```
+
+The results-driven formats share one flow behind `StageEngineInterface`:
+
+```
+StageState::start(participants)
+        │
+        ▼
+┌──────────────────────────────────────────────┐
+│  while (!$engine->isComplete($state))        │
+│      pairing = $engine->pairNextRound(state) │──► RoundPairing (events, byes, label)
+│      results = playRound(pairing)            │    ...played application-side...
+│      state = state->withRoundPlayed(...)     │◄── state serializes between rounds
+└──────────────────────────────────────────────┘
+        │
+        ▼
+$engine->getOutcome($state)  ──►  StageOutcome (standings, results, byes, final round)
+        │
+        ▼
+ProgressionSelector::select($outcome)  ──►  ordered entrants of the next stage
 ```
 
 ### Data Flow

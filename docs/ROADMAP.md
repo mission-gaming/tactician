@@ -20,13 +20,13 @@
 - Schedule serialization: JSON round-tripping for schedules, events, and participants
 - Enhanced validation for the new tournament formats (pairing integrity, duplicate/conflicting result rejection, group-play completeness)
 
-## Phase 3: Algorithm-Neutral Core 🔄
+## Phase 3: Algorithm-Neutral Core ✅
 - ✅ `StagePlan` abstraction: expected events, rounds, and completeness rules supplied by the algorithm rather than inferred by generic services (milestone 1: context, validation, diagnostics, and constraints consume the plan; the event calculators and validation-context classes are removed, and leg strategies contribute facts via `LegPlanContribution` instead of the ornamental `GenerationPlan`)
 - ✅ Typed per-algorithm options objects, dissolving the legs/rounds parameter overload (milestone 2: config-constructible `RoundRobinOptions`/`SwissOptions` with stable strategy identifiers; `validateConstraints()`/`getExpectedEventCount()` folded into `getPlan()`), plus `PointsSystem` generalized to `RankingStrategy` with `WinDrawLossRanking`
 - ✅ Unify the incremental engines behind a shared results-driven interface with a serializable `StageState` carrier (milestone 3: `StageState`/`RoundPairing`/`StageEngineInterface`/`StageOutcome`, Swiss conforming, `SwissScheduler` preset; milestone 4: the elimination engines rebuilt as `StageEngineInterface` presets with positional fold seeding, fixed or re-seeded paths, and two-legged ties)
 - ✅ Progression, pools, and brackets as compositions (milestone 4): `ProgressionSelector` with `RankRangeSelector`/`MatchOutcomeSelector`, ahead-of-time `CompositionValidator`, `PoolDistributor` + pooled `StageOutcome::combining()` retiring `GroupStageEngine`, and `EliminationOptions(legsPerTie: 2)` ties decided app-side via `tie_winner` result metadata
 
-**Design proposal: [docs/design/phase-3-algorithm-neutral-core.md](design/phase-3-algorithm-neutral-core.md)**
+**Design (implemented): [docs/design/phase-3-algorithm-neutral-core.md](design/phase-3-algorithm-neutral-core.md)**
 
 ## Phase 4: Timeline Assignment 📅
 - Slot-based time assignment: round-aligned (all of a round's events together) and staggered kickoffs from one declarative slot model
