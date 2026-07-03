@@ -21,15 +21,20 @@
 - Enhanced validation for the new tournament formats (pairing integrity, duplicate/conflicting result rejection, group-play completeness)
 
 ## Phase 3: Algorithm-Neutral Core 🔄
-- `ExpectedSchedule`/`AlgorithmPlan` abstraction: expected events, rounds, and completeness rules supplied by the algorithm rather than inferred by generic services
-- Wire `LegStrategyInterface::planGeneration()` into plan-driven generation
-- Unify the incremental engines (Swiss, elimination, groups) behind a shared results-driven interface
+- `TournamentPlan` abstraction: expected events, rounds, and completeness rules supplied by the algorithm rather than inferred by generic services
+- Typed per-algorithm options objects, dissolving the legs/rounds parameter overload
+- Plan-driven generation (making `LegStrategyInterface::planGeneration()` load-bearing)
+- Unify the incremental engines (Swiss, elimination, groups) behind a shared results-driven interface with a `TournamentState` carrier
+
+**Design proposal: [docs/design/phase-3-algorithm-neutral-core.md](design/phase-3-algorithm-neutral-core.md)**
 
 ## Phase 4: Timeline Assignment 📅
-- Time and venue assignment system
-- Slot-based scheduling with patterns
-- Blackout periods and availability constraints
-- Time-based constraint validation integration
+- Slot-based time assignment: round-aligned (all of a round's events together) and staggered kickoffs from one declarative slot model
+- Time-aware validation (double-booking, hour-based rest, blackout periods) with the library's diagnostic character
+- Mechanism only — slot patterns in, timestamped events out; config parsing, persistence, and notification policy stay application-side
+- Venue/resource modelling
+
+**Position paper: [docs/design/timeline-assignment.md](design/timeline-assignment.md)**
 
 ## Phase 5: Advanced Features 🚀
 - Schedule optimization algorithms and quality metrics
