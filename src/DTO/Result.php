@@ -20,7 +20,8 @@ readonly class Result
      *
      * @param Event $event The event this result belongs to
      * @param Participant|null $winner The winning participant, or null for a draw
-     * @param array<string, int|float> $scores Optional numeric scores keyed by participant ID
+     * @param array<int|string, int|float> $scores Optional numeric scores keyed by participant ID
+     *                                             (numeric-string IDs become int keys in PHP)
      *
      * @throws InvalidArgumentException When the winner or a score references a participant not in the event
      */
@@ -83,7 +84,7 @@ readonly class Result
     /**
      * Get all recorded scores keyed by participant ID.
      *
-     * @return array<string, int|float>
+     * @return array<int|string, int|float>
      */
     public function getScores(): array
     {
