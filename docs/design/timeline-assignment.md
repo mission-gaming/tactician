@@ -126,6 +126,6 @@ application just has to stop throwing it away.
 ## Sequencing
 
 Phase 4, after the Phase 3 core lands (the assigner should consume
-`TournamentPlan`-aware schedules and the unified engine output, not the
+`StagePlan`-aware schedules and the unified engine output, not the
 pre-Phase-3 shapes). Within Phase 4: slot model → round-aligned assignment →
 staggering → time-aware constraints, each independently shippable.

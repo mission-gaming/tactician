@@ -1,8 +1,8 @@
 # Design: Phase 3 — Algorithm-Neutral Core
 
-**Status: PROPOSAL** — nothing in this document is implemented. Code blocks
-are design sketches, not executable examples. Decisions marked ❓ need
-maintainer input before implementation starts.
+**Status: PROPOSAL (revision 2)** — nothing in this document is implemented.
+Code blocks are design sketches, not executable examples. Decisions marked
+✅ were resolved with the maintainer; items marked ❓ remain open.
 
 ## Why
 
@@ -30,14 +30,12 @@ concrete debts, each with a bug or wart already attributable to it:
    `SwissPairingEngine::pairNextRound(participants, results, byeIds, round)`,
    the elimination engines' `pairNextRound(participants, results)`, and
    `GroupStageEngine`'s four-method lifecycle each require bespoke driver
-   code. A consuming platform (e.g. Metronome) must write one integration
-   per format instead of one integration total. The Swiss engine also makes
-   the caller thread bye IDs through every call by hand.
+   code. A consuming platform must write one integration per format instead
+   of one integration total.
 5. **Duplicated shape vocabulary.** `ExpectedEventCalculator`,
    `ScheduleValidationContext`, `GenerationPlan`,
-   `ConstraintSatisfiabilityReport`, and loose metadata keys
-   (`rounds_per_leg`, `total_rounds`, `expected_event_count`) all describe
-   fragments of "what should this tournament look like", with hand-copied
+   `ConstraintSatisfiabilityReport`, and loose metadata keys all describe
+   fragments of "what should this stage look like", with hand-copied
    conversions between them.
 
 ## Goals
@@ -45,7 +43,7 @@ concrete debts, each with a bug or wart already attributable to it:
 - Algorithms declare their shape once; context, validation, diagnostics, and
   constraints consume that declaration instead of inferring.
 - One typed options object per algorithm; no overloaded scalars, no `mixed`.
-- One driver loop for every results-driven format.
+- One driver loop and one completion product for every results-driven format.
 - The plan is load-bearing: generation reads from it, so plan/generator
   drift becomes impossible.
 
@@ -54,6 +52,8 @@ concrete debts, each with a bug or wart already attributable to it:
 - Timeline/date assignment (see `docs/design/timeline-assignment.md`).
 - Backtracking generation (ROADMAP Phase 5).
 - Soft/preference constraints.
+- N-participant event *algorithms* (racing heats, lobbies) — but see the
+  design principles: Phase 3 abstractions must not foreclose them.
 - Backwards compatibility: the library is unreleased; this is a breaking
   redesign done once, before first release.
 
@@ -70,67 +70,103 @@ CompetitionEvent            "UEFA Champions League"        (the competition as a
 ```
 
 Tactician's scope is **exactly one stage**: participants and typed options
-in, a schedule (or round-by-round pairings) out. Everything above the stage
-— competitions, seasons, which stages exist, their ordering — is application
-domain, permanently. Each abstraction in this document is therefore
-per-stage: one `TournamentPlan`, one engine, one options object, one
-(future) timeline per stage. Two properties of real platforms follow:
+in, a schedule (or round-by-round pairings) out, and — new in this revision —
+a uniform **stage outcome** when play completes. Everything above the stage
+is application domain, permanently. Each abstraction here is per-stage: one
+plan, one engine, one options object, one (future) timeline.
 
-- **Stages compose, including concurrently.** One source stage can feed
-  several destination stages with different rules — e.g. a group's top two
-  progress to a winners' route while the bottom two progress to a losers'
-  route, each route itself a stage with its own format, rules, and dates.
-  Tactician supports this by making the *hand-off* between stages
-  first-class (see qualification selectors below), not by modelling the
-  stage graph itself.
+The naming in this document follows that scoping: **`StagePlan`**,
+**`StageState`**, **`StageOutcome`**, **`StageEngineInterface`** (see the
+naming decision below).
+
+Two properties of real platforms shape the design:
+
+- **Stages compose, including concurrently and multi-route.** One finished
+  stage can feed several destinations under different rules — group winners
+  to a winners' route, the rest to a losers' route; a knockout round's
+  winners forward and its losers into a repechage. The *stage lifecycle is
+  uniform*: generate → play → complete → derive who progresses. Tactician
+  makes the derivation first-class (progression selectors over a uniform
+  `StageOutcome`) and leaves the stage graph itself to the application.
 - **Per-stage rules vary.** Points systems, draw permissibility, formats,
   and generation strategies differ stage by stage. This validates typed
   per-stage options and per-stage `PointsSystem` configuration, and rules
   out any library-level "tournament settings" singleton.
 
-### Critical assessment of the reference model
+### Fixed brackets vs chained knockout stages
 
-The identity/edition/stage/fixture separation is sound and matches how
-competition data is modelled industry-wide; the stage as format unit is the
-right boundary for this library. Two aspects deserve pushback rather than
-adoption:
+Platforms without a bracket engine model each knockout round as its own
+stage with a progression rule between rounds. This is not merely a
+workaround — it is the natural encoding of a **re-seeded knockout** (NFL
+playoffs style, where survivors are re-paired each round) and of arbitrary
+progression graphs (losers' routes, repechage). A **fixed bracket** (World
+Cup style, where the path is predetermined and 16 entrants structurally
+imply 15 ties) is a different format with invariants worth enforcing as a
+unit.
 
-1. **Knockout-as-chained-stages should be a choice, not a necessity.**
-   Platforms without a bracket engine model each knockout round as its own
-   stage ("last 16" → "last 8" → ...) with a progression rule between each.
-   That composes, but it discards bracket-level structural guarantees —
-   nothing enforces that 16 entrants yield 15 ties, that a participant
-   cannot appear twice, or that progression selects match winners rather
-   than whatever a misconfigured rule computes. With a bracket engine, the
-   whole knockout is one stage with those invariants enforced, and
-   per-round rule variation (extra time from the quarter-finals, say) is
-   match-play and tie-resolution policy — which is application-side anyway
-   — not a reason to fragment the bracket. Tactician should support both
-   granularities but recommend the engine-per-bracket shape.
-2. **Progression has two distinct kinds, and conflating them is a trap.**
-   Standings-based progression (top 2 of a group) and winner-based
-   progression (advancing in a bracket) are different operations. Selectors
-   (section 5) model only the first; the second belongs inside the
-   elimination engines, which already know the winners. Expressing bracket
-   progression as a standings slice technically works for single-round
-   stages — winners have more points — but it is fragile (draws, points
-   configuration) and re-derives what the engine already guarantees.
+Both are legitimate; Tactician should serve both:
+
+- **Fixed bracket** → one stage running `SingleEliminationEngine` /
+  `DoubleEliminationEngine`, with bracket-level guarantees (entrant/match
+  counts, loss counts, no re-entry) enforced by the engine.
+- **Re-seeded knockout or custom graph** → chained single-round elimination
+  stages composed by the application, with progression via outcome
+  selectors. The graph's correctness is the application's responsibility;
+  selectors help by validating cardinality (a selector declares how many
+  participants it yields, and a destination stage validates its entrant
+  count).
+
+The one practice this design treats as an error in any model: **deriving
+match winners through points arithmetic**. Progression must read recorded
+outcomes (winners/losers) or standings ranks — both provided directly —
+never reconstruct one from the other.
+
+## Design principles (new in this revision)
+
+**Game-agnosticism.** Tactician serves football, American football, racing,
+combat sports, and shooting games alike. Concretely:
+
+- **Roles are positional; "home/away" is a label.** The core concept is the
+  participant's position within an event (position 0, position 1). Football
+  reads them as home/away, combat sports as red/blue corner, shooters as
+  sides. Factory names like `homeAway()` remain as conveniences, but no
+  core behavior may depend on the home/away *interpretation*.
+- **Nothing forecloses N-participant events.** Racing heats and lobbies
+  have many participants per event. Phase 3 does not implement N-participant
+  algorithms, but its abstractions must not be pairwise-shaped:
+  `StagePlan` expresses expected *events*, with pairwise meeting counts as
+  a capability round-robin-family plans expose rather than a universal
+  method. `Result` already supports N participants; ordered placements
+  (finishing order) are a known future extension it must not preclude.
+- **Preset naming stays neutral.** `PointsSystem::football()` /`chess()`
+  should gain (or be replaced by) neutral constructors —
+  `PointsSystem::threeOneZero()` or similar — with the sport names kept, if
+  at all, as documented aliases. ❓ exact naming.
+
+**Config-constructibility.** Consuming platforms (Metronome explicitly) are
+config-driven, event-driven, strategy-derived systems: behavior is selected
+by strategy IDs plus JSON config, not code. Therefore every Phase 3 option
+object and selector must be constructible from plain data — named
+constructors and `fromArray()`, no required closures. (`CallableConstraint`
+remains available for code-level consumers but is explicitly the
+non-config-friendly escape hatch.) This also means stable string
+identifiers for algorithms and selectors, so platforms can map config to
+library objects predictably.
 
 ## Proposed design
 
-### 1. `TournamentPlan` — the algorithm's declaration of shape
+### 1. `StagePlan` — the algorithm's declaration of shape
 
-A per-algorithm implementation of one interface, constructed by the
-scheduler/engine before generation and carried everywhere the shape is
-needed:
+Constructed by the scheduler/engine before generation and carried everywhere
+the shape is needed:
 
 ```php
 // PROPOSED — not implemented
-interface TournamentPlan
+interface StagePlan
 {
-    public function getAlgorithm(): string;
+    public function getAlgorithm(): string;          // stable identifier, e.g. 'round-robin'
 
-    /** Total rounds the tournament will contain, when knowable up front. */
+    /** Total rounds the stage will contain, when knowable up front. */
     public function getTotalRounds(): ?int;
 
     /** Legs, for formats that have them; null otherwise (Swiss, brackets). */
@@ -140,26 +176,28 @@ interface TournamentPlan
     /** Expected total events, when knowable up front. */
     public function getExpectedEventCount(): ?int;
 
-    /** How many times a given pairing should meet (integrity checking). */
-    public function getExpectedMeetings(Participant $a, Participant $b): ?int;
-
     /** Format-specific integrity validation of a complete schedule. */
     public function validateIntegrity(Schedule $schedule): array;
 }
+
+// Round-robin-family plans additionally expose pairwise expectations:
+interface PairwisePlan extends StagePlan
+{
+    public function getExpectedMeetings(Participant $a, Participant $b): int;
+}
 ```
 
-Implementations: `RoundRobinPlan` (knows everything), `SwissPlan` (knows
-rounds and per-round event counts, pairings unknowable), `EliminationPlan`
-(knows match totals and stage structure), `GroupStagePlan` (composes
-per-group `RoundRobinPlan`s).
+Implementations: `RoundRobinPlan` (pairwise, knows everything), `SwissPlan`
+(knows rounds and per-round event counts), `EliminationPlan` (knows match
+totals, stage structure, and — with two-legged ties — events per tie),
+`GroupStagePlan` (composes per-pool plans).
 
 **What it replaces:** `ExpectedEventCalculator`,
 `ScheduleIntegrityValidator`, `ScheduleValidationContext`, the shape-related
-`Schedule`/`SchedulingContext` metadata keys, and the shape half of
-`GenerationPlan`. `SchedulingContext` gains `getPlan(): TournamentPlan` and
-drops its inference fallbacks; `SeedProtectionConstraint` reads
-`getPlan()->getTotalRounds()`; diagnostics read expected meetings from the
-plan instead of recomputing round-robin formulas.
+metadata keys, and the shape half of `GenerationPlan`. `SchedulingContext`
+gains `getPlan(): StagePlan` and drops its inference fallbacks;
+`SeedProtectionConstraint` reads `getPlan()->getTotalRounds()`; diagnostics
+read expected meetings from `PairwisePlan` instead of recomputing formulas.
 
 ### 2. Typed per-algorithm options
 
@@ -173,39 +211,39 @@ $schedule = $scheduler->schedule($participants, new RoundRobinOptions(
 $schedule = $swissScheduler->schedule($participants, new SwissOptions(rounds: 5));
 ```
 
-`SchedulerInterface::schedule(array $participants, AlgorithmOptions
-$options): Schedule`. Each algorithm's option class names its parameters in
-its own vocabulary — the legs/rounds overload dissolves instead of being
-documented around. `participantsPerEvent` moves into the options of
-algorithms that support varying it. `validateConstraints()` and
-`getExpectedEventCount()` fold into the plan (`getPlan(participants,
-options): TournamentPlan` on the scheduler).
+Every options object is config-constructible (`RoundRobinOptions::fromArray(
+['legs' => 2, 'strategy' => 'mirrored'])`) per the design principles.
+`validateConstraints()` and `getExpectedEventCount()` fold into the plan
+(`getPlan(participants, options): StagePlan`).
 
 ### 3. Plan-driven generation
 
 `RoundRobinScheduler` builds its `RoundRobinPlan` first (consulting the leg
-strategy), then generates *from* it: rounds-per-leg, role-parity scheme,
-and expected pairing multiplicities are read from the plan by the
-generator, the validator, and the diagnostics alike. `GenerationPlan` and
-`ConstraintSatisfiabilityReport` fold into this: the satisfiability
-preflight becomes plan construction (an unsatisfiable configuration fails
-while building the plan, with the same diagnostics).
+strategy), then generates *from* it: rounds-per-leg, role-parity scheme, and
+expected pairing multiplicities are read from the plan by the generator, the
+validator, and the diagnostics alike. `GenerationPlan` and
+`ConstraintSatisfiabilityReport` fold into plan construction: an
+unsatisfiable configuration fails while building the plan, with the same
+diagnostics.
 
-### 4. One engine interface for results-driven formats
+### 4. One engine interface, one driver loop, one completion product
 
 ```php
 // PROPOSED — not implemented
-interface TournamentEngineInterface
+interface StageEngineInterface
 {
-    public function getPlan(TournamentState $state): TournamentPlan;
+    public function getPlan(StageState $state): StagePlan;
 
     /** @throws NoValidPairingException|InvalidConfigurationException */
-    public function pairNextRound(TournamentState $state): RoundPairing;
+    public function pairNextRound(StageState $state): RoundPairing;
 
-    public function isComplete(TournamentState $state): bool;
+    public function isComplete(StageState $state): bool;
+
+    /** The uniform completion product; null while the stage is unfinished. */
+    public function getOutcome(StageState $state): ?StageOutcome;
 }
 
-final readonly class TournamentState
+final readonly class StageState        // serializable: toArray()/fromArray()/JSON  ✅ first cut
 {
     /** @param array<Participant> $participants Active participants */
     public static function start(array $participants): self;
@@ -213,146 +251,184 @@ final readonly class TournamentState
     /** Record a completed round: its results and any byes it awarded. */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self;
 
-    /** Handle withdrawals: participant leaves, their results remain. */
+    /** Withdrawals: the participant leaves; their results remain. */
     public function withoutParticipant(Participant $participant): self;
 }
 
-final readonly class RoundPairing   // unifies SwissRoundPairing + EliminationRoundPairing
+final readonly class RoundPairing      // unifies SwissRoundPairing + EliminationRoundPairing
 {
     public function getRoundNumber(): int;
-    public function getStage(): ?string;          // 'semifinal', 'losers round 2', null for Swiss
+    public function getLabel(): ?string;      // 'semifinal', 'losers round 2'; null for Swiss
     /** @return array<Event> */
     public function getEvents(): array;
     /** @return array<Participant> */
-    public function getByes(): array;             // Swiss: 0 or 1; brackets: any number
+    public function getByes(): array;
+}
+
+final readonly class StageOutcome
+{
+    public function getStandings(): Standings;      // meaningful for every format
+    /** @return array<Result> */
+    public function getResults(): array;
+    /** @return array<string, int> Bye counts by participant ID */
+    public function getByes(): array;
+    public function getWinner(): ?Participant;      // bracket champion; league leader; null if N/A
 }
 ```
 
-The driver loop becomes format-agnostic — this is the single integration a
-consuming platform writes:
+The driver loop is the single integration a platform writes, and it ends
+uniformly:
 
 ```php
 // PROPOSED — not implemented
-$state = TournamentState::start($participants);
+$state = StageState::start($participants);
 while (!$engine->isComplete($state)) {
     $pairing = $engine->pairNextRound($state);
     $results = playRound($pairing);              // application-side
     $state = $state->withRoundPlayed($pairing, $results);
 }
+$outcome = $engine->getOutcome($state);          // feed progression selectors
 ```
 
-`TournamentState` absorbs the state the Swiss engine currently makes callers
-thread by hand (`previousByeIds`, round numbers) and gives withdrawals a
-first-class verb. It serializes like the DTOs (`toArray()`/`fromArray()`),
-so a platform can persist state between rounds instead of re-deriving it.
+`StageState` absorbs the bookkeeping the Swiss engine currently pushes onto
+callers (bye threading, round numbers) and gives withdrawals a first-class
+verb. It serializes, so platforms persist state between rounds instead of
+re-deriving it. ✅ Serialization is first-cut scope.
 
-Format-specific outcomes stay on the concrete engines (`getChampion()`,
-`getQualifiers()`) — the shared interface covers the loop, not the
-trophies. ❓ Alternatively, an `getOutcome(): ?TournamentOutcome` could be
-lifted into the interface; deferred until a second consumer needs it.
+`StageOutcome` is what makes the stage lifecycle uniform end-to-end: every
+format finishes as "an outcome you can select from" — which is precisely the
+mental model consuming platforms already hold. Format-specific conveniences
+(`getChampion()`, `getQualifiers()`) remain on concrete engines but delegate
+to the outcome. ✅ Lifted into the interface.
 
-### 5. Qualification selectors — the hand-off between stages
+### 5. Progression selectors — the hand-off between stages
 
-`GroupStageEngine::getQualifiers()` currently supports exactly one rule:
-top K per group. Real stage graphs need arbitrary slices of a finished
-stage's standings — including several slices of the *same* stage feeding
-different destinations (winners' route / losers' route):
+Selectors consume a `StageOutcome` and produce an ordered, reseeded
+participant list for a destination stage. Two built-in families cover the
+two legitimate progression substrates:
 
 ```php
 // PROPOSED — not implemented
-interface QualificationSelector
+interface ProgressionSelector
 {
-    /**
-     * Slice a finished stage's standings into an ordered, reseeded
-     * participant list for a destination stage.
-     *
-     * @param array<string, Standings> $standings Per-group standings ('A', 'B', ...)
-     * @return array<Participant> Reseeded via Participant::withSeed()
-     */
-    public function select(array $standings): array;
+    /** @return array<Participant> Reseeded via Participant::withSeed() */
+    public function select(StageOutcome $outcome): array;
+
+    /** How many participants this selector yields (destination validation). */
+    public function getSelectionSize(): ?int;
 }
 
-// Built-ins covering the common shapes:
-RankRangeSelector::topPerGroup(2);          // today's getQualifiers(2)
-RankRangeSelector::perGroup(from: 3, to: 4); // the losers' route
-RankRangeSelector::overall(from: 1, to: 8);  // best N across all groups
+// Standings-based (rank slices):
+RankRangeSelector::topPerGroup(2);            // today's getQualifiers(2)
+RankRangeSelector::perGroup(from: 3, to: 4);  // the losers' route
+RankRangeSelector::overall(from: 1, to: 8);   // best N across all pools
+
+// Outcome-based (recorded match results — never points arithmetic):
+MatchOutcomeSelector::winners();              // knockout round -> next round
+MatchOutcomeSelector::losers();               // knockout round -> repechage/losers' route
 ```
 
-The selector's output is exactly what the elimination engines (or another
-group stage, or a Swiss stage) take as input, so multi-route progression is
-two selector calls against one standings set. The group-play completeness
-check moves into the selector path. Selection *policy configuration* —
-which selectors run for which destination stage — remains application
-domain; Tactician supplies the selectors and the reseeding.
+Multi-route progression is several selector calls against one outcome.
+Which selectors run for which destination stage is application
+configuration; the selectors themselves — including reading winners from
+recorded results with certainty — are library-guaranteed. All selectors are
+config-constructible with stable identifiers.
 
-Selectors are deliberately **standings-based only**. Winner-based
-progression (who advances within a bracket) is not a selector concern — the
-elimination engines own it, with structural guarantees a standings slice
-cannot provide (see the critical assessment above).
+### 6. Pools as a generic composition primitive
 
-### 6. Two-legged elimination ties (design consideration)
+`GroupStageEngine` currently hard-codes: serpentine distribution → round
+robin per group → standings → top-K qualifiers. Consuming platforms model
+pools more generically — a pool is a bucket of participants; what format the
+bucket plays, how it is scored, and how it is displayed are separate,
+configurable concerns. The engine decomposes accordingly:
 
-Knockout stages in football-style competitions are often played over two
-legs per tie (home and away), with the aggregate deciding who advances —
-including rules Tactician must never own (away goals, extra time,
-penalties). Proposed split, consistent with the rest of this document:
+```php
+// PROPOSED — not implemented
+$pools = PoolDistributor::serpentine($participants, pools: 4);  // array<string, array<Participant>>
+// each pool then runs ANY per-stage format (round robin, Swiss, ...)
+// per-pool standings via StandingsCalculator as today
+// progression via selectors over the pools' combined StageOutcome
+```
 
-- `EliminationOptions(legsPerTie: 2)` makes the engine emit **two events
-  per pairing** (roles mirrored) within a bracket stage.
+✅ Resolves the "engine or composer" question: `GroupStageEngine` is
+retired in favour of a distributor plus ordinary per-pool stages plus
+selectors. What a pool *plays* is no longer fixed to round robin, and
+"group stage vs bracket" becomes — as it should be — a matter of per-pool
+format and display, not a different kind of object.
+
+### 7. Two-legged elimination ties ✅ first Phase 3 cut
+
+Knockout ties played over two legs (mirrored roles), with the aggregate
+deciding advancement under rules Tactician must never own (away goals,
+extra time, penalties):
+
+- `EliminationOptions(legsPerTie: 2)` makes the engine emit two events per
+  pairing within a bracket round; the plan's expected counts include both.
 - The engine advances on a **tie result**: the application resolves the
   aggregate under its own rules and records which participant won the tie.
-  Per-leg `Result`s remain ordinary results feeding standings/statistics;
-  the tie result is what the bracket consumes.
+  Per-leg `Result`s remain ordinary results feeding standings/statistics.
 
-This keeps aggregate policy out of the library while making the fixture
-structure (two legs, mirrored venues, both events in the plan's expected
-counts) the library's responsibility. ❓ Scope question: first cut of
-Phase 3, or a fast-follow once the single-leg engine interface has landed?
+## Naming decision
 
-### What happens to existing classes
+Candidates considered for the shape object, with the reasoning:
+
+- **`ExpectedSchedule`** — names the validation role well ("what the
+  schedule should look like"), but the object is not a schedule (it has no
+  events), it is consulted mid-generation and mid-tournament (not only at
+  validation time), and the name collides conceptually with the `Schedule`
+  DTO. Rejected.
+- **`AlgorithmPlan`** — names the producer, not the content; consumers ask
+  "what shape is this stage", not "what did the algorithm produce".
+  "Algorithm" is also implementation jargon in an API whose users think in
+  formats. Rejected.
+- **`TournamentPlan`** — names the content and reads well, but overclaims:
+  the plan describes one *stage*, and the scope-alignment section makes the
+  stage Tactician's unit. A multi-stage tournament has many plans.
+- **`StagePlan`** ✅ **(adopted provisionally)** — precise about scope,
+  reads naturally (`$context->getPlan()->getTotalRounds()`), and anchors a
+  coherent family: `StagePlan` / `StageState` / `StageOutcome` /
+  `StageEngineInterface`. One knock-on: the bracket pairing accessor
+  formerly sketched as `RoundPairing::getStage()` ('semifinal') is renamed
+  `getLabel()` so "stage" is never ambiguous.
+
+## What happens to existing classes
 
 | Current | Fate |
 |---------|------|
-| `ExpectedEventCalculator`, `RoundRobinEventCalculator`, `SimpleSwissEventCalculator` | Folded into `TournamentPlan` implementations |
+| `ExpectedEventCalculator`, `RoundRobinEventCalculator`, `SimpleSwissEventCalculator` | Folded into `StagePlan` implementations |
 | `ScheduleValidationContext` | Removed; validators take the plan |
-| `ScheduleIntegrityValidator` | Becomes `TournamentPlan::validateIntegrity()` |
+| `ScheduleIntegrityValidator` | Becomes `StagePlan::validateIntegrity()` |
 | `GenerationPlan`, `ConstraintSatisfiabilityReport` | Folded into plan construction |
-| `LegStrategyInterface::planGeneration()` / `canSatisfyConstraints()` | Replaced by a single `contributeToPlan(RoundRobinPlanBuilder)` hook ❓ (naming open) |
+| `LegStrategyInterface::planGeneration()` / `canSatisfyConstraints()` | Replaced by a plan-construction hook ❓ (naming open) |
 | `SwissRoundPairing`, `EliminationRoundPairing` | Replaced by `RoundPairing` |
-| `SwissPairingEngine::pairNextRound(4 args)` | `pairNextRound(TournamentState)` |
-| `SimpleSwissScheduler` | ❓ Keep as a whole-schedule generator, or reimplement as a preset over the engine loop |
+| `SwissPairingEngine::pairNextRound(4 args)` | `pairNextRound(StageState)` |
+| `SimpleSwissScheduler` | ✅ Removed: the Swiss engine gains an optional `Randomizer` (shuffling within equal-standings groups), which with no recorded results reproduces random non-repeat pairing; a preset covers the whole-schedule convenience |
+| `GroupStageEngine` | ✅ Retired in favour of `PoolDistributor` + per-pool stages + selectors (section 6) |
 | Shape metadata keys on `Schedule` | Kept for serialization/display, but written *from* the plan |
 
 ## Sequencing
 
-Four milestones, each shippable green:
+Five milestones, each shippable green:
 
-1. **Plan introduction** — `TournamentPlan` + implementations; context,
+1. **Plan introduction** — `StagePlan` + implementations; context,
    validation, diagnostics, and constraints consume it; calculators and
-   validation-context classes removed. Biggest milestone, mostly internal.
-2. **Options objects** — `SchedulerInterface` rework; the legs/rounds
-   overload dies.
-3. **Engine unification** — `TournamentState`, `RoundPairing`,
-   `TournamentEngineInterface`; Swiss/elimination engines conform;
-   `GroupStageEngine` keeps its lifecycle but its knockout hand-off emits a
-   `TournamentState` ❓.
-4. **Sweep** — docs, examples, memory bank, and the deprecated-class
-   removals.
+   validation-context classes removed.
+2. **Options objects** — `SchedulerInterface` rework; config-constructible
+   options; the legs/rounds overload dies.
+3. **Engine unification** — `StageState` (serializable), `RoundPairing`,
+   `StageEngineInterface`, `StageOutcome`; Swiss/elimination engines
+   conform; `SimpleSwissScheduler` removed.
+4. **Progression + pools** — selectors (rank- and outcome-based),
+   `PoolDistributor`, `GroupStageEngine` retirement; two-legged ties.
+5. **Sweep** — docs, examples, memory bank, deprecated-class removals.
 
-## Open questions for the maintainer
+## Remaining open questions
 
-1. **Naming**: `TournamentPlan` (used here) vs `AlgorithmPlan` vs
-   `ExpectedSchedule` (both appear in older notes). One name, everywhere.
-2. **`GroupStageEngine`**: conform to `TournamentEngineInterface` (it is
-   round-driven per group) or stay a composer that *produces* engine inputs?
-   The stage-alignment section above suggests the latter: a stage composer
-   whose output flows through qualification selectors.
-3. **`SimpleSwissScheduler`**: worth keeping once the Swiss engine drives
-   the same loop with a random-results-independent preset?
-4. **`TournamentState` persistence**: is `toArray()`/JSON round-tripping a
-   requirement for the first cut (Metronome-style platforms would use it) or
-   a fast-follow?
-5. **Trophy accessor**: lift `getOutcome()` into the engine interface now,
-   or keep champions/qualifiers format-specific?
-6. **Two-legged ties**: in the first Phase 3 cut, or a fast-follow after the
-   single-leg engine interface lands (section 6)?
+1. **Plan-construction hook naming** on leg strategies (replaces
+   `planGeneration()`/`canSatisfyConstraints()`).
+2. **Neutral `PointsSystem` preset naming** (`threeOneZero()`?), and whether
+   the sport-named aliases stay.
+3. **Cross-pool `StageOutcome` shape**: one combined outcome for a pooled
+   stage (with per-pool standings inside) vs one outcome per pool. The
+   selector API prefers the former; the composition story prefers the
+   latter.

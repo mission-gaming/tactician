@@ -21,10 +21,10 @@
 - Enhanced validation for the new tournament formats (pairing integrity, duplicate/conflicting result rejection, group-play completeness)
 
 ## Phase 3: Algorithm-Neutral Core 🔄
-- `TournamentPlan` abstraction: expected events, rounds, and completeness rules supplied by the algorithm rather than inferred by generic services
+- `StagePlan` abstraction: expected events, rounds, and completeness rules supplied by the algorithm rather than inferred by generic services
 - Typed per-algorithm options objects, dissolving the legs/rounds parameter overload
 - Plan-driven generation (making `LegStrategyInterface::planGeneration()` load-bearing)
-- Unify the incremental engines (Swiss, elimination, groups) behind a shared results-driven interface with a `TournamentState` carrier
+- Unify the incremental engines (Swiss, elimination, groups) behind a shared results-driven interface with a serializable `StageState` carrier
 
 **Design proposal: [docs/design/phase-3-algorithm-neutral-core.md](design/phase-3-algorithm-neutral-core.md)**
 
