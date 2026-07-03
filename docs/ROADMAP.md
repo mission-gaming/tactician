@@ -30,7 +30,7 @@
 
 ## Phase 4: Timeline Assignment 🔄
 - ✅ Slot-based time assignment: round-aligned (all of a round's events together) and staggered kickoffs from one declarative slot model (`TimelineDefinition` + `TimelineAssigner` + serializable `ScheduledEvent`/`ScheduledSchedule`; deterministic filling, DST-safe wall-clock arithmetic, UTC out, loud validation, engine bridge via `assignRound()`)
-- Time-aware validation (double-booking, hour-based rest, blackout periods) with the library's diagnostic character
+- ✅ Time-aware validation (double-booking, hour-based rest, blackout periods) with the library's diagnostic character (`TimelineRule` with `MinimumRestRule`/`BlackoutRule`, validated post-assignment — deterministic assignment reports violations loudly rather than routing around them)
 - Mechanism only — slot patterns in, timestamped events out; config parsing, persistence, and notification policy stay application-side
 - Venue/resource modelling
 

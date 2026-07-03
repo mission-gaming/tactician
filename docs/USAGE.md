@@ -54,6 +54,7 @@ anything else that competes.
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
 | **Slot** | One kickoff time within a round, holding one event. A round's events fill its slots in schedule order against slot time order, deterministically. |
 | **Kickoff** | The assigned time of a scheduled event, always emitted in UTC (`ScheduledEvent::getKickoff()`); the timeline's wall-clock arithmetic happens in the stage's declared timezone. |
+| **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — minimum rest in hours (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
 ## Basic Usage
@@ -710,6 +711,46 @@ $timeline = TimelineDefinition::fromArray([
     'slot_interval' => 'PT1H',
 ]);
 ```
+
+### Time-Aware Rules
+
+Assignment is deterministic slot arithmetic, so a violated time rule
+cannot be routed around — it can only be reported, loudly. **Timeline
+rules** (`TimelineRule`) judge the assigned kickoffs; they are
+deliberately not generation constraints, which filter pairings during a
+search before any time exists:
+
+```php
+use MissionGaming\Tactician\Timeline\BlackoutRule;
+use MissionGaming\Tactician\Timeline\MinimumRestRule;
+use MissionGaming\Tactician\Timeline\TimelineAssigner;
+
+$assigner = new TimelineAssigner([
+    // Rest measured in hours rather than rounds, compared as UTC
+    // instants (DST cannot shrink it); any positive rest also forbids
+    // double-booking
+    MinimumRestRule::fromArray(['rest' => 'PT48H']),
+
+    // Half-open windows [from, to); translating policy (breaks,
+    // closures, holidays) into windows is the application's job
+    BlackoutRule::fromArray(['windows' => [[
+        'from' => '2026-11-09 00:00:00',
+        'to' => '2026-11-17 00:00:00',
+        'timezone' => 'Europe/London',
+        'label' => 'international break',
+    ]]]),
+]);
+
+// Violating any rule fails assignment with every violation in the
+// exception context
+$scheduled = $assigner->assign($schedule, $timeline);
+```
+
+Rules also validate standalone — `$rule->validate($scheduled)` returns
+violation strings — so an application driving a results-driven stage
+round by round can check the timeline it accumulates. Both built-in
+rules are plain-data constructible with `fromArray()`/`toArray()`, and
+custom rules implement the two-method `TimelineRule` interface.
 
 ## Serialization
 

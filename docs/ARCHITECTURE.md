@@ -53,6 +53,7 @@ policy stays app-side:
 - **TimelineDefinition**: The declarative per-stage slot model (zoned start, round interval, slots per round, slot interval), config-constructible with ISO 8601 durations. Wall-clock arithmetic in the stage's timezone (DST-safe weekly kickoffs); slot times emit in UTC.
 - **TimelineAssigner**: Deterministic slot filling over `Schedule::getEventsByRound()` (whole schedules) or a `RoundPairing` (results-driven stages). Loud validation: round overflow and round-less events fail with diagnostics.
 - **ScheduledEvent / ScheduledSchedule**: Decorations wrapping untouched events with their UTC kickoffs; serializable, so re-assignment is cheap and platforms persist assigned times.
+- **TimelineRule**: Time-aware validation over assigned kickoffs — `MinimumRestRule` (absolute rest between a participant's consecutive kickoffs, UTC-compared) and `BlackoutRule` (half-open windows, config-constructible). Deterministic assignment cannot route around a violated rule, so the assigner fails loudly with every violation; rules also validate standalone against accumulated round-by-round timelines. Deliberately distinct from generation constraints.
 
 ### Standings System
 - **StandingsCalculator**: Ordered league tables from results with a pluggable ranking strategy

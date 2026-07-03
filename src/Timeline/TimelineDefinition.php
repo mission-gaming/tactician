@@ -84,42 +84,7 @@ final readonly class TimelineDefinition
      */
     public static function fromArray(array $config): self
     {
-        $startValue = $config['start'] ?? null;
-        $timezoneValue = $config['timezone'] ?? null;
-        if (!is_string($startValue) || !is_string($timezoneValue)) {
-            throw new InvalidConfigurationException(
-                'Timeline configuration requires start and timezone strings',
-                ['start' => $startValue, 'timezone' => $timezoneValue]
-            );
-        }
-
-        try {
-            $timezone = new DateTimeZone($timezoneValue);
-            $start = new DateTimeImmutable($startValue, $timezone);
-        } catch (Exception $exception) {
-            throw new InvalidConfigurationException(
-                'Timeline start or timezone is not parseable',
-                ['start' => $startValue, 'timezone' => $timezoneValue],
-                '',
-                0,
-                $exception
-            );
-        }
-
-        // A timezone or offset embedded in the start string overrides the
-        // declared zone during parsing, which would silently run the
-        // wall-clock arithmetic in the wrong zone. The 'timezone' field is
-        // authoritative: an embedded zone that contradicts it is rejected.
-        if ($start->getTimezone()->getName() !== $timezone->getName()) {
-            throw new InvalidConfigurationException(
-                "The start string carries its own timezone; declare the zone only via the 'timezone' field",
-                [
-                    'start' => $startValue,
-                    'timezone' => $timezoneValue,
-                    'embedded_timezone' => $start->getTimezone()->getName(),
-                ]
-            );
-        }
+        $start = ZonedTime::parse($config['start'] ?? null, $config['timezone'] ?? null, 'start');
 
         $slotsPerRound = $config['slots_per_round'] ?? 1;
         if (!is_int($slotsPerRound)) {
@@ -224,9 +189,12 @@ final readonly class TimelineDefinition
     }
 
     /**
+     * Parse a configuration value as an ISO 8601 duration.
+     *
+     * @param string $key The configuration key, for diagnostics
      * @throws InvalidConfigurationException When the value is not an ISO 8601 duration
      */
-    private static function parseInterval(mixed $value, string $key): DateInterval
+    public static function parseInterval(mixed $value, string $key): DateInterval
     {
         if (!is_string($value)) {
             throw new InvalidConfigurationException(
@@ -251,7 +219,7 @@ final readonly class TimelineDefinition
     /**
      * Format an interval as a canonical ISO 8601 duration.
      */
-    private static function formatInterval(DateInterval $interval): string
+    public static function formatInterval(DateInterval $interval): string
     {
         $date = '';
         if ($interval->y !== 0) {
