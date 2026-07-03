@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\DTO;
 
+use InvalidArgumentException;
+
 /**
  * Represents a single event/match in a tournament schedule.
  *
@@ -110,5 +112,69 @@ readonly class Event
     public function getParticipantCount(): int
     {
         return count($this->participants);
+    }
+
+    /**
+     * Convert this event to a serializable array.
+     *
+     * Participants are referenced by ID; pair with the participant list from
+     * Schedule::toArray() to rehydrate.
+     *
+     * @return array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}
+     */
+    public function toArray(): array
+    {
+        return [
+            'participants' => array_map(
+                fn (Participant $participant) => $participant->getId(),
+                $this->participants
+            ),
+            'round' => $this->round?->toArray(),
+            'metadata' => $this->metadata,
+        ];
+    }
+
+    /**
+     * Recreate an event from its array representation.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, Participant> $participantsById Registry resolving participant IDs
+     *
+     * @throws InvalidArgumentException When fields are malformed or a participant ID is unknown
+     */
+    public static function fromArray(array $data, array $participantsById): self
+    {
+        $participantIds = $data['participants'] ?? null;
+        if (!is_array($participantIds)) {
+            throw new InvalidArgumentException('Event data requires a participants array');
+        }
+
+        $participants = [];
+        foreach ($participantIds as $participantId) {
+            if (!is_string($participantId) || !isset($participantsById[$participantId])) {
+                throw new InvalidArgumentException(
+                    'Event references unknown participant ' . var_export($participantId, true)
+                );
+            }
+            $participants[] = $participantsById[$participantId];
+        }
+
+        $roundData = $data['round'] ?? null;
+        if ($roundData !== null && !is_array($roundData)) {
+            throw new InvalidArgumentException('Event round must be an array or null');
+        }
+        /** @var array<string, mixed>|null $roundData */
+        $round = $roundData === null ? null : Round::fromArray($roundData);
+
+        $rawMetadata = $data['metadata'] ?? [];
+        if (!is_array($rawMetadata)) {
+            throw new InvalidArgumentException('Event metadata must be an array');
+        }
+        $metadata = [];
+        foreach ($rawMetadata as $key => $value) {
+            $metadata[(string) $key] = $value;
+        }
+
+        return new self($participants, $round, $metadata);
     }
 }

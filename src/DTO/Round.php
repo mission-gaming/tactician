@@ -118,4 +118,43 @@ readonly class Round
     {
         return "Round {$this->number}";
     }
+
+    /**
+     * Convert this round to a serializable array.
+     *
+     * @return array{number: int, metadata: array<string, mixed>}
+     */
+    public function toArray(): array
+    {
+        return [
+            'number' => $this->number,
+            'metadata' => $this->metadata,
+        ];
+    }
+
+    /**
+     * Recreate a round from its array representation.
+     *
+     * @param array<string, mixed> $data
+     *
+     * @throws InvalidArgumentException When the round number is missing or malformed
+     */
+    public static function fromArray(array $data): self
+    {
+        $number = $data['number'] ?? null;
+        if (!is_int($number)) {
+            throw new InvalidArgumentException('Round data requires an integer number');
+        }
+
+        $rawMetadata = $data['metadata'] ?? [];
+        if (!is_array($rawMetadata)) {
+            throw new InvalidArgumentException('Round metadata must be an array');
+        }
+        $metadata = [];
+        foreach ($rawMetadata as $key => $value) {
+            $metadata[(string) $key] = $value;
+        }
+
+        return new self($number, $metadata);
+    }
 }
