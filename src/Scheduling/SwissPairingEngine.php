@@ -23,6 +23,11 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  * repeat pairings and satisfy constraints. Byes rotate to the lowest-placed
  * participant who has had the fewest, and home/away roles go to whichever
  * participant has had fewer home assignments.
+ *
+ * Byes recorded in previousByeIds are credited as wins when computing the
+ * pairing order (the Swiss convention), so a bye recipient is paired among
+ * the winners in the following round even though no Result exists for the
+ * bye.
  */
 readonly class SwissPairingEngine
 {
@@ -55,10 +60,7 @@ readonly class SwissPairingEngine
         $roundNumber ??= $this->deriveNextRoundNumber($results);
 
         $standings = $this->standingsCalculator->calculate($participants, $results);
-        $orderedParticipants = array_map(
-            fn ($entry) => $entry->getParticipant(),
-            $standings->getEntries()
-        );
+        $orderedParticipants = $this->orderForPairing($standings->getEntries(), $previousByeIds);
 
         $playedPairings = $this->collectPlayedPairings($results);
         $homeCounts = $this->collectHomeCounts($results);
@@ -173,6 +175,43 @@ readonly class SwissPairingEngine
         }
 
         return $homeCounts;
+    }
+
+    /**
+     * Order participants for pairing: standings order, with previous byes
+     * credited as wins (the Swiss convention) so bye recipients pair among
+     * the winners.
+     *
+     * @param array<\MissionGaming\Tactician\Standings\StandingEntry> $entries Standings entries, best first
+     * @param array<string> $previousByeIds
+     * @return array<Participant>
+     */
+    private function orderForPairing(array $entries, array $previousByeIds): array
+    {
+        $byeCounts = array_count_values($previousByeIds);
+        if ($byeCounts === []) {
+            return array_map(fn ($entry) => $entry->getParticipant(), $entries);
+        }
+
+        $winPoints = $this->standingsCalculator->getPointsSystem()->getWinPoints();
+
+        $indexed = [];
+        foreach ($entries as $index => $entry) {
+            $byeCount = $byeCounts[$entry->getParticipant()->getId()] ?? 0;
+            $indexed[] = [
+                'participant' => $entry->getParticipant(),
+                'points' => $entry->getPoints() + $byeCount * $winPoints,
+                'index' => $index,
+            ];
+        }
+
+        usort(
+            $indexed,
+            fn (array $first, array $second): int => ($second['points'] <=> $first['points'])
+                ?: ($first['index'] <=> $second['index'])
+        );
+
+        return array_map(fn (array $entry) => $entry['participant'], $indexed);
     }
 
     /**

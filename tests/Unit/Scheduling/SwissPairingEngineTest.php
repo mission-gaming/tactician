@@ -124,6 +124,34 @@ describe('SwissPairingEngine', function (): void {
         expect($round2->getEvents())->toHaveCount(2);
     });
 
+    it('credits a bye as a win when ordering the next round', function (): void {
+        $frank = new Participant('p6', 'Frank');
+        $grace = new Participant('p7', 'Grace');
+        $participants = [...$this->participants, $this->eve, $frank, $grace];
+
+        // Round 1: Grace has the bye; Alice, Carol, and Eve win.
+        $results = [
+            new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
+            new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
+            new Result(new Event([$this->eve, $frank], new Round(1)), $this->eve),
+        ];
+
+        $round2 = (new SwissPairingEngine())->pairNextRound($participants, $results, ['p7']);
+
+        // Grace's bye counts as a win, so she pairs among the winners
+        // (against Eve, the third-placed winner), and the losers pair off.
+        $pairKeys = array_map(function (Event $event) {
+            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            sort($ids);
+
+            return implode('-', $ids);
+        }, $round2->getEvents());
+        sort($pairKeys);
+
+        expect($round2->getBye()?->getId())->toBe('p6'); // lowest-placed without a bye
+        expect($pairKeys)->toBe(['p1-p3', 'p2-p4', 'p5-p7']);
+    });
+
     it('throws when every pairing has already been played', function (): void {
         $results = [
             new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),

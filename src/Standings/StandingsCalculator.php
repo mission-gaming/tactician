@@ -26,6 +26,11 @@ readonly class StandingsCalculator
     ) {
     }
 
+    public function getPointsSystem(): PointsSystem
+    {
+        return $this->pointsSystem;
+    }
+
     /**
      * Calculate standings for the given participants from recorded results.
      *
