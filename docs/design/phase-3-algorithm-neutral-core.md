@@ -1,8 +1,9 @@
 # Design: Phase 3 — Algorithm-Neutral Core
 
-**Status: PROPOSAL (revision 2)** — nothing in this document is implemented.
-Code blocks are design sketches, not executable examples. Decisions marked
-✅ were resolved with the maintainer; items marked ❓ remain open.
+**Status: ACCEPTED — implementation-ready (revision 4)** — nothing in this
+document is implemented yet. Code blocks are design sketches, not executable
+examples. All open questions have been resolved with the maintainer
+(decisions marked ✅ throughout; see "Resolved decisions" at the end).
 
 ## Why
 
@@ -245,6 +246,42 @@ validator, and the diagnostics alike. `GenerationPlan` and
 unsatisfiable configuration fails while building the plan, with the same
 diagnostics.
 
+✅ **Leg strategies contribute by returning a value object** the plan
+builder consumes — not by mutating a builder passed to them:
+
+```php
+// PROPOSED — not implemented
+interface LegStrategyInterface
+{
+    /** Facts the plan needs from this strategy. */
+    public function planLegs(
+        array $participants,
+        int $legs,
+        ConstraintSet $constraints
+    ): LegPlanContribution;
+
+    public function generateEventForLeg(/* unchanged */): ?Event;
+}
+
+final readonly class LegPlanContribution
+{
+    public function __construct(
+        public bool $rolesMirrorAcrossLegs,
+        public bool $requiresRandomization,
+        /** @var array<string> Non-empty means plan construction fails with diagnostics */
+        public array $unsatisfiableReasons = [],
+        /** @var array<string> */
+        public array $warnings = [],
+    ) {}
+}
+```
+
+Rationale: a returned immutable value matches the library's readonly style,
+is testable in isolation (assert on the object, not on builder side
+effects), has no ordering coupling to builder internals, and evolves
+additively — new plan facts are new fields, not interface changes. The old
+`canSatisfyConstraints()` preflight folds into `unsatisfiableReasons`.
+
 ### 4. One engine interface, one driver loop, one completion product
 
 ```php
@@ -360,6 +397,15 @@ configuration; the selectors themselves — including reading winners from
 recorded results with certainty — are library-guaranteed. All selectors are
 config-constructible with stable identifiers.
 
+✅ **Selectors are optional machinery, not a gate.** The entry contract of
+any stage is simply an ordered, reseeded participant list. Consumers that
+compute their own qualification — a platform deriving "best third-placed"
+from its own domain tables and tiebreaker rules — hand the next stage that
+list directly and bypass selectors entirely, with no penalty and no
+second-class path. This keeps the role boundary crisp: Tactician owns
+structure and offers generic selection; the consumer owns domain scoring
+and may own selection too.
+
 ### 6. Pools as a generic composition primitive
 
 `GroupStageEngine` currently hard-codes: serpentine distribution → round
@@ -426,8 +472,21 @@ the strategy-computed ranking value. Tiebreakers already follow this shape
 becomes pluggable the same way. Future strategies (placement-based,
 aggregate-score) slot in without touching the calculator; the sport-named
 presets become named constructors on the W/D/L implementation rather than
-API surface. ✅ Direction resolved; exact naming (`RankingStrategy` vs
-`ScoringStrategy`) ❓.
+API surface. ✅ Name resolved: `RankingStrategy` (ordering is the contract;
+scoring is one means of producing it).
+
+**Ranking is universal — brackets included.** Positions are derived from
+ranking values by the standings ordering, and for elimination stages the
+W/D/L strategy reproduces conventional bracket placement without special
+cases: in an 8-entrant knockout where favourites hold, the champion
+finishes 3-0, the runner-up 2-1, the semifinal losers 1-1, and the
+quarter-final losers 0-1 — ordering them 1st, 2nd, joint 3rd, joint 5th,
+which is exactly the conventional bracket classification, including its
+genuine ties (3rd/4th are indistinguishable unless a bronze match is
+played, in which case that event's result separates them naturally). A
+2-participant final therefore ranks its winner 1 and loser 2 with no
+bracket-specific logic. Games wanting different placement semantics supply
+a different strategy.
 
 ## Naming decision
 
@@ -460,7 +519,7 @@ Candidates considered for the shape object, with the reasoning:
 | `ScheduleValidationContext` | Removed; validators take the plan |
 | `ScheduleIntegrityValidator` | Becomes `StagePlan::validateIntegrity()` |
 | `GenerationPlan`, `ConstraintSatisfiabilityReport` | Folded into plan construction |
-| `LegStrategyInterface::planGeneration()` / `canSatisfyConstraints()` | Replaced by a plan-construction hook ❓ (naming open) |
+| `LegStrategyInterface::planGeneration()` / `canSatisfyConstraints()` | ✅ Replaced by `planLegs(): LegPlanContribution` (section 3) |
 | `SwissRoundPairing`, `EliminationRoundPairing` | Replaced by `RoundPairing` |
 | `SwissPairingEngine::pairNextRound(4 args)` | `pairNextRound(StageState)` |
 | `SimpleSwissScheduler` | ✅ Removed: the Swiss engine gains an optional `Randomizer` (shuffling within equal-standings groups), which with no recorded results reproduces random non-repeat pairing; a preset covers the whole-schedule convenience |
@@ -488,30 +547,25 @@ Five milestones, each shippable green:
    engines rebuilt as presets, two-legged ties.
 5. **Sweep** — docs, examples, memory bank, deprecated-class removals.
 
-## Remaining open questions
+## Resolved decisions (2026-07-03)
 
-Expanded, since each needs maintainer input to be answerable:
+All previously open questions are now resolved with the maintainer:
 
-1. **The plan-construction hook on leg strategies.** Today a leg strategy
-   exposes `planGeneration()` (unused output) and `canSatisfyConstraints()`
-   (preflight). In the new world the *scheduler* builds the `StagePlan`,
-   but leg strategies still hold facts the plan needs — whether legs mirror
-   roles, whether randomization is involved, warnings. The question is the
-   shape of that contribution: a single method the plan builder calls
-   (`contributeToPlan(RoundRobinPlanBuilder $builder): void`? a returned
-   value object?) and its name. Low stakes, needs a decision before
-   milestone 1 touches `LegStrategyInterface`.
-2. **`RankingStrategy` vs `ScoringStrategy` (or another name)** for the
-   generalized table-ordering concept in section 8. "Ranking" emphasizes
-   the output (an ordering), "scoring" the input (accumulated values);
-   ranking is recommended since ordering is the contract and scoring is
-   one means.
-3. **Cross-pool `StageOutcome` shape.** When a stage contains pools (four
-   groups of four), is its outcome (a) one combined object that carries
-   per-pool standings inside it, or (b) one outcome per pool, with "the
-   stage outcome" being a collection? Selectors need both intra-pool rank
-   slices ("top 2 per group") and cross-pool queries ("best third-placed
-   overall", as World Cups use) — and (b) has nowhere for a cross-pool
-   query to live, so (a) is recommended: `StageOutcome` optionally carries
-   pool structure, and rank selectors address "per pool" or "overall".
-   Named here because it decides the selector API's input type.
+1. **Leg strategies return a `LegPlanContribution` value object** consumed
+   by the plan builder (section 3): immutable, isolated to test, no
+   ordering coupling to builder internals, additively extensible.
+2. **`RankingStrategy`** is the name for the generalized table-ordering
+   concept, confirmed universal across formats including brackets (section
+   8), with `WinDrawLossRanking` as the first implementation.
+3. **Combined `StageOutcome`** for pooled stages, optionally carrying pool
+   structure, so intra-pool slices and cross-pool queries share one input
+   type. Selectors remain optional machinery — the stage entry contract is
+   an ordered participant list, so consumers computing their own
+   qualification bypass them cleanly (section 5).
+
+Earlier resolutions: `StagePlan` naming family, `StageState` serialization
+in the first cut, `StageOutcome` on the engine interface with no trophy
+vocabulary, `SimpleSwissScheduler` removal, `GroupStageEngine` retirement
+in favour of pools + selectors, elimination engines as presets over one
+composed-bracket mechanism, `RankingStrategy` replacing `PointsSystem`, and
+two-legged ties in the first cut.
