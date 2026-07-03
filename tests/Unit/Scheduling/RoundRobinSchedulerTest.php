@@ -8,8 +8,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
-use MissionGaming\Tactician\LegStrategies\ConstraintSatisfiabilityReport;
-use MissionGaming\Tactician\LegStrategies\GenerationPlan;
+use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
@@ -270,20 +269,29 @@ describe('RoundRobinScheduler', function (): void {
         expect($schedule->getMetadataValue('byes'))->toBe([]);
     });
 
-    // Tests that the scheduler consults the strategy's satisfiability preflight
-    // and rejects vetoed configurations before generating any events
+    // Tests that plan construction consults the strategy's contribution and
+    // rejects vetoed configurations before generating any events
     it('rejects configurations the leg strategy cannot satisfy', function (): void {
         $vetoStrategy = new class () implements LegStrategyInterface {
+            /**
+             * @param array<Participant> $participants
+             */
             #[\Override]
-            public function planGeneration(
+            public function planLegs(
                 array $participants,
-                int $totalLegs,
-                int $participantsPerEvent,
+                int $legs,
                 ConstraintSet $constraints
-            ): GenerationPlan {
-                return new GenerationPlan(0, 0, 0);
+            ): LegPlanContribution {
+                return new LegPlanContribution(
+                    rolesMirrorAcrossLegs: false,
+                    requiresRandomization: false,
+                    unsatisfiableReasons: ['Vetoed by test strategy']
+                );
             }
 
+            /**
+             * @param array<Participant> $participants
+             */
             #[\Override]
             public function generateEventForLeg(
                 array $participants,
@@ -292,18 +300,6 @@ describe('RoundRobinScheduler', function (): void {
                 SchedulingContext $context
             ): ?Event {
                 return null;
-            }
-
-            #[\Override]
-            public function canSatisfyConstraints(
-                array $participants,
-                int $legs,
-                int $participantsPerEvent,
-                ConstraintSet $constraints
-            ): ConstraintSatisfiabilityReport {
-                return ConstraintSatisfiabilityReport::failure(
-                    unsatisfiableConstraints: ['Vetoed by test strategy'],
-                );
             }
         };
 

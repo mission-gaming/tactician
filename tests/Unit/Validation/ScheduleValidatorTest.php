@@ -11,32 +11,75 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Stage\RoundRobinPlan;
+use MissionGaming\Tactician\Stage\StagePlan;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
-use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
-use MissionGaming\Tactician\Validation\RoundRobinEventCalculator;
 use MissionGaming\Tactician\Validation\ScheduleValidator;
+
+/**
+ * A stub plan with a fixed expected event count and canned integrity
+ * violations, isolating the validator's own logic from concrete plan
+ * implementations.
+ *
+ * @param array<string> $integrityViolations
+ */
+function fixedCountPlan(?int $expectedEventCount, array $integrityViolations = []): StagePlan
+{
+    return new readonly class ($expectedEventCount, $integrityViolations) implements StagePlan {
+        /**
+         * @param array<string> $integrityViolations
+         */
+        public function __construct(
+            private ?int $expectedEventCount,
+            private array $integrityViolations = []
+        ) {
+        }
+
+        #[Override]
+        public function getAlgorithm(): string
+        {
+            return 'test-algorithm';
+        }
+
+        #[Override]
+        public function getTotalRounds(): ?int
+        {
+            return null;
+        }
+
+        #[Override]
+        public function getLegs(): ?int
+        {
+            return null;
+        }
+
+        #[Override]
+        public function getRoundsPerLeg(): ?int
+        {
+            return null;
+        }
+
+        #[Override]
+        public function getExpectedEventCount(): ?int
+        {
+            return $this->expectedEventCount;
+        }
+
+        #[Override]
+        public function validateIntegrity(Schedule $schedule): array
+        {
+            return $this->integrityViolations;
+        }
+    };
+}
 
 describe('ScheduleValidator', function (): void {
     describe('validateScheduleCompleteness', function (): void {
         // Tests that validation passes when schedule contains expected number of events
         it('passes validation when schedule is complete', function (): void {
-            // Given: A complete schedule with expected number of events
             $validator = new ScheduleValidator();
             $violations = new ConstraintViolationCollector();
-            $eventCalculator = new class () implements ExpectedEventCalculator {
-                #[Override]
-                public function calculateExpectedEvents(array $participants, int $legs = 1, array $algorithmSpecificParams = []): int
-                {
-                    return 6;
-                }
-
-                #[Override]
-                public function getAlgorithmName(): string
-                {
-                    return 'Test Algorithm';
-                }
-            };
 
             $participant1 = new Participant('p1', 'Alice');
             $participant2 = new Participant('p2', 'Bob');
@@ -47,224 +90,17 @@ describe('ScheduleValidator', function (): void {
             $event2 = new Event([$participant2, $participant3]);
             $event3 = new Event([$participant1, $participant3]);
 
-            $events = [$event1, $event2, $event3, $event1, $event2, $event3];
-            $schedule = new Schedule($events);
-            $expectedCount = 6;
+            $schedule = new Schedule([$event1, $event2, $event3, $event1, $event2, $event3]);
 
-            // When: Validating completeness
-            // Then: No exception should be thrown
-            $validator->validateScheduleCompleteness(
-                $schedule,
-                $expectedCount,
-                $violations,
-                $eventCalculator,
-                $participants,
-                2
-            );
-            expect(true)->toBeTrue(); // Test passes if no exception is thrown
+            // No exception should be thrown
+            $validator->validateScheduleCompleteness($schedule, fixedCountPlan(6), $violations, $participants);
+            expect(true)->toBeTrue();
         });
 
         // Tests that validation throws exception when schedule has fewer events than expected
         it('throws exception when schedule is incomplete', function (): void {
-            // Given: An incomplete schedule with fewer events than expected
             $validator = new ScheduleValidator();
             $violations = new ConstraintViolationCollector();
-            $eventCalculator = new class () implements ExpectedEventCalculator {
-                #[Override]
-                public function calculateExpectedEvents(array $participants, int $legs = 1, array $algorithmSpecificParams = []): int
-                {
-                    return 6;
-                }
-
-                #[Override]
-                public function getAlgorithmName(): string
-                {
-                    return 'Test Algorithm';
-                }
-            };
-
-            $participant1 = new Participant('p1', 'Alice');
-            $participant2 = new Participant('p2', 'Bob');
-            $participant3 = new Participant('p3', 'Carol');
-            $participants = [$participant1, $participant2, $participant3];
-
-            $event1 = new Event([$participant1, $participant2]);
-            $event2 = new Event([$participant2, $participant3]);
-
-            $events = [$event1, $event2];
-            $schedule = new Schedule($events);
-            $expectedCount = 6;
-
-            // When: Validating completeness
-            // Then: Should throw IncompleteScheduleException with correct details
-            try {
-                $validator->validateScheduleCompleteness(
-                    $schedule,
-                    $expectedCount,
-                    $violations,
-                    $eventCalculator,
-                    $participants,
-                    2
-                );
-                expect(false)->toBeTrue('Expected IncompleteScheduleException was not thrown');
-            } catch (IncompleteScheduleException $e) {
-                expect(true)->toBeTrue();
-            }
-        });
-
-        // Tests that exception contains all necessary diagnostic information
-        it('includes diagnostic information in exception', function (): void {
-            // Given: An incomplete schedule with violations
-            $validator = new ScheduleValidator();
-            $violations = new ConstraintViolationCollector();
-            $eventCalculator = new class () implements ExpectedEventCalculator {
-                #[Override]
-                public function calculateExpectedEvents(array $participants, int $legs = 1, array $algorithmSpecificParams = []): int
-                {
-                    return 6;
-                }
-
-                #[Override]
-                public function getAlgorithmName(): string
-                {
-                    return 'Test Algorithm';
-                }
-            };
-
-            $participant1 = new Participant('p1', 'Alice');
-            $participant2 = new Participant('p2', 'Bob');
-            $participant3 = new Participant('p3', 'Carol');
-            $participants = [$participant1, $participant2, $participant3];
-
-            $event1 = new Event([$participant1, $participant2]);
-            $event2 = new Event([$participant2, $participant3]);
-
-            $events = [$event1];
-            $schedule = new Schedule($events);
-            $expectedCount = 6;
-
-            $constraint = ConsecutiveRoleConstraint::homeAway(2);
-            $violation = new ConstraintViolation(
-                $constraint,
-                $event2,
-                'Test violation',
-                [$participant1]
-            );
-            $violations->recordViolation($violation);
-
-            // When: Validating completeness
-            try {
-                $validator->validateScheduleCompleteness(
-                    $schedule,
-                    $expectedCount,
-                    $violations,
-                    $eventCalculator,
-                    $participants,
-                    2
-                );
-                expect(false)->toBeTrue('Expected IncompleteScheduleException was not thrown');
-            } catch (IncompleteScheduleException $e) {
-                // Then: Exception should contain all diagnostic data
-                expect($e->getExpectedEventCount())->toBe($expectedCount);
-                expect($e->getActualEventCount())->toBe(1);
-                expect($e->getMissingEventCount())->toBe(5);
-                expect($e->getViolationCollector())->toBe($violations);
-            }
-        });
-
-        // Tests edge case with empty schedule
-        it('handles empty schedule correctly', function (): void {
-            // Given: An empty schedule
-            $validator = new ScheduleValidator();
-            $violations = new ConstraintViolationCollector();
-            $eventCalculator = new class () implements ExpectedEventCalculator {
-                #[Override]
-                public function calculateExpectedEvents(array $participants, int $legs = 1, array $algorithmSpecificParams = []): int
-                {
-                    return 6;
-                }
-
-                #[Override]
-                public function getAlgorithmName(): string
-                {
-                    return 'Test Algorithm';
-                }
-            };
-
-            $participant1 = new Participant('p1', 'Alice');
-            $participant2 = new Participant('p2', 'Bob');
-            $participant3 = new Participant('p3', 'Carol');
-            $participants = [$participant1, $participant2, $participant3];
-
-            $schedule = new Schedule([]);
-            $expectedCount = 6;
-
-            // When: Validating completeness
-            // Then: Should throw exception for incomplete schedule
-            try {
-                $validator->validateScheduleCompleteness(
-                    $schedule,
-                    $expectedCount,
-                    $violations,
-                    $eventCalculator,
-                    $participants,
-                    1
-                );
-                expect(false)->toBeTrue('Expected IncompleteScheduleException was not thrown');
-            } catch (IncompleteScheduleException $e) {
-                expect(true)->toBeTrue();
-            }
-        });
-
-        // Tests that validation passes when actual count equals expected count exactly
-        it('passes when actual count equals expected count exactly', function (): void {
-            // Given: A schedule with exactly the expected number of events
-            $validator = new ScheduleValidator();
-            $violations = new ConstraintViolationCollector();
-            $eventCalculator = new class () implements ExpectedEventCalculator {
-                #[Override]
-                public function calculateExpectedEvents(array $participants, int $legs = 1, array $algorithmSpecificParams = []): int
-                {
-                    return 6;
-                }
-
-                #[Override]
-                public function getAlgorithmName(): string
-                {
-                    return 'Test Algorithm';
-                }
-            };
-
-            $participant1 = new Participant('p1', 'Alice');
-            $participant2 = new Participant('p2', 'Bob');
-            $participant3 = new Participant('p3', 'Carol');
-            $participants = [$participant1, $participant2, $participant3];
-
-            $event1 = new Event([$participant1, $participant2]);
-            $event2 = new Event([$participant2, $participant3]);
-            $event3 = new Event([$participant1, $participant3]);
-
-            $events = [$event1, $event2, $event3];
-            $schedule = new Schedule($events);
-            $expectedCount = 3;
-
-            // When: Validating completeness
-            // Then: No exception should be thrown
-            $validator->validateScheduleCompleteness(
-                $schedule,
-                $expectedCount,
-                $violations,
-                $eventCalculator,
-                $participants,
-                1
-            );
-            expect(true)->toBeTrue(); // Test passes if no exception is thrown
-        });
-
-        it('rejects duplicate round-robin pairings even when event count matches', function (): void {
-            $validator = new ScheduleValidator();
-            $violations = new ConstraintViolationCollector();
-            $eventCalculator = new RoundRobinEventCalculator();
 
             $participant1 = new Participant('p1', 'Alice');
             $participant2 = new Participant('p2', 'Bob');
@@ -272,33 +108,143 @@ describe('ScheduleValidator', function (): void {
             $participants = [$participant1, $participant2, $participant3];
 
             $schedule = new Schedule([
+                new Event([$participant1, $participant2]),
+                new Event([$participant2, $participant3]),
+            ]);
+
+            expect(fn () => $validator->validateScheduleCompleteness($schedule, fixedCountPlan(6), $violations, $participants))
+                ->toThrow(IncompleteScheduleException::class);
+        });
+
+        // Tests that exception contains all necessary diagnostic information
+        it('includes diagnostic information in exception', function (): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+
+            $participant1 = new Participant('p1', 'Alice');
+            $participant2 = new Participant('p2', 'Bob');
+            $participant3 = new Participant('p3', 'Carol');
+            $participants = [$participant1, $participant2, $participant3];
+
+            $event1 = new Event([$participant1, $participant2]);
+            $event2 = new Event([$participant2, $participant3]);
+
+            $schedule = new Schedule([$event1]);
+            $plan = fixedCountPlan(6);
+
+            $constraint = ConsecutiveRoleConstraint::homeAway(2);
+            $violations->recordViolation(new ConstraintViolation(
+                $constraint,
+                $event2,
+                'Test violation',
+                [$participant1]
+            ));
+
+            try {
+                $validator->validateScheduleCompleteness($schedule, $plan, $violations, $participants);
+                expect(false)->toBeTrue('Expected IncompleteScheduleException was not thrown');
+            } catch (IncompleteScheduleException $e) {
+                // Exception should carry the diagnostic data and the plan
+                expect($e->getExpectedEventCount())->toBe(6);
+                expect($e->getActualEventCount())->toBe(1);
+                expect($e->getMissingEventCount())->toBe(5);
+                expect($e->getViolationCollector())->toBe($violations);
+                expect($e->getPlan())->toBe($plan);
+            }
+        });
+
+        // Tests edge case with empty schedule
+        it('handles empty schedule correctly', function (): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+
+            $participants = [
+                new Participant('p1', 'Alice'),
+                new Participant('p2', 'Bob'),
+                new Participant('p3', 'Carol'),
+            ];
+
+            expect(fn () => $validator->validateScheduleCompleteness(new Schedule([]), fixedCountPlan(6), $violations, $participants))
+                ->toThrow(IncompleteScheduleException::class);
+        });
+
+        // A plan whose expected count is unknowable up front only runs
+        // integrity validation and accepts any event count
+        it('skips the count check when the plan cannot know its expected events', function (): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+
+            $participant1 = new Participant('p1', 'Alice');
+            $participant2 = new Participant('p2', 'Bob');
+            $participants = [$participant1, $participant2];
+
+            $schedule = new Schedule([new Event([$participant1, $participant2])]);
+
+            $validator->validateScheduleCompleteness($schedule, fixedCountPlan(null), $violations, $participants);
+            expect(true)->toBeTrue();
+        });
+
+        // Regression: an integrity failure on a plan with an unknowable
+        // expected count used to report the actual count as expected,
+        // implying the expectation was known and exactly met
+        it('reports an unknowable expected count honestly when integrity fails', function (): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+
+            $participant1 = new Participant('p1', 'Alice');
+            $participant2 = new Participant('p2', 'Bob');
+            $participants = [$participant1, $participant2];
+
+            $schedule = new Schedule([new Event([$participant1, $participant2])]);
+            $plan = fixedCountPlan(null, ['Pairing p1 vs p2 appears 2 time(s).']);
+
+            try {
+                $validator->validateScheduleCompleteness($schedule, $plan, $violations, $participants);
+                expect(false)->toBeTrue('Expected IncompleteScheduleException was not thrown');
+            } catch (IncompleteScheduleException $e) {
+                expect($e->getExpectedEventCount())->toBeNull();
+                expect($e->getActualEventCount())->toBe(1);
+                expect($e->getMissingEventCount())->toBe(0);
+                expect($e->getMessage())->toContain('failed test-algorithm integrity validation');
+
+                $report = $e->getDiagnosticReport();
+                expect($report)->toContain('Expected Events: unknown (not knowable up front for this stage)');
+                expect($report)->toContain('Generated Events: 1');
+                expect($report)->not->toContain('Missing Events:');
+            }
+        });
+
+        it('rejects duplicate round-robin pairings even when event count matches', function (): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+
+            $participant1 = new Participant('p1', 'Alice');
+            $participant2 = new Participant('p2', 'Bob');
+            $participant3 = new Participant('p3', 'Carol');
+            $participants = [$participant1, $participant2, $participant3];
+            $plan = new RoundRobinPlan($participants, 1);
+
+            $schedule = new Schedule([
                 new Event([$participant1, $participant2], new Round(1)),
                 new Event([$participant1, $participant2], new Round(2)),
                 new Event([$participant1, $participant2], new Round(3)),
             ]);
 
-            expect(fn () => $validator->validateScheduleCompleteness(
-                $schedule,
-                3,
-                $violations,
-                $eventCalculator,
-                $participants,
-                1
-            ))->toThrow(
+            expect(fn () => $validator->validateScheduleCompleteness($schedule, $plan, $violations, $participants))->toThrow(
                 IncompleteScheduleException::class,
-                'Generated schedule failed Round Robin integrity validation'
+                'Generated schedule failed round-robin integrity validation'
             );
         });
 
         it('passes round-robin integrity validation for exact multi-leg pairing counts', function (): void {
             $validator = new ScheduleValidator();
             $violations = new ConstraintViolationCollector();
-            $eventCalculator = new RoundRobinEventCalculator();
 
             $participant1 = new Participant('p1', 'Alice');
             $participant2 = new Participant('p2', 'Bob');
             $participant3 = new Participant('p3', 'Carol');
             $participants = [$participant1, $participant2, $participant3];
+            $plan = new RoundRobinPlan($participants, 2);
 
             $schedule = new Schedule([
                 new Event([$participant1, $participant2], new Round(1)),
@@ -309,14 +255,7 @@ describe('ScheduleValidator', function (): void {
                 new Event([$participant3, $participant1], new Round(6)),
             ]);
 
-            $validator->validateScheduleCompleteness(
-                $schedule,
-                6,
-                $violations,
-                $eventCalculator,
-                $participants,
-                2
-            );
+            $validator->validateScheduleCompleteness($schedule, $plan, $violations, $participants);
 
             expect(true)->toBeTrue();
         });

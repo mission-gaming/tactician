@@ -6,7 +6,6 @@ use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
-use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 describe('MinimumRestPeriodsConstraint', function (): void {
     beforeEach(function (): void {
@@ -23,7 +22,7 @@ describe('MinimumRestPeriodsConstraint', function (): void {
 
     it('allows a first meeting', function (): void {
         $constraint = new MinimumRestPeriodsConstraint(3);
-        $context = new SchedulingContext($this->participants, []);
+        $context = roundRobinContext($this->participants, []);
 
         $event = new Event([$this->alice, $this->bob], new Round(1));
 
@@ -32,7 +31,7 @@ describe('MinimumRestPeriodsConstraint', function (): void {
 
     it('rejects a repeat meeting inside the rest window', function (): void {
         $constraint = new MinimumRestPeriodsConstraint(3);
-        $context = new SchedulingContext($this->participants, [
+        $context = roundRobinContext($this->participants, [
             new Event([$this->alice, $this->bob], new Round(1)),
         ]);
 
@@ -44,7 +43,7 @@ describe('MinimumRestPeriodsConstraint', function (): void {
 
     it('allows a repeat meeting once the rest window has passed', function (): void {
         $constraint = new MinimumRestPeriodsConstraint(3);
-        $context = new SchedulingContext($this->participants, [
+        $context = roundRobinContext($this->participants, [
             new Event([$this->alice, $this->bob], new Round(1)),
         ]);
 
@@ -56,7 +55,7 @@ describe('MinimumRestPeriodsConstraint', function (): void {
 
     it('measures rest from the latest meeting, not the first', function (): void {
         $constraint = new MinimumRestPeriodsConstraint(3);
-        $context = new SchedulingContext($this->participants, [
+        $context = roundRobinContext($this->participants, [
             new Event([$this->alice, $this->bob], new Round(1)),
             new Event([$this->alice, $this->bob], new Round(5)),
         ]);
@@ -68,7 +67,7 @@ describe('MinimumRestPeriodsConstraint', function (): void {
 
     it('ignores meetings between other participants', function (): void {
         $constraint = new MinimumRestPeriodsConstraint(3);
-        $context = new SchedulingContext($this->participants, [
+        $context = roundRobinContext($this->participants, [
             new Event([$this->alice, $this->carol], new Round(2)),
         ]);
 

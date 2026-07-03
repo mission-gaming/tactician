@@ -6,11 +6,13 @@
 - Documentation was audited end-to-end: README, ROADMAP, ARCHITECTURE, USAGE, CONTRIBUTING, and BACKGROUND all match the shipped code, and every docs/example snippet has been executed
 
 ## Next Steps
-- **Phase 3 (docs/ROADMAP.md)**: the algorithm-neutral core — `ExpectedSchedule`/`AlgorithmPlan` abstraction, plan-driven generation via `LegStrategyInterface::planGeneration()` (currently consulted only for its satisfiability preflight), and a unified interface for the results-driven engines. This reshapes public APIs and needs a dedicated design pass before implementation.
+- **Phase 3 implementation is underway** per the accepted design (`docs/design/phase-3-algorithm-neutral-core.md`). Milestone 1 (StagePlan introduction) is done: `src/Stage/` plans, `LegPlanContribution`, plan-carrying `SchedulingContext`, calculators/validation-context classes removed. Next: milestone 2 (typed options objects + `RankingStrategy`), then engine unification (M3), progression/pools/bracket presets (M4), sweep (M5).
 - Backtracking generation for constraint configurations the greedy generator cannot satisfy (known limitation, recorded in ROADMAP Phase 5)
 
 ## Active Decisions and Considerations
-- Two generation models deliberately coexist: whole-schedule generators (round robin, simple Swiss) and results-driven engines (Swiss pairing, brackets, groups). Do not force them into one interface ahead of the Phase 3 design pass.
+- Two generation models still coexist until Phase 3 milestone 3 unifies the results-driven engines behind `StageEngineInterface`; all design questions are resolved in the design doc (stage-scoped naming, no trophy vocabulary, selectors optional, `PointsSystem` → `RankingStrategy`).
+- Stage plans never fabricate shape facts: null legs = concept does not apply (Swiss); null totals = unknowable up front. Consumers wanting display defaults write `?? 1` at their own edge.
+- Timeline assignment (Phase 4) stays per-stage and consumes `Schedule::getEventsByRound()`; nothing in Phase 3 may block it — plans carrying round structure keep that bridge intact.
 - Constraints are hard filters with loud, diagnostic failure; soft/preference constraints are intentionally unsupported.
 - The greedy generator retries bounded rotated orderings when constraints reject a schedule; configurations that fail every rotation throw `IncompleteScheduleException` even when satisfiable in principle.
 - `NoRepeatPairings` scopes to the current leg by default (`acrossLegs: true` for the strict variant) — multi-leg tournaments repeat pairings per leg by design.

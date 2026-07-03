@@ -40,7 +40,8 @@ anything else that competes.
 | **Result** | The recorded outcome of a played event: a winner or a draw, with optional per-participant scores. |
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — points, records, and tiebreakers. |
 | **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
-| **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout). Composed via `GroupStageEngine` qualifiers and the elimination engines. |
+| **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out. Composed via `GroupStageEngine` qualifiers and the elimination engines. |
+| **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
 ## Basic Usage
 
@@ -665,30 +666,68 @@ class CustomScheduler implements SchedulerInterface
         ]);
     }
 
-    // Implement validateConstraints(), getExpectedEventCount(),
-    // and getExpectedEventCalculator()...
+    // Implement validateConstraints() and getPlan() — the plan declares
+    // your algorithm's shape (rounds, legs, expected events) so validation
+    // and diagnostics work without round-robin assumptions...
 }
 ```
+
+### Stage Plans
+
+Every scheduler can declare the shape of a stage before generating it. The
+plan is what validation, diagnostics, and shape-aware constraints (e.g.
+`SeedProtectionConstraint`) consume — no component infers tournament shape:
+
+```php
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SimpleSwissScheduler;
+
+$plan = (new RoundRobinScheduler())->getPlan($participants, legs: 2);
+
+$plan->getAlgorithm();          // 'round-robin' — stable identifier
+$plan->getTotalRounds();        // 6 for 4 participants over 2 legs
+$plan->getLegs();               // 2
+$plan->getRoundsPerLeg();       // 3 (bye-aware: 5 participants would need 5)
+$plan->getExpectedEventCount(); // 12
+
+// Round-robin-family plans also guarantee pairwise meeting counts:
+$plan->getExpectedMeetings($participants[0], $participants[1]); // 2
+
+// Swiss has rounds but no legs: the legs accessors are null because the
+// concept does not apply — never a fabricated 1
+$swissPlan = (new SimpleSwissScheduler())->getPlan($participants, 3);
+$swissPlan->getAlgorithm();     // 'swiss'
+$swissPlan->getTotalRounds();   // 3
+$swissPlan->getLegs();          // null
+```
+
+A plan also validates a complete schedule against its declared shape:
+`$plan->validateIntegrity($schedule)` returns human-readable violation
+strings (duplicate pairings, foreign participants, short rounds), and the
+schedulers run it automatically before returning a schedule.
 
 ### Scheduling Context
 
 ```php
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
-// Create context with participants and existing events
+// Create context with participants, the stage plan, and existing events
 $context = new SchedulingContext(
     $participants,
+    $plan,
     $existingEvents,
     $currentLeg = 1,
-    $totalLegs = 2,
     $participantsPerEvent = 2
 );
 
+// Shape facts come from the plan
+$totalRounds = $context->getPlan()->getTotalRounds();
+
 // Check if participants have played together
-$havePlayed = $context->haveParticipantsPlayedTogether($participant1, $participant2);
+$havePlayed = $context->haveParticipantsPlayed($participants[0], $participants[1]);
 
 // Get events for a specific participant
-$playerEvents = $context->getEventsForParticipant($participant1);
+$playerEvents = $context->getEventsForParticipant($participants[0]);
 
 // Add new events to context
 $newContext = $context->withEvents([$newEvent]);

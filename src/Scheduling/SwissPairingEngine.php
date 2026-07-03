@@ -11,6 +11,7 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
+use MissionGaming\Tactician\Stage\SwissPlan;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 
 /**
@@ -41,7 +42,7 @@ readonly class SwissPairingEngine
 {
     /**
      * @param int|null $plannedRounds Total rounds the tournament will run, exposed to
-     *                                constraints via the scheduling context metadata
+     *                                constraints via the stage plan on the scheduling context
      */
     public function __construct(
         private ?ConstraintSet $constraints = null,
@@ -105,12 +106,8 @@ readonly class SwissPairingEngine
         $homeCounts = $this->collectHomeCounts($results);
         $priorEvents = array_map(fn (Result $result) => $result->getEvent(), $results);
 
-        $metadata = ['algorithm' => 'swiss'];
-        if ($this->plannedRounds !== null) {
-            $metadata['rounds'] = $this->plannedRounds;
-            $metadata['total_rounds'] = $this->plannedRounds;
-        }
-        $context = new SchedulingContext($participants, $priorEvents, 1, 1, 2, $metadata);
+        $plan = new SwissPlan($participants, $this->plannedRounds);
+        $context = new SchedulingContext($participants, $plan, $priorEvents, 1, 2);
 
         if (count($orderedParticipants) % 2 === 0) {
             $events = $this->pairOrderedParticipants(

@@ -7,14 +7,13 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\ConstraintSetBuilder;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 describe('ConstraintSet', function (): void {
     beforeEach(function (): void {
         $this->participant1 = new Participant('p1', 'Alice');
         $this->participant2 = new Participant('p2', 'Bob');
         $this->event = new Event([$this->participant1, $this->participant2]);
-        $this->context = new SchedulingContext([$this->participant1, $this->participant2]);
+        $this->context = roundRobinContext([$this->participant1, $this->participant2]);
     });
 
     it('creates an empty constraint set', function (): void {

@@ -7,60 +7,60 @@ namespace MissionGaming\Tactician\Validation;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Stage\StagePlan;
 
 /**
  * Generic validation service for scheduling completeness.
+ *
+ * Validates a generated schedule against its stage plan: the expected
+ * event count and the plan's format-specific integrity checks. All shape
+ * facts come from the plan; this service performs no algorithm-specific
+ * arithmetic of its own.
  */
 class ScheduleValidator
 {
     /**
-     * Validate that a generated schedule is complete.
+     * Validate that a generated schedule matches its plan.
+     *
+     * A plan whose expected event count is unknowable up front (null) only
+     * runs integrity validation.
      *
      * @param array<Participant> $participants
      * @throws IncompleteScheduleException
      */
     public function validateScheduleCompleteness(
         Schedule $generated,
-        int $expectedEventCount,
+        StagePlan $plan,
         ConstraintViolationCollector $violations,
-        ExpectedEventCalculator $eventCalculator,
-        array $participants,
-        int|ScheduleValidationContext $validationContext
+        array $participants
     ): void {
-        $context = $validationContext instanceof ScheduleValidationContext
-            ? $validationContext
-            : ScheduleValidationContext::forRoundRobin($validationContext);
-
+        $expectedEventCount = $plan->getExpectedEventCount();
         $actualEventCount = count($generated);
 
-        if ($actualEventCount !== $expectedEventCount) {
+        if ($expectedEventCount !== null && $actualEventCount !== $expectedEventCount) {
             throw new IncompleteScheduleException(
                 $expectedEventCount,
                 $actualEventCount,
                 $violations,
-                $eventCalculator,
-                $participants,
-                $context
+                $plan,
+                $participants
             );
         }
 
-        if ($eventCalculator instanceof ScheduleIntegrityValidator) {
-            $integrityViolations = $eventCalculator->validateScheduleIntegrity($generated, $participants, $context);
-            if ($integrityViolations !== []) {
-                throw new IncompleteScheduleException(
-                    $expectedEventCount,
-                    $actualEventCount,
-                    $violations,
-                    $eventCalculator,
-                    $participants,
-                    $context,
-                    sprintf(
-                        'Generated schedule failed %s integrity validation: %s',
-                        $eventCalculator->getAlgorithmName(),
-                        implode(' ', array_slice($integrityViolations, 0, 3))
-                    )
-                );
-            }
+        $integrityViolations = $plan->validateIntegrity($generated);
+        if ($integrityViolations !== []) {
+            throw new IncompleteScheduleException(
+                $expectedEventCount,
+                $actualEventCount,
+                $violations,
+                $plan,
+                $participants,
+                sprintf(
+                    'Generated schedule failed %s integrity validation: %s',
+                    $plan->getAlgorithm(),
+                    implode(' ', array_slice($integrityViolations, 0, 3))
+                )
+            );
         }
     }
 

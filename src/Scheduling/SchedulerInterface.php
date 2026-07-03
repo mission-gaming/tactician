@@ -6,7 +6,7 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
-use MissionGaming\Tactician\Validation\ExpectedEventCalculator;
+use MissionGaming\Tactician\Stage\StagePlan;
 
 interface SchedulerInterface
 {
@@ -18,7 +18,7 @@ interface SchedulerInterface
      * @param int $legs Number of legs - how many times each participant meets each other
      *                  participant. Algorithms without a legs concept (e.g. Swiss)
      *                  interpret this as their round count; that overload is slated to be
-     *                  resolved by the algorithm-neutral interface work (ROADMAP Phase 3).
+     *                  resolved by typed per-algorithm options (Phase 3 milestone 2).
      * @param mixed $options Algorithm-specific scheduling options
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When configuration is invalid
@@ -44,19 +44,18 @@ interface SchedulerInterface
     public function validateConstraints(array $participants, int $legs): void;
 
     /**
-     * Get the expected number of events for a complete schedule.
+     * Build the stage plan for the given configuration: the algorithm's
+     * declaration of rounds, legs, and expected event counts. Fails with
+     * the same diagnostics as schedule() when the configuration is
+     * unsatisfiable, before any event exists.
      *
      * @param array<Participant> $participants
      * @param int $legs Number of legs (see schedule() for the Swiss interpretation)
+     * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException
      */
-    public function getExpectedEventCount(
+    public function getPlan(
         array $participants,
         int $legs,
         int $participantsPerEvent = 2
-    ): int;
-
-    /**
-     * Get the expected event calculator for this scheduling algorithm.
-     */
-    public function getExpectedEventCalculator(): ExpectedEventCalculator;
+    ): StagePlan;
 }

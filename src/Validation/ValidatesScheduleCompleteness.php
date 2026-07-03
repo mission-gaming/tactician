@@ -7,13 +7,14 @@ namespace MissionGaming\Tactician\Validation;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Stage\StagePlan;
 
 /**
  * Trait providing reusable validation functionality for schedulers.
  *
  * This trait adds schedule completeness validation to scheduler classes,
- * ensuring that generated schedules meet expected event counts and
- * providing detailed diagnostics when they don't.
+ * ensuring that generated schedules match their stage plan and providing
+ * detailed diagnostics when they don't.
  */
 trait ValidatesScheduleCompleteness
 {
@@ -38,7 +39,7 @@ trait ValidatesScheduleCompleteness
     }
 
     /**
-     * Validate that the generated schedule is complete.
+     * Validate that the generated schedule matches its stage plan.
      *
      * @param array<Participant> $participants
      * @throws IncompleteScheduleException if the schedule is incomplete
@@ -46,27 +47,13 @@ trait ValidatesScheduleCompleteness
     protected function validateGeneratedSchedule(
         Schedule $schedule,
         array $participants,
-        int|ScheduleValidationContext $validationContext,
-        ?int $expectedEventCount = null
+        StagePlan $plan
     ): void {
-        $context = $validationContext instanceof ScheduleValidationContext
-            ? $validationContext
-            : ScheduleValidationContext::forRoundRobin($validationContext);
-
-        $expectedEventCalculator = $this->getExpectedEventCalculator();
-        $expectedEventCount ??= $expectedEventCalculator->calculateExpectedEvents(
-            $participants,
-            $context->getRounds(),
-            $context->getParameters()
-        );
-
         $this->validator->validateScheduleCompleteness(
             $schedule,
-            $expectedEventCount,
+            $plan,
             $this->violationCollector,
-            $expectedEventCalculator,
-            $participants,
-            $context
+            $participants
         );
     }
 
@@ -102,10 +89,4 @@ trait ValidatesScheduleCompleteness
     {
         return $this->violationCollector->getViolationCount();
     }
-
-    /**
-     * Abstract method that must be implemented by classes using this trait.
-     * Should return the appropriate event calculator for the scheduling algorithm.
-     */
-    abstract public function getExpectedEventCalculator(): ExpectedEventCalculator;
 }

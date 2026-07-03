@@ -39,7 +39,46 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
-{
-    // ..
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
+use MissionGaming\Tactician\Stage\RoundRobinPlan;
+use MissionGaming\Tactician\Stage\SwissPlan;
+
+/**
+ * Build a scheduling context carrying a round-robin stage plan.
+ *
+ * @param array<Participant> $participants
+ * @param array<Event> $events
+ */
+function roundRobinContext(
+    array $participants,
+    array $events = [],
+    int $legs = 1,
+    int $currentLeg = 1
+): SchedulingContext {
+    return new SchedulingContext(
+        $participants,
+        new RoundRobinPlan($participants, $legs),
+        $events,
+        $currentLeg
+    );
+}
+
+/**
+ * Build a scheduling context carrying a Swiss stage plan.
+ *
+ * @param array<Participant> $participants
+ * @param array<Event> $events
+ */
+function swissContext(
+    array $participants,
+    array $events = [],
+    ?int $rounds = null
+): SchedulingContext {
+    return new SchedulingContext(
+        $participants,
+        new SwissPlan($participants, $rounds),
+        $events
+    );
 }

@@ -6,32 +6,41 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Stage\StagePlan;
 
 /**
  * Context for tournament scheduling across algorithms.
  *
- * This class provides generated tournament state plus algorithm metadata,
- * allowing constraints and schedulers to reason about rounds, legs, and
- * expected size without assuming every algorithm is round robin.
+ * This class provides generated tournament state plus the stage plan —
+ * the algorithm's declaration of the stage's shape. Constraints and
+ * schedulers reason about rounds, legs, and expected size by reading the
+ * plan; the context never infers shape facts itself.
  */
 readonly class SchedulingContext
 {
     /**
      * @param array<Participant> $allParticipants All participants in the tournament
+     * @param StagePlan $plan The shape declaration for the stage being generated
      * @param array<Event> $allEvents Events generated so far
      * @param int $currentLeg The current leg being generated (1-based), for algorithms with legs
-     * @param int $totalLegs The total number of legs, or 1 for algorithms without legs
      * @param int $participantsPerEvent Number of participants per event (usually 2)
-     * @param array<string, mixed> $metadata Additional context metadata
      */
     public function __construct(
         private array $allParticipants,
+        private StagePlan $plan,
         private array $allEvents = [],
         private int $currentLeg = 1,
-        private int $totalLegs = 1,
-        private int $participantsPerEvent = 2,
-        private array $metadata = []
+        private int $participantsPerEvent = 2
     ) {
+    }
+
+    /**
+     * Get the stage plan: the algorithm's declaration of rounds, legs, and
+     * expected event counts for this stage.
+     */
+    public function getPlan(): StagePlan
+    {
+        return $this->plan;
     }
 
     /**
@@ -51,24 +60,6 @@ readonly class SchedulingContext
     }
 
     /**
-     * @return array<string, mixed>
-     */
-    public function getMetadata(): array
-    {
-        return $this->metadata;
-    }
-
-    public function hasMetadata(string $key): bool
-    {
-        return array_key_exists($key, $this->metadata);
-    }
-
-    public function getMetadataValue(string $key, mixed $default = null): mixed
-    {
-        return $this->metadata[$key] ?? $default;
-    }
-
-    /**
      * Get the current leg being generated (1-based).
      */
     public function getCurrentLeg(): int
@@ -78,30 +69,13 @@ readonly class SchedulingContext
 
     /**
      * Get the total number of legs in the tournament.
+     *
+     * Generation always runs leg by leg, so formats without a legs concept
+     * (where the plan reports null) run as a single generation leg.
      */
     public function getTotalLegs(): int
     {
-        return $this->totalLegs;
-    }
-
-    /**
-     * Get the total configured rounds when the scheduler exposes them.
-     */
-    public function getTotalRounds(): int
-    {
-        $configuredRounds = $this->getPositiveIntMetadata('total_rounds')
-            ?? $this->getPositiveIntMetadata('rounds');
-
-        if ($configuredRounds !== null) {
-            return $configuredRounds;
-        }
-
-        $roundsPerLeg = $this->getPositiveIntMetadata('rounds_per_leg');
-        if ($roundsPerLeg !== null) {
-            return $roundsPerLeg * $this->totalLegs;
-        }
-
-        return $this->getMaxGeneratedRound();
+        return $this->plan->getLegs() ?? 1;
     }
 
     /**
@@ -117,7 +91,7 @@ readonly class SchedulingContext
      */
     public function isMultiLeg(): bool
     {
-        return $this->totalLegs > 1;
+        return $this->getTotalLegs() > 1;
     }
 
     /**
@@ -129,15 +103,17 @@ readonly class SchedulingContext
      */
     public function getEventsForLeg(int $leg): array
     {
-        if ($leg < 1 || $leg > $this->totalLegs) {
+        $totalLegs = $this->getTotalLegs();
+
+        if ($leg < 1 || $leg > $totalLegs) {
             return [];
         }
 
-        if ($this->totalLegs === 1) {
+        if ($totalLegs === 1) {
             return $leg === 1 ? $this->allEvents : [];
         }
 
-        $roundsPerLeg = $this->getRoundsPerLeg();
+        $roundsPerLeg = $this->plan->getRoundsPerLeg() ?? 0;
         if ($roundsPerLeg === 0) {
             return [];
         }
@@ -254,33 +230,6 @@ readonly class SchedulingContext
     }
 
     /**
-     * Get the expected total number of events for the complete tournament.
-     */
-    public function getExpectedEventCount(): int
-    {
-        $configuredExpectedEvents = $this->getPositiveIntMetadata('expected_event_count');
-        if ($configuredExpectedEvents !== null) {
-            return $configuredExpectedEvents;
-        }
-
-        if ($this->participantsPerEvent !== 2) {
-            return 0;
-        }
-
-        $participantCount = count($this->allParticipants);
-
-        if ($participantCount < $this->participantsPerEvent) {
-            return 0;
-        }
-
-        // Backward-compatible default for legacy round-robin callers.
-        // New algorithms should provide expected_event_count metadata.
-        $eventsPerLeg = (int) ($participantCount * ($participantCount - 1) / 2);
-
-        return $eventsPerLeg * $this->totalLegs;
-    }
-
-    /**
      * Create a new context with additional events.
      * @param array<Event> $newEvents
      */
@@ -288,11 +237,10 @@ readonly class SchedulingContext
     {
         return new self(
             $this->allParticipants,
+            $this->plan,
             [...$this->allEvents, ...$newEvents],
             $this->currentLeg,
-            $this->totalLegs,
-            $this->participantsPerEvent,
-            $this->metadata
+            $this->participantsPerEvent
         );
     }
 
@@ -303,74 +251,10 @@ readonly class SchedulingContext
     {
         return new self(
             $this->allParticipants,
+            $this->plan,
             $this->allEvents,
             $this->currentLeg + 1,
-            $this->totalLegs,
-            $this->participantsPerEvent,
-            $this->metadata
+            $this->participantsPerEvent
         );
-    }
-
-    private function getRoundsPerLeg(): int
-    {
-        $configuredRoundsPerLeg = $this->getPositiveIntMetadata('rounds_per_leg');
-        if ($configuredRoundsPerLeg !== null) {
-            return $configuredRoundsPerLeg;
-        }
-
-        $configuredRounds = $this->getPositiveIntMetadata('total_rounds')
-            ?? $this->getPositiveIntMetadata('rounds');
-
-        if ($configuredRounds !== null) {
-            return $this->totalLegs > 1
-                ? (int) ceil($configuredRounds / $this->totalLegs)
-                : $configuredRounds;
-        }
-
-        // Backward-compatible default for legacy round-robin callers without
-        // metadata; mirrors getExpectedEventCount(). Deriving from the maximum
-        // generated round instead would misclassify partially generated
-        // schedules. New algorithms should provide rounds_per_leg metadata.
-        if ($this->participantsPerEvent === 2) {
-            $participantCount = count($this->allParticipants);
-            if ($participantCount >= 2) {
-                return $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
-            }
-        }
-
-        $maxRound = $this->getMaxGeneratedRound();
-        if ($maxRound === 0) {
-            return 0;
-        }
-
-        return $this->totalLegs > 1 ? (int) ceil($maxRound / $this->totalLegs) : $maxRound;
-    }
-
-    private function getPositiveIntMetadata(string $key): ?int
-    {
-        $value = $this->metadata[$key] ?? null;
-        if (is_int($value) && $value > 0) {
-            return $value;
-        }
-
-        if (is_numeric($value) && (int) $value > 0) {
-            return (int) $value;
-        }
-
-        return null;
-    }
-
-    private function getMaxGeneratedRound(): int
-    {
-        if ($this->allEvents === []) {
-            return 0;
-        }
-
-        $roundNumbers = array_map(
-            fn (Event $event) => $event->getRound()?->getNumber() ?? 0,
-            $this->allEvents
-        );
-
-        return max($roundNumbers);
     }
 }

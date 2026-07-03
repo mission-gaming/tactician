@@ -6,7 +6,6 @@ use MissionGaming\Tactician\Constraints\CallableConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 describe('CallableConstraint', function (): void {
     beforeEach(function (): void {
@@ -14,7 +13,7 @@ describe('CallableConstraint', function (): void {
         $this->participant2 = new Participant('p2', 'Bob');
         $this->participant3 = new Participant('p3', 'Charlie');
         $this->event = new Event([$this->participant1, $this->participant2]);
-        $this->context = new SchedulingContext([$this->participant1, $this->participant2, $this->participant3]);
+        $this->context = roundRobinContext([$this->participant1, $this->participant2, $this->participant3]);
     });
 
     it('implements ConstraintInterface', function (): void {

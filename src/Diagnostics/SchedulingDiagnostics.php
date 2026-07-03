@@ -7,12 +7,17 @@ namespace MissionGaming\Tactician\Diagnostics;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Stage\PairwisePlan;
+use MissionGaming\Tactician\Stage\StagePlan;
 
 /**
  * Comprehensive diagnostics for scheduling failures.
  *
  * This class analyzes scheduling failures and provides detailed reports
- * with actionable suggestions for resolving tournament configuration issues.
+ * with actionable suggestions for resolving tournament configuration
+ * issues. All shape facts (expected events, legs, pairwise meetings) are
+ * read from the stage plan rather than recomputed, so the analysis is
+ * correct for whatever format the plan describes.
  */
 class SchedulingDiagnostics
 {
@@ -22,25 +27,25 @@ class SchedulingDiagnostics
      * @param array<Participant> $participants Tournament participants
      * @param ConstraintSet $constraints Tournament constraints
      * @param array<Event> $partialEvents Events generated before failure
-     * @param int $legs Number of legs in the tournament
+     * @param StagePlan $plan The plan for the stage that failed to generate
      * @param array<string, mixed> $context Additional context about the failure
      */
     public function analyzeSchedulingFailure(
         array $participants,
         ConstraintSet $constraints,
         array $partialEvents,
-        int $legs,
+        StagePlan $plan,
         array $context = []
     ): DiagnosticReport {
         $participantCount = count($participants);
         $eventsGenerated = count($partialEvents);
-        $expectedEvents = $this->calculateExpectedEvents($participantCount, $legs);
+        $expectedEvents = $plan->getExpectedEventCount() ?? 0;
 
-        $missingEvents = $expectedEvents - $eventsGenerated;
-        $missingPairings = $this->identifyMissingPairings($participants, $partialEvents, $legs);
+        $missingEvents = max(0, $expectedEvents - $eventsGenerated);
+        $missingPairings = $this->identifyMissingPairings($participants, $partialEvents, $plan);
         $constraintViolations = $this->analyzeConstraintViolations($partialEvents, $constraints);
-        $impossiblePairings = $this->identifyImpossiblePairings($participants, $constraints, $legs);
-        $suggestions = $this->generateSuggestions($participants, $constraints, $partialEvents, $legs, $context);
+        $impossiblePairings = $this->identifyImpossiblePairings($participants, $constraints, $plan);
+        $suggestions = $this->generateSuggestions($participants, $constraints, $partialEvents, $plan, $context);
 
         return new DiagnosticReport(
             participantCount: $participantCount,
@@ -59,31 +64,29 @@ class SchedulingDiagnostics
      * Identify constraint conflicts before scheduling begins.
      *
      * @param array<Participant> $participants
-     * @param ConstraintSet $constraints
-     * @param int $legs
      * @return array<string>
      */
     public function identifyConstraintConflicts(
         array $participants,
         ConstraintSet $constraints,
-        int $legs
+        StagePlan $plan
     ): array {
         $conflicts = [];
         $participantCount = count($participants);
-        $expectedEvents = $this->calculateExpectedEvents($participantCount, $legs);
+        $expectedEvents = $plan->getExpectedEventCount() ?? 0;
 
         // Check if constraints make scheduling mathematically impossible
-        if ($expectedEvents === 0) {
+        if ($expectedEvents === 0 && $plan->getExpectedEventCount() !== null) {
             $conflicts[] = 'Insufficient participants for tournament generation';
         }
 
         // Check for constraint conflicts that would prevent complete schedules
-        if ($legs > 1 && $participantCount < 4) {
+        if (($plan->getLegs() ?? 1) > 1 && $participantCount < 4) {
             $conflicts[] = 'Multi-leg tournaments require at least 4 participants for meaningful scheduling';
         }
 
         // Add specific constraint analysis
-        $conflicts = [...$conflicts, ...$this->analyzeSpecificConstraints($participants, $constraints, $legs)];
+        $conflicts = [...$conflicts, ...$this->analyzeSpecificConstraints($participants, $constraints, $plan)];
 
         return $conflicts;
     }
@@ -91,7 +94,6 @@ class SchedulingDiagnostics
     /**
      * Suggest constraint adjustments to resolve scheduling issues.
      *
-     * @param DiagnosticReport $report
      * @return array<string>
      */
     public function suggestConstraintAdjustments(DiagnosticReport $report): array
@@ -120,43 +122,35 @@ class SchedulingDiagnostics
     }
 
     /**
-     * Calculate expected number of events for round-robin tournament.
-     */
-    private function calculateExpectedEvents(int $participantCount, int $legs): int
-    {
-        if ($participantCount < 2) {
-            return 0;
-        }
-
-        // Round-robin: n * (n-1) / 2 events per leg
-        $eventsPerLeg = (int) ($participantCount * ($participantCount - 1) / 2);
-
-        return $eventsPerLeg * $legs;
-    }
-
-    /**
      * Identify which participant pairings are missing from generated events.
      *
-     * Meetings are counted per unordered pairing (so reversed home/away
-     * orders still match) and attributed to legs via their round numbers,
-     * so a duplicate meeting in one leg cannot mask a missing meeting in
-     * another. Events without a round count toward leg 1.
+     * Only pairwise plans (round-robin family) guarantee meeting counts up
+     * front, so other formats yield no missing-pairing analysis. Meetings
+     * are counted per unordered pairing (so reversed role orders still
+     * match) and attributed to legs via their round numbers, so a duplicate
+     * meeting in one leg cannot mask a missing meeting in another. Events
+     * without a round count toward leg 1.
      *
      * @param array<Participant> $participants
      * @param array<Event> $events
-     * @param int $legs
      * @return array<string>
      */
-    private function identifyMissingPairings(array $participants, array $events, int $legs): array
+    private function identifyMissingPairings(array $participants, array $events, StagePlan $plan): array
     {
+        if (!$plan instanceof PairwisePlan) {
+            return [];
+        }
+
         $participantCount = count($participants);
         if ($participantCount < 2) {
             return [];
         }
 
-        // Round-robin rounds per leg (this analyzer is round-robin specific,
-        // matching calculateExpectedEvents above)
-        $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
+        $legs = $plan->getLegs() ?? 1;
+        $roundsPerLeg = $plan->getRoundsPerLeg() ?? $plan->getTotalRounds() ?? 1;
+        if ($roundsPerLeg < 1) {
+            $roundsPerLeg = 1;
+        }
 
         /** @var array<string, array<int, int>> $legMeetingCounts */
         $legMeetingCounts = [];
@@ -178,6 +172,10 @@ class SchedulingDiagnostics
         $missingPairings = [];
         for ($i = 0; $i < $participantCount; ++$i) {
             for ($j = $i + 1; $j < $participantCount; ++$j) {
+                if ($plan->getExpectedMeetings($participants[$i], $participants[$j]) === 0) {
+                    continue;
+                }
+
                 $ids = [$participants[$i]->getId(), $participants[$j]->getId()];
                 sort($ids);
                 $key = implode('|', $ids);
@@ -198,7 +196,6 @@ class SchedulingDiagnostics
      * Analyze constraint violations in generated events.
      *
      * @param array<Event> $events
-     * @param ConstraintSet $constraints
      * @return array<string>
      */
     private function analyzeConstraintViolations(array $events, ConstraintSet $constraints): array
@@ -215,11 +212,9 @@ class SchedulingDiagnostics
      * Identify pairings that are impossible due to constraints.
      *
      * @param array<Participant> $participants
-     * @param ConstraintSet $constraints
-     * @param int $legs
      * @return array<string>
      */
-    private function identifyImpossiblePairings(array $participants, ConstraintSet $constraints, int $legs): array
+    private function identifyImpossiblePairings(array $participants, ConstraintSet $constraints, StagePlan $plan): array
     {
         $impossiblePairings = [];
 
@@ -233,9 +228,7 @@ class SchedulingDiagnostics
      * Generate actionable suggestions for resolving scheduling issues.
      *
      * @param array<Participant> $participants
-     * @param ConstraintSet $constraints
      * @param array<Event> $partialEvents
-     * @param int $legs
      * @param array<string, mixed> $context
      * @return array<string>
      */
@@ -243,14 +236,14 @@ class SchedulingDiagnostics
         array $participants,
         ConstraintSet $constraints,
         array $partialEvents,
-        int $legs,
+        StagePlan $plan,
         array $context
     ): array {
         $suggestions = [];
 
         $participantCount = count($participants);
         $eventsGenerated = count($partialEvents);
-        $expectedEvents = $this->calculateExpectedEvents($participantCount, $legs);
+        $expectedEvents = $plan->getExpectedEventCount() ?? 0;
 
         if ($eventsGenerated === 0) {
             $suggestions[] = 'No events were generated - check participant count and constraint configuration';
@@ -259,7 +252,7 @@ class SchedulingDiagnostics
             $suggestions[] = "Only {$percentage}% of expected events were generated - constraints may be too restrictive";
         }
 
-        if ($legs > 1 && $participantCount % 2 !== 0) {
+        if (($plan->getLegs() ?? 1) > 1 && $participantCount % 2 !== 0) {
             $suggestions[] = 'Odd participant count in multi-leg tournaments may cause scheduling challenges';
         }
 
@@ -270,11 +263,9 @@ class SchedulingDiagnostics
      * Analyze specific constraint types for potential conflicts.
      *
      * @param array<Participant> $participants
-     * @param ConstraintSet $constraints
-     * @param int $legs
      * @return array<string>
      */
-    private function analyzeSpecificConstraints(array $participants, ConstraintSet $constraints, int $legs): array
+    private function analyzeSpecificConstraints(array $participants, ConstraintSet $constraints, StagePlan $plan): array
     {
         $conflicts = [];
 
