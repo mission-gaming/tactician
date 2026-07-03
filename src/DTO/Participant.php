@@ -95,6 +95,18 @@ readonly class Participant
     }
 
     /**
+     * Create a copy of this participant with a different seed.
+     *
+     * Useful when reseeding for a new tournament stage (e.g. group qualifiers
+     * entering a knockout bracket). Identity is preserved: the copy has the
+     * same ID, so existing events and results still match it.
+     */
+    public function withSeed(?int $seed): self
+    {
+        return new self($this->id, $this->label, $seed, $this->metadata);
+    }
+
+    /**
      * Convert this participant to a serializable array.
      *
      * @return array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}
