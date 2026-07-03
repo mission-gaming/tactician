@@ -579,6 +579,31 @@ describe('ScheduleValidator', function (): void {
             expect($suggestions)->toContain('Consider relaxing constraint parameters');
         });
 
+        // The name matching is case-sensitive and lowercase: constraints
+        // whose names carry lowercase 'rest'/'seed' get targeted suggestions
+        it('matches lowercase rest and seed constraint names', function (): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+
+            $participant1 = new Participant('p1', 'Alice');
+            $participant2 = new Participant('p2', 'Bob');
+            $event = new Event([$participant1, $participant2]);
+
+            foreach (['custom rest window', 'custom seed shield'] as $name) {
+                $violations->recordViolation(new ConstraintViolation(
+                    new MissionGaming\Tactician\Constraints\CallableConstraint(fn () => false, $name),
+                    $event,
+                    'violated',
+                    [$participant1]
+                ));
+            }
+
+            $suggestions = $validator->generateConstraintSuggestions($violations, 4);
+
+            expect($suggestions)->toContain("Consider reducing rest period requirements for 'custom rest window'");
+            expect($suggestions)->toContain("Consider reducing seed protection rounds for 'custom seed shield'");
+        });
+
         // Tests generic suggestions for unknown constraint types
         it('provides generic suggestions for unknown constraints', function (): void {
             // Given: A custom constraint that doesn't match known patterns

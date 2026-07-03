@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Diagnostics\DiagnosticReport;
 use MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
@@ -177,6 +178,68 @@ describe('SchedulingDiagnostics', function (): void {
         );
 
         expect($conflicts)->toContain('Insufficient participants for tournament generation');
+    });
+
+    // Missing-pairing analysis is a pairwise-plan capability; other
+    // formats yield none
+    it('reports no missing pairings for non-pairwise plans', function (): void {
+        $report = $this->diagnostics->analyzeSchedulingFailure(
+            $this->participants,
+            $this->constraints,
+            [],
+            new MissionGaming\Tactician\Stage\SwissPlan($this->participants, 3)
+        );
+
+        expect($report->getMissingPairings())->toBe([]);
+    });
+
+    it('skips malformed events in the meeting count', function (): void {
+        $events = [
+            new Event([$this->alice, $this->bob, $this->carol], new Round(1)), // not pairwise
+            new Event([$this->alice, $this->bob], new Round(1)),
+        ];
+
+        $report = $this->diagnostics->analyzeSchedulingFailure(
+            $this->participants,
+            $this->constraints,
+            $events,
+            new RoundRobinPlan($this->participants, 1)
+        );
+
+        // Only the malformed event is ignored; real pairings still count
+        expect($report->getMissingPairings())->toBe([
+            'Alice vs Carol (Leg 1)',
+            'Bob vs Carol (Leg 1)',
+        ]);
+    });
+
+    it('suggests checking configuration when nothing was generated and flags odd multi-leg fields', function (): void {
+        $oddField = [$this->alice, $this->bob, $this->carol];
+        $report = $this->diagnostics->analyzeSchedulingFailure(
+            $oddField,
+            $this->constraints,
+            [],
+            new RoundRobinPlan($oddField, 2)
+        );
+
+        expect($report->getSuggestions())->toContain('No events were generated - check participant count and constraint configuration');
+        expect($report->getSuggestions())->toContain('Odd participant count in multi-leg tournaments may cause scheduling challenges');
+    });
+
+    it('suggests adjustments for impossible pairings and violations in a report', function (): void {
+        $report = new DiagnosticReport(
+            participantCount: 4,
+            expectedEvents: 6,
+            generatedEvents: 4,
+            missingEvents: 2,
+            constraintViolations: ['seed protection rejected round 1'],
+            impossiblePairings: ['Alice vs Bob']
+        );
+
+        $suggestions = $this->diagnostics->suggestConstraintAdjustments($report);
+
+        expect($suggestions)->toContain('Some participant pairings cannot be satisfied with current constraints');
+        expect($suggestions)->toContain('Review constraint configuration for potential conflicts');
     });
 
     it('suggests adjustments proportional to the failure', function (): void {
