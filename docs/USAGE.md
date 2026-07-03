@@ -8,6 +8,11 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Participants and Events](#participants-and-events)
 - [Constraint System](#constraint-system)
 - [Multi-Leg Tournaments](#multi-leg-tournaments)
+- [Results and Standings](#results-and-standings)
+- [Swiss Tournaments](#swiss-tournaments)
+- [Elimination Brackets](#elimination-brackets)
+- [Group Stages and Multi-Stage Tournaments](#group-stages-and-multi-stage-tournaments)
+- [Serialization](#serialization)
 - [Schedule Validation](#schedule-validation)
 - [Error Handling](#error-handling)
 - [Advanced Patterns](#advanced-patterns)
@@ -230,10 +235,16 @@ $homeAwayConstraint = ConsecutiveRoleConstraint::homeAway(2);
 // Limit consecutive position assignments
 $positionConstraint = ConsecutiveRoleConstraint::position(3);
 
+// Keep home/away totals within 3 of each other as the schedule builds.
+// The round-robin generator alternates roles with round parity, so limits
+// of 3 (even fields) or 4 (odd fields) are always satisfiable.
+$balanceConstraint = RoleBalanceConstraint::homeAway(3);
+
 // Use in scheduler
 $constraints = ConstraintSet::create()
     ->add($homeAwayConstraint)
     ->add($positionConstraint)
+    ->add($balanceConstraint)
     ->build();
 ```
 
@@ -325,6 +336,158 @@ $schedule = $scheduler->schedule(
     strategy: new MirroredLegStrategy()
 );
 ```
+
+## Results and Standings
+
+Record outcomes with `Result` and build league tables with `StandingsCalculator`:
+
+```php
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
+use MissionGaming\Tactician\Standings\PointsSystem;
+use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinsTiebreaker;
+
+// A win, a draw (no winner), and a scored win
+$results = [
+    new Result($eventOne, $alice),
+    new Result($eventTwo),
+    new Result($eventThree, $carol, ['carol' => 3, 'dave' => 1]),
+];
+
+// Football points (3/1/0) with tiebreakers applied in order
+$calculator = new StandingsCalculator(
+    PointsSystem::football(),
+    [new WinsTiebreaker(), new BuchholzTiebreaker()]
+);
+$standings = $calculator->calculate($participants, $results);
+
+foreach ($standings as $entry) {
+    $position = $standings->getPosition($entry->getParticipant());
+    echo "{$position}. {$entry->getParticipant()->getLabel()}: "
+        . "{$entry->getPoints()} pts "
+        . "({$entry->getWins()}W {$entry->getDraws()}D {$entry->getLosses()}L)\n";
+}
+```
+
+`PointsSystem::chess()` (1/0.5/0) and `SonnebornBergerTiebreaker` are also
+available. Ties beyond the configured tiebreakers fall back to score
+difference, score for, seed, and natural-order label comparison. Each event
+may have at most one result; recording two results for the same event throws.
+
+## Swiss Tournaments
+
+`SwissPairingEngine` pairs one round at a time from recorded results:
+participants are ordered by standings and paired adjacently (Monrad style),
+backtracking past repeat pairings. Byes rotate to the lowest-placed
+participant with the fewest so far and are credited as wins when ordering
+the next round.
+
+```php
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+
+// plannedRounds lets length-aware constraints (e.g. seed protection) size
+// their windows correctly
+$engine = new SwissPairingEngine(plannedRounds: 5);
+
+$results = [];
+$byeIds = [];
+for ($round = 1; $round <= 5; ++$round) {
+    $pairing = $engine->pairNextRound($participants, $results, $byeIds);
+
+    if ($pairing->hasBye()) {
+        $byeIds[] = $pairing->getBye()->getId();
+    }
+
+    foreach ($pairing->getEvents() as $event) {
+        // ...play the match, then record the outcome...
+        $results[] = new Result($event, $event->getParticipants()[0]);
+    }
+}
+```
+
+Withdrawals are supported: pass only the still-active participants to
+`pairNextRound()` — results involving withdrawn participants still count
+toward standings. When repeat avoidance leaves no complete pairing, a
+`NoValidPairingException` is thrown with a diagnostic report.
+
+## Elimination Brackets
+
+`SingleEliminationEngine` resolves the bracket from recorded results on each
+call. Round 1 uses fold seeding (seeds 1 and 2 in opposite halves), fields
+that are not a power of two give byes to the top seeds, and every round
+carries a stage name.
+
+```php
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+
+$engine = new SingleEliminationEngine();
+
+$results = [];
+$champion = $engine->getChampion($participants, $results);
+while ($champion === null) {
+    $pairing = $engine->pairNextRound($participants, $results);
+    echo "{$pairing->getStage()}\n"; // 'quarterfinal', 'semifinal', 'final', ...
+
+    foreach ($pairing->getEvents() as $event) {
+        // ...play the match; elimination results cannot be draws...
+        $results[] = new Result($event, $event->getParticipants()[0]);
+    }
+    $champion = $engine->getChampion($participants, $results);
+}
+
+echo "Champion: {$champion->getLabel()}\n";
+```
+
+`DoubleEliminationEngine` adds a losers bracket and a grand final: everyone
+must lose twice to be eliminated, so when the losers champion wins the grand
+final a reset match decides the title (disable with
+`new DoubleEliminationEngine(grandFinalReset: false)`). Conflicting,
+duplicate, or round-less results are rejected with clear errors.
+
+## Group Stages and Multi-Stage Tournaments
+
+`GroupStageEngine` composes with the elimination engines for
+groups-into-knockout tournaments:
+
+```php
+use MissionGaming\Tactician\Scheduling\GroupStageEngine;
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+
+$groupEngine = new GroupStageEngine();
+
+// Serpentine-seeded groups keyed 'A', 'B', ... with round robin per group
+$groups = $groupEngine->createGroups($participants, 2);
+$schedules = $groupEngine->scheduleGroups($groups);
+
+// ...play the groups and record results...
+
+$groupStandings = $groupEngine->calculateGroupStandings($groups, $groupResults);
+
+// Qualifiers are reseeded so fold seeding produces cross-group pairings
+// (A1 vs B2, B1 vs A2). Requires complete group play.
+$qualifiers = $groupEngine->getQualifiers($groups, $groupResults, 2);
+
+$knockout = new SingleEliminationEngine();
+$semifinals = $knockout->pairNextRound($qualifiers, []);
+```
+
+## Serialization
+
+Schedules round-trip through JSON; participants are listed once and
+referenced by ID, so restored schedules share participant instances:
+
+```php
+use MissionGaming\Tactician\DTO\Schedule;
+
+$json = $schedule->toJson();
+$restored = Schedule::fromJson($json);
+```
+
+`Participant`, `Round`, `Event`, and `Schedule` all expose
+`toArray()`/`fromArray()` for custom persistence.
 
 ## Schedule Validation
 
@@ -459,26 +622,27 @@ function handleIncompleteSchedule(IncompleteScheduleException $e): void
 ```php
 use MissionGaming\Tactician\Scheduling\SchedulerInterface;
 use MissionGaming\Tactician\DTO\Schedule;
-use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 
 class CustomScheduler implements SchedulerInterface
 {
     public function schedule(
         array $participants,
         int $participantsPerEvent = 2,
-        int $legs = 1,
-        ?LegStrategyInterface $strategy = null
+        int $rounds = 1,
+        mixed $options = null
     ): Schedule {
-        // Custom scheduling logic
+        // Custom scheduling logic; validate $options yourself (the round-robin
+        // scheduler, for example, accepts a LegStrategyInterface here)
         $events = $this->generateCustomEvents($participants);
-        
+
         return new Schedule($events, [
             'algorithm' => 'custom',
             'participant_count' => count($participants),
         ]);
     }
-    
-    // Implement other required interface methods...
+
+    // Implement validateConstraints(), getExpectedEventCount(),
+    // and getExpectedEventCalculator()...
 }
 ```
 

@@ -6,12 +6,32 @@
 - **Participant**: Immutable participant representation with ID, label, seed, and metadata
 - **Event**: Immutable match/event representation with participants, round, and metadata
 - **Round**: Immutable round representation with number and metadata
-- **Schedule**: Iterator/Countable collection of events with metadata support
+- **Schedule**: Iterator/Countable collection of events with metadata support and JSON serialization
+- **Result**: Immutable outcome of a played event (winner or draw, optional per-participant scores)
+
+All DTOs support `toArray()`/`fromArray()`; `Schedule` additionally implements
+`JsonSerializable` with `toJson()`/`fromJson()` round-tripping.
 
 ### Scheduling System
-- **SchedulerInterface**: Contract for all schedulers with integrated multi-leg support
-- **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation
+- **SchedulerInterface**: Contract for whole-schedule generators with integrated multi-leg support
+- **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, round-parity home/away role alternation, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule
+- **SimpleSwissScheduler**: Whole-schedule Swiss generation with random non-repeat pairing
 - **SchedulingContext**: Multi-leg aware historical state management
+
+### Results-Driven Engines
+Formats whose later rounds depend on results cannot be generated whole; these
+engines resolve tournament state from recorded results on every call:
+- **SwissPairingEngine**: Standings-aware Monrad pairing with repeat avoidance, bye rotation (byes credited as wins), home/away balancing, withdrawal handling, and constraint support
+- **SingleEliminationEngine**: Fold-seeded brackets with byes to top seeds, stage names, and champion resolution
+- **DoubleEliminationEngine**: Winners/losers brackets with dropper rematch deferral, grand final, and optional bracket reset
+- **GroupStageEngine**: Serpentine-seeded groups, per-group standings, and knockout qualifiers reseeded for cross-group pairings
+- **SwissRoundPairing / EliminationRoundPairing**: Value objects carrying a round's events and byes
+
+### Standings System
+- **StandingsCalculator**: Ordered league tables from results with a configurable points system
+- **PointsSystem**: Win/draw/loss point values with football (3/1/0) and chess (1/0.5/0) presets
+- **TiebreakerInterface**: Pluggable tiebreakers — **WinsTiebreaker**, **BuchholzTiebreaker**, **SonnebornBergerTiebreaker**
+- **Standings / StandingEntry**: Immutable table and per-participant line
 
 ### Multi-Leg Architecture
 - **LegStrategyInterface**: Strategy contract for integrated leg generation
@@ -24,10 +44,11 @@
 ### Constraint System
 - **ConstraintInterface**: Constraint contract for validation
 - **ConstraintSet**: Builder pattern container with fluent API
-- **NoRepeatPairings**: Built-in constraint preventing duplicate pairings
+- **NoRepeatPairings**: Prevents duplicate pairings within a leg (tournament-wide via `acrossLegs: true`)
 - **MinimumRestPeriodsConstraint**: Time-based rest period enforcement
 - **SeedProtectionConstraint**: Tournament seeding protection
-- **ConsecutiveRoleConstraint**: Positional/role-based constraints
+- **ConsecutiveRoleConstraint**: Limits consecutive home/away or positional streaks
+- **RoleBalanceConstraint**: Bounds home/away total drift per participant
 - **MetadataConstraint**: Flexible metadata-based rules
 - **CallableConstraint**: Custom predicate constraints
 
@@ -42,6 +63,7 @@
 - **InvalidConfigurationException**: Invalid scheduler configuration
 - **IncompleteScheduleException**: Schedule incomplete due to constraint conflicts
 - **ImpossibleConstraintsException**: Mathematically impossible constraints
+- **NoValidPairingException**: No complete Swiss pairing exists for a round
 
 ## Integrated Multi-Leg Tournament Architecture
 
@@ -203,7 +225,7 @@ Tactician includes a sophisticated validation system ensuring tournament complet
 ```php
 abstract class SchedulingException extends Exception
 {
-    abstract public function getDiagnosticReport(): DiagnosticReport;
+    abstract public function getDiagnosticReport(): string;
 }
 ```
 
@@ -230,53 +252,50 @@ abstract class SchedulingException extends Exception
 The architecture includes several value objects that support the core scheduling functionality:
 
 ### GenerationPlan
-Comprehensive planning object created by leg strategies:
+Comprehensive planning object created by leg strategies, exposing the
+expected shape of generation through accessors:
 ```php
-readonly class GenerationPlan
-{
-    public function __construct(
-        public int $totalEvents,
-        public int $eventsPerLeg,
-        public int $roundsPerLeg,
-        public bool $requiresRandomization,
-        public array $strategyData = [],
-        public array $warnings = []
-    ) {}
-}
+$plan = $strategy->planGeneration($participants, $totalLegs, 2, $constraints);
+$plan->getTotalEvents();
+$plan->getEventsPerLeg();
+$plan->getRoundsPerLeg();
+$plan->requiresRandomization();
+$plan->getWarnings();
 ```
 
 ### ConstraintSatisfiabilityReport
-Analysis of whether constraints can be satisfied:
+Analysis of whether constraints can be satisfied. Build reports with the
+named factories (the constructor takes six positional collections, which is
+easy to misuse):
 ```php
-readonly class ConstraintSatisfiabilityReport
-{
-    public function __construct(
-        public bool $canSatisfy,
-        public array $reasons = [],
-        public array $suggestedModifications = []
-    ) {}
-}
+ConstraintSatisfiabilityReport::success();
+ConstraintSatisfiabilityReport::failure(
+    unsatisfiableConstraints: ['Strategy only supports 2 participants per event'],
+);
+
+$report->canSatisfyConstraints();
+$report->getUnsatisfiableConstraints();
+$report->getConflictingConstraints();
+$report->getSummary();
 ```
 
 ### DiagnosticReport
-Rich diagnostic information for troubleshooting:
+Rich diagnostic information for troubleshooting, consumed through accessors:
 ```php
-readonly class DiagnosticReport
-{
-    public function __construct(
-        public int $expectedEvents,
-        public int $generatedEvents,
-        public array $missingPairings,
-        public array $constraintViolations,
-        public string $suggestions,
-        public array $metadata = []
-    ) {}
-}
+$report->getExpectedEvents();
+$report->getGeneratedEvents();
+$report->getMissingEvents();
+$report->getMissingPairings();      // per-leg, e.g. 'Alice vs Bob (Leg 2)'
+$report->getCompletionPercentage();
+$report->getSuggestions();
+$report->getSummary();
 ```
 
 ## Performance Considerations
 
-Tactician is optimized for tournaments up to ~50 participants with several performance features:
+Tactician comfortably handles tournaments into the hundreds of participants
+(a 200-participant, two-leg round robin — nearly 40,000 events — generates in
+well under a second) with several performance features:
 
 ### Memory Efficiency
 - **Iterator Pattern**: Schedule implements Iterator/Countable for memory-efficient traversal
@@ -292,12 +311,12 @@ Tactician is optimized for tournaments up to ~50 participants with several perfo
 
 ### Algorithm Efficiency
 - **Circle Method**: Mathematically optimal round-robin generation (O(n²) complexity)
-- **Integrated Multi-Leg**: Single-pass generation for all legs with full context
-- **Efficient Pairing**: Direct pairing calculation without unnecessary data transformation
-- **Optimized Context**: Minimal context updates during generation
+- **Role Alternation**: Round-parity home/away flipping bounds running imbalance at a constant, independent of field size
+- **Integrated Multi-Leg**: Incremental rotation and per-round context batching keep later legs O(n²) rather than quadratic in event count
+- **Bounded Retries**: Constrained generation retries at most min(participants, 25) rotated orderings before failing with diagnostics
 
 ### Scalability Characteristics
-- **Target Size**: Optimized for tournaments up to ~50 participants (~1,250 events)
+- **Target Size**: Tested into the hundreds of participants (tens of thousands of events)
 - **Memory Usage**: Linear memory growth with participant count
 - **Generation Time**: Sub-second generation for typical tournament sizes
 - **Constraint Complexity**: Performance scales with constraint complexity, not just participant count
