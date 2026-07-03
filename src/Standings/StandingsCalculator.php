@@ -41,9 +41,21 @@ readonly class StandingsCalculator
      * @param array<Result> $results
      *
      * @throws InvalidArgumentException When a result references an unknown participant
+     *                                  or two results reference the same event
      */
     public function calculate(array $participants, array $results): Standings
     {
+        $seenEvents = [];
+        foreach ($results as $result) {
+            $eventId = spl_object_id($result->getEvent());
+            if (isset($seenEvents[$eventId])) {
+                throw new InvalidArgumentException(
+                    'Two results reference the same event; each event can have only one result'
+                );
+            }
+            $seenEvents[$eventId] = true;
+        }
+
         /** @var array<string, Participant> $participantsById */
         $participantsById = [];
         /** @var array<string, array{played: int, wins: int, draws: int, losses: int, for: float, against: float}> $tallies */

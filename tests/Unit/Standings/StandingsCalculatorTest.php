@@ -130,6 +130,19 @@ describe('StandingsCalculator', function (): void {
         expect($standings->getEntryFor($this->carol)?->getPoints())->toBe(0.5);
     });
 
+    it('rejects two results for the same event', function (): void {
+        $event = new Event([$this->alice, $this->bob], new Round(1));
+        $results = [
+            new Result($event, $this->alice),
+            new Result($event, $this->bob), // amended result appended instead of replaced
+        ];
+
+        $calculator = new StandingsCalculator();
+
+        expect(fn () => $calculator->calculate($this->participants, $results))
+            ->toThrow(InvalidArgumentException::class, 'same event');
+    });
+
     it('rejects results referencing unknown participants', function (): void {
         $stranger = new Participant('p9', 'Stranger');
         $results = [
