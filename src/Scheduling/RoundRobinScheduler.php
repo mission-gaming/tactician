@@ -61,6 +61,26 @@ class RoundRobinScheduler implements SchedulerInterface
 
         $strategy ??= new MirroredLegStrategy();
 
+        // Preflight: let the strategy reject configurations it cannot satisfy
+        // before any events are generated.
+        $satisfiabilityReport = $strategy->canSatisfyConstraints(
+            $participants,
+            $legs,
+            $participantsPerEvent,
+            $this->constraints ?? ConstraintSet::create()->build()
+        );
+        if (!$satisfiabilityReport->canSatisfyConstraints()) {
+            throw new InvalidConfigurationException(
+                'Leg strategy cannot satisfy the requested configuration: ' . $satisfiabilityReport->getSummary(),
+                [
+                    'strategy' => $strategy::class,
+                    'unsatisfiable_constraints' => $satisfiabilityReport->getUnsatisfiableConstraints(),
+                    'conflicting_constraints' => $satisfiabilityReport->getConflictingConstraints(),
+                    'suggestions' => $satisfiabilityReport->getSuggestions(),
+                ]
+            );
+        }
+
         // Clear previous violations
         $this->clearViolations();
 
@@ -222,12 +242,20 @@ class RoundRobinScheduler implements SchedulerInterface
         $roundsPerLeg = $this->calculateRoundsPerLeg($participants);
         $roundOffset = ($leg - 1) * $roundsPerLeg;
 
+        // Maintain the circle-method ordering across rounds so each round only
+        // needs a single rotation instead of re-rotating from scratch.
+        $participantList = array_values($participants);
+        if (count($participantList) % 2 !== 0) {
+            $participantList[] = null; // null represents "bye"
+        }
+
         for ($round = 1; $round <= $roundsPerLeg; ++$round) {
             $globalRound = $round + $roundOffset;
 
             // Get all participants that need to play in this round
-            $participantPairs = $this->getParticipantPairsForRound($participants, $round);
+            $participantPairs = $this->getPairsFromParticipantList($participantList);
 
+            $roundEvents = [];
             foreach ($participantPairs as $pair) {
                 $event = $strategy->generateEventForLeg($pair, $leg, $globalRound, $context);
 
@@ -235,44 +263,38 @@ class RoundRobinScheduler implements SchedulerInterface
                     // Check constraints with full tournament context (all previous events)
                     if ($this->shouldAddEventWithFullConstraints($event, $context)) {
                         $legEvents[] = $event;
-                        // Update context for subsequent events
-                        $context = $context->withEvents([$event]);
+                        $roundEvents[] = $event;
                     } else {
                         // If constraint fails, record violation for diagnostics
                         $this->recordConstraintViolation($event, $context);
                     }
                 }
             }
+
+            // Update context once per round (matching first-leg behaviour) rather
+            // than per event, which would copy the full event list every event.
+            if ($roundEvents !== []) {
+                $context = $context->withEvents($roundEvents);
+            }
+
+            // Rotate participants for next round (keep first participant fixed)
+            $this->rotateParticipants($participantList);
         }
 
         return $legEvents;
     }
 
     /**
-     * Get participant pairs for a specific round.
+     * Get participant pairs from the current circle-method ordering.
      *
-     * @param array<Participant> $participants
+     * @param array<Participant|null> $participantList Participants in circle order, including any "bye" (null)
      * @return array<array<Participant>>
      */
-    private function getParticipantPairsForRound(array $participants, int $round): array
+    private function getPairsFromParticipantList(array $participantList): array
     {
-        // This uses the same circle method logic to determine pairings
-        $participantList = array_values($participants);
         $participantCount = count($participantList);
-
-        // Handle odd number of participants by adding a "bye"
-        if ($participantCount % 2 !== 0) {
-            $participantList[] = null;
-            ++$participantCount;
-        }
-
-        $pairingsPerRound = $participantCount / 2;
+        $pairingsPerRound = intdiv($participantCount, 2);
         $pairs = [];
-
-        // Apply rotations to get to the correct round
-        for ($r = 1; $r < $round; ++$r) {
-            $this->rotateParticipants($participantList);
-        }
 
         for ($pair = 0; $pair < $pairingsPerRound; ++$pair) {
             $participant1 = $participantList[$pair];

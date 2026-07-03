@@ -3,11 +3,16 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\LegStrategies\ConstraintSatisfiabilityReport;
+use MissionGaming\Tactician\LegStrategies\GenerationPlan;
+use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -204,5 +209,48 @@ describe('RoundRobinScheduler', function (): void {
             expect($participants1[0]->getId())->toBe($participants2[0]->getId());
             expect($participants1[1]->getId())->toBe($participants2[1]->getId());
         }
+    });
+
+    // Tests that the scheduler consults the strategy's satisfiability preflight
+    // and rejects vetoed configurations before generating any events
+    it('rejects configurations the leg strategy cannot satisfy', function (): void {
+        $vetoStrategy = new class () implements LegStrategyInterface {
+            #[\Override]
+            public function planGeneration(
+                array $participants,
+                int $totalLegs,
+                int $participantsPerEvent,
+                ConstraintSet $constraints
+            ): GenerationPlan {
+                return new GenerationPlan(0, 0, 0);
+            }
+
+            #[\Override]
+            public function generateEventForLeg(
+                array $participants,
+                int $leg,
+                int $round,
+                SchedulingContext $context
+            ): ?Event {
+                return null;
+            }
+
+            #[\Override]
+            public function canSatisfyConstraints(
+                array $participants,
+                int $legs,
+                int $participantsPerEvent,
+                ConstraintSet $constraints
+            ): ConstraintSatisfiabilityReport {
+                return ConstraintSatisfiabilityReport::failure(
+                    unsatisfiableConstraints: ['Vetoed by test strategy'],
+                );
+            }
+        };
+
+        $scheduler = new RoundRobinScheduler();
+
+        expect(fn () => $scheduler->schedule($this->participants, 2, 2, $vetoStrategy))
+            ->toThrow(InvalidConfigurationException::class, 'Vetoed by test strategy');
     });
 });

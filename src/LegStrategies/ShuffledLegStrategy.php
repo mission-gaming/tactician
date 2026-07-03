@@ -35,13 +35,16 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
         int $participantsPerEvent,
         ConstraintSet $constraints
     ): GenerationPlan {
-        $eventsPerLeg = (int) (count($participants) * (count($participants) - 1) / 2);
+        $participantCount = count($participants);
+        $eventsPerLeg = (int) ($participantCount * ($participantCount - 1) / 2);
         $totalEvents = $eventsPerLeg * $totalLegs;
+        // Odd participant counts need an extra round for the bye rotation
+        $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
 
         return new GenerationPlan(
             $totalEvents,
             $eventsPerLeg,
-            count($participants) - 1, // rounds per leg
+            $roundsPerLeg,
             true, // Requires randomization
             ['strategy' => 'shuffled'], // Strategy data
             [] // No warnings
@@ -107,10 +110,8 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
             $reasons[] = 'Shuffled strategy requires at least 2 participants';
         }
 
-        return new ConstraintSatisfiabilityReport(
-            $canSatisfy,
-            $reasons,
-            [] // No suggested modifications
-        );
+        return $canSatisfy
+            ? ConstraintSatisfiabilityReport::success()
+            : ConstraintSatisfiabilityReport::failure(unsatisfiableConstraints: $reasons);
     }
 }
