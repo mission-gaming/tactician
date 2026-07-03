@@ -225,4 +225,18 @@ describe('ScheduledSchedule', function (): void {
             ]],
         ]))->toThrow(InvalidArgumentException::class, 'not parseable');
     });
+
+    // The UTC invariant is enforced, not assumed: a zoned kickoff is
+    // normalized on construction, so serialization's literal 'Z' suffix
+    // is always truthful
+    it('normalizes constructor kickoffs to UTC', function (): void {
+        [$a, $b] = timelineField(2);
+        $zoned = new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('Europe/London')); // BST
+
+        $scheduledEvent = new ScheduledEvent(new Event([$a, $b], new Round(1)), $zoned);
+
+        expect($scheduledEvent->getKickoff()->getTimezone()->getName())->toBe('UTC');
+        expect($scheduledEvent->getKickoff()->format('H:i'))->toBe('18:00');
+        expect($scheduledEvent->toArray()['kickoff'])->toBe('2026-08-01T18:00:00Z');
+    });
 });

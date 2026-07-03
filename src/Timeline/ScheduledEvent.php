@@ -21,14 +21,20 @@ use MissionGaming\Tactician\DTO\Participant;
  */
 final readonly class ScheduledEvent
 {
+    private DateTimeImmutable $kickoff;
+
     /**
      * @param Event $event The wrapped, unmodified event
-     * @param DateTimeImmutable $kickoff The assigned kickoff, in UTC
+     * @param DateTimeImmutable $kickoff The assigned kickoff; normalized to
+     *                                   UTC on construction, so the class
+     *                                   invariant holds whatever zone the
+     *                                   caller supplied
      */
     public function __construct(
         private Event $event,
-        private DateTimeImmutable $kickoff
+        DateTimeImmutable $kickoff
     ) {
+        $this->kickoff = $kickoff->setTimezone(new DateTimeZone('UTC'));
     }
 
     public function getEvent(): Event
