@@ -6,11 +6,12 @@
 - Documentation was audited end-to-end: README, ROADMAP, ARCHITECTURE, USAGE, CONTRIBUTING, and BACKGROUND all match the shipped code, and every docs/example snippet has been executed
 
 ## Next Steps
-- **Phase 3 implementation is underway** per the accepted design (`docs/design/phase-3-algorithm-neutral-core.md`). Milestones 1 (StagePlan), 2 (typed options + `RankingStrategy`), and 3 (engine unification: serializable `StageState`, `RoundPairing`, `StageEngineInterface`/`StageOutcome`, Swiss engine conforming, `SwissScheduler` preset replacing `SimpleSwissScheduler`) are done. Next: M4 (progression selectors, composition validator, `PoolDistributor`, `GroupStageEngine` retirement, elimination engines as presets, two-legged ties), then sweep (M5).
+- **Phase 3 implementation is nearly complete** per the accepted design (`docs/design/phase-3-algorithm-neutral-core.md`). Milestones 1-4 are done: StagePlan, typed options + `RankingStrategy`, engine unification, and M4's compositions (selectors, `CompositionValidator`, `PoolDistributor` + pooled outcomes, elimination presets with positional seeding/reseed/two-legged ties, `GroupStageEngine` retired). Only M5 (final docs/examples sweep) remains.
 - Backtracking generation for constraint configurations the greedy generator cannot satisfy (known limitation, recorded in ROADMAP Phase 5)
 
 ## Active Decisions and Considerations
-- The Swiss engine now conforms to `StageEngineInterface`; the elimination and group engines keep their participants-and-results signatures until M4 rebuilds them as presets over composed single-round stages. StageState records pairings (not just results), which is what makes the results-free `SwissScheduler` preset avoid repeats.
+- All results-driven engines conform to `StageEngineInterface`. **Position is authoritative** for stage entry: brackets fold and pools deal by list position, never by carried seed attributes. StageState records pairings (not just results), which powers results-free scheduling and repeat avoidance.
+- Two-legged ties: legs carry `tie_leg` event metadata; a level aggregate must be decided app-side via `tie_winner` metadata on a leg result (`TieDecision`). Reseed mode ranks strictly from results of earlier rounds so bracket replay is stable (property tests caught this).
 - Stage plans never fabricate shape facts: null legs = concept does not apply (Swiss); null totals = unknowable up front. Consumers wanting display defaults write `?? 1` at their own edge.
 - Timeline assignment (Phase 4) stays per-stage and consumes `Schedule::getEventsByRound()`; nothing in Phase 3 may block it — plans carrying round structure keep that bridge intact.
 - Constraints are hard filters with loud, diagnostic failure; soft/preference constraints are intentionally unsupported.

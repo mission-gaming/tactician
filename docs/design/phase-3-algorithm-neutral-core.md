@@ -8,11 +8,16 @@ and validation-context classes removed) milestone 2 (typed
 config-constructible `RoundRobinOptions`/`SwissOptions` retiring the
 legs/rounds overload and folding `validateConstraints()`/
 `getExpectedEventCount()` into `getPlan()`; `PointsSystem` generalized to
-`RankingStrategy` with `WinDrawLossRanking`), and milestone 3 (serializable
+`RankingStrategy` with `WinDrawLossRanking`), milestone 3 (serializable
 `StageState`, unified `RoundPairing`, `StageEngineInterface` +
 `StageOutcome` with the Swiss engine conforming, `SimpleSwissScheduler`
-replaced by the `SwissScheduler` preset over the randomized engine) are
-implemented; milestones 4–5 are not. Code blocks are design sketches, not executable examples. All open
+replaced by the `SwissScheduler` preset over the randomized engine), and
+milestone 4 (progression selectors with cardinality validation, the
+composition validator, `PoolDistributor` + pooled outcomes retiring
+`GroupStageEngine`, the elimination engines rebuilt as
+`StageEngineInterface` presets with positional seeding and fixed vs
+re-seeded paths, and two-legged ties decided app-side) are implemented;
+milestone 5 (sweep) is not. Code blocks are design sketches, not executable examples. All open
 questions have been resolved with the maintainer (decisions marked ✅
 throughout; see "Resolved decisions" at the end).
 
