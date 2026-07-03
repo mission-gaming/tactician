@@ -38,7 +38,9 @@ readonly class Result
             $event->getParticipants()
         );
         foreach (array_keys($scores) as $participantId) {
-            if (!in_array($participantId, $participantIds, true)) {
+            // PHP canonicalizes numeric-string array keys to ints, so cast
+            // back before comparing against the (string) participant IDs
+            if (!in_array((string) $participantId, $participantIds, true)) {
                 throw new InvalidArgumentException(
                     "Score references participant {$participantId} who is not in the event"
                 );

@@ -44,6 +44,19 @@ describe('Result', function (): void {
         expect($result->getScoreFor($this->carol))->toBeNull();
     });
 
+    it('accepts scores keyed by numeric-string participant IDs', function (): void {
+        // PHP canonicalizes numeric-string array keys to ints; validation
+        // must still recognize them as the participants' string IDs
+        $one = new Participant('1', 'Alice');
+        $two = new Participant('2', 'Bob');
+        $event = new Event([$one, $two], new Round(1));
+
+        $result = new Result($event, $one, ['1' => 21, '2' => 15]);
+
+        expect($result->getScoreFor($one))->toBe(21);
+        expect($result->getScoreFor($two))->toBe(15);
+    });
+
     it('rejects a winner who is not in the event', function (): void {
         expect(fn () => new Result($this->event, $this->carol))
             ->toThrow(InvalidArgumentException::class);
@@ -213,5 +226,30 @@ describe('StandingsCalculator', function (): void {
         );
 
         expect($labels)->toBe(['Alice', 'Bob', 'Carol', 'Dave']);
+    });
+
+    it('breaks full ties by seed before label', function (): void {
+        $participants = [
+            new Participant('z', 'Zeta', 2),
+            new Participant('a', 'Alpha'),      // unseeded sorts last
+            new Participant('m', 'Mu', 1),
+        ];
+
+        $standings = (new StandingsCalculator())->calculate($participants, []);
+
+        $ids = array_map(fn ($entry) => $entry->getParticipant()->getId(), $standings->getEntries());
+        expect($ids)->toBe(['m', 'z', 'a']);
+    });
+
+    it('compares tied labels in natural order', function (): void {
+        $participants = [
+            new Participant('p10', 'Player 10'),
+            new Participant('p2', 'Player 2'),
+        ];
+
+        $standings = (new StandingsCalculator())->calculate($participants, []);
+
+        $labels = array_map(fn ($entry) => $entry->getParticipant()->getLabel(), $standings->getEntries());
+        expect($labels)->toBe(['Player 2', 'Player 10']);
     });
 });
