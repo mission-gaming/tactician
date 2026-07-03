@@ -155,6 +155,20 @@ describe('StageState', function (): void {
         StageState::fromArray(['participants' => 'nope']);
     })->throws(InvalidArgumentException::class);
 
+    // start() enforces unique IDs; rehydration must uphold the same
+    // invariant instead of silently letting later entries win
+    it('rejects duplicate participant IDs in serialized data', function (): void {
+        StageState::fromArray([
+            'participants' => [
+                ['id' => 'p1', 'label' => 'Alice', 'seed' => null, 'metadata' => []],
+                ['id' => 'p1', 'label' => 'Alice Clone', 'seed' => null, 'metadata' => []],
+            ],
+            'active' => ['p1'],
+            'rounds' => [],
+            'results' => [],
+        ]);
+    })->throws(InvalidArgumentException::class, 'twice');
+
     it('rejects an active reference to an unknown participant', function (): void {
         StageState::fromArray([
             'participants' => [['id' => 'p1', 'label' => 'Alice', 'seed' => null, 'metadata' => []]],

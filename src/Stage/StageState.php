@@ -270,6 +270,11 @@ final readonly class StageState
             }
             /** @var array<string, mixed> $participantData */
             $participant = Participant::fromArray($participantData);
+            if (isset($registry[$participant->getId()])) {
+                throw new InvalidArgumentException(
+                    "Stage state registry contains participant {$participant->getId()} twice"
+                );
+            }
             $registry[$participant->getId()] = $participant;
         }
 
