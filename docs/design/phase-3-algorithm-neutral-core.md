@@ -57,6 +57,65 @@ concrete debts, each with a bug or wart already attributable to it:
 - Backwards compatibility: the library is unreleased; this is a breaking
   redesign done once, before first release.
 
+## Scope alignment: the stage is Tactician's unit
+
+Consuming platforms model competition hierarchies above the schedule.
+Metronome's is representative:
+
+```
+CompetitionEvent            "UEFA Champions League"        (the competition as a concept)
+└── CompetitionEventInstance  "Champions League 26/27"     (an edition/season)
+    └── CompetitionStage       "Group Stage", "Last 16"    (format + rules + participants)
+        └── GameplayEvent       the matches                (fixtures)
+```
+
+Tactician's scope is **exactly one stage**: participants and typed options
+in, a schedule (or round-by-round pairings) out. Everything above the stage
+— competitions, seasons, which stages exist, their ordering — is application
+domain, permanently. Each abstraction in this document is therefore
+per-stage: one `TournamentPlan`, one engine, one options object, one
+(future) timeline per stage. Two properties of real platforms follow:
+
+- **Stages compose, including concurrently.** One source stage can feed
+  several destination stages with different rules — e.g. a group's top two
+  progress to a winners' route while the bottom two progress to a losers'
+  route, each route itself a stage with its own format, rules, and dates.
+  Tactician supports this by making the *hand-off* between stages
+  first-class (see qualification selectors below), not by modelling the
+  stage graph itself.
+- **Per-stage rules vary.** Points systems, draw permissibility, formats,
+  and generation strategies differ stage by stage. This validates typed
+  per-stage options and per-stage `PointsSystem` configuration, and rules
+  out any library-level "tournament settings" singleton.
+
+### Critical assessment of the reference model
+
+The identity/edition/stage/fixture separation is sound and matches how
+competition data is modelled industry-wide; the stage as format unit is the
+right boundary for this library. Two aspects deserve pushback rather than
+adoption:
+
+1. **Knockout-as-chained-stages should be a choice, not a necessity.**
+   Platforms without a bracket engine model each knockout round as its own
+   stage ("last 16" → "last 8" → ...) with a progression rule between each.
+   That composes, but it discards bracket-level structural guarantees —
+   nothing enforces that 16 entrants yield 15 ties, that a participant
+   cannot appear twice, or that progression selects match winners rather
+   than whatever a misconfigured rule computes. With a bracket engine, the
+   whole knockout is one stage with those invariants enforced, and
+   per-round rule variation (extra time from the quarter-finals, say) is
+   match-play and tie-resolution policy — which is application-side anyway
+   — not a reason to fragment the bracket. Tactician should support both
+   granularities but recommend the engine-per-bracket shape.
+2. **Progression has two distinct kinds, and conflating them is a trap.**
+   Standings-based progression (top 2 of a group) and winner-based
+   progression (advancing in a bracket) are different operations. Selectors
+   (section 5) model only the first; the second belongs inside the
+   elimination engines, which already know the winners. Expressing bracket
+   progression as a standings slice technically works for single-round
+   stages — winners have more points — but it is fragile (draws, points
+   configuration) and re-derives what the engine already guarantees.
+
 ## Proposed design
 
 ### 1. `TournamentPlan` — the algorithm's declaration of shape
@@ -192,6 +251,64 @@ Format-specific outcomes stay on the concrete engines (`getChampion()`,
 trophies. ❓ Alternatively, an `getOutcome(): ?TournamentOutcome` could be
 lifted into the interface; deferred until a second consumer needs it.
 
+### 5. Qualification selectors — the hand-off between stages
+
+`GroupStageEngine::getQualifiers()` currently supports exactly one rule:
+top K per group. Real stage graphs need arbitrary slices of a finished
+stage's standings — including several slices of the *same* stage feeding
+different destinations (winners' route / losers' route):
+
+```php
+// PROPOSED — not implemented
+interface QualificationSelector
+{
+    /**
+     * Slice a finished stage's standings into an ordered, reseeded
+     * participant list for a destination stage.
+     *
+     * @param array<string, Standings> $standings Per-group standings ('A', 'B', ...)
+     * @return array<Participant> Reseeded via Participant::withSeed()
+     */
+    public function select(array $standings): array;
+}
+
+// Built-ins covering the common shapes:
+RankRangeSelector::topPerGroup(2);          // today's getQualifiers(2)
+RankRangeSelector::perGroup(from: 3, to: 4); // the losers' route
+RankRangeSelector::overall(from: 1, to: 8);  // best N across all groups
+```
+
+The selector's output is exactly what the elimination engines (or another
+group stage, or a Swiss stage) take as input, so multi-route progression is
+two selector calls against one standings set. The group-play completeness
+check moves into the selector path. Selection *policy configuration* —
+which selectors run for which destination stage — remains application
+domain; Tactician supplies the selectors and the reseeding.
+
+Selectors are deliberately **standings-based only**. Winner-based
+progression (who advances within a bracket) is not a selector concern — the
+elimination engines own it, with structural guarantees a standings slice
+cannot provide (see the critical assessment above).
+
+### 6. Two-legged elimination ties (design consideration)
+
+Knockout stages in football-style competitions are often played over two
+legs per tie (home and away), with the aggregate deciding who advances —
+including rules Tactician must never own (away goals, extra time,
+penalties). Proposed split, consistent with the rest of this document:
+
+- `EliminationOptions(legsPerTie: 2)` makes the engine emit **two events
+  per pairing** (roles mirrored) within a bracket stage.
+- The engine advances on a **tie result**: the application resolves the
+  aggregate under its own rules and records which participant won the tie.
+  Per-leg `Result`s remain ordinary results feeding standings/statistics;
+  the tie result is what the bracket consumes.
+
+This keeps aggregate policy out of the library while making the fixture
+structure (two legs, mirrored venues, both events in the plan's expected
+counts) the library's responsibility. ❓ Scope question: first cut of
+Phase 3, or a fast-follow once the single-leg engine interface has landed?
+
 ### What happens to existing classes
 
 | Current | Fate |
@@ -228,6 +345,8 @@ Four milestones, each shippable green:
    `ExpectedSchedule` (both appear in older notes). One name, everywhere.
 2. **`GroupStageEngine`**: conform to `TournamentEngineInterface` (it is
    round-driven per group) or stay a composer that *produces* engine inputs?
+   The stage-alignment section above suggests the latter: a stage composer
+   whose output flows through qualification selectors.
 3. **`SimpleSwissScheduler`**: worth keeping once the Swiss engine drives
    the same loop with a random-results-independent preset?
 4. **`TournamentState` persistence**: is `toArray()`/JSON round-tripping a
@@ -235,3 +354,5 @@ Four milestones, each shippable green:
    a fast-follow?
 5. **Trophy accessor**: lift `getOutcome()` into the engine interface now,
    or keep champions/qualifiers format-specific?
+6. **Two-legged ties**: in the first Phase 3 cut, or a fast-follow after the
+   single-leg engine interface lands (section 6)?

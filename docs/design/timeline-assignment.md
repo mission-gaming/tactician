@@ -88,6 +88,18 @@ Design anchors (to be settled properly in the Phase 4 pass):
 - **Timezone-explicit**: `DateTimeImmutable` + required `DateTimeZone` in,
   UTC-normalized out; policy about display stays app-side.
 
+## Per-stage timelines
+
+Timelines are **per stage**, matching the scope alignment in the Phase 3
+design: a competition edition composes stages, and each stage has its own
+format, rules, and — relevantly here — its own date pattern. A group stage
+playing weekly Tuesday/Wednesday slots and a finals stage playing a single
+weekend are two `TimelineDefinition`s, not one. Concurrent stages (e.g.
+winners' and losers' routes running in parallel) each carry their own
+timeline; any coordination between them (shared venues, avoiding clashes)
+is application policy in the first cut. ❓ Cross-stage clash validation
+could become a library capability later, but only if a consumer needs it.
+
 ## What this means for a consuming application (Metronome as the example)
 
 Nothing changes until Phase 4 ships: the app's date scheduler keeps
@@ -100,6 +112,16 @@ require **no new scheduling logic app-side** — only config/UI to express
 fairness the library validates. Deadline windows, notifications, and
 persistence stay entirely app-side, computed from the assigned times as
 they are today.
+
+**One prerequisite worth flagging early**: staggered times are incompatible
+with inferring round membership from kickoff dates. A platform that
+persists only a `startDate` per fixture (as Metronome does today) can
+currently reconstruct rounds because every fixture in a round shares one
+datetime — the moment kickoffs stagger, that inference breaks. Any platform
+wanting staggered times must persist round identity explicitly (a round
+number or round/matchday entity on the fixture). Tactician's output always
+carries it (`Event::getRound()`, `Schedule::getEventsByRound()`); the
+application just has to stop throwing it away.
 
 ## Sequencing
 
