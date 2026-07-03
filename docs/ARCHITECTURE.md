@@ -12,32 +12,35 @@
 All DTOs support `toArray()`/`fromArray()`; `Schedule` additionally implements
 `JsonSerializable` with `toJson()`/`fromJson()` round-tripping.
 
-### Stage Plans
-A **stage plan** is an algorithm's declaration of the shape of one stage,
-built before generation and consumed everywhere shape facts are needed —
-context, validation, diagnostics, and constraints read the plan instead of
-inferring round-robin formulas:
-- **StagePlan**: The shape contract — algorithm identifier, total rounds, legs, rounds per leg, expected event count, and format-specific `validateIntegrity()`. Nullability is meaningful: null legs means the concept does not apply (Swiss); null totals mean unknowable up front. Plans never fabricate shape facts.
+### Stage Model
+The **stage** is Tactician's unit of work — participants and typed options
+in, a schedule (or round-by-round pairings) out, and a uniform outcome when
+play completes. The `src/Stage/` family:
+- **StagePlan**: The algorithm's declaration of one stage's shape — identifier, total rounds, legs, rounds per leg, expected event count, and format-specific `validateIntegrity()`. Nullability is meaningful: null legs means the concept does not apply (Swiss); null totals mean unknowable up front. Plans never fabricate shape facts.
 - **PairwisePlan**: Capability interface for round-robin-family plans that can guarantee pairwise meeting counts (`getExpectedMeetings()`)
 - **RoundRobinPlan**: Knows everything up front — bye-aware rounds per leg (n-1 even, n odd), event counts, meeting multiplicities, and the leg strategy's contribution facts. The single home of round-robin arithmetic.
 - **SwissPlan**: Knows rounds and per-round event counts; legs are null, and an open-ended (engine-driven) stage may have null totals
+- **StageState**: The serializable (`toArray()`/`fromArray()`/JSON) state of a results-driven stage between rounds — active participants, recorded pairings, and results. Records the *pairings* played, not just results, so repeat avoidance survives result-free rounds; withdrawals are a first-class verb (`withoutParticipant()`).
+- **RoundPairing**: One value object for every format's round — round number, optional label ('semifinal', 'losers round 2'; null for Swiss), events, and byes
+- **StageEngineInterface**: The one results-driven contract — `getPlan()`, `pairNextRound()`, `isComplete()`, `getOutcome()` — behind one driver loop for every format
+- **StageOutcome**: The uniform completion product: standings, results, bye counts, and the structural final round. Deliberately no champion/winner vocabulary — "the champion" is the consumer's interpretation of rank 1 or the final round's winners.
 
 ### Scheduling System
 - **SchedulerInterface**: Contract for whole-schedule generators — participants and typed options in, a validated schedule out; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
 - **SchedulerOptions**: Typed per-algorithm options, one type per scheduler — no overloaded scalars. Config-constructible (`fromArray()`/`toArray()`) with stable identifiers.
 - **RoundRobinOptions / SwissOptions**: Legs + leg strategy for round robin; rounds for Swiss (retiring the old "legs means rounds here" overload)
 - **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, round-parity home/away role alternation, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first and generates from it.
-- **SimpleSwissScheduler**: Whole-schedule Swiss generation with random non-repeat pairing, planned by a `SwissPlan`
+- **SwissScheduler**: Whole-schedule Swiss preset — drives SwissPairingEngine through the stage driver loop recording no results, which reduces Monrad pairing to random non-repeat pairing
 - **SchedulingContext**: Multi-leg aware historical state management carrying the stage plan (`getPlan()`)
 
 ### Results-Driven Engines
 Formats whose later rounds depend on results cannot be generated whole; these
-engines resolve tournament state from recorded results on every call:
-- **SwissPairingEngine**: Standings-aware Monrad pairing with repeat avoidance, bye rotation (byes credited as wins), home/away balancing, withdrawal handling, and constraint support
-- **SingleEliminationEngine**: Fold-seeded brackets with byes to top seeds, stage names, and champion resolution
-- **DoubleEliminationEngine**: Winners/losers brackets with dropper rematch deferral, grand final, and optional bracket reset
+engines resolve tournament state on every call:
+- **SwissPairingEngine**: A `StageEngineInterface` implementation — standings-aware Monrad pairing from the recorded `StageState`, with repeat avoidance, bye rotation (byes credited as wins), home/away balancing, withdrawal handling, constraint support, and optional randomization within equal-ranking groups
+- **SingleEliminationEngine**: Fold-seeded brackets with byes to top seeds, round labels, and champion resolution (participants-and-results signature; rebuilt as a preset over composed single-round stages in the Phase 3 redesign)
+- **DoubleEliminationEngine**: Winners/losers brackets with dropper rematch deferral, grand final, and optional bracket reset (same signature caveat)
 - **GroupStageEngine**: Serpentine-seeded groups, per-group standings, and knockout qualifiers reseeded for cross-group pairings
-- **SwissRoundPairing / EliminationRoundPairing**: Value objects carrying a round's events and byes
+- All engines emit **RoundPairing** values (see the stage model)
 
 ### Standings System
 - **StandingsCalculator**: Ordered league tables from results with a pluggable ranking strategy

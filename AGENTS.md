@@ -17,8 +17,8 @@ standings with tiebreakers. No production dependencies.
 See `docs/ARCHITECTURE.md` for the full picture. Orientation:
 
 - `src/DTO/` — immutable readonly value objects (`Participant`, `Event`, `Round`, `Schedule`, `Result`); all support `toArray()`/`fromArray()`, and `Schedule` round-trips JSON
-- `src/Stage/` — stage plans (`StagePlan`, `PairwisePlan`, `RoundRobinPlan`, `SwissPlan`): the algorithm's up-front declaration of a stage's shape, consumed by context, validation, diagnostics, and constraints — nothing infers shape from round-robin formulas
-- `src/Scheduling/` — whole-schedule generators (`RoundRobinScheduler`, `SimpleSwissScheduler`) and results-driven engines (`SwissPairingEngine`, `SingleEliminationEngine`, `DoubleEliminationEngine`, `GroupStageEngine`); `SchedulingContext` carries the stage plan
+- `src/Stage/` — the stage model: plans (`StagePlan`, `PairwisePlan`, `RoundRobinPlan`, `SwissPlan` — the algorithm's up-front shape declaration, consumed by context, validation, diagnostics, and constraints) plus the results-driven family (`StageState` serializable between rounds, `RoundPairing`, `StageEngineInterface`, `StageOutcome`)
+- `src/Scheduling/` — whole-schedule generators (`RoundRobinScheduler`, and the `SwissScheduler` preset over the Swiss engine) and results-driven engines (`SwissPairingEngine` implementing `StageEngineInterface`; `SingleEliminationEngine`, `DoubleEliminationEngine`, `GroupStageEngine` pending their Phase 3 rebuild); `SchedulingContext` carries the stage plan
 - `src/Constraints/` — `ConstraintSet` builder plus the constraint implementations
 - `src/Standings/` — `StandingsCalculator`, `PointsSystem`, pluggable tiebreakers
 - `src/Validation/`, `src/Diagnostics/`, `src/Exceptions/` — plan-driven completeness validation and diagnostic failure reporting

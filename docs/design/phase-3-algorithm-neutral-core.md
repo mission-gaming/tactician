@@ -4,12 +4,15 @@
 introduction: `StagePlan`/`PairwisePlan` with `RoundRobinPlan` and
 `SwissPlan`, `LegPlanContribution` replacing `planGeneration()`/
 `canSatisfyConstraints()`, plan-carrying `SchedulingContext`, calculators
-and validation-context classes removed) and milestone 2 (typed
+and validation-context classes removed) milestone 2 (typed
 config-constructible `RoundRobinOptions`/`SwissOptions` retiring the
 legs/rounds overload and folding `validateConstraints()`/
 `getExpectedEventCount()` into `getPlan()`; `PointsSystem` generalized to
-`RankingStrategy` with `WinDrawLossRanking`) are implemented; milestones
-3–5 are not. Code blocks are design sketches, not executable examples. All open
+`RankingStrategy` with `WinDrawLossRanking`), and milestone 3 (serializable
+`StageState`, unified `RoundPairing`, `StageEngineInterface` +
+`StageOutcome` with the Swiss engine conforming, `SimpleSwissScheduler`
+replaced by the `SwissScheduler` preset over the randomized engine) are
+implemented; milestones 4–5 are not. Code blocks are design sketches, not executable examples. All open
 questions have been resolved with the maintainer (decisions marked ✅
 throughout; see "Resolved decisions" at the end).
 
