@@ -176,9 +176,28 @@ describe('ScheduledSchedule', function (): void {
             ->toBe($original->getEvent()->getParticipants()[0]->getId());
     });
 
+    it('iterates its scheduled events', function (): void {
+        $schedule = (new RoundRobinScheduler())->schedule(timelineField(2));
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
+            new DateInterval('P7D')
+        );
+
+        $scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
+
+        $seen = 0;
+        foreach ($scheduled as $scheduledEvent) {
+            expect($scheduledEvent)->toBeInstanceOf(ScheduledEvent::class);
+            ++$seen;
+        }
+        expect($seen)->toBe(1);
+    });
+
     it('rejects malformed serialized data', function (): void {
         expect(fn () => ScheduledSchedule::fromArray(['participants' => 'nope']))
             ->toThrow(InvalidArgumentException::class);
+        expect(fn () => ScheduledSchedule::fromArray(['participants' => ['nope'], 'events' => []]))
+            ->toThrow(InvalidArgumentException::class, 'must be an array');
         expect(fn () => ScheduledSchedule::fromArray(['participants' => [], 'events' => 'nope']))
             ->toThrow(InvalidArgumentException::class);
         expect(fn () => ScheduledSchedule::fromArray(['participants' => [], 'events' => ['nope']]))
@@ -198,5 +217,12 @@ describe('ScheduledSchedule', function (): void {
                 'kickoff' => 42,
             ]],
         ]))->toThrow(InvalidArgumentException::class, 'kickoff');
+        expect(fn () => ScheduledSchedule::fromArray([
+            'participants' => [$participant, ['id' => 'p2', 'label' => 'Bob', 'seed' => null, 'metadata' => []]],
+            'events' => [[
+                'event' => ['participants' => ['p1', 'p2'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => []],
+                'kickoff' => 'half past never',
+            ]],
+        ]))->toThrow(InvalidArgumentException::class, 'not parseable');
     });
 });

@@ -112,6 +112,30 @@ describe('TimelineDefinition', function (): void {
         ]);
     });
 
+    it('exposes its configuration through accessors', function (): void {
+        $start = new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('Europe/London'));
+        $roundInterval = new DateInterval('P7D');
+        $slotInterval = new DateInterval('PT1H');
+        $timeline = new TimelineDefinition($start, $roundInterval, 3, $slotInterval);
+
+        expect($timeline->getStart())->toBe($start);
+        expect($timeline->getRoundInterval())->toBe($roundInterval);
+        expect($timeline->getSlotsPerRound())->toBe(3);
+        expect($timeline->getSlotInterval())->toBe($slotInterval);
+
+        expect((new TimelineDefinition($start, $roundInterval))->getSlotInterval())->toBeNull();
+    });
+
+    it('serializes every duration component canonically', function (): void {
+        $timeline = TimelineDefinition::fromArray([
+            'start' => '2026-08-01 18:00:00',
+            'timezone' => 'UTC',
+            'round_interval' => 'P1Y2M3DT4H5M6S',
+        ]);
+
+        expect($timeline->toArray()['round_interval'])->toBe('P1Y2M3DT4H5M6S');
+    });
+
     it('rejects malformed configuration', function (): void {
         $valid = [
             'start' => '2026-08-01 19:00:00',
