@@ -100,14 +100,14 @@ serialize to JSON via `$schedule->toJson()` / `Schedule::fromJson()`.
 
 ## Key Features
 
-- **🏆 Round Robin Tournaments**: Complete implementation with circle method algorithm
-- **♟️ Swiss Pairing**: Standings-aware Monrad pairing with repeat avoidance, bye rotation, and home/away balancing
+- **🏆 Round Robin Tournaments**: Circle method algorithm with balanced home/away roles
+- **♟️ Swiss Pairing**: Standings-aware Monrad pairing with repeat avoidance, bye rotation, home/away balancing, and withdrawal handling
 - **🥊 Elimination Brackets**: Single and double elimination with fold seeding, byes, stage names, and optional grand-final reset
 - **🏟️ Group Stages**: Serpentine-seeded groups with per-group standings and cross-group knockout qualification
 - **📊 Results & Standings**: Configurable points systems with wins, Buchholz, and Sonneborn–Berger tiebreakers
-- **🔧 Flexible Constraints**: Built-in constraints (rest periods, seed protection, role limits, role balance) plus custom predicates
+- **🔧 Flexible Constraints**: Built-in constraints (rest periods, seed protection, role limits, role balance, metadata rules) plus custom predicates
 - **🏠 Multi-Leg Support**: Home/away leagues with mirrored, repeated, or shuffled strategies and first-class byes
-- **✅ Schedule Validation**: Mathematical validation prevents incomplete tournaments
+- **✅ Schedule Validation**: Mathematical validation prevents incomplete tournaments, with automatic retries over alternative orderings when constraints reject a schedule
 - **💾 Serialization**: JSON round-tripping for schedules, events, and participants
 - **🛡️ Production Ready**: PHPStan level 8 compliance, comprehensive test coverage
 - **⚡ Memory Efficient**: Iterator-based patterns for large tournaments
