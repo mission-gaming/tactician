@@ -352,14 +352,14 @@ try {
     echo "Cannot generate complete schedule: " . $e->getMessage() . "\n";
     
     // Get diagnostic information
-    $violations = $e->getConstraintViolations();
+    $violations = $e->getViolationCollector()->getViolations();
     foreach ($violations as $violation) {
         echo "Violation: " . $violation->getDescription() . "\n";
     }
     
     // Get expected vs actual event counts
     echo "Expected events: " . $e->getExpectedEventCount() . "\n";
-    echo "Generated events: " . $e->getGeneratedEventCount() . "\n";
+    echo "Generated events: " . $e->getActualEventCount() . "\n";
 }
 ```
 
@@ -430,7 +430,7 @@ function handleIncompleteSchedule(IncompleteScheduleException $e): void
     echo "Reason: " . $e->getMessage() . "\n";
     
     // Analyze constraint violations
-    $violations = $e->getConstraintViolations();
+    $violations = $e->getViolationCollector()->getViolations();
     if (!empty($violations)) {
         echo "\nConstraint violations:\n";
         foreach ($violations as $violation) {
@@ -439,7 +439,7 @@ function handleIncompleteSchedule(IncompleteScheduleException $e): void
     }
     
     // Show completion statistics
-    echo "\nCompletion: {$e->getGeneratedEventCount()}/{$e->getExpectedEventCount()} events\n";
+    echo "\nCompletion: {$e->getActualEventCount()}/{$e->getExpectedEventCount()} events\n";
 }
 ```
 

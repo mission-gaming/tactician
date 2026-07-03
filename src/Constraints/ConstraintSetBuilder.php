@@ -16,9 +16,9 @@ class ConstraintSetBuilder
         return $this;
     }
 
-    public function noRepeatPairings(): self
+    public function noRepeatPairings(bool $acrossLegs = false): self
     {
-        return $this->add(new NoRepeatPairings());
+        return $this->add(new NoRepeatPairings($acrossLegs));
     }
 
     /**

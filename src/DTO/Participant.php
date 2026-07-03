@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\DTO;
 
+use InvalidArgumentException;
+
 /**
  * Represents a participant in a tournament or competition.
  *
@@ -90,5 +92,64 @@ readonly class Participant
     public function getMetadataValue(string $key, mixed $default = null): mixed
     {
         return $this->metadata[$key] ?? $default;
+    }
+
+    /**
+     * Create a copy of this participant with a different seed.
+     *
+     * Useful when reseeding for a new tournament stage (e.g. group qualifiers
+     * entering a knockout bracket). Identity is preserved: the copy has the
+     * same ID, so existing events and results still match it.
+     */
+    public function withSeed(?int $seed): self
+    {
+        return new self($this->id, $this->label, $seed, $this->metadata);
+    }
+
+    /**
+     * Convert this participant to a serializable array.
+     *
+     * @return array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}
+     */
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'label' => $this->label,
+            'seed' => $this->seed,
+            'metadata' => $this->metadata,
+        ];
+    }
+
+    /**
+     * Recreate a participant from its array representation.
+     *
+     * @param array<string, mixed> $data
+     *
+     * @throws InvalidArgumentException When required fields are missing or malformed
+     */
+    public static function fromArray(array $data): self
+    {
+        $id = $data['id'] ?? null;
+        $label = $data['label'] ?? null;
+        if (!is_string($id) || $id === '' || !is_string($label)) {
+            throw new InvalidArgumentException('Participant data requires a non-empty string id and a string label');
+        }
+
+        $seed = $data['seed'] ?? null;
+        if ($seed !== null && !is_int($seed)) {
+            throw new InvalidArgumentException('Participant seed must be an integer or null');
+        }
+
+        $rawMetadata = $data['metadata'] ?? [];
+        if (!is_array($rawMetadata)) {
+            throw new InvalidArgumentException('Participant metadata must be an array');
+        }
+        $metadata = [];
+        foreach ($rawMetadata as $key => $value) {
+            $metadata[(string) $key] = $value;
+        }
+
+        return new self($id, $label, $seed, $metadata);
     }
 }

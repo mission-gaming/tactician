@@ -54,7 +54,10 @@ $participants = [
     ]),
 ];
 
-// Different metadata constraint scenarios
+// Different metadata constraint scenarios. Note that a complete round robin
+// requires every pair of teams to meet, so a hard metadata constraint that
+// forbids some pairing makes the schedule impossible - the scheduler then
+// throws with detailed diagnostics instead of silently dropping matches.
 $scenarios = [
     'No Metadata Constraints' => [
         'description' => 'Standard tournament without metadata restrictions',
@@ -63,38 +66,48 @@ $scenarios = [
             ->build(),
         'rules' => 'Any team can play against any other team',
     ],
+    'Language Diversity Cap' => [
+        'description' => 'Each match may span at most two languages',
+        'constraints' => ConstraintSet::create()
+            ->noRepeatPairings()
+            ->add(MetadataConstraint::maxUniqueValues('language', 2))
+            ->build(),
+        'rules' => 'Trivially satisfied for head-to-head play; matters for multi-participant events',
+    ],
     'Same Skill Level Only' => [
         'description' => 'Teams can only play against teams of the same skill level',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
-            ->add(MetadataConstraint::mustMatch('skill_level'))
+            ->add(MetadataConstraint::requireSameValue('skill_level'))
             ->build(),
-        'rules' => 'Expert vs Expert, Advanced vs Advanced, etc.',
-    ],
-    'Same Region Preference' => [
-        'description' => 'Prefer matches within the same region when possible',
-        'constraints' => ConstraintSet::create()
-            ->noRepeatPairings()
-            ->add(MetadataConstraint::preferMatch('region'))
-            ->build(),
-        'rules' => 'European teams prefer to play other European teams',
+        'rules' => 'Expert vs Expert only - impossible for a full round robin, so generation fails loudly',
     ],
     'Cross-Platform Forbidden' => [
         'description' => 'PC teams cannot play against Console teams',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
-            ->add(MetadataConstraint::mustMatch('platform'))
+            ->add(MetadataConstraint::requireSameValue('platform'))
             ->build(),
-        'rules' => 'PC teams only play PC teams, Console only play Console',
+        'rules' => 'Same platform only - also impossible for a full round robin, shown as a failure below',
     ],
-    'Complex Rules' => [
-        'description' => 'Multiple metadata constraints combined',
+    'Compatible Timezones (Custom)' => [
+        'description' => 'Custom validator: matches only between teams within 6 timezone hours',
         'constraints' => ConstraintSet::create()
             ->noRepeatPairings()
-            ->add(MetadataConstraint::mustMatch('platform'))
-            ->add(MetadataConstraint::preferMatch('region'))
+            ->add(new MetadataConstraint(
+                'timezone',
+                function (array $values): bool {
+                    $offsets = array_map(
+                        fn ($tz) => (int) str_replace(['UTC', '+'], '', (string) $tz),
+                        array_filter($values, fn ($tz) => $tz !== null)
+                    );
+
+                    return $offsets === [] || abs(max($offsets) - min($offsets)) <= 6;
+                },
+                'Compatible Timezones'
+            ))
             ->build(),
-        'rules' => 'Same platform required, same region preferred',
+        'rules' => 'Global field spans 18 hours, so this fails and reports which pairings were rejected',
     ],
 ];
 
@@ -214,13 +227,14 @@ function analyzeMatchMetadata($schedule)
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <p class="text-gray-600 mb-4 leading-relaxed">
-                        Metadata constraints use participant data to control matchmaking. You can enforce 
-                        rules like "only match teams from the same region" or "prefer teams with similar 
-                        skill levels" to create more balanced and fair tournaments.
+                        Metadata constraints use participant data to control matchmaking. You can enforce
+                        rules like "only match teams on the same platform" or "keep skill tiers adjacent"
+                        to create more balanced and fair tournaments.
                     </p>
                     <p class="text-gray-600 leading-relaxed">
-                        These constraints are perfect for international tournaments, skill-based matchmaking, 
-                        or any scenario where participant characteristics should influence scheduling.
+                        Constraints are hard filters: a complete round robin needs every pair to meet, so a
+                        rule that forbids some pairing makes generation fail with detailed diagnostics
+                        rather than silently dropping matches. The failing scenarios below demonstrate that.
                     </p>
                 </div>
                 <div class="bg-gray-50 rounded-lg p-4">
@@ -228,19 +242,19 @@ function analyzeMatchMetadata($schedule)
                     <div class="space-y-2 text-sm">
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>
-                            <span>mustMatch() - Strict requirement</span>
+                            <span>requireSameValue() - Values must match</span>
                         </div>
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-yellow-500 rounded-full mr-2"></span>
-                            <span>preferMatch() - Soft preference</span>
+                            <span>requireDifferentValues() - Values must differ</span>
                         </div>
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>
-                            <span>mustNotMatch() - Strict avoidance</span>
+                            <span>maxUniqueValues() / requireAdjacentValues() - Bounded variety</span>
                         </div>
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-purple-500 rounded-full mr-2"></span>
-                            <span>Custom predicates - Complex rules</span>
+                            <span>Custom validators - Complex rules</span>
                         </div>
                     </div>
                 </div>
@@ -413,35 +427,34 @@ use MissionGaming\\Tactician\\Constraints\\MetadataConstraint;
 // Require teams to have matching platforms
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(MetadataConstraint::mustMatch(\'platform\'))
+    ->add(MetadataConstraint::requireSameValue(\'platform\'))
     ->build();
 
-// Prefer teams from the same region, but allow cross-region if needed
+// Require teams to come from different regions
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(MetadataConstraint::preferMatch(\'region\'))
+    ->add(MetadataConstraint::requireDifferentValues(\'region\'))
     ->build();
 
-// Prevent teams with different skill levels from playing
+// Keep numeric skill tiers within one step of each other
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(MetadataConstraint::mustNotMatch(\'skill_level\'))
+    ->add(MetadataConstraint::requireAdjacentValues(\'skill_tier\'))
     ->build();
 
-// Complex metadata constraint with custom logic
+// Custom metadata constraint: the validator receives the metadata values
+// for the chosen key, plus the participants, event, and context
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(MetadataConstraint::custom(function($p1, $p2) {
-        // Only allow matches between teams in compatible timezones
-        $tz1 = $p1->getMetadataValue(\'timezone\');
-        $tz2 = $p2->getMetadataValue(\'timezone\');
-        
-        // Extract hour offset from timezone strings like "UTC+1"
-        $offset1 = (int) str_replace([\'UTC\', \'+\'], \'\', $tz1);
-        $offset2 = (int) str_replace([\'UTC\', \'+\'], \'\', $tz2);
-        
-        // Allow matches if timezone difference is <= 6 hours
-        return abs($offset1 - $offset2) <= 6;
+    ->add(new MetadataConstraint(\'timezone\', function (array $values): bool {
+        // Extract hour offsets from timezone strings like "UTC+1"
+        $offsets = array_map(
+            fn ($tz) => (int) str_replace([\'UTC\', \'+\'], \'\', (string) $tz),
+            array_filter($values, fn ($tz) => $tz !== null)
+        );
+
+        // Allow matches if the timezone spread is <= 6 hours
+        return $offsets === [] || abs(max($offsets) - min($offsets)) <= 6;
     }, \'Compatible Timezones\'))
     ->build();'); ?></code></pre>
             </div>

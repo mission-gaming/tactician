@@ -137,6 +137,10 @@ class SchedulingDiagnostics
     /**
      * Identify which participant pairings are missing from generated events.
      *
+     * Meetings are counted per unordered pairing (so reversed home/away
+     * orders still match) and compared against the number of legs; each
+     * shortfall is reported with the leg occurrence that is missing.
+     *
      * @param array<Participant> $participants
      * @param array<Event> $events
      * @param int $legs
@@ -144,13 +148,31 @@ class SchedulingDiagnostics
      */
     private function identifyMissingPairings(array $participants, array $events, int $legs): array
     {
-        $allExpectedPairings = $this->generateAllExpectedPairings($participants, $legs);
-        $existingPairings = $this->extractExistingPairings($events);
+        $meetingCounts = [];
+        foreach ($events as $event) {
+            $eventParticipants = $event->getParticipants();
+            if (count($eventParticipants) !== 2) {
+                continue;
+            }
+
+            $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
+            sort($ids);
+            $key = implode('|', $ids);
+            $meetingCounts[$key] = ($meetingCounts[$key] ?? 0) + 1;
+        }
 
         $missingPairings = [];
-        foreach ($allExpectedPairings as $pairing) {
-            if (!in_array($pairing, $existingPairings, true)) {
-                $missingPairings[] = $pairing;
+        $participantCount = count($participants);
+        for ($i = 0; $i < $participantCount; ++$i) {
+            for ($j = $i + 1; $j < $participantCount; ++$j) {
+                $ids = [$participants[$i]->getId(), $participants[$j]->getId()];
+                sort($ids);
+                $played = $meetingCounts[implode('|', $ids)] ?? 0;
+
+                for ($occurrence = $played + 1; $occurrence <= $legs; ++$occurrence) {
+                    $missingPairings[] = $participants[$i]->getLabel() . ' vs ' . $participants[$j]->getLabel()
+                        . " (Leg {$occurrence})";
+                }
             }
         }
 
@@ -245,53 +267,5 @@ class SchedulingDiagnostics
         // For now, return basic analysis
 
         return $conflicts;
-    }
-
-    /**
-     * Generate all expected participant pairings for the tournament.
-     *
-     * @param array<Participant> $participants
-     * @param int $legs
-     * @return array<string>
-     */
-    private function generateAllExpectedPairings(array $participants, int $legs): array
-    {
-        $pairings = [];
-        $participantCount = count($participants);
-
-        for ($i = 0; $i < $participantCount; ++$i) {
-            for ($j = $i + 1; $j < $participantCount; ++$j) {
-                $pairing = $participants[$i]->getLabel() . ' vs ' . $participants[$j]->getLabel();
-
-                // For multi-leg tournaments, each pairing appears multiple times
-                for ($leg = 1; $leg <= $legs; ++$leg) {
-                    $pairings[] = $pairing . " (Leg {$leg})";
-                }
-            }
-        }
-
-        return $pairings;
-    }
-
-    /**
-     * Extract existing pairings from generated events.
-     *
-     * @param array<Event> $events
-     * @return array<string>
-     */
-    private function extractExistingPairings(array $events): array
-    {
-        $pairings = [];
-
-        foreach ($events as $event) {
-            $participants = $event->getParticipants();
-            if (count($participants) === 2) {
-                $round = $event->getRound();
-                $legInfo = $round ? " (Round {$round->getNumber()})" : '';
-                $pairings[] = $participants[0]->getLabel() . ' vs ' . $participants[1]->getLabel() . $legInfo;
-            }
-        }
-
-        return $pairings;
     }
 }
