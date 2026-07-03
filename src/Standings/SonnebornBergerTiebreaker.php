@@ -8,7 +8,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use Override;
 
 /**
- * Breaks ties by the points of defeated opponents plus half the points of
+ * Breaks ties by the ranking values of defeated opponents plus half those of
  * drawn opponents (Sonneborn-Berger system).
  *
  * Rewards beating strong opposition rather than merely facing it.
@@ -49,7 +49,7 @@ readonly class SonnebornBergerTiebreaker implements TiebreakerInterface
 
                 $opponentEntry = $entries[$opponent->getId()] ?? null;
                 if ($opponentEntry !== null) {
-                    $sum += $factor * $opponentEntry->getPoints();
+                    $sum += $factor * $opponentEntry->getRankingValue();
                 }
             }
         }

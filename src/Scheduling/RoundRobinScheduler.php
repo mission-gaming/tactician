@@ -12,7 +12,6 @@ use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
-use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ValidatesScheduleCompleteness;
@@ -43,9 +42,7 @@ class RoundRobinScheduler implements SchedulerInterface
      * Generate a round-robin schedule for the given participants with integrated multi-leg support.
      *
      * @param array<Participant> $participants Tournament participants
-     * @param int $participantsPerEvent Number of participants per event
-     * @param int $legs Number of legs in the tournament
-     * @param LegStrategyInterface|null $strategy Strategy for multi-leg generation
+     * @param SchedulerOptions|null $options RoundRobinOptions, or null for a single mirrored leg
      *
      * @throws InvalidConfigurationException When configuration is invalid
      * @throws IncompleteScheduleException When constraints prevent complete schedule generation
@@ -53,31 +50,23 @@ class RoundRobinScheduler implements SchedulerInterface
     #[Override]
     public function schedule(
         array $participants,
-        int $participantsPerEvent = 2,
-        int $legs = 1,
-        mixed $strategy = null
+        ?SchedulerOptions $options = null
     ): Schedule {
-        $this->validateInputs($participants, $participantsPerEvent, $legs);
+        $options = $this->resolveOptions($options);
+        $this->validateInputs($participants);
 
-        if ($strategy !== null && !$strategy instanceof LegStrategyInterface) {
-            throw new InvalidConfigurationException(
-                'Round-robin scheduling options must be a leg strategy',
-                ['strategy' => is_object($strategy) ? $strategy::class : gettype($strategy)]
-            );
-        }
-
-        $strategy ??= new MirroredLegStrategy();
+        $strategy = $options->strategy;
 
         // Build the plan first: the strategy contributes its facts, an
         // unsatisfiable configuration fails here with diagnostics, and
         // generation, validation, and diagnostics all read shape facts
         // from the resulting plan.
-        $plan = $this->buildPlan($participants, $legs, $strategy);
+        $plan = $this->buildPlan($participants, $options->legs, $strategy);
 
         // Generate complete schedule using integrated approach, retrying with
         // rotated participant orderings when constraints reject the pairings
         // implied by a particular circle-method order.
-        $allEvents = $this->generateScheduleWithRetries($participants, $participantsPerEvent, $strategy, $plan);
+        $allEvents = $this->generateScheduleWithRetries($participants, $strategy, $plan);
         ksort($this->roundByes);
 
         $schedule = new Schedule($allEvents, [
@@ -97,25 +86,44 @@ class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
-     * Build the round-robin stage plan for the given configuration.
-     *
-     * The strategy-specific facts (role mirroring, randomization) reflect
-     * the default MirroredLegStrategy; shape facts (rounds, event counts)
-     * are strategy-independent. schedule() builds its plan from the
-     * strategy actually in use.
+     * Build the round-robin stage plan for the given configuration,
+     * including the configured strategy's contribution facts.
      *
      * @param array<Participant> $participants
+     * @param SchedulerOptions|null $options RoundRobinOptions, or null for a single mirrored leg
      * @throws InvalidConfigurationException When the configuration is unsatisfiable
      */
     #[Override]
     public function getPlan(
         array $participants,
-        int $legs,
-        int $participantsPerEvent = 2
+        ?SchedulerOptions $options = null
     ): RoundRobinPlan {
-        $this->validateInputs($participants, $participantsPerEvent, $legs);
+        $options = $this->resolveOptions($options);
+        $this->validateInputs($participants);
 
-        return $this->buildPlan($participants, $legs, new MirroredLegStrategy());
+        return $this->buildPlan($participants, $options->legs, $options->strategy);
+    }
+
+    /**
+     * Default and type-check the options: this scheduler accepts only
+     * RoundRobinOptions.
+     *
+     * @throws InvalidConfigurationException When another algorithm's options are passed
+     */
+    private function resolveOptions(?SchedulerOptions $options): RoundRobinOptions
+    {
+        if ($options === null) {
+            return new RoundRobinOptions();
+        }
+
+        if (!$options instanceof RoundRobinOptions) {
+            throw new InvalidConfigurationException(
+                'Round-robin scheduling requires RoundRobinOptions',
+                ['options' => $options::class]
+            );
+        }
+
+        return $options;
     }
 
     /**
@@ -158,31 +166,17 @@ class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
-     * Validate input parameters for scheduling.
+     * Validate the participant list (leg validation lives on the options).
      *
      * @param array<Participant> $participants
      * @throws InvalidConfigurationException
      */
-    private function validateInputs(array $participants, int $participantsPerEvent, int $legs): void
+    private function validateInputs(array $participants): void
     {
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Round-robin scheduling requires at least 2 participants',
                 ['participant_count' => count($participants), 'minimum_required' => 2]
-            );
-        }
-
-        if ($participantsPerEvent !== 2) {
-            throw new InvalidConfigurationException(
-                'Round-robin scheduling currently only supports 2 participants per event',
-                ['participants_per_event' => $participantsPerEvent, 'supported' => 2]
-            );
-        }
-
-        if ($legs < 1) {
-            throw new InvalidConfigurationException(
-                'Legs must be a positive integer',
-                ['legs' => $legs, 'minimum_required' => 1]
             );
         }
 
@@ -213,7 +207,6 @@ class RoundRobinScheduler implements SchedulerInterface
      */
     private function generateScheduleWithRetries(
         array $participants,
-        int $participantsPerEvent,
         LegStrategyInterface $strategy,
         RoundRobinPlan $plan
     ): array {
@@ -232,7 +225,7 @@ class RoundRobinScheduler implements SchedulerInterface
             $this->clearViolations();
 
             try {
-                return $this->generateIntegratedSchedule($ordered, $participantsPerEvent, $strategy, $plan);
+                return $this->generateIntegratedSchedule($ordered, $strategy, $plan);
             } catch (IncompleteScheduleException $exception) {
                 if ($attempt === $maxAttempts - 1) {
                     throw $exception;
@@ -252,14 +245,13 @@ class RoundRobinScheduler implements SchedulerInterface
      */
     private function generateIntegratedSchedule(
         array $participants,
-        int $participantsPerEvent,
         LegStrategyInterface $strategy,
         RoundRobinPlan $plan
     ): array {
         $allEvents = [];
         $this->roundByes = [];
         $legs = $plan->getLegs();
-        $context = new SchedulingContext($participants, $plan, [], 1, $participantsPerEvent);
+        $context = new SchedulingContext($participants, $plan, [], 1);
 
         $expectedEventsPerLeg = $plan->getEventsPerLeg();
 
@@ -279,7 +271,7 @@ class RoundRobinScheduler implements SchedulerInterface
             }
 
             $allEvents = [...$allEvents, ...$legEvents];
-            $context = new SchedulingContext($participants, $plan, $allEvents, $leg + 1, $participantsPerEvent);
+            $context = new SchedulingContext($participants, $plan, $allEvents, $leg + 1);
         }
 
         return $allEvents;
@@ -605,43 +597,5 @@ class RoundRobinScheduler implements SchedulerInterface
             $participants[$i] = $participants[$i + 1];
         }
         $participants[count($participants) - 1] = $temp;
-    }
-
-    /**
-     * Validate constraints before scheduling begins.
-     *
-     * @param array<Participant> $participants
-     * @throws InvalidConfigurationException
-     */
-    #[Override]
-    public function validateConstraints(array $participants, int $legs): void
-    {
-        // Validate basic configuration
-        if (count($participants) < 2) {
-            throw new InvalidConfigurationException(
-                'Round-robin scheduling requires at least 2 participants',
-                ['participant_count' => count($participants), 'minimum_required' => 2]
-            );
-        }
-
-        if ($legs < 1) {
-            throw new InvalidConfigurationException(
-                'Legs must be a positive integer',
-                ['legs' => $legs, 'minimum_required' => 1]
-            );
-        }
-
-        // Check for duplicate participant IDs
-        $ids = array_map(fn (Participant $p) => $p->getId(), $participants);
-        if (count($ids) !== count(array_unique($ids))) {
-            throw new InvalidConfigurationException(
-                'All participants must have unique IDs',
-                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))]
-            );
-        }
-
-        // TODO: Add advanced constraint validation here
-        // This could include checking for mathematically impossible constraints
-        // For now, we'll let the scheduling process detect violations
     }
 }

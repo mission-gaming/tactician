@@ -7,6 +7,7 @@ use MissionGaming\Tactician\Constraints\NoRepeatPairings;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 describe('NoRepeatPairings', function (): void {
@@ -66,7 +67,7 @@ describe('NoRepeatPairings', function (): void {
     // leg-1 pairing by design) - leg 2 generated zero events.
     it('permits complete multi-leg schedules', function (): void {
         $constraints = ConstraintSet::create()->noRepeatPairings()->build();
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($this->participants, 2, 2);
+        $schedule = (new RoundRobinScheduler($constraints))->schedule($this->participants, new RoundRobinOptions(legs: 2));
 
         expect(count($schedule))->toBe(12);
 

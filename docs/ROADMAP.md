@@ -22,7 +22,7 @@
 
 ## Phase 3: Algorithm-Neutral Core 🔄
 - ✅ `StagePlan` abstraction: expected events, rounds, and completeness rules supplied by the algorithm rather than inferred by generic services (milestone 1: context, validation, diagnostics, and constraints consume the plan; the event calculators and validation-context classes are removed, and leg strategies contribute facts via `LegPlanContribution` instead of the ornamental `GenerationPlan`)
-- Typed per-algorithm options objects, dissolving the legs/rounds parameter overload
+- ✅ Typed per-algorithm options objects, dissolving the legs/rounds parameter overload (milestone 2: config-constructible `RoundRobinOptions`/`SwissOptions` with stable strategy identifiers; `validateConstraints()`/`getExpectedEventCount()` folded into `getPlan()`), plus `PointsSystem` generalized to `RankingStrategy` with `WinDrawLossRanking`
 - Unify the incremental engines (Swiss, elimination, groups) behind a shared results-driven interface with a serializable `StageState` carrier
 
 **Design proposal: [docs/design/phase-3-algorithm-neutral-core.md](design/phase-3-algorithm-neutral-core.md)**

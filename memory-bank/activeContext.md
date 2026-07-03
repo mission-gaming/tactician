@@ -6,7 +6,7 @@
 - Documentation was audited end-to-end: README, ROADMAP, ARCHITECTURE, USAGE, CONTRIBUTING, and BACKGROUND all match the shipped code, and every docs/example snippet has been executed
 
 ## Next Steps
-- **Phase 3 implementation is underway** per the accepted design (`docs/design/phase-3-algorithm-neutral-core.md`). Milestone 1 (StagePlan introduction) is done: `src/Stage/` plans, `LegPlanContribution`, plan-carrying `SchedulingContext`, calculators/validation-context classes removed. Next: milestone 2 (typed options objects + `RankingStrategy`), then engine unification (M3), progression/pools/bracket presets (M4), sweep (M5).
+- **Phase 3 implementation is underway** per the accepted design (`docs/design/phase-3-algorithm-neutral-core.md`). Milestones 1 (StagePlan introduction) and 2 (typed `RoundRobinOptions`/`SwissOptions` killing the legs/rounds overload; `RankingStrategy` replacing `PointsSystem`) are done. Next: engine unification (M3: `StageState`/`RoundPairing`/`StageEngineInterface`/`StageOutcome`, `SimpleSwissScheduler` removal), then progression/pools/bracket presets (M4), sweep (M5).
 - Backtracking generation for constraint configurations the greedy generator cannot satisfy (known limitation, recorded in ROADMAP Phase 5)
 
 ## Active Decisions and Considerations

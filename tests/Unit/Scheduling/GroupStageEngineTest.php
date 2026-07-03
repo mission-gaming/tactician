@@ -124,7 +124,7 @@ describe('GroupStageEngine', function (): void {
 
         // Better seeds win every game, so group order follows seeds
         expect($standings['A']->getEntries()[0]->getParticipant()->getId())->toBe('t1');
-        expect($standings['A']->getEntries()[0]->getPoints())->toBe(9.0);
+        expect($standings['A']->getEntries()[0]->getRankingValue())->toBe(9.0);
         expect($standings['B']->getEntries()[0]->getParticipant()->getId())->toBe('t2');
 
         // A result pairing participants from different groups is rejected

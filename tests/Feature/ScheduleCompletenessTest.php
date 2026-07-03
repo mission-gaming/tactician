@@ -7,6 +7,7 @@ use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
@@ -78,9 +79,7 @@ it('generates complete schedules for every participant count, leg count, and str
 
     $schedule = (new RoundRobinScheduler())->schedule(
         completenessParticipants($participantCount),
-        2,
-        $legs,
-        $strategy
+        new RoundRobinOptions(legs: $legs, strategy: $strategy)
     );
 
     assertCompleteRoundRobin($schedule, $participantCount, $legs);
@@ -97,7 +96,7 @@ it('generates complete randomized schedules for odd and even participant counts'
     int $seed
 ): void {
     $scheduler = new RoundRobinScheduler(null, new Randomizer(new Mt19937($seed)));
-    $schedule = $scheduler->schedule(completenessParticipants($participantCount), 2, $legs);
+    $schedule = $scheduler->schedule(completenessParticipants($participantCount), new RoundRobinOptions(legs: $legs));
 
     assertCompleteRoundRobin($schedule, $participantCount, $legs);
 })
@@ -107,7 +106,7 @@ it('generates complete randomized schedules for odd and even participant counts'
 
 it('generates complete schedules with the shuffled leg strategy', function (): void {
     $strategy = new ShuffledLegStrategy(new Randomizer(new Mt19937(42)));
-    $schedule = (new RoundRobinScheduler())->schedule(completenessParticipants(5), 2, 2, $strategy);
+    $schedule = (new RoundRobinScheduler())->schedule(completenessParticipants(5), new RoundRobinOptions(legs: 2, strategy: $strategy));
 
     assertCompleteRoundRobin($schedule, 5, 2);
 });

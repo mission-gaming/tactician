@@ -104,7 +104,10 @@ readonly class GroupStageEngine
     {
         $schedules = [];
         foreach ($groups as $label => $groupParticipants) {
-            $schedule = $this->scheduler->schedule($groupParticipants, 2, $legs, $strategy);
+            $schedule = $this->scheduler->schedule(
+                $groupParticipants,
+                new RoundRobinOptions($legs, $strategy)
+            );
             $schedules[$label] = new Schedule(
                 $schedule->getEvents(),
                 [...$schedule->getMetadata(), 'group' => $label]

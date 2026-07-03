@@ -8,7 +8,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use Override;
 
 /**
- * Breaks ties by the sum of all opponents' points (Buchholz system).
+ * Breaks ties by the sum of all opponents' ranking values (Buchholz system).
  *
  * Rewards having faced stronger opposition; commonly used in Swiss events.
  */
@@ -38,7 +38,7 @@ readonly class BuchholzTiebreaker implements TiebreakerInterface
 
                 $opponentEntry = $entries[$opponent->getId()] ?? null;
                 if ($opponentEntry !== null) {
-                    $sum += $opponentEntry->getPoints();
+                    $sum += $opponentEntry->getRankingValue();
                 }
             }
         }

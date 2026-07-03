@@ -6,6 +6,7 @@ use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 describe('Schedule Validation Integration', function (): void {
@@ -31,8 +32,7 @@ describe('Schedule Validation Integration', function (): void {
         // Then: Should throw IncompleteScheduleException instead of silently generating partial schedule
         expect(fn () => $scheduler->schedule(
             $this->participants,
-            2, // participantsPerEvent
-            2 // legs
+            new RoundRobinOptions(legs: 2)
         ))->toThrow(IncompleteScheduleException::class);
     });
 
@@ -49,8 +49,7 @@ describe('Schedule Validation Integration', function (): void {
             // When: Attempting to generate schedule
             $scheduler->schedule(
                 $this->participants,
-                2, // participantsPerEvent
-                2 // legs
+                new RoundRobinOptions(legs: 2)
             );
 
             // Should not reach here
@@ -88,8 +87,7 @@ describe('Schedule Validation Integration', function (): void {
         // When: Generating schedule
         $schedule = $scheduler->schedule(
             $this->participants,
-            2, // participantsPerEvent
-            2 // legs
+            new RoundRobinOptions(legs: 2)
         );
 
         // Then: Should generate complete schedule without throwing exception
@@ -110,8 +108,7 @@ describe('Schedule Validation Integration', function (): void {
             // When: Attempting to generate schedule
             $scheduler->schedule(
                 $this->participants,
-                2, // participantsPerEvent
-                2 // legs
+                new RoundRobinOptions(legs: 2)
             );
             expect(false)->toBeTrue('Expected exception to be thrown');
         } catch (IncompleteScheduleException $e) {
@@ -147,8 +144,7 @@ describe('Schedule Validation Integration', function (): void {
         // When: Generating schedule
         $schedule = $scheduler->schedule(
             $this->participants,
-            2, // participantsPerEvent
-            2 // legs
+            new RoundRobinOptions(legs: 2)
         );
 
         // Then: Should generate complete schedule
@@ -182,8 +178,7 @@ describe('Schedule Validation Integration', function (): void {
         // When: Generating schedule
         $schedule = $scheduler->schedule(
             $minParticipants,
-            2, // participantsPerEvent
-            2 // legs
+            new RoundRobinOptions(legs: 2)
         );
 
         // Then: Should generate complete schedule (constraint not restrictive enough to prevent)
@@ -203,8 +198,7 @@ describe('Schedule Validation Integration', function (): void {
             // When: Schedule fails due to consecutive role constraints
             $scheduler->schedule(
                 $this->participants,
-                2, // participantsPerEvent
-                2 // legs
+                new RoundRobinOptions(legs: 2)
             );
             expect(false)->toBeTrue('Expected exception');
         } catch (IncompleteScheduleException $e) {
@@ -237,8 +231,7 @@ describe('Schedule Validation Integration', function (): void {
                 // When: Attempting to schedule with different leg counts
                 $schedule = $scheduler->schedule(
                     $this->participants,
-                    2, // participantsPerEvent
-                    $legs
+                    new RoundRobinOptions(legs: $legs)
                 );
 
                 // If successful, should have correct event count
@@ -264,8 +257,7 @@ describe('Schedule Validation Integration', function (): void {
             // When: Failing to generate complete schedule
             $scheduler->schedule(
                 $this->participants,
-                2, // participantsPerEvent
-                2 // legs
+                new RoundRobinOptions(legs: 2)
             );
             expect(false)->toBeTrue('Expected exception');
         } catch (IncompleteScheduleException $e) {

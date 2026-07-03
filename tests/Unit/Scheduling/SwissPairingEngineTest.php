@@ -12,6 +12,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Standings\RankingStrategy;
+use MissionGaming\Tactician\Standings\StandingsCalculator;
 
 describe('SwissPairingEngine', function (): void {
     beforeEach(function (): void {
@@ -123,6 +125,34 @@ describe('SwissPairingEngine', function (): void {
 
         expect($round2->getBye()?->getId())->not->toBe('p5');
         expect($round2->getEvents())->toHaveCount(2);
+    });
+
+    // Crediting a bye "as a win" is undefined under a non-win/draw/loss
+    // ranking scale, so the engine fails loudly instead of guessing
+    it('rejects bye crediting under a non-win-draw-loss ranking strategy', function (): void {
+        $customRanking = new readonly class () implements RankingStrategy {
+            /**
+             * @param array<Result> $results
+             */
+            #[Override]
+            public function rank(Participant $participant, array $results): float
+            {
+                return 0.0;
+            }
+        };
+
+        $participants = [...$this->participants, $this->eve];
+        $engine = new SwissPairingEngine(
+            standingsCalculator: new StandingsCalculator($customRanking)
+        );
+
+        $results = [
+            new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
+            new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
+        ];
+
+        expect(fn () => $engine->pairNextRound($participants, $results, ['p5']))
+            ->toThrow(InvalidConfigurationException::class, 'win/draw/loss ranking strategy');
     });
 
     it('credits a bye as a win when ordering the next round', function (): void {

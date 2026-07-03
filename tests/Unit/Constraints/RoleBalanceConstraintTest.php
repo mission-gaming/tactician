@@ -7,6 +7,7 @@ use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 describe('RoleBalanceConstraint', function (): void {
@@ -85,7 +86,7 @@ describe('RoleBalanceConstraint', function (): void {
             ->add(RoleBalanceConstraint::homeAway(3))
             ->build();
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule($this->participants, 2, 2);
+        $schedule = (new RoundRobinScheduler($constraints))->schedule($this->participants, new RoundRobinOptions(legs: 2));
 
         expect(count($schedule))->toBe(12);
 
@@ -122,7 +123,7 @@ describe('RoleBalanceConstraint', function (): void {
             ->build();
 
         foreach ([1, 2] as $legs) {
-            $schedule = (new RoundRobinScheduler($constraints))->schedule($participants, 2, $legs);
+            $schedule = (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: $legs));
 
             $expectedEvents = intdiv($fieldSize * ($fieldSize - 1), 2) * $legs;
             expect(count($schedule))->toBe($expectedEvents);

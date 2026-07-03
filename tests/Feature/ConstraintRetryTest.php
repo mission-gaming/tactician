@@ -7,6 +7,7 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 /**
@@ -31,7 +32,7 @@ it('satisfies seed protection by retrying alternative participant orderings', fu
         ->build();
 
     // 6 teams, 2 legs => 10 rounds; 25% protection covers rounds 1-2.
-    $schedule = (new RoundRobinScheduler($constraints))->schedule(retryParticipants(6), 2, 2);
+    $schedule = (new RoundRobinScheduler($constraints))->schedule(retryParticipants(6), new RoundRobinOptions(legs: 2));
 
     expect(count($schedule))->toBe(30);
 
@@ -53,7 +54,7 @@ it('still rejects configurations no participant ordering can satisfy', function 
 
     $scheduler = new RoundRobinScheduler($constraints);
 
-    expect(fn () => $scheduler->schedule(retryParticipants(4), 2, 2))
+    expect(fn () => $scheduler->schedule(retryParticipants(4), new RoundRobinOptions(legs: 2)))
         ->toThrow(IncompleteScheduleException::class);
 });
 
