@@ -7,29 +7,58 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  # Detect whether the change set contains anything beyond documentation.
+  # Docs-only changes (Markdown, docs/, memory-bank/, .clinerules, LICENSE)
+  # skip the test and coverage jobs; job-level skips report as "skipped",
+  # which satisfies required status checks (unlike workflow-level path
+  # filters, which would leave required checks pending).
+  changes:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        php-version: ['8.2', '8.3', '8.4']
-      fail-fast: false
-    
-    name: PHP ${{ matrix.php-version }}
-    
+    name: Detect changes
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+
     steps:
     - uses: actions/checkout@v4
-    
+
+    - name: Check for non-documentation changes
+      uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          code:
+            - '**'
+            - '!**/*.md'
+            - '!docs/**'
+            - '!memory-bank/**'
+            - '!.clinerules'
+            - '!LICENSE'
+
+  test:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+
+    strategy:
+      matrix:
+        php-version: ['8.2', '8.3', '8.4', '8.5']
+      fail-fast: false
+
+    name: PHP ${{ matrix.php-version }}
+
+    steps:
+    - uses: actions/checkout@v4
+
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
       with:
         php-version: ${{ matrix.php-version }}
         extensions: mbstring, xml, ctype, iconv, intl, pdo, dom, filter, gd, iconv, json, mbstring
         coverage: xdebug
-    
+
     - name: Validate composer.json and composer.lock
       run: composer validate --strict
-    
+
     - name: Cache Composer packages
       id: composer-cache
       uses: actions/cache@v4
@@ -38,27 +67,29 @@ jobs:
         key: ${{ runner.os }}-php-${{ matrix.php-version }}-${{ hashFiles('**/composer.lock') }}
         restore-keys: |
           ${{ runner.os }}-php-${{ matrix.php-version }}-
-    
+
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
-    
+
     - name: Run CI suite
       run: composer ci
 
   coverage:
     runs-on: ubuntu-latest
     name: Coverage
-    
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.4'
         extensions: mbstring, xml, ctype, iconv, intl, pdo, dom, filter, gd, iconv, json, mbstring
         coverage: xdebug
-    
+
     - name: Cache Composer packages
       id: composer-cache
       uses: actions/cache@v4
@@ -67,13 +98,13 @@ jobs:
         key: ${{ runner.os }}-php-8.4-${{ hashFiles('**/composer.lock') }}
         restore-keys: |
           ${{ runner.os }}-php-8.4-
-    
+
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
 
     - name: Prepare build directory
       run: mkdir -p build
-    
+
     - name: Run tests with coverage
       run: composer test-coverage
 
