@@ -63,6 +63,19 @@ describe('TieDecision', function (): void {
             ->toThrow(InvalidConfigurationException::class, 'tie_winner');
     });
 
+    it('rejects a leg result naming a winner outside the tie', function (): void {
+        $carol = new Participant('p3', 'Carol');
+        $foreignLeg = new Event([$this->alice, $carol], new Round(1), ['tie_leg' => 2]);
+
+        $legs = [
+            new Result($this->leg1, $this->alice),
+            new Result($foreignLeg, $carol),
+        ];
+
+        expect(fn () => TieDecision::advancer($legs, $this->alice, $this->bob, 2))
+            ->toThrow(InvalidConfigurationException::class, 'not in the tie');
+    });
+
     it('rejects a decision naming a participant outside the tie', function (): void {
         $legs = [
             new Result($this->leg1),

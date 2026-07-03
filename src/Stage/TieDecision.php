@@ -62,9 +62,18 @@ final readonly class TieDecision
         $legWins = [$first->getId() => 0, $second->getId() => 0];
         foreach ($legResults as $result) {
             $winner = $result->getWinner();
-            if ($winner !== null) {
-                ++$legWins[$winner->getId()];
+            if ($winner === null) {
+                continue;
             }
+
+            if (!isset($legWins[$winner->getId()])) {
+                throw new InvalidConfigurationException(
+                    'Leg result names a winner who is not in the tie',
+                    ['winner' => $winner->getId(), 'participants' => [$first->getId(), $second->getId()]]
+                );
+            }
+
+            ++$legWins[$winner->getId()];
         }
 
         if ($legWins[$first->getId()] !== $legWins[$second->getId()]) {
