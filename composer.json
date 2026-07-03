@@ -69,7 +69,7 @@
         "examples": "for f in examples/*.php; do php \"$f\" > /dev/null || exit 1; done",
         "norm": "composer normalize --dry-run",
         "norm-fix": "composer normalize",
-        "phpstan": "phpstan analyse",
+        "phpstan": "phpstan analyse --memory-limit=512M",
         "rector": "rector process --dry-run",
         "rector-fix": "rector process",
         "test": "pest",
