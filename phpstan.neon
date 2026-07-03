@@ -45,10 +45,16 @@ parameters:
 	universalObjectCratesClasses:
 		- PHPUnit\Framework\TestCase
 
-	# Pest binds test closures into the TestCase at runtime, so calls to
-	# protected mocking helpers ($this->createMock(), ->once(), ->never())
-	# are legal there even though PHPStan sees closure scope
+	# Pest 4 types $this inside test closures as Pest\PendingCalls\TestCall,
+	# but at runtime the closures are bound to the TestCase, where dynamic
+	# shared state ($this->participants in beforeEach) and the mocking
+	# helpers ($this->createMock()) are legal. These properties were typed
+	# mixed under the previous crate approach, so the scoped ignores lose no
+	# analysis coverage.
 	ignoreErrors:
 		-
-			message: '#Call to protected method [a-zA-Z]+\(\) of class PHPUnit\\Framework\\TestCase#'
+			message: '#^Access to an undefined property Pest\\PendingCalls\\TestCall::\$[a-zA-Z0-9_]+#'
+			path: tests/*
+		-
+			message: '#^Call to an undefined method Pest\\PendingCalls\\TestCall::[a-zA-Z0-9_]+\(\)#'
 			path: tests/*
