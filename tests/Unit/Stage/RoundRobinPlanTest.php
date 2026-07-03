@@ -156,6 +156,24 @@ describe('RoundRobinPlan', function (): void {
         expect($violations)->toContain('Pairing Player 2 vs Player 3 appears 0 time(s), expected 1.');
     });
 
+    it('exposes its participants re-indexed', function (): void {
+        $participants = roundRobinPlanParticipants(3);
+        $plan = new RoundRobinPlan([5 => $participants[0], 9 => $participants[1], 12 => $participants[2]], 1);
+
+        expect($plan->getParticipants())->toBe($participants);
+    });
+
+    it('reports events with the wrong participant count', function (): void {
+        [$participant1, $participant2, $participant3] = roundRobinPlanParticipants(3);
+        $plan = new RoundRobinPlan([$participant1, $participant2, $participant3], 1);
+
+        $violations = $plan->validateIntegrity(new Schedule([
+            new Event([$participant1, $participant2, $participant3], new Round(1)),
+        ]));
+
+        expect($violations)->toContain('Event 1 has 3 participants; round robin events must have exactly 2 participants.');
+    });
+
     it('reports events with foreign or duplicated participants', function (): void {
         [$participant1, $participant2] = roundRobinPlanParticipants(2);
         $plan = new RoundRobinPlan([$participant1, $participant2], 1);

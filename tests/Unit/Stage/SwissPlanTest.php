@@ -106,6 +106,38 @@ describe('SwissPlan', function (): void {
         expect($violations)->toContain('Pairing p1 vs p2 appears 2 time(s); Swiss pairings may not repeat.');
     });
 
+    it('exposes its participants re-indexed', function (): void {
+        $participants = swissPlanParticipants(3);
+        $plan = new SwissPlan([5 => $participants[0], 9 => $participants[1], 12 => $participants[2]], 2);
+
+        expect($plan->getParticipants())->toBe($participants);
+    });
+
+    it('reports events with the wrong participant count', function (): void {
+        [$participant1, $participant2, $participant3, $participant4] = swissPlanParticipants(4);
+        $plan = new SwissPlan([$participant1, $participant2, $participant3, $participant4], 1);
+
+        $violations = $plan->validateIntegrity(new Schedule([
+            new Event([$participant1, $participant2, $participant3], new Round(1)),
+        ]));
+
+        expect($violations)->toContain('Event 1 has 3 participants; Swiss events must have exactly 2 participants.');
+    });
+
+    it('reports events with foreign or duplicated participants', function (): void {
+        [$participant1, $participant2] = swissPlanParticipants(2);
+        $plan = new SwissPlan([$participant1, $participant2], 1);
+        $outsider = new Participant('x1', 'Outsider');
+
+        $violations = $plan->validateIntegrity(new Schedule([
+            new Event([$participant1, $outsider], new Round(1)),
+            new Event([$participant2, $participant2], new Round(1)),
+        ]));
+
+        expect($violations)->toContain('Event 1 contains a participant that is not in the tournament.');
+        expect($violations)->toContain('Event 2 contains participant p2 twice.');
+    });
+
     it('rejects rounds outside the configured length', function (): void {
         [$participant1, $participant2] = swissPlanParticipants(2);
         $plan = new SwissPlan([$participant1, $participant2], 1);
