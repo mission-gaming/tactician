@@ -114,6 +114,10 @@ trait EliminationBracketSupport
      *
      * @param array<Result> $results
      * @return array<string, Result>
+     *
+     * @throws InvalidConfigurationException When a result lacks a round number, does not
+     *                                       reference a two-participant event, or duplicates
+     *                                       another result for the same match
      */
     private function indexResults(array $results): array
     {
@@ -122,13 +126,33 @@ trait EliminationBracketSupport
             $event = $result->getEvent();
             $eventParticipants = $event->getParticipants();
             $round = $event->getRound()?->getNumber();
-            if ($round === null || count($eventParticipants) !== 2) {
-                continue;
+
+            if ($round === null) {
+                throw new InvalidConfigurationException(
+                    'Elimination results must reference events with a round number; record results against the events produced by the engine',
+                    ['participants' => array_map(fn (Participant $p) => $p->getId(), $eventParticipants)]
+                );
+            }
+
+            if (count($eventParticipants) !== 2) {
+                throw new InvalidConfigurationException(
+                    'Elimination results must reference two-participant events',
+                    ['round' => $round, 'participant_count' => count($eventParticipants)]
+                );
             }
 
             $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
             sort($ids);
-            $index[$round . ':' . implode('|', $ids)] = $result;
+            $key = $round . ':' . implode('|', $ids);
+
+            if (isset($index[$key])) {
+                throw new InvalidConfigurationException(
+                    "Two results reference the same elimination match ({$ids[0]} vs {$ids[1]}, round {$round})",
+                    ['round' => $round, 'participants' => $ids]
+                );
+            }
+
+            $index[$key] = $result;
         }
 
         return $index;

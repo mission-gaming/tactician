@@ -155,6 +155,36 @@ describe('SingleEliminationEngine', function (): void {
         expect(eventIdPairs($pairing->getEvents()))->toBe([['u1', 'u2']]);
     });
 
+    it('rejects two results for the same match', function (): void {
+        $engine = new SingleEliminationEngine();
+        $participants = seededField(4);
+        $round1 = $engine->pairNextRound($participants, []);
+
+        // A conflicting second result for the same match must not silently win
+        $results = [
+            new Result($round1->getEvents()[0], $participants[0]),
+            new Result($round1->getEvents()[0], $participants[3]),
+            new Result($round1->getEvents()[1], $participants[1]),
+        ];
+
+        expect(fn () => $engine->pairNextRound($participants, $results))
+            ->toThrow(InvalidConfigurationException::class, 'same elimination match');
+    });
+
+    it('rejects results whose event has no round number', function (): void {
+        $engine = new SingleEliminationEngine();
+        $participants = seededField(4);
+
+        // A self-constructed, round-less event must error rather than be
+        // silently treated as unplayed (which would hang driver loops)
+        $results = [
+            new Result(new Event([$participants[0], $participants[3]]), $participants[0]),
+        ];
+
+        expect(fn () => $engine->pairNextRound($participants, $results))
+            ->toThrow(InvalidConfigurationException::class, 'round number');
+    });
+
     it('rejects fewer than two participants and duplicate IDs', function (): void {
         $engine = new SingleEliminationEngine();
 
