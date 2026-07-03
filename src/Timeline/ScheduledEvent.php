@@ -29,10 +29,14 @@ final readonly class ScheduledEvent
      *                                   UTC on construction, so the class
      *                                   invariant holds whatever zone the
      *                                   caller supplied
+     * @param string|null $resource The named resource hosting the event
+     *                              (venue, pitch, court...); null when the
+     *                              timeline declares no resources
      */
     public function __construct(
         private Event $event,
-        DateTimeImmutable $kickoff
+        DateTimeImmutable $kickoff,
+        private ?string $resource = null
     ) {
         $this->kickoff = $kickoff->setTimezone(new DateTimeZone('UTC'));
     }
@@ -51,16 +55,26 @@ final readonly class ScheduledEvent
     }
 
     /**
+     * The named resource hosting the event, or null when the timeline
+     * declares no resources.
+     */
+    public function getResource(): ?string
+    {
+        return $this->resource;
+    }
+
+    /**
      * Convert to a serializable array; the kickoff is an ISO 8601 UTC
      * string, the event in its own array form (participants by ID).
      *
-     * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string}
+     * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}
      */
     public function toArray(): array
     {
         return [
             'event' => $this->event->toArray(),
             'kickoff' => $this->kickoff->format('Y-m-d\TH:i:s\Z'),
+            'resource' => $this->resource,
         ];
     }
 
@@ -92,6 +106,11 @@ final readonly class ScheduledEvent
             throw new InvalidArgumentException('Scheduled event kickoff is not parseable', 0, $exception);
         }
 
-        return new self($event, $kickoff);
+        $resource = $data['resource'] ?? null;
+        if ($resource !== null && (!is_string($resource) || $resource === '')) {
+            throw new InvalidArgumentException('Scheduled event resource must be a non-empty string or null');
+        }
+
+        return new self($event, $kickoff, $resource);
     }
 }
