@@ -87,7 +87,7 @@ final readonly class TimelineAssigner
 
         if ($violations !== []) {
             throw new InvalidConfigurationException(
-                'The assigned timeline violates ' . count($violations) . ' time rule(s): '
+                'The assigned timeline has ' . count($violations) . ' time-rule violation(s): '
                     . implode(' ', array_slice($violations, 0, 3)),
                 ['violations' => $violations]
             );

@@ -194,7 +194,7 @@ describe('TimelineAssigner with rules', function (): void {
             $assigner->assign($schedule, $timeline);
             expect(false)->toBeTrue('Expected InvalidConfigurationException was not thrown');
         } catch (InvalidConfigurationException $e) {
-            expect($e->getMessage())->toContain('time rule');
+            expect($e->getMessage())->toContain('time-rule violation');
             $violations = $e->getContext()['violations'];
             expect($violations)->not->toBeEmpty();
             expect($violations[0])->toContain('[Minimum Rest (PT48H)]');
