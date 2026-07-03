@@ -27,10 +27,20 @@ final readonly class TimelineAssigner
 {
     /**
      * @param array<TimelineRule> $rules Time-aware rules every assignment must satisfy
+     *
+     * @throws InvalidConfigurationException When an entry is not a TimelineRule
      */
     public function __construct(
         private array $rules = []
     ) {
+        foreach ($rules as $index => $rule) {
+            if (!$rule instanceof TimelineRule) {
+                throw new InvalidConfigurationException(
+                    'Every timeline rule must implement TimelineRule',
+                    ['index' => $index, 'given' => get_debug_type($rule)]
+                );
+            }
+        }
     }
 
     /**

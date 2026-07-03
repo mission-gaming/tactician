@@ -287,4 +287,12 @@ describe('TimelineAssigner with rules', function (): void {
         expect(fn () => (new TimelineAssigner([$noLunchKickoffs]))->assign($schedule, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'No Lunchtime Kickoffs');
     });
+
+    it('rejects rule entries that are not timeline rules', function (): void {
+        // Config-driven platforms build this array from plain data, so a
+        // wrong entry must fail at construction, not fatal mid-assignment
+        $notARule = unserialize(serialize('just a string'));
+
+        new TimelineAssigner([$notARule]);
+    })->throws(InvalidConfigurationException::class, 'must implement TimelineRule');
 });
