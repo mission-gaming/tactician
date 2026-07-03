@@ -107,8 +107,8 @@ final readonly class ScheduledEvent
         }
 
         $resource = $data['resource'] ?? null;
-        if ($resource !== null && !is_string($resource)) {
-            throw new InvalidArgumentException('Scheduled event resource must be a string or null');
+        if ($resource !== null && (!is_string($resource) || $resource === '')) {
+            throw new InvalidArgumentException('Scheduled event resource must be a non-empty string or null');
         }
 
         return new self($event, $kickoff, $resource);

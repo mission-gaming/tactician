@@ -234,6 +234,16 @@ describe('ScheduledSchedule', function (): void {
                 'resource' => 42,
             ]],
         ]))->toThrow(InvalidArgumentException::class, 'resource');
+        // Deserialized data upholds the same invariant the definition
+        // enforces: resource names are never empty
+        expect(fn () => ScheduledSchedule::fromArray([
+            'participants' => [$participant, ['id' => 'p2', 'label' => 'Bob', 'seed' => null, 'metadata' => []]],
+            'events' => [[
+                'event' => ['participants' => ['p1', 'p2'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => []],
+                'kickoff' => '2026-08-01T19:00:00Z',
+                'resource' => '',
+            ]],
+        ]))->toThrow(InvalidArgumentException::class, 'non-empty');
     });
 
     // The UTC invariant is enforced, not assumed: a zoned kickoff is
