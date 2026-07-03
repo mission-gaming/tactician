@@ -10,6 +10,7 @@ use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use Random\Engine\Mt19937;
@@ -221,7 +222,7 @@ describe('RoundRobinScheduler', function (): void {
             new Participant('p5', 'Eve'),
         ];
 
-        $schedule = (new RoundRobinScheduler())->schedule($participants, 2, 2);
+        $schedule = (new RoundRobinScheduler())->schedule($participants, new RoundRobinOptions(legs: 2));
         /** @var array<int, string> $byes */
         $byes = $schedule->getMetadataValue('byes');
 
@@ -305,7 +306,7 @@ describe('RoundRobinScheduler', function (): void {
 
         $scheduler = new RoundRobinScheduler();
 
-        expect(fn () => $scheduler->schedule($this->participants, 2, 2, $vetoStrategy))
+        expect(fn () => $scheduler->schedule($this->participants, new RoundRobinOptions(legs: 2, strategy: $vetoStrategy)))
             ->toThrow(InvalidConfigurationException::class, 'Vetoed by test strategy');
     });
 });

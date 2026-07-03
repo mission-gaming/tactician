@@ -23,7 +23,9 @@ inferring round-robin formulas:
 - **SwissPlan**: Knows rounds and per-round event counts; legs are null, and an open-ended (engine-driven) stage may have null totals
 
 ### Scheduling System
-- **SchedulerInterface**: Contract for whole-schedule generators with integrated multi-leg support; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
+- **SchedulerInterface**: Contract for whole-schedule generators — participants and typed options in, a validated schedule out; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
+- **SchedulerOptions**: Typed per-algorithm options, one type per scheduler — no overloaded scalars. Config-constructible (`fromArray()`/`toArray()`) with stable identifiers.
+- **RoundRobinOptions / SwissOptions**: Legs + leg strategy for round robin; rounds for Swiss (retiring the old "legs means rounds here" overload)
 - **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, round-parity home/away role alternation, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first and generates from it.
 - **SimpleSwissScheduler**: Whole-schedule Swiss generation with random non-repeat pairing, planned by a `SwissPlan`
 - **SchedulingContext**: Multi-leg aware historical state management carrying the stage plan (`getPlan()`)
@@ -260,7 +262,7 @@ The architecture includes several value objects that support the core scheduling
 The algorithm's declaration of a stage's shape, built by the scheduler and
 readable from the scheduling context, exceptions, and diagnostics:
 ```php
-$plan = $scheduler->getPlan($participants, legs: 2);
+$plan = $scheduler->getPlan($participants, new RoundRobinOptions(legs: 2));
 $plan->getAlgorithm();          // 'round-robin' — stable identifier
 $plan->getTotalRounds();        // 6 (null when unknowable up front)
 $plan->getLegs();               // 2 (null when legs do not apply, e.g. Swiss)

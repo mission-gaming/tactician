@@ -2,6 +2,7 @@
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 describe('MirroredLegStrategy Integration', function (): void {
@@ -15,10 +16,8 @@ describe('MirroredLegStrategy Integration', function (): void {
 
         $scheduler = new RoundRobinScheduler();
         $schedule = $scheduler->schedule(
-            participants: $participants,
-            participantsPerEvent: 2,
-            legs: 2,
-            strategy: new MirroredLegStrategy()
+            $participants,
+            new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
         );
 
         $roundsPerLeg = $schedule->getMetadataValue('rounds_per_leg');
@@ -73,10 +72,8 @@ describe('MirroredLegStrategy Integration', function (): void {
 
         $scheduler = new RoundRobinScheduler();
         $schedule = $scheduler->schedule(
-            participants: $participants,
-            participantsPerEvent: 2,
-            legs: 2,
-            strategy: new MirroredLegStrategy()
+            $participants,
+            new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
         );
 
         $celticHomeCount = 0;

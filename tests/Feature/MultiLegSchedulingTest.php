@@ -3,6 +3,7 @@
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 // Tests that the scheduler can generate a 2-leg tournament where the second leg mirrors
@@ -19,9 +20,7 @@ it('generates multi-leg schedule with mirrored strategy', function (): void {
 
     $schedule = $scheduler->schedule(
         $participants,
-        2, // participantsPerEvent
-        2, // legs
-        new MirroredLegStrategy()
+        new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
     );
 
     // Should have 2 legs worth of events
@@ -68,9 +67,7 @@ it('generates multi-leg schedule with repeated strategy', function (): void {
 
     $schedule = $scheduler->schedule(
         $participants,
-        2, // participantsPerEvent
-        2, // legs
-        new RepeatedLegStrategy()
+        new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy())
     );
 
     expect(count($schedule))->toBe(12); // 6 events per leg × 2 legs

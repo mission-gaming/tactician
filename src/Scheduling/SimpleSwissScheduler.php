@@ -32,11 +32,8 @@ class SimpleSwissScheduler implements SchedulerInterface
     /**
      * Generate a simple Swiss schedule by randomly selecting a subset of non-repeat opponents.
      *
-     * Swiss has no legs concept, so the interface's $legs parameter is
-     * interpreted here as the number of rounds to generate.
-     *
      * @param array<Participant> $participants
-     * @param int $rounds Number of Swiss rounds to generate
+     * @param SchedulerOptions|null $options SwissOptions, or null for 3 rounds
      *
      * @throws InvalidConfigurationException
      * @throws IncompleteScheduleException
@@ -44,15 +41,15 @@ class SimpleSwissScheduler implements SchedulerInterface
     #[Override]
     public function schedule(
         array $participants,
-        int $participantsPerEvent = 2,
-        int $rounds = 3,
-        mixed $options = null
+        ?SchedulerOptions $options = null
     ): Schedule {
-        $this->validateInputs($participants, $participantsPerEvent, $rounds, $options);
+        $options = $this->resolveOptions($options);
+        $rounds = $options->rounds;
+        $this->validateInputs($participants, $rounds);
         $this->clearViolations();
 
         $plan = new SwissPlan($participants, $rounds);
-        $context = new SchedulingContext($participants, $plan, [], 1, $participantsPerEvent);
+        $context = new SchedulingContext($participants, $plan);
         $events = [];
         $playedPairings = [];
         $byeCounts = array_fill_keys(array_map(fn (Participant $participant) => $participant->getId(), $participants), 0);
@@ -77,13 +74,12 @@ class SimpleSwissScheduler implements SchedulerInterface
                 $playedPairings[$this->pairingKey($eventParticipants[0], $eventParticipants[1])] = true;
             }
 
-            $context = new SchedulingContext($participants, $plan, $events, 1, $participantsPerEvent);
+            $context = new SchedulingContext($participants, $plan, $events);
         }
 
         $schedule = new Schedule($events, [
             'algorithm' => $plan->getAlgorithm(),
             'participant_count' => count($participants),
-            'participants_per_event' => $participantsPerEvent,
             'rounds' => $plan->getTotalRounds(),
             'total_rounds' => $plan->getTotalRounds(),
             'expected_event_count' => $plan->getExpectedEventCount(),
@@ -98,18 +94,40 @@ class SimpleSwissScheduler implements SchedulerInterface
      * Build the Swiss stage plan for the given configuration.
      *
      * @param array<Participant> $participants
-     * @param int $rounds Number of Swiss rounds (the interface's $legs parameter)
+     * @param SchedulerOptions|null $options SwissOptions, or null for 3 rounds
      * @throws InvalidConfigurationException
      */
     #[Override]
     public function getPlan(
         array $participants,
-        int $rounds,
-        int $participantsPerEvent = 2
+        ?SchedulerOptions $options = null
     ): SwissPlan {
-        $this->validateInputs($participants, $participantsPerEvent, $rounds, null);
+        $options = $this->resolveOptions($options);
+        $this->validateInputs($participants, $options->rounds);
 
-        return new SwissPlan($participants, $rounds);
+        return new SwissPlan($participants, $options->rounds);
+    }
+
+    /**
+     * Default and type-check the options: this scheduler accepts only
+     * SwissOptions.
+     *
+     * @throws InvalidConfigurationException When another algorithm's options are passed
+     */
+    private function resolveOptions(?SchedulerOptions $options): SwissOptions
+    {
+        if ($options === null) {
+            return new SwissOptions();
+        }
+
+        if (!$options instanceof SwissOptions) {
+            throw new InvalidConfigurationException(
+                'Simple Swiss scheduling requires SwissOptions',
+                ['options' => $options::class]
+            );
+        }
+
+        return $options;
     }
 
     /**
@@ -117,33 +135,12 @@ class SimpleSwissScheduler implements SchedulerInterface
      *
      * @throws InvalidConfigurationException
      */
-    private function validateInputs(array $participants, int $participantsPerEvent, int $rounds, mixed $options): void
+    private function validateInputs(array $participants, int $rounds): void
     {
-        if ($options !== null) {
-            throw new InvalidConfigurationException(
-                'Simple Swiss scheduling does not currently accept algorithm-specific options',
-                ['options' => is_object($options) ? $options::class : gettype($options)]
-            );
-        }
-
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Simple Swiss scheduling requires at least 2 participants',
                 ['participant_count' => count($participants), 'minimum_required' => 2]
-            );
-        }
-
-        if ($participantsPerEvent !== 2) {
-            throw new InvalidConfigurationException(
-                'Simple Swiss scheduling currently only supports 2 participants per event',
-                ['participants_per_event' => $participantsPerEvent, 'supported' => 2]
-            );
-        }
-
-        if ($rounds < 1) {
-            throw new InvalidConfigurationException(
-                'Rounds must be a positive integer',
-                ['rounds' => $rounds, 'minimum_required' => 1]
             );
         }
 
@@ -338,16 +335,5 @@ class SimpleSwissScheduler implements SchedulerInterface
         sort($ids);
 
         return implode('|', $ids);
-    }
-
-    /**
-     * @param array<Participant> $participants
-     *
-     * @throws InvalidConfigurationException
-     */
-    #[Override]
-    public function validateConstraints(array $participants, int $rounds): void
-    {
-        $this->validateInputs($participants, 2, $rounds, null);
     }
 }

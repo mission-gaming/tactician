@@ -42,6 +42,7 @@ anything else that competes.
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
 | **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
 | **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out. Composed via `GroupStageEngine` qualifiers and the elimination engines. |
+| **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
 ## Basic Usage
@@ -284,6 +285,7 @@ Multi-leg tournaments allow the same participants to play multiple times with di
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 $participants = [
@@ -297,27 +299,29 @@ $scheduler = new RoundRobinScheduler();
 
 // Home and away legs (participant order reversed in second leg)
 $mirroredSchedule = $scheduler->schedule(
-    participants: $participants,
-    participantsPerEvent: 2,
-    legs: 2,
-    strategy: new MirroredLegStrategy()
+    $participants,
+    new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
 );
 
 // Repeated encounters (same pairings each leg)
 $repeatedSchedule = $scheduler->schedule(
-    participants: $participants,
-    participantsPerEvent: 2,
-    legs: 3,
-    strategy: new RepeatedLegStrategy()
+    $participants,
+    new RoundRobinOptions(legs: 3, strategy: new RepeatedLegStrategy())
 );
 
 // Randomized encounters (shuffled participant order each leg)
 $shuffledSchedule = $scheduler->schedule(
-    participants: $participants,
-    participantsPerEvent: 2,
-    legs: 2,
-    strategy: new ShuffledLegStrategy()
+    $participants,
+    new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy())
 );
+```
+
+Options are plain-data constructible for config-driven platforms, with the
+stable strategy identifiers `mirrored`, `repeated`, and `shuffled`:
+
+```php
+$options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'mirrored']);
+$options->toArray(); // ['legs' => 2, 'strategy' => 'mirrored']
 ```
 
 ### Multi-Leg Schedule Analysis
@@ -356,10 +360,8 @@ $constraints = ConstraintSet::create()
 $scheduler = new RoundRobinScheduler($constraints);
 
 $schedule = $scheduler->schedule(
-    participants: $participants,
-    participantsPerEvent: 2,
-    legs: 2,
-    strategy: new MirroredLegStrategy()
+    $participants,
+    new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
 );
 ```
 
@@ -655,18 +657,18 @@ function handleIncompleteSchedule(IncompleteScheduleException $e): void
 
 ```php
 use MissionGaming\Tactician\Scheduling\SchedulerInterface;
+use MissionGaming\Tactician\Scheduling\SchedulerOptions;
 use MissionGaming\Tactician\DTO\Schedule;
 
 class CustomScheduler implements SchedulerInterface
 {
     public function schedule(
         array $participants,
-        int $participantsPerEvent = 2,
-        int $rounds = 1,
-        mixed $options = null
+        ?SchedulerOptions $options = null
     ): Schedule {
-        // Custom scheduling logic; validate $options yourself (the round-robin
-        // scheduler, for example, accepts a LegStrategyInterface here)
+        // Accept exactly one options type (define your own SchedulerOptions
+        // implementation) and reject any other loudly; null means your
+        // documented defaults
         $events = $this->generateCustomEvents($participants);
 
         return new Schedule($events, [
@@ -675,9 +677,10 @@ class CustomScheduler implements SchedulerInterface
         ]);
     }
 
-    // Implement validateConstraints() and getPlan() — the plan declares
-    // your algorithm's shape (rounds, legs, expected events) so validation
-    // and diagnostics work without round-robin assumptions...
+    // Implement getPlan() — the plan declares your algorithm's shape
+    // (rounds, legs, expected events) so validation and diagnostics work
+    // without round-robin assumptions, and it fails loudly for
+    // unsatisfiable configurations before any event exists...
 }
 ```
 
@@ -688,10 +691,12 @@ plan is what validation, diagnostics, and shape-aware constraints (e.g.
 `SeedProtectionConstraint`) consume — no component infers tournament shape:
 
 ```php
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SimpleSwissScheduler;
+use MissionGaming\Tactician\Scheduling\SwissOptions;
 
-$plan = (new RoundRobinScheduler())->getPlan($participants, legs: 2);
+$plan = (new RoundRobinScheduler())->getPlan($participants, new RoundRobinOptions(legs: 2));
 
 $plan->getAlgorithm();          // 'round-robin' — stable identifier
 $plan->getTotalRounds();        // 6 for 4 participants over 2 legs
@@ -704,7 +709,7 @@ $plan->getExpectedMeetings($participants[0], $participants[1]); // 2
 
 // Swiss has rounds but no legs: the legs accessors are null because the
 // concept does not apply — never a fabricated 1
-$swissPlan = (new SimpleSwissScheduler())->getPlan($participants, 3);
+$swissPlan = (new SimpleSwissScheduler())->getPlan($participants, new SwissOptions(rounds: 3));
 $swissPlan->getAlgorithm();     // 'swiss'
 $swissPlan->getTotalRounds();   // 3
 $swissPlan->getLegs();          // null
@@ -779,10 +784,8 @@ $scheduler = new RoundRobinScheduler($constraints);
 
 // Generate full season: 2 legs (home and away)
 $season = $scheduler->schedule(
-    participants: $teams,
-    participantsPerEvent: 2,
-    legs: 2,
-    strategy: new MirroredLegStrategy()
+    $teams,
+    new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
 );
 
 echo "Premier League season: " . count($season) . " matches\n";

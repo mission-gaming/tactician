@@ -6,6 +6,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 describe('Schedule serialization', function (): void {
@@ -67,7 +68,7 @@ describe('Schedule serialization', function (): void {
             new Participant('p4', 'Dave'),
             new Participant('p5', 'Eve'),
         ];
-        $schedule = (new RoundRobinScheduler())->schedule($participants, 2, 2);
+        $schedule = (new RoundRobinScheduler())->schedule($participants, new RoundRobinOptions(legs: 2));
 
         $restored = Schedule::fromJson($schedule->toJson());
 

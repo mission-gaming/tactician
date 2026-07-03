@@ -6,6 +6,7 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
@@ -126,7 +127,7 @@ describe('Round Robin Integration', function (): void {
         }
 
         $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule($participants, 2, 2);
+        $schedule = $scheduler->schedule($participants, new RoundRobinOptions(legs: 2));
 
         expect($schedule->count())->toBe(20);
         expect($schedule->getMetadataValue('rounds_per_leg'))->toBe(5);
@@ -207,7 +208,7 @@ describe('Round Robin Integration', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         try {
-            $scheduler->schedule($participants, 2, 2);
+            $scheduler->schedule($participants, new RoundRobinOptions(legs: 2));
             expect(false)->toBeTrue('Expected seed protection to reject the top-seed pairing in leg 1');
         } catch (IncompleteScheduleException $e) {
             $violationsByConstraint = $e->getViolationCollector()->getViolationsByConstraint();
@@ -348,9 +349,7 @@ describe('Round Robin Integration', function (): void {
 
         $mirroredSchedule = $scheduler->schedule(
             $participants,
-            2, // participantsPerEvent
-            2, // legs
-            new MissionGaming\Tactician\LegStrategies\MirroredLegStrategy()
+            new RoundRobinOptions(legs: 2, strategy: new MissionGaming\Tactician\LegStrategies\MirroredLegStrategy())
         );
 
         // Then: Should have continuous round numbering
@@ -619,9 +618,7 @@ describe('Round Robin Integration', function (): void {
         // variant forbids the repeat pairings every later leg consists of
         expect(fn () => $scheduler->schedule(
             $participants,
-            2, // participantsPerEvent
-            2, // legs
-            new MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy()
+            new RoundRobinOptions(legs: 2, strategy: new MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy())
         ))->toThrow(MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 

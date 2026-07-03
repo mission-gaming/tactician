@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 // Create teams for a mini league
@@ -33,19 +34,19 @@ $constraints = ConstraintSet::create()
 $scheduler = new RoundRobinScheduler($constraints);
 
 $schedulesToCompare['Home & Away (Mirrored)'] = [
-    'schedule' => $scheduler->schedule($teams, 2, 2, new MirroredLegStrategy()),
+    'schedule' => $scheduler->schedule($teams, new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())),
     'strategy' => 'MirroredLegStrategy',
     'description' => 'Each team plays every other team twice - once at home, once away. Second leg reverses the fixture order.',
 ];
 
 $schedulesToCompare['Repeated Encounters'] = [
-    'schedule' => $scheduler->schedule($teams, 2, 2, new RepeatedLegStrategy()),
+    'schedule' => $scheduler->schedule($teams, new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy())),
     'strategy' => 'RepeatedLegStrategy',
     'description' => 'Each team plays every other team twice with identical fixture order in both legs.',
 ];
 
 $schedulesToCompare['Shuffled Legs'] = [
-    'schedule' => $scheduler->schedule($teams, 2, 2, new ShuffledLegStrategy()),
+    'schedule' => $scheduler->schedule($teams, new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy())),
     'strategy' => 'ShuffledLegStrategy',
     'description' => 'Each team plays every other team twice with randomized fixture order in each leg.',
 ];
@@ -456,6 +457,7 @@ uasort($leagueTable, function ($a, $b) {
 use MissionGaming\\Tactician\\Scheduling\\RoundRobinScheduler;
 use MissionGaming\\Tactician\\LegStrategies\\MirroredLegStrategy;
 use MissionGaming\\Tactician\\Constraints\\ConstraintSet;
+use MissionGaming\\Tactician\\Scheduling\\RoundRobinOptions;
 
 // Create home & away league
 $constraints = ConstraintSet::create()
@@ -466,10 +468,8 @@ $scheduler = new RoundRobinScheduler($constraints);
 
 // Generate 2-leg tournament with mirrored fixtures
 $schedule = $scheduler->schedule(
-    participants: $teams,
-    participantsPerEvent: 2,
-    legs: 2,
-    strategy: new MirroredLegStrategy()
+    $teams,
+    new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
 );
 
 // Access multi-leg metadata
