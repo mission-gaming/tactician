@@ -180,6 +180,7 @@ readonly class GroupStageEngine
      * @return array<Participant> Qualifiers with knockout seeds assigned
      *
      * @throws InvalidConfigurationException When qualifiersPerGroup exceeds a group's size
+     *                                       or group play is incomplete
      */
     public function getQualifiers(array $groups, array $results, int $qualifiersPerGroup): array
     {
@@ -199,6 +200,8 @@ readonly class GroupStageEngine
             }
         }
 
+        $this->assertGroupPlayComplete($groups, $results);
+
         $groupStandings = $this->calculateGroupStandings($groups, $results);
 
         $qualifiers = [];
@@ -212,6 +215,46 @@ readonly class GroupStageEngine
         }
 
         return $qualifiers;
+    }
+
+    /**
+     * Verify every within-group pairing has at least one recorded result.
+     *
+     * Qualifying from a partial table would silently seed the wrong
+     * participants into the knockout.
+     *
+     * @param array<string, array<Participant>> $groups
+     * @param array<Result> $results
+     *
+     * @throws InvalidConfigurationException When any group pairing has no result
+     */
+    private function assertGroupPlayComplete(array $groups, array $results): void
+    {
+        $playedPairings = [];
+        foreach ($results as $result) {
+            $eventParticipants = $result->getEvent()->getParticipants();
+            if (count($eventParticipants) === 2) {
+                $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
+                sort($ids);
+                $playedPairings[implode('|', $ids)] = true;
+            }
+        }
+
+        foreach ($groups as $label => $groupParticipants) {
+            $groupSize = count($groupParticipants);
+            for ($i = 0; $i < $groupSize - 1; ++$i) {
+                for ($j = $i + 1; $j < $groupSize; ++$j) {
+                    $ids = [$groupParticipants[$i]->getId(), $groupParticipants[$j]->getId()];
+                    sort($ids);
+                    if (!isset($playedPairings[implode('|', $ids)])) {
+                        throw new InvalidConfigurationException(
+                            "Group {$label} play is incomplete: {$groupParticipants[$i]->getLabel()} vs {$groupParticipants[$j]->getLabel()} has no result",
+                            ['group' => $label, 'participants' => $ids]
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /**

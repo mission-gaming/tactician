@@ -168,6 +168,20 @@ describe('GroupStageEngine', function (): void {
             ->toThrow(InvalidConfigurationException::class);
     });
 
+    it('rejects qualification while group play is incomplete', function (): void {
+        $engine = new GroupStageEngine();
+        $groups = $engine->createGroups(groupField(8), 2);
+        $schedules = $engine->scheduleGroups($groups);
+
+        // Group A fully played, group B missing its final result
+        $groupBResults = playFavourites($schedules['B']);
+        array_pop($groupBResults);
+        $results = [...playFavourites($schedules['A']), ...$groupBResults];
+
+        expect(fn () => $engine->getQualifiers($groups, $results, 2))
+            ->toThrow(InvalidConfigurationException::class, 'Group B play is incomplete');
+    });
+
     it('runs a full multi-stage tournament from groups to a champion', function (): void {
         $groupEngine = new GroupStageEngine();
         $knockoutEngine = new SingleEliminationEngine();
