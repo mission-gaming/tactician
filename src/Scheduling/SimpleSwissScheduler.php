@@ -34,7 +34,11 @@ class SimpleSwissScheduler implements SchedulerInterface
     /**
      * Generate a simple Swiss schedule by randomly selecting a subset of non-repeat opponents.
      *
+     * Swiss has no legs concept, so the interface's $legs parameter is
+     * interpreted here as the number of rounds to generate.
+     *
      * @param array<Participant> $participants
+     * @param int $rounds Number of Swiss rounds to generate
      *
      * @throws InvalidConfigurationException
      * @throws IncompleteScheduleException
