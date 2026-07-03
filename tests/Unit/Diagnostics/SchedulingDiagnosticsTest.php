@@ -96,6 +96,26 @@ describe('SchedulingDiagnostics', function (): void {
         expect($report->getExpectedEvents())->toBe(3);
     });
 
+    // Regression: meetings were counted without leg attribution, so a
+    // duplicate meeting in leg 1 masked the same pairing missing from leg 2
+    it('does not let a duplicate meeting in one leg mask a missing meeting in another', function (): void {
+        // 2 participants, 2 legs => rounds per leg is 1; both meetings landed
+        // in leg 1 (rounds 1 and... round 1 again) and leg 2 never happened
+        $events = [
+            new Event([$this->alice, $this->bob], new Round(1)),
+            new Event([$this->alice, $this->bob], new Round(1)),
+        ];
+
+        $report = $this->diagnostics->analyzeSchedulingFailure(
+            [$this->alice, $this->bob],
+            $this->constraints,
+            $events,
+            2
+        );
+
+        expect($report->getMissingPairings())->toBe(['Alice vs Bob (Leg 2)']);
+    });
+
     it('flags insufficient participants and small multi-leg fields as conflicts', function (): void {
         $conflicts = $this->diagnostics->identifyConstraintConflicts(
             [$this->alice],

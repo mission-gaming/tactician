@@ -138,8 +138,9 @@ class SchedulingDiagnostics
      * Identify which participant pairings are missing from generated events.
      *
      * Meetings are counted per unordered pairing (so reversed home/away
-     * orders still match) and compared against the number of legs; each
-     * shortfall is reported with the leg occurrence that is missing.
+     * orders still match) and attributed to legs via their round numbers,
+     * so a duplicate meeting in one leg cannot mask a missing meeting in
+     * another. Events without a round count toward leg 1.
      *
      * @param array<Participant> $participants
      * @param array<Event> $events
@@ -148,30 +149,44 @@ class SchedulingDiagnostics
      */
     private function identifyMissingPairings(array $participants, array $events, int $legs): array
     {
-        $meetingCounts = [];
+        $participantCount = count($participants);
+        if ($participantCount < 2) {
+            return [];
+        }
+
+        // Round-robin rounds per leg (this analyzer is round-robin specific,
+        // matching calculateExpectedEvents above)
+        $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
+
+        /** @var array<string, array<int, int>> $legMeetingCounts */
+        $legMeetingCounts = [];
         foreach ($events as $event) {
             $eventParticipants = $event->getParticipants();
             if (count($eventParticipants) !== 2) {
                 continue;
             }
 
+            $round = $event->getRound()?->getNumber();
+            $leg = $round === null ? 1 : min($legs, intdiv($round - 1, $roundsPerLeg) + 1);
+
             $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
             sort($ids);
             $key = implode('|', $ids);
-            $meetingCounts[$key] = ($meetingCounts[$key] ?? 0) + 1;
+            $legMeetingCounts[$key][$leg] = ($legMeetingCounts[$key][$leg] ?? 0) + 1;
         }
 
         $missingPairings = [];
-        $participantCount = count($participants);
         for ($i = 0; $i < $participantCount; ++$i) {
             for ($j = $i + 1; $j < $participantCount; ++$j) {
                 $ids = [$participants[$i]->getId(), $participants[$j]->getId()];
                 sort($ids);
-                $played = $meetingCounts[implode('|', $ids)] ?? 0;
+                $key = implode('|', $ids);
 
-                for ($occurrence = $played + 1; $occurrence <= $legs; ++$occurrence) {
-                    $missingPairings[] = $participants[$i]->getLabel() . ' vs ' . $participants[$j]->getLabel()
-                        . " (Leg {$occurrence})";
+                for ($leg = 1; $leg <= $legs; ++$leg) {
+                    if (($legMeetingCounts[$key][$leg] ?? 0) === 0) {
+                        $missingPairings[] = $participants[$i]->getLabel() . ' vs ' . $participants[$j]->getLabel()
+                            . " (Leg {$leg})";
+                    }
                 }
             }
         }
