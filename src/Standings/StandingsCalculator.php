@@ -12,8 +12,9 @@ use MissionGaming\Tactician\DTO\Result;
  * Calculates an ordered standings table from recorded results.
  *
  * Entries are ranked by points, then by each configured tiebreaker in order,
- * then by score difference and score for, and finally by participant label
- * for a deterministic ordering.
+ * then by score difference and score for, then by seed (seeded participants
+ * first), and finally by natural-order label and ID comparison for a
+ * deterministic ordering.
  */
 readonly class StandingsCalculator
 {
@@ -169,7 +170,17 @@ readonly class StandingsCalculator
                 return $comparison;
             }
 
-            return $a->getParticipant()->getLabel() <=> $b->getParticipant()->getLabel();
+            $comparison = ($a->getParticipant()->getSeed() ?? PHP_INT_MAX) <=> ($b->getParticipant()->getSeed() ?? PHP_INT_MAX);
+            if ($comparison !== 0) {
+                return $comparison;
+            }
+
+            $comparison = strnatcasecmp($a->getParticipant()->getLabel(), $b->getParticipant()->getLabel());
+            if ($comparison !== 0) {
+                return $comparison;
+            }
+
+            return $a->getParticipant()->getId() <=> $b->getParticipant()->getId();
         });
 
         return new Standings($ordered);
