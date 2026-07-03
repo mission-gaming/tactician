@@ -55,6 +55,7 @@ anything else that competes.
 | **Slot** | One kickoff time within a round, holding one event per resource (one event total when no resources are declared). A round's events fill its slots deterministically: schedule order against slot time order, resource by resource within a slot. |
 | **Kickoff** | The assigned time of a scheduled event, always emitted in UTC (`ScheduledEvent::getKickoff()`); the timeline's wall-clock arithmetic happens in the stage's declared timezone. |
 | **Resource** | A named host of concurrent events within a slot (venue, pitch, court, board...). A slot holds one event per resource; no declared resources means one anonymous resource. Each scheduled event carries its assigned resource. |
+| **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach. Greedy always runs first; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
 | **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — minimum rest in hours (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
@@ -334,8 +335,35 @@ stable strategy identifiers `mirrored`, `repeated`, and `shuffled`:
 
 ```php
 $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'mirrored']);
-$options->toArray(); // ['legs' => 2, 'strategy' => 'mirrored']
+$options->toArray(); // ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]
 ```
+
+### Backtracking Generation
+
+The greedy generator retries bounded rotated orderings when constraints
+reject a schedule — but the circle method fixes which pairings share a
+round purely by list order, so it only ever sees a handful of round
+decompositions, and some satisfiable constraint sets fail every one of
+them. **Backtracking generation** searches the decompositions the
+rotations cannot reach:
+
+```php
+$schedule = (new RoundRobinScheduler($constraints))
+    ->schedule($participants, new RoundRobinOptions(backtracking: true));
+```
+
+The rules of the search (see `docs/design/backtracking-generation.md`):
+
+- **Opt-in, greedy first.** Greedy remains the default and always runs
+  first; the search only starts when every rotation has failed, so
+  satisfiable-by-rotation configurations pay nothing.
+- **Deterministic and bounded.** Seat, opponent, and orientation order
+  are fixed, and a step budget bounds the exponential worst case. The
+  failure diagnostic distinguishes a proven-unsatisfiable configuration
+  (search space exhausted) from one that ran out of budget.
+- **Leg scope.** Leg 1 is searched; later legs derive from its actual
+  rounds through the leg strategy. A later leg rejected by constraints
+  fails loudly — the search does not cross leg boundaries.
 
 ### Multi-Leg Schedule Analysis
 

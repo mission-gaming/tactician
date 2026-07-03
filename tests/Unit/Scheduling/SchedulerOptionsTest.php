@@ -28,7 +28,7 @@ describe('RoundRobinOptions', function (): void {
         foreach (['mirrored', 'repeated', 'shuffled'] as $identifier) {
             $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => $identifier]);
 
-            expect($options->toArray())->toBe(['legs' => 2, 'strategy' => $identifier]);
+            expect($options->toArray())->toBe(['legs' => 2, 'strategy' => $identifier, 'backtracking' => false]);
         }
     });
 
@@ -43,7 +43,7 @@ describe('RoundRobinOptions', function (): void {
 
     it('builds from empty configuration with the documented defaults', function (): void {
         expect(RoundRobinOptions::fromArray([])->toArray())
-            ->toBe(['legs' => 1, 'strategy' => 'mirrored']);
+            ->toBe(['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false]);
     });
 
     it('rejects unknown strategy identifiers', function (): void {
