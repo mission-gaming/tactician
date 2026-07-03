@@ -145,13 +145,22 @@ use MissionGaming\Tactician\Constraints\MetadataConstraint;
 
 // Comprehensive constraint configuration
 $constraints = ConstraintSet::create()
-    ->noRepeatPairings()  // Prevent duplicate pairings
+    ->noRepeatPairings()  // Prevent duplicate pairings within a leg
     ->add(new MinimumRestPeriodsConstraint(2))  // 2 rounds minimum between meetings
     ->add(new SeedProtectionConstraint(2, 0.4))  // Protect top 2 seeds for 40% of tournament
     ->add(ConsecutiveRoleConstraint::homeAway(3))  // Max 3 consecutive home/away games
     ->add(MetadataConstraint::requireSameValue('division'))  // Only pair within same division
     ->build();
 ```
+
+> **Note:** `noRepeatPairings()` is scoped to the current leg by default, because
+> multi-leg tournaments intentionally repeat every pairing once per leg. Pass
+> `noRepeatPairings(acrossLegs: true)` to forbid repeats anywhere in the
+> tournament — which by design makes complete multi-leg round robins
+> impossible, so use it only as a hard invariant check. Also note that a
+> single-leg round robin never repeats a pairing by construction, so the
+> constraint is only load-bearing for generators without that structural
+> guarantee.
 
 ### Metadata-Based Constraints
 
@@ -352,14 +361,14 @@ try {
     echo "Cannot generate complete schedule: " . $e->getMessage() . "\n";
     
     // Get diagnostic information
-    $violations = $e->getConstraintViolations();
+    $violations = $e->getViolationCollector()->getViolations();
     foreach ($violations as $violation) {
         echo "Violation: " . $violation->getDescription() . "\n";
     }
     
     // Get expected vs actual event counts
     echo "Expected events: " . $e->getExpectedEventCount() . "\n";
-    echo "Generated events: " . $e->getGeneratedEventCount() . "\n";
+    echo "Generated events: " . $e->getActualEventCount() . "\n";
 }
 ```
 
@@ -430,7 +439,7 @@ function handleIncompleteSchedule(IncompleteScheduleException $e): void
     echo "Reason: " . $e->getMessage() . "\n";
     
     // Analyze constraint violations
-    $violations = $e->getConstraintViolations();
+    $violations = $e->getViolationCollector()->getViolations();
     if (!empty($violations)) {
         echo "\nConstraint violations:\n";
         foreach ($violations as $violation) {
@@ -439,7 +448,7 @@ function handleIncompleteSchedule(IncompleteScheduleException $e): void
     }
     
     // Show completion statistics
-    echo "\nCompletion: {$e->getGeneratedEventCount()}/{$e->getExpectedEventCount()} events\n";
+    echo "\nCompletion: {$e->getActualEventCount()}/{$e->getExpectedEventCount()} events\n";
 }
 ```
 

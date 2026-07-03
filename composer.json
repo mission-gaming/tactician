@@ -58,10 +58,12 @@
             "@phpstan",
             "@rector",
             "@cs-fixer",
-            "@test"
+            "@test",
+            "@examples"
         ],
         "cs-fixer": "php-cs-fixer fix --dry-run --diff",
         "cs-fixer-fix": "php-cs-fixer fix",
+        "examples": "for f in examples/*.php; do php \"$f\" > /dev/null || exit 1; done",
         "norm": "composer normalize --dry-run",
         "norm-fix": "composer normalize",
         "phpstan": "phpstan analyse",

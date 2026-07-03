@@ -29,7 +29,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
             </p>
             <div class="bg-gray-100 rounded p-3 text-sm text-gray-700">
                 <strong>Running:</strong> PHP <?= PHP_VERSION; ?> | 
-                <strong>Server:</strong> <?= $_SERVER['SERVER_NAME'] . ':' . $_SERVER['SERVER_PORT']; ?>
+                <strong>Server:</strong> <?= ($_SERVER['SERVER_NAME'] ?? 'cli') . ':' . ($_SERVER['SERVER_PORT'] ?? '-'); ?>
             </div>
         </div>
 

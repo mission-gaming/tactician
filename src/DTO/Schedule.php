@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use Countable;
+use InvalidArgumentException;
 use Iterator;
+use JsonSerializable;
 use Override;
 
 /**
@@ -18,7 +20,7 @@ use Override;
  *
  * @implements Iterator<int, Event>
  */
-class Schedule implements Iterator, Countable
+class Schedule implements Iterator, Countable, JsonSerializable
 {
     /** @var array<Event> The events contained in this schedule */
     private readonly array $events;
@@ -227,5 +229,121 @@ class Schedule implements Iterator, Countable
             $nonNullRounds,
             fn (?Round $max, Round $current) => $max === null || $current->isAfter($max) ? $current : $max
         );
+    }
+
+    /**
+     * Convert this schedule to a serializable array.
+     *
+     * Participants are listed once and referenced by ID from events. Metadata
+     * values must be serializable by the consumer (e.g. JSON-safe when using
+     * toJson()).
+     *
+     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
+     */
+    public function toArray(): array
+    {
+        /** @var array<string, Participant> $participantsById */
+        $participantsById = [];
+        foreach ($this->events as $event) {
+            foreach ($event->getParticipants() as $participant) {
+                $participantsById[$participant->getId()] ??= $participant;
+            }
+        }
+
+        return [
+            'participants' => array_values(array_map(
+                fn (Participant $participant) => $participant->toArray(),
+                $participantsById
+            )),
+            'events' => array_map(fn (Event $event) => $event->toArray(), $this->events),
+            'metadata' => $this->metadata,
+        ];
+    }
+
+    /**
+     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
+     */
+    #[Override]
+    public function jsonSerialize(): array
+    {
+        return $this->toArray();
+    }
+
+    /**
+     * Serialize this schedule to a JSON string.
+     *
+     * @throws \JsonException When the schedule contains values JSON cannot represent
+     */
+    public function toJson(): string
+    {
+        return json_encode($this, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Recreate a schedule from its array representation.
+     *
+     * @param array<string, mixed> $data
+     *
+     * @throws InvalidArgumentException When the data is malformed
+     */
+    public static function fromArray(array $data): self
+    {
+        $participantsData = $data['participants'] ?? [];
+        if (!is_array($participantsData)) {
+            throw new InvalidArgumentException('Schedule participants must be an array');
+        }
+
+        /** @var array<string, Participant> $participantsById */
+        $participantsById = [];
+        foreach ($participantsData as $participantData) {
+            if (!is_array($participantData)) {
+                throw new InvalidArgumentException('Each schedule participant must be an array');
+            }
+            /** @var array<string, mixed> $participantData */
+            $participant = Participant::fromArray($participantData);
+            $participantsById[$participant->getId()] = $participant;
+        }
+
+        $eventsData = $data['events'] ?? [];
+        if (!is_array($eventsData)) {
+            throw new InvalidArgumentException('Schedule events must be an array');
+        }
+
+        $events = [];
+        foreach ($eventsData as $eventData) {
+            if (!is_array($eventData)) {
+                throw new InvalidArgumentException('Each schedule event must be an array');
+            }
+            /** @var array<string, mixed> $eventData */
+            $events[] = Event::fromArray($eventData, $participantsById);
+        }
+
+        $rawMetadata = $data['metadata'] ?? [];
+        if (!is_array($rawMetadata)) {
+            throw new InvalidArgumentException('Schedule metadata must be an array');
+        }
+        $metadata = [];
+        foreach ($rawMetadata as $key => $value) {
+            $metadata[(string) $key] = $value;
+        }
+
+        return new self($events, $metadata);
+    }
+
+    /**
+     * Recreate a schedule from a JSON string produced by toJson().
+     *
+     * @throws \JsonException When the JSON is invalid
+     * @throws InvalidArgumentException When the decoded data is malformed
+     */
+    public static function fromJson(string $json): self
+    {
+        $decoded = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($decoded)) {
+            throw new InvalidArgumentException('Schedule JSON must decode to an object');
+        }
+
+        /** @var array<string, mixed> $decoded */
+        return self::fromArray($decoded);
     }
 }

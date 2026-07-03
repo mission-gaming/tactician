@@ -11,10 +11,11 @@ A modern PHP library for generating structured schedules between participants. I
 
 **Key Features:**
 
-- 🏆 **Deterministic Algorithms**: Round Robin (complete), Swiss and Pool play (coming soon)
+- 🏆 **Tournament Formats**: Round robin (single & multi-leg), Swiss pairing, single & double elimination, group stages
+- 📊 **Results & Standings**: Points systems, league tables, and pluggable tiebreakers (wins, Buchholz, Sonneborn–Berger)
 - 🔧 **Flexible Constraints**: Built-in and custom predicate-based constraint system
 - ✅ **Schedule Validation**: Comprehensive validation prevents incomplete schedules
-- ⚡ **Memory Efficient**: Generator-based iteration for large tournaments
+- 💾 **Serialization**: JSON round-tripping for schedules and participants
 - 🎯 **Modern PHP**: PHP 8.2+ with readonly classes and strict typing
 - 🧪 **Test-Driven**: Comprehensive test suite with Pest framework
 - 📐 **Mathematical Accuracy**: Circle method implementation for round-robin
@@ -69,12 +70,45 @@ foreach ($schedule as $event) {
 }
 ```
 
+## Beyond Round Robin
+
+Results feed standings, and standings drive the incremental engines for Swiss
+pairing, elimination brackets, and multi-stage tournaments:
+
+```php
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Standings\StandingsCalculator;
+
+$engine = new SwissPairingEngine();
+$round1 = $engine->pairNextRound($participants, []);
+
+// Record results as play completes...
+$results = [new Result($round1->getEvents()[0], $winner) /* ... */];
+
+// ...then pair the next round from the live standings
+$round2 = $engine->pairNextRound($participants, $results);
+
+// League table at any point
+$standings = (new StandingsCalculator())->calculate($participants, $results);
+```
+
+Single and double elimination (`SingleEliminationEngine`,
+`DoubleEliminationEngine`) and group stages feeding seeded knockouts
+(`GroupStageEngine`) follow the same results-driven pattern. Schedules
+serialize to JSON via `$schedule->toJson()` / `Schedule::fromJson()`.
+
 ## Key Features
 
 - **🏆 Round Robin Tournaments**: Complete implementation with circle method algorithm
-- **🔧 Flexible Constraints**: Built-in constraints (rest periods, seed protection, role limits) plus custom predicates
-- **🏠 Multi-Leg Support**: Home/away leagues with mirrored, repeated, or shuffled strategies
+- **♟️ Swiss Pairing**: Standings-aware Monrad pairing with repeat avoidance, bye rotation, and home/away balancing
+- **🥊 Elimination Brackets**: Single and double elimination with fold seeding, byes, stage names, and optional grand-final reset
+- **🏟️ Group Stages**: Serpentine-seeded groups with per-group standings and cross-group knockout qualification
+- **📊 Results & Standings**: Configurable points systems with wins, Buchholz, and Sonneborn–Berger tiebreakers
+- **🔧 Flexible Constraints**: Built-in constraints (rest periods, seed protection, role limits, role balance) plus custom predicates
+- **🏠 Multi-Leg Support**: Home/away leagues with mirrored, repeated, or shuffled strategies and first-class byes
 - **✅ Schedule Validation**: Mathematical validation prevents incomplete tournaments
+- **💾 Serialization**: JSON round-tripping for schedules, events, and participants
 - **🛡️ Production Ready**: PHPStan level 8 compliance, comprehensive test coverage
 - **⚡ Memory Efficient**: Iterator-based patterns for large tournaments
 - **🎯 Deterministic**: Seeded randomization for reproducible results
