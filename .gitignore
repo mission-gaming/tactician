@@ -4,3 +4,4 @@ vendor
 .idea
 .vscode
 .phpunit.result.cache
+index.php
