@@ -131,4 +131,16 @@ describe('RoleBalanceConstraint', function (): void {
     })
         // Limit 3 for even fields; the bye shifts one parity, so odd fields need 4
         ->with([[4, 3], [6, 3], [12, 3], [5, 4], [9, 4]]);
+
+    it('ignores non-pairwise events in the history', function (): void {
+        $constraint = new RoleBalanceConstraint(1);
+        $context = roundRobinContext($this->participants, [
+            new Event([$this->participants[0], $this->participants[1], $this->participants[2]], new Round(1)),
+        ]);
+
+        expect($constraint->isSatisfied(
+            new Event([$this->participants[0], $this->participants[1]], new Round(2)),
+            $context
+        ))->toBeTrue();
+    });
 });

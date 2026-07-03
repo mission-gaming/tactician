@@ -102,4 +102,16 @@ describe('NoRepeatPairings', function (): void {
     it('exposes a descriptive name', function (): void {
         expect((new NoRepeatPairings())->getName())->toBe('No Repeat Pairings');
     });
+
+    // A degenerate event pairing a participant with themselves can never
+    // count as a repeat meeting
+    it('ignores self-pairings when checking repeats', function (): void {
+        $constraint = new NoRepeatPairings();
+        $context = roundRobinContext($this->participants, [
+            new Event([$this->alice, $this->alice], new Round(1)),
+        ]);
+
+        expect($constraint->isSatisfied(new Event([$this->alice, $this->alice], new Round(2)), $context))
+            ->toBeTrue();
+    });
 });

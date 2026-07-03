@@ -73,20 +73,4 @@ trait ValidatesScheduleCompleteness
         // Reset the violation collector by creating a new instance
         $this->violationCollector = new ConstraintViolationCollector();
     }
-
-    /**
-     * Check if any violations have been recorded.
-     */
-    protected function hasViolations(): bool
-    {
-        return $this->violationCollector->hasViolations();
-    }
-
-    /**
-     * Get the count of recorded violations.
-     */
-    protected function getViolationCount(): int
-    {
-        return $this->violationCollector->getViolationCount();
-    }
 }

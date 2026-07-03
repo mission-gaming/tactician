@@ -252,4 +252,55 @@ describe('StandingsCalculator', function (): void {
         $labels = array_map(fn ($entry) => $entry->getParticipant()->getLabel(), $standings->getEntries());
         expect($labels)->toBe(['Player 2', 'Player 10']);
     });
+
+    it('returns null entries and positions for absentees', function (): void {
+        $standings = (new StandingsCalculator())->calculate([$this->alice, $this->bob], []);
+        $stranger = new Participant('x1', 'Stranger');
+
+        expect($standings->getEntryFor($stranger))->toBeNull();
+        expect($standings->getPosition($stranger))->toBeNull();
+        expect($standings->getPosition($this->alice))->toBe(1);
+        expect($standings->getEntryFor($this->alice)?->getTiebreakers())->toBe([]);
+    });
+
+    // With everything else level, seeds order the table; with identical
+    // labels the participant ID is the final deterministic fallback
+    it('falls back to seed and then ID for otherwise level participants', function (): void {
+        $seeded = [
+            new Participant('pB', 'Same Name', 2),
+            new Participant('pA', 'Same Name', 1),
+        ];
+        $bySeed = (new StandingsCalculator())->calculate($seeded, []);
+        expect($bySeed->getEntries()[0]->getParticipant()->getId())->toBe('pA');
+
+        $unseeded = [
+            new Participant('z9', 'Same Name'),
+            new Participant('a1', 'Same Name'),
+        ];
+        $byId = (new StandingsCalculator())->calculate($unseeded, []);
+        expect($byId->getEntries()[0]->getParticipant()->getId())->toBe('a1');
+    });
+
+    it('breaks equal score differences by score for', function (): void {
+        $high = new Participant('hi', 'High Scorer');
+        $low = new Participant('lo', 'Low Scorer');
+        $foilA = new Participant('fa', 'Foil A');
+        $foilB = new Participant('fb', 'Foil B');
+
+        // Both draw once: same points, both 0 score difference, but the
+        // high scorer's draw was 2-2 against 1-1
+        $results = [
+            new Result(new Event([$high, $foilA]), null, ['hi' => 2, 'fa' => 2]),
+            new Result(new Event([$low, $foilB]), null, ['lo' => 1, 'fb' => 1]),
+        ];
+
+        $standings = (new StandingsCalculator())->calculate([$high, $low, $foilA, $foilB], $results);
+
+        $highPosition = $standings->getPosition($high);
+        $lowPosition = $standings->getPosition($low);
+        expect($highPosition)->not->toBeNull();
+        expect($lowPosition)->not->toBeNull();
+        assert($highPosition !== null && $lowPosition !== null);
+        expect($highPosition)->toBeLessThan($lowPosition);
+    });
 });

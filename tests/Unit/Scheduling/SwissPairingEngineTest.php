@@ -512,4 +512,25 @@ describe('SwissPairingEngine', function (): void {
         expect($seenPairings)->toHaveCount(20);
         expect($engine->getOutcome($state))->not->toBeNull();
     });
+
+    it('rejects a non-positive planned round count', function (): void {
+        new SwissPairingEngine(plannedRounds: 0);
+    })->throws(InvalidArgumentException::class, 'at least 1');
+
+    it('throws for odd fields whose every pairing has been played', function (): void {
+        $trio = [$this->alice, $this->bob, $this->carol];
+        $state = StageState::start($trio);
+        $state = withSwissRound($state, 1, [
+            new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
+        ], [$this->carol]);
+        $state = withSwissRound($state, 2, [
+            new Result(new Event([$this->alice, $this->carol], new Round(2)), $this->alice),
+        ], [$this->bob]);
+        $state = withSwissRound($state, 3, [
+            new Result(new Event([$this->bob, $this->carol], new Round(3)), $this->bob),
+        ], [$this->alice]);
+
+        expect(fn () => (new SwissPairingEngine())->pairNextRound($state))
+            ->toThrow(NoValidPairingException::class);
+    });
 });

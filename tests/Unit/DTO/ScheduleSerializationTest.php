@@ -112,4 +112,19 @@ describe('Schedule serialization', function (): void {
         expect(fn () => Schedule::fromJson('{not json'))
             ->toThrow(JsonException::class);
     });
+
+    it('rejects malformed serialized data', function (): void {
+        expect(fn () => Schedule::fromArray(['participants' => 'nope']))
+            ->toThrow(InvalidArgumentException::class, 'participants must be an array');
+        expect(fn () => Schedule::fromArray(['participants' => ['nope']]))
+            ->toThrow(InvalidArgumentException::class, 'participant must be an array');
+        expect(fn () => Schedule::fromArray(['participants' => [], 'events' => 'nope']))
+            ->toThrow(InvalidArgumentException::class, 'events must be an array');
+        expect(fn () => Schedule::fromArray(['participants' => [], 'events' => ['nope']]))
+            ->toThrow(InvalidArgumentException::class, 'event must be an array');
+        expect(fn () => Schedule::fromArray(['participants' => [], 'events' => [], 'metadata' => 'nope']))
+            ->toThrow(InvalidArgumentException::class, 'metadata must be an array');
+        expect(fn () => Schedule::fromJson('"nope"'))
+            ->toThrow(InvalidArgumentException::class, 'decode to an object');
+    });
 });

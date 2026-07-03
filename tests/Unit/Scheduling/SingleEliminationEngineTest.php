@@ -397,4 +397,27 @@ describe('SingleEliminationEngine', function (): void {
             expect(array_map(fn (Participant $p) => $p->getId(), $winners))->toBe(['s2']);
         });
     });
+
+    it('rejects results referencing non-pairwise events via rehydrated state', function (): void {
+        $engine = new SingleEliminationEngine();
+
+        $state = StageState::fromArray([
+            'participants' => [
+                ['id' => 's1', 'label' => 'Seed 1', 'seed' => null, 'metadata' => []],
+                ['id' => 's2', 'label' => 'Seed 2', 'seed' => null, 'metadata' => []],
+                ['id' => 's3', 'label' => 'Seed 3', 'seed' => null, 'metadata' => []],
+            ],
+            'active' => ['s1', 's2', 's3'],
+            'rounds' => [],
+            'results' => [[
+                'event' => ['participants' => ['s1', 's2', 's3'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => []],
+                'winner' => 's1',
+                'scores' => [],
+                'metadata' => [],
+            ]],
+        ]);
+
+        expect(fn () => $engine->pairNextRound($state))
+            ->toThrow(InvalidConfigurationException::class, 'two-participant');
+    });
 });

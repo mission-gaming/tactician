@@ -356,7 +356,7 @@ describe('SchedulingContext', function (): void {
             }
 
             #[Override]
-            public function getLegs(): ?int
+            public function getLegs(): int
             {
                 return 2;
             }
@@ -396,4 +396,16 @@ describe('SchedulingContext', function (): void {
     it('rejects a plan for fewer than 2 participants', function (): void {
         new RoundRobinPlan([$this->participant1], 1);
     })->throws(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class);
+
+    it('filters events by round number across legs', function (): void {
+        $events = [
+            new Event([$this->participant1, $this->participant2], new Round(1)),
+            new Event([$this->participant2, $this->participant3], new Round(2)),
+            new Event([$this->participant1, $this->participant3]), // no round
+        ];
+        $context = roundRobinContext($this->participants, $events);
+
+        expect($context->getEventsInRound(1))->toHaveCount(1);
+        expect($context->getEventsInRound(3))->toBe([]);
+    });
 });

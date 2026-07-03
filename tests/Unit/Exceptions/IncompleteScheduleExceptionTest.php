@@ -338,4 +338,25 @@ describe('IncompleteScheduleException', function (): void {
         expect($report)->toContain('Consider increasing the number of participants');
         expect($report)->toContain('Add more legs to provide more scheduling flexibility');
     });
+
+    it('suggests rounds rather than legs for formats without legs', function (): void {
+        $violationCollector = new ConstraintViolationCollector();
+        $violationCollector->recordViolation(new ConstraintViolation(
+            MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint::homeAway(1),
+            new Event([$this->participant1, $this->participant2]),
+            'violated',
+            [$this->participant1]
+        ));
+
+        $report = (new IncompleteScheduleException(
+            expectedEventCount: 6,
+            actualEventCount: 2,
+            violationCollector: $violationCollector,
+            plan: new MissionGaming\Tactician\Stage\SwissPlan($this->participants, 3),
+            participants: $this->participants
+        ))->getDiagnosticReport();
+
+        expect($report)->toContain('Add more rounds to provide more scheduling flexibility');
+        expect($report)->not->toContain('Add more legs');
+    });
 });

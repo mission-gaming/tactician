@@ -86,3 +86,21 @@ describe('LegStrategy plan contributions', function (): void {
         }
     });
 });
+
+describe('LegStrategy event generation edges', function (): void {
+    it('declines non-pairwise events and keeps first-leg order', function (): void {
+        $participants = contributionParticipants(3);
+        $context = roundRobinContext($participants, [], legs: 2);
+
+        foreach (allLegStrategies() as $name => $strategy) {
+            expect($strategy->generateEventForLeg($participants, 2, 4, $context))
+                ->toBeNull("{$name}: three participants per event");
+        }
+
+        // Shuffled keeps the original order in leg 1 - randomization only
+        // varies later legs
+        $pair = [$participants[0], $participants[1]];
+        $shuffled = new ShuffledLegStrategy();
+        expect($shuffled->generateEventForLeg($pair, 1, 1, $context)?->getParticipants())->toBe($pair);
+    });
+});
