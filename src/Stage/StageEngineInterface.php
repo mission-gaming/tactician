@@ -42,11 +42,15 @@ interface StageEngineInterface
      * Whether the stage has no further rounds. Structural, not
      * interpretive: "someone won" is the consumer's reading of the
      * outcome, "no more rounds exist" is the engine's.
+     *
+     * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the recorded state is malformed
      */
     public function isComplete(StageState $state): bool;
 
     /**
      * The uniform completion product; null while the stage is unfinished.
+     *
+     * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the recorded state is malformed
      */
     public function getOutcome(StageState $state): ?StageOutcome;
 }

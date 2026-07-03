@@ -82,7 +82,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
     #[Override]
     public function getPlan(StageState $state): SwissPlan
     {
-        return new SwissPlan($this->collectStageParticipants($state), $this->plannedRounds);
+        return new SwissPlan($state->getAllSeenParticipants(), $this->plannedRounds);
     }
 
     /**
@@ -109,7 +109,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
         }
 
         $standings = $this->standingsCalculator->calculate(
-            $this->collectStageParticipants($state),
+            $state->getAllSeenParticipants(),
             $results
         );
         $activeEntries = array_values(array_filter(
@@ -124,7 +124,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
         $playedPairings = $this->collectPlayedPairings($playedEvents);
         $homeCounts = $this->collectHomeCounts($playedEvents);
 
-        $plan = new SwissPlan($this->collectStageParticipants($state), $this->plannedRounds);
+        $plan = new SwissPlan($state->getAllSeenParticipants(), $this->plannedRounds);
         $context = new SchedulingContext($participants, $plan, $playedEvents);
 
         if (count($orderedParticipants) % 2 === 0) {
@@ -188,6 +188,8 @@ readonly class SwissPairingEngine implements StageEngineInterface
      *
      * Standings cover every participant the stage has seen, including
      * withdrawn ones - their played games remain part of the record.
+     *
+     * @throws InvalidConfigurationException When fewer than 2 participants have been seen
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
@@ -197,7 +199,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
         }
 
         $standings = $this->standingsCalculator->calculate(
-            $this->collectStageParticipants($state),
+            $state->getAllSeenParticipants(),
             $state->getResults()
         );
 
@@ -207,54 +209,6 @@ readonly class SwissPairingEngine implements StageEngineInterface
             $state->getByeCounts(),
             $state->getLastRound()
         );
-    }
-
-    /**
-     * Every participant the stage has seen: the active list plus withdrawn
-     * participants still referenced by recorded rounds (events or byes) or
-     * results.
-     *
-     * @return array<Participant>
-     */
-    private function collectStageParticipants(StageState $state): array
-    {
-        $participants = array_values($state->getParticipants());
-        $knownIds = [];
-        foreach ($participants as $participant) {
-            $knownIds[$participant->getId()] = true;
-        }
-
-        foreach ($state->getRoundsPlayed() as $pairing) {
-            foreach ($pairing->getEvents() as $event) {
-                foreach ($event->getParticipants() as $participant) {
-                    if (!isset($knownIds[$participant->getId()])) {
-                        $knownIds[$participant->getId()] = true;
-                        $participants[] = $participant;
-                    }
-                }
-            }
-
-            // A participant can be referenced by a bye alone (bye in one
-            // round, withdrawn before ever playing) and must still appear
-            // in the plan, standings, and outcome.
-            foreach ($pairing->getByes() as $participant) {
-                if (!isset($knownIds[$participant->getId()])) {
-                    $knownIds[$participant->getId()] = true;
-                    $participants[] = $participant;
-                }
-            }
-        }
-
-        foreach ($state->getResults() as $result) {
-            foreach ($result->getEvent()->getParticipants() as $participant) {
-                if (!isset($knownIds[$participant->getId()])) {
-                    $knownIds[$participant->getId()] = true;
-                    $participants[] = $participant;
-                }
-            }
-        }
-
-        return $participants;
     }
 
     /**

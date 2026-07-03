@@ -120,6 +120,44 @@ final readonly class StageState
     }
 
     /**
+     * Record further results for the most recently recorded round.
+     *
+     * The escape hatch for rounds recorded before all their results were
+     * known (e.g. a two-legged tie whose second leg finished later):
+     * engines report such rounds as partially resolved until the missing
+     * results arrive here.
+     *
+     * @param array<Result> $results
+     * @throws InvalidConfigurationException When no round is recorded or a result belongs to a different round
+     */
+    public function withAdditionalResults(array $results): self
+    {
+        $lastRound = $this->getLastRound();
+        if ($lastRound === null) {
+            throw new InvalidConfigurationException(
+                'No round has been recorded to add results to',
+                []
+            );
+        }
+
+        foreach ($results as $result) {
+            $resultRound = $result->getEvent()->getRound()?->getNumber();
+            if ($resultRound !== $lastRound->getRoundNumber()) {
+                throw new InvalidConfigurationException(
+                    'Additional results must belong to the last recorded round',
+                    ['last_round' => $lastRound->getRoundNumber(), 'result_round' => $resultRound]
+                );
+            }
+        }
+
+        return new self(
+            $this->participants,
+            $this->roundsPlayed,
+            [...$this->results, ...array_values($results)]
+        );
+    }
+
+    /**
      * Withdraw a participant: they leave the active list; their recorded
      * pairings and results remain and still count toward standings.
      */
@@ -225,6 +263,49 @@ final readonly class StageState
         }
 
         return $counts;
+    }
+
+    /**
+     * Every participant the stage has seen: the active list plus withdrawn
+     * participants still referenced by recorded rounds (events or byes) or
+     * results. This is what plans and outcome standings cover — a
+     * withdrawn participant's played games remain part of the record.
+     *
+     * @return array<Participant>
+     */
+    public function getAllSeenParticipants(): array
+    {
+        $participants = array_values($this->participants);
+        $knownIds = [];
+        foreach ($participants as $participant) {
+            $knownIds[$participant->getId()] = true;
+        }
+
+        $add = function (Participant $participant) use (&$participants, &$knownIds): void {
+            if (!isset($knownIds[$participant->getId()])) {
+                $knownIds[$participant->getId()] = true;
+                $participants[] = $participant;
+            }
+        };
+
+        foreach ($this->roundsPlayed as $pairing) {
+            foreach ($pairing->getEvents() as $event) {
+                foreach ($event->getParticipants() as $participant) {
+                    $add($participant);
+                }
+            }
+            foreach ($pairing->getByes() as $participant) {
+                $add($participant);
+            }
+        }
+
+        foreach ($this->results as $result) {
+            foreach ($result->getEvent()->getParticipants() as $participant) {
+                $add($participant);
+            }
+        }
+
+        return $participants;
     }
 
     /**

@@ -4,12 +4,21 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Scheduling;
 
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\TieDecision;
 
 /**
- * Shared seeding and result-lookup helpers for elimination bracket engines.
+ * Shared bracket mechanics for the elimination presets: positional fold
+ * seeding, tie-aware result indexing, and tie-event emission.
+ *
+ * List position is authoritative for seeding (position 1 is the top seed,
+ * per the stage entry contract) — carried seed attributes are display
+ * facts, not pairing inputs, so consumer-derived entrant lists and
+ * selector outputs behave identically by construction.
  */
 trait EliminationBracketSupport
 {
@@ -26,25 +35,18 @@ trait EliminationBracketSupport
                 ['participant_count' => count($participants), 'minimum_required' => 2]
             );
         }
-
-        $ids = array_map(fn (Participant $participant) => $participant->getId(), $participants);
-        if (count($ids) !== count(array_unique($ids))) {
-            throw new InvalidConfigurationException(
-                'All participants must have unique IDs',
-                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))]
-            );
-        }
     }
 
     /**
-     * Place participants into bracket slots using standard fold seeding.
+     * Place participants into bracket slots using standard fold seeding
+     * over list position.
      *
-     * @param array<Participant> $participants
+     * @param array<Participant> $participants In seeding order, best first
      * @return array<Participant|null> Bracket slots in order; null slots are byes
      */
     private function buildInitialSlots(array $participants): array
     {
-        $ordered = $this->orderBySeed($participants);
+        $ordered = array_values($participants);
         $size = $this->bracketSize(count($ordered));
 
         $slots = [];
@@ -53,28 +55,6 @@ trait EliminationBracketSupport
         }
 
         return $slots;
-    }
-
-    /**
-     * Order participants by seed (unseeded last, keeping input order).
-     *
-     * @param array<Participant> $participants
-     * @return array<Participant>
-     */
-    private function orderBySeed(array $participants): array
-    {
-        $indexed = [];
-        foreach ($participants as $index => $participant) {
-            $indexed[] = ['participant' => $participant, 'index' => $index];
-        }
-
-        usort(
-            $indexed,
-            fn (array $first, array $second): int => (($first['participant']->getSeed() ?? PHP_INT_MAX) <=> ($second['participant']->getSeed() ?? PHP_INT_MAX))
-                ?: ($first['index'] <=> $second['index'])
-        );
-
-        return array_map(fn (array $entry) => $entry['participant'], $indexed);
     }
 
     private function bracketSize(int $participantCount): int
@@ -89,7 +69,7 @@ trait EliminationBracketSupport
 
     /**
      * Standard fold seeding positions: consecutive pairs sum to size + 1, so
-     * the top seeds can only meet in the latest possible round.
+     * the top positions can only meet in the latest possible round.
      *
      * @return array<int>
      */
@@ -110,14 +90,32 @@ trait EliminationBracketSupport
     }
 
     /**
-     * Index results by round and normalized pairing for winner lookups.
+     * Emit the events for one tie: a single event, or two mirrored legs
+     * annotated with 'tie_leg' metadata so leg results stay distinguishable.
+     *
+     * @return array<Event>
+     */
+    private function buildTieEvents(Participant $first, Participant $second, Round $round, int $legsPerTie): array
+    {
+        if ($legsPerTie === 1) {
+            return [new Event([$first, $second], $round)];
+        }
+
+        return [
+            new Event([$first, $second], $round, ['tie_leg' => 1]),
+            new Event([$second, $first], $round, ['tie_leg' => 2]),
+        ];
+    }
+
+    /**
+     * Index results by round, normalized pairing, and tie leg.
      *
      * @param array<Result> $results
      * @return array<string, Result>
      *
      * @throws InvalidConfigurationException When a result lacks a round number, does not
      *                                       reference a two-participant event, or duplicates
-     *                                       another result for the same match
+     *                                       another result for the same leg
      */
     private function indexResults(array $results): array
     {
@@ -141,11 +139,11 @@ trait EliminationBracketSupport
                 );
             }
 
-            $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
-            sort($ids);
-            $key = $round . ':' . implode('|', $ids);
+            $key = $this->legKey($round, $eventParticipants[0], $eventParticipants[1], $event->getMetadataValue('tie_leg'));
 
             if (isset($index[$key])) {
+                $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
+                sort($ids);
                 throw new InvalidConfigurationException(
                     "Two results reference the same elimination match ({$ids[0]} vs {$ids[1]}, round {$round})",
                     ['round' => $round, 'participants' => $ids]
@@ -159,32 +157,39 @@ trait EliminationBracketSupport
     }
 
     /**
+     * Resolve who advances from the tie between two slots, or null while
+     * legs are missing results.
+     *
      * @param array<string, Result> $resultIndex
      *
-     * @throws InvalidConfigurationException When the matching result is a draw
+     * @throws InvalidConfigurationException When a single-leg tie is drawn or a completed
+     *                                       two-legged tie is undecided
      */
-    private function lookupWinner(
+    private function lookupAdvancer(
         array $resultIndex,
         int $round,
         Participant $first,
-        Participant $second
+        Participant $second,
+        int $legsPerTie
     ): ?Participant {
+        $legResults = [];
+        for ($leg = 1; $leg <= $legsPerTie; ++$leg) {
+            $result = $resultIndex[$this->legKey($round, $first, $second, $legsPerTie === 1 ? null : $leg)] ?? null;
+            if ($result !== null) {
+                $legResults[] = $result;
+            }
+        }
+
+        return TieDecision::advancer($legResults, $first, $second, $legsPerTie);
+    }
+
+    private function legKey(int $round, Participant $first, Participant $second, mixed $tieLeg): string
+    {
         $ids = [$first->getId(), $second->getId()];
         sort($ids);
-        $result = $resultIndex[$round . ':' . implode('|', $ids)] ?? null;
 
-        if ($result === null) {
-            return null;
-        }
+        $leg = is_int($tieLeg) ? $tieLeg : 1;
 
-        $winner = $result->getWinner();
-        if ($winner === null) {
-            throw new InvalidConfigurationException(
-                "Elimination events cannot end in a draw ({$first->getLabel()} vs {$second->getLabel()}, round {$round})",
-                ['round' => $round, 'participants' => $ids]
-            );
-        }
-
-        return $winner;
+        return $round . ':' . implode('|', $ids) . ':' . $leg;
     }
 }

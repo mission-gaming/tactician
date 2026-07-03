@@ -4,120 +4,152 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Scheduling;
 
-use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\RoundPairing;
+use MissionGaming\Tactician\Stage\StageEngineInterface;
+use MissionGaming\Tactician\Stage\StageOutcome;
+use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\StandingsCalculator;
+use Override;
 
 /**
- * Pairs double elimination rounds incrementally from recorded results.
+ * Double elimination preset: a winners' route, a losers' route, and a
+ * grand final - the same graph an application could compose by hand from
+ * single-round stages and outcome selectors, canned behind the standard
+ * stage driver loop.
  *
- * Participants drop into a losers bracket after their first loss and are
- * only eliminated after their second. The winners bracket uses the same
- * fold seeding as single elimination; losers-bracket rounds alternate
- * between minor rounds (losers-bracket survivors pair up) and major rounds
- * (survivors meet the latest winners-bracket droppers, with the dropper
- * order reversed on even winners rounds to defer rematches). The winners
- * and losers champions meet in a grand final; when the losers champion
- * wins it, both finalists have one loss, so a reset match decides the
- * title (disable via the constructor for a single grand final).
+ * Participants drop into the losers bracket after their first loss and
+ * are only eliminated after their second. The winners bracket folds by
+ * list position (position is authoritative); losers-bracket rounds
+ * alternate between minor rounds (losers-bracket survivors pair up) and
+ * major rounds (survivors meet the latest winners-bracket droppers, with
+ * the dropper order reversed on even winners rounds to defer rematches).
+ * The winners and losers champions meet in a grand final; when the losers
+ * champion wins it, both finalists have one loss, so a reset match
+ * decides the title (disable via EliminationOptions(grandFinalReset:
+ * false)).
  *
  * Stages are strictly sequenced and each playable stage takes the next
- * round number, so results must carry the round numbers this engine
- * assigns to its events.
+ * round number. Ties are played over one event or two mirrored legs
+ * (legsPerTie); re-seeding is a single-elimination preset parameter and
+ * is rejected here. There is deliberately no champion accessor - rank 1
+ * of the outcome's standings, or MatchOutcomeSelector::winners() over the
+ * final round, is the consumer's derivation.
  */
-readonly class DoubleEliminationEngine
+final readonly class DoubleEliminationEngine implements StageEngineInterface
 {
     use EliminationBracketSupport;
 
-    public function __construct(private bool $grandFinalReset = true)
+    /**
+     * @throws InvalidConfigurationException When reseedEachRound is requested
+     */
+    public function __construct(
+        private EliminationOptions $options = new EliminationOptions(),
+        private StandingsCalculator $standingsCalculator = new StandingsCalculator()
+    ) {
+        if ($options->reseedEachRound) {
+            throw new InvalidConfigurationException(
+                'Re-seeding conflicts with the fixed dropper choreography of double elimination; it is a single-elimination preset parameter',
+                []
+            );
+        }
+    }
+
+    /**
+     * @throws InvalidConfigurationException When fewer than 2 participants have been seen
+     */
+    #[Override]
+    public function getPlan(StageState $state): EliminationPlan
     {
+        return new EliminationPlan(
+            $state->getAllSeenParticipants(),
+            'double-elimination',
+            $this->options->legsPerTie
+        );
     }
 
     /**
      * Pair the next unresolved stage of the bracket.
      *
-     * @param array<Participant> $participants
-     * @param array<Result> $results Results of every event played so far
-     *
      * @throws InvalidConfigurationException When inputs are malformed, a stage is partially
-     *                                       resolved, a result is drawn, or the tournament is complete
+     *                                       resolved (record the missing results via
+     *                                       StageState::withAdditionalResults()), a tie is
+     *                                       undecided, or the bracket is complete
      */
-    public function pairNextRound(array $participants, array $results): RoundPairing
+    #[Override]
+    public function pairNextRound(StageState $state): RoundPairing
     {
-        $state = $this->resolveState($participants, $results);
+        $resolution = $this->resolveState($state);
 
-        $champion = $state['champion'];
-        if ($champion !== null) {
+        if ($resolution['pending'] === null) {
             throw new InvalidConfigurationException(
-                "Tournament is complete; champion is {$champion->getLabel()}",
-                ['champion' => $champion->getId()]
+                'Bracket is complete; no further rounds exist',
+                []
             );
         }
 
-        $pending = $state['pending'];
-        if ($pending === null) {
-            throw new InvalidConfigurationException('Bracket resolution produced neither a champion nor a pending stage');
-        }
-
-        $round = new Round($pending['round'], ['stage' => $pending['stage']]);
-        $events = [];
-        $byes = [];
-        foreach ($pending['pairs'] as $pair) {
-            [$first, $second] = [$pair[0] ?? null, $pair[1] ?? null];
-            if ($first !== null && $second !== null) {
-                $events[] = new Event([$first, $second], $round);
-                continue;
-            }
-
-            $advancer = $first ?? $second;
-            if ($advancer !== null) {
-                $byes[] = $advancer;
-            }
-        }
-
-        return new RoundPairing($pending['round'], $pending['stage'], $events, $byes);
+        return $resolution['pending'];
     }
 
     /**
-     * Get the champion, or null while the bracket is still unresolved.
-     *
-     * @param array<Participant> $participants
-     * @param array<Result> $results
-     *
-     * @throws InvalidConfigurationException When inputs are malformed, a stage is partially
-     *                                       resolved, or a result is drawn
+     * @throws InvalidConfigurationException When the recorded state is malformed
+     *                                       (partially resolved stages, undecided ties)
      */
-    public function getChampion(array $participants, array $results): ?Participant
+    #[Override]
+    public function isComplete(StageState $state): bool
     {
-        return $this->resolveState($participants, $results)['champion'];
+        return $this->resolveState($state)['pending'] === null;
+    }
+
+    /**
+     * The uniform completion product; null while the bracket is unfinished.
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed
+     */
+    #[Override]
+    public function getOutcome(StageState $state): ?StageOutcome
+    {
+        if (!$this->isComplete($state)) {
+            return null;
+        }
+
+        $standings = $this->standingsCalculator->calculate(
+            $state->getAllSeenParticipants(),
+            $state->getResults()
+        );
+
+        return new StageOutcome(
+            $standings,
+            $state->getResults(),
+            $state->getByeCounts(),
+            $state->getLastRound()
+        );
     }
 
     /**
      * Walk the fixed stage sequence, advancing through fully resolved stages.
      *
-     * @param array<Participant> $participants
-     * @param array<Result> $results
-     * @return array{pending: array{round: int, stage: string, pairs: array<array<Participant|null>>}|null, champion: Participant|null}
+     * @return array{pending: RoundPairing|null}
      *
      * @throws InvalidConfigurationException
      */
-    private function resolveState(array $participants, array $results): array
+    private function resolveState(StageState $state): array
     {
-        $participants = array_values($participants);
+        $participants = array_values($state->getParticipants());
         $this->validateParticipants($participants);
 
         $slots = $this->buildInitialSlots($participants);
         $winnersRounds = (int) log(count($slots), 2);
-        $resultIndex = $this->indexResults($results);
+        $resultIndex = $this->indexResults($state->getResults());
         $roundNumber = 0;
 
         // Winners round 1
         $stage = $this->resolveStage($slots, $this->winnersStageName(1, $winnersRounds), $roundNumber, $resultIndex);
-        if ($stage['pending']) {
-            return ['pending' => $stage['pendingStage'], 'champion' => null];
+        if ($stage['pending'] !== null) {
+            return ['pending' => $stage['pending']];
         }
         $winnersSlots = $stage['winners'];
 
@@ -132,8 +164,8 @@ readonly class DoubleEliminationEngine
                 $roundNumber,
                 $resultIndex
             );
-            if ($stage['pending']) {
-                return ['pending' => $stage['pendingStage'], 'champion' => null];
+            if ($stage['pending'] !== null) {
+                return ['pending' => $stage['pending']];
             }
             $losersSurvivors = $stage['winners'];
             $losersChampion = null;
@@ -145,8 +177,8 @@ readonly class DoubleEliminationEngine
                     $roundNumber,
                     $resultIndex
                 );
-                if ($stage['pending']) {
-                    return ['pending' => $stage['pendingStage'], 'champion' => null];
+                if ($stage['pending'] !== null) {
+                    return ['pending' => $stage['pending']];
                 }
                 $winnersSlots = $stage['winners'];
                 $droppers = $stage['losers'];
@@ -169,8 +201,8 @@ readonly class DoubleEliminationEngine
                     $roundNumber,
                     $resultIndex
                 );
-                if ($stage['pending']) {
-                    return ['pending' => $stage['pendingStage'], 'champion' => null];
+                if ($stage['pending'] !== null) {
+                    return ['pending' => $stage['pending']];
                 }
 
                 if ($winnersRound < $winnersRounds) {
@@ -182,8 +214,8 @@ readonly class DoubleEliminationEngine
                         $roundNumber,
                         $resultIndex
                     );
-                    if ($stage['pending']) {
-                        return ['pending' => $stage['pendingStage'], 'champion' => null];
+                    if ($stage['pending'] !== null) {
+                        return ['pending' => $stage['pending']];
                     }
                     $losersSurvivors = $stage['winners'];
                 } else {
@@ -204,8 +236,8 @@ readonly class DoubleEliminationEngine
             $roundNumber,
             $resultIndex
         );
-        if ($stage['pending']) {
-            return ['pending' => $stage['pendingStage'], 'champion' => null];
+        if ($stage['pending'] !== null) {
+            return ['pending' => $stage['pending']];
         }
         $grandFinalWinner = $stage['winners'][0];
 
@@ -213,8 +245,8 @@ readonly class DoubleEliminationEngine
             throw new \LogicException('Grand final resolved without a winner');
         }
 
-        if (!$this->grandFinalReset || $grandFinalWinner->getId() === $winnersChampion->getId()) {
-            return ['pending' => null, 'champion' => $grandFinalWinner];
+        if (!$this->options->grandFinalReset || $grandFinalWinner->getId() === $winnersChampion->getId()) {
+            return ['pending' => null];
         }
 
         // The losers champion won: both finalists now have one loss, so a
@@ -225,11 +257,8 @@ readonly class DoubleEliminationEngine
             $roundNumber,
             $resultIndex
         );
-        if ($stage['pending']) {
-            return ['pending' => $stage['pendingStage'], 'champion' => null];
-        }
 
-        return ['pending' => null, 'champion' => $stage['winners'][0]];
+        return ['pending' => $stage['pending']];
     }
 
     /**
@@ -239,10 +268,10 @@ readonly class DoubleEliminationEngine
      * consuming a round number.
      *
      * @param array<Participant|null> $slots
-     * @param array<string, Result> $resultIndex
-     * @return array{pending: bool, pendingStage: array{round: int, stage: string, pairs: array<array<Participant|null>>}|null, winners: array<Participant|null>, losers: array<Participant|null>}
+     * @param array<string, \MissionGaming\Tactician\DTO\Result> $resultIndex
+     * @return array{pending: RoundPairing|null, winners: array<Participant|null>, losers: array<Participant|null>}
      *
-     * @throws InvalidConfigurationException When the stage is partially resolved or a result is drawn
+     * @throws InvalidConfigurationException When the stage is partially resolved or a tie is broken
      */
     private function resolveStage(
         array $slots,
@@ -264,15 +293,14 @@ readonly class DoubleEliminationEngine
 
             $resolved = 0;
             foreach ($playable as $pair) {
-                if ($this->lookupWinner($resultIndex, $roundNumber, $pair[0], $pair[1]) !== null) {
+                if ($this->lookupAdvancer($resultIndex, $roundNumber, $pair[0], $pair[1], $this->options->legsPerTie) !== null) {
                     ++$resolved;
                 }
             }
 
             if ($resolved === 0) {
                 return [
-                    'pending' => true,
-                    'pendingStage' => ['round' => $roundNumber, 'stage' => $stageName, 'pairs' => $pairs],
+                    'pending' => $this->buildStagePairing($roundNumber, $stageName, $pairs),
                     'winners' => [],
                     'losers' => [],
                 ];
@@ -281,7 +309,7 @@ readonly class DoubleEliminationEngine
             if ($resolved < count($playable)) {
                 throw new InvalidConfigurationException(
                     "Stage '{$stageName}' (round {$roundNumber}) is partially resolved: {$resolved} of " . count($playable)
-                        . ' events have results. Record the remaining results before pairing the next round.',
+                        . ' ties have complete results. Record the remaining results before pairing the next round.',
                     ['round' => $roundNumber, 'stage' => $stageName, 'resolved' => $resolved, 'playable' => count($playable)]
                 );
             }
@@ -292,16 +320,43 @@ readonly class DoubleEliminationEngine
         foreach ($pairs as $pair) {
             [$first, $second] = [$pair[0], $pair[1] ?? null];
             if ($first !== null && $second !== null) {
-                $winner = $this->lookupWinner($resultIndex, $roundNumber, $first, $second);
-                $winners[] = $winner;
-                $losers[] = $winner?->getId() === $first->getId() ? $second : $first;
+                $advancer = $this->lookupAdvancer($resultIndex, $roundNumber, $first, $second, $this->options->legsPerTie);
+                $winners[] = $advancer;
+                $losers[] = $advancer?->getId() === $first->getId() ? $second : $first;
             } else {
                 $winners[] = $first ?? $second;
                 $losers[] = null;
             }
         }
 
-        return ['pending' => false, 'pendingStage' => null, 'winners' => $winners, 'losers' => $losers];
+        return ['pending' => null, 'winners' => $winners, 'losers' => $losers];
+    }
+
+    /**
+     * @param array<array<Participant|null>> $pairs
+     */
+    private function buildStagePairing(int $roundNumber, string $stageName, array $pairs): RoundPairing
+    {
+        $round = new Round($roundNumber, ['label' => $stageName]);
+
+        $events = [];
+        $byes = [];
+        foreach ($pairs as $pair) {
+            [$first, $second] = [$pair[0] ?? null, $pair[1] ?? null];
+            if ($first !== null && $second !== null) {
+                foreach ($this->buildTieEvents($first, $second, $round, $this->options->legsPerTie) as $event) {
+                    $events[] = $event;
+                }
+                continue;
+            }
+
+            $advancer = $first ?? $second;
+            if ($advancer !== null) {
+                $byes[] = $advancer;
+            }
+        }
+
+        return new RoundPairing($roundNumber, $stageName, $events, $byes);
     }
 
     private function winnersStageName(int $round, int $totalWinnersRounds): string
