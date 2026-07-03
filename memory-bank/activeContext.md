@@ -8,7 +8,7 @@
 ## Next Steps
 - **Phase 3 (algorithm-neutral core) is complete** — all five milestones of `docs/design/phase-3-algorithm-neutral-core.md` shipped: StagePlan, typed options + `RankingStrategy`, the stage engine model, compositions (pools/selectors/validator/elimination presets/two-legged ties), and the sweep.
 - **Phase 4 (timeline assignment) is underway** — the first cut is implemented: `src/Timeline/` with `TimelineDefinition` (declarative per-stage slot model, config-constructible, DST-safe wall-clock arithmetic, UTC out), `TimelineAssigner` (deterministic filling over `Schedule::getEventsByRound()` and `RoundPairing`), and serializable `ScheduledEvent`/`ScheduledSchedule` decorations. One event per slot in this cut.
-- **Time-aware rules shipped** (`TimelineRule`: `MinimumRestRule`, `BlackoutRule`) — loud post-assignment validation, deliberately not generation constraints (assignment is deterministic; a violated rule can only be reported). Remaining Phase 4 open questions: cross-stage clash validation (❓ in the design note) and venue/resource modelling with slot capacity.
+- **Time-aware rules shipped** (`TimelineRule`: `MinimumRestRule`, `BlackoutRule`) — loud post-assignment validation, deliberately not generation constraints. **Resources shipped too**: named resources on the timeline lift the one-event-per-slot default (concurrent kickoffs, deterministic resource assignment on each `ScheduledEvent`). Phase 4's designed scope is complete; the only open items are demand-gated: cross-stage clash validation (❓) and per-resource availability windows.
 - Backtracking generation for constraint configurations the greedy generator cannot satisfy (known limitation, recorded in ROADMAP Phase 5)
 
 ## Active Decisions and Considerations

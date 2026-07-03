@@ -35,8 +35,9 @@ $timeline = TimelineDefinition::fromArray([
     'start' => '2026-08-01 18:00:00',
     'timezone' => 'Europe/London',   // wall-clock kickoffs survive DST
     'round_interval' => 'P7D',       // one match day per week
-    'slots_per_round' => 3,          // 18:00, 19:00, 20:00 kickoffs
-    'slot_interval' => 'PT1H',
+    'slots_per_round' => 2,          // 18:00 and 20:00 kickoffs...
+    'slot_interval' => 'PT2H',
+    'resources' => ['North Pitch', 'South Pitch'], // ...on two pitches
 ]);
 
 // Time-aware rules guard the assignment: weekly rounds comfortably give
@@ -61,8 +62,9 @@ foreach ($scheduled->getEventsByRound() as $round => $scheduledEvents) {
     foreach ($scheduledEvents as $scheduledEvent) {
         [$home, $away] = $scheduledEvent->getEvent()->getParticipants();
         printf(
-            "  %s  %s vs %s\n",
+            "  %s  %-11s  %s vs %s\n",
             $scheduledEvent->getKickoff()->format('H:i'),
+            (string) $scheduledEvent->getResource(),
             $home->getLabel(),
             $away->getLabel()
         );

@@ -113,27 +113,40 @@ final readonly class TimelineAssigner
     }
 
     /**
+     * Fill deterministically: schedule order fills slot by slot, and
+     * within a slot resource by resource in declared order.
+     *
      * @param array<\MissionGaming\Tactician\DTO\Event> $events In schedule order
      * @return array<ScheduledEvent>
      *
-     * @throws InvalidConfigurationException When the round overflows the timeline's slots
+     * @throws InvalidConfigurationException When the round overflows the timeline's capacity
      */
     private function assignEvents(array $events, int $roundNumber, TimelineDefinition $timeline): array
     {
-        if (count($events) > $timeline->getSlotsPerRound()) {
+        $capacityPerSlot = $timeline->getCapacityPerSlot();
+        $roundCapacity = $timeline->getSlotsPerRound() * $capacityPerSlot;
+
+        if (count($events) > $roundCapacity) {
             throw new InvalidConfigurationException(
-                "Round {$roundNumber} has more events than the timeline has slots",
+                "Round {$roundNumber} has more events than the timeline can hold",
                 [
                     'round' => $roundNumber,
                     'events' => count($events),
                     'slots_per_round' => $timeline->getSlotsPerRound(),
+                    'capacity_per_slot' => $capacityPerSlot,
+                    'round_capacity' => $roundCapacity,
                 ]
             );
         }
 
         $scheduledEvents = [];
-        foreach (array_values($events) as $slot => $event) {
-            $scheduledEvents[] = new ScheduledEvent($event, $timeline->getSlotTime($roundNumber, $slot));
+        foreach (array_values($events) as $index => $event) {
+            $slot = intdiv($index, $capacityPerSlot);
+            $scheduledEvents[] = new ScheduledEvent(
+                $event,
+                $timeline->getSlotTime($roundNumber, $slot),
+                $timeline->getResourceAt($index % $capacityPerSlot)
+            );
         }
 
         return $scheduledEvents;

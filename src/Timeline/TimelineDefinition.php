@@ -33,14 +33,18 @@ final readonly class TimelineDefinition
      * @param DateInterval $roundInterval Time between one round's first slot and the next's
      * @param int $slotsPerRound How many kickoff slots each round has (1 = round-aligned)
      * @param DateInterval|null $slotInterval Time between a round's slots; required when slotsPerRound > 1
+     * @param array<string> $resources Named resources hosting concurrent events per slot
+     *                                 (venue, pitch, court, board...); empty means one
+     *                                 anonymous resource, i.e. one event per slot
      *
-     * @throws InvalidConfigurationException When the slot configuration is invalid
+     * @throws InvalidConfigurationException When the slot or resource configuration is invalid
      */
     public function __construct(
         private DateTimeImmutable $start,
         private DateInterval $roundInterval,
         private int $slotsPerRound = 1,
-        private ?DateInterval $slotInterval = null
+        private ?DateInterval $slotInterval = null,
+        private array $resources = []
     ) {
         if ($slotsPerRound < 1) {
             throw new InvalidConfigurationException(
@@ -69,6 +73,22 @@ final readonly class TimelineDefinition
                 ['slot_interval' => self::formatInterval($slotInterval)]
             );
         }
+
+        foreach ($resources as $resource) {
+            if (!is_string($resource) || $resource === '') {
+                throw new InvalidConfigurationException(
+                    'Resources must be non-empty strings',
+                    ['resources' => $resources]
+                );
+            }
+        }
+
+        if (count($resources) !== count(array_unique($resources))) {
+            throw new InvalidConfigurationException(
+                'Resources must be unique',
+                ['resources' => $resources]
+            );
+        }
     }
 
     /**
@@ -94,20 +114,30 @@ final readonly class TimelineDefinition
             );
         }
 
+        $resources = $config['resources'] ?? [];
+        if (!is_array($resources)) {
+            throw new InvalidConfigurationException(
+                'resources must be a list of names',
+                ['resources' => $resources]
+            );
+        }
+
+        /** @var array<string> $resources Element types are validated by the constructor */
         return new self(
             $start,
             self::parseInterval($config['round_interval'] ?? null, 'round_interval'),
             $slotsPerRound,
             isset($config['slot_interval'])
                 ? self::parseInterval($config['slot_interval'], 'slot_interval')
-                : null
+                : null,
+            array_values($resources)
         );
     }
 
     /**
      * Serialize back to the plain-data form fromArray() accepts.
      *
-     * @return array{start: string, timezone: string, round_interval: string, slots_per_round: int, slot_interval?: string}
+     * @return array{start: string, timezone: string, round_interval: string, slots_per_round: int, slot_interval?: string, resources?: array<string>}
      */
     public function toArray(): array
     {
@@ -120,6 +150,10 @@ final readonly class TimelineDefinition
 
         if ($this->slotInterval !== null) {
             $data['slot_interval'] = self::formatInterval($this->slotInterval);
+        }
+
+        if ($this->resources !== []) {
+            $data['resources'] = $this->resources;
         }
 
         return $data;
@@ -143,6 +177,48 @@ final readonly class TimelineDefinition
     public function getSlotInterval(): ?DateInterval
     {
         return $this->slotInterval;
+    }
+
+    /**
+     * The named resources hosting concurrent events per slot; empty means
+     * one anonymous resource.
+     *
+     * @return array<string>
+     */
+    public function getResources(): array
+    {
+        return $this->resources;
+    }
+
+    /**
+     * How many events one slot can host: one per resource, or one when no
+     * resources are declared.
+     *
+     * @return positive-int
+     */
+    public function getCapacityPerSlot(): int
+    {
+        return max(1, count($this->resources));
+    }
+
+    /**
+     * The resource hosting a slot's nth concurrent event, or null when no
+     * resources are declared.
+     *
+     * @param int $index 0-based index within the slot
+     *
+     * @throws InvalidConfigurationException When the index exceeds the slot capacity
+     */
+    public function getResourceAt(int $index): ?string
+    {
+        if ($index < 0 || $index >= $this->getCapacityPerSlot()) {
+            throw new InvalidConfigurationException(
+                'Resource index is out of range for this timeline',
+                ['index' => $index, 'capacity_per_slot' => $this->getCapacityPerSlot()]
+            );
+        }
+
+        return $this->resources[$index] ?? null;
     }
 
     /**

@@ -54,6 +54,7 @@ anything else that competes.
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
 | **Slot** | One kickoff time within a round, holding one event. A round's events fill its slots in schedule order against slot time order, deterministically. |
 | **Kickoff** | The assigned time of a scheduled event, always emitted in UTC (`ScheduledEvent::getKickoff()`); the timeline's wall-clock arithmetic happens in the stage's declared timezone. |
+| **Resource** | A named host of concurrent events within a slot (venue, pitch, court, board...). A slot holds one event per resource; no declared resources means one anonymous resource. Each scheduled event carries its assigned resource. |
 | **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — minimum rest in hours (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
@@ -677,10 +678,10 @@ The rules of the mechanism:
 - **Deterministic filling.** A round's events fill its slots in schedule
   order against slot time order — the same schedule and timeline always
   produce the same kickoffs.
-- **Loud validation.** A round with more events than the timeline has
-  slots fails with diagnostics (each slot holds one event in this cut),
-  and a schedule carrying round-less events is refused rather than
-  silently dropping fixtures.
+- **Loud validation.** A round with more events than the timeline can
+  hold (slots × resources) fails with diagnostics, and a schedule
+  carrying round-less events is refused rather than silently dropping
+  fixtures.
 - **Round numbers are absolute offsets.** Round N lands at
   start + (N−1) round intervals whether or not earlier rounds exist, so
   cross-leg-continuous numbering maps stably.
@@ -689,6 +690,21 @@ The rules of the mechanism:
   timeline is cheap, and the decorated view serializes
   (`toArray()`/`fromArray()`/JSON) so platforms persist assigned
   kickoffs.
+
+**Resources** host concurrent events within a slot — venue, pitch,
+court, board, station; the name is generic because the concept is.
+Declaring them lifts the one-event-per-slot default: each slot hosts one
+event per resource, filled slot by slot, resource by resource in
+declared order, and every `ScheduledEvent` carries its assigned resource
+(`getResource()`, serialized alongside the kickoff):
+
+```php
+$timeline = new TimelineDefinition(
+    start: new DateTimeImmutable('2026-08-01 15:00', new DateTimeZone('Europe/London')),
+    roundInterval: new DateInterval('P7D'),
+    resources: ['Pitch 1', 'Pitch 2'],   // two concurrent kickoffs per slot
+);
+```
 
 Timelines are **per stage** — a group stage playing weekly slots and a
 finals weekend are two `TimelineDefinition`s. For results-driven stages,

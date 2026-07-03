@@ -27,6 +27,17 @@ open. Settled decisions beyond the sketch:
 - **Round-less events fail loudly**: the round-grouped view silently
   excludes them, so the assigner refuses schedules whose flat event count
   disagrees with the grouped view rather than silently dropping fixtures.
+- **Resources lift the one-event-per-slot restriction** (third cut): a
+  timeline optionally declares named resources — venue, pitch, court,
+  board, station; the name is generic because the concept is — and each
+  slot then hosts one event per resource. Filling stays deterministic
+  (schedule order fills slot by slot, resource by resource in declared
+  order) and each `ScheduledEvent` carries its assigned resource, so
+  platforms get the display/persistence datum alongside the kickoff.
+  Capacity without meaningful names is just resources with arbitrary
+  labels. A round's ceiling becomes slots × resources, validated loudly
+  as before. Per-resource availability windows remain future work,
+  gated on a consumer needing them.
 - **Time-aware rules are loud validation, not generation steering**
   (second cut): assignment is deterministic slot arithmetic, so a violated
   time rule cannot be routed around — it can only be reported. Rules

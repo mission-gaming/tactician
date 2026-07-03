@@ -172,4 +172,58 @@ describe('TimelineDefinition', function (): void {
         $consistent = TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01 19:00:00 Europe/London']);
         expect($consistent->getSlotTime(1)->format('H:i'))->toBe('18:00'); // BST -> UTC
     });
+
+    it('declares named resources with per-slot capacity', function (): void {
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
+            new DateInterval('P7D'),
+            resources: ['Pitch 1', 'Pitch 2']
+        );
+
+        expect($timeline->getResources())->toBe(['Pitch 1', 'Pitch 2']);
+        expect($timeline->getCapacityPerSlot())->toBe(2);
+        expect($timeline->getResourceAt(0))->toBe('Pitch 1');
+        expect($timeline->getResourceAt(1))->toBe('Pitch 2');
+    });
+
+    it('defaults to one anonymous resource', function (): void {
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
+            new DateInterval('P7D')
+        );
+
+        expect($timeline->getResources())->toBe([]);
+        expect($timeline->getCapacityPerSlot())->toBe(1);
+        expect($timeline->getResourceAt(0))->toBeNull();
+        expect(fn () => $timeline->getResourceAt(1))
+            ->toThrow(InvalidConfigurationException::class, 'out of range');
+    });
+
+    it('round-trips resources through configuration', function (): void {
+        $config = [
+            'start' => '2026-08-01 19:00:00',
+            'timezone' => 'UTC',
+            'round_interval' => 'P7D',
+            'slots_per_round' => 1,
+            'resources' => ['Court A', 'Court B'],
+        ];
+
+        expect(TimelineDefinition::fromArray($config)->toArray())->toBe($config);
+    });
+
+    it('rejects malformed resources', function (): void {
+        $start = new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC'));
+        $week = new DateInterval('P7D');
+
+        expect(fn () => new TimelineDefinition($start, $week, resources: ['']))
+            ->toThrow(InvalidConfigurationException::class, 'non-empty strings');
+        expect(fn () => new TimelineDefinition($start, $week, resources: ['Pitch 1', 'Pitch 1']))
+            ->toThrow(InvalidConfigurationException::class, 'unique');
+        expect(fn () => TimelineDefinition::fromArray([
+            'start' => '2026-08-01 19:00:00',
+            'timezone' => 'UTC',
+            'round_interval' => 'P7D',
+            'resources' => 'Pitch 1',
+        ]))->toThrow(InvalidConfigurationException::class, 'list of names');
+    });
 });
