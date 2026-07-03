@@ -32,13 +32,25 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  * Withdrawals are supported: pass only the still-active participants to
  * pairNextRound(). Results involving withdrawn participants still count
  * toward the remaining participants' standings.
+ *
+ * Constraints that reason about the tournament length (e.g.
+ * SeedProtectionConstraint) need to know the planned number of rounds;
+ * provide it via the plannedRounds constructor argument.
  */
 readonly class SwissPairingEngine
 {
+    /**
+     * @param int|null $plannedRounds Total rounds the tournament will run, exposed to
+     *                                constraints via the scheduling context metadata
+     */
     public function __construct(
         private ?ConstraintSet $constraints = null,
-        private StandingsCalculator $standingsCalculator = new StandingsCalculator()
+        private StandingsCalculator $standingsCalculator = new StandingsCalculator(),
+        private ?int $plannedRounds = null
     ) {
+        if ($plannedRounds !== null && $plannedRounds < 1) {
+            throw new \InvalidArgumentException('Planned rounds must be at least 1');
+        }
     }
 
     /**
@@ -93,7 +105,12 @@ readonly class SwissPairingEngine
         $homeCounts = $this->collectHomeCounts($results);
         $priorEvents = array_map(fn (Result $result) => $result->getEvent(), $results);
 
-        $context = new SchedulingContext($participants, $priorEvents, 1, 1, 2, ['algorithm' => 'swiss']);
+        $metadata = ['algorithm' => 'swiss'];
+        if ($this->plannedRounds !== null) {
+            $metadata['rounds'] = $this->plannedRounds;
+            $metadata['total_rounds'] = $this->plannedRounds;
+        }
+        $context = new SchedulingContext($participants, $priorEvents, 1, 1, 2, $metadata);
 
         if (count($orderedParticipants) % 2 === 0) {
             $events = $this->pairOrderedParticipants(

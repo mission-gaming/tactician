@@ -173,6 +173,37 @@ describe('SwissPairingEngine', function (): void {
         expect($pairing->getBye()?->getId())->not->toBe('p4');
     });
 
+    it('exposes planned rounds to constraints via the context', function (): void {
+        $participants = [];
+        for ($i = 1; $i <= 8; ++$i) {
+            $participants[] = new Participant("p{$i}", "Player {$i}", $i);
+        }
+
+        // Protect the top 2 seeds for 50% of a 7-round tournament (rounds 1-3)
+        $constraints = ConstraintSet::create()
+            ->add(new SeedProtectionConstraint(2, 0.5))
+            ->build();
+        $engine = new SwissPairingEngine($constraints, plannedRounds: 7);
+
+        // Round 1: seeds 1 and 2 both win
+        $round1 = $engine->pairNextRound($participants, []);
+        $results = [];
+        foreach ($round1->getEvents() as $event) {
+            $ps = $event->getParticipants();
+            $winner = ($ps[0]->getSeed() ?? PHP_INT_MAX) < ($ps[1]->getSeed() ?? PHP_INT_MAX) ? $ps[0] : $ps[1];
+            $results[] = new Result($event, $winner);
+        }
+
+        // Without plannedRounds the protection window would collapse to zero
+        // and the two 1-0 top seeds would meet in round 2
+        $round2 = $engine->pairNextRound($participants, $results);
+        foreach ($round2->getEvents() as $event) {
+            $seeds = array_map(fn (Participant $p) => $p->getSeed(), $event->getParticipants());
+            sort($seeds);
+            expect($seeds)->not->toBe([1, 2]);
+        }
+    });
+
     it('throws when every pairing has already been played', function (): void {
         $results = [
             new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice),
