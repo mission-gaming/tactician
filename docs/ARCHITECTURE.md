@@ -23,7 +23,12 @@ play completes. The `src/Stage/` family:
 - **StageState**: The serializable (`toArray()`/`fromArray()`/JSON) state of a results-driven stage between rounds — active participants, recorded pairings, and results. Records the *pairings* played, not just results, so repeat avoidance survives result-free rounds; withdrawals are a first-class verb (`withoutParticipant()`).
 - **RoundPairing**: One value object for every format's round — round number, optional label ('semifinal', 'losers round 2'; null for Swiss), events, and byes
 - **StageEngineInterface**: The one results-driven contract — `getPlan()`, `pairNextRound()`, `isComplete()`, `getOutcome()` — behind one driver loop for every format
-- **StageOutcome**: The uniform completion product: standings, results, bye counts, and the structural final round. Deliberately no champion/winner vocabulary — "the champion" is the consumer's interpretation of rank 1 or the final round's winners.
+- **StageOutcome**: The uniform completion product: standings, results, bye counts, and the structural final round; pooled stages combine into one outcome carrying the pool structure (`StageOutcome::combining()`). Deliberately no champion/winner vocabulary — "the champion" is the consumer's interpretation of rank 1 or the final round's winners.
+- **EliminationPlan**: Bracket shape — single elimination knows rounds (log2 of bracket size) and events ((n-1) × legsPerTie); double elimination reports null (the grand final may reset). `getLegsPerTie()` is a tie-structure fact; `getLegs()` stays null.
+- **PoolDistributor**: Serpentine distribution of participants into pools by list position, plus per-pool result splitting — the generic primitive behind group stages
+- **ProgressionSelector**: The hand-off between stages — `RankRangeSelector` (rank slices: overall or per-pool blocks) and `MatchOutcomeSelector` (final-round winners/losers from recorded results, tie-aware). All config-constructible with stable identifiers. Optional machinery: any ordered list is a valid stage entry.
+- **CompositionValidator / StageTransition**: Ahead-of-time telescoping validation of a declared multi-stage chain, using selector cardinalities and knockout arithmetic
+- **TieDecision**: Shared resolution of elimination ties — more leg wins advances; a level two-legged aggregate is the application's call, recorded as `tie_winner` result metadata
 
 ### Scheduling System
 - **SchedulerInterface**: Contract for whole-schedule generators — participants and typed options in, a validated schedule out; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
@@ -37,10 +42,9 @@ play completes. The `src/Stage/` family:
 Formats whose later rounds depend on results cannot be generated whole; these
 engines resolve tournament state on every call:
 - **SwissPairingEngine**: A `StageEngineInterface` implementation — standings-aware Monrad pairing from the recorded `StageState`, with repeat avoidance, bye rotation (byes credited as wins), home/away balancing, withdrawal handling, constraint support, and optional randomization within equal-ranking groups
-- **SingleEliminationEngine**: Fold-seeded brackets with byes to top seeds, round labels, and champion resolution (participants-and-results signature; rebuilt as a preset over composed single-round stages in the Phase 3 redesign)
-- **DoubleEliminationEngine**: Winners/losers brackets with dropper rematch deferral, grand final, and optional bracket reset (same signature caveat)
-- **GroupStageEngine**: Serpentine-seeded groups, per-group standings, and knockout qualifiers reseeded for cross-group pairings
-- All engines emit **RoundPairing** values (see the stage model)
+- **SingleEliminationEngine**: `StageEngineInterface` preset — position-folded brackets with byes to top positions, round labels, fixed or re-seeded paths, and one- or two-legged ties (`EliminationOptions`)
+- **DoubleEliminationEngine**: `StageEngineInterface` preset — winners/losers routes with dropper rematch deferral, grand final, and optional bracket reset; the same graph an application could compose by hand
+- All engines emit **RoundPairing** values and finish as a **StageOutcome** (see the stage model); group stages are compositions (PoolDistributor + per-pool stages + selectors), not an engine
 
 ### Standings System
 - **StandingsCalculator**: Ordered league tables from results with a pluggable ranking strategy

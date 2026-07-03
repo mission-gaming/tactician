@@ -153,6 +153,43 @@ final readonly class RoundRobinPlan implements PairwisePlan
         return $this->warnings;
     }
 
+    /**
+     * Pairings that have no recorded result yet.
+     *
+     * Progressing from a partial table silently promotes the wrong
+     * participants, so check this is empty before selecting qualifiers
+     * from a round-robin stage's standings.
+     *
+     * @param array<\MissionGaming\Tactician\DTO\Result> $results
+     * @return array<string> Human-readable 'A vs B' descriptions
+     */
+    public function findUnplayedPairings(array $results): array
+    {
+        $playedPairings = [];
+        foreach ($results as $result) {
+            $eventParticipants = $result->getEvent()->getParticipants();
+            if (count($eventParticipants) === 2) {
+                $playedPairings[$this->pairingKey(
+                    $eventParticipants[0]->getId(),
+                    $eventParticipants[1]->getId()
+                )] = true;
+            }
+        }
+
+        $unplayed = [];
+        $participantCount = count($this->participants);
+        for ($i = 0; $i < $participantCount - 1; ++$i) {
+            for ($j = $i + 1; $j < $participantCount; ++$j) {
+                $key = $this->pairingKey($this->participants[$i]->getId(), $this->participants[$j]->getId());
+                if (!isset($playedPairings[$key])) {
+                    $unplayed[] = $this->participants[$i]->getLabel() . ' vs ' . $this->participants[$j]->getLabel();
+                }
+            }
+        }
+
+        return $unplayed;
+    }
+
     #[Override]
     public function validateIntegrity(Schedule $schedule): array
     {

@@ -91,6 +91,34 @@ describe('StageState', function (): void {
         );
     })->throws(InvalidConfigurationException::class, 'different round');
 
+    // Accepting results for unrelated events (even in the right round)
+    // would silently corrupt engine replay
+    it('rejects results for events outside the recorded pairing', function (): void {
+        $pairingEvent = new Event([$this->alice, $this->bob], new Round(1));
+        $foreignEvent = new Event([$this->carol, $this->dave], new Round(1));
+        $pairing = new RoundPairing(1, null, [$pairingEvent]);
+
+        expect(fn () => StageState::start($this->participants)
+            ->withRoundPlayed($pairing, [new Result($foreignEvent, $this->carol)]))
+            ->toThrow(InvalidConfigurationException::class, 'not part of the pairing');
+
+        $state = StageState::start($this->participants)->withRoundPlayed($pairing, []);
+        expect(fn () => $state->withAdditionalResults([new Result($foreignEvent, $this->carol)]))
+            ->toThrow(InvalidConfigurationException::class, 'not part of the pairing');
+    });
+
+    it('completes a round with additional results and rejects them without a round', function (): void {
+        $event = new Event([$this->alice, $this->bob], new Round(1));
+        $state = StageState::start($this->participants)
+            ->withRoundPlayed(new RoundPairing(1, null, [$event]), [])
+            ->withAdditionalResults([new Result($event, $this->alice)]);
+
+        expect($state->getResults())->toHaveCount(1);
+
+        expect(fn () => StageState::start($this->participants)->withAdditionalResults([]))
+            ->toThrow(InvalidConfigurationException::class, 'No round');
+    });
+
     it('accumulates byes across rounds', function (): void {
         $state = StageState::start($this->participants)
             ->withRoundPlayed(new RoundPairing(1, null, [
@@ -170,8 +198,11 @@ describe('StageState', function (): void {
     });
 
     it('rejects malformed serialized data', function (): void {
-        StageState::fromArray(['participants' => 'nope']);
-    })->throws(InvalidArgumentException::class);
+        expect(fn () => StageState::fromArray(['participants' => 'nope']))
+            ->toThrow(InvalidArgumentException::class);
+        expect(fn () => StageState::fromArray(['participants' => ['nope']]))
+            ->toThrow(InvalidArgumentException::class, 'must be an array');
+    });
 
     it('rejects malformed rounds and results collections', function (): void {
         $base = [

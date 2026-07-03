@@ -22,13 +22,16 @@ readonly class Result
      * @param Participant|null $winner The winning participant, or null for a draw
      * @param array<int|string, int|float> $scores Optional numeric scores keyed by participant ID
      *                                             (numeric-string IDs become int keys in PHP)
+     * @param array<string, mixed> $metadata Additional result annotations (e.g. a two-legged
+     *                                       tie decision the aggregate rules produced app-side)
      *
      * @throws InvalidArgumentException When the winner or a score references a participant not in the event
      */
     public function __construct(
         private Event $event,
         private ?Participant $winner = null,
-        private array $scores = []
+        private array $scores = [],
+        private array $metadata = []
     ) {
         if ($winner !== null && !$event->hasParticipant($winner)) {
             throw new InvalidArgumentException('Winner must be a participant in the event');
@@ -100,12 +103,30 @@ readonly class Result
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function getMetadata(): array
+    {
+        return $this->metadata;
+    }
+
+    public function hasMetadata(string $key): bool
+    {
+        return array_key_exists($key, $this->metadata);
+    }
+
+    public function getMetadataValue(string $key, mixed $default = null): mixed
+    {
+        return $this->metadata[$key] ?? $default;
+    }
+
+    /**
      * Convert this result to a serializable array.
      *
      * The event is embedded in its own array form (participants referenced
      * by ID); pair with a participant registry to rehydrate.
      *
-     * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>}
+     * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
@@ -113,6 +134,7 @@ readonly class Result
             'event' => $this->event->toArray(),
             'winner' => $this->winner?->getId(),
             'scores' => $this->scores,
+            'metadata' => $this->metadata,
         ];
     }
 
@@ -157,6 +179,15 @@ readonly class Result
             $scores[$participantId] = $score;
         }
 
-        return new self($event, $winner, $scores);
+        $rawMetadata = $data['metadata'] ?? [];
+        if (!is_array($rawMetadata)) {
+            throw new InvalidArgumentException('Result metadata must be an array');
+        }
+        $metadata = [];
+        foreach ($rawMetadata as $key => $value) {
+            $metadata[(string) $key] = $value;
+        }
+
+        return new self($event, $winner, $scores, $metadata);
     }
 }

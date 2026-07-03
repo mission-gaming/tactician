@@ -41,7 +41,10 @@ anything else that competes.
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
 | **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
-| **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out. Composed via `GroupStageEngine` qualifiers and the elimination engines. |
+| **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out, a `StageOutcome` when play completes. Stages compose via pools and progression selectors. |
+| **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
+| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
+| **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A level two-legged tie is decided by the application's aggregate rules and recorded as `tie_winner` metadata on a leg result. Ties are not legs: brackets have no legs concept. |
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`. |
@@ -477,71 +480,156 @@ $schedule = (new SwissScheduler(null, new Randomizer()))
 
 ## Elimination Brackets
 
-`SingleEliminationEngine` resolves the bracket from recorded results on each
-call. Round 1 uses fold seeding (seeds 1 and 2 in opposite halves), fields
-that are not a power of two give byes to the top seeds, and every round
-carries a stage name.
+The elimination engines are **presets** — canned compositions of
+single-round knockout stages behind the same stage driver loop as Swiss.
+Entry pairing folds by **list position** (position 1 is the top entrant;
+positions 1 and 2 land in opposite halves), fields that are not a power of
+two give byes to the top positions, and every round carries a label.
 
 ```php
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\StageState;
 
 $engine = new SingleEliminationEngine();
 
-$results = [];
-$champion = $engine->getChampion($participants, $results);
-while ($champion === null) {
-    $pairing = $engine->pairNextRound($participants, $results);
+$state = StageState::start($participants); // list order = seeding order
+while (!$engine->isComplete($state)) {
+    $pairing = $engine->pairNextRound($state);
     echo "{$pairing->getLabel()}\n"; // 'quarterfinal', 'semifinal', 'final', ...
 
+    $results = [];
     foreach ($pairing->getEvents() as $event) {
-        // ...play the match; elimination results cannot be draws...
+        // ...play the match; single-leg elimination results cannot be draws...
         $results[] = new Result($event, $event->getParticipants()[0]);
     }
-    $champion = $engine->getChampion($participants, $results);
+    $state = $state->withRoundPlayed($pairing, $results);
 }
 
-echo "Champion: {$champion->getLabel()}\n";
+$outcome = $engine->getOutcome($state);
+
+// "The champion" is your derivation of the outcome: rank 1 of the
+// standings, or the winners of the final round
+$titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];
 ```
 
-Both elimination engines emit the same `RoundPairing` value the Swiss
-engine does — round number, label, events, and byes. (Their
-participants-and-results signatures and `getChampion()` predate the stage
-driver loop; the Phase 3 redesign rebuilds them as presets over composed
-single-round stages.)
+The outcome's win/loss standings reproduce conventional bracket placement
+with no special cases — champion 3-0, runner-up 2-1, semifinal losers
+joint 1-1, quarter-final losers joint 0-1 in an 8-entrant bracket.
+
+`EliminationOptions` configures the preset (plain-data constructible via
+`fromArray()`):
+
+- `reseedEachRound: true` re-ranks survivors by standings and re-folds
+  every round, instead of the default fixed bracket path.
+- `legsPerTie: 2` plays every tie over two mirrored legs (annotated with
+  `tie_leg` metadata). Whoever wins more legs advances; when the legs are
+  level, the aggregate is **yours** to resolve — away goals, extra time,
+  penalties are rules Tactician never owns — and you record the decision
+  as `TieDecision::TIE_WINNER_KEY` (`'tie_winner'`) metadata on one leg's
+  result. Per-leg results remain ordinary results feeding standings.
 
 `DoubleEliminationEngine` adds a losers bracket and a grand final: everyone
 must lose twice to be eliminated, so when the losers champion wins the grand
 final a reset match decides the title (disable with
-`new DoubleEliminationEngine(grandFinalReset: false)`). Conflicting,
-duplicate, or round-less results are rejected with clear errors.
+`new DoubleEliminationEngine(new EliminationOptions(grandFinalReset: false))`).
+Conflicting, duplicate, or round-less results are rejected with clear
+errors; partially recorded rounds are completed with
+`$state->withAdditionalResults([...])`.
 
-## Group Stages and Multi-Stage Tournaments
+## Pools, Progression, and Multi-Stage Tournaments
 
-`GroupStageEngine` composes with the elimination engines for
-groups-into-knockout tournaments:
+A **pool** is just a bucket of participants: what format the bucket plays,
+how it is scored, and how it progresses are separate concerns. The retired
+group-stage monolith is now a composition of generic primitives:
 
 ```php
-use MissionGaming\Tactician\Scheduling\GroupStageEngine;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\PoolDistributor;
+use MissionGaming\Tactician\Stage\RankRangeSelector;
+use MissionGaming\Tactician\Stage\StageOutcome;
+use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\StandingsCalculator;
 
-$groupEngine = new GroupStageEngine();
+// Serpentine pools by list position: with two pools, positions 1, 4, 5, 8
+// land in pool A and 2, 3, 6, 7 in B
+$pools = PoolDistributor::serpentine($participants, pools: 2);
 
-// Serpentine-seeded groups keyed 'A', 'B', ... with round robin per group
-$groups = $groupEngine->createGroups($participants, 2);
-$schedules = $groupEngine->scheduleGroups($groups);
+// Each pool plays ANY per-stage format - round robin here
+$calculator = new StandingsCalculator();
+$scheduler = new RoundRobinScheduler();
+$poolOutcomes = [];
+foreach ($pools as $label => $poolParticipants) {
+    $schedule = $scheduler->schedule($poolParticipants);
+    $results = playPool($schedule); // application-side
 
-// ...play the groups and record results...
+    // Progressing from a partial table promotes the wrong participants:
+    // check every pairing has a result before qualifying
+    assert($scheduler->getPlan($poolParticipants)->findUnplayedPairings($results) === []);
 
-$groupStandings = $groupEngine->calculateGroupStandings($groups, $groupResults);
+    $poolOutcomes[$label] = new StageOutcome(
+        $calculator->calculate($poolParticipants, $results),
+        $results
+    );
+}
 
-// Qualifiers are reseeded so fold seeding produces cross-group pairings
-// (A1 vs B2, B1 vs A2). Requires complete group play.
-$qualifiers = $groupEngine->getQualifiers($groups, $groupResults, 2);
+// One combined outcome, optionally carrying the pool structure
+$combined = StageOutcome::combining($poolOutcomes, $calculator);
+
+// The hand-off: top 2 per pool, pool winners first - exactly the ordering
+// fold seeding wants for cross-pool pairings (A1 vs B2, B1 vs A2)
+$qualifiers = RankRangeSelector::topPerGroup(2)->select($combined);
 
 $knockout = new SingleEliminationEngine();
-$semifinals = $knockout->pairNextRound($qualifiers, []);
+$knockoutState = StageState::start($qualifiers); // position 1 = seed 1
 ```
+
+**Progression selectors** are the hand-off between stages: they consume a
+`StageOutcome` and produce the ordered entrant list of the next stage.
+Order is authoritative — a stage seeds from list position — so library
+selectors and consumer-derived lists behave identically by construction.
+Two families cover the two legitimate substrates (and mixing them within
+one decision invites contradictory qualification — pick one ranking
+authority per decision):
+
+```php
+// Standings-based (rank slices):
+RankRangeSelector::topPerGroup(2);            // the classic qualifiers
+RankRangeSelector::perGroup(from: 3, to: 4);  // a losers' route
+RankRangeSelector::overall(from: 1, to: 8);   // best 8 across all pools
+
+// Outcome-based (recorded match results - never points arithmetic):
+MatchOutcomeSelector::winners();              // knockout round -> next round
+MatchOutcomeSelector::losers();               // knockout round -> repechage
+```
+
+All selectors are plain-data constructible (`fromArray()`/`toArray()`)
+with stable mode identifiers. Selectors are optional machinery, not a
+gate: a consumer computing its own qualification hands the next stage an
+ordered list directly, with no penalty.
+
+**Ahead-of-time composition validation** checks that a declared
+multi-stage structure telescopes before any fixture exists:
+
+```php
+use MissionGaming\Tactician\Stage\CompositionValidator;
+use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\StageTransition;
+
+$violations = (new CompositionValidator())->validateChain(16, [
+    new StageTransition('quarterfinals', 8, MatchOutcomeSelector::winners()),
+    new StageTransition('semifinals', 4, MatchOutcomeSelector::winners()),
+    new StageTransition('final', 2, MatchOutcomeSelector::winners()),
+]);
+// [] - the chain telescopes: 16 -> 8 -> 4 -> 2
+```
+
+Consumer-derived selections participate by declaring expected entrant
+counts (a transition without a selector); concurrent routes (winners
+forward, losers to a repechage) validate as separate chains from the same
+source.
 
 ## Serialization
 

@@ -102,6 +102,29 @@ final readonly class StageState
             }
         }
 
+        $this->assertResultsBelongTo($pairing, $results);
+
+        return new self(
+            $this->participants,
+            [...$this->roundsPlayed, $pairing],
+            [...$this->results, ...array_values($results)]
+        );
+    }
+
+    /**
+     * Every result must reference one of the pairing's events — accepting
+     * results for unrelated events would silently corrupt engine replay.
+     *
+     * @param array<Result> $results
+     * @throws InvalidConfigurationException When a result references an event outside the pairing
+     */
+    private function assertResultsBelongTo(RoundPairing $pairing, array $results): void
+    {
+        $pairingEventKeys = [];
+        foreach ($pairing->getEvents() as $event) {
+            $pairingEventKeys[$this->eventKey($event)] = true;
+        }
+
         foreach ($results as $result) {
             $resultRound = $result->getEvent()->getRound()?->getNumber();
             if ($resultRound !== $pairing->getRoundNumber()) {
@@ -110,11 +133,56 @@ final readonly class StageState
                     ['pairing_round' => $pairing->getRoundNumber(), 'result_round' => $resultRound]
                 );
             }
+
+            if (!isset($pairingEventKeys[$this->eventKey($result->getEvent())])) {
+                throw new InvalidConfigurationException(
+                    'Result references an event that is not part of the pairing being recorded',
+                    ['pairing_round' => $pairing->getRoundNumber(), 'event' => $this->eventKey($result->getEvent())]
+                );
+            }
         }
+    }
+
+    /**
+     * Identify an event by round, participants, and tie leg — object
+     * identity does not survive serialization round-trips.
+     */
+    private function eventKey(Event $event): string
+    {
+        $ids = array_map(fn (Participant $participant) => $participant->getId(), $event->getParticipants());
+        sort($ids);
+
+        $leg = $event->getMetadataValue('tie_leg');
+
+        return ($event->getRound()?->getNumber() ?? 0) . ':' . implode('|', $ids) . ':' . (is_int($leg) ? $leg : 1);
+    }
+
+    /**
+     * Record further results for the most recently recorded round.
+     *
+     * The escape hatch for rounds recorded before all their results were
+     * known (e.g. a two-legged tie whose second leg finished later):
+     * engines report such rounds as partially resolved until the missing
+     * results arrive here.
+     *
+     * @param array<Result> $results
+     * @throws InvalidConfigurationException When no round is recorded or a result belongs to a different round
+     */
+    public function withAdditionalResults(array $results): self
+    {
+        $lastRound = $this->getLastRound();
+        if ($lastRound === null) {
+            throw new InvalidConfigurationException(
+                'No round has been recorded to add results to',
+                []
+            );
+        }
+
+        $this->assertResultsBelongTo($lastRound, $results);
 
         return new self(
             $this->participants,
-            [...$this->roundsPlayed, $pairing],
+            $this->roundsPlayed,
             [...$this->results, ...array_values($results)]
         );
     }
@@ -225,6 +293,49 @@ final readonly class StageState
         }
 
         return $counts;
+    }
+
+    /**
+     * Every participant the stage has seen: the active list plus withdrawn
+     * participants still referenced by recorded rounds (events or byes) or
+     * results. This is what plans and outcome standings cover — a
+     * withdrawn participant's played games remain part of the record.
+     *
+     * @return array<Participant>
+     */
+    public function getAllSeenParticipants(): array
+    {
+        $participants = array_values($this->participants);
+        $knownIds = [];
+        foreach ($participants as $participant) {
+            $knownIds[$participant->getId()] = true;
+        }
+
+        $add = function (Participant $participant) use (&$participants, &$knownIds): void {
+            if (!isset($knownIds[$participant->getId()])) {
+                $knownIds[$participant->getId()] = true;
+                $participants[] = $participant;
+            }
+        };
+
+        foreach ($this->roundsPlayed as $pairing) {
+            foreach ($pairing->getEvents() as $event) {
+                foreach ($event->getParticipants() as $participant) {
+                    $add($participant);
+                }
+            }
+            foreach ($pairing->getByes() as $participant) {
+                $add($participant);
+            }
+        }
+
+        foreach ($this->results as $result) {
+            foreach ($result->getEvent()->getParticipants() as $participant) {
+                $add($participant);
+            }
+        }
+
+        return $participants;
     }
 
     /**
