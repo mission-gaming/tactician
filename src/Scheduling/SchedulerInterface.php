@@ -15,7 +15,10 @@ interface SchedulerInterface
      *
      * @param array<Participant> $participants Tournament participants
      * @param int $participantsPerEvent Number of participants per event (future-proofing for N-participant events)
-     * @param int $rounds Algorithm-specific round count or repetition count
+     * @param int $legs Number of legs - how many times each participant meets each other
+     *                  participant. Algorithms without a legs concept (e.g. Swiss)
+     *                  interpret this as their round count; that overload is slated to be
+     *                  resolved by the algorithm-neutral interface work (ROADMAP Phase 3).
      * @param mixed $options Algorithm-specific scheduling options
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When configuration is invalid
@@ -25,7 +28,7 @@ interface SchedulerInterface
     public function schedule(
         array $participants,
         int $participantsPerEvent = 2,
-        int $rounds = 1,
+        int $legs = 1,
         mixed $options = null
     ): Schedule;
 
@@ -34,19 +37,21 @@ interface SchedulerInterface
      * This can throw ImpossibleConstraintsException for mathematically impossible constraints.
      *
      * @param array<Participant> $participants
+     * @param int $legs Number of legs (see schedule() for the Swiss interpretation)
      * @throws \MissionGaming\Tactician\Exceptions\ImpossibleConstraintsException
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException
      */
-    public function validateConstraints(array $participants, int $rounds): void;
+    public function validateConstraints(array $participants, int $legs): void;
 
     /**
      * Get the expected number of events for a complete schedule.
      *
      * @param array<Participant> $participants
+     * @param int $legs Number of legs (see schedule() for the Swiss interpretation)
      */
     public function getExpectedEventCount(
         array $participants,
-        int $rounds,
+        int $legs,
         int $participantsPerEvent = 2
     ): int;
 

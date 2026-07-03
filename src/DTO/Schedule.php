@@ -202,6 +202,30 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
+     * Get the events grouped by round number, in ascending round order.
+     *
+     * This is the natural shape for consumers that process a schedule round
+     * by round (assigning one date per round, rendering matchday views, and
+     * so on). Events without an assigned round are excluded; use getEvents()
+     * for the full flat list.
+     *
+     * @return array<int, array<Event>> Events keyed by round number, ascending
+     */
+    public function getEventsByRound(): array
+    {
+        $grouped = [];
+        foreach ($this->events as $event) {
+            $roundNumber = $event->getRound()?->getNumber();
+            if ($roundNumber !== null) {
+                $grouped[$roundNumber][] = $event;
+            }
+        }
+        ksort($grouped);
+
+        return $grouped;
+    }
+
+    /**
      * Get the highest round found in this schedule.
      *
      * Useful for determining how many rounds the tournament contains.

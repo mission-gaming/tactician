@@ -168,8 +168,8 @@ The library provides a comprehensive constraint system supporting complex tourna
 #### Metadata-Based Constraints
 - **MetadataConstraint**: Flexible constraint system using participant metadata
 - Factory methods for common patterns:
-  - `requireSameValue(field)`: Teams from same division/region only
-  - `requireDifferentValues(field)`: Teams from different skill levels  
+  - `requireSameValue(field)`: Participants from the same division/region only
+  - `requireDifferentValues(field)`: Participants from different skill levels  
   - `requireAdjacentValues(field)`: Adjacent skill levels (3 can play 2 or 4)
   - `maxUniqueValues(field, max)`: Maximum variety per match
 

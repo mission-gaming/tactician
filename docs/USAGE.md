@@ -4,6 +4,7 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 
 ## Table of Contents
 
+- [Terminology](#terminology)
 - [Basic Usage](#basic-usage)
 - [Participants and Events](#participants-and-events)
 - [Constraint System](#constraint-system)
@@ -17,6 +18,29 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Error Handling](#error-handling)
 - [Advanced Patterns](#advanced-patterns)
 - [Real-World Examples](#real-world-examples)
+
+## Terminology
+
+Tactician uses these terms consistently across the API, documentation, and
+diagnostics. Note that the library deliberately says **participant** rather
+than "team" — participants can be players, clubs, squads, debate teams, or
+anything else that competes.
+
+| Term | Meaning |
+|------|---------|
+| **Participant** | An entity that competes. Identified by a unique string ID, with a display label, optional seed, and metadata. |
+| **Event** | A single match/fixture between participants (usually two). Metronome-style platforms would call this a fixture. |
+| **Pairing** | The unordered combination of participants in an event — "Alice vs Bob" regardless of who is home. |
+| **Round** | A set of events played at the same stage of the tournament. Round numbers are 1-based and continuous across legs (a two-leg, 4-participant round robin has rounds 1–6). |
+| **Leg** | One complete cycle of pairings. The leg count is *the number of times each participant meets each other participant*: a home-and-away league is 2 legs. Swiss and elimination formats have no legs concept. |
+| **Home/Away roles** | The participant order within an event: the first participant is home, the second away. The round-robin generator alternates roles with round parity to keep them balanced. |
+| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events — round robin records them in the `byes` schedule metadata, and the Swiss/elimination engines report them on the round pairing. |
+| **Seed** | A participant's ranking, used for bracket placement, serpentine group distribution, and seed-protection constraints. Lower numbers are better; 1 is the top seed. |
+| **Schedule** | The complete, validated collection of generated events plus metadata. |
+| **Result** | The recorded outcome of a played event: a winner or a draw, with optional per-participant scores. |
+| **Standings** | The ordered table computed from results by `StandingsCalculator` — points, records, and tiebreakers. |
+| **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
+| **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout). Composed via `GroupStageEngine` qualifiers and the elimination engines. |
 
 ## Basic Usage
 
@@ -170,10 +194,10 @@ $constraints = ConstraintSet::create()
 ### Metadata-Based Constraints
 
 ```php
-// Teams from same region only
+// Participants from the same region only
 $sameRegion = MetadataConstraint::requireSameValue('region');
 
-// Teams from different skill levels
+// Participants from different skill levels
 $differentSkills = MetadataConstraint::requireDifferentValues('skill_level');
 
 // Maximum 2 equipment types per match
@@ -215,11 +239,11 @@ $advancedConstraint = ConstraintSet::create()
         function($event, $context) {
             $participants = $event->getParticipants();
             
-            // Don't allow same team to play more than twice per day
-            $team1Events = $context->getEventsForParticipant($participants[0]);
-            $team2Events = $context->getEventsForParticipant($participants[1]);
+            // Don't allow the same participant to play more than twice per day
+            $firstParticipantEvents = $context->getEventsForParticipant($participants[0]);
+            $secondParticipantEvents = $context->getEventsForParticipant($participants[1]);
             
-            return count($team1Events) < 3 && count($team2Events) < 3;
+            return count($firstParticipantEvents) < 3 && count($secondParticipantEvents) < 3;
         },
         'Maximum Games Per Day'
     )
@@ -302,17 +326,17 @@ echo "Total legs: " . $mirroredSchedule->getMetadataValue('legs') . "\n";
 echo "Rounds per leg: " . $mirroredSchedule->getMetadataValue('rounds_per_leg') . "\n";
 echo "Total rounds: " . $mirroredSchedule->getMetadataValue('total_rounds') . "\n";
 
-// Iterate through events with leg awareness
-foreach ($mirroredSchedule as $event) {
-    $round = $event->getRound();
-    $participants = $event->getParticipants();
-    
-    // Calculate which leg this event belongs to
-    $roundsPerLeg = $mirroredSchedule->getMetadataValue('rounds_per_leg');
-    $leg = (int) ceil($round->getNumber() / $roundsPerLeg);
-    
-    echo "Leg {$leg}, Round {$round->getNumber()}: ";
-    echo "{$participants[0]->getLabel()} vs {$participants[1]->getLabel()}\n";
+// Process the schedule round by round - the natural shape for assigning
+// dates per round or rendering matchday views
+$roundsPerLeg = $mirroredSchedule->getMetadataValue('rounds_per_leg');
+foreach ($mirroredSchedule->getEventsByRound() as $roundNumber => $events) {
+    $leg = (int) ceil($roundNumber / $roundsPerLeg);
+    echo "Leg {$leg}, Round {$roundNumber}:\n";
+
+    foreach ($events as $event) {
+        $participants = $event->getParticipants();
+        echo "  {$participants[0]->getLabel()} vs {$participants[1]->getLabel()}\n";
+    }
 }
 ```
 
@@ -700,7 +724,7 @@ $teams = [
 
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(new MinimumRestPeriodsConstraint(5))  // Teams don't play again soon
+    ->add(new MinimumRestPeriodsConstraint(5))  // Participants don't meet again soon
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
