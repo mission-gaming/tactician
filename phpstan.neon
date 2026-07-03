@@ -41,6 +41,16 @@ parameters:
 			- 'InvalidArgumentException'
 			- 'BadMethodCallException'
 	
-	# Ignore common Pest testing patterns and test-specific issues
+	# Pest binds shared state as dynamic properties on the test case
+	# ($this->participants in beforeEach), so treat TestCase as a
+	# universal object crate rather than ignoring the errors textually
+	universalObjectCratesClasses:
+		- PHPUnit\Framework\TestCase
+
+	# Pest binds test closures into the TestCase at runtime, so calls to
+	# protected mocking helpers ($this->createMock(), ->once(), ->never())
+	# are legal there even though PHPStan sees closure scope
 	ignoreErrors:
-		- '#Undefined variable: \$this#'
+		-
+			message: '#Call to protected method [a-zA-Z]+\(\) of class PHPUnit\\Framework\\TestCase#'
+			path: tests/*

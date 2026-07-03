@@ -41,19 +41,10 @@ jobs:
 
     strategy:
       matrix:
-        php-version: ['8.2', '8.3', '8.4']
-        experimental: [false]
-        include:
-          # Pest 2's dependency tree (brianium/paratest ~8.4.0) does not yet
-          # allow PHP 8.5, so 8.5 runs with platform requirements ignored and
-          # is allowed to fail. Promote to the regular matrix once the test
-          # stack is upgraded (Pest 3) with proper 8.5 support.
-          - php-version: '8.5'
-            experimental: true
+        php-version: ['8.2', '8.3', '8.4', '8.5']
       fail-fast: false
 
-    name: PHP ${{ matrix.php-version }}${{ matrix.experimental && ' (experimental)' || '' }}
-    continue-on-error: ${{ matrix.experimental }}
+    name: PHP ${{ matrix.php-version }}
 
     steps:
     - uses: actions/checkout@v4
@@ -78,7 +69,7 @@ jobs:
           ${{ runner.os }}-php-${{ matrix.php-version }}-
 
     - name: Install dependencies
-      run: composer install --prefer-dist --no-progress ${{ matrix.experimental && '--ignore-platform-req=php' || '' }}
+      run: composer install --prefer-dist --no-progress
 
     - name: Run CI suite
       run: composer ci
