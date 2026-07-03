@@ -115,3 +115,7 @@ Note: When triggered by **update memory bank**, I MUST review every memory bank 
 REMEMBER: After every memory reset, I begin completely fresh. The Memory Bank is my only link to previous work. It must be maintained with precision and clarity, as my effectiveness depends entirely on its accuracy.
 
 IMPORTANT: Date formats in the memory bank files must ALWAYS follow the YYYY-MM-DD pattern (ISO 8601 format).
+
+## Project Conventions
+
+Project-wide agent guidance (commands, architecture orientation, rules) lives in AGENTS.md at the repository root; CLAUDE.md symlinks to it. Read it alongside the memory bank at the start of each session.
