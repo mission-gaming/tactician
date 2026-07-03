@@ -93,28 +93,38 @@ Two properties of real platforms shape the design:
   per-stage options and per-stage `PointsSystem` configuration, and rules
   out any library-level "tournament settings" singleton.
 
-### Fixed brackets vs chained knockout stages
+### One bracket mechanism: composed rounds, engines as presets
 
-Platforms without a bracket engine model each knockout round as its own
-stage with a progression rule between rounds. This is not merely a
-workaround — it is the natural encoding of a **re-seeded knockout** (NFL
-playoffs style, where survivors are re-paired each round) and of arbitrary
-progression graphs (losers' routes, repechage). A **fixed bracket** (World
-Cup style, where the path is predetermined and 16 entrants structurally
-imply 15 ties) is a different format with invariants worth enforcing as a
-unit.
+Earlier revisions proposed two parallel bracket approaches — monolithic
+bracket engines *and* application-chained single-round stages. ✅ Resolved:
+**one mechanism**. Everything brackets need is expressible with the
+composition primitives, provided two capabilities exist:
 
-Both are legitimate; Tactician should serve both:
+- **Pairing modes for a knockout round**: *fold by seed* (entry rounds:
+  1v8, 4v5, ...) and *adjacent in given order* (continuation rounds: the
+  ordered survivors of round N pair 1v2, 3v4 — which is what preserves a
+  fixed bracket's path when the winners selector emits survivors in
+  bracket order rather than re-ranked).
+- **Hand-off validation everywhere**: every selector declares its
+  cardinality; every stage validates its entrant count and rejects
+  duplicates. Additionally, a **composition validator** checks that a
+  declared multi-stage structure telescopes correctly (16 entrants → 8 →
+  4 → 2 → 1; a losers' route consumes exactly what the winners' route
+  rejects) *before* any fixture exists. This is where the library leans
+  into validation instead of maintaining a second mechanism: structural
+  bracket guarantees become checkable properties of a composition rather
+  than side effects of a monolith.
 
-- **Fixed bracket** → one stage running `SingleEliminationEngine` /
-  `DoubleEliminationEngine`, with bracket-level guarantees (entrant/match
-  counts, loss counts, no re-entry) enforced by the engine.
-- **Re-seeded knockout or custom graph** → chained single-round elimination
-  stages composed by the application, with progression via outcome
-  selectors. The graph's correctness is the application's responsibility;
-  selectors help by validating cardinality (a selector declares how many
-  participants it yields, and a destination stage validates its entrant
-  count).
+`SingleEliminationEngine` and `DoubleEliminationEngine` are then **presets,
+not a second mechanism**: canned compositions of single-round stages and
+outcome selectors (double elimination is literally a winners' route + a
+losers' route + a final — the same graph an application could compose by
+hand), exposed through `StageEngineInterface` for consumers who want a
+whole bracket as one stage with zero graph configuration. Fixed path vs
+re-seeded knockout becomes a preset parameter (bracket-order vs re-ranked
+survivor ordering), not a different kind of object. Platforms with their
+own stage graphs use the primitives directly; platforms without get the
+presets.
 
 The one practice this design treats as an error in any model: **deriving
 match winners through points arithmetic**. Progression must read recorded
@@ -124,24 +134,33 @@ never reconstruct one from the other.
 ## Design principles (new in this revision)
 
 **Game-agnosticism.** Tactician serves football, American football, racing,
-combat sports, and shooting games alike. Concretely:
+combat sports, shooting games — and formats not yet imagined (a golf
+tournament played in foursomes against a shared leaderboard is the
+stress-test example). The rule: **no game, game-mode, or sport-specific
+naming or paradigm anywhere in the core**; football and chess and golf
+tournaments compose from the same generic components, with the consuming
+system owning whatever data-crunching the specific game's rules require.
+Concretely:
 
 - **Roles are positional; "home/away" is a label.** The core concept is the
   participant's position within an event (position 0, position 1). Football
   reads them as home/away, combat sports as red/blue corner, shooters as
   sides. Factory names like `homeAway()` remain as conveniences, but no
   core behavior may depend on the home/away *interpretation*.
-- **Nothing forecloses N-participant events.** Racing heats and lobbies
-  have many participants per event. Phase 3 does not implement N-participant
-  algorithms, but its abstractions must not be pairwise-shaped:
-  `StagePlan` expresses expected *events*, with pairwise meeting counts as
-  a capability round-robin-family plans expose rather than a universal
-  method. `Result` already supports N participants; ordered placements
-  (finishing order) are a known future extension it must not preclude.
-- **Preset naming stays neutral.** `PointsSystem::football()` /`chess()`
-  should gain (or be replaced by) neutral constructors —
-  `PointsSystem::threeOneZero()` or similar — with the sport names kept, if
-  at all, as documented aliases. ❓ exact naming.
+- **Nothing forecloses N-participant events.** Racing heats, lobbies, and
+  golf foursomes have many participants per event. Phase 3 does not
+  implement N-participant algorithms, but its abstractions must not be
+  pairwise-shaped: `StagePlan` expresses expected *events*, with pairwise
+  meeting counts as a capability round-robin-family plans expose rather
+  than a universal method. `Result` already supports N participants;
+  ordered placements (finishing order, leaderboard contribution) are a
+  known future extension it must not preclude.
+- **Ranking is a strategy, not a points assumption** — see the
+  `RankingStrategy` section below. "Points from wins/draws/losses" is one
+  way to order a table, not the definition of ordering.
+- **No trophy vocabulary in the core.** "Champion", "winner of the
+  tournament", and similar are consumer interpretations of an outcome, not
+  library concepts (see `StageOutcome`).
 
 **Config-constructibility.** Consuming platforms (Metronome explicitly) are
 config-driven, event-driven, strategy-derived systems: behavior is selected
@@ -265,14 +284,14 @@ final readonly class RoundPairing      // unifies SwissRoundPairing + Eliminatio
     public function getByes(): array;
 }
 
-final readonly class StageOutcome
+final readonly class StageOutcome     // purely descriptive: no trophy vocabulary
 {
     public function getStandings(): Standings;      // meaningful for every format
     /** @return array<Result> */
     public function getResults(): array;
     /** @return array<string, int> Bye counts by participant ID */
     public function getByes(): array;
-    public function getWinner(): ?Participant;      // bracket champion; league leader; null if N/A
+    public function getFinalRound(): ?RoundPairing; // structural, for outcome selectors
 }
 ```
 
@@ -297,9 +316,16 @@ re-deriving it. ✅ Serialization is first-cut scope.
 
 `StageOutcome` is what makes the stage lifecycle uniform end-to-end: every
 format finishes as "an outcome you can select from" — which is precisely the
-mental model consuming platforms already hold. Format-specific conveniences
-(`getChampion()`, `getQualifiers()`) remain on concrete engines but delegate
-to the outcome. ✅ Lifted into the interface.
+mental model consuming platforms already hold. ✅ Lifted into the interface.
+
+✅ **No champions or winners in the API.** An earlier revision gave
+`StageOutcome` a `getWinner()` and kept `getChampion()` conveniences on the
+engines. Resolved the other way: what those returned is fully derivable —
+`MatchOutcomeSelector::winners()` over the final round, or rank 1 of the
+standings — and "champion" is the consumer's interpretation of that
+derivation, not a scheduling concept. The engines' existing
+`getChampion()` accessors are removed in the redesign; `isComplete()`
+remains, since "no further rounds exist" is structural, not interpretive.
 
 ### 5. Progression selectors — the hand-off between stages
 
@@ -368,6 +394,41 @@ extra time, penalties):
   aggregate under its own rules and records which participant won the tie.
   Per-leg `Result`s remain ordinary results feeding standings/statistics.
 
+### 8. `RankingStrategy` — ordering tables without assuming points
+
+`PointsSystem` bakes in the assumption that a standings table is ordered by
+points earned from wins, draws, and losses. That is one game family's
+paradigm: golf leaderboards aggregate strokes (lower is better), racing
+series score by finishing position, elimination formats barely need a table
+at all. The generalization:
+
+```php
+// PROPOSED — not implemented
+interface RankingStrategy
+{
+    /**
+     * Compute a participant's primary ranking value from their results.
+     * Higher is better (strategies invert internally where lower is better).
+     */
+    public function rank(Participant $participant, array $results): float;
+}
+
+// The current behavior becomes the first implementation:
+new WinDrawLossRanking(win: 3.0, draw: 1.0, loss: 0.0);
+WinDrawLossRanking::threeOneZero();   // association-football convention
+WinDrawLossRanking::oneHalfZero();    // chess convention
+```
+
+`StandingsCalculator` takes a `RankingStrategy`; `StandingEntry` keeps its
+W/D/L record (still descriptively true for two-outcome events) alongside
+the strategy-computed ranking value. Tiebreakers already follow this shape
+(`TiebreakerInterface` computes comparable values) — the primary ranking
+becomes pluggable the same way. Future strategies (placement-based,
+aggregate-score) slot in without touching the calculator; the sport-named
+presets become named constructors on the W/D/L implementation rather than
+API surface. ✅ Direction resolved; exact naming (`RankingStrategy` vs
+`ScoringStrategy`) ❓.
+
 ## Naming decision
 
 Candidates considered for the shape object, with the reasoning:
@@ -404,6 +465,8 @@ Candidates considered for the shape object, with the reasoning:
 | `SwissPairingEngine::pairNextRound(4 args)` | `pairNextRound(StageState)` |
 | `SimpleSwissScheduler` | ✅ Removed: the Swiss engine gains an optional `Randomizer` (shuffling within equal-standings groups), which with no recorded results reproduces random non-repeat pairing; a preset covers the whole-schedule convenience |
 | `GroupStageEngine` | ✅ Retired in favour of `PoolDistributor` + per-pool stages + selectors (section 6) |
+| `SingleEliminationEngine`, `DoubleEliminationEngine` | ✅ Rebuilt as presets over composed single-round stages + outcome selectors (one bracket mechanism); `getChampion()` removed |
+| `PointsSystem` | ✅ Generalized to `RankingStrategy` with `WinDrawLossRanking` as the first implementation (section 8); sport-named presets become named constructors |
 | Shape metadata keys on `Schedule` | Kept for serialization/display, but written *from* the plan |
 
 ## Sequencing
@@ -413,22 +476,42 @@ Five milestones, each shippable green:
 1. **Plan introduction** — `StagePlan` + implementations; context,
    validation, diagnostics, and constraints consume it; calculators and
    validation-context classes removed.
-2. **Options objects** — `SchedulerInterface` rework; config-constructible
-   options; the legs/rounds overload dies.
+2. **Options objects + ranking strategy** — `SchedulerInterface` rework;
+   config-constructible options; the legs/rounds overload dies;
+   `RankingStrategy` with `WinDrawLossRanking`.
 3. **Engine unification** — `StageState` (serializable), `RoundPairing`,
-   `StageEngineInterface`, `StageOutcome`; Swiss/elimination engines
-   conform; `SimpleSwissScheduler` removed.
-4. **Progression + pools** — selectors (rank- and outcome-based),
-   `PoolDistributor`, `GroupStageEngine` retirement; two-legged ties.
+   `StageEngineInterface`, `StageOutcome`; the Swiss engine conforms;
+   `SimpleSwissScheduler` removed.
+4. **Progression, pools, and brackets as compositions** — selectors (rank-
+   and outcome-based) with cardinality validation, the composition
+   validator, `PoolDistributor`, `GroupStageEngine` retirement, elimination
+   engines rebuilt as presets, two-legged ties.
 5. **Sweep** — docs, examples, memory bank, deprecated-class removals.
 
 ## Remaining open questions
 
-1. **Plan-construction hook naming** on leg strategies (replaces
-   `planGeneration()`/`canSatisfyConstraints()`).
-2. **Neutral `PointsSystem` preset naming** (`threeOneZero()`?), and whether
-   the sport-named aliases stay.
-3. **Cross-pool `StageOutcome` shape**: one combined outcome for a pooled
-   stage (with per-pool standings inside) vs one outcome per pool. The
-   selector API prefers the former; the composition story prefers the
-   latter.
+Expanded, since each needs maintainer input to be answerable:
+
+1. **The plan-construction hook on leg strategies.** Today a leg strategy
+   exposes `planGeneration()` (unused output) and `canSatisfyConstraints()`
+   (preflight). In the new world the *scheduler* builds the `StagePlan`,
+   but leg strategies still hold facts the plan needs — whether legs mirror
+   roles, whether randomization is involved, warnings. The question is the
+   shape of that contribution: a single method the plan builder calls
+   (`contributeToPlan(RoundRobinPlanBuilder $builder): void`? a returned
+   value object?) and its name. Low stakes, needs a decision before
+   milestone 1 touches `LegStrategyInterface`.
+2. **`RankingStrategy` vs `ScoringStrategy` (or another name)** for the
+   generalized table-ordering concept in section 8. "Ranking" emphasizes
+   the output (an ordering), "scoring" the input (accumulated values);
+   ranking is recommended since ordering is the contract and scoring is
+   one means.
+3. **Cross-pool `StageOutcome` shape.** When a stage contains pools (four
+   groups of four), is its outcome (a) one combined object that carries
+   per-pool standings inside it, or (b) one outcome per pool, with "the
+   stage outcome" being a collection? Selectors need both intra-pool rank
+   slices ("top 2 per group") and cross-pool queries ("best third-placed
+   overall", as World Cups use) — and (b) has nowhere for a cross-pool
+   query to live, so (a) is recommended: `StageOutcome` optionally carries
+   pool structure, and rank selectors address "per pool" or "overall".
+   Named here because it decides the selector API's input type.
