@@ -583,21 +583,21 @@ describe('Round Robin Integration', function (): void {
     // Tests multi-leg constraint validation with incremental context building
     // to ensure constraints work properly across tournament leg boundaries
     it('validates constraints across multiple tournament legs', function (): void {
-        // Given: 4 participants with moderate constraints that span legs
+        // Given: 4 participants with a constraint that spans legs
         $participants = [];
         for ($i = 1; $i <= 4; ++$i) {
             $participants[] = new Participant("p{$i}", "Player {$i}");
         }
 
         $constraints = ConstraintSet::create()
-            ->noRepeatPairings()
+            ->noRepeatPairings(acrossLegs: true)
             ->build();
 
         // When: Creating multi-leg schedule
         $scheduler = new RoundRobinScheduler($constraints);
 
-        // Then: Should throw IncompleteScheduleException because NoRepeatPairings constraint
-        // prevents duplicate pairings across legs, making full multi-leg schedule impossible
+        // Then: Should throw IncompleteScheduleException because the across-legs
+        // variant forbids the repeat pairings every later leg consists of
         expect(fn () => $scheduler->schedule(
             $participants,
             2, // participantsPerEvent
