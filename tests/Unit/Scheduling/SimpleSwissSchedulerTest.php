@@ -106,6 +106,36 @@ describe('SimpleSwissScheduler', function (): void {
         expect($firstPairings)->toBe($secondPairings);
     });
 
+    it('defaults to 3 rounds when no options are given', function (): void {
+        $participants = [];
+        for ($i = 1; $i <= 8; ++$i) {
+            $participants[] = new Participant("p{$i}", "Player {$i}");
+        }
+
+        $schedule = (new SimpleSwissScheduler(null, new Randomizer(new Mt19937(99))))
+            ->schedule($participants);
+
+        expect($schedule->getMetadataValue('rounds'))->toBe(3);
+        expect($schedule->count())->toBe(12);
+    });
+
+    it('rejects fewer than 2 participants', function (): void {
+        expect(fn () => (new SimpleSwissScheduler())->schedule([new Participant('p1', 'Player 1')]))
+            ->toThrow(InvalidConfigurationException::class, 'at least 2 participants');
+    });
+
+    it('rejects duplicate participant IDs', function (): void {
+        $participants = [
+            new Participant('p1', 'Player 1'),
+            new Participant('p1', 'Also Player 1'),
+            new Participant('p2', 'Player 2'),
+            new Participant('p3', 'Player 3'),
+        ];
+
+        expect(fn () => (new SimpleSwissScheduler())->schedule($participants, new SwissOptions(rounds: 2)))
+            ->toThrow(InvalidConfigurationException::class, 'unique IDs');
+    });
+
     it('throws when requested rounds require repeat opponents', function (): void {
         $participants = [
             new Participant('p1', 'Player 1'),
