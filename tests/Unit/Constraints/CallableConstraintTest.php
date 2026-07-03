@@ -153,8 +153,8 @@ describe('CallableConstraint', function (): void {
     });
 
     it('handles complex return values from predicate', function (): void {
-        /** @var callable(\MissionGaming\Tactician\DTO\Event, \MissionGaming\Tactician\Scheduling\SchedulingContext): mixed $predicate */
-        $predicate = fn ($event, $context) => 'truthy string'; // Non-boolean truthy value
+        $predicate = fn (\MissionGaming\Tactician\DTO\Event $event, \MissionGaming\Tactician\Scheduling\SchedulingContext $context): string => 'truthy string'; // Non-boolean truthy value
+        // @phpstan-ignore argument.type (deliberately violates the bool contract to exercise truthiness coercion)
         $constraint = new CallableConstraint($predicate, 'Non-Boolean Return');
 
         $result = $constraint->isSatisfied($this->event, $this->context);

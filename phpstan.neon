@@ -3,44 +3,42 @@ parameters:
 	paths:
 		- src
 		- tests
-	
+
 	# Exclude generated files and cache
 	excludePaths:
 		- tests/Pest.php
-	
-	# Enable strict rules for better type safety
-	checkMissingIterableValueType: true
-	checkGenericClassInNonGenericObjectType: true
+
+	# Strict rules for better type safety. Note: the PHPStan 1.x options
+	# checkMissingIterableValueType, checkGenericClassInNonGenericObjectType,
+	# and the checkAlwaysTrue* family were removed in PHPStan 2 (their
+	# behavior is now always on).
 	checkMissingCallableSignature: true
 	checkMissingOverrideMethodAttribute: true
 	treatPhpDocTypesAsCertain: false
-	
+
 	# Error reporting
 	reportUnmatchedIgnoredErrors: true
 	reportStaticMethodSignatures: true
-	
+
 	# Type coverage settings
 	checkMaybeUndefinedVariables: true
-	
-	# Bleeding edge features for PHP 8.2+
+
+	# Scope strictness
 	polluteScopeWithLoopInitialAssignments: false
 	polluteScopeWithAlwaysIterableForeach: false
-	checkAlwaysTrueInstanceof: true
-	checkAlwaysTrueCheckTypeFunctionCall: true
-	checkAlwaysTrueStrictComparison: true
-	
+
 	# Exception analysis
 	exceptions:
 		check:
 			missingCheckedExceptionInThrows: true
 			tooWideThrowType: true
-		
+
 		# Define unchecked exception patterns
 		uncheckedExceptionClasses:
 			- 'LogicException'
 			- 'InvalidArgumentException'
 			- 'BadMethodCallException'
-	
+
 	# Pest binds shared state as dynamic properties on the test case
 	# ($this->participants in beforeEach), so treat TestCase as a
 	# universal object crate rather than ignoring the errors textually

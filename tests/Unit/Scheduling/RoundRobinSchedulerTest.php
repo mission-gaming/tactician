@@ -223,6 +223,7 @@ describe('RoundRobinScheduler', function (): void {
         ];
 
         $schedule = (new RoundRobinScheduler())->schedule($participants, 2, 2);
+        /** @var array<int, string> $byes */
         $byes = $schedule->getMetadataValue('byes');
 
         // 5 participants => 5 rounds per leg, one bye per round
@@ -240,7 +241,7 @@ describe('RoundRobinScheduler', function (): void {
         foreach ($schedule as $event) {
             $round = $event->getRound()?->getNumber();
             $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
-            expect($ids)->not->toContain($byes[$round]);
+            expect($ids)->not->toContain($byes[$round] ?? null);
         }
     });
 
