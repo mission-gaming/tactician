@@ -75,6 +75,25 @@ describe('RoleStreakMetric', function (): void {
     });
 });
 
+describe('metric edges', function (): void {
+    it('names every metric and skips what it cannot judge', function (): void {
+        [$a, $b, $c] = qualityField(3);
+        $nonPairwise = new Schedule([
+            new Event([$a, $b, $c], new Round(1)),
+            new Event([$a, $b], new Round(2)),
+            new Event([$b, $a], new Round(3)),
+        ]);
+
+        // Non-pairwise events carry no role or pairing reading: only the
+        // two pairwise events count, and they alternate cleanly
+        expect((new RoleStreakMetric())->measure($nonPairwise))->toBe(0.0);
+        expect((new PairingSpacingMetric())->measure($nonPairwise))->toBeGreaterThan(0.0);
+
+        expect((new RestSpreadMetric())->getName())->toBe('Rest Spread');
+        expect((new RestSpreadMetric())->measure(new Schedule([])))->toBe(0.0);
+    });
+});
+
 describe('RestSpreadMetric', function (): void {
     it('is zero for regular rhythms and measures irregular gaps', function (): void {
         [$a, $b, $c] = qualityField(3);
