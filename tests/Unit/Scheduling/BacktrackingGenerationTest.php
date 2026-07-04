@@ -193,6 +193,57 @@ describe('Backtracking round-robin generation', function (): void {
             ->toThrow(IncompleteScheduleException::class, 'does not cross leg boundaries');
     });
 
+    it('derives later-leg byes from the backtracked first leg', function (): void {
+        $constraints = ConstraintSet::create()->custom(static function (Event $event): bool {
+            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            sort($ids);
+            $round = $event->getRound()?->getNumber();
+            if ($round === null || $round > 5) {
+                return true; // leg 2 unconstrained
+            }
+
+            return match (implode('|', $ids)) {
+                't1|t2' => $round === 5,
+                't1|t3' => $round === 4,
+                default => true,
+            };
+        }, 'Odd Placement')->build();
+
+        $schedule = (new RoundRobinScheduler($constraints))
+            ->schedule(backtrackingField(5), new RoundRobinOptions(legs: 2, backtracking: true));
+
+        expect($schedule)->toHaveCount(20);
+        $byes = $schedule->getMetadataValue('byes');
+        expect($byes)->toHaveCount(10); // one per round across both legs
+        // Later legs replay the first leg's rounds, byes included
+        foreach ([1, 2, 3, 4, 5] as $round) {
+            expect($byes[$round + 5])->toBe($byes[$round]);
+        }
+    });
+
+    it('backtracks over bye choices before proving odd fields unsatisfiable', function (): void {
+        $never = ConstraintSet::create()->custom(fn () => false, 'Reject Everything')->build();
+
+        // Odd fields exercise the bye-assignment backtracking: every bye
+        // choice is tried and unwound before the space is exhausted
+        expect(fn () => (new RoundRobinScheduler($never))
+            ->schedule(backtrackingField(3), new RoundRobinOptions(backtracking: true)))
+            ->toThrow(IncompleteScheduleException::class, 'exhausted the search space');
+    });
+
+    it('stops bye-seat recursion once the step budget trips', function (): void {
+        // As with the even case, forbidding the final round is
+        // unsatisfiable and the space is astronomic; the odd field routes
+        // part of the search through the bye branch, which must also halt
+        $noFinalRound = ConstraintSet::create()
+            ->custom(fn (Event $e) => $e->getRound()?->getNumber() !== 13, 'No Round 13')
+            ->build();
+
+        expect(fn () => (new RoundRobinScheduler($noFinalRound))
+            ->schedule(backtrackingField(13), new RoundRobinOptions(backtracking: true)))
+            ->toThrow(IncompleteScheduleException::class, 'step budget');
+    });
+
     it('is deterministic for a seeded randomizer', function (): void {
         $signature = function (Schedule $schedule): string {
             $parts = [];
@@ -218,6 +269,27 @@ describe('Backtracking round-robin generation', function (): void {
 });
 
 describe('BacktrackingRoundRobinGenerator', function (): void {
+    // Once the budget trips, the search unwinds through the step checks
+    // alone - no further pairing is ever attempted
+    it('reports budget exhaustion at the generator level', function (): void {
+        $participants = backtrackingField(3);
+        $constraints = ConstraintSet::create()->custom(static function (Event $event): bool {
+            $round = $event->getRound()?->getNumber();
+            if ($round === 2) {
+                return false; // burn the remaining budget in round 2
+            }
+            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            sort($ids);
+
+            return !($round === 1 && $ids === ['t1', 't2']);
+        }, 'Budget Burner')->build();
+
+        $generator = new BacktrackingRoundRobinGenerator($constraints, 5);
+
+        expect($generator->generateFirstLeg($participants, new RoundRobinPlan($participants, 1)))->toBeNull();
+        expect($generator->wasBudgetExhausted())->toBeTrue();
+    });
+
     it('generates complete unconstrained legs for any field size', function (): void {
         foreach ([2, 3, 4, 5, 6, 7, 8] as $size) {
             $participants = backtrackingField($size);

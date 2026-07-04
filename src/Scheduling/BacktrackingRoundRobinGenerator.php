@@ -37,16 +37,23 @@ final class BacktrackingRoundRobinGenerator
      */
     public const STEP_BUDGET = 200_000;
 
-    private int $stepsRemaining = self::STEP_BUDGET;
+    private int $stepsRemaining;
 
     private bool $budgetExhausted = false;
 
     /** @var array<int, string> Participant IDs receiving a bye, keyed by round number */
     private array $roundByes = [];
 
+    /**
+     * @param int $stepBudget Pairing attempts allowed before giving up;
+     *                        the default suits every realistic field, and
+     *                        overriding is primarily a test seam
+     */
     public function __construct(
-        private readonly ?ConstraintSet $constraints = null
+        private readonly ?ConstraintSet $constraints = null,
+        private readonly int $stepBudget = self::STEP_BUDGET
     ) {
+        $this->stepsRemaining = $stepBudget;
     }
 
     /**
@@ -58,7 +65,7 @@ final class BacktrackingRoundRobinGenerator
      */
     public function generateFirstLeg(array $participants, RoundRobinPlan $plan): ?array
     {
-        $this->stepsRemaining = self::STEP_BUDGET;
+        $this->stepsRemaining = $this->stepBudget;
         $this->budgetExhausted = false;
         $this->roundByes = [];
 
@@ -137,10 +144,6 @@ final class BacktrackingRoundRobinGenerator
         array $events,
         RoundRobinPlan $plan
     ): ?array {
-        if ($this->budgetExhausted) {
-            return null;
-        }
-
         if ($remaining === []) {
             return $this->searchRound(
                 $round + 1,
