@@ -342,4 +342,241 @@ describe('SchedulingDiagnostics', function (): void {
             'Bob vs Carol (Leg 1)',
         ]);
     });
+
+    describe('constraint attribution', function (): void {
+        it('names the constraint blocking a pairing everywhere', function (): void {
+            $noDerby = ConstraintSet::create()->custom(static function (Event $event): bool {
+                $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                sort($ids);
+
+                return implode('|', $ids) !== 'p1|p2';
+            }, 'Derby Ban')->build();
+
+            $report = $this->diagnostics->analyzeSchedulingFailure(
+                $this->participants,
+                $noDerby,
+                [new Event([$this->alice, $this->carol], new Round(1))],
+                new RoundRobinPlan($this->participants, 1)
+            );
+
+            expect($report->getImpossiblePairings())->toBe([
+                'Alice vs Bob cannot join the generated schedule in any round (blocked by: Derby Ban)',
+            ]);
+            expect($report->getConstraintViolations())->toBe([
+                'Derby Ban rejects Alice vs Bob in 3 of 3 rounds',
+            ]);
+        });
+
+        it('attributes partial blocking and probes both orientations', function (): void {
+            // Alice may only host: [bob, alice] orientations are rejected,
+            // but every round still allows the pairing the other way round
+            $aliceHosts = ConstraintSet::create()->custom(static function (Event $event): bool {
+                $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+
+                return !in_array('p1', $ids, true) || $event->getParticipants()[0]->getId() === 'p1';
+            }, 'Alice Hosts')->build();
+
+            $report = $this->diagnostics->analyzeSchedulingFailure(
+                $this->participants,
+                $aliceHosts,
+                [],
+                new RoundRobinPlan($this->participants, 1)
+            );
+
+            // No pairing is impossible and no constraint is charged with
+            // any round, because one orientation always passes
+            expect($report->getImpossiblePairings())->toBe([]);
+            expect($report->getConstraintViolations())->toBe([]);
+        });
+
+        it('blames a combination when no single constraint rejects everywhere', function (): void {
+            $evenRounds = ConstraintSet::create()
+                ->custom(static function (Event $event): bool {
+                    $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                    sort($ids);
+                    if (implode('|', $ids) !== 'p1|p2') {
+                        return true;
+                    }
+
+                    return $event->getRound()?->getNumber() % 2 === 0;
+                }, 'Even Rounds Only')
+                ->custom(static function (Event $event): bool {
+                    $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                    sort($ids);
+                    if (implode('|', $ids) !== 'p1|p2') {
+                        return true;
+                    }
+
+                    return $event->getRound()?->getNumber() % 2 === 1;
+                }, 'Odd Rounds Only')
+                ->build();
+
+            $report = $this->diagnostics->analyzeSchedulingFailure(
+                $this->participants,
+                $evenRounds,
+                [],
+                new RoundRobinPlan($this->participants, 1)
+            );
+
+            expect($report->getImpossiblePairings())->toBe([
+                'Alice vs Bob cannot join the generated schedule in any round (blocked by: a combination of constraints)',
+            ]);
+        });
+
+        it('reports structural conflicts when allowed rounds are full', function (): void {
+            $field = [...$this->participants, new Participant('p4', 'Dave')];
+
+            // Alice vs Bob only in round 1, but round 1 is already full
+            $placement = ConstraintSet::create()->custom(static function (Event $event): bool {
+                $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                sort($ids);
+
+                return implode('|', $ids) !== 'p1|p2' || $event->getRound()?->getNumber() === 1;
+            }, 'Round One Derby')->build();
+
+            $dave = $field[3];
+            $report = $this->diagnostics->analyzeSchedulingFailure(
+                $field,
+                $placement,
+                [
+                    new Event([$this->alice, $this->carol], new Round(1)),
+                    new Event([$this->bob, $dave], new Round(1)),
+                ],
+                new RoundRobinPlan($field, 1)
+            );
+
+            expect($report->getImpossiblePairings())->toBe([]);
+            $structural = array_filter(
+                $report->getSuggestions(),
+                fn (string $s) => str_contains($s, 'structural')
+            );
+            expect(array_values($structural))->toBe([
+                'Alice vs Bob is only allowed in rounds already at capacity (rounds 1) - the conflict is structural, not any single constraint',
+            ]);
+        });
+
+        it('yields no attribution without constraints or missing pairings', function (): void {
+            $report = $this->diagnostics->analyzeSchedulingFailure(
+                $this->participants,
+                $this->constraints, // empty set
+                [],
+                new RoundRobinPlan($this->participants, 1)
+            );
+
+            expect($report->getImpossiblePairings())->toBe([]);
+            expect($report->getConstraintViolations())->toBe([]);
+        });
+    });
+
+    // Regression: the probe must evaluate each candidate round with the
+    // leg it belongs to. NoRepeatPairings checks the current leg's
+    // events by default, so probing leg-2 rounds with a leg-1 context
+    // falsely branded pairs that met in leg 1 as blocked everywhere
+    it('probes candidate rounds with their own leg context', function (): void {
+        $dave = new Participant('p4', 'Dave');
+        $field = [...$this->participants, $dave];
+        $plan = new RoundRobinPlan($field, 2); // 6 rounds, 3 per leg
+
+        // A complete first leg; leg 2 is entirely missing
+        $legOne = [
+            new Event([$this->alice, $this->bob], new Round(1)),
+            new Event([$this->carol, $dave], new Round(1)),
+            new Event([$this->alice, $this->carol], new Round(2)),
+            new Event([$this->bob, $dave], new Round(2)),
+            new Event([$this->alice, $dave], new Round(3)),
+            new Event([$this->bob, $this->carol], new Round(3)),
+        ];
+
+        $report = $this->diagnostics->analyzeSchedulingFailure(
+            $field,
+            ConstraintSet::create()->noRepeatPairings()->build(),
+            $legOne,
+            $plan
+        );
+
+        // Every pair met in leg 1, so leg-1 rounds are rightly rejected -
+        // but leg-2 rounds are open, so nothing is impossible and the
+        // constraint is only charged with the three leg-1 rounds
+        expect($report->getImpossiblePairings())->toBe([]);
+        foreach ($report->getConstraintViolations() as $attribution) {
+            expect($attribution)->toContain('in 3 of 6 rounds');
+        }
+    });
+
+    it('yields no attribution when rounds are unknowable or nothing is missing', function (): void {
+        $derbyBan = ConstraintSet::create()->custom(static function (Event $event): bool {
+            $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+            sort($ids);
+
+            return implode('|', $ids) !== 'p1|p2';
+        }, 'Derby Ban')->build();
+
+        // A pairwise plan without knowable rounds gives the probe no
+        // candidate rounds to test
+        $plan = new readonly class () implements MissionGaming\Tactician\Stage\PairwisePlan {
+            #[Override]
+            public function getAlgorithm(): string
+            {
+                return 'custom-pairwise';
+            }
+
+            #[Override]
+            public function getTotalRounds(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getLegs(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getRoundsPerLeg(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getExpectedEventCount(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getExpectedMeetings(Participant $a, Participant $b): int
+            {
+                return 1;
+            }
+
+            #[Override]
+            public function validateIntegrity(MissionGaming\Tactician\DTO\Schedule $schedule): array
+            {
+                return [];
+            }
+        };
+        $report = $this->diagnostics->analyzeSchedulingFailure($this->participants, $derbyBan, [], $plan);
+        expect($report->getImpossiblePairings())->toBe([]);
+        expect($report->getConstraintViolations())->toBe([]);
+
+        // A complete schedule leaves no missing pairs to attribute; the
+        // three-participant event and the planless outsider exercise the
+        // pair-collection skips
+        $outsider = new Participant('x1', 'Outsider');
+        $complete = [
+            new Event([$this->alice, $this->bob], new Round(1)),
+            new Event([$this->alice, $this->carol], new Round(2)),
+            new Event([$this->bob, $this->carol], new Round(3)),
+            new Event([$this->alice, $this->bob, $this->carol], new Round(3)),
+        ];
+        $report = $this->diagnostics->analyzeSchedulingFailure(
+            [...$this->participants, $outsider],
+            $derbyBan,
+            $complete,
+            new RoundRobinPlan($this->participants, 1)
+        );
+        expect($report->getImpossiblePairings())->toBe([]);
+        expect($report->getConstraintViolations())->toBe([]);
+    });
 });

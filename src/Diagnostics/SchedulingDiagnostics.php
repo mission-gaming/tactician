@@ -7,6 +7,8 @@ namespace MissionGaming\Tactician\Diagnostics;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Stage\PairwisePlan;
 use MissionGaming\Tactician\Stage\StagePlan;
 
@@ -43,9 +45,11 @@ class SchedulingDiagnostics
 
         $missingEvents = max(0, $expectedEvents - $eventsGenerated);
         $missingPairings = $this->identifyMissingPairings($participants, $partialEvents, $plan);
-        $constraintViolations = $this->analyzeConstraintViolations($partialEvents, $constraints);
-        $impossiblePairings = $this->identifyImpossiblePairings($participants, $constraints, $plan);
-        $suggestions = $this->generateSuggestions($participants, $constraints, $partialEvents, $plan, $context);
+        $attribution = $this->attributeMissingPairings($participants, $constraints, $partialEvents, $plan);
+        $suggestions = [
+            ...$this->generateSuggestions($participants, $constraints, $partialEvents, $plan, $context),
+            ...$attribution['structural'],
+        ];
 
         return new DiagnosticReport(
             participantCount: $participantCount,
@@ -53,8 +57,8 @@ class SchedulingDiagnostics
             generatedEvents: $eventsGenerated,
             missingEvents: $missingEvents,
             missingPairings: $missingPairings,
-            constraintViolations: $constraintViolations,
-            impossiblePairings: $impossiblePairings,
+            constraintViolations: $attribution['attribution'],
+            impossiblePairings: $attribution['impossible'],
             suggestions: $suggestions,
             analysisContext: $context
         );
@@ -84,9 +88,6 @@ class SchedulingDiagnostics
         if (($plan->getLegs() ?? 1) > 1 && $participantCount < 4) {
             $conflicts[] = 'Multi-leg tournaments require at least 4 participants for meaningful scheduling';
         }
-
-        // Add specific constraint analysis
-        $conflicts = [...$conflicts, ...$this->analyzeSpecificConstraints($participants, $constraints, $plan)];
 
         return $conflicts;
     }
@@ -193,38 +194,6 @@ class SchedulingDiagnostics
     }
 
     /**
-     * Analyze constraint violations in generated events.
-     *
-     * @param array<Event> $events
-     * @return array<string>
-     */
-    private function analyzeConstraintViolations(array $events, ConstraintSet $constraints): array
-    {
-        $violations = [];
-
-        // This would need to be implemented based on the specific constraint system
-        // For now, return basic analysis
-
-        return $violations;
-    }
-
-    /**
-     * Identify pairings that are impossible due to constraints.
-     *
-     * @param array<Participant> $participants
-     * @return array<string>
-     */
-    private function identifyImpossiblePairings(array $participants, ConstraintSet $constraints, StagePlan $plan): array
-    {
-        $impossiblePairings = [];
-
-        // This would analyze constraints to determine which pairings can never be satisfied
-        // Implementation depends on specific constraint analysis capabilities
-
-        return $impossiblePairings;
-    }
-
-    /**
      * Generate actionable suggestions for resolving scheduling issues.
      *
      * @param array<Participant> $participants
@@ -260,18 +229,186 @@ class SchedulingDiagnostics
     }
 
     /**
-     * Analyze specific constraint types for potential conflicts.
+     * Attribute missing pairings to the constraints that block them, by
+     * probing rather than guessing: constraints are pure predicates over
+     * an event and a context, so each missing pairing is tested against
+     * each constraint in every candidate round and both orientations,
+     * against the schedule that was actually generated.
+     *
+     * Three findings come out:
+     * - impossible: pairings no round and orientation will accept, with
+     *   the constraints rejecting everywhere named as culprits;
+     * - attribution: per constraint, which pairings it rejects and in
+     *   how many of the candidate rounds (a constraint is only charged
+     *   with a round it rejects in both orientations);
+     * - structural: pairings whose allowed rounds are all already at
+     *   capacity - blocked by arithmetic, not by any constraint.
+     *
+     * Probing answers "could this pairing join what was built?"; it does
+     * not claim global unsatisfiability.
      *
      * @param array<Participant> $participants
-     * @return array<string>
+     * @param array<Event> $events
+     * @return array{impossible: array<string>, attribution: array<string>, structural: array<string>}
      */
-    private function analyzeSpecificConstraints(array $participants, ConstraintSet $constraints, StagePlan $plan): array
+    private function attributeMissingPairings(
+        array $participants,
+        ConstraintSet $constraints,
+        array $events,
+        StagePlan $plan
+    ): array {
+        $empty = ['impossible' => [], 'attribution' => [], 'structural' => []];
+        if (!$plan instanceof PairwisePlan || $constraints->count() === 0) {
+            return $empty;
+        }
+
+        $totalRounds = $plan->getTotalRounds() ?? 0;
+        if ($totalRounds < 1) {
+            return $empty;
+        }
+
+        $missingPairs = $this->findMissingPairs($participants, $events, $plan);
+        if ($missingPairs === []) {
+            return $empty;
+        }
+
+        // Leg-sensitive constraints (NoRepeatPairings checks the current
+        // leg's events by default) must be probed with the leg the
+        // candidate round belongs to, or multi-leg plans mis-attribute:
+        // a pair that met in leg 1 is perfectly schedulable in leg 2.
+        $legs = $plan->getLegs() ?? 1;
+        $roundsPerLeg = $plan->getRoundsPerLeg() ?? $plan->getTotalRounds() ?? 1;
+        if ($roundsPerLeg < 1) {
+            $roundsPerLeg = 1;
+        }
+        /** @var array<int, SchedulingContext> $contextsByLeg */
+        $contextsByLeg = [];
+        for ($leg = 1; $leg <= $legs; ++$leg) {
+            $contextsByLeg[$leg] = new SchedulingContext($participants, $plan, $events, $leg);
+        }
+
+        $roundCapacity = intdiv(count($participants), 2);
+        $eventsPerRound = [];
+        foreach ($events as $event) {
+            $round = $event->getRound()?->getNumber();
+            if ($round !== null) {
+                $eventsPerRound[$round] = ($eventsPerRound[$round] ?? 0) + 1;
+            }
+        }
+
+        $impossible = [];
+        $structural = [];
+        /** @var array<string, array<string>> $rejectionsByConstraint constraint name => pairing summaries */
+        $rejectionsByConstraint = [];
+
+        foreach ($missingPairs as [$a, $b]) {
+            $pairLabel = $a->getLabel() . ' vs ' . $b->getLabel();
+            $allowedRounds = [];
+            /** @var array<string, int> $roundsRejectedBy rounds each constraint rejects in both orientations */
+            $roundsRejectedBy = [];
+
+            for ($round = 1; $round <= $totalRounds; ++$round) {
+                $context = $contextsByLeg[min($legs, intdiv($round - 1, $roundsPerLeg) + 1)];
+                $orientations = [
+                    new Event([$a, $b], new Round($round)),
+                    new Event([$b, $a], new Round($round)),
+                ];
+
+                $roundAllowed = false;
+                foreach ($orientations as $candidate) {
+                    if ($constraints->isSatisfied($candidate, $context)) {
+                        $roundAllowed = true;
+                        break;
+                    }
+                }
+                if ($roundAllowed) {
+                    $allowedRounds[] = $round;
+                }
+
+                foreach ($constraints->getConstraints() as $constraint) {
+                    $rejectsBoth = true;
+                    foreach ($orientations as $candidate) {
+                        if ($constraint->isSatisfied($candidate, $context)) {
+                            $rejectsBoth = false;
+                            break;
+                        }
+                    }
+                    if ($rejectsBoth) {
+                        $roundsRejectedBy[$constraint->getName()] = ($roundsRejectedBy[$constraint->getName()] ?? 0) + 1;
+                    }
+                }
+            }
+
+            foreach ($roundsRejectedBy as $constraintName => $rejectedRounds) {
+                $rejectionsByConstraint[$constraintName][] = "{$pairLabel} in {$rejectedRounds} of {$totalRounds} rounds";
+            }
+
+            if ($allowedRounds === []) {
+                $culprits = array_keys(array_filter(
+                    $roundsRejectedBy,
+                    fn (int $rejectedRounds) => $rejectedRounds === $totalRounds
+                ));
+                $blockedBy = $culprits === [] ? 'a combination of constraints' : implode(', ', $culprits);
+                $impossible[] = "{$pairLabel} cannot join the generated schedule in any round (blocked by: {$blockedBy})";
+                continue;
+            }
+
+            $openRounds = array_filter(
+                $allowedRounds,
+                fn (int $round) => ($eventsPerRound[$round] ?? 0) < $roundCapacity
+            );
+            if ($openRounds === []) {
+                $structural[] = "{$pairLabel} is only allowed in rounds already at capacity (rounds "
+                    . implode(', ', $allowedRounds) . ') - the conflict is structural, not any single constraint';
+            }
+        }
+
+        $attribution = [];
+        foreach ($rejectionsByConstraint as $constraintName => $pairSummaries) {
+            $attribution[] = "{$constraintName} rejects " . implode('; ', $pairSummaries);
+        }
+
+        return ['impossible' => $impossible, 'attribution' => $attribution, 'structural' => $structural];
+    }
+
+    /**
+     * The unordered participant pairs missing at least one expected
+     * meeting, as pairs rather than display strings.
+     *
+     * @param array<Participant> $participants
+     * @param array<Event> $events
+     * @return array<array{0: Participant, 1: Participant}>
+     */
+    private function findMissingPairs(array $participants, array $events, PairwisePlan $plan): array
     {
-        $conflicts = [];
+        $met = [];
+        foreach ($events as $event) {
+            $eventParticipants = $event->getParticipants();
+            if (count($eventParticipants) !== 2) {
+                continue;
+            }
+            $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
+            sort($ids);
+            $met[implode('|', $ids)] = ($met[implode('|', $ids)] ?? 0) + 1;
+        }
 
-        // This would analyze specific constraint implementations
-        // For now, return basic analysis
+        $missing = [];
+        $participantCount = count($participants);
+        for ($i = 0; $i < $participantCount; ++$i) {
+            for ($j = $i + 1; $j < $participantCount; ++$j) {
+                $expected = $plan->getExpectedMeetings($participants[$i], $participants[$j]);
+                if ($expected === 0) {
+                    continue;
+                }
 
-        return $conflicts;
+                $ids = [$participants[$i]->getId(), $participants[$j]->getId()];
+                sort($ids);
+                if (($met[implode('|', $ids)] ?? 0) < $expected) {
+                    $missing[] = [$participants[$i], $participants[$j]];
+                }
+            }
+        }
+
+        return $missing;
     }
 }

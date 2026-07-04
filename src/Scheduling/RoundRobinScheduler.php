@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Diagnostics\DiagnosticReport;
+use MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
@@ -287,7 +289,8 @@ class RoundRobinScheduler implements SchedulerInterface
                         . ' pairing attempts) without finding a complete schedule. The configuration may be unsatisfiable or may need a different participant order.'
                     : 'Backtracking search exhausted the search space: no round decomposition of the first leg satisfies the constraints, so the configuration is unsatisfiable.',
                 0,
-                $greedyFailure
+                $greedyFailure,
+                $this->analyzeFailure($participants, $plan, [])
             );
         }
 
@@ -324,7 +327,8 @@ class RoundRobinScheduler implements SchedulerInterface
                         $participants,
                         "Backtracking found a first leg, but constraints reject its leg {$leg} derivation and the search does not cross leg boundaries. Relax the constraints on later legs or change the leg strategy.",
                         0,
-                        $greedyFailure
+                        $greedyFailure,
+                        $this->analyzeFailure($participants, $plan, [...$allEvents, ...$legEvents])
                     );
                 }
 
@@ -343,6 +347,29 @@ class RoundRobinScheduler implements SchedulerInterface
         $this->clearViolations();
 
         return $allEvents;
+    }
+
+    /**
+     * Build the deep failure analysis for a throw site: which constraint
+     * blocks which missing pairing where, probed against the events that
+     * were actually generated. Only meaningful with constraints
+     * configured; unconstrained generation cannot fail on pairings.
+     *
+     * @param array<Participant> $participants
+     * @param array<Event> $partialEvents
+     */
+    private function analyzeFailure(array $participants, RoundRobinPlan $plan, array $partialEvents): ?DiagnosticReport
+    {
+        if ($this->constraints === null) {
+            return null;
+        }
+
+        return (new SchedulingDiagnostics())->analyzeSchedulingFailure(
+            $participants,
+            $this->constraints,
+            $partialEvents,
+            $plan
+        );
     }
 
     /**
@@ -375,7 +402,10 @@ class RoundRobinScheduler implements SchedulerInterface
                     $this->violationCollector,
                     $plan,
                     $participants,
-                    "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. Constraints may be preventing complete schedule generation."
+                    "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. Constraints may be preventing complete schedule generation.",
+                    0,
+                    null,
+                    $this->analyzeFailure($participants, $plan, [...$allEvents, ...$legEvents])
                 );
             }
 
@@ -413,7 +443,10 @@ class RoundRobinScheduler implements SchedulerInterface
                     $this->violationCollector,
                     $plan,
                     $participants,
-                    "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. Constraints may be preventing complete schedule generation."
+                    "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. Constraints may be preventing complete schedule generation.",
+                    0,
+                    null,
+                    $this->analyzeFailure($participants, $plan, $legEvents)
                 );
             }
 

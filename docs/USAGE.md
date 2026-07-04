@@ -964,6 +964,50 @@ try {
 
 ## Error Handling
 
+### Constraint Attribution
+
+A generation failure carries a probed analysis of *which constraint
+blocks which pairing where* — not a guess from constraint names, an
+evaluation: every missing pairing is tested against every configured
+constraint in each candidate round and both orientations, against the
+schedule that was actually generated. The diagnostic report renders it
+directly:
+
+```text
+=== BLOCKED PAIRINGS ===
+• Team 1 vs Team 2 cannot join the generated schedule in any round (blocked by: Derby Ban)
+
+=== CONSTRAINT ATTRIBUTION ===
+• Derby Ban rejects Team 1 vs Team 2 in 3 of 3 rounds
+```
+
+Programmatic access goes through the attached report:
+
+```php
+use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+
+try {
+    $schedule = $scheduler->schedule($participants);
+} catch (IncompleteScheduleException $e) {
+    $analysis = $e->getAnalysis(); // ?DiagnosticReport
+    $analysis?->getImpossiblePairings();   // blocked everywhere, culprits named
+    $analysis?->getConstraintViolations(); // per-constraint attribution
+    $analysis?->getSuggestions();          // includes structural-fullness notes
+}
+```
+
+Three findings, three vocabularies: **blocked pairings** no round will
+accept (culprit constraints named — or "a combination of constraints"
+when no single one rejects everywhere), per-constraint **attribution**
+("rejects Alice vs Bob in 6 of 6 rounds" — a constraint is only charged
+with rounds it rejects in both orientations), and **structural**
+conflicts (a pairing whose only allowed rounds are already at capacity
+is blocked by arithmetic, not by any constraint). Custom constraints
+are attributed exactly like built-ins, because probing evaluates the
+real predicates. The analysis answers "could this pairing join what was
+built?" — it does not claim global unsatisfiability except where the
+backtracking search proved it.
+
 ### Exception Hierarchy
 
 ```php

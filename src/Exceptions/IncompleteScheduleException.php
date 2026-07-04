@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Exceptions;
 
+use MissionGaming\Tactician\Diagnostics\DiagnosticReport;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Stage\StagePlan;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
@@ -32,7 +33,8 @@ class IncompleteScheduleException extends SchedulingException
         private readonly array $participants,
         string $message = '',
         int $code = 0,
-        ?\Throwable $previous = null
+        ?\Throwable $previous = null,
+        private readonly ?DiagnosticReport $analysis = null
     ) {
         if ($message === '') {
             $message = $this->expectedEventCount === null
@@ -88,6 +90,15 @@ class IncompleteScheduleException extends SchedulingException
     public function getPlan(): StagePlan
     {
         return $this->plan;
+    }
+
+    /**
+     * The deep failure analysis attached at the throw site, when the
+     * scheduler could build one (constraints configured, pairwise plan).
+     */
+    public function getAnalysis(): ?DiagnosticReport
+    {
+        return $this->analysis;
     }
 
     #[\Override]
@@ -178,8 +189,32 @@ class IncompleteScheduleException extends SchedulingException
             }
         }
 
+        if ($this->analysis !== null) {
+            if ($this->analysis->getImpossiblePairings() !== []) {
+                $report[] = '=== BLOCKED PAIRINGS ===';
+                foreach ($this->analysis->getImpossiblePairings() as $blocked) {
+                    $report[] = "• {$blocked}";
+                }
+                $report[] = '';
+            }
+
+            if ($this->analysis->getConstraintViolations() !== []) {
+                $report[] = '=== CONSTRAINT ATTRIBUTION ===';
+                foreach ($this->analysis->getConstraintViolations() as $attribution) {
+                    $report[] = "• {$attribution}";
+                }
+                $report[] = '';
+            }
+        }
+
         $report[] = '=== SUGGESTIONS ===';
         $report[] = $this->generateSuggestions();
+
+        if ($this->analysis !== null) {
+            foreach ($this->analysis->getSuggestions() as $suggestion) {
+                $report[] = "• {$suggestion}";
+            }
+        }
 
         return implode("\n", $report);
     }

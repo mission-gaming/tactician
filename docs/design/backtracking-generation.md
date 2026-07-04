@@ -1,6 +1,6 @@
 # Design note: Backtracking Generation
 
-**Status: IMPLEMENTING — first cut (round robin)** — ROADMAP Phase 5's
+**Status: IMPLEMENTED — first cut (round robin)** — ROADMAP Phase 5's
 answer to the repository's longest-recorded known limitation: greedy
 circle-method generation retries bounded rotated orderings when
 constraints reject a schedule, and throws `IncompleteScheduleException`
