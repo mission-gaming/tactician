@@ -467,4 +467,39 @@ describe('SchedulingDiagnostics', function (): void {
             expect($report->getConstraintViolations())->toBe([]);
         });
     });
+
+    // Regression: the probe must evaluate each candidate round with the
+    // leg it belongs to. NoRepeatPairings checks the current leg's
+    // events by default, so probing leg-2 rounds with a leg-1 context
+    // falsely branded pairs that met in leg 1 as blocked everywhere
+    it('probes candidate rounds with their own leg context', function (): void {
+        $dave = new Participant('p4', 'Dave');
+        $field = [...$this->participants, $dave];
+        $plan = new RoundRobinPlan($field, 2); // 6 rounds, 3 per leg
+
+        // A complete first leg; leg 2 is entirely missing
+        $legOne = [
+            new Event([$this->alice, $this->bob], new Round(1)),
+            new Event([$this->carol, $dave], new Round(1)),
+            new Event([$this->alice, $this->carol], new Round(2)),
+            new Event([$this->bob, $dave], new Round(2)),
+            new Event([$this->alice, $dave], new Round(3)),
+            new Event([$this->bob, $this->carol], new Round(3)),
+        ];
+
+        $report = $this->diagnostics->analyzeSchedulingFailure(
+            $field,
+            ConstraintSet::create()->noRepeatPairings()->build(),
+            $legOne,
+            $plan
+        );
+
+        // Every pair met in leg 1, so leg-1 rounds are rightly rejected -
+        // but leg-2 rounds are open, so nothing is impossible and the
+        // constraint is only charged with the three leg-1 rounds
+        expect($report->getImpossiblePairings())->toBe([]);
+        foreach ($report->getConstraintViolations() as $attribution) {
+            expect($attribution)->toContain('in 3 of 6 rounds');
+        }
+    });
 });

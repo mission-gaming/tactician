@@ -272,7 +272,21 @@ class SchedulingDiagnostics
             return $empty;
         }
 
-        $context = new SchedulingContext($participants, $plan, $events, 1);
+        // Leg-sensitive constraints (NoRepeatPairings checks the current
+        // leg's events by default) must be probed with the leg the
+        // candidate round belongs to, or multi-leg plans mis-attribute:
+        // a pair that met in leg 1 is perfectly schedulable in leg 2.
+        $legs = $plan->getLegs() ?? 1;
+        $roundsPerLeg = $plan->getRoundsPerLeg() ?? $plan->getTotalRounds() ?? 1;
+        if ($roundsPerLeg < 1) {
+            $roundsPerLeg = 1;
+        }
+        /** @var array<int, SchedulingContext> $contextsByLeg */
+        $contextsByLeg = [];
+        for ($leg = 1; $leg <= $legs; ++$leg) {
+            $contextsByLeg[$leg] = new SchedulingContext($participants, $plan, $events, $leg);
+        }
+
         $roundCapacity = intdiv(count($participants), 2);
         $eventsPerRound = [];
         foreach ($events as $event) {
@@ -294,6 +308,7 @@ class SchedulingDiagnostics
             $roundsRejectedBy = [];
 
             for ($round = 1; $round <= $totalRounds; ++$round) {
+                $context = $contextsByLeg[min($legs, intdiv($round - 1, $roundsPerLeg) + 1)];
                 $orientations = [
                     new Event([$a, $b], new Round($round)),
                     new Event([$b, $a], new Round($round)),
