@@ -20,13 +20,15 @@ use MissionGaming\Tactician\Stage\StageState;
 $database = [];
 
 // --- Request 1: the organizer opens the stage -------------------------
+// Stage entry is position-authoritative: list order is the seeding,
+// so no seed attributes are needed
 $entrants = [
-    new Participant('ana', 'Ana', 1),
-    new Participant('bea', 'Bea', 2),
-    new Participant('cai', 'Cai', 3),
-    new Participant('dia', 'Dia', 4),
-    new Participant('eli', 'Eli', 5),
-    new Participant('fio', 'Fio', 6),
+    new Participant('ana', 'Ana'),
+    new Participant('bea', 'Bea'),
+    new Participant('cai', 'Cai'),
+    new Participant('dia', 'Dia'),
+    new Participant('eli', 'Eli'),
+    new Participant('fio', 'Fio'),
 ];
 
 $database['stage_42'] = StageState::start($entrants)->toJson();
