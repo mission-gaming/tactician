@@ -22,7 +22,7 @@ tracks the current shape only, to avoid duplicating what rots.*
 ## What's Left to Build
 See docs/ROADMAP.md:
 - **Phase 4 remainder** (demand-gated only): cross-stage clash validation and per-resource availability windows — design note in `docs/design/timeline-assignment.md`
-- **Phase 5 (underway)**: backtracking generation, quality metrics/best-of-N optimization, and constraint attribution diagnostics shipped; remaining: framework integration examples
+- **Phase 5 (complete)**: backtracking generation, quality metrics/best-of-N optimization, constraint attribution diagnostics, and framework integration guides (Symfony/Laravel in `docs/integrations/`, request-cycle pattern in example 18) all shipped
 
 ## Known Issues / Limitations
 - Greedy generation defaults: constraint sets that fail under every rotated ordering throw unless `backtracking: true` is set (the opt-in search closes the false-negative gap; later legs still derive from leg 1 without cross-leg search)

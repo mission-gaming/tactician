@@ -36,10 +36,10 @@
 
 **Design (first cut implemented): [docs/design/timeline-assignment.md](design/timeline-assignment.md)**
 
-## Phase 5: Advanced Features 🔄
+## Phase 5: Advanced Features ✅
 - ✅ Schedule optimization algorithms and quality metrics (`src/Quality/`: lower-is-better `QualityMetric` built-ins for role balance, streaks, rest rhythm, and repeat spacing; weighted `ScheduleScorer` with per-metric reports; deterministic best-of-N `ScheduleOptimizer` — design note in `docs/design/schedule-quality.md`)
 - ✅ Backtracking generation for constraint configurations the greedy generator cannot satisfy (opt-in `RoundRobinOptions(backtracking: true)`: deterministic, step-bounded search over round decompositions; greedy always runs first — design note in `docs/design/backtracking-generation.md`)
-- Integration examples with popular frameworks
+- ✅ Integration examples with popular frameworks (Symfony and Laravel guides in `docs/integrations/` — every Tactician-touching snippet harness-executed; the framework-free request-cycle pattern runnable as example 18)
 - ✅ Advanced diagnostic reporting and constraint suggestion systems (constraint attribution by probing: blocked pairings with culprits named, per-constraint rejection counts, structural-fullness notes — attached to every generation failure via `IncompleteScheduleException::getAnalysis()`; design note in `docs/design/diagnostics-attribution.md`)
 
 ## Use Cases
