@@ -56,6 +56,13 @@ policy stays app-side:
 - **ScheduledEvent / ScheduledSchedule**: Decorations wrapping untouched events with their UTC kickoffs; serializable, so re-assignment is cheap and platforms persist assigned times.
 - **TimelineRule**: Time-aware validation over assigned kickoffs — `MinimumRestRule` (absolute rest between a participant's consecutive kickoffs, UTC-compared) and `BlackoutRule` (half-open windows, config-constructible). Deterministic assignment cannot route around a violated rule, so the assigner fails loudly with every violation; rules also validate standalone against accumulated round-by-round timelines. Deliberately distinct from generation constraints.
 
+### Quality System
+Graded measurement and selection over valid schedules — constraints stay
+hard filters; metrics measure what remains:
+- **QualityMetric**: One convention for every metric — lower is better, zero is ideal (metrics measure defects). Built-ins: `RoleBalanceMetric`, `RoleStreakMetric`, `RestSpreadMetric`, `PairingSpacingMetric`; all skip non-pairwise/round-less events rather than guessing.
+- **ScheduleScorer**: Weighted composition with per-metric reports, so a chosen schedule is explainable. Which metrics and weights is application policy.
+- **ScheduleOptimizer**: Deterministic best-of-N sampling — a master randomizer derives a child seed per sample for a caller-supplied generator callable; failed samples are counted, not fatal. Whole-schedule generators only (engines pair from results that do not exist yet).
+
 ### Standings System
 - **StandingsCalculator**: Ordered league tables from results with a pluggable ranking strategy
 - **RankingStrategy**: Computes the primary ranking value ordering the table — ordering is the contract, points are one means of producing it

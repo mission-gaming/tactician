@@ -14,6 +14,7 @@ tracks the current shape only, to avoid duplicating what rots.*
 - **Stage engine model** (`src/Stage/`): serializable `StageState` (toArray/fromArray/JSON, pairings + results + byes, withdrawals first-class), unified `RoundPairing` (round number, nullable label, events, byes — used by Swiss and both elimination engines), `StageEngineInterface` (getPlan/pairNextRound/isComplete/getOutcome), and `StageOutcome` (standings, results, byes, final round; no trophy vocabulary); `Result` gained toArray/fromArray
 - **Typed options** (`SchedulerOptions`): `RoundRobinOptions` (legs + strategy) and `SwissOptions` (rounds), config-constructible with stable strategy identifiers; `SchedulerInterface` is `schedule(participants, ?options)` + `getPlan(participants, ?options)` — the legs/rounds overload and `validateConstraints()` are gone
 - **Ranking strategies** (`RankingStrategy`): standings ordered by a pluggable primary value; `WinDrawLossRanking` (named presets `threeOneZero`/`oneHalfZero`, `fromArray()`) replaces `PointsSystem`; `StandingEntry::getRankingValue()` alongside the W/D/L record
+- **Quality** (`src/Quality/`): lower-is-better metrics (role balance/streaks, rest spread, pairing spacing), weighted `ScheduleScorer` with per-metric reports, deterministic seeded best-of-N `ScheduleOptimizer` (whole-schedule generators only)
 - **Timelines** (`src/Timeline/`): declarative per-stage slot model (`TimelineDefinition`, config-constructible, wall-clock arithmetic in the stage timezone, UTC kickoffs out) with deterministic assignment (`TimelineAssigner`) over whole schedules or engine round pairings; serializable `ScheduledEvent`/`ScheduledSchedule` decorations; time-aware `TimelineRule`s (`MinimumRestRule`, `BlackoutRule`) failing assignment loudly post-assignment; named resources for concurrent kickoffs per slot
 - **Serialization**: `toArray()`/`fromArray()` on all DTOs; `Schedule` JSON round-tripping
 - **Quality gates**: ~620 Pest tests including property/invariant suites, PHPStan level 8, Rector, CS-Fixer, auto-validated examples (`tests/Feature/ExamplesTest.php` + `composer examples` in CI)
@@ -21,7 +22,7 @@ tracks the current shape only, to avoid duplicating what rots.*
 ## What's Left to Build
 See docs/ROADMAP.md:
 - **Phase 4 remainder** (demand-gated only): cross-stage clash validation and per-resource availability windows — design note in `docs/design/timeline-assignment.md`
-- **Phase 5 (underway)**: backtracking generation shipped; remaining: schedule optimization/quality metrics, framework integration examples, advanced diagnostics
+- **Phase 5 (underway)**: backtracking generation and quality metrics/best-of-N optimization shipped; remaining: framework integration examples, advanced diagnostics
 
 ## Known Issues / Limitations
 - Greedy generation defaults: constraint sets that fail under every rotated ordering throw unless `backtracking: true` is set (the opt-in search closes the false-negative gap; later legs still derive from leg 1 without cross-leg search)

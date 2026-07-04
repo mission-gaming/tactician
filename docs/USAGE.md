@@ -14,6 +14,7 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Elimination Brackets](#elimination-brackets)
 - [Pools, Progression, and Multi-Stage Tournaments](#pools-progression-and-multi-stage-tournaments)
 - [Timeline Assignment](#timeline-assignment)
+- [Schedule Quality and Optimization](#schedule-quality-and-optimization)
 - [Serialization](#serialization)
 - [Schedule Validation](#schedule-validation)
 - [Error Handling](#error-handling)
@@ -55,6 +56,8 @@ anything else that competes.
 | **Slot** | One kickoff time within a round, holding one event per resource (one event total when no resources are declared). A round's events fill its slots deterministically: schedule order against slot time order, resource by resource within a slot. |
 | **Kickoff** | The assigned time of a scheduled event, always emitted in UTC (`ScheduledEvent::getKickoff()`); the timeline's wall-clock arithmetic happens in the stage's declared timezone. |
 | **Resource** | A named host of concurrent events within a slot (venue, pitch, court, board...). A slot holds one event per resource; no declared resources means one anonymous resource. Each scheduled event carries its assigned resource. |
+| **Quality metric** | A graded, lower-is-better measure of a valid schedule (`QualityMetric`): role balance, alternation streaks, rest rhythm, repeat spacing. Metrics measure defects — zero is ideal. Composed with weights by `ScheduleScorer`; policy (which metrics, what weights) stays application-side. |
+| **Optimization** | Best-of-N sampling (`ScheduleOptimizer`): generate N candidate schedules from one master seed, score each, keep the best. Deterministic when every randomness source uses the supplied child randomizer. Whole-schedule generators only. |
 | **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach. Greedy always runs first; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
 | **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — minimum rest in hours (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
@@ -795,6 +798,82 @@ violation strings — so an application driving a results-driven stage
 round by round can check the timeline it accumulates. Both built-in
 rules are plain-data constructible with `fromArray()`/`toArray()`, and
 custom rules implement the two-method `TimelineRule` interface.
+
+## Schedule Quality and Optimization
+
+Constraints are hard filters — a schedule satisfies them or generation
+fails. **Quality metrics** measure the graded properties two valid
+schedules can still differ on. Every metric follows one convention:
+**lower is better, zero is ideal** — metrics measure defects:
+
+| Metric | Measures |
+|---|---|
+| `RoleBalanceMetric` | How unevenly appearances split between the first role (home, white, server...) and the second |
+| `RoleStreakMetric` | Longest run of consecutive same-role appearances beyond strict alternation |
+| `RestSpreadMetric` | How irregularly the gaps between each participant's playing rounds vary |
+| `PairingSpacingMetric` | How far each pair's repeat meetings deviate from an even spread across the schedule |
+
+`ScheduleScorer` composes metrics with weights — which metrics matter is
+your policy, the scorer is the arithmetic — and reports per-metric
+values so a chosen schedule is explainable:
+
+```php
+use MissionGaming\Tactician\Quality\PairingSpacingMetric;
+use MissionGaming\Tactician\Quality\RoleBalanceMetric;
+use MissionGaming\Tactician\Quality\ScheduleScorer;
+
+$scorer = new ScheduleScorer([
+    ['metric' => new RoleBalanceMetric(), 'weight' => 3.0],
+    ['metric' => new PairingSpacingMetric(), 'weight' => 1.0],
+]);
+
+$score = $scorer->score($schedule);   // weighted defect score
+$report = $scorer->report($schedule); // ['Role Balance' => 0.667, ...]
+```
+
+`ScheduleOptimizer` generates N candidates and keeps the best-scoring
+one. The generators are deterministic given a randomizer, so sampling
+schedules is sampling seeds — one master randomizer derives a child per
+sample, and the same master seed always reproduces the same winner:
+
+```php
+use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\Quality\ScheduleOptimizer;
+use Random\Engine\Mt19937;
+use Random\Randomizer;
+
+$optimizer = new ScheduleOptimizer($scorer, new Randomizer(new Mt19937(2026)));
+
+$result = $optimizer->optimize(
+    fn (Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
+        $participants,
+        new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy($r))
+    ),
+    25
+);
+
+$result->getSchedule();         // the winner
+$result->getScore();            // its weighted score
+$result->getReport();           // its per-metric breakdown
+$result->getSamplesGenerated(); // candidates that generated successfully
+```
+
+Two rules of the mechanism:
+
+- **Thread the child randomizer everywhere.** Determinism holds only if
+  every randomness source in the generation pipeline uses the supplied
+  child — the scheduler *and* anything else that randomizes (note the
+  `ShuffledLegStrategy($r)` above). An unseeded source anywhere makes
+  sampling unrepeatable.
+- **Failed samples are skipped, not fatal.** A sample whose generation
+  throws (a shuffled ordering no retry can fix) is counted in
+  `getSamplesFailed()`; only zero valid candidates is an error, in which
+  case the last generation failure is rethrown with its diagnostics.
+
+Optimization applies to whole-schedule generators only — results-driven
+engines (Swiss, elimination) pair from results that do not exist yet, so
+there is nothing to sample up front. Custom metrics implement the
+two-method `QualityMetric` interface.
 
 ## Serialization
 
