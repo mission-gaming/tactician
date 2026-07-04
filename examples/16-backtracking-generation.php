@@ -73,7 +73,7 @@ try {
     // The failure carries a probed analysis naming which constraint
     // blocks which pairing where - not a guess, an evaluation
     $analysis = $exception->getAnalysis();
-    if ($analysis !== null) {
+    if ($analysis !== null && $analysis->getImpossiblePairings() !== []) {
         echo $analysis->getImpossiblePairings()[0] . "\n";
     }
 }
