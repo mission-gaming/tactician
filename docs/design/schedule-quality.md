@@ -1,6 +1,6 @@
 # Design note: Schedule Quality and Optimization
 
-**Status: IMPLEMENTING — first cut (metrics + best-of-N sampling)** —
+**Status: IMPLEMENTED — first cut (metrics + best-of-N sampling)** —
 ROADMAP Phase 5's "schedule optimization algorithms and quality metrics".
 
 ## Position

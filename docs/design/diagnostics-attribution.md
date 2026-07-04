@@ -1,6 +1,6 @@
 # Design note: Constraint Attribution Diagnostics
 
-**Status: IMPLEMENTING** — ROADMAP Phase 5's "advanced diagnostic
+**Status: IMPLEMENTED** — ROADMAP Phase 5's "advanced diagnostic
 reporting and constraint suggestion systems".
 
 ## Position
