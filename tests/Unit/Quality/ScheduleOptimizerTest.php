@@ -159,7 +159,7 @@ describe('ScheduleOptimizer', function (): void {
         $plan = new RoundRobinPlan([$a, $b], 1);
 
         $calls = 0;
-        $generate = function () use (&$calls, $schedule, $plan, $a, $b): Schedule {
+        $generate = function (Randomizer $randomizer) use (&$calls, $schedule, $plan, $a, $b): Schedule {
             ++$calls;
             if ($calls % 2 === 1) {
                 throw new IncompleteScheduleException(1, 0, new ConstraintViolationCollector(), $plan, [$a, $b]);
@@ -188,7 +188,7 @@ describe('ScheduleOptimizer', function (): void {
             new Randomizer(new Mt19937(1))
         );
 
-        expect(fn () => $optimizer->optimize(function () use ($plan, $a, $b): Schedule {
+        expect(fn () => $optimizer->optimize(function (Randomizer $randomizer) use ($plan, $a, $b): Schedule {
             throw new IncompleteScheduleException(1, 0, new ConstraintViolationCollector(), $plan, [$a, $b], 'nothing works');
         }, 3))->toThrow(IncompleteScheduleException::class, 'nothing works');
     });
@@ -199,7 +199,7 @@ describe('ScheduleOptimizer', function (): void {
             new Randomizer(new Mt19937(1))
         );
 
-        expect(fn () => $optimizer->optimize(fn () => new Schedule([]), 0))
+        expect(fn () => $optimizer->optimize(fn (Randomizer $randomizer) => new Schedule([]), 0))
             ->toThrow(InvalidConfigurationException::class, 'at least one sample');
     });
 });
