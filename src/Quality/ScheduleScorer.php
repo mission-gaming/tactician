@@ -32,13 +32,31 @@ final readonly class ScheduleScorer
             throw new InvalidConfigurationException('A scorer needs at least one metric', []);
         }
 
+        $names = [];
         foreach ($weightedMetrics as $index => $entry) {
+            if (!is_array($entry)) {
+                throw new InvalidConfigurationException(
+                    'Every scorer entry must be an array with metric and weight keys',
+                    ['index' => $index, 'given' => get_debug_type($entry)]
+                );
+            }
             if (!($entry['metric'] ?? null) instanceof QualityMetric) {
                 throw new InvalidConfigurationException(
                     'Every scorer entry needs a metric implementing QualityMetric',
                     ['index' => $index]
                 );
             }
+
+            // report() keys by metric name; a duplicate would silently
+            // overwrite its twin's measurement
+            $name = $entry['metric']->getName();
+            if (isset($names[$name])) {
+                throw new InvalidConfigurationException(
+                    'Metric names must be unique within a scorer',
+                    ['index' => $index, 'metric' => $name]
+                );
+            }
+            $names[$name] = true;
             $weight = $entry['weight'] ?? null;
             if (!is_float($weight) && !is_int($weight)) {
                 throw new InvalidConfigurationException(

@@ -56,9 +56,16 @@ describe('ScheduleScorer', function (): void {
         // docblock type would forbid
         $missingMetric = unserialize(serialize([['weight' => 1.0]]));
         $wordWeight = unserialize(serialize([['metric' => new RoleBalanceMetric(), 'weight' => 'heavy']]));
+        $notAnArray = unserialize(serialize(['just a metric name']));
 
         expect(fn () => new ScheduleScorer([]))
             ->toThrow(InvalidConfigurationException::class, 'at least one metric');
+        expect(fn () => new ScheduleScorer($notAnArray))
+            ->toThrow(InvalidConfigurationException::class, 'must be an array');
+        expect(fn () => new ScheduleScorer([
+            ['metric' => new RoleBalanceMetric(), 'weight' => 1.0],
+            ['metric' => new RoleBalanceMetric(), 'weight' => 2.0],
+        ]))->toThrow(InvalidConfigurationException::class, 'unique');
         expect(fn () => new ScheduleScorer($missingMetric))
             ->toThrow(InvalidConfigurationException::class, 'implementing QualityMetric');
         expect(fn () => new ScheduleScorer($wordWeight))
