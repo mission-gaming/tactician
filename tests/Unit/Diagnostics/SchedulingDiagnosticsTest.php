@@ -502,4 +502,81 @@ describe('SchedulingDiagnostics', function (): void {
             expect($attribution)->toContain('in 3 of 6 rounds');
         }
     });
+
+    it('yields no attribution when rounds are unknowable or nothing is missing', function (): void {
+        $derbyBan = ConstraintSet::create()->custom(static function (Event $event): bool {
+            $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+            sort($ids);
+
+            return implode('|', $ids) !== 'p1|p2';
+        }, 'Derby Ban')->build();
+
+        // A pairwise plan without knowable rounds gives the probe no
+        // candidate rounds to test
+        $plan = new readonly class () implements MissionGaming\Tactician\Stage\PairwisePlan {
+            #[Override]
+            public function getAlgorithm(): string
+            {
+                return 'custom-pairwise';
+            }
+
+            #[Override]
+            public function getTotalRounds(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getLegs(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getRoundsPerLeg(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getExpectedEventCount(): ?int
+            {
+                return null;
+            }
+
+            #[Override]
+            public function getExpectedMeetings(Participant $a, Participant $b): int
+            {
+                return 1;
+            }
+
+            #[Override]
+            public function validateIntegrity(MissionGaming\Tactician\DTO\Schedule $schedule): array
+            {
+                return [];
+            }
+        };
+        $report = $this->diagnostics->analyzeSchedulingFailure($this->participants, $derbyBan, [], $plan);
+        expect($report->getImpossiblePairings())->toBe([]);
+        expect($report->getConstraintViolations())->toBe([]);
+
+        // A complete schedule leaves no missing pairs to attribute; the
+        // three-participant event and the planless outsider exercise the
+        // pair-collection skips
+        $outsider = new Participant('x1', 'Outsider');
+        $complete = [
+            new Event([$this->alice, $this->bob], new Round(1)),
+            new Event([$this->alice, $this->carol], new Round(2)),
+            new Event([$this->bob, $this->carol], new Round(3)),
+            new Event([$this->alice, $this->bob, $this->carol], new Round(3)),
+        ];
+        $report = $this->diagnostics->analyzeSchedulingFailure(
+            [...$this->participants, $outsider],
+            $derbyBan,
+            $complete,
+            new RoundRobinPlan($this->participants, 1)
+        );
+        expect($report->getImpossiblePairings())->toBe([]);
+        expect($report->getConstraintViolations())->toBe([]);
+    });
 });
