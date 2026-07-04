@@ -17,7 +17,7 @@ final readonly class OptimizedSchedule
      * @param float $score The winner's weighted defect score (lower is better)
      * @param array<string, float> $report The winner's raw per-metric measurements
      * @param int $samplesGenerated Samples that produced a valid schedule
-     * @param int $samplesFailed Samples whose generation threw
+     * @param int $samplesFailed Samples skipped because generation threw IncompleteScheduleException
      */
     public function __construct(
         private Schedule $schedule,
