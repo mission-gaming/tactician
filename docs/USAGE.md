@@ -839,6 +839,8 @@ sample, and the same master seed always reproduces the same winner:
 ```php
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\Quality\ScheduleOptimizer;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
