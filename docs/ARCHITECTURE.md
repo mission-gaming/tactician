@@ -34,6 +34,7 @@ play completes. The `src/Stage/` family:
 - **SchedulerInterface**: Contract for whole-schedule generators — participants and typed options in, a validated schedule out; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
 - **SchedulerOptions**: Typed per-algorithm options, one type per scheduler — no overloaded scalars. Config-constructible (`fromArray()`/`toArray()`) with stable identifiers.
 - **RoundRobinOptions / SwissOptions**: Legs + leg strategy for round robin; rounds for Swiss (retiring the old "legs means rounds here" overload)
+- **BacktrackingRoundRobinGenerator**: Opt-in search over the round decompositions the circle method cannot reach (`RoundRobinOptions(backtracking: true)`): per-round perfect matchings built seat by seat under the constraints, both orientations tried, dead ends backtracking across rounds. Deterministic, step-bounded, loud about budget-exhausted vs proven-unsatisfiable.
 - **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, round-parity home/away role alternation, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first and generates from it.
 - **SwissScheduler**: Whole-schedule Swiss preset — drives SwissPairingEngine through the stage driver loop recording no results, which reduces Monrad pairing to random non-repeat pairing
 - **SchedulingContext**: Multi-leg aware historical state management carrying the stage plan (`getPlan()`)

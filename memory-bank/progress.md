@@ -21,10 +21,10 @@ tracks the current shape only, to avoid duplicating what rots.*
 ## What's Left to Build
 See docs/ROADMAP.md:
 - **Phase 4 remainder** (demand-gated only): cross-stage clash validation and per-resource availability windows — design note in `docs/design/timeline-assignment.md`
-- **Phase 5**: optimization, backtracking generation, framework integration examples
+- **Phase 5 (underway)**: backtracking generation shipped; remaining: schedule optimization/quality metrics, framework integration examples, advanced diagnostics
 
 ## Known Issues / Limitations
-- Greedy generation: constraint sets that fail under every rotated ordering throw even when a valid schedule exists in principle (backtracking is Phase 5)
+- Greedy generation defaults: constraint sets that fail under every rotated ordering throw unless `backtracking: true` is set (the opt-in search closes the false-negative gap; later legs still derive from leg 1 without cross-leg search)
 - `RoleBalanceConstraint` floors: limit 3 (even fields) / 4 (odd fields) with the built-in generator
 - Perfect cross-group knockout pairing is guaranteed only for power-of-two group counts
 

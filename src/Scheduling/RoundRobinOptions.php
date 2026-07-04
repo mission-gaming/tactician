@@ -31,11 +31,14 @@ final readonly class RoundRobinOptions implements SchedulerOptions
     /**
      * @param int $legs How many times each participant meets each other participant
      * @param LegStrategyInterface|null $strategy How pairings vary across legs (default: mirrored roles)
+     * @param bool $backtracking Search for a schedule when the greedy rotations cannot satisfy
+     *                           the constraints (bounded, deterministic; greedy always runs first)
      * @throws InvalidConfigurationException When legs is not a positive integer
      */
     public function __construct(
         public int $legs = 1,
-        ?LegStrategyInterface $strategy = null
+        ?LegStrategyInterface $strategy = null,
+        public bool $backtracking = false
     ) {
         if ($legs < 1) {
             throw new InvalidConfigurationException(
@@ -49,7 +52,7 @@ final readonly class RoundRobinOptions implements SchedulerOptions
 
     /**
      * Build from plain configuration data:
-     * ['legs' => 2, 'strategy' => 'mirrored'].
+     * ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false].
      *
      * @param array<string, mixed> $config
      * @throws InvalidConfigurationException When a value is invalid or a strategy identifier is unknown
@@ -73,9 +76,17 @@ final readonly class RoundRobinOptions implements SchedulerOptions
             );
         }
 
+        $backtracking = $config['backtracking'] ?? false;
+        if (!is_bool($backtracking)) {
+            throw new InvalidConfigurationException(
+                'backtracking must be a boolean',
+                ['backtracking' => $backtracking]
+            );
+        }
+
         $strategyClass = self::STRATEGY_IDENTIFIERS[$strategyId];
 
-        return new self($legs, new $strategyClass());
+        return new self($legs, new $strategyClass(), $backtracking);
     }
 
     /**
@@ -86,7 +97,7 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * data and fail loudly rather than serializing something fromArray()
      * could not rebuild.
      *
-     * @return array{legs: int, strategy: string}
+     * @return array{legs: int, strategy: string, backtracking: bool}
      * @throws InvalidConfigurationException When the strategy is not one of the built-ins
      */
     #[Override]
@@ -100,6 +111,6 @@ final readonly class RoundRobinOptions implements SchedulerOptions
             );
         }
 
-        return ['legs' => $this->legs, 'strategy' => $identifier];
+        return ['legs' => $this->legs, 'strategy' => $identifier, 'backtracking' => $this->backtracking];
     }
 }

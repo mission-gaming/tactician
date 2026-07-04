@@ -65,8 +65,17 @@ class RoundRobinScheduler implements SchedulerInterface
 
         // Generate complete schedule using integrated approach, retrying with
         // rotated participant orderings when constraints reject the pairings
-        // implied by a particular circle-method order.
-        $allEvents = $this->generateScheduleWithRetries($participants, $strategy, $plan);
+        // implied by a particular circle-method order. When the rotations are
+        // exhausted and backtracking is enabled, search the decompositions the
+        // circle method cannot reach before failing loudly.
+        try {
+            $allEvents = $this->generateScheduleWithRetries($participants, $strategy, $plan);
+        } catch (IncompleteScheduleException $greedyFailure) {
+            if (!$options->backtracking) {
+                throw $greedyFailure;
+            }
+            $allEvents = $this->generateWithBacktracking($participants, $strategy, $plan, $greedyFailure);
+        }
         ksort($this->roundByes);
 
         $schedule = new Schedule($allEvents, [
@@ -234,6 +243,106 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         throw new \LogicException('Schedule generation loop must return or throw');
+    }
+
+    /**
+     * Search for a schedule after the greedy rotations failed: leg 1 via
+     * backtracking over round decompositions, later legs derived from
+     * leg 1's actual rounds through the leg strategy. The search does not
+     * cross leg boundaries (docs/design/backtracking-generation.md), so a
+     * later leg rejected by constraints fails loudly.
+     *
+     * @param array<Participant> $participants
+     * @return array<Event>
+     * @throws IncompleteScheduleException
+     */
+    private function generateWithBacktracking(
+        array $participants,
+        LegStrategyInterface $strategy,
+        RoundRobinPlan $plan,
+        IncompleteScheduleException $greedyFailure
+    ): array {
+        // The greedy final attempt's violations stay in the collector: if
+        // the search also fails, callers still get constraint-level
+        // diagnostics alongside the search-level message (the greedy
+        // failure itself rides along as the previous exception).
+        $this->roundByes = [];
+
+        $field = array_values($participants);
+        $field = $this->randomizer?->shuffleArray($field) ?? $field;
+
+        $generator = new BacktrackingRoundRobinGenerator($this->constraints);
+        $legOneEvents = $generator->generateFirstLeg($field, $plan);
+
+        if ($legOneEvents === null) {
+            throw new IncompleteScheduleException(
+                $plan->getExpectedEventCount(),
+                0,
+                $this->violationCollector,
+                $plan,
+                $participants,
+                $generator->wasBudgetExhausted()
+                    ? 'Backtracking search exhausted its step budget ('
+                        . BacktrackingRoundRobinGenerator::STEP_BUDGET
+                        . ' pairing attempts) without finding a complete schedule. The configuration may be unsatisfiable or may need a different participant order.'
+                    : 'Backtracking search exhausted the search space: no round decomposition of the first leg satisfies the constraints, so the configuration is unsatisfiable.',
+                0,
+                $greedyFailure
+            );
+        }
+
+        $this->roundByes = $generator->getRoundByes();
+        $allEvents = $legOneEvents;
+        $roundsPerLeg = $plan->getRoundsPerLeg();
+
+        for ($leg = 2; $leg <= $plan->getLegs(); ++$leg) {
+            $legEvents = [];
+
+            foreach ($legOneEvents as $legOneEvent) {
+                $legRound = $legOneEvent->getRound()?->getNumber() ?? 0;
+                $globalRound = (($leg - 1) * $roundsPerLeg) + $legRound;
+
+                $context = new SchedulingContext($field, $plan, [...$allEvents, ...$legEvents], $leg);
+                $event = $strategy->generateEventForLeg(
+                    $legOneEvent->getParticipants(),
+                    $leg,
+                    $globalRound,
+                    $context
+                );
+
+                if ($event !== null && !$this->shouldAddEventWithFullConstraints($event, $context)) {
+                    $this->recordConstraintViolation($event, $context);
+                    $event = null;
+                }
+
+                if ($event === null) {
+                    throw new IncompleteScheduleException(
+                        $plan->getExpectedEventCount(),
+                        count($allEvents) + count($legEvents),
+                        $this->violationCollector,
+                        $plan,
+                        $participants,
+                        "Backtracking found a first leg, but constraints reject its leg {$leg} derivation and the search does not cross leg boundaries. Relax the constraints on later legs or change the leg strategy.",
+                        0,
+                        $greedyFailure
+                    );
+                }
+
+                $legEvents[] = $event;
+            }
+
+            foreach ($generator->getRoundByes() as $legRound => $participantId) {
+                $this->roundByes[(($leg - 1) * $roundsPerLeg) + $legRound] = $participantId;
+            }
+
+            $allEvents = [...$allEvents, ...$legEvents];
+        }
+
+        // The search succeeded: the greedy attempt's violations would be
+        // stale diagnostics on a complete schedule.
+        $this->clearViolations();
+
+        return $allEvents;
     }
 
     /**

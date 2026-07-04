@@ -36,9 +36,9 @@
 
 **Design (first cut implemented): [docs/design/timeline-assignment.md](design/timeline-assignment.md)**
 
-## Phase 5: Advanced Features 🚀
+## Phase 5: Advanced Features 🔄
 - Schedule optimization algorithms and quality metrics
-- Backtracking generation for constraint configurations the greedy generator cannot satisfy
+- ✅ Backtracking generation for constraint configurations the greedy generator cannot satisfy (opt-in `RoundRobinOptions(backtracking: true)`: deterministic, step-bounded search over round decompositions; greedy always runs first — design note in `docs/design/backtracking-generation.md`)
 - Integration examples with popular frameworks
 - Advanced diagnostic reporting and constraint suggestion systems
 

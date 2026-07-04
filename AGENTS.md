@@ -48,7 +48,7 @@ sets of concurrent events. Swiss has rounds but no legs.
 - **No example ships without validation**: `tests/Feature/ExamplesTest.php` auto-runs every script in `examples/` under full error reporting. If you add an example, it is covered automatically and must pass. Adding runnable examples for valuable new capabilities is encouraged (optional).
 - **Execute documentation snippets before committing them.** Stale, never-run docs and examples have caused real bugs in this repo (a wrong constructor sample in the architecture docs matched an actual shipped bug). If a README/docs snippet changes, run it.
 - Never commit directly to `main` — branch and open a PR. Prefer small, single-purpose commits with descriptive messages.
-- Constraints are hard filters evaluated during greedy generation; a complete round robin needs every pair to meet, so a constraint that forbids some pairing fails generation loudly (`IncompleteScheduleException` with diagnostics) rather than silently dropping matches. The scheduler retries bounded rotated orderings before giving up.
+- Constraints are hard filters evaluated during greedy generation; a complete round robin needs every pair to meet, so a constraint that forbids some pairing fails generation loudly (`IncompleteScheduleException` with diagnostics) rather than silently dropping matches. The scheduler retries bounded rotated orderings before giving up; `RoundRobinOptions(backtracking: true)` additionally searches the round decompositions rotations cannot reach (deterministic, step-bounded).
 
 ## Memory bank
 
