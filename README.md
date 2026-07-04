@@ -121,6 +121,7 @@ between rounds instead of re-deriving.
 ## Documentation
 
 📚 **[Complete Usage Guide](docs/USAGE.md)** - Comprehensive examples and patterns  
+🧩 **[Framework Integration](docs/integrations/symfony.md)** - Wiring Tactician into [Symfony](docs/integrations/symfony.md) and [Laravel](docs/integrations/laravel.md) applications  
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** - Technical design and core components  
 🛣️ **[Roadmap](docs/ROADMAP.md)** - Detailed development phases and use cases  
 📖 **[Contributing Guidelines](docs/CONTRIBUTING.md)** - Development setup and contribution process  

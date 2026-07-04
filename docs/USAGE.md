@@ -16,6 +16,7 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Timeline Assignment](#timeline-assignment)
 - [Schedule Quality and Optimization](#schedule-quality-and-optimization)
 - [Serialization](#serialization)
+- [Framework Integration](#framework-integration)
 - [Schedule Validation](#schedule-validation)
 - [Error Handling](#error-handling)
 - [Advanced Patterns](#advanced-patterns)
@@ -961,6 +962,22 @@ try {
     echo $diagnostics . "\n";
 }
 ```
+
+## Framework Integration
+
+Tactician has zero production dependencies, so framework integration is
+plain object wiring. Dedicated guides cover the full consumption
+patterns — service registration, config translated through
+`fromArray()`, persisting schedules and stage state, driving
+results-driven engines across stateless requests, and kickoff
+assignment:
+
+- **[Symfony](integrations/symfony.md)**
+- **[Laravel](integrations/laravel.md)**
+
+The framework-free core of the pattern — a stage living across request
+cycles with `StageState` serialized between them — is runnable as
+[`examples/18-stateless-web-flow.php`](../examples/18-stateless-web-flow.php).
 
 ## Error Handling
 
