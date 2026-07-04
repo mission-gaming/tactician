@@ -359,4 +359,48 @@ describe('IncompleteScheduleException', function (): void {
         expect($report)->toContain('Add more rounds to provide more scheduling flexibility');
         expect($report)->not->toContain('Add more legs');
     });
+
+    // The scheduler attaches the deep analysis at its throw sites, so
+    // the report names which constraint blocks which pairing where
+    it('renders the attached constraint attribution', function (): void {
+        $teams = [];
+        for ($i = 1; $i <= 4; ++$i) {
+            $teams[] = new Participant("t{$i}", "Team {$i}", $i);
+        }
+
+        $noDerby = MissionGaming\Tactician\Constraints\ConstraintSet::create()
+            ->custom(static function (Event $event): bool {
+                $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+                sort($ids);
+
+                return implode('|', $ids) !== 't1|t2';
+            }, 'Derby Ban')->build();
+
+        try {
+            (new MissionGaming\Tactician\Scheduling\RoundRobinScheduler($noDerby))->schedule($teams);
+            expect(false)->toBeTrue('Expected IncompleteScheduleException was not thrown');
+        } catch (IncompleteScheduleException $e) {
+            expect($e->getAnalysis())->not->toBeNull();
+
+            $report = $e->getDiagnosticReport();
+            expect($report)->toContain('=== BLOCKED PAIRINGS ===');
+            expect($report)->toContain('Team 1 vs Team 2 cannot join the generated schedule in any round (blocked by: Derby Ban)');
+            expect($report)->toContain('=== CONSTRAINT ATTRIBUTION ===');
+            expect($report)->toContain('Derby Ban rejects Team 1 vs Team 2 in 3 of 3 rounds');
+        }
+    });
+
+    it('renders no attribution sections without an analysis', function (): void {
+        $exception = new IncompleteScheduleException(
+            6,
+            5,
+            new ConstraintViolationCollector(),
+            $this->plan,
+            $this->participants
+        );
+
+        expect($exception->getAnalysis())->toBeNull();
+        expect($exception->getDiagnosticReport())->not->toContain('BLOCKED PAIRINGS');
+        expect($exception->getDiagnosticReport())->not->toContain('CONSTRAINT ATTRIBUTION');
+    });
 });

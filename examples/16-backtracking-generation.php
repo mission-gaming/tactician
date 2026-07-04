@@ -69,4 +69,11 @@ try {
         ->schedule($clubs, new RoundRobinOptions(backtracking: true));
 } catch (IncompleteScheduleException $exception) {
     echo "Proven unsatisfiable: the search exhausted every round decomposition.\n";
+
+    // The failure carries a probed analysis naming which constraint
+    // blocks which pairing where - not a guess, an evaluation
+    $analysis = $exception->getAnalysis();
+    if ($analysis !== null) {
+        echo $analysis->getImpossiblePairings()[0] . "\n";
+    }
 }

@@ -92,7 +92,7 @@ hard filters; metrics measure what remains:
 - **ScheduleValidator**: Core validation logic with mathematical verification
 - **ConstraintViolationCollector**: Tracks and reports constraint violations
 - **DiagnosticReport**: Rich failure analysis and reporting system
-- **SchedulingDiagnostics**: Comprehensive diagnostic infrastructure
+- **SchedulingDiagnostics**: Failure analysis with constraint attribution by probing — each missing pairing is tested against each constraint across candidate rounds and both orientations, against the actually-generated events. Yields blocked pairings (culprits named), per-constraint rejection counts, and structural-fullness notes; attached to generation failures via `IncompleteScheduleException::getAnalysis()`.
 
 ### Exception Hierarchy
 - **SchedulingException**: Base class for all scheduling exceptions
