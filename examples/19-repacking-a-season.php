@@ -61,7 +61,7 @@ $movable = [
     new MovableEvent('e12', $rayo, $celtic),
 ];
 
-$outcome = new ScheduleRepacker()->repack(new RepackRequest(
+$outcome = (new ScheduleRepacker())->repack(new RepackRequest(
     $movable,
     $pinned,
     $grid,

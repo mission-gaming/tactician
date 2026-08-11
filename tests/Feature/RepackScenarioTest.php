@@ -104,7 +104,7 @@ describe('Repack production scenario', function (): void {
         $participants = repackScenarioParticipants($data);
         $movable = repackScenarioMovables($data, $participants);
 
-        $outcome = new ScheduleRepacker()->repack(
+        $outcome = (new ScheduleRepacker())->repack(
             new RepackRequest($movable, [], repackScenarioGrid($data))
         );
 
@@ -149,7 +149,7 @@ describe('Repack production scenario', function (): void {
             );
         }
 
-        $outcome = new ScheduleRepacker()->repack(
+        $outcome = (new ScheduleRepacker())->repack(
             new RepackRequest($movable, $pinned, repackScenarioGrid($data))
         );
 

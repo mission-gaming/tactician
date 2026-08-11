@@ -865,7 +865,7 @@ $request = new RepackRequest(
     options: new RepackOptions(consolidationWeight: 3, earlyFillWeight: 1)
 );
 
-$outcome = new ScheduleRepacker()->repack($request);
+$outcome = (new ScheduleRepacker())->repack($request);
 
 foreach ($outcome->getAssignments() as $assignment) {
     // $assignment->getEventId(), ->getSession(), ->getSlot(),

@@ -121,7 +121,7 @@ describe('Repack invariants', function (): void {
     it('assigns or reports every event, never double-books, never moves a pin', function (int $seed): void {
         [$movable, $pinned, $grid] = randomRepackInstance($seed);
 
-        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, $pinned, $grid));
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
 
         // Exact reconciliation: nothing vanishes
         $accounted = [];
@@ -191,7 +191,7 @@ describe('Repack invariants', function (): void {
             4
         );
 
-        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], $grid));
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], $grid));
 
         expect($outcome->isClean())->toBeTrue();
         expect($outcome->getAssignments())->toHaveCount(28);
@@ -236,7 +236,7 @@ describe('Repack invariants', function (): void {
             2
         );
 
-        $outcome = new ScheduleRepacker()->repack(new RepackRequest($movable, [], $grid));
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], $grid));
 
         assertProperness($outcome, $movable, []);
         expect($outcome->getViolations())->not->toBe([]);
