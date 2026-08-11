@@ -1,0 +1,1225 @@
+{
+ "source": {
+  "stage": 162,
+  "label": "Y1S4 | Elite Division | EA SPORTS FC 26",
+  "dumpTakenAt": "2026-08-08T13:02:22Z"
+ },
+ "grid": {
+  "sessions": [
+   "2026-08-12",
+   "2026-08-19",
+   "2026-08-26",
+   "2026-09-02"
+  ],
+  "slots": [
+   "20:15",
+   "20:40",
+   "21:05",
+   "21:30"
+  ],
+  "timezone": "Europe/London"
+ },
+ "participants": [
+  {
+   "id": 320,
+   "label": "Set Pace FC",
+   "load": 8,
+   "blockedColours": []
+  },
+  {
+   "id": 390,
+   "label": "Folded",
+   "load": 1,
+   "blockedColours": []
+  },
+  {
+   "id": 418,
+   "label": "Bloodline Gaming",
+   "load": 8,
+   "blockedColours": []
+  },
+  {
+   "id": 518,
+   "label": "Fenix eSports",
+   "load": 12,
+   "blockedColours": []
+  },
+  {
+   "id": 520,
+   "label": "No Mercy",
+   "load": 12,
+   "blockedColours": []
+  },
+  {
+   "id": 537,
+   "label": "Vuvuzela",
+   "load": 11,
+   "blockedColours": []
+  },
+  {
+   "id": 557,
+   "label": "GS x Tasty Asian Toe",
+   "load": 13,
+   "blockedColours": []
+  },
+  {
+   "id": 558,
+   "label": "La Masia",
+   "load": 10,
+   "blockedColours": []
+  },
+  {
+   "id": 617,
+   "label": "Night Klubik",
+   "load": 10,
+   "blockedColours": []
+  },
+  {
+   "id": 636,
+   "label": "Foregone",
+   "load": 15,
+   "blockedColours": []
+  },
+  {
+   "id": 637,
+   "label": "JDR Cwaniaki",
+   "load": 15,
+   "blockedColours": []
+  },
+  {
+   "id": 650,
+   "label": "OM3N Esport",
+   "load": 8,
+   "blockedColours": []
+  },
+  {
+   "id": 654,
+   "label": "Exito",
+   "load": 9,
+   "blockedColours": []
+  },
+  {
+   "id": 662,
+   "label": "Mendeksy",
+   "load": 10,
+   "blockedColours": []
+  }
+ ],
+ "movableEvents": [
+  {
+   "eventId": 13371,
+   "participants": [
+    558,
+    636
+   ],
+   "participantLabels": [
+    "La Masia",
+    "Foregone"
+   ],
+   "currentKickOff": "2026-08-19 20:15:00"
+  },
+  {
+   "eventId": 13378,
+   "participants": [
+    637,
+    558
+   ],
+   "participantLabels": [
+    "JDR Cwaniaki",
+    "La Masia"
+   ],
+   "currentKickOff": "2026-08-18 20:20:00"
+  },
+  {
+   "eventId": 13404,
+   "participants": [
+    636,
+    662
+   ],
+   "participantLabels": [
+    "Foregone",
+    "Mendeksy"
+   ],
+   "currentKickOff": "2026-08-25 20:15:00"
+  },
+  {
+   "eventId": 13411,
+   "participants": [
+    654,
+    636
+   ],
+   "participantLabels": [
+    "Exito",
+    "Foregone"
+   ],
+   "currentKickOff": "2026-08-25 20:40:00"
+  },
+  {
+   "eventId": 13413,
+   "participants": [
+    662,
+    637
+   ],
+   "participantLabels": [
+    "Mendeksy",
+    "JDR Cwaniaki"
+   ],
+   "currentKickOff": "2026-08-19 20:15:00"
+  },
+  {
+   "eventId": 13419,
+   "participants": [
+    636,
+    418
+   ],
+   "participantLabels": [
+    "Foregone",
+    "Bloodline Gaming"
+   ],
+   "currentKickOff": "2026-08-25 21:05:00"
+  },
+  {
+   "eventId": 13426,
+   "participants": [
+    520,
+    636
+   ],
+   "participantLabels": [
+    "No Mercy",
+    "Foregone"
+   ],
+   "currentKickOff": "2026-08-25 21:30:00"
+  },
+  {
+   "eventId": 13461,
+   "participants": [
+    520,
+    518
+   ],
+   "participantLabels": [
+    "No Mercy",
+    "Fenix eSports"
+   ],
+   "currentKickOff": "2026-08-12 21:50:00"
+  },
+  {
+   "eventId": 13468,
+   "participants": [
+    518,
+    557
+   ],
+   "participantLabels": [
+    "Fenix eSports",
+    "GS x Tasty Asian Toe"
+   ],
+   "currentKickOff": "2026-08-12 21:05:00"
+  },
+  {
+   "eventId": 13469,
+   "participants": [
+    520,
+    537
+   ],
+   "participantLabels": [
+    "No Mercy",
+    "Vuvuzela"
+   ],
+   "currentKickOff": "2026-07-29 20:15:00"
+  },
+  {
+   "eventId": 13470,
+   "participants": [
+    637,
+    320
+   ],
+   "participantLabels": [
+    "JDR Cwaniaki",
+    "Set Pace FC"
+   ],
+   "currentKickOff": "2026-08-19 21:30:00"
+  },
+  {
+   "eventId": 13475,
+   "participants": [
+    637,
+    518
+   ],
+   "participantLabels": [
+    "JDR Cwaniaki",
+    "Fenix eSports"
+   ],
+   "currentKickOff": "2026-08-11 21:50:00"
+  },
+  {
+   "eventId": 13477,
+   "participants": [
+    557,
+    537
+   ],
+   "participantLabels": [
+    "GS x Tasty Asian Toe",
+    "Vuvuzela"
+   ],
+   "currentKickOff": "2026-07-29 20:40:00"
+  },
+  {
+   "eventId": 13484,
+   "participants": [
+    537,
+    637
+   ],
+   "participantLabels": [
+    "Vuvuzela",
+    "JDR Cwaniaki"
+   ],
+   "currentKickOff": "2026-08-19 21:05:00"
+  },
+  {
+   "eventId": 13485,
+   "participants": [
+    557,
+    558
+   ],
+   "participantLabels": [
+    "GS x Tasty Asian Toe",
+    "La Masia"
+   ],
+   "currentKickOff": "2026-07-29 21:05:00"
+  },
+  {
+   "eventId": 13491,
+   "participants": [
+    617,
+    537
+   ],
+   "participantLabels": [
+    "Night Klubik",
+    "Vuvuzela"
+   ],
+   "currentKickOff": "2026-07-29 21:30:00"
+  },
+  {
+   "eventId": 13502,
+   "participants": [
+    654,
+    418
+   ],
+   "participantLabels": [
+    "Exito",
+    "Bloodline Gaming"
+   ],
+   "currentKickOff": "2026-08-12 21:50:00"
+  },
+  {
+   "eventId": 13503,
+   "participants": [
+    650,
+    518
+   ],
+   "participantLabels": [
+    "OM3N Esport",
+    "Fenix eSports"
+   ],
+   "currentKickOff": "2026-08-19 20:05:00"
+  },
+  {
+   "eventId": 13507,
+   "participants": [
+    636,
+    558
+   ],
+   "participantLabels": [
+    "Foregone",
+    "La Masia"
+   ],
+   "currentKickOff": "2026-08-12 22:00:00"
+  },
+  {
+   "eventId": 13511,
+   "participants": [
+    520,
+    654
+   ],
+   "participantLabels": [
+    "No Mercy",
+    "Exito"
+   ],
+   "currentKickOff": "2026-08-04 21:15:00"
+  },
+  {
+   "eventId": 13513,
+   "participants": [
+    557,
+    662
+   ],
+   "participantLabels": [
+    "GS x Tasty Asian Toe",
+    "Mendeksy"
+   ],
+   "currentKickOff": "2026-08-05 21:30:00"
+  },
+  {
+   "eventId": 13526,
+   "participants": [
+    320,
+    520
+   ],
+   "participantLabels": [
+    "Set Pace FC",
+    "No Mercy"
+   ],
+   "currentKickOff": "2026-08-11 21:55:00"
+  },
+  {
+   "eventId": 13528,
+   "participants": [
+    557,
+    418
+   ],
+   "participantLabels": [
+    "GS x Tasty Asian Toe",
+    "Bloodline Gaming"
+   ],
+   "currentKickOff": "2026-08-11 21:05:00"
+  },
+  {
+   "eventId": 13542,
+   "participants": [
+    320,
+    557
+   ],
+   "participantLabels": [
+    "Set Pace FC",
+    "GS x Tasty Asian Toe"
+   ],
+   "currentKickOff": "2026-08-05 21:05:00"
+  },
+  {
+   "eventId": 13547,
+   "participants": [
+    636,
+    654
+   ],
+   "participantLabels": [
+    "Foregone",
+    "Exito"
+   ],
+   "currentKickOff": "2026-08-05 21:05:00"
+  },
+  {
+   "eventId": 13553,
+   "participants": [
+    520,
+    617
+   ],
+   "participantLabels": [
+    "No Mercy",
+    "Night Klubik"
+   ],
+   "currentKickOff": "2026-08-11 20:40:00"
+  },
+  {
+   "eventId": 13560,
+   "participants": [
+    617,
+    557
+   ],
+   "participantLabels": [
+    "Night Klubik",
+    "GS x Tasty Asian Toe"
+   ],
+   "currentKickOff": "2026-08-11 20:15:00"
+  },
+  {
+   "eventId": 13562,
+   "participants": [
+    636,
+    520
+   ],
+   "participantLabels": [
+    "Foregone",
+    "No Mercy"
+   ],
+   "currentKickOff": "2026-08-11 20:15:00"
+  },
+  {
+   "eventId": 13569,
+   "participants": [
+    557,
+    636
+   ],
+   "participantLabels": [
+    "GS x Tasty Asian Toe",
+    "Foregone"
+   ],
+   "currentKickOff": "2026-08-11 20:40:00"
+  },
+  {
+   "eventId": 13572,
+   "participants": [
+    518,
+    662
+   ],
+   "participantLabels": [
+    "Fenix eSports",
+    "Mendeksy"
+   ],
+   "currentKickOff": "2026-08-11 20:40:00"
+  },
+  {
+   "eventId": 13573,
+   "participants": [
+    418,
+    650
+   ],
+   "participantLabels": [
+    "Bloodline Gaming",
+    "OM3N Esport"
+   ],
+   "currentKickOff": "2026-08-11 20:40:00"
+  },
+  {
+   "eventId": 13574,
+   "participants": [
+    320,
+    617
+   ],
+   "participantLabels": [
+    "Set Pace FC",
+    "Night Klubik"
+   ],
+   "currentKickOff": "2026-08-11 21:05:00"
+  },
+  {
+   "eventId": 13579,
+   "participants": [
+    662,
+    537
+   ],
+   "participantLabels": [
+    "Mendeksy",
+    "Vuvuzela"
+   ],
+   "currentKickOff": "2026-08-11 21:05:00"
+  },
+  {
+   "eventId": 13580,
+   "participants": [
+    650,
+    520
+   ],
+   "participantLabels": [
+    "OM3N Esport",
+    "No Mercy"
+   ],
+   "currentKickOff": "2026-08-11 21:05:00"
+  },
+  {
+   "eventId": 13581,
+   "participants": [
+    654,
+    518
+   ],
+   "participantLabels": [
+    "Exito",
+    "Fenix eSports"
+   ],
+   "currentKickOff": "2026-08-11 21:05:00"
+  },
+  {
+   "eventId": 13583,
+   "participants": [
+    617,
+    636
+   ],
+   "participantLabels": [
+    "Night Klubik",
+    "Foregone"
+   ],
+   "currentKickOff": "2026-08-11 21:30:00"
+  },
+  {
+   "eventId": 13586,
+   "participants": [
+    558,
+    662
+   ],
+   "participantLabels": [
+    "La Masia",
+    "Mendeksy"
+   ],
+   "currentKickOff": "2026-08-11 21:30:00"
+  },
+  {
+   "eventId": 13587,
+   "participants": [
+    557,
+    650
+   ],
+   "participantLabels": [
+    "GS x Tasty Asian Toe",
+    "OM3N Esport"
+   ],
+   "currentKickOff": "2026-08-11 21:30:00"
+  },
+  {
+   "eventId": 13588,
+   "participants": [
+    537,
+    654
+   ],
+   "participantLabels": [
+    "Vuvuzela",
+    "Exito"
+   ],
+   "currentKickOff": "2026-08-11 21:30:00"
+  },
+  {
+   "eventId": 13589,
+   "participants": [
+    518,
+    418
+   ],
+   "participantLabels": [
+    "Fenix eSports",
+    "Bloodline Gaming"
+   ],
+   "currentKickOff": "2026-08-11 21:30:00"
+  },
+  {
+   "eventId": 13590,
+   "participants": [
+    320,
+    636
+   ],
+   "participantLabels": [
+    "Set Pace FC",
+    "Foregone"
+   ],
+   "currentKickOff": "2026-08-12 20:15:00"
+  },
+  {
+   "eventId": 13595,
+   "participants": [
+    654,
+    558
+   ],
+   "participantLabels": [
+    "Exito",
+    "La Masia"
+   ],
+   "currentKickOff": "2026-08-12 20:15:00"
+  },
+  {
+   "eventId": 13596,
+   "participants": [
+    418,
+    537
+   ],
+   "participantLabels": [
+    "Bloodline Gaming",
+    "Vuvuzela"
+   ],
+   "currentKickOff": "2026-08-12 20:15:00"
+  },
+  {
+   "eventId": 13597,
+   "participants": [
+    518,
+    520
+   ],
+   "participantLabels": [
+    "Fenix eSports",
+    "No Mercy"
+   ],
+   "currentKickOff": "2026-08-12 20:15:00"
+  },
+  {
+   "eventId": 13601,
+   "participants": [
+    617,
+    650
+   ],
+   "participantLabels": [
+    "Night Klubik",
+    "OM3N Esport"
+   ],
+   "currentKickOff": "2026-08-12 20:40:00"
+  },
+  {
+   "eventId": 13603,
+   "participants": [
+    558,
+    418
+   ],
+   "participantLabels": [
+    "La Masia",
+    "Bloodline Gaming"
+   ],
+   "currentKickOff": "2026-08-12 20:40:00"
+  },
+  {
+   "eventId": 13604,
+   "participants": [
+    557,
+    518
+   ],
+   "participantLabels": [
+    "GS x Tasty Asian Toe",
+    "Fenix eSports"
+   ],
+   "currentKickOff": "2026-08-12 20:40:00"
+  },
+  {
+   "eventId": 13605,
+   "participants": [
+    537,
+    520
+   ],
+   "participantLabels": [
+    "Vuvuzela",
+    "No Mercy"
+   ],
+   "currentKickOff": "2026-08-12 20:40:00"
+  },
+  {
+   "eventId": 13608,
+   "participants": [
+    650,
+    636
+   ],
+   "participantLabels": [
+    "OM3N Esport",
+    "Foregone"
+   ],
+   "currentKickOff": "2026-08-12 21:05:00"
+  },
+  {
+   "eventId": 13612,
+   "participants": [
+    520,
+    558
+   ],
+   "participantLabels": [
+    "No Mercy",
+    "La Masia"
+   ],
+   "currentKickOff": "2026-08-12 21:05:00"
+  },
+  {
+   "eventId": 13613,
+   "participants": [
+    537,
+    557
+   ],
+   "participantLabels": [
+    "Vuvuzela",
+    "GS x Tasty Asian Toe"
+   ],
+   "currentKickOff": "2026-08-12 21:05:00"
+  },
+  {
+   "eventId": 13614,
+   "participants": [
+    662,
+    320
+   ],
+   "participantLabels": [
+    "Mendeksy",
+    "Set Pace FC"
+   ],
+   "currentKickOff": "2026-08-12 21:30:00"
+  },
+  {
+   "eventId": 13618,
+   "participants": [
+    617,
+    518
+   ],
+   "participantLabels": [
+    "Night Klubik",
+    "Fenix eSports"
+   ],
+   "currentKickOff": "2026-08-12 21:30:00"
+  },
+  {
+   "eventId": 13621,
+   "participants": [
+    558,
+    557
+   ],
+   "participantLabels": [
+    "La Masia",
+    "GS x Tasty Asian Toe"
+   ],
+   "currentKickOff": "2026-08-12 21:30:00"
+  },
+  {
+   "eventId": 13622,
+   "participants": [
+    320,
+    650
+   ],
+   "participantLabels": [
+    "Set Pace FC",
+    "OM3N Esport"
+   ],
+   "currentKickOff": "2026-08-18 20:15:00"
+  },
+  {
+   "eventId": 13623,
+   "participants": [
+    654,
+    662
+   ],
+   "participantLabels": [
+    "Exito",
+    "Mendeksy"
+   ],
+   "currentKickOff": "2026-08-18 20:15:00"
+  },
+  {
+   "eventId": 13625,
+   "participants": [
+    518,
+    636
+   ],
+   "participantLabels": [
+    "Fenix eSports",
+    "Foregone"
+   ],
+   "currentKickOff": "2026-08-18 20:15:00"
+  },
+  {
+   "eventId": 13627,
+   "participants": [
+    537,
+    617
+   ],
+   "participantLabels": [
+    "Vuvuzela",
+    "Night Klubik"
+   ],
+   "currentKickOff": "2026-08-18 20:15:00"
+  },
+  {
+   "eventId": 13631,
+   "participants": [
+    662,
+    418
+   ],
+   "participantLabels": [
+    "Mendeksy",
+    "Bloodline Gaming"
+   ],
+   "currentKickOff": "2026-08-18 20:40:00"
+  },
+  {
+   "eventId": 13634,
+   "participants": [
+    636,
+    537
+   ],
+   "participantLabels": [
+    "Foregone",
+    "Vuvuzela"
+   ],
+   "currentKickOff": "2026-08-18 20:40:00"
+  },
+  {
+   "eventId": 13636,
+   "participants": [
+    617,
+    558
+   ],
+   "participantLabels": [
+    "Night Klubik",
+    "La Masia"
+   ],
+   "currentKickOff": "2026-08-18 20:40:00"
+  },
+  {
+   "eventId": 13712,
+   "participants": [
+    320,
+    637
+   ],
+   "participantLabels": [
+    "Set Pace FC",
+    "JDR Cwaniaki"
+   ],
+   "currentKickOff": "2026-08-12 21:55:00"
+  },
+  {
+   "eventId": 13713,
+   "participants": [
+    518,
+    637
+   ],
+   "participantLabels": [
+    "Fenix eSports",
+    "JDR Cwaniaki"
+   ],
+   "currentKickOff": "2026-08-13 21:50:00"
+  },
+  {
+   "eventId": 13719,
+   "participants": [
+    637,
+    662
+   ],
+   "participantLabels": [
+    "JDR Cwaniaki",
+    "Mendeksy"
+   ],
+   "currentKickOff": "2026-08-11 20:15:00"
+  },
+  {
+   "eventId": 13720,
+   "participants": [
+    654,
+    637
+   ],
+   "participantLabels": [
+    "Exito",
+    "JDR Cwaniaki"
+   ],
+   "currentKickOff": "2026-08-11 20:40:00"
+  },
+  {
+   "eventId": 13722,
+   "participants": [
+    637,
+    520
+   ],
+   "participantLabels": [
+    "JDR Cwaniaki",
+    "No Mercy"
+   ],
+   "currentKickOff": "2026-08-11 21:30:00"
+  },
+  {
+   "eventId": 13723,
+   "participants": [
+    557,
+    637
+   ],
+   "participantLabels": [
+    "GS x Tasty Asian Toe",
+    "JDR Cwaniaki"
+   ],
+   "currentKickOff": "2026-08-12 20:15:00"
+  },
+  {
+   "eventId": 13724,
+   "participants": [
+    637,
+    390
+   ],
+   "participantLabels": [
+    "JDR Cwaniaki",
+    "Folded"
+   ],
+   "currentKickOff": "2026-08-12 20:40:00"
+  },
+  {
+   "eventId": 13725,
+   "participants": [
+    617,
+    637
+   ],
+   "participantLabels": [
+    "Night Klubik",
+    "JDR Cwaniaki"
+   ],
+   "currentKickOff": "2026-08-12 21:05:00"
+  },
+  {
+   "eventId": 13726,
+   "participants": [
+    637,
+    636
+   ],
+   "participantLabels": [
+    "JDR Cwaniaki",
+    "Foregone"
+   ],
+   "currentKickOff": "2026-08-12 21:30:00"
+  },
+  {
+   "eventId": 13728,
+   "participants": [
+    637,
+    650
+   ],
+   "participantLabels": [
+    "JDR Cwaniaki",
+    "OM3N Esport"
+   ],
+   "currentKickOff": "2026-08-10 20:20:00"
+  }
+ ],
+ "pinnedEvents": [],
+ "evacuatedDefaultedEvents": [
+  {
+   "eventId": 13592,
+   "participants": [
+    643,
+    617
+   ],
+   "participantLabels": [
+    "I Dun Know",
+    "Night Klubik"
+   ],
+   "session": 0,
+   "slot": 0
+  },
+  {
+   "eventId": 13593,
+   "participants": [
+    662,
+    598
+   ],
+   "participantLabels": [
+    "Mendeksy",
+    "Duhok Esports"
+   ],
+   "session": 0,
+   "slot": 0
+  },
+  {
+   "eventId": 13594,
+   "participants": [
+    650,
+    390
+   ],
+   "participantLabels": [
+    "OM3N Esport",
+    "Folded"
+   ],
+   "session": 0,
+   "slot": 0
+  },
+  {
+   "eventId": 13598,
+   "participants": [
+    639,
+    320
+   ],
+   "participantLabels": [
+    "Mindset eSports",
+    "Set Pace FC"
+   ],
+   "session": 0,
+   "slot": 1
+  },
+  {
+   "eventId": 13599,
+   "participants": [
+    636,
+    643
+   ],
+   "participantLabels": [
+    "Foregone",
+    "I Dun Know"
+   ],
+   "session": 0,
+   "slot": 1
+  },
+  {
+   "eventId": 13600,
+   "participants": [
+    634,
+    662
+   ],
+   "participantLabels": [
+    "Xlions Elite",
+    "Mendeksy"
+   ],
+   "session": 0,
+   "slot": 1
+  },
+  {
+   "eventId": 13602,
+   "participants": [
+    598,
+    654
+   ],
+   "participantLabels": [
+    "Duhok Esports",
+    "Exito"
+   ],
+   "session": 0,
+   "slot": 1
+  },
+  {
+   "eventId": 13606,
+   "participants": [
+    320,
+    643
+   ],
+   "participantLabels": [
+    "Set Pace FC",
+    "I Dun Know"
+   ],
+   "session": 0,
+   "slot": 2
+  },
+  {
+   "eventId": 13607,
+   "participants": [
+    662,
+    639
+   ],
+   "participantLabels": [
+    "Mendeksy",
+    "Mindset eSports"
+   ],
+   "session": 0,
+   "slot": 2
+  },
+  {
+   "eventId": 13609,
+   "participants": [
+    654,
+    634
+   ],
+   "participantLabels": [
+    "Exito",
+    "Xlions Elite"
+   ],
+   "session": 0,
+   "slot": 2
+  },
+  {
+   "eventId": 13610,
+   "participants": [
+    418,
+    598
+   ],
+   "participantLabels": [
+    "Bloodline Gaming",
+    "Duhok Esports"
+   ],
+   "session": 0,
+   "slot": 2
+  },
+  {
+   "eventId": 13611,
+   "participants": [
+    518,
+    390
+   ],
+   "participantLabels": [
+    "Fenix eSports",
+    "Folded"
+   ],
+   "session": 0,
+   "slot": 2
+  },
+  {
+   "eventId": 13615,
+   "participants": [
+    643,
+    650
+   ],
+   "participantLabels": [
+    "I Dun Know",
+    "OM3N Esport"
+   ],
+   "session": 0,
+   "slot": 3
+  },
+  {
+   "eventId": 13616,
+   "participants": [
+    639,
+    654
+   ],
+   "participantLabels": [
+    "Mindset eSports",
+    "Exito"
+   ],
+   "session": 0,
+   "slot": 3
+  },
+  {
+   "eventId": 13617,
+   "participants": [
+    634,
+    418
+   ],
+   "participantLabels": [
+    "Xlions Elite",
+    "Bloodline Gaming"
+   ],
+   "session": 0,
+   "slot": 3
+  },
+  {
+   "eventId": 13619,
+   "participants": [
+    598,
+    520
+   ],
+   "participantLabels": [
+    "Duhok Esports",
+    "No Mercy"
+   ],
+   "session": 0,
+   "slot": 3
+  },
+  {
+   "eventId": 13620,
+   "participants": [
+    390,
+    537
+   ],
+   "participantLabels": [
+    "Folded",
+    "Vuvuzela"
+   ],
+   "session": 0,
+   "slot": 3
+  },
+  {
+   "eventId": 13380,
+   "participants": [
+    636,
+    598
+   ],
+   "participantLabels": [
+    "Foregone",
+    "Duhok Esports"
+   ],
+   "session": 1,
+   "slot": 1
+  },
+  {
+   "eventId": 13389,
+   "participants": [
+    634,
+    636
+   ],
+   "participantLabels": [
+    "Xlions Elite",
+    "Foregone"
+   ],
+   "session": 1,
+   "slot": 2
+  },
+  {
+   "eventId": 13397,
+   "participants": [
+    639,
+    636
+   ],
+   "participantLabels": [
+    "Mindset eSports",
+    "Foregone"
+   ],
+   "session": 1,
+   "slot": 3
+  }
+ ]
+}

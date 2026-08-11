@@ -56,6 +56,16 @@ policy stays app-side:
 - **ScheduledEvent / ScheduledSchedule**: Decorations wrapping untouched events with their UTC kickoffs; serializable, so re-assignment is cheap and platforms persist assigned times.
 - **TimelineRule**: Time-aware validation over assigned kickoffs — `MinimumRestRule` (absolute rest between a participant's consecutive kickoffs, UTC-compared) and `BlackoutRule` (half-open windows, config-constructible). Deterministic assignment cannot route around a violated rule, so the assigner fails loudly with every violation; rules also validate standalone against accumulated round-by-round timelines. Deliberately distinct from generation constraints.
 
+### Repack System
+Repairs an existing schedule onto a declared grid — generation invents
+events, repacking never does; the events are fixed inputs and the only
+free variable is where each lands. See `docs/design/schedule-repack.md`
+for the algorithm and decisions:
+- **SessionGrid**: The declarative position model — an explicit ordered list of zoned session starts (irregular by design, unlike `TimelineDefinition`'s cadence), a slot interval, per-session slot counts (overridable), and per-slot concurrency capacity. Config-constructible; kickoffs emit in UTC.
+- **MovableEvent / PinnedEvent**: Fixed-identity inputs keyed by opaque caller ids; the movable set is a multigraph. Pins hold their position for both participants, consume capacity, and may name participants absent from the movable set.
+- **ScheduleRepacker**: Three deterministic, step-budgeted phases — per-session loads first (capacity- and pin-aware, weighted consolidation vs early fill, with interval-parity repair), then per-session packing by exact search over gap-free run placements (cheapest late-start first, perfect matching per slot), then bounded greedy fallback with Kempe-chain repair. Properness and pin immobility are never traded; contiguity is satisfied or reported.
+- **RepackOutcome**: The deliberate deviation from the loud-failure rule — infeasibility returns a schedule plus itemised structured violations (`ParticipantDoubleBooked` (audited, unreachable), `EventUnplaced`, `ContiguityBroken`, `LateStart`, `CapacityExceeded`) and an exactly-reconciling unplaced list, because an operator repairing a live season needs the compromises, not an exception. `RepackOptions(throwOnViolations: true)` opts back into throwing (`RepackViolationsException` carries the outcome).
+
 ### Quality System
 Graded measurement and selection over valid schedules — constraints stay
 hard filters; metrics measure what remains:
