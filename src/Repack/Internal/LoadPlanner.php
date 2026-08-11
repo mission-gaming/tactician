@@ -608,12 +608,14 @@ final class LoadPlanner
      */
     private function tryParitySwap(array &$scores, int $total): ?int
     {
+        // Every non-returning path below restores its moves, so the key
+        // set of sessionByEvent is stable across the whole scan
         $eventIndexes = array_keys($this->sessionByEvent);
         foreach ($eventIndexes as $first) {
             foreach ($eventIndexes as $second) {
-                $from = $this->sessionByEvent[$first] ?? null;
-                $to = $this->sessionByEvent[$second] ?? null;
-                if ($from === null || $to === null || $from >= $to) {
+                $from = $this->sessionByEvent[$first];
+                $to = $this->sessionByEvent[$second];
+                if ($from >= $to) {
                     continue;
                 }
                 if ($scores[$from] === 0 && $scores[$to] === 0) {

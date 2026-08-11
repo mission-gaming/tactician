@@ -434,12 +434,11 @@ final class SessionPacker
             $improved = false;
 
             foreach (array_keys($this->loads) as $pid) {
-                $occupied = $this->occupiedSlots($pid);
                 if (!$this->hasMovableAssignment($pid)) {
                     continue;
                 }
 
-                $holes = $this->improvementTargets($occupied);
+                $holes = $this->improvementTargets($this->occupiedSlots($pid));
                 if ($holes === []) {
                     continue;
                 }
