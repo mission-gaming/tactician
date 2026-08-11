@@ -128,6 +128,12 @@ final class SessionPacker
      */
     private function exactSearch(): ?array
     {
+        // The parity enumeration holds one bit per slot; sessions wider
+        // than its bitmask width go straight to the greedy path
+        if ($this->slotCount > IntervalPlacement::MAX_SLOTS) {
+            return null;
+        }
+
         $fixedMask = 0;
         $fixedTargets = [];
         $flexiblePids = [];

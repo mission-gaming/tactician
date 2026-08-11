@@ -27,6 +27,18 @@ namespace MissionGaming\Tactician\Repack\Internal;
 final class IntervalPlacement
 {
     /**
+     * The widest session the parity machinery handles. The DPs hold one
+     * bit per slot and up to 2^slotCount mask states, so cost grows
+     * exponentially with slot count — beyond this width callers skip
+     * parity reasoning entirely (Phase A treats the session as feasible,
+     * Phase B falls straight to the greedy packing) rather than letting a
+     * single "step" blow past the step budget's intent. Real repack grids
+     * run a handful of slots per session; 20 bits (~a million states)
+     * is comfortably past anything a session of concurrent events needs.
+     */
+    public const MAX_SLOTS = 20;
+
+    /**
      * The boundary-flip mask of an arbitrary slot set.
      *
      * @param array<int> $slots Ascending

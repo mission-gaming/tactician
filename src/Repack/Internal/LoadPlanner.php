@@ -660,6 +660,13 @@ final class LoadPlanner
      */
     private function placementScore(int $session): int
     {
+        // Sessions wider than the parity machinery's bitmask width skip
+        // parity reasoning: treated as feasible here, packed greedily in
+        // Phase C, with the audit reporting whatever pattern results
+        if ($this->slotCounts[$session] > IntervalPlacement::MAX_SLOTS) {
+            return 0;
+        }
+
         $fixedMask = 0;
         $flexible = [];
         foreach ($this->mov[$session] as $pid => $load) {
