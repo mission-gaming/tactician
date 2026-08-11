@@ -171,9 +171,20 @@ final readonly class ScheduleRepacker
         }
 
         // Final sweep: any free position anywhere beats declaring an event
-        // unplaced — "no slot available" must be literally true
+        // unplaced — "no slot available" must be literally true. Planner
+        // rejections with that reason re-enter the sweep alongside packer
+        // leftovers; deliberate over-capacity drops do not, because their
+        // absence is what makes the CapacityExceeded arithmetic true.
+        $unplaced = [];
+        $eventIndexById = array_flip($eventIds);
+        foreach ($plan->unplaced as $planUnplaced) {
+            if ($planUnplaced->getReason() === UnplacedReason::NoSlotAvailable) {
+                $leftovers[] = $eventIndexById[$planUnplaced->getEventId()];
+                continue;
+            }
+            $unplaced[] = $planUnplaced;
+        }
         sort($leftovers);
-        $unplaced = $plan->unplaced;
         foreach ($leftovers as $eventIndex) {
             $position = $this->firstFreePosition(
                 $eventIndex,
