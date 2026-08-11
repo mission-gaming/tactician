@@ -3,12 +3,17 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\RepackViolationsException;
+use MissionGaming\Tactician\Repack\ContiguityBroken;
+use MissionGaming\Tactician\Repack\LateStart;
 use MissionGaming\Tactician\Repack\MovableEvent;
 use MissionGaming\Tactician\Repack\PinnedEvent;
+use MissionGaming\Tactician\Repack\RepackOptions;
 use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\Repack\UnplacedReason;
 use MissionGaming\Tactician\Repack\ViolationKind;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
@@ -117,6 +122,80 @@ function assertProperness(RepackOutcome $outcome, array $movable, array $pinned)
     expect($outcome->getViolationsOfKind(ViolationKind::ParticipantDoubleBooked))->toBe([]);
 }
 
+/**
+ * Assert the "no slot available" reason is literally true: no position
+ * on the grid has capacity left with both participants free.
+ *
+ * @param array<MovableEvent> $movable
+ * @param array<PinnedEvent> $pinned
+ *
+ * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ */
+function assertNoSlotAvailableIsLiteral(
+    RepackOutcome $outcome,
+    array $movable,
+    array $pinned,
+    SessionGrid $grid
+): void {
+    $participantsByEvent = [];
+    foreach ($movable as $event) {
+        $participantsByEvent[$event->getId()] = $event->getParticipants();
+    }
+
+    $occupancy = [];
+    $busy = [];
+    foreach ($outcome->getAssignments() as $assignment) {
+        $position = "{$assignment->getSession()}:{$assignment->getSlot()}";
+        $occupancy[$position] = ($occupancy[$position] ?? 0) + 1;
+        foreach ($participantsByEvent[$assignment->getEventId()] as $participant) {
+            $busy["{$position}:{$participant->getId()}"] = true;
+        }
+    }
+    foreach ($pinned as $pin) {
+        $position = "{$pin->getSession()}:{$pin->getSlot()}";
+        $occupancy[$position] = ($occupancy[$position] ?? 0) + 1;
+        foreach ($pin->getParticipants() as $participant) {
+            $busy["{$position}:{$participant->getId()}"] = true;
+        }
+    }
+
+    foreach ($outcome->getUnplaced() as $unplaced) {
+        if ($unplaced->getReason() !== UnplacedReason::NoSlotAvailable) {
+            continue;
+        }
+        [$a, $b] = $participantsByEvent[$unplaced->getEventId()];
+        for ($session = 0; $session < $grid->getSessionCount(); ++$session) {
+            for ($slot = 0; $slot < $grid->getSlotCount($session); ++$slot) {
+                $position = "{$session}:{$slot}";
+                $freePositionExists = ($occupancy[$position] ?? 0) < $grid->getCapacityPerSlot()
+                    && !isset($busy["{$position}:{$a->getId()}"])
+                    && !isset($busy["{$position}:{$b->getId()}"]);
+                expect($freePositionExists)->toBeFalse();
+            }
+        }
+    }
+}
+
+/**
+ * Assert pattern violations arrive in scope order within each kind:
+ * participant id ascending, then session ascending.
+ */
+function assertScopeOrder(RepackOutcome $outcome): void
+{
+    foreach ([ViolationKind::ContiguityBroken, ViolationKind::LateStart] as $kind) {
+        $previous = null;
+        foreach ($outcome->getViolationsOfKind($kind) as $violation) {
+            assert($violation instanceof ContiguityBroken || $violation instanceof LateStart);
+            $current = [$violation->getParticipant()->getId(), $violation->getSession()];
+            if ($previous !== null) {
+                $comparison = strcmp($previous[0], $current[0]) ?: $previous[1] <=> $current[1];
+                expect($comparison)->toBeLessThan(1);
+            }
+            $previous = $current;
+        }
+    }
+}
+
 describe('Repack invariants', function (): void {
     it('assigns or reports every event, never double-books, never moves a pin', function (int $seed): void {
         [$movable, $pinned, $grid] = randomRepackInstance($seed);
@@ -151,6 +230,9 @@ describe('Repack invariants', function (): void {
         // The violation stream mirrors the unplaced list exactly
         expect(count($outcome->getViolationsOfKind(ViolationKind::EventUnplaced)))
             ->toBe(count($outcome->getUnplaced()));
+
+        assertNoSlotAvailableIsLiteral($outcome, $movable, $pinned, $grid);
+        assertScopeOrder($outcome);
     })->with(range(1, 12));
 
     it('produces byte-identical output whatever order the input lists are in', function (int $seed): void {
@@ -241,5 +323,73 @@ describe('Repack invariants', function (): void {
         assertProperness($outcome, $movable, []);
         expect($outcome->getViolations())->not->toBe([]);
         expect(count($outcome->getAssignments()) + count($outcome->getUnplaced()))->toBe(10);
+    });
+
+    it('throws the outcome-carrying exception when opted in and the outcome is not clean', function (): void {
+        // K5 cannot pack clean (see the honesty test above), so opting
+        // into throwing must throw — and lose nothing: the exception
+        // carries the exact outcome the default contract returns
+        $participants = [];
+        for ($i = 1; $i <= 5; ++$i) {
+            $participants[] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [];
+        for ($a = 0; $a < 5; ++$a) {
+            for ($b = $a + 1; $b < 5; ++$b) {
+                $movable[] = new MovableEvent(sprintf('e%d%d', $a, $b), $participants[$a], $participants[$b]);
+            }
+        }
+        $grid = new SessionGrid(
+            [new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone('UTC'))],
+            new DateInterval('PT30M'),
+            5,
+            [],
+            2
+        );
+
+        $repacker = new ScheduleRepacker();
+        $returned = $repacker->repack(new RepackRequest($movable, [], $grid));
+
+        try {
+            $repacker->repack(new RepackRequest(
+                $movable,
+                [],
+                $grid,
+                new RepackOptions(throwOnViolations: true)
+            ));
+            expect(false)->toBeTrue();
+        } catch (RepackViolationsException $exception) {
+            expect($exception->getOutcome()->toArray())->toBe($returned->toArray());
+            expect($exception->getDiagnosticReport())->toContain('Repack violations by kind:');
+        }
+    });
+
+    it('does not throw on a clean outcome even when opted in', function (): void {
+        $participants = [];
+        for ($i = 1; $i <= 8; ++$i) {
+            $participants[] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [];
+        for ($a = 0; $a < 8; ++$a) {
+            for ($b = $a + 1; $b < 8; ++$b) {
+                $movable[] = new MovableEvent(sprintf('e%d%d', $a, $b), $participants[$a], $participants[$b]);
+            }
+        }
+        $grid = new SessionGrid(
+            [new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone('UTC'))],
+            new DateInterval('PT30M'),
+            7,
+            [],
+            4
+        );
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+            $movable,
+            [],
+            $grid,
+            new RepackOptions(throwOnViolations: true)
+        ));
+
+        expect($outcome->isClean())->toBeTrue();
     });
 });

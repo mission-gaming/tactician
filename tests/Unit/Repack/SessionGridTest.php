@@ -109,6 +109,77 @@ describe('SessionGrid', function (): void {
         $grid->getSlotTime(0, 4);
     })->throws(InvalidConfigurationException::class);
 
+    it('rejects a session start that is not a DateTimeImmutable', function (): void {
+        /* @phpstan-ignore argument.type */
+        new SessionGrid(['2026-08-12 20:00'], new DateInterval('PT25M'));
+    })->throws(InvalidConfigurationException::class);
+
+    it('rejects a slots-per-session below 1', function (): void {
+        new SessionGrid(
+            [new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone('UTC'))],
+            new DateInterval('PT25M'),
+            0
+        );
+    })->throws(InvalidConfigurationException::class);
+
+    it('rejects a capacity below 1', function (): void {
+        new SessionGrid(
+            [new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone('UTC'))],
+            new DateInterval('PT25M'),
+            4,
+            [],
+            0
+        );
+    })->throws(InvalidConfigurationException::class);
+
+    it('rejects an override below 1 slot', function (): void {
+        new SessionGrid(
+            [new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone('UTC'))],
+            new DateInterval('PT25M'),
+            4,
+            [0 => 0]
+        );
+    })->throws(InvalidConfigurationException::class);
+
+    it('rejects sessions out of range from the accessors', function (): void {
+        $grid = new SessionGrid(
+            [new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone('UTC'))],
+            new DateInterval('PT25M'),
+            4
+        );
+
+        expect($grid->getSessionStart(0)->format('H:i'))->toBe('20:00');
+        expect(static fn () => $grid->getSessionStart(1))->toThrow(InvalidConfigurationException::class);
+        expect(static fn () => $grid->getSlotCount(1))->toThrow(InvalidConfigurationException::class);
+    });
+
+    it('rejects malformed plain-configuration values', function (array $config): void {
+        SessionGrid::fromArray($config);
+    })->with([
+        'missing sessions' => [['timezone' => 'UTC', 'slot_interval' => 'PT25M']],
+        'empty sessions' => [['sessions' => [], 'timezone' => 'UTC', 'slot_interval' => 'PT25M']],
+        'non-int slots_per_session' => [[
+            'sessions' => ['2026-08-12 20:00'],
+            'timezone' => 'UTC',
+            'slot_interval' => 'PT25M',
+            'slots_per_session' => '4',
+        ]],
+        'non-array overrides' => [[
+            'sessions' => ['2026-08-12 20:00'],
+            'timezone' => 'UTC',
+            'slot_interval' => 'PT25M',
+            'slots_per_session_overrides' => 6,
+        ]],
+        'non-int capacity' => [[
+            'sessions' => ['2026-08-12 20:00'],
+            'timezone' => 'UTC',
+            'slot_interval' => 'PT25M',
+            'capacity_per_slot' => '7',
+        ]],
+        'missing timezone' => [['sessions' => ['2026-08-12 20:00'], 'slot_interval' => 'PT25M']],
+        'missing slot_interval' => [['sessions' => ['2026-08-12 20:00'], 'timezone' => 'UTC']],
+    ])->throws(InvalidConfigurationException::class);
+
     it('rejects a session string carrying its own timezone', function (): void {
         SessionGrid::fromArray([
             'sessions' => ['2026-08-12T20:15:00+05:00'],
