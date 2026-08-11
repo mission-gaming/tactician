@@ -55,7 +55,7 @@ final readonly class SlotAssignment
             'event_id' => $this->eventId,
             'session' => $this->session,
             'slot' => $this->slot,
-            'kickoff' => $this->kickoff->format('Y-m-d H:i:s'),
+            'kickoff' => $this->kickoff->format('Y-m-d\TH:i:s\Z'),
         ];
     }
 }
