@@ -14,6 +14,7 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Elimination Brackets](#elimination-brackets)
 - [Pools, Progression, and Multi-Stage Tournaments](#pools-progression-and-multi-stage-tournaments)
 - [Timeline Assignment](#timeline-assignment)
+- [Schedule Repacking](#schedule-repacking)
 - [Schedule Quality and Optimization](#schedule-quality-and-optimization)
 - [Serialization](#serialization)
 - [Framework Integration](#framework-integration)
@@ -61,6 +62,12 @@ anything else that competes.
 | **Optimization** | Best-of-N sampling (`ScheduleOptimizer`): generate N candidate schedules from one master seed, score each, keep the best. Deterministic when every randomness source uses the supplied child randomizer. Whole-schedule generators only. |
 | **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach. Greedy always runs first; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
 | **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — minimum rest in hours (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
+| **Session** | One match night (or day) on a repack grid: an ordered position in the grid's explicit session list, holding a fixed number of slots. Deliberately not a "round" — a round is a set of concurrent events, a session is a container of consecutive slots. |
+| **Session grid** | The declarative position model repacking assigns onto (`SessionGrid`): an explicit ordered list of zoned session starts, a slot interval, a per-session slot count (overridable — final sessions often run deeper), and a per-slot concurrency capacity. Irregular by design, unlike `TimelineDefinition`'s cadence. |
+| **Repack** | Repairing an existing schedule (`ScheduleRepacker`): assigning every movable event a (session, slot) position so nobody is double-booked and each participant's events within a session run back to back where possible. Returns a `RepackOutcome` carrying the schedule plus itemised violations rather than throwing. |
+| **Movable event** | An existing event the repack may place (`MovableEvent`): an opaque caller-supplied stable id and two participants. The movable set is a multigraph — the same pairing may occur more than once. |
+| **Pinned event** | An event already on the grid that must not move (`PinnedEvent`). It occupies its position for both participants, consumes slot capacity, and may name participants absent from the movable set. Which events are pinned is caller policy about historical provenance. |
+| **Repack violation** | One structured compromise in a repack outcome (`RepackViolation`): double-booking (audited, never produced), unplaced events, interior gaps, late starts, exceeded capacity — data with participant/session/magnitude, never prose. The caller renders its own messages and decides what is fatal. |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
 ## Basic Usage
@@ -799,6 +806,118 @@ violation strings — so an application driving a results-driven stage
 round by round can check the timeline it accumulates. Both built-in
 rules are plain-data constructible with `fromArray()`/`toArray()`, and
 custom rules implement the two-method `TimelineRule` interface.
+
+## Schedule Repacking
+
+Generation invents events; repacking repairs a schedule whose events
+already exist. Given movable events, pinned events that must not move,
+and a **session grid**, `ScheduleRepacker` assigns every movable event a
+`(session, slot)` position such that no participant is ever in two
+events at once and each participant's events within a session run back
+to back where possible. The canonical case is a season behind schedule:
+the outstanding fixtures are fixed facts with wildly unequal
+per-participant loads, and the operator needs them landed on declared
+match nights.
+
+The grid is an explicit ordered list of session starts — deliberately
+not `TimelineDefinition`'s regular cadence, because recovery grids are
+irregular and the last session routinely runs deeper than the rest:
+
+```php
+use MissionGaming\Tactician\Repack\SessionGrid;
+
+$grid = SessionGrid::fromArray([
+    'sessions' => ['2026-08-12 20:00', '2026-08-19 20:00'],
+    'timezone' => 'Europe/London',       // authoritative, like the timeline family
+    'slot_interval' => 'PT30M',
+    'slots_per_session' => 3,
+    'slots_per_session_overrides' => [1 => 4],  // final session runs deeper
+    'capacity_per_slot' => 3,            // concurrent events per slot
+]);
+```
+
+Events carry an opaque caller-supplied id — the library never invents
+one, never parses it, and orders results by nothing else. The same pair
+may meet more than once (the input is a multigraph); only the id is
+unique. Pinned events occupy their position for both participants and
+are never assigned a new one; a pin may name a participant that appears
+nowhere in the movable set (a withdrawn participant's played fixtures
+still block their opponents' positions):
+
+```php
+use MissionGaming\Tactician\Repack\MovableEvent;
+use MissionGaming\Tactician\Repack\PinnedEvent;
+use MissionGaming\Tactician\Repack\RepackOptions;
+use MissionGaming\Tactician\Repack\RepackRequest;
+use MissionGaming\Tactician\Repack\ScheduleRepacker;
+
+$request = new RepackRequest(
+    movableEvents: [
+        new MovableEvent('e03', $celtic, $livorno),
+        new MovableEvent('e04', $celtic, $rayo),
+        // ...
+    ],
+    pinnedEvents: [
+        // Played at session 0, slot 0 — historical provenance, immovable
+        new PinnedEvent('e01', $celtic, $athletic, 0, 0),
+    ],
+    grid: $grid,
+    options: new RepackOptions(consolidationWeight: 3, earlyFillWeight: 1)
+);
+
+$outcome = new ScheduleRepacker()->repack($request);
+
+foreach ($outcome->getAssignments() as $assignment) {
+    // $assignment->getEventId(), ->getSession(), ->getSlot(),
+    // ->getKickoff() — the position's UTC kickoff from the grid
+}
+```
+
+**Repacking returns compromises instead of throwing.** This is a
+deliberate deviation from the generation contract: an operator repairing
+a broken season the week of the games needs "here is the schedule, and
+here are the compromises in it", not an exception. The outcome carries
+every compromise as structured data (participant, session, kind,
+magnitude — never pre-formatted prose), and the caller decides what is
+fatal. `RepackOptions(throwOnViolations: true)` opts into a
+`RepackViolationsException` that still carries the full outcome.
+
+The contract, in order:
+
+1. **Hard, never traded** — no participant occupies one position twice,
+   counting pins; and pins do not move. `ParticipantDoubleBooked` exists
+   as a violation kind only so the final audit can prove it never
+   happens.
+2. **Hard, or reported** — no interior gap in a participant's slots
+   within a session (`ContiguityBroken`, with the gap size). Interval
+   edge colouring is not always possible, so an instance that cannot be
+   gap-free is reported, never silently relaxed.
+3. **Objectives** — start each participant's run at the session's first
+   slot (`LateStart` reports the depth when impossible), concentrate
+   each participant's events into fewer sessions, and fill early
+   sessions first. The last two pull against each other;
+   `consolidationWeight` and `earlyFillWeight` make the trade explicit,
+   and consolidation dominates by default.
+
+Capacity problems surface as `CapacityExceeded` — most usefully scoped
+to a participant whose outstanding events outnumber its free positions
+once pins are respected (`getShortfall()` says how many positions the
+operator must add). The shortfall events come back in
+`getUnplaced()` with reasons, and every movable event is either assigned
+or listed there — the counts reconcile exactly.
+
+The repacker is deterministic (same input, same output, independent of
+input list order), pure (no clock reads, no I/O), and bounded (every
+search spends from `RepackOptions(stepBudget: ...)`, steps not
+wall-clock, so behaviour is reproducible behind an HTTP preview
+request). Events that fall entirely outside the grid cannot collide with
+it and are the caller's to filter before the request — collision is
+exact position identity, by design; there is no fuzzy time-overlap
+detection.
+
+See `examples/19-repacking-a-season.php` for a complete runnable
+walkthrough, and `docs/design/schedule-repack.md` for the algorithm and
+its design decisions.
 
 ## Schedule Quality and Optimization
 

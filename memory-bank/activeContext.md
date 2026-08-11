@@ -1,6 +1,9 @@
 # Active Context: Tactician
 
 ## Current Work Focus
+- **Schedule repacking shipped** (2026-08-11, branch `feature/schedule-repack`): `src/Repack/` repairs an existing schedule onto an irregular `SessionGrid` — no double-booking ever, per-session contiguity satisfied or reported, pins immovable. Driven by a Metronome brief with a real production fixture (stage 162, copied to `tests/Fixtures/repack-scenario.json`); the production instance repacks clean and the mis-pinned variant reports `CapacityExceeded` (Foregone, shortfall 3). **Deliberate contract deviation**: infeasibility returns a `RepackOutcome` with structured violations rather than throwing. All decisions from the overnight autonomous run are logged in `docs/design/schedule-repack.md`.
+
+## Previous Work Focus
 - **Roadmap Phases 1 and 2 are complete** (see docs/ROADMAP.md): round robin core plus Swiss pairing, single/double elimination brackets, group stages, standings/tiebreakers, and JSON serialization all shipped with full CI (Pest, PHPStan level 8, Rector, CS-Fixer, example smoke-runs)
 - A high-effort code review of the feature work surfaced 10 confirmed defects; all were fixed. Notable: Swiss withdrawal support, round-parity home/away role alternation in the round-robin generator, conflicting/round-less elimination result rejection, and group-play completeness checks before knockout qualification
 - Documentation was audited end-to-end: README, ROADMAP, ARCHITECTURE, USAGE, CONTRIBUTING, and BACKGROUND all match the shipped code, and every docs/example snippet has been executed
@@ -28,4 +31,4 @@
 - Immutable-context copying inside generation loops caused an O(events²) blowup once; batch context updates per round, not per event.
 
 ## Status
-- **Last Updated**: 2026-07-03
+- **Last Updated**: 2026-08-11
