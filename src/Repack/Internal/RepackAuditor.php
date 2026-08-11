@@ -86,6 +86,11 @@ final class RepackAuditor
             }
         }
 
+        // One pass per (participant, session) cell emits both pattern
+        // kinds from the same occupied-slot derivation, in participant
+        // then session order — the stable kind sort downstream preserves
+        // that scope order within each kind
+        $lateStarts = [];
         ksort($movableSlots);
         foreach ($movableSlots as $pid => $sessions) {
             ksort($sessions);
@@ -102,19 +107,12 @@ final class RepackAuditor
                 if ($gapSlots > 0) {
                     $violations[] = new ContiguityBroken($participants[$pid], $session, $gapSlots, $occupied);
                 }
-            }
-        }
-
-        foreach ($movableSlots as $pid => $sessions) {
-            foreach ($sessions as $session => $slots) {
-                $occupied = array_merge($slots, $pinnedSlots[$pid][$session] ?? []);
-                $first = min($occupied);
                 if ($first > 0) {
-                    $violations[] = new LateStart($participants[$pid], $session, $first);
+                    $lateStarts[] = new LateStart($participants[$pid], $session, $first);
                 }
             }
         }
 
-        return $violations;
+        return array_merge($violations, $lateStarts);
     }
 }
