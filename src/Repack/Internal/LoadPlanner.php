@@ -186,7 +186,6 @@ final class LoadPlanner
 
             $violations[] = new CapacityExceeded(
                 $this->participants[$worstPid],
-                null,
                 $this->demand[$worstPid],
                 $this->freeTotal[$worstPid]
             );
@@ -233,7 +232,7 @@ final class LoadPlanner
             return;
         }
 
-        $violations[] = new CapacityExceeded(null, null, $activeCount, $totalCapacity);
+        $violations[] = new CapacityExceeded(null, $activeCount, $totalCapacity);
 
         $candidates = [];
         foreach ($this->edges as $eventIndex => [$a, $b]) {

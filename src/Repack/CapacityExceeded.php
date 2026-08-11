@@ -10,14 +10,13 @@ use Override;
 /**
  * More events need positions than exist.
  *
- * Scoped structurally by the nullable fields:
- * - participant set, session null — the participant's event count exceeds
- *   its free positions across the whole grid once pins are respected (the
+ * Scoped structurally by the nullable participant:
+ * - participant set — the participant's event count exceeds its free
+ *   positions across the whole grid once pins are respected (the
  *   shortfall says how many more positions — usually sessions' worth of
  *   slots — the operator must add);
- * - participant null, session set — a session holds fewer events than
- *   were sent to it;
- * - both null — the grid as a whole is smaller than the event list.
+ * - participant null — the grid as a whole is smaller than the event
+ *   list.
  */
 final readonly class CapacityExceeded implements RepackViolation
 {
@@ -27,7 +26,6 @@ final readonly class CapacityExceeded implements RepackViolation
      */
     public function __construct(
         private ?Participant $participant,
-        private ?int $session,
         private int $demand,
         private int $capacity
     ) {
@@ -42,11 +40,6 @@ final readonly class CapacityExceeded implements RepackViolation
     public function getParticipant(): ?Participant
     {
         return $this->participant;
-    }
-
-    public function getSession(): ?int
-    {
-        return $this->session;
     }
 
     public function getDemand(): int
@@ -68,7 +61,7 @@ final readonly class CapacityExceeded implements RepackViolation
     }
 
     /**
-     * @return array{kind: string, participant: string|null, session: int|null, demand: int, capacity: int, shortfall: int}
+     * @return array{kind: string, participant: string|null, demand: int, capacity: int, shortfall: int}
      */
     #[Override]
     public function toArray(): array
@@ -76,7 +69,6 @@ final readonly class CapacityExceeded implements RepackViolation
         return [
             'kind' => $this->getKind()->value,
             'participant' => $this->participant?->getId(),
-            'session' => $this->session,
             'demand' => $this->demand,
             'capacity' => $this->capacity,
             'shortfall' => $this->getShortfall(),

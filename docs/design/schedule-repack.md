@@ -57,10 +57,12 @@ exists as a convenience.
    *movable* assignment; pinned slots count toward the occupancy pattern but
    purely-pinned sessions are historical fact the repacker cannot influence
    and are not reported as its compromises.
-7. **`CapacityExceeded` is scoped structurally**: nullable participant and
-   session fields cover the three real shapes (participant vs whole grid —
-   the Foregone case, session-level slot exhaustion, global overflow), with
-   `demand`, `capacity`, and derived `shortfall`.
+7. **`CapacityExceeded` is scoped structurally**: the nullable participant
+   covers the two shapes the planner actually produces (a participant's
+   demand vs its free positions — the Foregone case — and global grid
+   overflow), with `demand`, `capacity`, and derived `shortfall`.
+   Session-level exhaustion surfaces as `EventUnplaced`, not as a third
+   scope.
 8. **Over-capacity drop rule** (which events go unplaced when a participant
    needs more colours than exist): drop that participant's events against
    the opponents with the most slack (free colours minus load), tie-broken
