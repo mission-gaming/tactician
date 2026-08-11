@@ -34,6 +34,9 @@ final class SessionPacker
     /** @var array<int, array<int>> Participant => pinned slots, ascending */
     private array $pinSlots;
 
+    /** @var array<int, array<int, true>> Participant => pinned slot set, for O(1) membership */
+    private array $pinnedSet;
+
     /** @var array<int, int> Slot => pinned event count */
     private array $pinCounts;
 
@@ -74,6 +77,10 @@ final class SessionPacker
     ): array {
         $this->edges = $edges;
         $this->pinSlots = $pinSlots;
+        $this->pinnedSet = array_map(
+            static fn (array $slots): array => array_fill_keys($slots, true),
+            $pinSlots
+        );
         $this->pinCounts = $pinCounts;
         $this->slotCount = $slotCount;
         $this->capacity = $capacity;
@@ -636,7 +643,7 @@ final class SessionPacker
 
     private function isPinnedAt(int $pid, int $slot): bool
     {
-        return in_array($slot, $this->pinSlots[$pid] ?? [], true);
+        return isset($this->pinnedSet[$pid][$slot]);
     }
 
     private function freeSlotsFrom(int $pid, int $slot): int
