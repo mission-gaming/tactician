@@ -86,8 +86,8 @@ library for three reasons:
    both for the price of one, instead of the application growing a second,
    parallel scheduler for the staggered case.
 3. **Every consumer rebuilds it otherwise.** The application layer's version
-   is inevitably entangled with its config and persistence (as a typical consumer's
-   is), so nothing is reusable and nothing is property-tested.
+   is inevitably entangled with its config and persistence, so nothing is
+   reusable and nothing is property-tested.
 
 **Policy (the application)** — everything that decides *which* slots exist
 and what happens around them: parsing competition config into a slot

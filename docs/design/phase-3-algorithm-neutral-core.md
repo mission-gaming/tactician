@@ -172,7 +172,7 @@ Concretely:
   tournament", and similar are consumer interpretations of an outcome, not
   library concepts (see `StageOutcome`).
 
-**Config-constructibility.** Consuming platforms are
+**Config-constructibility.** Consuming platforms are typically
 config-driven, event-driven, strategy-derived systems: behavior is selected
 by strategy IDs plus JSON config, not code. Therefore every Phase 3 option
 object and selector must be constructible from plain data — named
