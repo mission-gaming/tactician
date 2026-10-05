@@ -291,5 +291,5 @@ describe('links', function () use ($root): void {
 
             expect(array_map($anchor, $headings[1]))->toContain($fragment);
         }
-    })->with(['README.md', 'CHANGELOG.md', 'AGENTS.md', 'docs/RELEASING.md']);
+    })->with(['README.md', 'CHANGELOG.md', 'AGENTS.md', 'SECURITY.md', 'docs/RELEASING.md', 'docs/CONTRIBUTING.md']);
 });
