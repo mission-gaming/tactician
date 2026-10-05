@@ -13,6 +13,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\ViolationKind;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Tests\Support\ExampleResults;
 use MissionGaming\Tactician\Tests\Support\GoldenCases;
@@ -175,6 +176,9 @@ $demonstrations = [
         expect($participants)->toHaveCount(6)
             ->and(array_map(static fn (Participant $participant): ?int => $participant->getSeed(), $participants))->toBe([1, 2, 3, 4, 5, 6]);
 
+        // A schedule without events would pass the loop below untested
+        assertExampleRoundRobin($schedule, 6);
+
         foreach ($schedule as $event) {
             foreach ($event->getParticipants() as $participant) {
                 expect($participants)->toContain($participant)
@@ -292,6 +296,10 @@ $demonstrations = [
 
         assertExampleRoundRobin($capped, 6);
 
+        // Two regions at most always holds for two participants: as the example says, the schedule is the unconstrained one
+        $unconstrained = (new RoundRobinScheduler())->schedule(exampleArray($results, 'Participants'));
+        expect(GoldenText::schedule($capped))->toBe(GoldenText::schedule($unconstrained));
+
         // Four PC participants and two on Console: 8 cross-platform pairings
         $blocked = exampleArray($results, 'Pairings the platform rule blocks');
         expect($blocked)->toHaveCount(8);
@@ -330,37 +338,58 @@ $demonstrations = [
         $repeated = exampleResult($results, 'Repeated legs', Schedule::class);
         $shuffled = exampleResult($results, 'Shuffled legs (seed 2026)', Schedule::class);
 
-        $roles = static fn (Event $event): string => implode('>', array_map(
-            static fn (Participant $participant): string => $participant->getId(),
-            $event->getParticipants()
-        ));
+        // For each pairing, whether its second meeting has the roles of the
+        // first swapped. The meetings are matched by pairing, so the order of
+        // the events inside a round plays no part.
+        $swapped = static function (Schedule $schedule): array {
+            $firstNamed = [];
+            foreach ($schedule as $event) {
+                $firstNamed[examplePair($event)][] = $event->getParticipants()[0]->getId();
+            }
+            ksort($firstNamed);
+
+            return array_map(static fn (array $homes): bool => $homes[0] !== $homes[1], $firstNamed);
+        };
+
+        // How often each participant is first-named, by label, as the example reports it
+        $homeGames = static function (Schedule $schedule): array {
+            $count = [];
+            foreach ($schedule as $event) {
+                foreach ($event->getParticipants() as $position => $participant) {
+                    $count[$participant->getLabel()] = ($count[$participant->getLabel()] ?? 0) + ($position === 0 ? 1 : 0);
+                }
+            }
+            ksort($count);
+
+            return $count;
+        };
 
         foreach ([$mirrored, $repeated, $shuffled] as $schedule) {
             assertExampleRoundRobin($schedule, 4, 2);
             expect(count($schedule))->toBe(12);
 
-            // Round r of leg 2 holds the pairings of round r of leg 1
-            $byRound = $schedule->getEventsByRound();
-            foreach ([1, 2, 3] as $round) {
-                expect(array_map(examplePair(...), $byRound[$round + 3]))->toBe(array_map(examplePair(...), $byRound[$round]));
+            // Each pairing returns exactly one leg (3 rounds) after its first meeting
+            foreach (exampleMeetings($schedule) as $pair => $rounds) {
+                expect($rounds[1] - $rounds[0])->toBe(3, $pair);
             }
         }
 
-        $firstLeg = $mirrored->getEventsByRound();
-        foreach ([1, 2, 3] as $round) {
-            foreach ($firstLeg[$round] as $index => $event) {
-                $return = $firstLeg[$round + 3][$index];
-                expect($roles($return))->toBe(implode('>', array_reverse(explode('>', $roles($event)))));
-            }
-            expect(array_map($roles, $repeated->getEventsByRound()[$round + 3]))
-                ->toBe(array_map($roles, $repeated->getEventsByRound()[$round]));
-        }
+        // Mirrored legs swap every pairing, repeated legs swap none, and the
+        // seeded shuffle swaps some: it is neither of the other two
+        expect(array_count_values(array_map(intval(...), $swapped($mirrored))))->toBe([1 => 6])
+            ->and(array_count_values(array_map(intval(...), $swapped($repeated))))->toBe([0 => 6])
+            ->and(array_unique(array_values($swapped($shuffled))))->toHaveCount(2);
 
+        // The home counts the example reports are the ones the schedules hold
         expect($results['Home games per club, mirrored legs'])->toBe(['Arsenal' => 3, 'Chelsea' => 3, 'Liverpool' => 3, 'Manchester City' => 3])
-            ->and(array_sum(exampleArray($results, 'Home games per club, shuffled legs')))->toBe(12);
+            ->and($results['Home games per club, mirrored legs'])->toBe($homeGames($mirrored))
+            ->and($results['Home games per club, repeated legs'])->toBe($homeGames($repeated))
+            ->and($results['Home games per club, shuffled legs'])->toBe($homeGames($shuffled))
+            ->and($homeGames($shuffled))->not->toBe($homeGames($mirrored))
+            ->and($homeGames($shuffled))->not->toBe($homeGames($repeated));
     },
 
-    // All the constraints hold at once in a complete two-leg season, and each of them had something to do
+    // All the constraints hold at once in a complete two-leg season; seed protection and the tier rule moved fixtures
     '10-complex-tournament' => function (array $results): void {
         $schedule = exampleResult($results, 'Schedule with the constraints', Schedule::class);
 
@@ -377,14 +406,39 @@ $demonstrations = [
             expect(examplePair($event))->not->toBe('fnatic|tsm')
                 ->and($tiers)->not->toBe(['B', 'S']);
         }
+        $gaps = [];
+        $mismatchRounds = [];
         foreach (exampleMeetings($schedule) as $pair => $rounds) {
             expect($rounds[1] - $rounds[0])->toBeGreaterThanOrEqual(7, $pair);
+            $gaps[] = $rounds[1] - $rounds[0];
+
+            [$first, $second] = explode('|', $pair);
+            if ([$tier[$first], $tier[$second]] === ['S', 'B'] || [$tier[$first], $tier[$second]] === ['B', 'S']) {
+                array_push($mismatchRounds, ...$rounds);
+            }
         }
 
-        // Without the constraints both rules are broken, so the constraints are what moved the fixtures
+        if ($gaps === [] || $mismatchRounds === []) {
+            Assert::fail('The schedule holds no pairing, or no S-tier against B-tier pairing, to check.');
+        }
+
+        // The summary the example reports for a schedule is the one worked out here from the schedule itself,
+        // which is what makes its summary of the unconstrained season, read below, worth reading
+        expect($results['With the constraints'])->toBe([
+            'Events' => count($schedule),
+            'Rounds' => 14,
+            'Rounds in which seeds 1 and 2 meet' => implode(' and ', exampleMeetings($schedule)['fnatic|tsm']),
+            'Earliest round with S-tier against B-tier' => min($mismatchRounds),
+            'Fewest rounds between the two meetings of a pair' => min($gaps),
+        ]);
+
+        // Without the constraints seed protection and the tier rule are both broken, so those two are what
+        // moved the fixtures. The gap between meetings is 7 either way: two mirrored legs already give it,
+        // and noRepeatPairings() changes nothing in a round robin (example 04).
         $without = exampleArray($results, 'Without constraints');
         expect($without['Rounds in which seeds 1 and 2 meet'])->toBe('2 and 9')
             ->and($without['Earliest round with S-tier against B-tier'])->toBe(1)
+            ->and($without['Fewest rounds between the two meetings of a pair'])->toBe(7)
             ->and($results['Constraints in the set'])->toBe(4);
     },
 
@@ -501,7 +555,16 @@ $demonstrations = [
         $final = $knockout['Final'][0];
         assert($final instanceof Result);
 
-        expect($final->getEvent()->getParticipants())->toBe($semifinalWinners)
+        $ids = static function (array $participants): array {
+            $ids = array_map(static fn (?Participant $participant): ?string => $participant?->getId(), $participants);
+            sort($ids);
+
+            return $ids;
+        };
+
+        // The finalists are the two semifinal winners, whichever of them is named first
+        expect($ids($final->getEvent()->getParticipants()))->toBe($ids($semifinalWinners))
+            ->and($semifinalWinners)->not->toContain(null)
             ->and($results['Champion'])->toBe($final->getWinner())
             ->and($final->getWinner()?->getId())->toBe('bra');
     },
@@ -839,8 +902,11 @@ it('pins results, not the page or the printed text', function (string $example):
 // Only a measured value may differ between runs, and the example must have
 // said so. Everything else an example computes is the same every time: the
 // script is run twice in surroundings chosen to differ (default timezone,
-// float precision, a locale with a decimal comma, a working directory
-// outside the repository) and must print the same text both times.
+// float precision, locale variables in the environment, a working directory
+// outside the repository) and must print the same text both times. PHP does
+// not take its numeric locale from the environment unless a script calls
+// setlocale(), so the locale variables only catch an example that does;
+// the renderer is drawn under a decimal-comma locale in ExampleRendererTest.
 // Gap left knowingly: one PHP version per run - the CI matrix (8.3, 8.4,
 // 8.5) is what compares versions.
 it('prints the same text whatever the timezone, locale, precision and working directory', function (string $example): void {
@@ -996,7 +1062,7 @@ it('says participant, not team, in the prose of the examples', function (string 
 ]);
 
 it('holds every event in memory, so iterating, counting and listing agree and repeat', function (): void {
-    $schedule = (new MissionGaming\Tactician\Scheduling\RoundRobinScheduler())->schedule(array_map(
+    $schedule = (new RoundRobinScheduler())->schedule(array_map(
         fn (int $number) => new Participant("p{$number}", "Participant {$number}"),
         range(1, 6)
     ));
