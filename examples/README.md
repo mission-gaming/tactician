@@ -1,149 +1,127 @@
-# Tactician Examples
+# Tactician examples
 
-This directory contains interactive examples demonstrating the capabilities of the Tactician tournament scheduling library. These examples are designed to run in your browser using PHP's built-in development server.
+Runnable examples of the library. Each one is a single script that reads top
+to bottom as ordinary library usage and works in two ways:
 
-## Quick Start
+- **On the command line** it prints its results as text.
+- **Under a web server** it shows the same results as an HTML page, followed
+  by the code that produced them.
 
-1. **Navigate to the examples directory:**
-   ```bash
-   cd examples
-   ```
+There are no separate "browser" and "command-line" examples: all 21 scripts
+are both. `index.php` is the one exception, a page of links for the browser.
 
-2. **Start the PHP development server:**
-   ```bash
-   php -S localhost:8000
-   ```
+## Running them
 
-3. **Open your browser and visit:**
-   ```
-   http://localhost:8000
-   ```
-
-## Examples Overview
-
-### 🎯 Basic Examples
-- **[01-basic-round-robin.php](01-basic-round-robin.php)** - Simple 4-team tournament demonstrating core scheduling
-- **[02-participants-and-metadata.php](02-participants-and-metadata.php)** - Working with seeded participants and custom data
-- **[03-iterating-schedules.php](03-iterating-schedules.php)** - Different ways to access and display schedule data
-
-### 🔧 Constraint System
-- **[04-basic-constraints.php](04-basic-constraints.php)** - NoRepeatPairings and simple constraint usage
-- **[05-seed-protection.php](05-seed-protection.php)** - Protecting high-seeded participants from early meetings
-- **[06-rest-periods.php](06-rest-periods.php)** - Ensuring minimum rest between participant encounters
-- **[07-metadata-constraints.php](07-metadata-constraints.php)** - Region-based and skill-level matching rules
-- **[08-custom-constraints.php](08-custom-constraints.php)** - Creating custom constraint functions
-
-### 🚀 Advanced Features
-- **[09-multi-leg-home-away.php](09-multi-leg-home-away.php)** - Premier League style home and away seasons
-- **[10-complex-tournament.php](10-complex-tournament.php)** - Gaming tournament with multiple constraint types
-- **[11-error-handling.php](11-error-handling.php)** - Validation failures and exception demonstrations
-- **[12-performance-patterns.php](12-performance-patterns.php)** - Generation timings and iteration patterns for large tournaments (a schedule holds all of its events in memory)
-
-## Features
-
-### Interactive Interface
-- Clean, responsive design using Tailwind CSS
-- Visual representations of tournament data
-- Code examples with syntax highlighting
-- Navigation between examples
-
-### Educational Content
-- Progressive complexity from basic to advanced
-- Real-world scenarios and use cases
-- Detailed explanations of concepts
-- Live code demonstrations
-
-### Browser Compatibility
-- Works in all modern browsers
-- No additional dependencies required
-- Pure PHP with HTML/CSS output
-
-## Alternative Server Commands
-
-If port 8000 is busy, you can use a different port:
+Install the dependencies once, from the project root:
 
 ```bash
-# Use port 8080
-php -S localhost:8080
-
-# Use any available port
-php -S localhost:0
-```
-
-## Requirements
-
-- **PHP 8.3+** - Required for the Tactician library
-- **Composer dependencies** - Run `composer install` from the project root before starting
-- **Modern web browser** - For optimal viewing experience
-
-## Troubleshooting
-
-### Common Issues
-
-**"Class not found" errors:**
-```bash
-# Make sure Composer dependencies are installed
-cd ..
 composer install
-cd examples
-php -S localhost:8000
 ```
 
-**Port already in use:**
+**Command line**, from the project root:
+
 ```bash
-# Try a different port
-php -S localhost:8001
+php examples/01-basic-round-robin.php
 ```
 
-**Permission denied:**
+**Browser**, with PHP's built-in server, then open <http://localhost:8000>:
+
 ```bash
-# Make sure you have read permissions on the project files
-ls -la
+php -S localhost:8000 -t examples
 ```
 
-### Server Output
+`composer examples` runs every script once and fails if any of them exits
+with an error.
 
-You should see output similar to:
+## The examples
+
+| Script | What it shows |
+| --- | --- |
+| [01-basic-round-robin.php](01-basic-round-robin.php) | The smallest schedule: four participants, every pair meets once |
+| [02-participants-and-metadata.php](02-participants-and-metadata.php) | Seeds and free-form metadata on participants |
+| [03-iterating-schedules.php](03-iterating-schedules.php) | Five ways to read a schedule: iterate, count, list, group by round, metadata (a schedule holds all of its events in memory) |
+| [04-basic-constraints.php](04-basic-constraints.php) | Building a constraint set; a custom rule that moves one pairing |
+| [05-seed-protection.php](05-seed-protection.php) | Keeping the top seeds apart for a fraction of the rounds |
+| [06-rest-periods.php](06-rest-periods.php) | A minimum number of rounds between repeat meetings of a pair |
+| [07-metadata-constraints.php](07-metadata-constraints.php) | Rules over participant metadata, and how an impossible rule fails |
+| [08-custom-constraints.php](08-custom-constraints.php) | Your own rule as a closure or as a class |
+| [09-multi-leg-home-away.php](09-multi-leg-home-away.php) | Two legs with the mirrored, repeated and shuffled leg strategies |
+| [10-complex-tournament.php](10-complex-tournament.php) | Seed protection, rest and a custom rule in one two-leg season |
+| [11-error-handling.php](11-error-handling.php) | The exceptions the scheduler throws and what they carry |
+| [12-performance-patterns.php](12-performance-patterns.php) | How a round robin grows with the field, and measured generation times |
+| [13-swiss-stage-engine.php](13-swiss-stage-engine.php) | A Swiss stage paired round by round from the results |
+| [14-groups-to-knockout.php](14-groups-to-knockout.php) | Pools, qualification and a single-elimination bracket composed together |
+| [15-timeline-assignment.php](15-timeline-assignment.php) | Kickoff times and resources for every event, under time rules |
+| [16-backtracking-generation.php](16-backtracking-generation.php) | Constraints the default generator cannot solve, solved by the opt-in search |
+| [17-schedule-optimization.php](17-schedule-optimization.php) | Scoring schedule quality and keeping the best of many samples |
+| [18-stateless-web-flow.php](18-stateless-web-flow.php) | A stage kept as JSON between stateless requests |
+| [19-repacking-a-season.php](19-repacking-a-season.php) | Repacking outstanding events onto an irregular grid of sessions |
+| [20-double-elimination.php](20-double-elimination.php) | A double-elimination bracket with a grand final reset |
+| [21-standings-and-tiebreakers.php](21-standings-and-tiebreakers.php) | A standings table and a chain of tiebreakers |
+
+The sample data uses sports teams and players because that is what most
+schedules are for. The library itself only knows participants.
+
+## How an example is built
+
+An example computes; it does not format. Its last statement hands a named set
+of results to `Example::present()`, from
+[`support/Example.php`](support/Example.php):
+
+```php
+return Example::present(__FILE__, 'Basic round robin', 'What the example shows.', [
+    'Participants' => $participants,
+    'Schedule' => $schedule,
+]);
 ```
-PHP 8.3.x Development Server (http://localhost:8000) started
-```
 
-### Stopping the Server
+`Example::present()` returns that set unchanged. It displays it, as text or as a page,
+only when the script is the one PHP was started with. When the script is
+included from somewhere else it displays nothing, which is how the test suite
+reads the results.
 
-Press `Ctrl+C` (or `Cmd+C` on macOS) to stop the development server.
+A result can be a library object (`Schedule`, `ScheduledSchedule`,
+`RoundPairing`, `Result`, `Standings`, `RepackOutcome`, `Participant`,
+`Event`), an exception, a scalar, or an array of those. `support/Example.php`
+is the only file that knows how to draw them, so changing the look of the
+pages touches no example and no test fixture.
 
-## Development
+A value that cannot be the same on every run, such as a measured duration, is
+wrapped in `Measured` with the reason. Example 12 does this for its timings.
 
-### Adding New Examples
+## How the examples are checked
 
-1. Create a new PHP file following the naming pattern: `##-example-name.php`
-2. Use the existing examples as templates for consistent structure
-3. Include navigation links to maintain flow between examples
-4. Update the main `index.php` to include your new example
+`tests/Feature/ExamplesTest.php` covers every script in this directory:
 
-Every script in this directory is run by the test suite
-(`tests/Feature/ExamplesTest.php`). The plain-text scripts (13 onwards, run
-with `php examples/13-swiss-stage-engine.php`) also have their exact output
-pinned in `tests/Fixtures/golden/examples/`: if you add or change one, run
-`composer golden-update` from the project root and review the fixture diff.
+1. It runs the script in a PHP process of its own under `E_ALL` and fails on
+   any warning, notice or deprecation.
+2. It reads the script's results and asserts what the example is there to
+   show: for instance, that the constrained schedule of example 04 really
+   keeps seeds 1 and 6 apart in the first two rounds.
+3. `tests/Feature/GoldenOutputTest.php` pins the results as readable text in
+   `tests/Fixtures/golden/examples/`, in the form the other golden fixtures
+   use. A `Measured` value is pinned as its unit and reason, not its value.
 
-### Design Guidelines
+The same test fails when a script is missing from the table above or from
+`index.php`, or when either lists a script that does not exist.
 
-- **Responsive Layout**: Use Tailwind's responsive utilities
-- **Consistent Navigation**: Include back/next links
-- **Code Examples**: Always include working code snippets
-- **Visual Feedback**: Use colors and icons to enhance understanding
-- **Progressive Disclosure**: Start simple, add complexity gradually
+## Adding an example
 
-## Documentation
+1. Create `NN-short-name.php` with the next number, ending in
+   `return Example::present(__FILE__, ...)`. Use closures rather than named functions
+   for helpers: the test suite includes every example in one process.
+2. Add it to the table above and to `index.php`.
+3. Add its assertions to the `demonstrations` list in
+   `tests/Feature/ExamplesTest.php`, and its fixture name to the matrix in
+   `tests/Feature/GoldenOutputTest.php`.
+4. Run `composer golden-update` from the project root and review the new
+   fixture before committing it.
 
-For more information about the Tactician library:
+The suite fails until all four are done.
 
-- **[Usage Guide](../docs/USAGE.md)** - Comprehensive examples and patterns
-- **[Architecture](../docs/ARCHITECTURE.md)** - Technical design and core components
-- **[Main README](../README.md)** - Project overview and installation
-- **[Contributing](../docs/CONTRIBUTING.md)** - Development setup and guidelines
+## More documentation
 
-## License
-
-These examples are part of the Tactician project and are licensed under the MIT License.
+- [Usage guide](../docs/USAGE.md)
+- [Architecture](../docs/ARCHITECTURE.md)
+- [Main README](../README.md)
+- [Contributing](../docs/CONTRIBUTING.md)

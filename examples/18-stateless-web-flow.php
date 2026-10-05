@@ -3,9 +3,11 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Example.php';
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\StageState;
 
@@ -18,6 +20,9 @@ use MissionGaming\Tactician\Stage\StageState;
 
 /** @var array<string, string> $database A stand-in for your stage table */
 $database = [];
+
+/** @var list<array<string, int|string>> $requests What each request did */
+$requests = [];
 
 // --- Request 1: the organizer opens the stage -------------------------
 // Stage entry is position-authoritative: list order is the seeding,
@@ -32,10 +37,9 @@ $entrants = [
 ];
 
 $database['stage_42'] = StageState::start($entrants)->toJson();
-echo 'Request 1: stage opened, state persisted (' . strlen($database['stage_42']) . " bytes)\n";
+$requests[] = ['Request' => 1, 'Did' => 'opened the stage', 'Events' => 0, 'State stored (bytes)' => strlen($database['stage_42'])];
 
 // --- Requests 2..N: pair a round, play it, record results -------------
-$round = 0;
 while (true) {
     // Each cycle: fresh engine, rehydrated state - no shared memory
     $engine = new SwissPairingEngine(plannedRounds: 3);
@@ -46,7 +50,6 @@ while (true) {
     }
 
     $pairing = $engine->pairNextRound($state);
-    ++$round;
 
     // "Play" the round: lower ID wins, as good a rule as any for a demo
     $results = [];
@@ -59,21 +62,23 @@ while (true) {
     $state = $state->withRoundPlayed($pairing, $results);
     $database['stage_42'] = $state->toJson();
 
-    printf(
-        "Request %d: round %d paired and recorded (%d events%s)\n",
-        $round + 1,
-        $pairing->getRoundNumber(),
-        count($pairing->getEvents()),
-        $pairing->getByes() === [] ? '' : ', ' . count($pairing->getByes()) . ' bye'
-    );
+    $requests[] = [
+        'Request' => count($requests) + 1,
+        'Did' => 'paired and recorded round ' . $pairing->getRoundNumber(),
+        'Events' => count($pairing->getEvents()),
+        'State stored (bytes)' => strlen($database['stage_42']),
+    ];
 }
 
 // --- Final request: the stage is complete, read the outcome -----------
 $engine = new SwissPairingEngine(plannedRounds: 3);
 $state = StageState::fromJson($database['stage_42']);
 $outcome = $engine->getOutcome($state);
-
-echo "\nFinal standings:\n";
-foreach ($outcome->getStandings()->getEntries() as $position => $entry) {
-    printf("  %d. %s (%.1f)\n", $position + 1, $entry->getParticipant()->getLabel(), $entry->getRankingValue());
+if ($outcome === null) {
+    throw new RuntimeException('Stage should be complete');
 }
+
+return Example::present(__FILE__, 'A stage across stateless requests', 'A Swiss stage that lives only as a JSON string between requests: each request builds a fresh engine, restores the state, does one step and stores the state again.', [
+    'Requests' => $requests,
+    'Final standings, read by the last request' => $outcome->getStandings(),
+]);

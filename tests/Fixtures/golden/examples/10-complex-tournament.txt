@@ -1,0 +1,54 @@
+# The results of examples/10-complex-tournament.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Entrants ==
+- fnatic "Fnatic" seed=1 {"tier":"S","region":"Europe"}
+- tsm "Team SoloMid" seed=2 {"tier":"S","region":"North America"}
+- t1 "T1" seed=3 {"tier":"S","region":"Asia"}
+- g2 "G2 Esports" seed=4 {"tier":"A","region":"Europe"}
+- cloud9 "Cloud9" seed=5 {"tier":"A","region":"North America"}
+- geng "Gen.G" seed=6 {"tier":"A","region":"Asia"}
+- mad "MAD Lions" seed=7 {"tier":"B","region":"Europe"}
+- thieves "100 Thieves" seed=8 {"tier":"B","region":"North America"}
+
+== Constraints in the set ==
+4
+
+== Without constraints ==
+Events: 56
+Rounds: 14
+Rounds in which seeds 1 and 2 meet: 2 and 9
+Earliest round with S-tier against B-tier: 1
+Fewest rounds between the two meetings of a pair: 7
+
+== With the constraints ==
+Events: 56
+Rounds: 14
+Rounds in which seeds 1 and 2 meet: 4 and 11
+Earliest round with S-tier against B-tier: 3
+Fewest rounds between the two meetings of a pair: 7
+
+== Schedule with the constraints ==
+meta: algorithm=round-robin participant_count=8 legs=2 rounds_per_leg=7 total_rounds=14 expected_event_count=56 byes=[]
+R1: t1-tsm g2-fnatic cloud9-thieves geng-mad
+R2: g2-t1 tsm-cloud9 fnatic-geng thieves-mad
+R3: t1-cloud9 geng-g2 mad-tsm thieves-fnatic
+R4: geng-t1 cloud9-mad g2-thieves tsm-fnatic
+R5: t1-mad thieves-geng fnatic-cloud9 tsm-g2
+R6: thieves-t1 mad-fnatic geng-tsm cloud9-g2
+R7: t1-fnatic tsm-thieves g2-mad cloud9-geng
+R8: tsm-t1 fnatic-g2 thieves-cloud9 mad-geng
+R9: t1-g2 cloud9-tsm geng-fnatic mad-thieves
+R10: cloud9-t1 g2-geng tsm-mad fnatic-thieves
+R11: t1-geng mad-cloud9 thieves-g2 fnatic-tsm
+R12: mad-t1 geng-thieves cloud9-fnatic g2-tsm
+R13: t1-thieves fnatic-mad tsm-geng g2-cloud9
+R14: fnatic-t1 thieves-tsm mad-g2 geng-cloud9

@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Example.php';
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
@@ -41,39 +43,39 @@ $fixturePolicy = ConstraintSet::create()->custom(static function (Event $event):
     };
 }, 'Fixture Placement Policy')->build();
 
-echo "=== Greedy generation (default) ===\n";
+// Greedy generation (the default) fails: every rotated ordering violates
+// the policy
+$greedyFailure = null;
 try {
     (new RoundRobinScheduler($fixturePolicy))->schedule($clubs);
-    echo "Unexpectedly succeeded.\n";
 } catch (IncompleteScheduleException $exception) {
-    echo "Failed as expected: every rotated ordering violates the policy.\n\n";
+    $greedyFailure = $exception;
 }
 
-echo "=== Backtracking generation (opt-in) ===\n";
+// Backtracking generation (opt-in) searches the round decompositions the
+// rotations cannot reach
 $schedule = (new RoundRobinScheduler($fixturePolicy))
     ->schedule($clubs, new RoundRobinOptions(backtracking: true));
 
-foreach ($schedule->getEventsByRound() as $round => $events) {
-    echo "Round {$round}\n";
-    foreach ($events as $event) {
-        [$home, $away] = $event->getParticipants();
-        echo "  {$home->getLabel()} vs {$away->getLabel()}\n";
-    }
-}
-
 // Genuinely unsatisfiable configurations still fail loudly - the search
 // proves it by exhausting the space rather than guessing
-echo "\n=== Unsatisfiable configuration ===\n";
+$rejectEverything = ConstraintSet::create()->custom(fn () => false, 'Reject Everything')->build();
+
+$unsatisfiable = null;
+$blocked = [];
 try {
-    (new RoundRobinScheduler(ConstraintSet::create()->custom(fn () => false, 'Reject Everything')->build()))
-        ->schedule($clubs, new RoundRobinOptions(backtracking: true));
+    (new RoundRobinScheduler($rejectEverything))->schedule($clubs, new RoundRobinOptions(backtracking: true));
 } catch (IncompleteScheduleException $exception) {
-    echo "Proven unsatisfiable: the search exhausted every round decomposition.\n";
+    $unsatisfiable = $exception;
 
     // The failure carries a probed analysis naming which constraint
     // blocks which pairing where - not a guess, an evaluation
-    $analysis = $exception->getAnalysis();
-    if ($analysis !== null && $analysis->getImpossiblePairings() !== []) {
-        echo $analysis->getImpossiblePairings()[0] . "\n";
-    }
+    $blocked = $exception->getAnalysis()?->getImpossiblePairings() ?? [];
 }
+
+return Example::present(__FILE__, 'Backtracking generation', 'A fixture policy that can be satisfied, but not by the default generator. RoundRobinOptions(backtracking: true) finds the schedule; a configuration with no solution still fails, with the blocked pairings named.', [
+    'Default generation' => $greedyFailure,
+    'Backtracking generation' => $schedule,
+    'A constraint that rejects everything, with backtracking' => $unsatisfiable,
+    'Blocked pairings it names' => $blocked,
+]);

@@ -17,10 +17,11 @@ use PHPUnit\Framework\Assert;
  * That is allowed, but never silently: explain the change in the
  * changelog and regenerate the fixtures with `composer golden-update`.
  *
- * The files under examples/ pin something else: what each plain-text
- * script in examples/ prints. A difference there means the example now
- * prints something else, because the library changed or because the
- * script was edited. Review the difference before regenerating.
+ * The files under examples/ pin something else: the results each script
+ * in examples/ computes (not the page or the text it displays them as). A
+ * difference there means the example now computes something else, because
+ * the library changed or because the script was edited. Review the
+ * difference before regenerating.
  *
  * The cases live in MissionGaming\Tactician\Tests\Support\GoldenCases;
  * this file only compares them with (or, when UPDATE_GOLDEN=1, writes
@@ -113,8 +114,8 @@ function goldenMismatchMessage(string $file, string $expected, string $actual): 
     }
 
     $meaning = str_starts_with($file, 'examples/')
-        ? 'This file pins what an example script prints. If the new output is correct, regenerate the fixtures '
-            . 'with `composer golden-update` and review the difference; if the library produced it and the '
+        ? 'This file pins the results an example script computes. If the new results are correct, regenerate the '
+            . 'fixtures with `composer golden-update` and review the difference; if the library produced it and the '
             . 'example was not edited, it is a change to generated output and belongs in the changelog.'
         : 'A difference from a golden file is a change to generated output. If it is intended, '
             . 'explain it in the changelog and regenerate the fixtures with `composer golden-update`; '
@@ -214,6 +215,18 @@ describe('Golden output', function (): void {
             'repack/round-robin.txt',
             'wire/schedule.json',
             'wire/stage-state.json',
+            'examples/01-basic-round-robin.txt',
+            'examples/02-participants-and-metadata.txt',
+            'examples/03-iterating-schedules.txt',
+            'examples/04-basic-constraints.txt',
+            'examples/05-seed-protection.txt',
+            'examples/06-rest-periods.txt',
+            'examples/07-metadata-constraints.txt',
+            'examples/08-custom-constraints.txt',
+            'examples/09-multi-leg-home-away.txt',
+            'examples/10-complex-tournament.txt',
+            'examples/11-error-handling.txt',
+            'examples/12-performance-patterns.txt',
             'examples/13-swiss-stage-engine.txt',
             'examples/14-groups-to-knockout.txt',
             'examples/15-timeline-assignment.txt',
@@ -221,6 +234,8 @@ describe('Golden output', function (): void {
             'examples/17-schedule-optimization.txt',
             'examples/18-stateless-web-flow.txt',
             'examples/19-repacking-a-season.txt',
+            'examples/20-double-elimination.txt',
+            'examples/21-standings-and-tiebreakers.txt',
         ]);
     });
 
@@ -402,11 +417,11 @@ describe('Golden harness', function (): void {
             ->toContain('composer golden-update');
     });
 
-    it('says that an example fixture pins what the script prints', function (): void {
+    it('says that an example fixture pins the results the script computes', function (): void {
         $message = goldenMismatchMessage('examples/13-swiss-stage-engine.txt', "Round 1\n", "Round 2\n");
 
         expect($message)->toContain('tests/Fixtures/golden/examples/13-swiss-stage-engine.txt at line 1.')
-            ->toContain('pins what an example script prints')
+            ->toContain('pins the results an example script computes')
             ->toContain('composer golden-update');
     });
 

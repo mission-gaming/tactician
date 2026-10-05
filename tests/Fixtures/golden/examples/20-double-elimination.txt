@@ -1,0 +1,40 @@
+# The results of examples/20-double-elimination.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Rounds as played ==
+Round 1: winners round 1:
+  - R1: magnus-ding => ding
+  - R1: hikaru-fabiano => hikaru
+Round 2: losers round 1:
+  - R2: magnus-fabiano => magnus
+Round 3: winners final:
+  - R3: ding-hikaru => hikaru
+Round 4: losers final:
+  - R4: ding-magnus => magnus
+Round 5: grand final:
+  - R5: hikaru-magnus => magnus
+Round 6: grand final reset:
+  - R6: hikaru-magnus => magnus
+
+== Champion ==
+magnus "Magnus" seed=1
+
+== Losses ==
+Magnus: 1
+Hikaru: 2
+Ding: 2
+Fabiano: 2
+
+== Final standings ==
+1. magnus played=5 wins=4 draws=0 losses=1 value=12 for=0 against=0
+2. hikaru played=4 wins=2 draws=0 losses=2 value=6 for=0 against=0
+3. ding played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+4. fabiano played=2 wins=0 draws=0 losses=2 value=0 for=0 against=0

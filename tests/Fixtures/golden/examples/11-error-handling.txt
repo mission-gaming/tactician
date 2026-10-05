@@ -1,0 +1,66 @@
+# The results of examples/11-error-handling.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Duplicate participant ids ==
+MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid scheduler configuration: All participants must have unique IDs
+
+== The issue it names ==
+All participants must have unique IDs
+
+== A constraint that rejects everything ==
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 0 events, expected 6. Constraints may be preventing complete schedule generation.
+
+== How far generation got ==
+Expected events: 6
+Generated events: 0
+Missing events: 6
+
+== Diagnostic report ==
+=== INCOMPLETE SCHEDULE DIAGNOSTIC REPORT ===
+
+Algorithm: round-robin
+Participants: 4
+Rounds: 3
+Legs: 1
+Expected Events: 6
+Generated Events: 0
+Missing Events: 6 (100.0%)
+
+=== CONSTRAINT VIOLATIONS ===
+• Reject everything: 6 violations
+  Most affected participants: delta (3), gamma (3), alpha (3)
+  Affected rounds: 1 (2), 2 (2), 3 (2)
+
+=== BLOCKED PAIRINGS ===
+• Delta vs Alpha cannot join the generated schedule in any round (blocked by: Reject everything)
+• Delta vs Beta cannot join the generated schedule in any round (blocked by: Reject everything)
+• Delta vs Gamma cannot join the generated schedule in any round (blocked by: Reject everything)
+• Alpha vs Beta cannot join the generated schedule in any round (blocked by: Reject everything)
+• Alpha vs Gamma cannot join the generated schedule in any round (blocked by: Reject everything)
+• Beta vs Gamma cannot join the generated schedule in any round (blocked by: Reject everything)
+
+=== CONSTRAINT ATTRIBUTION ===
+• Reject everything rejects Delta vs Alpha in 3 of 3 rounds; Delta vs Beta in 3 of 3 rounds; Delta vs Gamma in 3 of 3 rounds; Alpha vs Beta in 3 of 3 rounds; Alpha vs Gamma in 3 of 3 rounds; Beta vs Gamma in 3 of 3 rounds
+
+=== SUGGESTIONS ===
+• Review CallableConstraint settings for compatibility
+• Use fewer or less restrictive constraints
+• Test with a simpler configuration first
+• No events were generated - check participant count and constraint configuration
+
+== Class caught as SchedulingException ==
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException
+
+== A valid request ==
+meta: algorithm=round-robin participant_count=4 legs=1 rounds_per_leg=3 total_rounds=3 expected_event_count=6 byes=[]
+R1: alpha-delta beta-gamma
+R2: beta-alpha delta-gamma
+R3: alpha-gamma delta-beta

@@ -1,0 +1,39 @@
+# The results of examples/12-performance-patterns.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Generating a single-leg round robin ==
+6 participants:
+  Events: 15
+  Rounds: 5
+  Generated in: measured (ms): A wall-clock duration depends on the machine and differs on every run.
+12 participants:
+  Events: 66
+  Rounds: 11
+  Generated in: measured (ms): A wall-clock duration depends on the machine and differs on every run.
+20 participants:
+  Events: 190
+  Rounds: 19
+  Generated in: measured (ms): A wall-clock duration depends on the machine and differs on every run.
+30 participants:
+  Events: 435
+  Rounds: 29
+  Generated in: measured (ms): A wall-clock duration depends on the machine and differs on every run.
+
+== Reading the 30-participant schedule ==
+foreach:
+  Events seen: 435
+  Took: measured (ms): A wall-clock duration depends on the machine and differs on every run.
+getEvents():
+  Events seen: 435
+  Took: measured (ms): A wall-clock duration depends on the machine and differs on every run.
+count():
+  Events seen: 435
+  Took: measured (ms): A wall-clock duration depends on the machine and differs on every run.

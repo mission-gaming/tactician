@@ -1,54 +1,48 @@
-=== Season calendar (kickoffs in UTC) ===
+# The results of examples/15-timeline-assignment.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
 
-Round 1 - Sat 1 Aug 2026
-  17:00  North Pitch  Celtic vs Clapton Community FC
-  17:00  South Pitch  Athletic Bilbao vs Rayo Vallecano
-  19:00  North Pitch  AS Livorno vs Red Star FC
+== Season calendar ==
+R1: cel-cla @ 2026-08-01T17:00:00Z on North Pitch
+R1: ath-ray @ 2026-08-01T17:00:00Z on South Pitch
+R1: liv-red @ 2026-08-01T19:00:00Z on North Pitch
+R2: ath-cel @ 2026-08-08T17:00:00Z on North Pitch
+R2: cla-liv @ 2026-08-08T17:00:00Z on South Pitch
+R2: ray-red @ 2026-08-08T19:00:00Z on North Pitch
+R3: cel-liv @ 2026-08-15T17:00:00Z on North Pitch
+R3: red-ath @ 2026-08-15T17:00:00Z on South Pitch
+R3: ray-cla @ 2026-08-15T19:00:00Z on North Pitch
+R4: red-cel @ 2026-08-22T17:00:00Z on North Pitch
+R4: liv-ray @ 2026-08-22T17:00:00Z on South Pitch
+R4: ath-cla @ 2026-08-22T19:00:00Z on North Pitch
+R5: cel-ray @ 2026-08-29T17:00:00Z on North Pitch
+R5: cla-red @ 2026-08-29T17:00:00Z on South Pitch
+R5: ath-liv @ 2026-08-29T19:00:00Z on North Pitch
+R6: cla-cel @ 2026-09-05T17:00:00Z on North Pitch
+R6: ray-ath @ 2026-09-05T17:00:00Z on South Pitch
+R6: red-liv @ 2026-09-05T19:00:00Z on North Pitch
+R7: cel-ath @ 2026-09-12T17:00:00Z on North Pitch
+R7: liv-cla @ 2026-09-12T17:00:00Z on South Pitch
+R7: red-ray @ 2026-09-12T19:00:00Z on North Pitch
+R8: liv-cel @ 2026-09-19T17:00:00Z on North Pitch
+R8: ath-red @ 2026-09-19T17:00:00Z on South Pitch
+R8: cla-ray @ 2026-09-19T19:00:00Z on North Pitch
+R9: cel-red @ 2026-09-26T17:00:00Z on North Pitch
+R9: ray-liv @ 2026-09-26T17:00:00Z on South Pitch
+R9: cla-ath @ 2026-09-26T19:00:00Z on North Pitch
+R10: ray-cel @ 2026-10-03T17:00:00Z on North Pitch
+R10: red-cla @ 2026-10-03T17:00:00Z on South Pitch
+R10: liv-ath @ 2026-10-03T19:00:00Z on North Pitch
 
-Round 2 - Sat 8 Aug 2026
-  17:00  North Pitch  Athletic Bilbao vs Celtic
-  17:00  South Pitch  Clapton Community FC vs AS Livorno
-  19:00  North Pitch  Rayo Vallecano vs Red Star FC
+== Scheduled events restored from JSON ==
+30
 
-Round 3 - Sat 15 Aug 2026
-  17:00  North Pitch  Celtic vs AS Livorno
-  17:00  South Pitch  Red Star FC vs Athletic Bilbao
-  19:00  North Pitch  Rayo Vallecano vs Clapton Community FC
-
-Round 4 - Sat 22 Aug 2026
-  17:00  North Pitch  Red Star FC vs Celtic
-  17:00  South Pitch  AS Livorno vs Rayo Vallecano
-  19:00  North Pitch  Athletic Bilbao vs Clapton Community FC
-
-Round 5 - Sat 29 Aug 2026
-  17:00  North Pitch  Celtic vs Rayo Vallecano
-  17:00  South Pitch  Clapton Community FC vs Red Star FC
-  19:00  North Pitch  Athletic Bilbao vs AS Livorno
-
-Round 6 - Sat 5 Sep 2026
-  17:00  North Pitch  Clapton Community FC vs Celtic
-  17:00  South Pitch  Rayo Vallecano vs Athletic Bilbao
-  19:00  North Pitch  Red Star FC vs AS Livorno
-
-Round 7 - Sat 12 Sep 2026
-  17:00  North Pitch  Celtic vs Athletic Bilbao
-  17:00  South Pitch  AS Livorno vs Clapton Community FC
-  19:00  North Pitch  Red Star FC vs Rayo Vallecano
-
-Round 8 - Sat 19 Sep 2026
-  17:00  North Pitch  AS Livorno vs Celtic
-  17:00  South Pitch  Athletic Bilbao vs Red Star FC
-  19:00  North Pitch  Clapton Community FC vs Rayo Vallecano
-
-Round 9 - Sat 26 Sep 2026
-  17:00  North Pitch  Celtic vs Red Star FC
-  17:00  South Pitch  Rayo Vallecano vs AS Livorno
-  19:00  North Pitch  Clapton Community FC vs Athletic Bilbao
-
-Round 10 - Sat 3 Oct 2026
-  17:00  North Pitch  Rayo Vallecano vs Celtic
-  17:00  South Pitch  Red Star FC vs Clapton Community FC
-  19:00  North Pitch  AS Livorno vs Athletic Bilbao
-
-Serialized and restored 30 scheduled events.
-Final round kicks off Sat 3 Oct 2026 17:00 UTC.
+== First kickoff of the final round ==
+2026-10-03T17:00:00Z

@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Example.php';
 
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Repack\MovableEvent;
 use MissionGaming\Tactician\Repack\PinnedEvent;
 use MissionGaming\Tactician\Repack\RepackOptions;
@@ -61,6 +63,8 @@ $movable = [
     new MovableEvent('e12', $rayo, $celtic),
 ];
 
+// Infeasibility is an outcome, not an exception: every compromise comes
+// back as structured data for the caller to render and judge
 $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
     $movable,
     $pinned,
@@ -70,41 +74,14 @@ $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
     new RepackOptions(consolidationWeight: 3, earlyFillWeight: 1)
 ));
 
-$names = [];
-foreach ([$celtic, $athletic, $livorno, $redStar, $rayo, $clapton] as $participant) {
-    $names[$participant->getId()] = $participant->getLabel();
-}
-$pairings = [];
-foreach ($movable as $event) {
-    $pairings[$event->getId()] = sprintf(
-        '%s v %s',
-        $names[$event->getParticipantA()->getId()],
-        $names[$event->getParticipantB()->getId()]
-    );
+// The outcome speaks in event ids; the fixture list below maps them back
+$fixtures = [];
+foreach ([...$pinned, ...$movable] as $event) {
+    $fixtures[$event->getId()] = $event->getParticipantA()->getLabel() . ' v ' . $event->getParticipantB()->getLabel();
 }
 
-echo "Repacked schedule (kickoffs in UTC):\n";
-foreach ($outcome->getAssignments() as $assignment) {
-    printf(
-        "  session %d slot %d  %s  %s (%s)\n",
-        $assignment->getSession(),
-        $assignment->getSlot(),
-        $assignment->getKickoff()->format('Y-m-d H:i'),
-        $pairings[$assignment->getEventId()],
-        $assignment->getEventId()
-    );
-}
-
-// Infeasibility is an outcome, not an exception: every compromise comes
-// back as structured data for the caller to render and judge.
-if ($outcome->isClean()) {
-    echo "\nClean: every event placed, nobody double-booked, no gaps, no late starts.\n";
-} else {
-    echo "\nCompromises, itemised:\n";
-    foreach ($outcome->getViolations() as $violation) {
-        echo '  ' . json_encode($violation->toArray()) . "\n";
-    }
-    foreach ($outcome->getUnplaced() as $unplaced) {
-        printf("  unplaced: %s (%s)\n", $unplaced->getEventId(), $unplaced->getReason()->value);
-    }
-}
+return Example::present(__FILE__, 'Repacking a season', 'Ten outstanding fixtures placed around two already-played ones on a grid of two irregular sessions. Nobody is double-booked and each participant plays back to back within a session; the late starts that could not be avoided come back itemised.', [
+    'Fixtures by event id' => $fixtures,
+    'Repacked schedule' => $outcome,
+    'Clean' => $outcome->isClean(),
+]);

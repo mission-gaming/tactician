@@ -1,12 +1,40 @@
-Request 1: stage opened, state persisted (408 bytes)
-Request 2: round 1 paired and recorded (3 events)
-Request 3: round 2 paired and recorded (3 events)
-Request 4: round 3 paired and recorded (3 events)
+# The results of examples/18-stateless-web-flow.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
 
-Final standings:
-  1. Ana (9.0)
-  2. Bea (6.0)
-  3. Cai (6.0)
-  4. Dia (3.0)
-  5. Eli (3.0)
-  6. Fio (0.0)
+== Requests ==
+-
+  Request: 1
+  Did: opened the stage
+  Events: 0
+  State stored (bytes): 408
+-
+  Request: 2
+  Did: paired and recorded round 1
+  Events: 3
+  State stored (bytes): 1085
+-
+  Request: 3
+  Did: paired and recorded round 2
+  Events: 3
+  State stored (bytes): 1764
+-
+  Request: 4
+  Did: paired and recorded round 3
+  Events: 3
+  State stored (bytes): 2443
+
+== Final standings, read by the last request ==
+1. ana played=3 wins=3 draws=0 losses=0 value=9 for=0 against=0
+2. bea played=3 wins=2 draws=0 losses=1 value=6 for=0 against=0
+3. cai played=3 wins=2 draws=0 losses=1 value=6 for=0 against=0
+4. dia played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+5. eli played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+6. fio played=3 wins=0 draws=0 losses=3 value=0 for=0 against=0

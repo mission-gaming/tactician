@@ -1,0 +1,31 @@
+# The results of examples/08-custom-constraints.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Round in which the two veterans meet ==
+Without constraints: 3
+With the closure constraint: 4
+
+== Schedule with the veterans apart in rounds 1 to 3 ==
+meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
+R1: phoenix-dragons hawks-lions wolves-serpents
+R2: hawks-phoenix dragons-wolves lions-serpents
+R3: phoenix-wolves serpents-hawks lions-dragons
+R4: serpents-phoenix wolves-lions hawks-dragons
+R5: phoenix-lions dragons-serpents hawks-wolves
+
+== Budget tier separation ==
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 11 events, expected 15. Constraints may be preventing complete schedule generation.
+
+== Pairings the budget rule blocks ==
+- Lightning Lions vs Fire Dragons cannot join the generated schedule in any round (blocked by: Budget tier separation)
+- Lightning Lions vs Thunder Wolves cannot join the generated schedule in any round (blocked by: Budget tier separation)
+- Fire Dragons vs Storm Hawks cannot join the generated schedule in any round (blocked by: Budget tier separation)
+- Storm Hawks vs Thunder Wolves cannot join the generated schedule in any round (blocked by: Budget tier separation)

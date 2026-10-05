@@ -1,0 +1,64 @@
+# The results of examples/02-participants-and-metadata.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Participants ==
+- celtic "Celtic FC" seed=1 {"city":"Glasgow","country":"Scotland","founded":1887}
+- athletic "Athletic Bilbao" seed=2 {"city":"Bilbao","country":"Spain","founded":1898}
+- livorno "AS Livorno" seed=3 {"city":"Livorno","country":"Italy","founded":1915}
+- rayo "Rayo Vallecano" seed=4 {"city":"Madrid","country":"Spain","founded":1924}
+- stpauli "FC St. Pauli" seed=5 {"city":"Hamburg","country":"Germany","founded":1910}
+- clapton "Clapton Community FC" seed=6 {"city":"London","country":"England","founded":2018}
+
+== Reading the first participant ==
+getId(): celtic
+getLabel(): Celtic FC
+getSeed(): 1
+getMetadataValue('city'): Glasgow
+hasMetadata('stadium'): false
+getMetadataValue('stadium', 'unknown'): unknown
+
+== Labels by country ==
+Scotland:
+  - Celtic FC
+Spain:
+  - Athletic Bilbao
+  - Rayo Vallecano
+Italy:
+  - AS Livorno
+Germany:
+  - FC St. Pauli
+England:
+  - Clapton Community FC
+
+== Opening round, with cities from the metadata ==
+-
+  First named: Celtic FC
+  City: Glasgow
+  Second named: Clapton Community FC
+  Their city: London
+-
+  First named: Athletic Bilbao
+  City: Bilbao
+  Second named: FC St. Pauli
+  Their city: Hamburg
+-
+  First named: AS Livorno
+  City: Livorno
+  Second named: Rayo Vallecano
+  Their city: Madrid
+
+== Schedule ==
+meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
+R1: celtic-clapton athletic-stpauli livorno-rayo
+R2: athletic-celtic clapton-livorno stpauli-rayo
+R3: celtic-livorno rayo-athletic stpauli-clapton
+R4: rayo-celtic livorno-stpauli athletic-clapton
+R5: celtic-stpauli clapton-rayo athletic-livorno
