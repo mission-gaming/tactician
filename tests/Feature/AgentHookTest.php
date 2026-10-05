@@ -106,6 +106,9 @@ describe('agent hook', function () use ($root, $hook): void {
         'a PHP file under vendor/' => [$root . '/vendor/autoload.php'],
         'a PHP file that does not exist' => [$root . '/src/DoesNotExist.php'],
         'a relative path that does not exist' => ['src/DoesNotExist.php'],
+        // phpstan.neon excludes this file, so PHPStan fails with "No files
+        // found to analyse". That is not an error in the file.
+        'a PHP file that PHPStan is configured to skip' => [$root . '/tests/Pest.php'],
     ]);
 
     it('does nothing for input that is not a tool call', function (string $stdin) use ($hook): void {
@@ -148,6 +151,109 @@ describe('agent hook', function () use ($root, $hook): void {
             ->and($formatted)->toContain("return 'not an integer';")
             ->and($green)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => ''])
             ->and(is_dir($directory))->toBeFalse();
+    });
+
+    it('reports a file that does not parse', function () use ($root, $hook): void {
+        $directory = $root . '/tests/agent-hook-probe-' . bin2hex(random_bytes(6));
+        $file = $directory . '/Probe.php';
+        $source = "<?php\n\ndeclare(strict_types=1);\n\nfunction agentHookUnclosed(): int\n{\n    return 1;\n";
+
+        mkdir($directory);
+
+        try {
+            file_put_contents($file, $source);
+            $result = runAgentHook($hook, agentHookToolCall($file));
+            $after = (string) file_get_contents($file);
+        } finally {
+            agentHookRemoveDirectory($directory);
+        }
+
+        expect($result['exitCode'])->toBe(2)
+            ->and($result['stdout'])->toBe('')
+            ->and($result['stderr'])->toContain('Probe.php:')
+            ->and($result['stderr'])->toContain('Syntax error')
+            // PHP-CS-Fixer cannot format it, and leaves it as it was.
+            ->and($after)->toBe($source);
+    });
+
+    it('does not follow a symbolic link to a file outside the repository', function () use ($root, $hook): void {
+        // The target has a type error and needs formatting. If the hook
+        // followed the link, PHP-CS-Fixer would rewrite a file outside the
+        // repository and PHPStan would report it.
+        $suffix = bin2hex(random_bytes(6));
+        $outside = sys_get_temp_dir() . '/tactician-agent-hook-' . $suffix;
+        $directory = $root . '/tests/agent-hook-probe-' . $suffix;
+        $source = agentHookProbeSource('agentHookProbe' . $suffix, '"not an integer"');
+
+        mkdir($outside);
+        mkdir($directory);
+
+        try {
+            file_put_contents($outside . '/Target.php', $source);
+            symlink($outside . '/Target.php', $directory . '/Link.php');
+
+            $result = runAgentHook($hook, agentHookToolCall($directory . '/Link.php'));
+            $after = (string) file_get_contents($outside . '/Target.php');
+        } finally {
+            agentHookRemoveDirectory($directory);
+            agentHookRemoveDirectory($outside);
+        }
+
+        expect($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => ''])
+            ->and($after)->toBe($source);
+    });
+
+    it('does not follow a symbolic link to a directory outside the repository', function () use ($root, $hook): void {
+        $suffix = bin2hex(random_bytes(6));
+        $outside = sys_get_temp_dir() . '/tactician-agent-hook-' . $suffix;
+        $link = $root . '/tests/agent-hook-probe-' . $suffix;
+        $source = agentHookProbeSource('agentHookProbe' . $suffix, '"not an integer"');
+
+        mkdir($outside);
+
+        try {
+            file_put_contents($outside . '/Probe.php', $source);
+            symlink($outside, $link);
+
+            $result = runAgentHook($hook, agentHookToolCall($link . '/Probe.php'));
+            $after = (string) file_get_contents($outside . '/Probe.php');
+        } finally {
+            // The link itself, not the directory behind it.
+            unlink($link);
+            agentHookRemoveDirectory($outside);
+        }
+
+        expect($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => ''])
+            ->and($after)->toBe($source);
+    });
+
+    it('treats the file path as data, never as shell text', function () use ($root, $hook): void {
+        // A file name made of shell syntax. If any expansion in the hook
+        // were unquoted or evaluated, one of the markers would be created.
+        $suffix = bin2hex(random_bytes(6));
+        $directory = $root . '/tests/agent-hook-probe-' . $suffix;
+        $marker = 'agent-hook-marker-' . $suffix;
+        $file = $directory . '/a $(touch ' . $marker . ') `touch ' . $marker . '` ; touch ' . $marker . ' #.php';
+
+        mkdir($directory);
+
+        try {
+            file_put_contents($file, agentHookProbeSource('agentHookProbe' . $suffix, '1'));
+            $result = runAgentHook($hook, agentHookToolCall($file));
+            $created = array_filter(
+                [$root . '/' . $marker, $directory . '/' . $marker, getcwd() . '/' . $marker],
+                file_exists(...)
+            );
+        } finally {
+            agentHookRemoveDirectory($directory);
+
+            if (is_file($root . '/' . $marker)) {
+                unlink($root . '/' . $marker);
+            }
+        }
+
+        expect($created)->toBe([])
+            ->and($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => '']);
     });
 
     it('does nothing where the tools are not installed', function () use ($hook): void {
