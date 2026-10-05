@@ -26,12 +26,28 @@ generated output for a fixed input and seed is identical.
   schedules, bracket pairings, repack assignments, and the JSON wire shapes
   against text fixtures in `tests/Fixtures/golden/`, captured from 0.2.0. The
   development-only `composer golden-update` script regenerates them.
+- Optional, tracked settings in `.claude/` for contributors who use an AI
+  coding agent: a hook that formats and analyses each PHP file the agent edits
+  (`tests/Feature/AgentHookTest.php` covers it), and `verify` and `release`
+  commands. The directory is not part of the installed package.
 
 ### Changed
 
 - The repack scenario test fixture is now a synthetic instance.
 - The CI workflow runs with least-privilege permissions and pinned actions, and
   Dependabot keeps the actions up to date.
+- `AGENTS.md` is now the single guide for contributors and AI coding agents,
+  corrected against the code. `docs/ROADMAP.md` marks every phase as shipped,
+  lists schedule repacking, and gains sections for known limitations and
+  deferred work.
+
+### Removed
+
+- The editor-specific agent rule files and the session-notes directory at the
+  repository root. Their decisions that still hold are now in `AGENTS.md`,
+  `docs/ROADMAP.md`, and two decision records in the new `docs/adr/`; the
+  statements that no longer matched the code are gone. None of these files
+  was part of the installed package.
 
 ## [0.2.0] - 2026-08-11
 
