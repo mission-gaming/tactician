@@ -1,9 +1,9 @@
 # Design note: Schedule Repacking
 
-**Status: IMPLEMENTED** — built from an external brief (v2, the revision with an empty pinned set on
-the reference instance). This note doubles as the decisions log for the
-overnight implementation run; every judgement call made without the
-maintainer awake is recorded here.
+**Status: IMPLEMENTED** — built from an external brief (v2, the revision
+with an empty pinned set on the reference instance). This note doubles as
+the decisions log for the overnight implementation run; every judgement
+call made without the maintainer awake is recorded here.
 
 ## Position
 
@@ -101,13 +101,15 @@ exists as a convenience.
     facts about the returned schedule, not solver intentions. Double-booking
     is audited too even though the algorithm cannot produce it — the brief
     calls it "should be unreachable", and the audit is the proof.
-13. **Fixture placement**: `repack-scenario.json` lives in `tests/Fixtures/` as a
-    synthetic instance with the brief's structure (brief §9: fixture built
-    from the file, tables must not drift). The regression test derives both
-    the clean reference run
-    and the mis-pinned variant (pins built from `evacuatedDefaultedEvents`)
-    from that one file. Slot concurrency for the fixture grid is 7 (14
-    participants ⇒ 7 simultaneous events).
+13. **Fixture placement**: `repack-scenario.json` lives in
+    `tests/Fixtures/` as a synthetic instance with the brief's structure
+    (brief §9: fixture built from the file, tables must not drift). The
+    regression test derives both the clean reference run and the
+    mis-pinned variant (pins built from `evacuatedDefaultedEvents`) from
+    that one file, and pins the fixture's own tables (counts, loads,
+    labels, the mis-pinned arithmetic) so a hand edit cannot drift them
+    silently. Slot concurrency for the fixture grid is 7 (14 participants
+    ⇒ 7 simultaneous events).
 14. **`RepackViolationsException`** (new, extends `SchedulingException`)
     carries the full `RepackOutcome` so opting into throw-on-violations
     loses nothing.
