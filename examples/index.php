@@ -115,7 +115,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
                     </a>
                     <a href="12-performance-patterns.php" class="block p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all">
                         <h4 class="font-semibold text-gray-800 mb-2">Performance Patterns</h4>
-                        <p class="text-sm text-gray-600 mb-3">Memory-efficient iteration for large tournaments</p>
+                        <p class="text-sm text-gray-600 mb-3">Generation timings and iteration patterns for large tournaments</p>
                         <span class="inline-block px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">Advanced</span>
                     </a>
                 </div>

@@ -72,3 +72,52 @@ it('pins only examples that exist and print plain text', function (string $examp
     expect($pinned)->not->toBe('');
     expect($pinned)->not->toContain('<html');
 })->with(GoldenCases::PLAIN_TEXT_EXAMPLES);
+
+// A Schedule holds all of its events in memory, as an array: it is iterable
+// and countable, and nothing is loaded lazily. The examples and the documents
+// once said otherwise ("memory-efficient iteration", "count without loading"),
+// which sent readers after a saving that does not exist. The phrases below
+// are the ones those claims were made in; none may come back. The changelog
+// and the memory bank are left out: they describe the old claim in order to
+// record its removal.
+it('does not claim that reading a schedule saves memory', function (string $file): void {
+    $text = (string) file_get_contents(dirname(__DIR__, 2) . '/' . $file);
+    Assert::assertNotSame('', $text, "{$file} is missing or empty");
+
+    foreach ([
+        '/memory[- ]efficien/i',
+        '/without (?:loading|storing)/i',
+        '/no memory load/i',
+        '/lazy[- ](?:load|evaluat)/i',
+        '/streaming-friendly/i',
+        '/generator-based/i',
+    ] as $claim) {
+        Assert::assertDoesNotMatchRegularExpression(
+            $claim,
+            $text,
+            "{$file} claims a memory saving a Schedule does not offer: its events are held in memory"
+        );
+    }
+})->with([
+    'README.md',
+    'docs/USAGE.md',
+    'docs/ARCHITECTURE.md',
+    'examples/README.md',
+    ...array_map(fn (string $script) => 'examples/' . basename($script), $exampleScripts),
+]);
+
+it('holds every event in memory, so iterating, counting and listing agree and repeat', function (): void {
+    $schedule = (new MissionGaming\Tactician\Scheduling\RoundRobinScheduler())->schedule(array_map(
+        fn (int $number) => new MissionGaming\Tactician\DTO\Participant("p{$number}", "Participant {$number}"),
+        range(1, 6)
+    ));
+
+    $first = iterator_to_array($schedule);
+    $second = iterator_to_array($schedule);
+
+    // The same event objects on every pass: nothing is produced on demand
+    expect($first)->toBe($schedule->getEvents())
+        ->and($second)->toBe($first)
+        ->and(count($schedule))->toBe(15)
+        ->and(array_merge(...array_values($schedule->getEventsByRound())))->toBe($first);
+});
