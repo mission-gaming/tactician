@@ -635,6 +635,37 @@ describe('agent settings', function () use ($root): void {
         'release follows the checklist' => ['release', 'docs/RELEASING.md'],
     ]);
 
+    it('lists the steps of the gate in the verify command in the order the gate runs them', function () use ($root): void {
+        $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        $command = (string) preg_replace('/\s+/', ' ', (string) file_get_contents($root . '/.claude/commands/verify.md'));
+        Assert::assertIsArray($composer);
+
+        // What the command calls each script of the gate.
+        $names = [
+            '@norm' => '`composer normalize --dry-run`',
+            '@phpstan' => 'PHPStan',
+            '@rector' => 'Rector (dry run)',
+            '@cs-fixer' => 'PHP-CS-Fixer (dry run)',
+            '@test' => 'the Pest suite',
+            '@examples' => 'the example smoke-run',
+        ];
+
+        $positions = [];
+
+        foreach ($composer['scripts']['ci'] as $script) {
+            Assert::assertArrayHasKey($script, $names, "The gate runs `{$script}`, which the verify command does not list.");
+            $position = strpos($command, $names[$script]);
+            Assert::assertNotFalse($position, "The verify command does not mention {$names[$script]}.");
+            $positions[] = $position;
+        }
+
+        $sorted = $positions;
+        sort($sorted);
+
+        expect($positions)->toBe($sorted)
+            ->and(count($positions))->toBe(count($names));
+    });
+
     it('makes the release command wait for confirmation before the tag, the push and the release', function () use ($root): void {
         $command = (string) preg_replace('/\s+/', ' ', (string) file_get_contents($root . '/.claude/commands/release.md'));
 
