@@ -34,6 +34,32 @@ jobs:
             - '!.clinerules'
             - '!LICENSE'
 
+  # Fails when a tracked file contains a term from the maintainers' restricted
+  # list (kept as a repository secret, so it is skipped on pull requests from
+  # forks). Only file names are printed, never the matched text.
+  restricted-terms:
+    runs-on: ubuntu-latest
+    name: Restricted terms
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check tracked files for restricted terms
+      env:
+        RESTRICTED_TERMS: ${{ secrets.RESTRICTED_TERMS }}
+      run: |
+        if [ -z "$RESTRICTED_TERMS" ]; then
+          echo "::notice::No restricted terms configured; skipping."
+          exit 0
+        fi
+        files=$(git grep -l -I -i -E -e "$RESTRICTED_TERMS" -- . || true)
+        if [ -n "$files" ]; then
+          echo "$files" | while read -r file; do
+            echo "::error file=$file::Restricted term found in $file"
+          done
+          exit 1
+        fi
+
   test:
     runs-on: ubuntu-latest
     needs: changes

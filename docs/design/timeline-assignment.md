@@ -57,7 +57,7 @@ open. Settled decisions beyond the sketch:
 ## The question
 
 Should Tactician assign dates and times to events, or should that remain the
-consuming application's job? Today (e.g. in Metronome) the application
+consuming application's job? Today, in a typical consumer, the application
 assigns one datetime per round from competition config, so every participant
 plays each round's fixtures simultaneously. A desired future capability is
 *staggered* fixture times within a round.
@@ -86,7 +86,7 @@ library for three reasons:
    both for the price of one, instead of the application growing a second,
    parallel scheduler for the staggered case.
 3. **Every consumer rebuilds it otherwise.** The application layer's version
-   is inevitably entangled with its config and persistence (as Metronome's
+   is inevitably entangled with its config and persistence (as a typical consumer's
    is), so nothing is reusable and nothing is property-tested.
 
 **Policy (the application)** — everything that decides *which* slots exist
@@ -150,7 +150,7 @@ timeline; any coordination between them (shared venues, avoiding clashes)
 is application policy in the first cut. ❓ Cross-stage clash validation
 could become a library capability later, but only if a consumer needs it.
 
-## What this means for a consuming application (Metronome as the example)
+## What this means for a consuming application
 
 Nothing changes until Phase 4 ships: the app's date scheduler keeps
 assigning one datetime per round. When Phase 4 lands, the integration is a
@@ -165,7 +165,7 @@ they are today.
 
 **One prerequisite worth flagging early**: staggered times are incompatible
 with inferring round membership from kickoff dates. A platform that
-persists only a `startDate` per fixture (as Metronome does today) can
+persists only a `startDate` per fixture (as some consumers do today) can
 currently reconstruct rounds because every fixture in a round shares one
 datetime — the moment kickoffs stagger, that inference breaks. Any platform
 wanting staggered times must persist round identity explicitly (a round

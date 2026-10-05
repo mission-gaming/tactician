@@ -4,7 +4,7 @@
 
 Tactician addresses the complexity of tournament scheduling in competitive gaming and sports. Tournament organizers need reliable, deterministic algorithms to create fair, balanced schedules that follow sport-specific rules and constraints. Existing PHP solutions are either too simple (basic round-robin without constraints) or too complex (enterprise tournament management systems with unnecessary overhead).
 
-The library provides the algorithmic scheduling layer — pairing, progression, and standings — so developers can build tournament applications on solid mathematical foundations. It was created by Mission Gaming for the Metronome tournament platform (see docs/BACKGROUND.md).
+The library provides the algorithmic scheduling layer — pairing, progression, and standings — so developers can build tournament applications on solid mathematical foundations. It was created by Mission Gaming for its own tournament platform (see docs/BACKGROUND.md).
 
 ## Problems It Solves
 
