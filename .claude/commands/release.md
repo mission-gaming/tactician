@@ -1,6 +1,6 @@
 ---
 description: Walk the release checklist in docs/RELEASING.md step by step, stopping before any tag is created or pushed
-argument-hint: "[version, for example 0.2.1]"
+argument-hint: "[version]"
 ---
 
 Walk the release checklist for version `$ARGUMENTS`. If no version was given,

@@ -300,13 +300,40 @@ describe('agent settings', function () use ($root): void {
         expect(is_file($root . '/' . AGENT_HOOK_SCRIPT))->toBeTrue();
     });
 
-    it('allows Composer and vendor/bin commands and nothing else', function () use ($root): void {
+    it('allows the named Composer scripts and vendor/bin commands, and nothing else', function () use ($root): void {
         $settings = json_decode((string) file_get_contents($root . '/.claude/settings.json'), true, flags: JSON_THROW_ON_ERROR);
+        $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
         Assert::assertIsArray($settings);
+        Assert::assertIsArray($composer);
 
-        expect($settings['permissions'] ?? null)->toBe([
-            'allow' => ['Bash(composer:*)', 'Bash(vendor/bin/*:*)'],
-        ]);
+        expect(array_keys($settings['permissions'] ?? []))->toBe(['allow']);
+
+        $allowed = $settings['permissions']['allow'];
+        $scripts = [];
+
+        foreach ($allowed as $rule) {
+            if ($rule === 'Bash(vendor/bin/*:*)') {
+                continue;
+            }
+
+            // Anything else must be one Composer script, named in full and
+            // with no wildcard. `Bash(composer:*)` would also allow
+            // `composer require` and `composer exec`, which install packages
+            // and run arbitrary commands.
+            if (preg_match('/^Bash\(composer ([a-z][a-z-]*)\)$/', $rule, $match) !== 1) {
+                Assert::fail("The allow list holds `{$rule}`, which is neither one Composer script nor vendor/bin.");
+            }
+
+            Assert::assertArrayHasKey($match[1], $composer['scripts'], "The allow list names `composer {$match[1]}`, which composer.json does not define.");
+            $scripts[] = $match[1];
+        }
+
+        // The gate and each of its checks, so that the agent is not asked for them.
+        expect($allowed)->toContain('Bash(vendor/bin/*:*)')
+            ->and($scripts)->toContain('ci', ...array_map(fn (string $script): string => ltrim($script, '@'), $composer['scripts']['ci']))
+            // Regenerating the golden fixtures changes what the tests
+            // compare against; the agent has to ask first.
+            ->and($scripts)->not->toContain('golden-update');
     });
 
     it('ships the verify and release commands', function (string $command, string $mustMention) use ($root): void {
@@ -318,4 +345,17 @@ describe('agent settings', function () use ($root): void {
         'verify runs the gate' => ['verify', 'composer ci'],
         'release follows the checklist' => ['release', 'docs/RELEASING.md'],
     ]);
+
+    it('makes the release command wait for confirmation before the tag, the push and the release', function () use ($root): void {
+        $command = (string) preg_replace('/\s+/', ' ', (string) file_get_contents($root . '/.claude/commands/release.md'));
+
+        expect($command)->toContain('Do not run `git tag`, do not push a tag, and do not create a GitHub release until the maintainer has confirmed')
+            ->and($command)->toContain('Ask again before the push, and again before creating the release');
+    });
+
+    it('names no version in the release command', function () use ($root): void {
+        // The version comes from the maintainer. An example number in the
+        // command would be out of date after the next release.
+        expect((string) file_get_contents($root . '/.claude/commands/release.md'))->not->toMatch('/\d+\.\d+/');
+    });
 });
