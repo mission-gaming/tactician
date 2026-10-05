@@ -1,0 +1,4 @@
+# The maintainers own every path, so GitHub requests a review from them on
+# each pull request. The last matching pattern wins: add narrower patterns
+# below this one.
+* @jamiehollern @CharlieWoo01
