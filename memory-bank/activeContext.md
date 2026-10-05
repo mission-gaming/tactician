@@ -30,6 +30,7 @@
 - Constraints are hard filters with loud, diagnostic failure; soft/preference constraints are intentionally unsupported.
 - The greedy generator retries bounded rotated orderings when constraints reject a schedule; configurations that fail every rotation throw `IncompleteScheduleException` even when satisfiable in principle.
 - `NoRepeatPairings` scopes to the current leg by default (`acrossLegs: true` for the strict variant) — multi-leg tournaments repeat pairings per leg by design.
+- Generated output is pinned by golden fixtures captured from `v0.2.0` (`tests/Fixtures/golden/`): a golden diff is an output change that needs a changelog entry, never a fixture to regenerate quietly (`AGENTS.md`, `composer golden-update`).
 
 ## Learnings and Project Insights
 - **Documentation and examples rot into bugs here.** Three examples shipped fatal errors from stale APIs, and a wrong constructor sample in ARCHITECTURE.md matched an actual shipped bug. Countermeasures now in place: `tests/Feature/ExamplesTest.php` auto-validates every example, `composer ci` smoke-runs them, and the rule (AGENTS.md) is to execute every doc snippet before committing it.
