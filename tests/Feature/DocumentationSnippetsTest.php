@@ -778,6 +778,47 @@ describe('Documentation snippet harness', function (): void {
         ],
     ]);
 
+    // Stopping the wait is not enough: a process left running would burn a
+    // core for the rest of the suite, and on a developer's machine after it
+    it('leaves no process behind when it stops a block', function (): void {
+        if (!function_exists('posix_kill')) {
+            // The harness limitation: without the posix extension (Windows) there is no way to ask
+            // whether a process id is still alive
+            Assert::markTestSkipped('Needs the posix extension to ask whether the stopped process is gone.');
+        }
+
+        $pidFile = tempnam(sys_get_temp_dir(), 'snippet-pid');
+        Assert::assertIsString($pidFile);
+
+        try {
+            $failure = snippetSampleFailure(
+                "```php\nfile_put_contents(" . var_export($pidFile, true) . ", (string) getmypid());\nwhile (true) {\n}\n```\n",
+                // Long enough for PHP to start and write its id on a slow machine
+                3.0
+            );
+            $pid = (int) file_get_contents($pidFile);
+        } finally {
+            unlink($pidFile);
+        }
+
+        expect($failure)->toContain('was stopped')
+            ->and($pid)->toBeGreaterThan(0)
+            // Signal 0 sends nothing; it reports whether the process exists
+            ->and(posix_kill($pid, 0))->toBeFalse();
+    });
+
+    // What a block wrote before the limit must not be read as its result:
+    // a THROWS block that reported its exception and then hung proved nothing
+    it('fails a stopped block whatever it printed or threw first', function (string $markdown): void {
+        expect(snippetSampleFailure($markdown, 0.5))->toContain('did not finish within 0.5 second(s) and was stopped');
+    })->with([
+        'output, then a loop' => ["```php\necho \"all done\\n\";\nwhile (true) {\n}\n```\n"],
+        'a loop inside a shutdown function' => ["```php\nregister_shutdown_function(static function (): void {\n    while (true) {\n    }\n});\n```\n"],
+        'a loop inside a finally' => [
+            "<!-- snippet: throws=\"RuntimeException\" -->\n```php\ntry {\n    throw new RuntimeException('x');\n} finally {\n    while (true) {\n    }\n}\n```\n",
+        ],
+    ]);
+
     it('does not stop a block that finishes inside the limit', function (): void {
         expect(snippetSampleFailure("```php\nusleep(200_000);\necho 'done';\n```\n", 5.0))->toBeNull();
     });
