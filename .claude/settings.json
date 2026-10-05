@@ -1,0 +1,31 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(composer ci)",
+            "Bash(composer test)",
+            "Bash(composer phpstan)",
+            "Bash(composer rector)",
+            "Bash(composer cs-fixer)",
+            "Bash(composer norm)",
+            "Bash(composer examples)",
+            "Bash(composer cs-fixer-fix)",
+            "Bash(composer rector-fix)",
+            "Bash(composer norm-fix)",
+            "Bash(vendor/bin/*:*)"
+        ]
+    },
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-and-analyse.sh\"",
+                        "timeout": 30
+                    }
+                ]
+            }
+        ]
+    }
+}

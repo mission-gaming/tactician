@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\MetadataConstraint;

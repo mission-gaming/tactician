@@ -1,0 +1,7 @@
+# Blank issues stay enabled: a question or a documentation problem fits
+# neither form, and a small library should not turn those away.
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/mission-gaming/tactician/security/advisories/new
+    about: Report a vulnerability privately. Do not open a public issue for it.

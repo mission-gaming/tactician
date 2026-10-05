@@ -1,0 +1,9 @@
+=== First sample vs best of 25 ===
+
+Metric                    first         best
+Role Balance              2.000        0.667
+Role Streaks              2.000        1.167
+Pairing Spacing           1.200        2.133
+Weighted score           11.200        6.467
+
+Best sample chosen from 25 generated candidates (0 failed).

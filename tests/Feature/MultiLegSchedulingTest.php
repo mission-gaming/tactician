@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
