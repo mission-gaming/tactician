@@ -6,7 +6,7 @@ are in the [changelog](../CHANGELOG.md). For what comes next, see
 [What is next](#what-is-next).
 
 ## Phase 1: Round Robin Core ✅
-- Round-robin scheduler with circle method algorithm and balanced home/away roles (round-parity alternation)
+- Round-robin scheduler with circle method algorithm and home/away roles that alternate by round (the split is bounded, not equal: see [Known limitations](#known-limitations))
 - Comprehensive DTO system with modern PHP features
 - Flexible constraint system with builder pattern
 - Advanced constraint types (rest periods, seed protection, consecutive roles, role balance, metadata-based)

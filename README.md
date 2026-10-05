@@ -7,19 +7,84 @@
 
 ## Overview
 
-A modern PHP library for generating structured schedules between participants. Ideal for tournaments (round robin, Swiss, pools) but flexible enough for any scenario where entities need to be paired or grouped into events.
+A PHP library that generates tournament schedules: who meets whom, in which
+round, and, when you ask for it, at what time. It covers round robin, Swiss,
+single and double elimination and group stages, and it repairs a schedule that
+has fallen behind. It has no production dependencies.
 
-**Key Features:**
+## Features
 
-- 🏆 **Tournament Formats**: Round robin (single & multi-leg), Swiss pairing, single & double elimination, group stages
-- 📊 **Results & Standings**: Pluggable ranking strategies, league tables, and tiebreakers (wins, Buchholz, Sonneborn–Berger)
-- 🔧 **Flexible Constraints**: Built-in and custom predicate-based constraint system
-- ✅ **Schedule Validation**: Comprehensive validation prevents incomplete schedules
-- 💾 **Serialization**: JSON round-tripping for schedules and participants
-- 🎯 **Modern PHP**: PHP 8.3+ with readonly classes and strict typing
-- 🧪 **Test-Driven**: Comprehensive test suite with Pest framework
-- 📐 **Mathematical Accuracy**: Circle method implementation for round-robin
-- 🛡️ **Production Ready**: PHPStan level 8 compliance with zero errors
+Each feature links to its section of the [usage guide](docs/USAGE.md).
+
+**Formats**
+
+- **Round robin**, single or multi-leg, by the circle method. Roles (first-named
+  and second-named, read as home and away) alternate by round; the split is
+  bounded, not equal. Legs after the first are mirrored, repeated or shuffled,
+  and an odd field gets a bye in every round.
+  [Basic usage](docs/USAGE.md#basic-usage),
+  [multi-leg tournaments](docs/USAGE.md#multi-leg-tournaments)
+- **Swiss**: each round is paired from the standings so far (Monrad pairing),
+  avoiding repeat pairings, rotating byes, balancing roles, and allowing
+  withdrawals. [Swiss tournaments](docs/USAGE.md#swiss-tournaments)
+- **Single and double elimination**: fold seeding by list position, byes, round
+  labels, one- or two-legged ties; re-seeding each round for single
+  elimination, and an optional grand-final reset for double elimination.
+  [Elimination brackets](docs/USAGE.md#elimination-brackets)
+- **Group stages and multi-stage tournaments**, composed from serpentine pools
+  and progression selectors, with the structure validated before any event
+  exists. [Pools, progression, and multi-stage tournaments](docs/USAGE.md#pools-progression-and-multi-stage-tournaments)
+
+**Rules and quality**
+
+- **Constraints**: seed protection, a minimum number of rounds between repeat
+  meetings, limits on consecutive roles, role balance, rules over participant
+  metadata, and your own predicates. Constraints are hard filters.
+  [Constraint system](docs/USAGE.md#constraint-system)
+- **Loud failure**: a round robin that cannot be completed under its
+  constraints throws, with a report that names the constraint and the pairings
+  it blocks; a partial schedule is never returned. The scheduler first retries
+  a bounded number of rotated participant orders, and an opt-in backtracking
+  search covers the round layouts those cannot reach.
+  [Backtracking generation](docs/USAGE.md#backtracking-generation),
+  [error handling](docs/USAGE.md#error-handling)
+- **Schedule quality**: lower-is-better metrics, a weighted scorer, and an
+  optimizer that keeps the best of N seeded samples.
+  [Schedule quality and optimization](docs/USAGE.md#schedule-quality-and-optimization)
+
+**Results, time and repair**
+
+- **Results and standings**: a ranking strategy (3/1/0 and 1/½/0 presets), then
+  a chain of tiebreakers (wins, Buchholz, Sonneborn–Berger).
+  [Results and standings](docs/USAGE.md#results-and-standings)
+- **Timeline assignment**: kickoff times and named resources for every event
+  from a declarative slot pattern, with minimum-rest and blackout rules.
+  Kickoffs are emitted in UTC.
+  [Timeline assignment](docs/USAGE.md#timeline-assignment)
+- **Schedule repacking**: existing events, some of them pinned, placed onto an
+  irregular grid of sessions so that nobody is double-booked and each
+  participant plays back to back within a session. What cannot be satisfied
+  comes back as itemised violations instead of an exception.
+  [Schedule repacking](docs/USAGE.md#schedule-repacking)
+
+**Foundations**
+
+- **Deterministic**: the library never reads the clock and uses no global
+  random function. Randomness comes from a `Random\Randomizer` you pass in, and
+  a seeded one gives the same output for the same input (`ShuffledLegStrategy`
+  creates an unseeded one when you give it none).
+  [Deterministic randomization](docs/USAGE.md#deterministic-randomization)
+- **Serialization**: `Schedule`, `StageState` and `ScheduledSchedule`
+  round-trip JSON, and the value objects convert to and from arrays.
+  [Serialization](docs/USAGE.md#serialization)
+- **Schedules are plain collections**: a schedule holds its events in memory
+  and is iterable, countable, and groupable by round.
+- **PHP 8.3+, strictly typed**: `strict_types` throughout, immutable value
+  objects, and PHPStan level 8 with zero errors. The library is at 0.x: see
+  [Versioning and stability](#versioning-and-stability) for which namespaces
+  are stable.
+
+Runnable examples of all of the above are in [`examples/`](examples/README.md).
 
 ## Installation
 
@@ -120,21 +185,6 @@ compose from pools and progression selectors (`PoolDistributor`,
 [usage guide](docs/USAGE.md). Stage state and schedules serialize to JSON
 (`StageState::toJson()`, `$schedule->toJson()`), so platforms persist
 between rounds instead of re-deriving.
-
-## Key Features
-
-- **🏆 Round Robin Tournaments**: Circle method algorithm with balanced home/away roles
-- **♟️ Swiss Pairing**: Standings-aware Monrad pairing with repeat avoidance, bye rotation, home/away balancing, and withdrawal handling
-- **🥊 Elimination Brackets**: Single and double elimination with positional fold seeding, byes, round labels, fixed or re-seeded paths, one- or two-legged ties, and optional grand-final reset
-- **🏟️ Pools & Progression**: Serpentine-seeded pools, per-pool standings, and progression selectors with ahead-of-time composition validation
-- **📊 Results & Standings**: Pluggable ranking strategies (win/draw/loss presets included) with wins, Buchholz, and Sonneborn–Berger tiebreakers
-- **🔧 Flexible Constraints**: Built-in constraints (rest periods, seed protection, role limits, role balance, metadata rules) plus custom predicates
-- **🏠 Multi-Leg Support**: Home/away leagues with mirrored, repeated, or shuffled strategies and first-class byes
-- **✅ Schedule Validation**: Mathematical validation prevents incomplete tournaments, with automatic retries over alternative orderings when constraints reject a schedule
-- **💾 Serialization**: JSON round-tripping for schedules, events, and participants
-- **🛡️ Production Ready**: PHPStan level 8 compliance, comprehensive test coverage
-- **🔁 Iterable Schedules**: A schedule holds its events in memory and is iterable, countable, and groupable by round
-- **🎯 Deterministic**: Seeded randomization for reproducible results
 
 ## Versioning and stability
 
