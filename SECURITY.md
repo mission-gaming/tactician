@@ -31,8 +31,8 @@ A public report discloses the problem before a fix exists.
 ## What to expect
 
 - The report is visible only to you and the maintainers.
-- A maintainer acknowledges the report, normally within seven days, and tells
-  you whether it is accepted as a vulnerability.
+- A maintainer acknowledges the report as soon as they can, and tells you
+  whether it is accepted as a vulnerability.
 - An accepted report is fixed in private. The fix ships as a patch release of
   the latest 0.x minor line, with a changelog entry and a published security
   advisory that credits you unless you ask not to be named.
