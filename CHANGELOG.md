@@ -41,28 +41,30 @@ generated output for a fixed input and seed is identical.
 - Governance files: a security policy (`SECURITY.md`), code owners, a pull
   request template with a compatibility section, and issue forms for bug
   reports and feature requests.
-
 - A weekly scheduled workflow that runs the gate against freshly resolved
   dependencies on PHP 8.3, 8.4 and 8.5, and the suite against the next PHP
   version (allowed to fail). It does not run on pull requests.
-- A `composer security-audit` script, which CI runs on every pull request. It
-  fails on a security advisory and reports an abandoned package without
-  failing. It is not part of `composer ci`, which needs no network.
+- A `composer security-audit` script, which audits the dependencies in
+  `composer.lock`. CI runs it on every pull request and push, in a
+  `Dependency audit` job of its own that is not a required check. It fails on
+  a security advisory and reports an abandoned package without failing. It is
+  not part of `composer ci`, which needs no network.
 - A `codecov.yml` with a patch-coverage target and a project threshold.
 - `homepage` and `support` links in `composer.json`.
 
 ### Changed
 
 - The CI workflow cancels a superseded run for a pull request (never a run on
-  `main`), skips the test and coverage jobs while a pull request is a draft
-  and runs them when it is marked as ready, loads a coverage driver in the
+  `main`), loads a coverage driver in the
   coverage job only, requests only the PHP extensions the tools need, caches
   Composer's downloads instead of `vendor/`, and can be started by hand.
 - A coverage upload that cannot authenticate (a pull request from a fork or
   from Dependabot) no longer fails the `Coverage` check.
 - `composer test-coverage` sets `XDEBUG_MODE=coverage` itself, and
   `composer examples` runs through a PHP script instead of a POSIX shell loop,
-  so both work without a prepared environment.
+  so both work without a prepared environment. `composer examples` now also
+  fails an example that emits a warning, a notice or a deprecation, and prints
+  the output of the example that failed.
 - `docs/CONTRIBUTING.md` describes the current checks and rules, and states
   one branch and commit convention.
 - The repack scenario test fixture is now a synthetic instance.

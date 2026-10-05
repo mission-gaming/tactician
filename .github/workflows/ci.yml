@@ -1,15 +1,14 @@
 name: CI
 
-# `ready_for_review` is listed because the test and coverage jobs skip draft
-# pull requests: marking a draft as ready pushes no commit, so without this
-# type nothing would run the jobs that were skipped. `workflow_dispatch` lets
-# a maintainer start a run by hand, on any branch.
+# The pull request trigger keeps GitHub's default activity types (opened,
+# synchronize, reopened), and a draft pull request runs every job like any
+# other. `workflow_dispatch` lets a maintainer start a run by hand, on any
+# branch.
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-    types: [ opened, synchronize, reopened, ready_for_review ]
   workflow_dispatch:
 
 # Least privilege: no job needs more than read access to the repository.
@@ -51,19 +50,12 @@ jobs:
   # (tests/Feature/DocumentationSnippetsTest.php) and checks other Markdown
   # files against the repository, so a documentation-only change can break
   # it. Branch protection waits for the checks these jobs report (PHP 8.3,
-  # PHP 8.4, PHP 8.5 and Coverage).
-  #
-  # Their one condition skips a draft pull request, which cannot be merged and
-  # so needs no result yet. It is a job-level condition on purpose: the
-  # workflow still starts, and marking the draft as ready starts a run in
-  # which nothing is skipped and all four checks report. While the pull
-  # request is a draft, the skipped Coverage job reports as passed and the
-  # three PHP checks are not reported at all, because a job-level condition is
-  # evaluated before the matrix is expanded.
-  # tests/Feature/CiConfigurationTest.php pins the condition and refuses any
-  # other.
+  # PHP 8.4, PHP 8.5 and Coverage), so they must never be skipped by a
+  # condition, a draft pull request included: GitHub reports a skipped job as
+  # passed, and a required check is satisfied by that result. A check that
+  # passed without running must never be what lets a pull request merge.
+  # tests/Feature/CiConfigurationTest.php pins that.
   test:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     strategy:
@@ -108,17 +100,10 @@ jobs:
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
 
-    # Not part of `composer ci`: the audit asks Packagist for advisories, so
-    # it needs the network and its result can change without a commit. An
-    # abandoned package is reported in the log and does not fail the job.
-    - name: Audit dependencies for known vulnerabilities
-      run: composer security-audit
-
     - name: Run CI suite
       run: composer ci
 
   coverage:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     name: Coverage
 
@@ -163,3 +148,28 @@ jobs:
         # turn it red.
         fail_ci_if_error: ${{ secrets.CODECOV_TOKEN != '' }}
         flags: php
+
+  # Known vulnerabilities in the locked dependencies. A job of its own, under
+  # a name that is not a required check: an advisory can be published against
+  # a development tool at any time, and it must be seen on every pull request
+  # and push without blocking every merge until the tool is updated. For the
+  # same reason it is not part of `composer ci`: it asks Packagist for
+  # advisories, so it needs the network and its result can change without a
+  # commit. It reads composer.lock, so nothing is installed. An abandoned
+  # package is reported in the log and does not fail the job; the weekly
+  # workflow is where that fails.
+  audit:
+    runs-on: ubuntu-latest
+    name: Dependency audit
+
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      with:
+        php-version: '8.4'
+        coverage: none
+
+    - name: Audit the locked dependencies for known vulnerabilities
+      run: composer security-audit

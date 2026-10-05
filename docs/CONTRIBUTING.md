@@ -22,9 +22,8 @@ composer install
 ## The gate
 
 `composer ci` is the gate: it must exit 0 before every commit. It needs no
-network. CI runs it on every pull request, on PHP 8.3, 8.4, and 8.5. A draft
-pull request is the exception: its test and coverage jobs are skipped, and
-they run when you mark it as ready for review.
+network. CI runs it on every pull request, a draft one included, on PHP 8.3,
+8.4, and 8.5.
 
 ```bash
 # Run every check
@@ -51,8 +50,13 @@ network and its result can change without a commit:
 composer security-audit   # Known vulnerabilities in the locked dependencies
 ```
 
-It fails on a security advisory. It reports an abandoned package without
-failing, because no change to the pull request can repair that.
+It reads `composer.lock`, so it works before `composer install`. It fails on a
+security advisory. It reports an abandoned package without failing, because no
+change to the pull request can repair that. In CI it is the `Dependency audit`
+job, which runs on every pull request and every push to `main`. That job is
+not a required check: a new advisory against a development tool shows as a
+failed job on every pull request, and does not stop the others from merging
+while the tool is updated.
 
 A weekly scheduled workflow (`.github/workflows/scheduled.yml`) runs the gate
 against dependencies resolved afresh, without the lock file, and the test

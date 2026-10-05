@@ -79,7 +79,7 @@
         "phpstan": "phpstan analyse --memory-limit=512M",
         "rector": "rector process --dry-run",
         "rector-fix": "rector process",
-        "security-audit": "@composer audit --abandoned=report",
+        "security-audit": "@composer audit --locked --abandoned=report",
         "test": "pest",
         "test-coverage": [
             "@putenv XDEBUG_MODE=coverage",
