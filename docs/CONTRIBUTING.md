@@ -21,8 +21,9 @@ composer install
 
 ## The gate
 
-`composer ci` is the gate: it must exit 0 before every commit, and CI runs it
-on every pull request.
+`composer ci` is the gate: it must exit 0 before every commit. CI runs it on
+every pull request that changes more than documentation, on PHP 8.3, 8.4, and
+8.5.
 
 ```bash
 # Run every check
@@ -48,8 +49,9 @@ composer cs-fixer-fix     # Fix code style
 # Run the test suite
 composer test
 
-# Run with coverage
-composer test-coverage
+# Run with coverage (needs a coverage driver: Xdebug with
+# XDEBUG_MODE=coverage, or PCOV)
+XDEBUG_MODE=coverage composer test-coverage
 
 # Run one test file
 vendor/bin/pest tests/Unit/Scheduling/RoundRobinSchedulerTest.php
