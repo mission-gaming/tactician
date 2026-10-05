@@ -14,7 +14,8 @@ has fallen behind. It has no production dependencies.
 
 ## Features
 
-Each feature links to its section of the [usage guide](docs/USAGE.md).
+Each feature links to its section of the [usage guide](docs/USAGE.md), except
+the last one, which is about the library as a whole.
 
 **Formats**
 
@@ -79,12 +80,15 @@ Each feature links to its section of the [usage guide](docs/USAGE.md).
   [Serialization](docs/USAGE.md#serialization)
 - **Schedules are plain collections**: a schedule holds its events in memory
   and is iterable, countable, and groupable by round.
+  [Iterating and counting](docs/USAGE.md#iterating-and-counting)
 - **PHP 8.3+, strictly typed**: `strict_types` throughout, immutable value
   objects, and PHPStan level 8 with zero errors. The library is at 0.x: see
   [Versioning and stability](#versioning-and-stability) for which namespaces
   are stable.
 
-Runnable examples of all of the above are in [`examples/`](examples/README.md).
+Runnable examples of most of the above are in [`examples/`](examples/README.md);
+the usage guide describes the rest (role constraints, Swiss withdrawals,
+two-legged ties and re-seeding).
 
 ## Installation
 
