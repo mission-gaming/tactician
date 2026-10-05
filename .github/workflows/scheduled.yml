@@ -1,0 +1,82 @@
+name: Scheduled
+
+# Early warning, not a gate. Once a week the suite runs against dependencies
+# resolved afresh (`composer update`, ignoring the lock file) and against the
+# next PHP version, so that breakage from a new tool release or a new PHP
+# shows up here before it reaches a contributor or a consumer.
+#
+# This workflow has no pull request trigger and none of its checks may be made
+# a required check: it runs on the default branch only, so a required check
+# from it would never report on a pull request.
+on:
+  schedule:
+    # Mondays at 05:23 UTC. Off the hour on purpose: scheduled runs are
+    # delayed most at the start of an hour.
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+# Least privilege: no job needs more than read access to the repository.
+permissions:
+  contents: read
+
+jobs:
+  unlocked:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        php-version: ['8.3', '8.4', '8.5']
+      fail-fast: false
+
+    name: Unlocked dependencies, PHP ${{ matrix.php-version }}
+
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      with:
+        php-version: ${{ matrix.php-version }}
+        extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
+        coverage: none
+
+    # `config.platform.php` in composer.json still applies, so the newest
+    # versions that support the PHP floor are chosen, on every PHP version.
+    - name: Resolve and install the newest allowed dependencies
+      run: composer update --prefer-dist --no-progress
+
+    # Stricter than the pull request audit: here an abandoned package fails
+    # the job, because this run is where a maintainer finds out about it.
+    - name: Audit dependencies for known vulnerabilities and abandonment
+      run: composer audit --abandoned=fail
+
+    - name: Run CI suite
+      run: composer ci
+
+  # The next PHP version, from its development branch. Allowed to fail: a
+  # failure is recorded on the job but does not fail the run. Only the suite
+  # and the examples run; the analysis and style tools do not claim to support
+  # an unreleased PHP.
+  next-php:
+    runs-on: ubuntu-latest
+    name: Next PHP (nightly, allowed to fail)
+    continue-on-error: true
+
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      with:
+        php-version: nightly
+        extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
+        coverage: none
+
+    - name: Resolve and install the newest allowed dependencies
+      run: composer update --prefer-dist --no-progress
+
+    - name: Test suite
+      run: composer test
+
+    - name: Example smoke-run
+      run: composer examples

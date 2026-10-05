@@ -1,14 +1,29 @@
 name: CI
 
+# `ready_for_review` is listed because the test and coverage jobs skip draft
+# pull requests: marking a draft as ready pushes no commit, so without this
+# type nothing would run the jobs that were skipped. `workflow_dispatch` lets
+# a maintainer start a run by hand, on any branch.
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+    types: [ opened, synchronize, reopened, ready_for_review ]
+  workflow_dispatch:
 
 # Least privilege: no job needs more than read access to the repository.
 permissions:
   contents: read
+
+# A newer run for the same pull request cancels the one in progress: only the
+# result for the latest commit is of use. Every other run (a push to main, a
+# manual run) gets a group of its own, so it is never cancelled and never
+# waits. One shared group for main would not be enough: a group holds a single
+# pending run, so a third push would replace the second one in the queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Fails when a tracked file, its path, or a symbolic link target contains a
@@ -36,9 +51,19 @@ jobs:
   # (tests/Feature/DocumentationSnippetsTest.php) and checks other Markdown
   # files against the repository, so a documentation-only change can break
   # it. Branch protection waits for the checks these jobs report (PHP 8.3,
-  # PHP 8.4, PHP 8.5 and Coverage), so they must never be skipped by a
-  # condition; tests/Feature/CiConfigurationTest.php pins that.
+  # PHP 8.4, PHP 8.5 and Coverage).
+  #
+  # Their one condition skips a draft pull request, which cannot be merged and
+  # so needs no result yet. It is a job-level condition on purpose: the
+  # workflow still starts, and marking the draft as ready starts a run in
+  # which nothing is skipped and all four checks report. While the pull
+  # request is a draft, the skipped Coverage job reports as passed and the
+  # three PHP checks are not reported at all, because a job-level condition is
+  # evaluated before the matrix is expanded.
+  # tests/Feature/CiConfigurationTest.php pins the condition and refuses any
+  # other.
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     strategy:
@@ -55,28 +80,45 @@ jobs:
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
       with:
         php-version: ${{ matrix.php-version }}
-        extensions: mbstring, xml, ctype, iconv, intl, pdo, dom, filter, gd, iconv, json, mbstring
-        coverage: xdebug
+        # What the development tools require (`composer check-platform-reqs`);
+        # the library itself requires no extension.
+        extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
+        # Only the coverage job needs a coverage driver.
+        coverage: none
 
     - name: Validate composer.json and composer.lock
       run: composer validate --strict
 
-    - name: Cache Composer packages
+    # Composer's download cache, not vendor/: `composer install` still builds
+    # vendor/ from the lock file, so a stale cache cannot change what is
+    # installed. The archives do not depend on the PHP version, so every job
+    # shares one key.
+    - name: Find the Composer download cache
       id: composer-cache
+      run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Composer downloads
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: vendor
-        key: ${{ runner.os }}-php-${{ matrix.php-version }}-${{ hashFiles('**/composer.lock') }}
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
         restore-keys: |
-          ${{ runner.os }}-php-${{ matrix.php-version }}-
+          ${{ runner.os }}-composer-
 
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
+
+    # Not part of `composer ci`: the audit asks Packagist for advisories, so
+    # it needs the network and its result can change without a commit. An
+    # abandoned package is reported in the log and does not fail the job.
+    - name: Audit dependencies for known vulnerabilities
+      run: composer security-audit
 
     - name: Run CI suite
       run: composer ci
 
   coverage:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     name: Coverage
 
@@ -87,23 +129,23 @@ jobs:
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
       with:
         php-version: '8.4'
-        extensions: mbstring, xml, ctype, iconv, intl, pdo, dom, filter, gd, iconv, json, mbstring
+        extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
         coverage: xdebug
 
-    - name: Cache Composer packages
+    - name: Find the Composer download cache
       id: composer-cache
+      run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Composer downloads
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: vendor
-        key: ${{ runner.os }}-php-8.4-${{ hashFiles('**/composer.lock') }}
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
         restore-keys: |
-          ${{ runner.os }}-php-8.4-
+          ${{ runner.os }}-composer-
 
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
-
-    - name: Prepare build directory
-      run: mkdir -p build
 
     - name: Run tests with coverage
       run: composer test-coverage
@@ -113,8 +155,11 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: build/clover.xml
-        # Dependabot-triggered runs cannot read Actions secrets, so the token
-        # is empty there and the upload may be rejected; that must not fail
-        # the dependency update's checks.
-        fail_ci_if_error: ${{ github.actor != 'dependabot[bot]' }}
+        # Runs for a pull request from a fork or from Dependabot receive no
+        # Actions secrets, so the token is empty there and the upload may be
+        # rejected. The upload is still attempted, but only a run that has the
+        # token fails when it does not go through: the Coverage check reports
+        # on the tests, and an upload that could not authenticate must not
+        # turn it red.
+        fail_ci_if_error: ${{ secrets.CODECOV_TOKEN != '' }}
         flags: php
