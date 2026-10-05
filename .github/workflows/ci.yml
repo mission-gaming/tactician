@@ -34,9 +34,13 @@ jobs:
             - '!.clinerules'
             - '!LICENSE'
 
-  # Fails when a tracked file contains a term from the maintainers' restricted
-  # list (kept as a repository secret, so it is skipped on pull requests from
-  # forks). Only file names are printed, never the matched text.
+  # Fails when a tracked file, its path, or a symbolic link target contains a
+  # term from the maintainers' restricted list. The list is a repository
+  # secret, so the check is skipped where secrets are withheld (pull requests
+  # from forks and from Dependabot). Only paths are printed, never the matched
+  # text, and a path that itself matches is counted instead of printed. An
+  # unusable list fails the job rather than passing it. The script documents
+  # the details and is exercised by tests/Feature/RestrictedTermsCheckTest.php.
   restricted-terms:
     runs-on: ubuntu-latest
     name: Restricted terms
@@ -47,18 +51,7 @@ jobs:
     - name: Check tracked files for restricted terms
       env:
         RESTRICTED_TERMS: ${{ secrets.RESTRICTED_TERMS }}
-      run: |
-        if [ -z "$RESTRICTED_TERMS" ]; then
-          echo "::notice::No restricted terms configured; skipping."
-          exit 0
-        fi
-        files=$(git grep -l -I -i -E -e "$RESTRICTED_TERMS" -- . || true)
-        if [ -n "$files" ]; then
-          echo "$files" | while read -r file; do
-            echo "::error file=$file::Restricted term found in $file"
-          done
-          exit 1
-        fi
+      run: bash .github/scripts/check-restricted-terms.sh
 
   test:
     runs-on: ubuntu-latest
