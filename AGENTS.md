@@ -10,6 +10,7 @@ standings with tiebreakers. No production dependencies.
 - `composer ci` — normalize check + PHPStan (level 8) + Rector + CS-Fixer + tests + example smoke-run; must be green before any commit
 - `composer cs-fixer-fix` / `composer rector-fix` — auto-fix style and modernization findings
 - `composer examples` — smoke-run every script in `examples/`
+- `composer golden-update` — regenerate the golden-output fixtures in `tests/Fixtures/golden/` (see Rules)
 - `vendor/bin/pest tests/Unit/Scheduling/RoundRobinSchedulerTest.php` — run a single test file
 
 ## Architecture
@@ -47,7 +48,10 @@ sets of concurrent events. Swiss has rounds but no legs.
 - **Every feature ships fully documented** — a human or an LLM must be able to understand and use it without reading the source: usage docs with executed snippets, contracts in docblocks (not restated signatures), and glossary entries for new terms.
 - **Every feature and path carries automated tests** unless a genuine technical or harness limitation prevents it; record the reason next to the gap so absence is distinguishable from oversight. The engines have property/invariant tests (`tests/Feature/EliminationInvariantsTest.php`, `tests/Feature/ScheduleCompletenessTest.php`) — extend those when touching generation logic rather than only pinning single examples.
 - **No example ships without validation**: `tests/Feature/ExamplesTest.php` auto-runs every script in `examples/` under full error reporting. If you add an example, it is covered automatically and must pass. Adding runnable examples for valuable new capabilities is encouraged (optional).
+- **A golden diff is an output change.** `tests/Feature/GoldenOutputTest.php` pins generated schedules, bracket pairings, repack assignments and the JSON wire shapes against the text fixtures in `tests/Fixtures/golden/` (baseline: `v0.2.0`; cases in `tests/Support/GoldenCases.php`). If a change makes it fail, the library now produces different output: explain that in the changelog, regenerate with `composer golden-update`, and commit the fixture diff with the change so it is reviewed. Never regenerate just to get back to green; a run with `UPDATE_GOLDEN=1` cannot fail, so the test refuses it on CI.
+- **Every change needs an `Unreleased` changelog entry.** Add it to `CHANGELOG.md` in the same pull request, following the policy in the README's [Versioning and stability](README.md#versioning-and-stability) section; releases follow the checklist in [`docs/RELEASING.md`](docs/RELEASING.md).
 - **Execute documentation snippets before committing them.** Stale, never-run docs and examples have caused real bugs in this repo (a wrong constructor sample in the architecture docs matched an actual shipped bug). If a README/docs snippet changes, run it.
+- **The dist archive carries only the library**: `src/`, `composer.json`, `LICENSE`, `README.md` and `CHANGELOG.md`. A new file or directory at the repository root needs an `export-ignore` rule in `.gitattributes`; `tests/Feature/DistArchiveTest.php` fails until that rule is committed (it archives `HEAD`, so uncommitted edits do not count).
 - Never commit directly to `main` — branch and open a PR. Prefer small, single-purpose commits with descriptive messages.
 - Constraints are hard filters evaluated during greedy generation; a complete round robin needs every pair to meet, so a constraint that forbids some pairing fails generation loudly (`IncompleteScheduleException` with diagnostics) rather than silently dropping matches. The scheduler retries bounded rotated orderings before giving up; `RoundRobinOptions(backtracking: true)` additionally searches the round decompositions rotations cannot reach (deterministic, step-bounded).
 

@@ -6,6 +6,7 @@
 - **v0.1.0** (2026-07-04) — first published release, all five roadmap phases.
 
 ## Current Work Focus
+- **Versioning policy published**: `CHANGELOG.md`, the README "Versioning and stability" section, and the release checklist in `docs/RELEASING.md`. Every change adds an `Unreleased` changelog entry; `tests/Feature/VersioningDocumentationTest.php` checks the documents against the repository.
 - **Schedule repacking shipped and released in v0.2.0** (2026-08-11, PR #25, merged to `main`): `src/Repack/` repairs an existing schedule onto an irregular `SessionGrid` — no double-booking ever, per-session contiguity satisfied or reported, pins immovable. Driven by an external brief with a synthetic reference fixture (`tests/Fixtures/repack-scenario.json`); the reference instance repacks clean and the mis-pinned variant reports `CapacityExceeded` (Fallowmead, shortfall 3). **Deliberate contract deviation**: infeasibility returns a `RepackOutcome` with structured violations rather than throwing. All decisions from the overnight autonomous run are logged in `docs/design/schedule-repack.md`.
 - **Pre-merge review hardening** (2026-08-11, medium `/code-review --fix`, the last 9 of PR #25's 12 commits): fixed PHP 8.4-only `new`-chaining in docs/example/tests (library must parse on 8.3), made `no_slot_available` literal (planner-rejected events re-enter the final sweep), capped parity bitmask reasoning at 20 slots per session (falls back to greedy beyond), fixed violation kind-then-scope ordering, removed `CapacityExceeded`'s never-constructed session scope, aligned kickoff serialization with the timeline family's UTC format, and added edge coverage (throw path, audit detector, DTO shapes, grid validation). Three cleanups were deliberately skipped — see Next Steps.
 
@@ -30,6 +31,7 @@
 - Constraints are hard filters with loud, diagnostic failure; soft/preference constraints are intentionally unsupported.
 - The greedy generator retries bounded rotated orderings when constraints reject a schedule; configurations that fail every rotation throw `IncompleteScheduleException` even when satisfiable in principle.
 - `NoRepeatPairings` scopes to the current leg by default (`acrossLegs: true` for the strict variant) — multi-leg tournaments repeat pairings per leg by design.
+- Generated output is pinned by golden fixtures captured from `v0.2.0` (`tests/Fixtures/golden/`): a golden diff is an output change that needs a changelog entry, never a fixture to regenerate quietly (`AGENTS.md`, `composer golden-update`).
 
 ## Learnings and Project Insights
 - **Documentation and examples rot into bugs here.** Three examples shipped fatal errors from stale APIs, and a wrong constructor sample in ARCHITECTURE.md matched an actual shipped bug. Countermeasures now in place: `tests/Feature/ExamplesTest.php` auto-validates every example, `composer ci` smoke-runs them, and the rule (AGENTS.md) is to execute every doc snippet before committing it.
