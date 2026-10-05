@@ -25,7 +25,7 @@ tracks the current shape only, to avoid duplicating what rots.*
 See docs/ROADMAP.md:
 - **Phase 4 remainder** (demand-gated only): cross-stage clash validation and per-resource availability windows — design note in `docs/design/timeline-assignment.md`
 - **Phase 5 (complete)**: backtracking generation, quality metrics/best-of-N optimization, constraint attribution diagnostics, and framework integration guides (Symfony/Laravel in `docs/integrations/`, request-cycle pattern in example 18) all shipped
-- **Repack follow-ups deferred from the v0.2.0 review** (behavior-preserving, touch public serialization shapes or hot paths): `EventUnplaced`/`UnplacedEvent` merge, `MovableEvent`/`PinnedEvent` shared base, `LoadPlanner` memoization
+- **Repack follow-ups deferred from the v0.2.0 review** (cleanups with no functional gain, held back because they change public class and `toArray()` shapes or rework solver hot paths): `EventUnplaced`/`UnplacedEvent` merge, `MovableEvent`/`PinnedEvent` shared base, `LoadPlanner` memoization (the production case already runs in ~7 ms)
 
 ## Known Issues / Limitations
 - Greedy generation defaults: constraint sets that fail under every rotated ordering throw unless `backtracking: true` is set (the opt-in search closes the false-negative gap; later legs still derive from leg 1 without cross-leg search)
