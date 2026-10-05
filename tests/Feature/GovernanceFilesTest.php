@@ -361,14 +361,116 @@ describe('contributor guides and the tooling', function () use ($root): void {
         // at the root. A bare file name is left out: the contributing guide
         // names its neighbours in `docs/` that way, and the link test in
         // VersioningDocumentationTest.php resolves those.
-        preg_match_all('/`((?:tests|src|examples|\.github)\/[\w.\/-]+\.\w+|\.[a-z][\w.-]+)`/', (string) file_get_contents($root . '/' . $document), $paths);
+        preg_match_all('/`((?:tests|src|examples|docs|\.github|\.claude)\/[\w.\/-]+\.\w+|\.[a-z][\w.-]+)`/', (string) file_get_contents($root . '/' . $document), $paths);
 
         expect($paths[1])->not->toBeEmpty();
 
         foreach (array_unique($paths[1]) as $path) {
+            // The one path a guide names that must not be tracked: each
+            // contributor's own agent settings. It has to be ignored instead.
+            if ($path === '.claude/settings.local.json') {
+                expect(file($root . '/.gitignore', FILE_IGNORE_NEW_LINES) ?: [])->toContain('/' . $path);
+
+                continue;
+            }
+
             Assert::assertFileExists($root . '/' . $path, "{$document} names `{$path}`, which does not exist.");
         }
     })->with(['AGENTS.md', 'docs/CONTRIBUTING.md']);
+
+    it('lists every directory under src/ in the agent guide, and no other', function () use ($root): void {
+        preg_match_all('/`(src\/[\w\/]+)\/`/', (string) file_get_contents($root . '/AGENTS.md'), $named);
+
+        $existing = array_map(
+            static fn (string $directory): string => 'src/' . basename($directory),
+            glob($root . '/src/*', GLOB_ONLYDIR) ?: []
+        );
+        $listed = array_values(array_unique($named[1]));
+        sort($existing);
+        sort($listed);
+
+        expect($existing)->not->toBeEmpty()
+            ->and($listed)->toBe($existing);
+    });
+
+    it('names only classes that exist in the architecture section of the agent guide', function () use ($root): void {
+        $guide = (string) file_get_contents($root . '/AGENTS.md');
+        $start = strpos($guide, "\n## Architecture\n");
+        $end = strpos($guide, "\n## Terminology");
+        Assert::assertNotFalse($start, 'AGENTS.md has no Architecture section.');
+        Assert::assertNotFalse($end, 'AGENTS.md has no Terminology section after the Architecture section.');
+
+        // A name in backticks that starts with a capital letter, with or
+        // without a call after it (`ScheduleRepacker`, `RoundRobinOptions(...)`).
+        // A path in backticks contains a dot or a slash and does not match.
+        preg_match_all('/`([A-Z][A-Za-z]+)(?:\([^`]*\))?`/', substr($guide, $start, $end - $start), $names);
+
+        $classes = [];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/src', FilesystemIterator::SKIP_DOTS));
+
+        foreach ($iterator as $file) {
+            if ($file instanceof SplFileInfo && $file->getExtension() === 'php') {
+                $classes[$file->getBasename('.php')] = true;
+            }
+        }
+
+        expect(count(array_unique($names[1])))->toBeGreaterThan(30);
+
+        $unknown = array_values(array_filter(
+            array_unique($names[1]),
+            // `Iterator` is PHP's own interface.
+            static fn (string $name): bool => !isset($classes[$name]) && !interface_exists($name, false)
+        ));
+
+        expect($unknown)->toBe([]);
+    });
+
+    it('names only methods that exist in the agent guide', function () use ($root): void {
+        // `name()` in backticks: a method the guide tells the reader to
+        // call. It has to be declared somewhere under src/.
+        preg_match_all('/`([a-z][A-Za-z]+)\(\)`/', (string) file_get_contents($root . '/AGENTS.md'), $methods);
+
+        $source = '';
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/src', FilesystemIterator::SKIP_DOTS));
+
+        foreach ($iterator as $file) {
+            if ($file instanceof SplFileInfo && $file->getExtension() === 'php') {
+                $source .= (string) file_get_contents($file->getPathname());
+            }
+        }
+
+        expect($methods[1])->not->toBeEmpty();
+
+        foreach (array_unique($methods[1]) as $method) {
+            expect($source)->toContain('function ' . $method . '(');
+        }
+    });
+
+    it('names the removed editor rule files and session-notes directory in no tracked file', function () use ($root): void {
+        exec('git -C ' . escapeshellarg($root) . ' ls-files -z 2> /dev/null', $output, $status);
+        $tracked = array_filter(explode("\0", implode("\n", $output)));
+
+        // Not a git checkout (an exported archive, for example): there is no
+        // list of tracked files to read.
+        if ($status !== 0 || $tracked === []) {
+            $this->markTestSkipped('The tracked files can only be listed in a git checkout.');
+        }
+
+        // Written in two parts so that this file does not name them. The
+        // tool's name must start a word: "decline" is not a reference.
+        $pattern = '/(?<![a-z])cl' . 'ine|memory[-_ ]?' . 'bank/i';
+        $matches = [];
+
+        foreach ($tracked as $path) {
+            $file = $root . '/' . $path;
+
+            if (preg_match($pattern, $path) === 1 || (is_file($file) && !is_link($file) && preg_match($pattern, (string) file_get_contents($file)) === 1)) {
+                $matches[] = $path;
+            }
+        }
+
+        expect($matches)->toBe([]);
+    });
 
     it('declares strict types in every PHP file, as the guides say', function () use ($root): void {
         expect((string) file_get_contents($root . '/AGENTS.md'))->toContain('Every PHP file declares `strict_types=1`.')
@@ -376,7 +478,12 @@ describe('contributor guides and the tooling', function () use ($root): void {
 
         // The configuration files at the root, and everything under the
         // three directories that hold PHP. vendor/ is not the project's code.
-        $files = glob($root . '/{,.}*.php', GLOB_BRACE) ?: [];
+        // index.php at the root is a local scratch file that .gitignore
+        // lists; it is not the project's code either.
+        $files = array_values(array_filter(
+            glob($root . '/{,.}*.php', GLOB_BRACE) ?: [],
+            static fn (string $file): bool => basename($file) !== 'index.php'
+        ));
 
         foreach (['src', 'tests', 'examples'] as $directory) {
             $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/' . $directory, FilesystemIterator::SKIP_DOTS));
