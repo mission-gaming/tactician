@@ -70,7 +70,7 @@ Not planned. Each item waits for a concrete need.
 - **Timeline**: cross-stage clash validation and per-resource availability windows ([design note](design/timeline-assignment.md)).
 - **Optimization**: search algorithms (local search, annealing) behind the existing `ScheduleScorer`.
 - **Backtracking**: search across leg boundaries, and searched generation for other whole-schedule formats.
-- **Repack tidy-ups** with no functional gain: merging `EventUnplaced` with `UnplacedEvent` (the same three fields), a shared base for `MovableEvent` and `PinnedEvent`, and memoisation in `Repack\Internal\LoadPlanner`. The first two change public classes in a namespace the README lists as stable, so they need a breaking release.
+- **Repack tidy-ups** with no functional gain: merging `EventUnplaced` with `UnplacedEvent` (the same three fields), and a shared base for `MovableEvent` and `PinnedEvent`. Both change public classes in a namespace the README lists as stable, so they need a breaking release.
 
 ## What is next
 
