@@ -1,0 +1,36 @@
+name: Feature request
+description: A capability the library does not have, or a change to one it has.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to schedule or calculate, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What the library should do. A sketch of the API you would call is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use now, or other designs you considered.
+    validations:
+      required: false
+  - type: dropdown
+    id: compatibility
+    attributes:
+      label: Compatibility
+      description: Whether the change would alter the output for an existing input or seed, or a public signature.
+      options:
+        - Additive only
+        - Changes existing output or a public signature
+        - Not sure
+    validations:
+      required: true

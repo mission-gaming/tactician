@@ -1,0 +1,46 @@
+name: Bug report
+description: The library produces a wrong result, fails, or contradicts its documentation.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report a security vulnerability here. Use "Report a vulnerability" on the repository's Security tab.
+  - type: input
+    id: version
+    attributes:
+      label: Tactician version
+      description: The installed version, from `composer show mission-gaming/tactician`.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: php-version
+    attributes:
+      label: PHP version
+      description: The output of `php -v`.
+      placeholder: "8.3.12"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest script that shows the problem. Include the participants, the options, and the seed.
+      render: php
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: What the script should produce.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: What the script produces. Include the full exception message and its diagnostics, if there are any.
+    validations:
+      required: true
