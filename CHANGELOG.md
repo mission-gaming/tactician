@@ -85,8 +85,9 @@ PHP 8.3+.
 
 ### Added
 
-- **Round robin**: single and multi-leg schedules, with bounded rotation
-  retries and optional deterministic backtracking over round decompositions.
+- **Round robin**: single and multi-leg schedules (mirrored, repeated, and
+  shuffled leg strategies), with bounded rotation retries and optional
+  deterministic backtracking over round decompositions.
 - **Swiss pairing**: the results-driven `SwissPairingEngine`, with a
   `SwissScheduler` preset.
 - **Elimination**: single and double elimination engines configured through
@@ -99,6 +100,9 @@ PHP 8.3+.
   that fail loudly with diagnostics instead of silently dropping matches.
 - **Timeline**: deterministic UTC kickoff assignment that decorates events
   into scheduled schedules.
+- **Schedule quality**: `ScheduleScorer`, which composes weighted quality
+  metrics (role balance, role streaks, rest spread, pairing spacing), and
+  `ScheduleOptimizer`, which keeps the best of N seeded candidate schedules.
 - **Immutable DTOs**: readonly value objects with `toArray()`/`fromArray()`;
   `Schedule` round-trips JSON.
 
