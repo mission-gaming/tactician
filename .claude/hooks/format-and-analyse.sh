@@ -19,10 +19,11 @@
 #   2  PHPStan reported errors. They are printed on stderr, which the agent
 #      is shown, so it can correct the file.
 #
-# It never blocks work it cannot check: unreadable input, a path outside the
-# three directories, a missing file, a symbolic link, a missing tool (PHP,
-# PHP-CS-Fixer, PHPStan), or a PHPStan run that reports no error for the file
-# (phpstan.neon excludes tests/Pest.php, for example) all exit 0 in silence.
+# It never blocks work it cannot check: unreadable input, a path that holds a
+# control character, a path outside the three directories, a missing file, a
+# symbolic link, a missing tool (PHP, PHP-CS-Fixer, PHPStan), or a PHPStan run
+# that reports no error for the file (phpstan.neon excludes tests/Pest.php,
+# for example) all exit 0 in silence.
 # It checks one file only; `composer ci` is the gate.
 #
 # The JSON is read with PHP, which the project needs anyway, so that no other
@@ -33,15 +34,23 @@
 
 set -u
 
+# With CDPATH set, `cd` with a relative path can go to another directory and
+# print its name. The script is started with a relative path when it is run by
+# hand from the repository root.
+unset CDPATH
+
 command -v php > /dev/null 2>&1 || exit 0
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2> /dev/null && pwd -P)" || exit 0
 
 # Prints tool_input.file_path, or nothing when the input is not a tool call.
+# A path with a control character prints nothing as well: the shell drops a
+# NUL byte and a trailing newline from the output, so the script would act on
+# a different file from the one the tool call names.
 file="$(php -r '
     $call = json_decode((string) stream_get_contents(STDIN), true);
     $path = is_array($call) ? ($call["tool_input"]["file_path"] ?? null) : null;
-    if (is_string($path)) {
+    if (is_string($path) && preg_match("/[\\x00-\\x1f\\x7f]/", $path) !== 1) {
         echo $path;
     }
 ' 2> /dev/null)" || exit 0

@@ -478,6 +478,11 @@ describe('agent hook, with stand-ins for the tools', function () use ($hook): vo
         'an extension in upper case' => ['repo/src/Upper.PHP', '{tree}/src/Upper.PHP'],
         'a name that only contains .php' => ['repo/src/Probe.php.bak', '{tree}/src/Probe.php.bak'],
         'a directory whose name ends in .php' => ['repo/src/Directory.php/file.txt', '{tree}/src/Directory.php'],
+        // The shell drops a NUL byte and a trailing newline from the path it
+        // reads. Without a check, both of these become src/Probe.php, which
+        // exists and is not the file the tool call names.
+        'a path with a NUL byte' => ['repo/src/other.txt', "{tree}/src/Pro\0be.php"],
+        'a path that ends in a newline' => ['repo/src/other.txt', "{tree}/src/Probe.php\n"],
     ]);
 
     it('starts neither tool unless both are installed', function (array $installed) use ($hook): void {
@@ -536,6 +541,29 @@ describe('agent hook, with stand-ins for the tools', function () use ($hook): vo
         'PHP-CS-Fixer fails and prints, PHPStan passes' => [[16, "fixer stdout\n", "fixer stderr\n"], [0], ['exitCode' => 0, 'stdout' => '', 'stderr' => '']],
         'PHP-CS-Fixer fails and prints, PHPStan fails' => [[16, "fixer stdout\n", "fixer stderr\n"], [1, "src/Probe.php:1:An error.\n"], ['exitCode' => 2, 'stdout' => '', 'stderr' => "src/Probe.php:1:An error.\n"]],
     ]);
+
+    it('finds its own repository when it is started with a relative path and CDPATH is set', function () use ($hook): void {
+        // `cd .claude/hooks/../..` looks in CDPATH first. The decoy has that
+        // directory, so without `unset CDPATH` the hook takes the decoy for
+        // the repository and checks nothing.
+        $base = agentHookSandbox($hook);
+        $tree = $base . '/repo';
+
+        try {
+            agentHookStandIn($tree, 'php-cs-fixer');
+            agentHookStandIn($tree, 'phpstan', 1, "an error\n");
+            file_put_contents($tree . '/src/Probe.php', "<?php\n");
+            mkdir($base . '/decoy/.claude/hooks', 0o777, true);
+
+            $result = runAgentHook(AGENT_HOOK_SCRIPT, agentHookToolCall($tree . '/src/Probe.php'), $tree, ['CDPATH' => $base . '/decoy']);
+            $calls = agentHookCalls($tree);
+        } finally {
+            agentHookRemoveDirectory($base);
+        }
+
+        expect($result)->toBe(['exitCode' => 2, 'stdout' => '', 'stderr' => "an error\n"])
+            ->and(array_column($calls, 'cwd'))->toBe([$tree, $tree]);
+    });
 });
 
 describe('agent settings', function () use ($root): void {
