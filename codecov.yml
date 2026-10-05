@@ -1,0 +1,21 @@
+# Codecov status checks. Neither is a required check on `main`; they inform
+# the review.
+coverage:
+  status:
+    # Whole-project line coverage, compared with the base commit. The suite
+    # sits near 98%, so a drop of up to one point is tolerated: without the
+    # threshold, deleting a few well-covered lines, or a refactoring that
+    # moves them, would turn the status red although nothing lost its tests.
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    # Coverage of the lines a pull request adds or changes. New library code
+    # is expected to arrive with its tests.
+    patch:
+      default:
+        target: 90%
+
+comment:
+  # Comment only when the pull request changes coverage.
+  require_changes: true
