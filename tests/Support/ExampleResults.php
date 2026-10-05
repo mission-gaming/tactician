@@ -67,7 +67,57 @@ final class ExampleResults
      */
     public static function of(string $example): array
     {
-        return self::$loaded[$example] ??= self::load($example);
+        return self::$loaded[$example] ??= self::read(self::directory() . '/' . $example . '.php');
+    }
+
+    /**
+     * Include a script and return the named results it hands over, without
+     * keeping them. This is what refuses a script that is not built as an
+     * example: one that displays something itself, or that does not end by
+     * returning at least one named result.
+     *
+     * @param string $script The path of the script
+     * @return array<string, mixed>
+     *
+     * @throws LogicException When the script is missing, displays something while included, or does not return its results
+     */
+    public static function read(string $script): array
+    {
+        $name = basename(dirname($script)) . '/' . basename($script);
+        if (!is_file($script)) {
+            throw new LogicException("{$name} does not exist.");
+        }
+
+        // A scope of its own, so no variable of one example reaches the next
+        $include = static fn (string $path): mixed => require $path;
+
+        ob_start();
+        try {
+            $results = $include($script);
+        } finally {
+            $displayed = (string) ob_get_clean();
+        }
+
+        if ($displayed !== '') {
+            throw new LogicException(
+                "{$name} displayed something while it was included. An example computes its "
+                . 'results and hands them to Example::present(), which only displays them when the script is run directly.'
+            );
+        }
+
+        if (!is_array($results) || $results === [] || array_is_list($results)) {
+            throw new LogicException(
+                "{$name} must end with `return Example::present(__FILE__, \$title, \$summary, [...])` "
+                . 'and hand over at least one named result.'
+            );
+        }
+
+        $named = [];
+        foreach ($results as $key => $value) {
+            $named[(string) $key] = $value;
+        }
+
+        return $named;
     }
 
     /**
@@ -285,49 +335,5 @@ final class ExampleResults
         $text = sprintf('%.6F', $number);
 
         return rtrim(rtrim($text, '0'), '.');
-    }
-
-    /**
-     * @return array<string, mixed>
-     *
-     * @throws LogicException When the script displays something while included, or does not return its results
-     */
-    private static function load(string $example): array
-    {
-        $script = self::directory() . '/' . $example . '.php';
-        if (!is_file($script)) {
-            throw new LogicException("examples/{$example}.php does not exist.");
-        }
-
-        // A scope of its own, so no variable of one example reaches the next
-        $include = static fn (string $path): mixed => require $path;
-
-        ob_start();
-        try {
-            $results = $include($script);
-        } finally {
-            $displayed = (string) ob_get_clean();
-        }
-
-        if ($displayed !== '') {
-            throw new LogicException(
-                "examples/{$example}.php displayed something while it was included. An example computes its "
-                . 'results and hands them to Example::present(), which only displays them when the script is run directly.'
-            );
-        }
-
-        if (!is_array($results) || $results === [] || array_is_list($results)) {
-            throw new LogicException(
-                "examples/{$example}.php must end with `return Example::present(__FILE__, \$title, \$summary, [...])` "
-                . 'and hand over at least one named result.'
-            );
-        }
-
-        $named = [];
-        foreach ($results as $name => $value) {
-            $named[(string) $name] = $value;
-        }
-
-        return $named;
     }
 }
