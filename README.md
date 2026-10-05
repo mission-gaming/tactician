@@ -118,8 +118,52 @@ between rounds instead of re-deriving.
 - **⚡ Memory Efficient**: Iterator-based patterns for large tournaments
 - **🎯 Deterministic**: Seeded randomization for reproducible results
 
+## Versioning and stability
+
+Tactician follows [Semantic Versioning](https://semver.org/) with the 0.x
+allowance: until `1.0.0`, a minor release may contain breaking changes. Every
+release is recorded in the [changelog](CHANGELOG.md).
+
+- **Patch releases (0.2.x)** never change a correct output for a fixed input
+  and seed, and never change a public signature.
+- **A patch may change an output that was itself broken**: one that reported
+  its own failure, stated something false, or contradicted the documented
+  contract of the component that produced it. The changelog marks every such
+  case with the heading "Output change (fix)".
+- **Minor releases (0.x)** may contain breaking changes. The changelog lists
+  each one with a migration note.
+- **Deprecations precede removals.**
+- **Generated output is pinned.** Output for a fixed input and seed is covered
+  by golden fixtures in [`tests/Fixtures/golden/`](tests/Fixtures/golden/), so
+  an output change cannot ship unnoticed.
+
+**Supported PHP versions:** `^8.3` (the Composer constraint). CI runs the suite
+on PHP 8.3, 8.4, and 8.5.
+
+**Stable** (namespaces are relative to `MissionGaming\Tactician`):
+
+- `DTO`
+- Round-robin scheduling: `Scheduling\RoundRobinScheduler`,
+  `Scheduling\RoundRobinOptions`, and the leg strategies in `LegStrategies`
+- `Repack`, excluding `Repack\Internal`
+- `Exceptions`
+
+**Experimental** (may change in a minor release):
+
+- The Swiss and elimination engines: `Scheduling\SwissPairingEngine`,
+  `Scheduling\SwissScheduler`, `Scheduling\SwissOptions`,
+  `Scheduling\SingleEliminationEngine`, `Scheduling\DoubleEliminationEngine`,
+  and `Scheduling\EliminationOptions`
+- `Stage`
+- `Standings`
+- `Timeline`
+- `Quality`
+
+Releases are cut with the [release checklist](docs/RELEASING.md).
+
 ## Documentation
 
+📝 **[Changelog](CHANGELOG.md)** - Release history and output changes  
 📚 **[Complete Usage Guide](docs/USAGE.md)** - Comprehensive examples and patterns  
 🧩 **[Framework Integration](docs/integrations/symfony.md)** - Wiring Tactician into [Symfony](docs/integrations/symfony.md) and [Laravel](docs/integrations/laravel.md) applications  
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** - Technical design and core components  
