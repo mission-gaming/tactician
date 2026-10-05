@@ -1,15 +1,10 @@
 {
- "source": {
-  "stage": 162,
-  "label": "Y1S4 | Elite Division | EA SPORTS FC 26",
-  "dumpTakenAt": "2026-08-08T13:02:22Z"
- },
  "grid": {
   "sessions": [
-   "2026-08-12",
-   "2026-08-19",
-   "2026-08-26",
-   "2026-09-02"
+   "2027-08-11",
+   "2027-08-18",
+   "2027-08-25",
+   "2027-09-01"
   ],
   "slots": [
    "20:15",
@@ -21,1202 +16,1202 @@
  },
  "participants": [
   {
-   "id": 320,
-   "label": "Set Pace FC",
+   "id": 101,
+   "label": "Quarry Bank",
    "load": 8,
    "blockedColours": []
   },
   {
-   "id": 390,
-   "label": "Folded",
+   "id": 102,
+   "label": "Eastholt",
    "load": 1,
    "blockedColours": []
   },
   {
-   "id": 418,
-   "label": "Bloodline Gaming",
+   "id": 103,
+   "label": "Alder Vale",
    "load": 8,
    "blockedColours": []
   },
   {
-   "id": 518,
-   "label": "Fenix eSports",
+   "id": 104,
+   "label": "Dunmere",
    "load": 12,
    "blockedColours": []
   },
   {
-   "id": 520,
-   "label": "No Mercy",
+   "id": 105,
+   "label": "Oakmere",
    "load": 12,
    "blockedColours": []
   },
   {
-   "id": 537,
-   "label": "Vuvuzela",
+   "id": 106,
+   "label": "Redmoor",
    "load": 11,
    "blockedColours": []
   },
   {
-   "id": 557,
-   "label": "GS x Tasty Asian Toe",
+   "id": 107,
+   "label": "Garrow Hill",
    "load": 13,
    "blockedColours": []
   },
   {
-   "id": 558,
-   "label": "La Masia",
+   "id": 108,
+   "label": "Kestrel Park",
    "load": 10,
    "blockedColours": []
   },
   {
-   "id": 617,
-   "label": "Night Klubik",
+   "id": 110,
+   "label": "Northwell",
    "load": 10,
    "blockedColours": []
   },
   {
-   "id": 636,
-   "label": "Foregone",
+   "id": 112,
+   "label": "Fallowmead",
    "load": 15,
    "blockedColours": []
   },
   {
-   "id": 637,
-   "label": "JDR Cwaniaki",
+   "id": 113,
+   "label": "Ivywick",
    "load": 15,
    "blockedColours": []
   },
   {
-   "id": 650,
-   "label": "OM3N Esport",
+   "id": 116,
+   "label": "Pennoch",
    "load": 8,
    "blockedColours": []
   },
   {
-   "id": 654,
-   "label": "Exito",
+   "id": 117,
+   "label": "Cinder Row",
    "load": 9,
    "blockedColours": []
   },
   {
-   "id": 662,
-   "label": "Mendeksy",
+   "id": 118,
+   "label": "Larkhaven",
    "load": 10,
    "blockedColours": []
   }
  ],
  "movableEvents": [
   {
-   "eventId": 13371,
+   "eventId": 1001,
    "participants": [
-    558,
-    636
+    108,
+    112
    ],
    "participantLabels": [
-    "La Masia",
-    "Foregone"
+    "Kestrel Park",
+    "Fallowmead"
    ],
-   "currentKickOff": "2026-08-19 20:15:00"
+   "currentKickOff": "2027-08-18 20:15:00"
   },
   {
-   "eventId": 13378,
+   "eventId": 1002,
    "participants": [
-    637,
-    558
+    113,
+    108
    ],
    "participantLabels": [
-    "JDR Cwaniaki",
-    "La Masia"
+    "Ivywick",
+    "Kestrel Park"
    ],
-   "currentKickOff": "2026-08-18 20:20:00"
+   "currentKickOff": "2027-08-17 20:20:00"
   },
   {
-   "eventId": 13404,
+   "eventId": 1006,
    "participants": [
-    636,
-    662
+    112,
+    118
    ],
    "participantLabels": [
-    "Foregone",
-    "Mendeksy"
+    "Fallowmead",
+    "Larkhaven"
    ],
-   "currentKickOff": "2026-08-25 20:15:00"
+   "currentKickOff": "2027-08-24 20:15:00"
   },
   {
-   "eventId": 13411,
+   "eventId": 1007,
    "participants": [
-    654,
-    636
+    117,
+    112
    ],
    "participantLabels": [
-    "Exito",
-    "Foregone"
+    "Cinder Row",
+    "Fallowmead"
    ],
-   "currentKickOff": "2026-08-25 20:40:00"
+   "currentKickOff": "2027-08-24 20:40:00"
   },
   {
-   "eventId": 13413,
+   "eventId": 1008,
    "participants": [
-    662,
-    637
+    118,
+    113
    ],
    "participantLabels": [
-    "Mendeksy",
-    "JDR Cwaniaki"
+    "Larkhaven",
+    "Ivywick"
    ],
-   "currentKickOff": "2026-08-19 20:15:00"
+   "currentKickOff": "2027-08-18 20:15:00"
   },
   {
-   "eventId": 13419,
+   "eventId": 1009,
    "participants": [
-    636,
-    418
+    112,
+    103
    ],
    "participantLabels": [
-    "Foregone",
-    "Bloodline Gaming"
+    "Fallowmead",
+    "Alder Vale"
    ],
-   "currentKickOff": "2026-08-25 21:05:00"
+   "currentKickOff": "2027-08-24 21:05:00"
   },
   {
-   "eventId": 13426,
+   "eventId": 1010,
    "participants": [
-    520,
-    636
+    105,
+    112
    ],
    "participantLabels": [
-    "No Mercy",
-    "Foregone"
+    "Oakmere",
+    "Fallowmead"
    ],
-   "currentKickOff": "2026-08-25 21:30:00"
+   "currentKickOff": "2027-08-24 21:30:00"
   },
   {
-   "eventId": 13461,
+   "eventId": 1011,
    "participants": [
-    520,
-    518
+    105,
+    104
    ],
    "participantLabels": [
-    "No Mercy",
-    "Fenix eSports"
+    "Oakmere",
+    "Dunmere"
    ],
-   "currentKickOff": "2026-08-12 21:50:00"
+   "currentKickOff": "2027-08-11 21:50:00"
   },
   {
-   "eventId": 13468,
+   "eventId": 1012,
    "participants": [
-    518,
-    557
+    104,
+    107
    ],
    "participantLabels": [
-    "Fenix eSports",
-    "GS x Tasty Asian Toe"
+    "Dunmere",
+    "Garrow Hill"
    ],
-   "currentKickOff": "2026-08-12 21:05:00"
+   "currentKickOff": "2027-08-11 21:05:00"
   },
   {
-   "eventId": 13469,
+   "eventId": 1013,
    "participants": [
-    520,
-    537
+    105,
+    106
    ],
    "participantLabels": [
-    "No Mercy",
-    "Vuvuzela"
+    "Oakmere",
+    "Redmoor"
    ],
-   "currentKickOff": "2026-07-29 20:15:00"
+   "currentKickOff": "2027-07-28 20:15:00"
   },
   {
-   "eventId": 13470,
+   "eventId": 1014,
    "participants": [
-    637,
-    320
+    113,
+    101
    ],
    "participantLabels": [
-    "JDR Cwaniaki",
-    "Set Pace FC"
+    "Ivywick",
+    "Quarry Bank"
    ],
-   "currentKickOff": "2026-08-19 21:30:00"
+   "currentKickOff": "2027-08-18 21:30:00"
   },
   {
-   "eventId": 13475,
+   "eventId": 1015,
    "participants": [
-    637,
-    518
+    113,
+    104
    ],
    "participantLabels": [
-    "JDR Cwaniaki",
-    "Fenix eSports"
+    "Ivywick",
+    "Dunmere"
    ],
-   "currentKickOff": "2026-08-11 21:50:00"
+   "currentKickOff": "2027-08-10 21:50:00"
   },
   {
-   "eventId": 13477,
+   "eventId": 1016,
    "participants": [
-    557,
-    537
+    107,
+    106
    ],
    "participantLabels": [
-    "GS x Tasty Asian Toe",
-    "Vuvuzela"
+    "Garrow Hill",
+    "Redmoor"
    ],
-   "currentKickOff": "2026-07-29 20:40:00"
+   "currentKickOff": "2027-07-28 20:40:00"
   },
   {
-   "eventId": 13484,
+   "eventId": 1017,
    "participants": [
-    537,
-    637
+    106,
+    113
    ],
    "participantLabels": [
-    "Vuvuzela",
-    "JDR Cwaniaki"
+    "Redmoor",
+    "Ivywick"
    ],
-   "currentKickOff": "2026-08-19 21:05:00"
+   "currentKickOff": "2027-08-18 21:05:00"
   },
   {
-   "eventId": 13485,
+   "eventId": 1018,
    "participants": [
-    557,
-    558
+    107,
+    108
    ],
    "participantLabels": [
-    "GS x Tasty Asian Toe",
-    "La Masia"
+    "Garrow Hill",
+    "Kestrel Park"
    ],
-   "currentKickOff": "2026-07-29 21:05:00"
+   "currentKickOff": "2027-07-28 21:05:00"
   },
   {
-   "eventId": 13491,
+   "eventId": 1019,
    "participants": [
-    617,
-    537
+    110,
+    106
    ],
    "participantLabels": [
-    "Night Klubik",
-    "Vuvuzela"
+    "Northwell",
+    "Redmoor"
    ],
-   "currentKickOff": "2026-07-29 21:30:00"
+   "currentKickOff": "2027-07-28 21:30:00"
   },
   {
-   "eventId": 13502,
+   "eventId": 1020,
    "participants": [
-    654,
-    418
+    117,
+    103
    ],
    "participantLabels": [
-    "Exito",
-    "Bloodline Gaming"
+    "Cinder Row",
+    "Alder Vale"
    ],
-   "currentKickOff": "2026-08-12 21:50:00"
+   "currentKickOff": "2027-08-11 21:50:00"
   },
   {
-   "eventId": 13503,
+   "eventId": 1021,
    "participants": [
-    650,
-    518
+    116,
+    104
    ],
    "participantLabels": [
-    "OM3N Esport",
-    "Fenix eSports"
+    "Pennoch",
+    "Dunmere"
    ],
-   "currentKickOff": "2026-08-19 20:05:00"
+   "currentKickOff": "2027-08-18 20:05:00"
   },
   {
-   "eventId": 13507,
+   "eventId": 1022,
    "participants": [
-    636,
-    558
+    112,
+    108
    ],
    "participantLabels": [
-    "Foregone",
-    "La Masia"
+    "Fallowmead",
+    "Kestrel Park"
    ],
-   "currentKickOff": "2026-08-12 22:00:00"
+   "currentKickOff": "2027-08-11 22:00:00"
   },
   {
-   "eventId": 13511,
+   "eventId": 1023,
    "participants": [
-    520,
-    654
+    105,
+    117
    ],
    "participantLabels": [
-    "No Mercy",
-    "Exito"
+    "Oakmere",
+    "Cinder Row"
    ],
-   "currentKickOff": "2026-08-04 21:15:00"
+   "currentKickOff": "2027-08-03 21:15:00"
   },
   {
-   "eventId": 13513,
+   "eventId": 1024,
    "participants": [
-    557,
-    662
+    107,
+    118
    ],
    "participantLabels": [
-    "GS x Tasty Asian Toe",
-    "Mendeksy"
+    "Garrow Hill",
+    "Larkhaven"
    ],
-   "currentKickOff": "2026-08-05 21:30:00"
+   "currentKickOff": "2027-08-04 21:30:00"
   },
   {
-   "eventId": 13526,
+   "eventId": 1025,
    "participants": [
-    320,
-    520
+    101,
+    105
    ],
    "participantLabels": [
-    "Set Pace FC",
-    "No Mercy"
+    "Quarry Bank",
+    "Oakmere"
    ],
-   "currentKickOff": "2026-08-11 21:55:00"
+   "currentKickOff": "2027-08-10 21:55:00"
   },
   {
-   "eventId": 13528,
+   "eventId": 1026,
    "participants": [
-    557,
-    418
+    107,
+    103
    ],
    "participantLabels": [
-    "GS x Tasty Asian Toe",
-    "Bloodline Gaming"
+    "Garrow Hill",
+    "Alder Vale"
    ],
-   "currentKickOff": "2026-08-11 21:05:00"
+   "currentKickOff": "2027-08-10 21:05:00"
   },
   {
-   "eventId": 13542,
+   "eventId": 1027,
    "participants": [
-    320,
-    557
+    101,
+    107
    ],
    "participantLabels": [
-    "Set Pace FC",
-    "GS x Tasty Asian Toe"
+    "Quarry Bank",
+    "Garrow Hill"
    ],
-   "currentKickOff": "2026-08-05 21:05:00"
+   "currentKickOff": "2027-08-04 21:05:00"
   },
   {
-   "eventId": 13547,
+   "eventId": 1028,
    "participants": [
-    636,
-    654
+    112,
+    117
    ],
    "participantLabels": [
-    "Foregone",
-    "Exito"
+    "Fallowmead",
+    "Cinder Row"
    ],
-   "currentKickOff": "2026-08-05 21:05:00"
+   "currentKickOff": "2027-08-04 21:05:00"
   },
   {
-   "eventId": 13553,
+   "eventId": 1029,
    "participants": [
-    520,
-    617
+    105,
+    110
    ],
    "participantLabels": [
-    "No Mercy",
-    "Night Klubik"
+    "Oakmere",
+    "Northwell"
    ],
-   "currentKickOff": "2026-08-11 20:40:00"
+   "currentKickOff": "2027-08-10 20:40:00"
   },
   {
-   "eventId": 13560,
+   "eventId": 1030,
    "participants": [
-    617,
-    557
+    110,
+    107
    ],
    "participantLabels": [
-    "Night Klubik",
-    "GS x Tasty Asian Toe"
+    "Northwell",
+    "Garrow Hill"
    ],
-   "currentKickOff": "2026-08-11 20:15:00"
+   "currentKickOff": "2027-08-10 20:15:00"
   },
   {
-   "eventId": 13562,
+   "eventId": 1031,
    "participants": [
-    636,
-    520
+    112,
+    105
    ],
    "participantLabels": [
-    "Foregone",
-    "No Mercy"
+    "Fallowmead",
+    "Oakmere"
    ],
-   "currentKickOff": "2026-08-11 20:15:00"
+   "currentKickOff": "2027-08-10 20:15:00"
   },
   {
-   "eventId": 13569,
+   "eventId": 1032,
    "participants": [
-    557,
-    636
+    107,
+    112
    ],
    "participantLabels": [
-    "GS x Tasty Asian Toe",
-    "Foregone"
+    "Garrow Hill",
+    "Fallowmead"
    ],
-   "currentKickOff": "2026-08-11 20:40:00"
+   "currentKickOff": "2027-08-10 20:40:00"
   },
   {
-   "eventId": 13572,
+   "eventId": 1033,
    "participants": [
-    518,
-    662
+    104,
+    118
    ],
    "participantLabels": [
-    "Fenix eSports",
-    "Mendeksy"
+    "Dunmere",
+    "Larkhaven"
    ],
-   "currentKickOff": "2026-08-11 20:40:00"
+   "currentKickOff": "2027-08-10 20:40:00"
   },
   {
-   "eventId": 13573,
+   "eventId": 1034,
    "participants": [
-    418,
-    650
+    103,
+    116
    ],
    "participantLabels": [
-    "Bloodline Gaming",
-    "OM3N Esport"
+    "Alder Vale",
+    "Pennoch"
    ],
-   "currentKickOff": "2026-08-11 20:40:00"
+   "currentKickOff": "2027-08-10 20:40:00"
   },
   {
-   "eventId": 13574,
+   "eventId": 1035,
    "participants": [
-    320,
-    617
+    101,
+    110
    ],
    "participantLabels": [
-    "Set Pace FC",
-    "Night Klubik"
+    "Quarry Bank",
+    "Northwell"
    ],
-   "currentKickOff": "2026-08-11 21:05:00"
+   "currentKickOff": "2027-08-10 21:05:00"
   },
   {
-   "eventId": 13579,
+   "eventId": 1036,
    "participants": [
-    662,
-    537
+    118,
+    106
    ],
    "participantLabels": [
-    "Mendeksy",
-    "Vuvuzela"
+    "Larkhaven",
+    "Redmoor"
    ],
-   "currentKickOff": "2026-08-11 21:05:00"
+   "currentKickOff": "2027-08-10 21:05:00"
   },
   {
-   "eventId": 13580,
+   "eventId": 1037,
    "participants": [
-    650,
-    520
+    116,
+    105
    ],
    "participantLabels": [
-    "OM3N Esport",
-    "No Mercy"
+    "Pennoch",
+    "Oakmere"
    ],
-   "currentKickOff": "2026-08-11 21:05:00"
+   "currentKickOff": "2027-08-10 21:05:00"
   },
   {
-   "eventId": 13581,
+   "eventId": 1038,
    "participants": [
-    654,
-    518
+    117,
+    104
    ],
    "participantLabels": [
-    "Exito",
-    "Fenix eSports"
+    "Cinder Row",
+    "Dunmere"
    ],
-   "currentKickOff": "2026-08-11 21:05:00"
+   "currentKickOff": "2027-08-10 21:05:00"
   },
   {
-   "eventId": 13583,
+   "eventId": 1039,
    "participants": [
-    617,
-    636
+    110,
+    112
    ],
    "participantLabels": [
-    "Night Klubik",
-    "Foregone"
+    "Northwell",
+    "Fallowmead"
    ],
-   "currentKickOff": "2026-08-11 21:30:00"
+   "currentKickOff": "2027-08-10 21:30:00"
   },
   {
-   "eventId": 13586,
+   "eventId": 1040,
    "participants": [
-    558,
-    662
+    108,
+    118
    ],
    "participantLabels": [
-    "La Masia",
-    "Mendeksy"
+    "Kestrel Park",
+    "Larkhaven"
    ],
-   "currentKickOff": "2026-08-11 21:30:00"
+   "currentKickOff": "2027-08-10 21:30:00"
   },
   {
-   "eventId": 13587,
+   "eventId": 1041,
    "participants": [
-    557,
-    650
+    107,
+    116
    ],
    "participantLabels": [
-    "GS x Tasty Asian Toe",
-    "OM3N Esport"
+    "Garrow Hill",
+    "Pennoch"
    ],
-   "currentKickOff": "2026-08-11 21:30:00"
+   "currentKickOff": "2027-08-10 21:30:00"
   },
   {
-   "eventId": 13588,
+   "eventId": 1042,
    "participants": [
-    537,
-    654
+    106,
+    117
    ],
    "participantLabels": [
-    "Vuvuzela",
-    "Exito"
+    "Redmoor",
+    "Cinder Row"
    ],
-   "currentKickOff": "2026-08-11 21:30:00"
+   "currentKickOff": "2027-08-10 21:30:00"
   },
   {
-   "eventId": 13589,
+   "eventId": 1043,
    "participants": [
-    518,
-    418
+    104,
+    103
    ],
    "participantLabels": [
-    "Fenix eSports",
-    "Bloodline Gaming"
+    "Dunmere",
+    "Alder Vale"
    ],
-   "currentKickOff": "2026-08-11 21:30:00"
+   "currentKickOff": "2027-08-10 21:30:00"
   },
   {
-   "eventId": 13590,
+   "eventId": 1044,
    "participants": [
-    320,
-    636
+    101,
+    112
    ],
    "participantLabels": [
-    "Set Pace FC",
-    "Foregone"
+    "Quarry Bank",
+    "Fallowmead"
    ],
-   "currentKickOff": "2026-08-12 20:15:00"
+   "currentKickOff": "2027-08-11 20:15:00"
   },
   {
-   "eventId": 13595,
+   "eventId": 1048,
    "participants": [
-    654,
-    558
+    117,
+    108
    ],
    "participantLabels": [
-    "Exito",
-    "La Masia"
+    "Cinder Row",
+    "Kestrel Park"
    ],
-   "currentKickOff": "2026-08-12 20:15:00"
+   "currentKickOff": "2027-08-11 20:15:00"
   },
   {
-   "eventId": 13596,
+   "eventId": 1049,
    "participants": [
-    418,
-    537
+    103,
+    106
    ],
    "participantLabels": [
-    "Bloodline Gaming",
-    "Vuvuzela"
+    "Alder Vale",
+    "Redmoor"
    ],
-   "currentKickOff": "2026-08-12 20:15:00"
+   "currentKickOff": "2027-08-11 20:15:00"
   },
   {
-   "eventId": 13597,
+   "eventId": 1050,
    "participants": [
-    518,
-    520
+    104,
+    105
    ],
    "participantLabels": [
-    "Fenix eSports",
-    "No Mercy"
+    "Dunmere",
+    "Oakmere"
    ],
-   "currentKickOff": "2026-08-12 20:15:00"
+   "currentKickOff": "2027-08-11 20:15:00"
   },
   {
-   "eventId": 13601,
+   "eventId": 1054,
    "participants": [
-    617,
-    650
+    110,
+    116
    ],
    "participantLabels": [
-    "Night Klubik",
-    "OM3N Esport"
+    "Northwell",
+    "Pennoch"
    ],
-   "currentKickOff": "2026-08-12 20:40:00"
+   "currentKickOff": "2027-08-11 20:40:00"
   },
   {
-   "eventId": 13603,
+   "eventId": 1056,
    "participants": [
-    558,
-    418
+    108,
+    103
    ],
    "participantLabels": [
-    "La Masia",
-    "Bloodline Gaming"
+    "Kestrel Park",
+    "Alder Vale"
    ],
-   "currentKickOff": "2026-08-12 20:40:00"
+   "currentKickOff": "2027-08-11 20:40:00"
   },
   {
-   "eventId": 13604,
+   "eventId": 1057,
    "participants": [
-    557,
-    518
+    107,
+    104
    ],
    "participantLabels": [
-    "GS x Tasty Asian Toe",
-    "Fenix eSports"
+    "Garrow Hill",
+    "Dunmere"
    ],
-   "currentKickOff": "2026-08-12 20:40:00"
+   "currentKickOff": "2027-08-11 20:40:00"
   },
   {
-   "eventId": 13605,
+   "eventId": 1058,
    "participants": [
-    537,
-    520
+    106,
+    105
    ],
    "participantLabels": [
-    "Vuvuzela",
-    "No Mercy"
+    "Redmoor",
+    "Oakmere"
    ],
-   "currentKickOff": "2026-08-12 20:40:00"
+   "currentKickOff": "2027-08-11 20:40:00"
   },
   {
-   "eventId": 13608,
+   "eventId": 1061,
    "participants": [
-    650,
-    636
+    116,
+    112
    ],
    "participantLabels": [
-    "OM3N Esport",
-    "Foregone"
+    "Pennoch",
+    "Fallowmead"
    ],
-   "currentKickOff": "2026-08-12 21:05:00"
+   "currentKickOff": "2027-08-11 21:05:00"
   },
   {
-   "eventId": 13612,
+   "eventId": 1065,
    "participants": [
-    520,
-    558
+    105,
+    108
    ],
    "participantLabels": [
-    "No Mercy",
-    "La Masia"
+    "Oakmere",
+    "Kestrel Park"
    ],
-   "currentKickOff": "2026-08-12 21:05:00"
+   "currentKickOff": "2027-08-11 21:05:00"
   },
   {
-   "eventId": 13613,
+   "eventId": 1066,
    "participants": [
-    537,
-    557
+    106,
+    107
    ],
    "participantLabels": [
-    "Vuvuzela",
-    "GS x Tasty Asian Toe"
+    "Redmoor",
+    "Garrow Hill"
    ],
-   "currentKickOff": "2026-08-12 21:05:00"
+   "currentKickOff": "2027-08-11 21:05:00"
   },
   {
-   "eventId": 13614,
+   "eventId": 1067,
    "participants": [
-    662,
-    320
+    118,
+    101
    ],
    "participantLabels": [
-    "Mendeksy",
-    "Set Pace FC"
+    "Larkhaven",
+    "Quarry Bank"
    ],
-   "currentKickOff": "2026-08-12 21:30:00"
+   "currentKickOff": "2027-08-11 21:30:00"
   },
   {
-   "eventId": 13618,
+   "eventId": 1071,
    "participants": [
-    617,
-    518
+    110,
+    104
    ],
    "participantLabels": [
-    "Night Klubik",
-    "Fenix eSports"
+    "Northwell",
+    "Dunmere"
    ],
-   "currentKickOff": "2026-08-12 21:30:00"
+   "currentKickOff": "2027-08-11 21:30:00"
   },
   {
-   "eventId": 13621,
+   "eventId": 1074,
    "participants": [
-    558,
-    557
+    108,
+    107
    ],
    "participantLabels": [
-    "La Masia",
-    "GS x Tasty Asian Toe"
+    "Kestrel Park",
+    "Garrow Hill"
    ],
-   "currentKickOff": "2026-08-12 21:30:00"
+   "currentKickOff": "2027-08-11 21:30:00"
   },
   {
-   "eventId": 13622,
+   "eventId": 1075,
    "participants": [
-    320,
-    650
+    101,
+    116
    ],
    "participantLabels": [
-    "Set Pace FC",
-    "OM3N Esport"
+    "Quarry Bank",
+    "Pennoch"
    ],
-   "currentKickOff": "2026-08-18 20:15:00"
+   "currentKickOff": "2027-08-17 20:15:00"
   },
   {
-   "eventId": 13623,
+   "eventId": 1076,
    "participants": [
-    654,
-    662
+    117,
+    118
    ],
    "participantLabels": [
-    "Exito",
-    "Mendeksy"
+    "Cinder Row",
+    "Larkhaven"
    ],
-   "currentKickOff": "2026-08-18 20:15:00"
+   "currentKickOff": "2027-08-17 20:15:00"
   },
   {
-   "eventId": 13625,
+   "eventId": 1077,
    "participants": [
-    518,
-    636
+    104,
+    112
    ],
    "participantLabels": [
-    "Fenix eSports",
-    "Foregone"
+    "Dunmere",
+    "Fallowmead"
    ],
-   "currentKickOff": "2026-08-18 20:15:00"
+   "currentKickOff": "2027-08-17 20:15:00"
   },
   {
-   "eventId": 13627,
+   "eventId": 1078,
    "participants": [
-    537,
-    617
+    106,
+    110
    ],
    "participantLabels": [
-    "Vuvuzela",
-    "Night Klubik"
+    "Redmoor",
+    "Northwell"
    ],
-   "currentKickOff": "2026-08-18 20:15:00"
+   "currentKickOff": "2027-08-17 20:15:00"
   },
   {
-   "eventId": 13631,
+   "eventId": 1079,
    "participants": [
-    662,
-    418
+    118,
+    103
    ],
    "participantLabels": [
-    "Mendeksy",
-    "Bloodline Gaming"
+    "Larkhaven",
+    "Alder Vale"
    ],
-   "currentKickOff": "2026-08-18 20:40:00"
+   "currentKickOff": "2027-08-17 20:40:00"
   },
   {
-   "eventId": 13634,
+   "eventId": 1080,
    "participants": [
-    636,
-    537
+    112,
+    106
    ],
    "participantLabels": [
-    "Foregone",
-    "Vuvuzela"
+    "Fallowmead",
+    "Redmoor"
    ],
-   "currentKickOff": "2026-08-18 20:40:00"
+   "currentKickOff": "2027-08-17 20:40:00"
   },
   {
-   "eventId": 13636,
+   "eventId": 1081,
    "participants": [
-    617,
-    558
+    110,
+    108
    ],
    "participantLabels": [
-    "Night Klubik",
-    "La Masia"
+    "Northwell",
+    "Kestrel Park"
    ],
-   "currentKickOff": "2026-08-18 20:40:00"
+   "currentKickOff": "2027-08-17 20:40:00"
   },
   {
-   "eventId": 13712,
+   "eventId": 1082,
    "participants": [
-    320,
-    637
+    101,
+    113
    ],
    "participantLabels": [
-    "Set Pace FC",
-    "JDR Cwaniaki"
+    "Quarry Bank",
+    "Ivywick"
    ],
-   "currentKickOff": "2026-08-12 21:55:00"
+   "currentKickOff": "2027-08-11 21:55:00"
   },
   {
-   "eventId": 13713,
+   "eventId": 1083,
    "participants": [
-    518,
-    637
+    104,
+    113
    ],
    "participantLabels": [
-    "Fenix eSports",
-    "JDR Cwaniaki"
+    "Dunmere",
+    "Ivywick"
    ],
-   "currentKickOff": "2026-08-13 21:50:00"
+   "currentKickOff": "2027-08-12 21:50:00"
   },
   {
-   "eventId": 13719,
+   "eventId": 1084,
    "participants": [
-    637,
-    662
+    113,
+    118
    ],
    "participantLabels": [
-    "JDR Cwaniaki",
-    "Mendeksy"
+    "Ivywick",
+    "Larkhaven"
    ],
-   "currentKickOff": "2026-08-11 20:15:00"
+   "currentKickOff": "2027-08-10 20:15:00"
   },
   {
-   "eventId": 13720,
+   "eventId": 1085,
    "participants": [
-    654,
-    637
+    117,
+    113
    ],
    "participantLabels": [
-    "Exito",
-    "JDR Cwaniaki"
+    "Cinder Row",
+    "Ivywick"
    ],
-   "currentKickOff": "2026-08-11 20:40:00"
+   "currentKickOff": "2027-08-10 20:40:00"
   },
   {
-   "eventId": 13722,
+   "eventId": 1086,
    "participants": [
-    637,
-    520
+    113,
+    105
    ],
    "participantLabels": [
-    "JDR Cwaniaki",
-    "No Mercy"
+    "Ivywick",
+    "Oakmere"
    ],
-   "currentKickOff": "2026-08-11 21:30:00"
+   "currentKickOff": "2027-08-10 21:30:00"
   },
   {
-   "eventId": 13723,
+   "eventId": 1087,
    "participants": [
-    557,
-    637
+    107,
+    113
    ],
    "participantLabels": [
-    "GS x Tasty Asian Toe",
-    "JDR Cwaniaki"
+    "Garrow Hill",
+    "Ivywick"
    ],
-   "currentKickOff": "2026-08-12 20:15:00"
+   "currentKickOff": "2027-08-11 20:15:00"
   },
   {
-   "eventId": 13724,
+   "eventId": 1088,
    "participants": [
-    637,
-    390
+    113,
+    102
    ],
    "participantLabels": [
-    "JDR Cwaniaki",
-    "Folded"
+    "Ivywick",
+    "Eastholt"
    ],
-   "currentKickOff": "2026-08-12 20:40:00"
+   "currentKickOff": "2027-08-11 20:40:00"
   },
   {
-   "eventId": 13725,
+   "eventId": 1089,
    "participants": [
-    617,
-    637
+    110,
+    113
    ],
    "participantLabels": [
-    "Night Klubik",
-    "JDR Cwaniaki"
+    "Northwell",
+    "Ivywick"
    ],
-   "currentKickOff": "2026-08-12 21:05:00"
+   "currentKickOff": "2027-08-11 21:05:00"
   },
   {
-   "eventId": 13726,
+   "eventId": 1090,
    "participants": [
-    637,
-    636
+    113,
+    112
    ],
    "participantLabels": [
-    "JDR Cwaniaki",
-    "Foregone"
+    "Ivywick",
+    "Fallowmead"
    ],
-   "currentKickOff": "2026-08-12 21:30:00"
+   "currentKickOff": "2027-08-11 21:30:00"
   },
   {
-   "eventId": 13728,
+   "eventId": 1091,
    "participants": [
-    637,
-    650
+    113,
+    116
    ],
    "participantLabels": [
-    "JDR Cwaniaki",
-    "OM3N Esport"
+    "Ivywick",
+    "Pennoch"
    ],
-   "currentKickOff": "2026-08-10 20:20:00"
+   "currentKickOff": "2027-08-09 20:20:00"
   }
  ],
  "pinnedEvents": [],
  "evacuatedDefaultedEvents": [
   {
-   "eventId": 13592,
+   "eventId": 1045,
    "participants": [
-    643,
-    617
+    115,
+    110
    ],
    "participantLabels": [
-    "I Dun Know",
-    "Night Klubik"
+    "Hollowbrook",
+    "Northwell"
    ],
    "session": 0,
    "slot": 0
   },
   {
-   "eventId": 13593,
+   "eventId": 1046,
    "participants": [
-    662,
-    598
+    118,
+    109
    ],
    "participantLabels": [
-    "Mendeksy",
-    "Duhok Esports"
+    "Larkhaven",
+    "Brackenfield"
    ],
    "session": 0,
    "slot": 0
   },
   {
-   "eventId": 13594,
+   "eventId": 1047,
    "participants": [
-    650,
-    390
+    116,
+    102
    ],
    "participantLabels": [
-    "OM3N Esport",
-    "Folded"
+    "Pennoch",
+    "Eastholt"
    ],
    "session": 0,
    "slot": 0
   },
   {
-   "eventId": 13598,
+   "eventId": 1051,
    "participants": [
-    639,
-    320
+    114,
+    101
    ],
    "participantLabels": [
-    "Mindset eSports",
-    "Set Pace FC"
+    "Marrowby",
+    "Quarry Bank"
    ],
    "session": 0,
    "slot": 1
   },
   {
-   "eventId": 13599,
+   "eventId": 1052,
    "participants": [
-    636,
-    643
+    112,
+    115
    ],
    "participantLabels": [
-    "Foregone",
-    "I Dun Know"
+    "Fallowmead",
+    "Hollowbrook"
    ],
    "session": 0,
    "slot": 1
   },
   {
-   "eventId": 13600,
+   "eventId": 1053,
    "participants": [
-    634,
-    662
+    111,
+    118
    ],
    "participantLabels": [
-    "Xlions Elite",
-    "Mendeksy"
+    "Saltmarsh",
+    "Larkhaven"
    ],
    "session": 0,
    "slot": 1
   },
   {
-   "eventId": 13602,
+   "eventId": 1055,
    "participants": [
-    598,
-    654
+    109,
+    117
    ],
    "participantLabels": [
-    "Duhok Esports",
-    "Exito"
+    "Brackenfield",
+    "Cinder Row"
    ],
    "session": 0,
    "slot": 1
   },
   {
-   "eventId": 13606,
+   "eventId": 1059,
    "participants": [
-    320,
-    643
+    101,
+    115
    ],
    "participantLabels": [
-    "Set Pace FC",
-    "I Dun Know"
+    "Quarry Bank",
+    "Hollowbrook"
    ],
    "session": 0,
    "slot": 2
   },
   {
-   "eventId": 13607,
+   "eventId": 1060,
    "participants": [
-    662,
-    639
+    118,
+    114
    ],
    "participantLabels": [
-    "Mendeksy",
-    "Mindset eSports"
+    "Larkhaven",
+    "Marrowby"
    ],
    "session": 0,
    "slot": 2
   },
   {
-   "eventId": 13609,
+   "eventId": 1062,
    "participants": [
-    654,
-    634
+    117,
+    111
    ],
    "participantLabels": [
-    "Exito",
-    "Xlions Elite"
+    "Cinder Row",
+    "Saltmarsh"
    ],
    "session": 0,
    "slot": 2
   },
   {
-   "eventId": 13610,
+   "eventId": 1063,
    "participants": [
-    418,
-    598
+    103,
+    109
    ],
    "participantLabels": [
-    "Bloodline Gaming",
-    "Duhok Esports"
+    "Alder Vale",
+    "Brackenfield"
    ],
    "session": 0,
    "slot": 2
   },
   {
-   "eventId": 13611,
+   "eventId": 1064,
    "participants": [
-    518,
-    390
+    104,
+    102
    ],
    "participantLabels": [
-    "Fenix eSports",
-    "Folded"
+    "Dunmere",
+    "Eastholt"
    ],
    "session": 0,
    "slot": 2
   },
   {
-   "eventId": 13615,
+   "eventId": 1068,
    "participants": [
-    643,
-    650
+    115,
+    116
    ],
    "participantLabels": [
-    "I Dun Know",
-    "OM3N Esport"
+    "Hollowbrook",
+    "Pennoch"
    ],
    "session": 0,
    "slot": 3
   },
   {
-   "eventId": 13616,
+   "eventId": 1069,
    "participants": [
-    639,
-    654
+    114,
+    117
    ],
    "participantLabels": [
-    "Mindset eSports",
-    "Exito"
+    "Marrowby",
+    "Cinder Row"
    ],
    "session": 0,
    "slot": 3
   },
   {
-   "eventId": 13617,
+   "eventId": 1070,
    "participants": [
-    634,
-    418
+    111,
+    103
    ],
    "participantLabels": [
-    "Xlions Elite",
-    "Bloodline Gaming"
+    "Saltmarsh",
+    "Alder Vale"
    ],
    "session": 0,
    "slot": 3
   },
   {
-   "eventId": 13619,
+   "eventId": 1072,
    "participants": [
-    598,
-    520
+    109,
+    105
    ],
    "participantLabels": [
-    "Duhok Esports",
-    "No Mercy"
+    "Brackenfield",
+    "Oakmere"
    ],
    "session": 0,
    "slot": 3
   },
   {
-   "eventId": 13620,
+   "eventId": 1073,
    "participants": [
-    390,
-    537
+    102,
+    106
    ],
    "participantLabels": [
-    "Folded",
-    "Vuvuzela"
+    "Eastholt",
+    "Redmoor"
    ],
    "session": 0,
    "slot": 3
   },
   {
-   "eventId": 13380,
+   "eventId": 1003,
    "participants": [
-    636,
-    598
+    112,
+    109
    ],
    "participantLabels": [
-    "Foregone",
-    "Duhok Esports"
+    "Fallowmead",
+    "Brackenfield"
    ],
    "session": 1,
    "slot": 1
   },
   {
-   "eventId": 13389,
+   "eventId": 1004,
    "participants": [
-    634,
-    636
+    111,
+    112
    ],
    "participantLabels": [
-    "Xlions Elite",
-    "Foregone"
+    "Saltmarsh",
+    "Fallowmead"
    ],
    "session": 1,
    "slot": 2
   },
   {
-   "eventId": 13397,
+   "eventId": 1005,
    "participants": [
-    639,
-    636
+    114,
+    112
    ],
    "participantLabels": [
-    "Mindset eSports",
-    "Foregone"
+    "Marrowby",
+    "Fallowmead"
    ],
    "session": 1,
    "slot": 3

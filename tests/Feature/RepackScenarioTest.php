@@ -15,11 +15,10 @@ use Random\Engine\Mt19937;
 use Random\Randomizer;
 
 /**
- * The production instance behind this feature: one division of a season
- * two-thirds played (stage 162, snapshot 2026-08-08), 14 participants
- * with wildly unequal outstanding loads. The fixture file is copied
- * verbatim from the source brief and is the single source of truth —
- * nothing in here retypes it.
+ * The reference instance behind this feature: a synthetic division
+ * shaped like a season two-thirds played, 14 participants with wildly
+ * unequal outstanding loads and 12 doubled pairings. The fixture file is
+ * the single source of truth — nothing in here retypes it.
  *
  * @return array{grid: array{sessions: array<string>, slots: array<string>, timezone: string}, participants: array<array{id: int, label: string, load: int}>, movableEvents: array<array{eventId: int, participants: array{int, int}}>, evacuatedDefaultedEvents: array<array{eventId: int, participants: array{int, int}, participantLabels: array{string, string}, session: int, slot: int}>}
  *
@@ -98,8 +97,8 @@ function repackScenarioGrid(array $data): SessionGrid
     ]);
 }
 
-describe('Repack production scenario', function (): void {
-    it('repacks the production instance clean: everything placed, nobody double-booked, no gaps', function (): void {
+describe('Repack reference scenario', function (): void {
+    it('repacks the reference instance clean: everything placed, nobody double-booked, no gaps', function (): void {
         $data = repackScenario();
         $participants = repackScenarioParticipants($data);
         $movable = repackScenarioMovables($data, $participants);
@@ -129,9 +128,9 @@ describe('Repack production scenario', function (): void {
         expect(in_array($first->getKickoff()->format('H:i'), $slotZeroKickoffs, true))->toBeTrue();
     });
 
-    it('reports the mis-pinned variant as infeasible: CapacityExceeded naming Foregone, shortfall exactly 3', function (): void {
+    it('reports the mis-pinned variant as infeasible: CapacityExceeded naming Fallowmead, shortfall exactly 3', function (): void {
         // The wrong-by-design policy: treat the twenty evacuated
-        // defaulted events as pins. Foregone is then blocked out of 4 of
+        // defaulted events as pins. Fallowmead is then blocked out of 4 of
         // its 16 positions and 15 events cannot fit 12 free positions.
         $data = repackScenario();
         $participants = repackScenarioParticipants($data);
@@ -157,17 +156,17 @@ describe('Repack production scenario', function (): void {
         expect($capacity)->toHaveCount(1);
         $violation = $capacity[0];
         assert($violation instanceof CapacityExceeded);
-        expect($violation->getParticipant()?->getLabel())->toBe('Foregone');
+        expect($violation->getParticipant()?->getLabel())->toBe('Fallowmead');
         expect($violation->getDemand())->toBe(15);
         expect($violation->getCapacity())->toBe(12);
         expect($violation->getShortfall())->toBe(3);
 
-        // Exactly the shortfall goes unplaced, every drop names Foregone,
+        // Exactly the shortfall goes unplaced, every drop names Fallowmead,
         // and everything else is placed
         expect($outcome->getUnplaced())->toHaveCount(3);
         foreach ($outcome->getUnplaced() as $unplaced) {
             expect($unplaced->getReason())->toBe(UnplacedReason::ParticipantOverCapacity);
-            expect($unplaced->getParticipant()?->getLabel())->toBe('Foregone');
+            expect($unplaced->getParticipant()?->getLabel())->toBe('Fallowmead');
         }
         expect($outcome->getAssignments())->toHaveCount(68);
 

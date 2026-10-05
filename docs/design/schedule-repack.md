@@ -1,8 +1,7 @@
 # Design note: Schedule Repacking
 
-**Status: IMPLEMENTED** — built from the external brief in
-`tactician-repack-brief` (v2, the revision with an empty pinned set on the
-production instance). This note doubles as the decisions log for the
+**Status: IMPLEMENTED** — built from an external brief (v2, the revision with an empty pinned set on
+the reference instance). This note doubles as the decisions log for the
 overnight implementation run; every judgement call made without the
 maintainer awake is recorded here.
 
@@ -29,8 +28,8 @@ exists as a convenience.
 1. **Brief validated before building.** Fixture v2 checked internally and
    against the prose: 14 participants, 71 movable events (59 pairings, 12
    doubled), 0 pins, 20 evacuated defaulted events; mis-pinned variant
-   arithmetic confirmed (Foregone 15 events vs 12 free colours → shortfall
-   3; Exito's only free session-0 colour is slot 0; 4 pin-only outsider
+   arithmetic confirmed (Fallowmead 15 events vs 12 free colours → shortfall
+   3; Cinder Row's only free session-0 colour is slot 0; 4 pin-only outsider
    participants). Claims about `TimelineAssigner`/`TimelineDefinition`
    verified against source. No discrepancies found.
 2. **Namespace and naming.** New top-level `src/Repack/`
@@ -59,7 +58,7 @@ exists as a convenience.
    and are not reported as its compromises.
 7. **`CapacityExceeded` is scoped structurally**: the nullable participant
    covers the two shapes the planner actually produces (a participant's
-   demand vs its free positions — the Foregone case — and global grid
+   demand vs its free positions — the Fallowmead case — and global grid
    overflow), with `demand`, `capacity`, and derived `shortfall`.
    Session-level exhaustion surfaces as `EventUnplaced`, not as a third
    scope.
@@ -85,7 +84,7 @@ exists as a convenience.
       pin-aware) then improves by bounded single-event moves, then repairs
       slot-level parity (|{v : d_v > c}| must be even) by further moves —
       computed against pin-adjusted target sets, so pins are consulted
-      *before* loads are fixed (the Exito trap).
+      *before* loads are fixed (the Cinder Row trap).
     - **Phase B** packs each session by prefix-target matching: each
       participant's ideal slot set is computed around its pins (bridge
       internal gaps first, extend downward toward slot 0, then upward),
@@ -102,9 +101,10 @@ exists as a convenience.
     facts about the returned schedule, not solver intentions. Double-booking
     is audited too even though the algorithm cannot produce it — the brief
     calls it "should be unreachable", and the audit is the proof.
-13. **Fixture placement**: `repack-scenario.json` is copied verbatim into
-    `tests/Fixtures/` (brief §9: fixture built from the file, tables must
-    not drift). The regression test derives both the clean production run
+13. **Fixture placement**: `repack-scenario.json` lives in `tests/Fixtures/` as a
+    synthetic instance with the brief's structure (brief §9: fixture built
+    from the file, tables must not drift). The regression test derives both
+    the clean reference run
     and the mis-pinned variant (pins built from `evacuatedDefaultedEvents`)
     from that one file. Slot concurrency for the fixture grid is 7 (14
     participants ⇒ 7 simultaneous events).
@@ -132,16 +132,16 @@ exists as a convenience.
     repair needed whole-participant eviction moves for exactly the
     odd-participant-count case (single-event moves cannot express "one of
     the thirteen has to go"), plus cross-session swaps.
-17. **Late starts are not "unclean" failures.** The brief's production bar
+17. **Late starts are not "unclean" failures.** The brief's acceptance bar
     is "zero and zero" = zero double-bookings, zero interior gaps
     (§9.5 lists late starts nowhere). The shipped result on the
-    production instance: 71/71 placed, 0 double-booked, 0 gaps, 7 late
+    reference instance: 71/71 placed, 0 double-booked, 0 gaps, 7 late
     starts of depth 1–2 — several provably forced (odd participant count
     in a session ⇒ someone cannot start at slot 0). The regression test
     asserts the kinds separately rather than `isClean()`, which remains
     strict (any violation, late starts included, makes it false).
 18. **Mis-pinned variant residue.** Beyond the specified expectations
-    (`CapacityExceeded` Foregone shortfall 3, exactly those 3 unplaced,
+    (`CapacityExceeded` Fallowmead shortfall 3, exactly those 3 unplaced,
     zero double-bookings, pins immobile), the variant leaves two 1-slot
     interior gaps caused by the pins — reported honestly, asserted
     loosely (the brief demands the capacity story, not gap-freeness,
@@ -157,5 +157,5 @@ Per the brief: property tests over seeded random multigraphs (properness,
 pin immobility, exact assignment/unplaced reconciliation), byte-identical
 determinism under input shuffling, K₈ exactness (must come back with zero
 violations), K₅ honesty (no interval colouring exists; must be reported,
-not mangled), and the production fixture both ways round (clean; and
-mis-pinned ⇒ `CapacityExceeded` naming Foregone, shortfall exactly 3).
+not mangled), and the reference fixture both ways round (clean; and
+mis-pinned ⇒ `CapacityExceeded` naming Fallowmead, shortfall exactly 3).
