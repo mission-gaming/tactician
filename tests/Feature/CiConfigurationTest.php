@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\Tests\Support\DocumentationSnippets;
 use PHPUnit\Framework\Assert;
 
 // The CI hardening is configuration, so nothing in the library exercises it.
@@ -91,6 +92,34 @@ it('grants no job a write scope', function (string $workflow): void {
         );
     }
 })->with($workflowDataset);
+
+// The workflow has a fast path that skips the test jobs for a change set
+// holding documentation only. README.md and docs/USAGE.md are documentation
+// whose code blocks the suite executes, so a change to either must still run
+// the tests, or a broken snippet could merge on a documentation-only pull
+// request.
+it('runs the test jobs when a document with executed code blocks changes', function () use ($root): void {
+    $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+
+    // One glob, so the filter means the same whether paths-filter requires
+    // some pattern or every pattern to match
+    if (preg_match("/^          snippets:\n            - '\{([^}']+)\}'\n(?!            - )/m", $workflow, $filter) !== 1) {
+        Assert::fail('ci.yml has no `snippets` paths filter holding a single brace glob');
+    }
+    $filtered = explode(',', $filter[1]);
+    $executed = DocumentationSnippets::DOCUMENTS;
+    sort($filtered);
+    sort($executed);
+    expect($filtered)->toBe($executed);
+
+    expect($workflow)->toContain('      snippets: ${{ steps.filter.outputs.snippets }}' . "\n");
+
+    if (preg_match('/^  test:\n(?:(?:    .*)?\n)*?    if: (.+)$/m', $workflow, $condition) !== 1) {
+        Assert::fail('The test job in ci.yml has no `if:` condition');
+    }
+    expect($condition[1])->toContain("needs.changes.outputs.code == 'true'")
+        ->toContain("|| needs.changes.outputs.snippets == 'true'");
+});
 
 it('keeps Composer dependencies and the pinned actions current through Dependabot', function () use ($root): void {
     $config = (string) file_get_contents($root . '/.github/dependabot.yml');

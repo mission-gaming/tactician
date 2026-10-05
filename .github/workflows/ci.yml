@@ -16,6 +16,13 @@ jobs:
   # skip the test and coverage jobs; job-level skips report as "skipped",
   # which satisfies required status checks (unlike workflow-level path
   # filters, which would leave required checks pending).
+  #
+  # README.md and docs/USAGE.md are the exception among the documentation:
+  # the suite executes their code blocks
+  # (tests/Feature/DocumentationSnippetsTest.php), so a change to either one
+  # runs the test jobs even when nothing else changed. The two files share
+  # one glob so that the filter holds a single pattern and means the same
+  # under either predicate-quantifier.
   changes:
     runs-on: ubuntu-latest
     name: Detect changes
@@ -25,6 +32,7 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      snippets: ${{ steps.filter.outputs.snippets }}
 
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -41,11 +49,13 @@ jobs:
             - '!memory-bank/**'
             - '!.clinerules'
             - '!LICENSE'
+          snippets:
+            - '{README.md,docs/USAGE.md}'
 
   test:
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.snippets == 'true'
 
     strategy:
       matrix:
