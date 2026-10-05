@@ -147,8 +147,7 @@ The rules above apply to every namespace. The two lists below say where
 breaking changes are expected. Namespaces are relative to
 `MissionGaming\Tactician`.
 
-**Stable** (intended to keep its shape; a minor release breaks it only when
-there is no compatible alternative):
+**Stable** (the API is settled and no breaking change is planned):
 
 - `DTO`
 - Round-robin scheduling: `Scheduling\RoundRobinScheduler`,
@@ -156,7 +155,8 @@ there is no compatible alternative):
 - `Repack`, excluding `Repack\Internal`
 - `Exceptions`
 
-**Experimental** (still being designed; likely to change in a minor release):
+**Experimental** (still being designed; expected to change in a minor release
+before `1.0.0`):
 
 - The Swiss and elimination engines: `Scheduling\SwissPairingEngine`,
   `Scheduling\SwissScheduler`, `Scheduling\SwissOptions`,
@@ -174,11 +174,13 @@ Anything not listed as stable is experimental, including the rest of
 `Scheduling`. `Repack\Internal` is internal: it is not public API and carries
 no compatibility guarantee.
 
-Some stable signatures carry experimental types: `RoundRobinScheduler` accepts
-a `Constraints\ConstraintSet` and returns a `Stage\RoundRobinPlan` from
-`getPlan()`, and `Exceptions\IncompleteScheduleException` exposes `Stage`,
-`Validation`, and `Diagnostics` types. Those types follow the experimental
-rule, so the parts of a stable class that use them can change with them.
+Some stable signatures carry experimental types. For example,
+`RoundRobinScheduler` accepts a `Constraints\ConstraintSet` and returns a
+`Stage\RoundRobinPlan` from `getPlan()`, the leg strategies receive a
+`Constraints\ConstraintSet` and a `Scheduling\SchedulingContext`, and
+`Exceptions\IncompleteScheduleException` exposes `Stage`, `Validation`, and
+`Diagnostics` types. Those types are experimental, so the parts of a stable
+class that use them can change with them.
 
 Releases are cut with the [release checklist](docs/RELEASING.md).
 
