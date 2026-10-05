@@ -77,8 +77,20 @@ final class DocumentationSnippets
      */
     public const DOCUMENTS = ['README.md', 'docs/USAGE.md'];
 
+    /**
+     * How long one block (with the earlier blocks of its section) may run,
+     * in seconds of wall-clock time. The blocks of the two documents finish
+     * in well under a second each; the limit is far above that so a slow
+     * machine does not trip it, and exists so that a block that never
+     * returns fails by name instead of hanging the whole suite.
+     */
+    public const TIME_LIMIT = 30.0;
+
     /** What follows the nonce on the line a RUN block prints when it reaches its end. */
     private const FINISHED = 'finished';
+
+    /** How often a running block is checked for having finished, in microseconds. */
+    private const POLL_INTERVAL = 5_000;
 
     /**
      * @return array{snippets: list<DocumentationSnippet>, problems: list<string>}
@@ -245,14 +257,15 @@ final class DocumentationSnippets
      *
      * @param list<DocumentationSnippet> $all Every snippet of the block's document, in document order
      * @param string $autoload Path of the Composer autoloader the block runs against
+     * @param float $timeLimit Seconds the block may run before it is stopped and failed
      *
      * @return string|null Null when the block behaved as its mode demands, the failure message otherwise
      *
      * @throws RuntimeException When the block cannot be written to disk or PHP cannot be started
      */
-    public static function run(DocumentationSnippet $target, array $all, string $autoload): ?string
+    public static function run(DocumentationSnippet $target, array $all, string $autoload, float $timeLimit = self::TIME_LIMIT): ?string
     {
-        return self::attempt($target, $all, $autoload)['failure'];
+        return self::attempt($target, $all, $autoload, $timeLimit)['failure'];
     }
 
     /**
@@ -282,7 +295,7 @@ final class DocumentationSnippets
      *
      * @throws RuntimeException When the block cannot be written to disk or PHP cannot be started
      */
-    private static function attempt(DocumentationSnippet $target, array $all, string $autoload): array
+    private static function attempt(DocumentationSnippet $target, array $all, string $autoload, float $timeLimit = self::TIME_LIMIT): array
     {
         // Marks the lines on which the script reports what a THROWS block
         // threw, or that a RUN block reached its end; it only has to differ
@@ -290,7 +303,7 @@ final class DocumentationSnippets
         $nonce = 'snippet-' . hash('sha256', $target->location() . '|' . microtime() . '|' . getmypid()) . ':';
         ['source' => $source, 'lines' => $lineMap, 'earlier' => $earlier] = self::script($target, $all, $autoload, $nonce);
 
-        ['exitCode' => $exitCode, 'output' => $output, 'errors' => $errors] = self::execute(
+        ['exitCode' => $exitCode, 'output' => $output, 'errors' => $errors, 'timedOut' => $timedOut] = self::execute(
             $source,
             [
                 '-d', 'error_reporting=-1',
@@ -301,7 +314,8 @@ final class DocumentationSnippets
                 '-d', 'assert.exception=1',
             ],
             $target,
-            $lineMap
+            $lineMap,
+            $timeLimit
         );
 
         $context = sprintf(
@@ -316,6 +330,17 @@ final class DocumentationSnippets
             'failure' => $failure,
             'output' => (string) preg_replace('/\n' . preg_quote($nonce, '/') . '\S*\n/', '', $output),
         ];
+
+        // A stopped block proved nothing, whatever it printed before the limit
+        if ($timedOut) {
+            return $result(sprintf(
+                '%s: the php block did not finish within %s second(s) and was stopped. It, or an earlier block of the '
+                . 'section, never returns (an endless loop, or a wait for input that does not come). A documentation '
+                . 'block must run to its end.',
+                $context,
+                rtrim(rtrim(sprintf('%.3F', $timeLimit), '0'), '.')
+            ));
+        }
 
         if ($target->mode === DocumentationSnippet::THROWS) {
             $expected = (string) $target->exception;
@@ -517,18 +542,26 @@ final class DocumentationSnippets
     }
 
     /**
-     * Run a source file through PHP and collect what it did.
+     * Run a source file through PHP and collect what it did. The process is
+     * given a wall-clock limit: one that is still running when the limit
+     * passes is killed, and reported as timed out.
      *
      * @param list<string> $arguments Arguments placed before the script path
      * @param array<int, int|null> $lineMap
      *
-     * @return array{exitCode: int, output: string, errors: string} The exit code, standard output,
-     *     and standard error with its references to the script rewritten as references to the document
+     * @return array{exitCode: int, output: string, errors: string, timedOut: bool} The exit code,
+     *     standard output, standard error with its references to the script rewritten as references
+     *     to the document, and whether the process had to be stopped
      *
      * @throws RuntimeException When the source cannot be written to disk or PHP cannot be started
      */
-    private static function execute(string $source, array $arguments, DocumentationSnippet $snippet, array $lineMap): array
-    {
+    private static function execute(
+        string $source,
+        array $arguments,
+        DocumentationSnippet $snippet,
+        array $lineMap,
+        float $timeLimit = self::TIME_LIMIT
+    ): array {
         $script = self::temporaryFile();
         $stdout = self::temporaryFile();
         $stderr = self::temporaryFile();
@@ -544,12 +577,36 @@ final class DocumentationSnippets
             if ($process === false) {
                 throw new RuntimeException('Could not start PHP to run ' . $snippet->location());
             }
-            $exitCode = proc_close($process);
+
+            // Wait for the process, but not for ever. The exit code is read
+            // from the status that first reports the process as finished:
+            // after that, proc_close() no longer has it on every PHP version
+            $deadline = microtime(true) + $timeLimit;
+            $exitCode = null;
+            $timedOut = false;
+            while (true) {
+                $status = proc_get_status($process);
+                if (!$status['running']) {
+                    $exitCode = $status['exitcode'];
+
+                    break;
+                }
+                if (microtime(true) >= $deadline) {
+                    $timedOut = true;
+                    // SIGKILL: a block stuck in a loop does not answer a polite signal
+                    proc_terminate($process, 9);
+
+                    break;
+                }
+                usleep(self::POLL_INTERVAL);
+            }
+            $closed = proc_close($process);
 
             return [
-                'exitCode' => $exitCode,
+                'exitCode' => $exitCode ?? $closed,
                 'output' => self::translate((string) file_get_contents($stdout), $script, $snippet->file, $lineMap),
                 'errors' => trim(self::translate((string) file_get_contents($stderr), $script, $snippet->file, $lineMap)),
+                'timedOut' => $timedOut,
             ];
         } finally {
             foreach ([$script, $stdout, $stderr] as $path) {
