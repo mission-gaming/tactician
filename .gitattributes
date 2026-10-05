@@ -8,7 +8,8 @@ tests/Fixtures/golden/** text eol=lf
 # The dist archive carries only what is needed to use the library: src/,
 # composer.json, LICENSE, README.md and CHANGELOG.md. Everything else at the
 # root is listed here; tests/Feature/DistArchiveTest.php fails when a new root
-# entry is missing from this list.
+# entry is missing from this list. Keep the leading slash: without it a
+# pattern matches at every depth and can remove files from src/ as well.
 /.claude               export-ignore
 /.clineignore          export-ignore
 /.clinerules           export-ignore
