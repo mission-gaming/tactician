@@ -27,12 +27,14 @@ use MissionGaming\Tactician\Timeline\ScheduledSchedule;
  * own: the examples are checked on what they compute
  * (tests/Feature/ExamplesTest.php), not on how that is drawn.
  *
- * Gap left knowingly: Example::present() displays only when it is called from the
- * script PHP was started with, and chooses HTML when the SAPI is not the
- * command line. The command-line branch is exercised by ExamplesTest, which
- * runs every example as a process. The web-server branch needs a server and
- * is not run by the suite; the HTML it would print is Example::renderHtml(), tested
- * below.
+ * Example::present() displays only when it is called from the script PHP was
+ * started with, and chooses HTML when the SAPI is not the command line. That
+ * decision needs a process or a server of its own, so it is exercised by
+ * ExamplesTest: every example as a command-line process, named in several
+ * ways, and every example as a page under PHP's built-in web server.
+ *
+ * Gap left knowingly: other web servers (FPM, Apache) are not started by the
+ * suite.
  */
 
 require_once ExampleResults::directory() . '/support/Example.php';

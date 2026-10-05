@@ -943,6 +943,187 @@ it('prints the same text whatever the timezone, locale, precision and working di
     expect($other)->toBe($plain);
 })->with(ExampleResults::names());
 
+/*
+ * Example::present() displays only when the calling script is the one PHP
+ * was started with, which it decides by comparing the script's own path
+ * with the first included file. The two are spelled by different parts of
+ * PHP, so the comparison is checked under each way of naming a script that
+ * could make them differ. A mismatch is silent: the script prints nothing.
+ */
+it('displays its results however the script is named on the command line', function (string $command, string $directory): void {
+    $root = dirname(__DIR__, 2);
+    $script = '01-basic-round-robin.php';
+    $expected = runExampleScript("{$root}/examples/{$script}", ['error_reporting=-1', 'display_errors=1', 'html_errors=0'])[1];
+
+    [$exitCode, $output] = runExampleScript($command . $script, ['error_reporting=-1', 'display_errors=1', 'html_errors=0'], $root . $directory);
+
+    expect($exitCode)->toBe(0)
+        ->and($expected)->toStartWith("Basic round robin\n=================\n")
+        ->and($output)->toBe($expected);
+})->with([
+    'relative to the project root' => ['examples/', ''],
+    'relative to its own directory' => ['', '/examples'],
+    'with a leading ./' => ['./', '/examples'],
+    'through a parent directory' => ['../examples/', '/examples'],
+    'from another directory of the project' => ['../examples/', '/tests'],
+]);
+
+/**
+ * Call something that is expected to fail now and then (a connection to a
+ * server that is still starting, a link the platform refuses), without the
+ * warning PHP raises for it being reported against the test.
+ *
+ * @template T
+ *
+ * @param Closure(): T $attempt
+ * @return T
+ */
+function withoutWarnings(Closure $attempt): mixed
+{
+    set_error_handler(static fn (): bool => true, E_WARNING);
+    try {
+        return $attempt();
+    } finally {
+        restore_error_handler();
+    }
+}
+
+it('displays its results when the script is reached through a symbolic link', function (string $linked): void {
+    $root = dirname(__DIR__, 2);
+    $link = sys_get_temp_dir() . '/tactician-examples-' . bin2hex(random_bytes(6));
+
+    // The harness limitation: a platform or account that may not create links (Windows without the privilege)
+    if (!withoutWarnings(static fn (): bool => symlink($linked === 'the project' ? $root : "{$root}/examples", $link))) {
+        Assert::markTestSkipped('Symbolic links cannot be created here.');
+    }
+
+    try {
+        $script = ($linked === 'the project' ? "{$link}/examples" : $link) . '/01-basic-round-robin.php';
+        $expected = runExampleScript("{$root}/examples/01-basic-round-robin.php", ['error_reporting=-1', 'display_errors=1', 'html_errors=0'])[1];
+        [$exitCode, $output] = runExampleScript($script, ['error_reporting=-1', 'display_errors=1', 'html_errors=0'], sys_get_temp_dir());
+    } finally {
+        unlink($link);
+    }
+
+    expect($exitCode)->toBe(0)
+        ->and($expected)->toStartWith("Basic round robin\n")
+        ->and($output)->toBe($expected);
+})->with(['the examples directory', 'the project']);
+
+// A script that includes an example is not the example: it gets the results
+// back and nothing is displayed, which is what lets the suite read them
+it('displays nothing when another script includes the example', function (): void {
+    $root = dirname(__DIR__, 2);
+    $including = tempnam(sys_get_temp_dir(), 'including');
+    Assert::assertIsString($including);
+
+    try {
+        file_put_contents($including, '<?php $results = require ' . var_export("{$root}/examples/01-basic-round-robin.php", true)
+            . '; echo "results: ", implode(",", array_keys($results)), "\n";');
+        [$exitCode, $output] = runExampleScript($including, ['error_reporting=-1', 'display_errors=1', 'html_errors=0']);
+    } finally {
+        unlink($including);
+    }
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toBe("results: Participants,Schedule,Shape\n");
+});
+
+/**
+ * Start PHP's built-in web server on a free local port, hand its address to
+ * the callback, and stop it afterwards whatever happens.
+ *
+ * @param Closure(string): void $requests Given the server's base address, without a trailing slash
+ *
+ * @throws PHPUnit\Framework\Exception
+ * @throws PHPUnit\Framework\SkippedWithMessageException When no server can be started here
+ */
+function withExampleServer(string $workingDirectory, string $documentRoot, Closure $requests): void
+{
+    // Ask the system for a free port, then release it for the server
+    $probe = withoutWarnings(static fn () => stream_socket_server('tcp://127.0.0.1:0'));
+    if ($probe === false) {
+        Assert::markTestSkipped('No local port can be opened here.');
+    }
+    $address = (string) stream_socket_get_name($probe, false);
+    fclose($probe);
+
+    $log = tempnam(sys_get_temp_dir(), 'example-server');
+    Assert::assertIsString($log);
+
+    $server = proc_open(
+        [PHP_BINARY, '-d', 'error_reporting=-1', '-d', 'display_errors=1', '-S', $address, '-t', $documentRoot],
+        [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => ['file', $log, 'a'], 2 => ['file', $log, 'a']],
+        $pipes,
+        $workingDirectory
+    );
+    Assert::assertIsResource($server, 'Could not start the built-in web server');
+
+    try {
+        // The server needs a moment before it accepts connections
+        $deadline = microtime(true) + 15.0;
+        $port = (int) substr($address, (int) strrpos($address, ':') + 1);
+        while (true) {
+            $connection = withoutWarnings(static fn () => fsockopen('127.0.0.1', $port, $code, $message, 0.2));
+            if ($connection !== false) {
+                fclose($connection);
+
+                break;
+            }
+            if (!proc_get_status($server)['running'] || microtime(true) > $deadline) {
+                // The harness limitation: a sandbox that forbids listening sockets. Not a failure of the examples
+                Assert::markTestSkipped('The built-in web server did not start: ' . trim((string) file_get_contents($log)));
+            }
+            usleep(20_000);
+        }
+
+        $requests('http://' . $address);
+    } finally {
+        proc_terminate($server);
+        proc_close($server);
+        unlink($log);
+    }
+}
+
+// The other half of the display decision: under a web server the SAPI is not
+// the command line and the first included file is the requested script
+it('serves every example as a page under the built-in web server', function (string $workingDirectory, string $documentRoot): void {
+    $root = dirname(__DIR__, 2);
+
+    withExampleServer($root . $workingDirectory, $documentRoot === 'absolute' ? "{$root}/examples" : $documentRoot, function (string $server): void {
+        $index = (string) file_get_contents($server . '/');
+        expect($index)->toStartWith('<!DOCTYPE html>')
+            ->toContain('<title>Tactician examples - Tactician examples</title>');
+
+        foreach (ExampleResults::names() as $example) {
+            expect($index)->toContain('<a href="' . $example . '.php">');
+
+            $page = (string) file_get_contents("{$server}/{$example}.php");
+            expect($page)->toStartWith('<!DOCTYPE html>')
+                ->toEndWith("</html>\n")
+                ->toContain('<a href="index.php">All examples</a>')
+                ->toContain("<code>php examples/{$example}.php</code>")
+                // The page lists its own source, escaped
+                ->toContain('<h2>The code that produced this page</h2><pre class="source"><code>&lt;?php')
+                ->toContain('return Example::present(__FILE__, ');
+
+            foreach (['Warning', 'Notice', 'Deprecated', 'Fatal error'] as $marker) {
+                expect($page)->not->toContain("<b>{$marker}</b>");
+            }
+            foreach (array_keys(ExampleResults::of($example)) as $name) {
+                expect($page)->toContain('<h2>' . Example::escape($name) . '</h2>');
+            }
+        }
+
+        // What the examples share is not a page: requested by itself it shows nothing
+        expect((string) file_get_contents($server . '/support/Example.php'))->toBe('');
+    });
+})->with([
+    'started in the project root' => ['', 'examples'],
+    'started in the examples directory' => ['/examples', '.'],
+    'started elsewhere, with an absolute document root' => ['/tests', 'absolute'],
+]);
+
 it('draws every example as a page without losing a result', function (string $example): void {
     $results = ExampleResults::of($example);
     $html = Example::renderHtml('Title', 'Summary', $results, $example . '.php');
