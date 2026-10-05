@@ -7,9 +7,8 @@ The release checklist. The policy it enforces is in the README's
 
 1. **Changelog section.** In [`CHANGELOG.md`](../CHANGELOG.md), rename
    `Unreleased` to the new version with the date the tag will be made (step
-   5), add a fresh empty
-   `Unreleased` section above it, and update the comparison links at the
-   bottom of the file. A tag without a changelog section is not a release.
+   5), add a fresh empty `Unreleased` section above it, and update the
+   comparison links at the bottom of the file. A tag without a changelog section is not a release.
 2. **Golden fixtures.** Compare `tests/Fixtures/golden/` with the previous
    tag:
 
