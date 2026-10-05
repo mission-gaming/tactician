@@ -30,9 +30,14 @@ generated output for a fixed input and seed is identical.
   coding agent: a hook that formats and analyses each PHP file the agent edits
   (`tests/Feature/AgentHookTest.php` covers it), and `verify` and `release`
   commands. The directory is not part of the installed package.
+- Governance files: a security policy (`SECURITY.md`), code owners, a pull
+  request template with a compatibility section, and issue forms for bug
+  reports and feature requests.
 
 ### Changed
 
+- `docs/CONTRIBUTING.md` describes the current checks and rules, and states
+  one branch and commit convention.
 - The repack scenario test fixture is now a synthetic instance.
 - The CI workflow runs with least-privilege permissions and pinned actions, and
   Dependabot keeps the actions up to date.

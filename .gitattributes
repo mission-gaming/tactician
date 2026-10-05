@@ -18,6 +18,7 @@ tests/Fixtures/golden/** text eol=lf
 /.php-cs-fixer.dist.php export-ignore
 /AGENTS.md             export-ignore
 /CLAUDE.md             export-ignore
+/SECURITY.md           export-ignore
 /composer.lock         export-ignore
 /docs                  export-ignore
 /examples              export-ignore
