@@ -226,6 +226,16 @@ final class Example
                 $parts['Round ' . $round] = ['list', array_map(self::eventText(...), array_values($events))];
             }
 
+            // getEventsByRound() leaves out an event that has no round; a
+            // schedule holding only those is not an empty one
+            $unassigned = array_values(array_filter(
+                $value->getEvents(),
+                static fn (Event $event): bool => $event->getRound() === null
+            ));
+            if ($unassigned !== []) {
+                $parts['No round'] = ['list', array_map(self::eventText(...), $unassigned)];
+            }
+
             return $parts === [] ? ['text', '(no events)'] : ['parts', $parts];
         }
 

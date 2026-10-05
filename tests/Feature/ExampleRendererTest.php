@@ -9,10 +9,17 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Examples\Measured;
+use MissionGaming\Tactician\Repack\LateStart;
+use MissionGaming\Tactician\Repack\RepackOutcome;
+use MissionGaming\Tactician\Repack\SlotAssignment;
+use MissionGaming\Tactician\Repack\UnplacedEvent;
+use MissionGaming\Tactician\Repack\UnplacedReason;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Tests\Support\ExampleResults;
+use MissionGaming\Tactician\Timeline\ScheduledEvent;
+use MissionGaming\Tactician\Timeline\ScheduledSchedule;
 
 /*
  * examples/support/Example.php is the one place the examples turn results
@@ -57,6 +64,127 @@ describe('Example renderer', function (): void {
         'standings without entries' => [new Standings([]), '(no entries)'],
         'null' => [null, '-'],
     ]);
+
+    // Schedule::getEventsByRound() leaves out an event without a round, so a
+    // schedule of only such events used to be drawn as "(no events)"
+    it('draws the events of a schedule that have no round', function (): void {
+        $alpha = new Participant('a', 'Alpha');
+        $beta = new Participant('b', 'Beta');
+        $gamma = new Participant('c', 'Gamma');
+
+        $loose = Example::renderText('T', 'S', ['Loose' => new Schedule([new Event([$alpha, $beta])])]);
+
+        expect($loose)->not->toContain('(no events)');
+        expect($loose)->toContain("== Loose ==\nNo round:\n  - Alpha v Beta\n")
+            ->and(Example::renderText('T', 'S', ['Mixed' => new Schedule([
+                new Event([$alpha, $beta]),
+                new Event([$alpha, $gamma], new Round(1)),
+            ])]))->toContain("== Mixed ==\nRound 1:\n  - Alpha v Gamma\nNo round:\n  - Alpha v Beta\n");
+    });
+
+    // The escaping test below draws neither of these two: a resource name,
+    // an event id and a participant id are caller-supplied text as well
+    it('escapes resources, event ids and violation details in the HTML page', function (): void {
+        $hostile = new Participant('<id>', '<b>Label</b>');
+        $other = new Participant('o&o', 'Other');
+        $kickoff = new DateTimeImmutable('2026-08-01 17:00:00', new DateTimeZone('UTC'));
+
+        $html = Example::renderHtml('T', 'S', [
+            'Calendar' => new ScheduledSchedule([
+                new ScheduledEvent(new Event([$hostile, $other], new Round(1)), $kickoff, '<i>Pitch</i> & "Court"'),
+                new ScheduledEvent(new Event([$other, $hostile]), $kickoff),
+            ]),
+            'Repack' => new RepackOutcome(
+                [new SlotAssignment('<e1>', 0, 1, $kickoff)],
+                [new UnplacedEvent('<e2>', UnplacedReason::NoSlotAvailable)],
+                [new LateStart($hostile, 0, 1)]
+            ),
+            'Metadata' => new Participant('m', 'Meta', null, ['<key>' => '<value>', 'nested' => ['a' => 1]]),
+        ]);
+
+        foreach (['<id>', '<b>Label</b>', '<i>Pitch</i>', '"Court"', '<e1>', '<e2>', '<key>', '<value>'] as $raw) {
+            expect($html)->not->toContain($raw);
+        }
+
+        expect($html)->toContain('<td>&lt;i&gt;Pitch&lt;/i&gt; &amp; &quot;Court&quot;</td>')
+            // No round and no resource are a dash, not an empty cell
+            ->toContain('<tr><td>-</td><td>Sat 1 Aug 2026 17:00</td><td>-</td><td>Other v &lt;b&gt;Label&lt;/b&gt;</td></tr>')
+            ->toContain('<td>&lt;e1&gt;</td><td>0</td><td>1</td><td>Sat 1 Aug 2026 17:00</td>')
+            ->toContain('<li>Unplaced: &lt;e2&gt; (no_slot_available)</li>')
+            ->toContain('&quot;participant&quot;:&quot;&lt;id&gt;&quot;')
+            // A metadata value that is not a scalar is named by its type, never dumped
+            ->toContain('Meta (&lt;key&gt;: &lt;value&gt;, nested: array)');
+    });
+
+    it('draws a clean repack outcome without assignments as such', function (): void {
+        expect(Example::renderText('T', 'S', ['Repack' => new RepackOutcome([], [], [])]))
+            ->toContain("== Repack ==\nAssignments:\n  (none)\nCompromises:\n  None: every event placed, nobody double-booked.\n");
+    });
+
+    it('gives a standings row a dash for a tiebreaker only other rows carry', function (): void {
+        $text = Example::renderText('T', 'S', ['Table' => new Standings([
+            (new StandingEntry(new Participant('a', 'Alpha'), 1, 1, 0, 0, 3.0))->withTiebreakers(['wins' => 1.0]),
+            (new StandingEntry(new Participant('b', 'Beta'), 1, 0, 0, 1, 0.0))->withTiebreakers(['buchholz' => 3.0]),
+        ])]);
+
+        expect($text)->toContain(
+            "#  Participant  Played  Won  Drawn  Lost  Ranking value  wins  buchholz\n"
+            . "1  Alpha        1       1    0      0     3              1     -\n"
+            . "2  Beta         1       0    0      1     0              -     3\n"
+        );
+    });
+
+    // A list of rows is only a table when every row has the same keys and
+    // scalar cells; anything else must still be drawn, cell by cell
+    it('draws rows that do not make a table as numbered parts', function (): void {
+        $text = Example::renderText('T', 'S', [
+            'Uneven' => [['Name' => 'Ajax', 'Points' => 3], ['Name' => 'Boca']],
+            'Objects' => [['Who' => new Participant('a', 'Alpha'), 'Took' => new Measured(1.5, 'ms', 'It varies.')]],
+        ]);
+
+        expect($text)->toContain("== Uneven ==\n1:\n  - Name: Ajax\n  - Points: 3\n2:\n  - Name: Boca\n")
+            ->toContain("== Objects ==\n1:\n  - Who: Alpha\n  - Took: 1.5 ms (measured on this run)\n");
+    });
+
+    it('keeps nested parts inside the six heading levels HTML has', function (): void {
+        $deep = ['a' => ['b' => ['c' => ['d' => ['e' => [new Schedule()]]]]]];
+        $html = Example::renderHtml('T', 'S', ['Deep' => $deep]);
+
+        expect($html)->not->toMatch('/<h[7-9]/');
+        expect($html)->toContain('<h5>c</h5><h6>d</h6><h6>e</h6>')
+            ->and(Example::renderText('T', 'S', ['Deep' => $deep]))
+            ->toContain("a:\n  b:\n    c:\n      d:\n        e:\n          - (no events)\n");
+    });
+
+    // Text that is not valid UTF-8 must neither stop the page nor reach it raw
+    it('draws text that is not valid UTF-8 without failing', function (): void {
+        $broken = "Caf\xE9 <b>";
+        $results = ['Rows' => [['Name' => $broken, 'Points' => 1]], $broken => $broken];
+
+        $html = Example::renderHtml($broken, $broken, $results);
+
+        expect($html)->not->toContain('<b>')
+            ->toContain("Caf\u{FFFD} &lt;b&gt;")
+            ->and(Example::renderText($broken, $broken, $results))->toContain("== {$broken} ==\n{$broken}\n");
+    });
+
+    it('rounds a float to three decimals whatever the precision settings', function (): void {
+        $precision = (string) ini_get('precision');
+        $serializePrecision = (string) ini_get('serialize_precision');
+
+        ini_set('precision', '3');
+        ini_set('serialize_precision', '3');
+        try {
+            $text = Example::renderText('T', 'S', [
+                'Values' => ['Third' => 1 / 3, 'Large' => 1234567.891, 'Tiny' => 0.0004, 'Negative tiny' => -0.0004, 'Whole' => 100.0],
+            ]);
+        } finally {
+            ini_set('precision', $precision);
+            ini_set('serialize_precision', $serializePrecision);
+        }
+
+        expect($text)->toContain("- Third: 0.333\n- Large: 1234567.891\n- Tiny: 0\n- Negative tiny: 0\n- Whole: 100\n");
+    });
 
     it('escapes everything that comes from a result in the HTML page', function (): void {
         $hostile = '<script>alert("x")</script> & Sons';
