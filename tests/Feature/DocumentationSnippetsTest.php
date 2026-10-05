@@ -31,8 +31,14 @@ use PHPUnit\Framework\Assert;
  * - docs/ARCHITECTURE.md and docs/design/*.md are not executed. Their
  *   blocks are design sketches (signatures, interface outlines) rather than
  *   programs; covering them means marking almost every block as skipped.
- * - A block is run, not checked: an inline value comment (`// 6`) is not
- *   compared with the value the code produces.
+ * - Inline value comments (`// 6`) are not compared with the values the
+ *   code produces by the harness. The values the two documents state today
+ *   are pinned one by one in "Documented values" below; a comment added
+ *   later is unchecked until it is added there.
+ * - A block that catches its own failure and prints a message exits
+ *   cleanly, and PHP reports nothing. The harness cannot tell that from
+ *   success; the blocks whose printed result the prose relies on are pinned
+ *   in "Documented values" as well.
  * - A block that never returns (an endless loop) hangs the run rather than
  *   failing it; the harness sets no time limit.
  */
@@ -102,6 +108,57 @@ function snippetSampleFailure(string $markdown): ?string
         $extracted['snippets'],
         dirname(__DIR__, 2) . '/vendor/autoload.php'
     );
+}
+
+/**
+ * The one block of a document that contains the given line of code,
+ * with every snippet of that document. Blocks are found by their code
+ * rather than by line number, so editing the prose above one does not
+ * break the lookup.
+ *
+ * @param array<string, array{snippets: list<DocumentationSnippet>, problems: list<string>}> $extracted
+ *
+ * @return array{0: DocumentationSnippet, 1: list<DocumentationSnippet>}
+ *
+ * @throws RuntimeException A failed assertion, when no block or more than one contains the line
+ */
+function documentedBlock(array $extracted, string $document, string $containing): array
+{
+    $found = array_values(array_filter(
+        $extracted[$document]['snippets'],
+        static fn (DocumentationSnippet $snippet): bool => $snippet->mode !== DocumentationSnippet::SETUP
+            && str_contains(implode("\n", $snippet->code), $containing)
+    ));
+    Assert::assertSame(1, count($found), "Expected exactly one block of {$document} to contain `{$containing}`.");
+
+    return [$found[0], $extracted[$document]['snippets']];
+}
+
+/**
+ * Run assertions straight after one block of a document, with everything
+ * that block and the earlier blocks of its section defined in scope. The
+ * assertions are a block of their own, appended in the document's place.
+ *
+ * @param array<string, array{snippets: list<DocumentationSnippet>, problems: list<string>}> $extracted
+ *
+ * @return string|null The failure message, null when every assertion held
+ *
+ * @throws RuntimeException When PHP cannot be started
+ */
+function documentedValuesFailure(array $extracted, string $document, string $containing, string $assertions): ?string
+{
+    [$block, $all] = documentedBlock($extracted, $document, $containing);
+
+    $upToBlock = array_slice($all, 0, (int) array_search($block, $all, true) + 1);
+    $check = new DocumentationSnippet(
+        $block->file,
+        $block->line,
+        $block->section,
+        explode("\n", $assertions),
+        sectionLine: $block->sectionLine,
+    );
+
+    return DocumentationSnippets::run($check, [...$upToBlock, $check], dirname(__DIR__, 2) . '/vendor/autoload.php');
 }
 
 /**
@@ -189,6 +246,255 @@ describe('Documentation snippets', function () use ($extracted, $blocks, $skippe
 
         expect(array_values($headings))->toBe(array_values(array_unique($headings)));
     })->with(DocumentationSnippets::DOCUMENTS);
+});
+
+/*
+ * What the documents say their code produces. The harness proves a block
+ * runs; these prove the output a block prints, and the values its inline
+ * comments state, are the ones a reader gets. A block that catches its
+ * own failure and prints a fallback message would pass the harness, so the
+ * blocks with a `catch` branch are pinned to the branch the prose describes.
+ */
+describe('Documented values', function () use ($extracted, $autoload): void {
+    it('prints what the document says the block prints', function (string $document, string $containing, array $expected, array $absent) use ($extracted, $autoload): void {
+        [$block, $all] = documentedBlock($extracted, $document, $containing);
+        $output = DocumentationSnippets::output($block, $all, $autoload);
+
+        foreach ($expected as $text) {
+            expect($output)->toContain($text);
+        }
+        foreach ($absent as $text) {
+            expect($output)->not->toContain($text);
+        }
+    })->with([
+        'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'schedule metadata' => [
+            'docs/USAGE.md',
+            "getMetadataValue('participant_count')",
+            ["Algorithm: round-robin\nParticipant count: 4\nTotal rounds: 3\n"],
+            [],
+        ],
+        'multi-leg analysis' => [
+            'docs/USAGE.md',
+            'echo "Total legs: "',
+            ["Total legs: 2\nRounds per leg: 3\nTotal rounds: 6\n", "Leg 1, Round 3:\n", "Leg 2, Round 4:\n", "Leg 2, Round 6:\n"],
+            ['Leg 3', 'Round 7'],
+        ],
+        'standings table' => [
+            'docs/USAGE.md',
+            '$standings->getPosition(',
+            ["1. Carol: 4 pts (1W 1D 0L)\n2. Alice: 4 pts (1W 1D 0L)\n3. Bob: 0 pts (0W 0D 1L)\n4. Dave: 0 pts (0W 0D 1L)\n"],
+            [],
+        ],
+        'elimination round labels' => ['docs/USAGE.md', 'echo "{$pairing->getLabel()}\n";', ["quarterfinal\nsemifinal\nfinal\n"], []],
+        // The restrictive constraint is there to show the failure branch
+        'validation failure branch' => [
+            'docs/USAGE.md',
+            'echo "Schedule generated successfully with "',
+            ['Cannot generate complete schedule: ', "Expected events: 6\n"],
+            ['Schedule generated successfully'],
+        ],
+        'diagnostic report branch' => [
+            'docs/USAGE.md',
+            '$diagnostics = $e->getDiagnosticReport();',
+            ['Incomplete schedule: ', '=== INCOMPLETE SCHEDULE DIAGNOSTIC REPORT ==='],
+            ['Configuration error'],
+        ],
+        'exception hierarchy branch' => [
+            'docs/USAGE.md',
+            'handleIncompleteSchedule($e);',
+            ["Schedule could not be completed:\n", "- Constraint 'Derby Ban' violated", "Completion: 5/6 events\n"],
+            [],
+        ],
+        'premier league season' => ['docs/USAGE.md', 'echo "Premier League season: "', ["Premier League season: 380 matches\n"], []],
+        'skill brackets on Swiss' => ['docs/USAGE.md', 'echo count($tournament) . " matches\n";', ["12 matches\n"], []],
+        'spaced return fixtures succeed' => [
+            'docs/USAGE.md',
+            'echo "Tournament scheduled successfully!\n";',
+            ["Tournament scheduled successfully!\nTotal matches: 30\nTotal rounds: 10\n"],
+            ['Could not schedule'],
+        ],
+    ]);
+
+    it('prints one match per department in each of the two team-building rounds', function () use ($extracted, $autoload): void {
+        [$block, $all] = documentedBlock($extracted, 'docs/USAGE.md', '$teamBuilding = ');
+        $lines = explode("\n", trim(DocumentationSnippets::output($block, $all, $autoload)));
+
+        // The pairing order is random, so the shape is pinned rather than the text
+        expect($lines)->toHaveCount(4)
+            ->and(preg_grep('/^Round 1: .+ vs .+$/', $lines))->toHaveCount(2)
+            ->and(preg_grep('/^Round 2: .+ vs .+$/', $lines))->toHaveCount(2);
+    });
+
+    it('produces the values the inline comments state', function (string $document, string $containing, string $assertions) use ($extracted): void {
+        $failure = documentedValuesFailure($extracted, $document, $containing, $assertions);
+        if ($failure !== null) {
+            Assert::fail($failure);
+        }
+
+        expect($failure)->toBeNull();
+    })->with([
+        'quick start is a full round robin' => ['README.md', '$schedule = $scheduler->schedule($participants);', 'assert(count($schedule) === 15);'],
+        'options round trip' => [
+            'docs/USAGE.md',
+            '$options->toArray();',
+            "assert(\$options->toArray() === ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]);",
+        ],
+        // The prose says every rotation the greedy generator tries violates the policy
+        'backtracking is needed for the placement policy' => [
+            'docs/USAGE.md',
+            'new RoundRobinOptions(backtracking: true)',
+            <<<'PHP'
+                assert(count($schedule) === 6);
+                foreach ($schedule as $event) {
+                    $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                    sort($ids);
+                    assert(($placement[implode('|', $ids)] ?? $event->getRound()?->getNumber()) === $event->getRound()?->getNumber());
+                }
+                try {
+                    (new RoundRobinScheduler($constraints))->schedule($participants);
+                    $greedy = 'generated a schedule';
+                } catch (\MissionGaming\Tactician\Exceptions\IncompleteScheduleException) {
+                    $greedy = 'failed';
+                }
+                assert($greedy === 'failed');
+                PHP,
+        ],
+        'swiss preset' => ['docs/USAGE.md', 'new SwissScheduler(null, new Randomizer())', 'assert(count($schedule) === 12);'],
+        'bracket placement' => [
+            'docs/USAGE.md',
+            '$titleHolder = ',
+            <<<'PHP'
+                assert($titleHolder->getLabel() === 'Alice');
+                $records = [];
+                foreach ($outcome->getStandings() as $entry) {
+                    $records[] = "{$entry->getWins()}-{$entry->getLosses()}";
+                }
+                assert($records === ['3-0', '2-1', '1-1', '1-1', '0-1', '0-1', '0-1', '0-1']);
+                PHP,
+        ],
+        'serpentine pools and qualifiers' => [
+            'docs/USAGE.md',
+            '$pools = PoolDistributor::serpentine(',
+            <<<'PHP'
+                $labels = fn (array $list): array => array_map(fn ($p) => $p->getLabel(), $list);
+                assert(array_map($labels, $pools) === ['A' => ['Alice', 'Dave', 'Erin', 'Heidi'], 'B' => ['Bob', 'Carol', 'Frank', 'Grace']]);
+                // Pool winners first, then the runners-up: A1, B1, A2, B2
+                assert($labels($qualifiers) === ['Alice', 'Bob', 'Dave', 'Carol']);
+                // Fold seeding pairs A1 with B2 and B1 with A2
+                $semifinals = array_map(fn ($event) => $labels($event->getParticipants()), $knockout->pairNextRound($knockoutState)->getEvents());
+                assert($semifinals === [['Alice', 'Carol'], ['Bob', 'Dave']]);
+                PHP,
+        ],
+        'composition chain telescopes' => ['docs/USAGE.md', '->validateChain(16, [', 'assert($violations === []);'],
+        'timeline kickoffs' => [
+            'docs/USAGE.md',
+            '$scheduled = (new TimelineAssigner())->assign($schedule, $timeline);',
+            <<<'PHP'
+                $kickoffs = [];
+                foreach ($scheduled->getEventsByRound() as $round => $scheduledEvents) {
+                    foreach ($scheduledEvents as $scheduledEvent) {
+                        assert($scheduledEvent->getKickoff()->getTimezone()->getName() === 'UTC');
+                        $kickoffs[] = $scheduledEvent->getKickoff()->format('Y-m-d H:i');
+                    }
+                }
+                // 18:00 and 19:00 in London in August are 17:00 and 18:00 UTC, a week apart per round
+                assert($kickoffs === ['2026-08-01 17:00', '2026-08-01 18:00', '2026-08-08 17:00', '2026-08-08 18:00', '2026-08-15 17:00', '2026-08-15 18:00']);
+                PHP,
+        ],
+        'quality score and report' => [
+            'docs/USAGE.md',
+            '$report = $scorer->report($schedule);',
+            "assert(\$score === 4.5);\nassert(\$report === ['Role Balance' => 1.5, 'Pairing Spacing' => 0.0]);",
+        ],
+        'optimizer samples' => [
+            'docs/USAGE.md',
+            '$result->getSamplesGenerated();',
+            "assert(\$result->getSamplesGenerated() === 25);\nassert(\$result->getScore() <= \$scorer->score(\$result->getSchedule()) + 1e-9);",
+        ],
+        'json round trip' => ['docs/USAGE.md', '$restored = Schedule::fromJson($json);', 'assert($restored->toJson() === $json && count($restored) === 6);'],
+        // The report quoted above the block is the one this configuration produces
+        'derby ban report' => [
+            'docs/USAGE.md',
+            '$analysis = $e->getAnalysis();',
+            <<<'PHP'
+                $report = null;
+                try {
+                    $scheduler->schedule($participants);
+                } catch (IncompleteScheduleException $e) {
+                    $report = $e->getDiagnosticReport();
+                    assert(count($e->getAnalysis()?->getImpossiblePairings() ?? []) === 1);
+                }
+                assert($report !== null);
+                assert(str_contains($report, "=== BLOCKED PAIRINGS ===\n• Team 1 vs Team 2 cannot join the generated schedule in any round (blocked by: Derby Ban)\n"));
+                assert(str_contains($report, "=== CONSTRAINT ATTRIBUTION ===\n• Derby Ban rejects Team 1 vs Team 2 in 3 of 3 rounds\n"));
+                PHP,
+        ],
+        'stage plan shape' => [
+            'docs/USAGE.md',
+            '$swissPlan->getLegs();',
+            <<<'PHP'
+                assert($plan->getAlgorithm() === 'round-robin');
+                assert($plan->getTotalRounds() === 6);
+                assert($plan->getLegs() === 2);
+                assert($plan->getRoundsPerLeg() === 3);
+                assert($plan->getExpectedEventCount() === 12);
+                assert($plan->getExpectedMeetings($participants[0], $participants[1]) === 2);
+                assert($swissPlan->getAlgorithm() === 'swiss');
+                assert($swissPlan->getTotalRounds() === 3);
+                assert($swissPlan->getLegs() === null);
+                // "bye-aware: 5 participants would need 5"
+                $five = [...$participants, new Participant('rayo', 'Rayo Vallecano')];
+                assert((new RoundRobinScheduler())->getPlan($five)->getRoundsPerLeg() === 5);
+                PHP,
+        ],
+        'scheduling context' => [
+            'docs/USAGE.md',
+            '$newContext = $context->withEvents([$newEvent]);',
+            <<<'PHP'
+                assert($havePlayed === true);
+                assert($totalRounds === 6);
+                assert(count($playerEvents) === 1);
+                // "contexts are immutable: this returns a new one"
+                assert($newContext !== $context);
+                assert(count($context->getExistingEvents()) === 1 && count($newContext->getExistingEvents()) === 2);
+                PHP,
+        ],
+        'seeded generation repeats' => [
+            'docs/USAGE.md',
+            'new Randomizer(new Mt19937(12345))',
+            'assert((new RoundRobinScheduler(null, new Randomizer(new Mt19937(12345))))->schedule($participants)->toJson() === $schedule->toJson());',
+        ],
+        'skill tiers never skip a tier' => [
+            'docs/USAGE.md',
+            'echo count($tournament) . " matches\n";',
+            <<<'PHP'
+                foreach ($tournament as $event) {
+                    [$first, $second] = $event->getParticipants();
+                    assert(abs($first->getMetadataValue('tier') - $second->getMetadataValue('tier')) <= 1);
+                }
+                PHP,
+        ],
+        'team building is cross-building' => [
+            'docs/USAGE.md',
+            '$teamBuilding = ',
+            <<<'PHP'
+                foreach ($teamBuilding as $event) {
+                    [$first, $second] = $event->getParticipants();
+                    assert($first->getMetadataValue('location') !== $second->getMetadataValue('location'));
+                }
+                PHP,
+        ],
+        'counting a large schedule' => ['docs/USAGE.md', '$totalEvents = count($largeSchedule);', 'assert($totalEvents === 120 && count($events) === 120 && count($eventsByRound) === 15);'],
+    ]);
+
+    // Proves the two checks above can fail: without this a lookup that
+    // matched nothing, or assertions that never ran, would pass every row
+    it('fails when a documented value is wrong', function () use ($extracted): void {
+        $failure = documentedValuesFailure($extracted, 'docs/USAGE.md', '$totalEvents = count($largeSchedule);', 'assert($totalEvents === 121);');
+
+        expect($failure)->toContain('AssertionError: assert($totalEvents === 121)');
+    });
 });
 
 /*
