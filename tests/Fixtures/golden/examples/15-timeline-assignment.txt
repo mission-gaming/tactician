@@ -1,0 +1,54 @@
+=== Season calendar (kickoffs in UTC) ===
+
+Round 1 - Sat 1 Aug 2026
+  17:00  North Pitch  Celtic vs Clapton Community FC
+  17:00  South Pitch  Athletic Bilbao vs Rayo Vallecano
+  19:00  North Pitch  AS Livorno vs Red Star FC
+
+Round 2 - Sat 8 Aug 2026
+  17:00  North Pitch  Athletic Bilbao vs Celtic
+  17:00  South Pitch  Clapton Community FC vs AS Livorno
+  19:00  North Pitch  Rayo Vallecano vs Red Star FC
+
+Round 3 - Sat 15 Aug 2026
+  17:00  North Pitch  Celtic vs AS Livorno
+  17:00  South Pitch  Red Star FC vs Athletic Bilbao
+  19:00  North Pitch  Rayo Vallecano vs Clapton Community FC
+
+Round 4 - Sat 22 Aug 2026
+  17:00  North Pitch  Red Star FC vs Celtic
+  17:00  South Pitch  AS Livorno vs Rayo Vallecano
+  19:00  North Pitch  Athletic Bilbao vs Clapton Community FC
+
+Round 5 - Sat 29 Aug 2026
+  17:00  North Pitch  Celtic vs Rayo Vallecano
+  17:00  South Pitch  Clapton Community FC vs Red Star FC
+  19:00  North Pitch  Athletic Bilbao vs AS Livorno
+
+Round 6 - Sat 5 Sep 2026
+  17:00  North Pitch  Clapton Community FC vs Celtic
+  17:00  South Pitch  Rayo Vallecano vs Athletic Bilbao
+  19:00  North Pitch  Red Star FC vs AS Livorno
+
+Round 7 - Sat 12 Sep 2026
+  17:00  North Pitch  Celtic vs Athletic Bilbao
+  17:00  South Pitch  AS Livorno vs Clapton Community FC
+  19:00  North Pitch  Red Star FC vs Rayo Vallecano
+
+Round 8 - Sat 19 Sep 2026
+  17:00  North Pitch  AS Livorno vs Celtic
+  17:00  South Pitch  Athletic Bilbao vs Red Star FC
+  19:00  North Pitch  Clapton Community FC vs Rayo Vallecano
+
+Round 9 - Sat 26 Sep 2026
+  17:00  North Pitch  Celtic vs Red Star FC
+  17:00  South Pitch  Rayo Vallecano vs AS Livorno
+  19:00  North Pitch  Clapton Community FC vs Athletic Bilbao
+
+Round 10 - Sat 3 Oct 2026
+  17:00  North Pitch  Rayo Vallecano vs Celtic
+  17:00  South Pitch  Red Star FC vs Clapton Community FC
+  19:00  North Pitch  AS Livorno vs Athletic Bilbao
+
+Serialized and restored 30 scheduled events.
+Final round kicks off Sat 3 Oct 2026 17:00 UTC.

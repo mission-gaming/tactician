@@ -1,0 +1,17 @@
+=== Greedy generation (default) ===
+Failed as expected: every rotated ordering violates the policy.
+
+=== Backtracking generation (opt-in) ===
+Round 1
+  FC United vs City Rovers
+  Athletic Reds vs Wanderers
+Round 2
+  Athletic Reds vs FC United
+  Wanderers vs City Rovers
+Round 3
+  FC United vs Wanderers
+  City Rovers vs Athletic Reds
+
+=== Unsatisfiable configuration ===
+Proven unsatisfiable: the search exhausted every round decomposition.
+FC United vs City Rovers cannot join the generated schedule in any round (blocked by: Reject Everything)

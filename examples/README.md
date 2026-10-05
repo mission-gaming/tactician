@@ -37,7 +37,7 @@ This directory contains interactive examples demonstrating the capabilities of t
 - **[09-multi-leg-home-away.php](09-multi-leg-home-away.php)** - Premier League style home and away seasons
 - **[10-complex-tournament.php](10-complex-tournament.php)** - Gaming tournament with multiple constraint types
 - **[11-error-handling.php](11-error-handling.php)** - Validation failures and exception demonstrations
-- **[12-performance-patterns.php](12-performance-patterns.php)** - Memory-efficient iteration for large tournaments
+- **[12-performance-patterns.php](12-performance-patterns.php)** - Generation timings and iteration patterns for large tournaments (a schedule holds all of its events in memory)
 
 ## Features
 
@@ -120,6 +120,12 @@ Press `Ctrl+C` (or `Cmd+C` on macOS) to stop the development server.
 2. Use the existing examples as templates for consistent structure
 3. Include navigation links to maintain flow between examples
 4. Update the main `index.php` to include your new example
+
+Every script in this directory is run by the test suite
+(`tests/Feature/ExamplesTest.php`). The plain-text scripts (13 onwards, run
+with `php examples/13-swiss-stage-engine.php`) also have their exact output
+pinned in `tests/Fixtures/golden/examples/`: if you add or change one, run
+`composer golden-update` from the project root and review the fixture diff.
 
 ### Design Guidelines
 
