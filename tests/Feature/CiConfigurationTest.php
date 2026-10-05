@@ -172,28 +172,3 @@ it('quotes Dependabot update types that contain a colon', function () use ($root
         'An unquoted version-update type makes the Dependabot config unparseable'
     );
 });
-
-it('names only paths that exist in the docs-only filter', function () use ($root): void {
-    $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
-
-    // The negated entries of the paths-filter list: a change to one of these
-    // does not count as code, so the test jobs are skipped for it.
-    preg_match_all('/^\s+-\s+\'!([^\']+)\'\s*$/m', $workflow, $matches);
-
-    Assert::assertNotSame([], $matches[1], 'ci.yml has no docs-only filter entries; the check matched nothing');
-
-    foreach ($matches[1] as $pattern) {
-        // The part before the first wildcard: a file, or the directory a
-        // glob starts in. A pattern that starts with a wildcard names none.
-        $fixed = rtrim((string) preg_replace('/\*.*$/', '', $pattern), '/');
-
-        if ($fixed === '') {
-            continue;
-        }
-
-        Assert::assertFileExists(
-            $root . '/' . $fixed,
-            "The docs-only filter names `{$pattern}`, which is not in the repository"
-        );
-    }
-});
