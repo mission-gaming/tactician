@@ -16,10 +16,10 @@ tracks the current shape only, to avoid duplicating what rots.*
 - **Ranking strategies** (`RankingStrategy`): standings ordered by a pluggable primary value; `WinDrawLossRanking` (named presets `threeOneZero`/`oneHalfZero`, `fromArray()`) replaces `PointsSystem`; `StandingEntry::getRankingValue()` alongside the W/D/L record
 - **Quality** (`src/Quality/`): lower-is-better metrics (role balance/streaks, rest spread, pairing spacing), weighted `ScheduleScorer` with per-metric reports, deterministic seeded best-of-N `ScheduleOptimizer` (whole-schedule generators only)
 - **Timelines** (`src/Timeline/`): declarative per-stage slot model (`TimelineDefinition`, config-constructible, wall-clock arithmetic in the stage timezone, UTC kickoffs out) with deterministic assignment (`TimelineAssigner`) over whole schedules or engine round pairings; serializable `ScheduledEvent`/`ScheduledSchedule` decorations; time-aware `TimelineRule`s (`MinimumRestRule`, `BlackoutRule`) failing assignment loudly post-assignment; named resources for concurrent kickoffs per slot
-- **Repacking** (`src/Repack/`): schedule repair onto irregular grids — `SessionGrid` (explicit session list, per-session slot overrides, slot concurrency), `ScheduleRepacker` (three deterministic step-budgeted phases; interval-parity load planning, exact gap-free packing, bounded fallback/repair), `RepackOutcome` returning itemised structured violations instead of throwing (the sanctioned deviation from the loud-failure rule); regression-tested against the real Metronome stage-162 fixture (`tests/Fixtures/repack-scenario.json`) both clean and mis-pinned — design + decisions in `docs/design/schedule-repack.md`; review-hardened before merge (PHP 8.3-compatible syntax, literal `no_slot_available`, parity reasoning capped at 20 slots/session, kind-then-scope violation ordering, timeline-format UTC kickoffs) and **released in v0.2.0** (merged via PR #25, 2026-08-11)
+- **Repacking** (`src/Repack/`): schedule repair onto irregular grids — `SessionGrid` (explicit session list, per-session slot overrides, slot concurrency), `ScheduleRepacker` (three deterministic step-budgeted phases; interval-parity load planning, exact gap-free packing, bounded fallback/repair), `RepackOutcome` returning itemised structured violations instead of throwing (the sanctioned deviation from the loud-failure rule); regression-tested against the real Metronome stage-162 fixture (`tests/Fixtures/repack-scenario.json`) both clean and mis-pinned — design + decisions in `docs/design/schedule-repack.md`; review-hardened before merge (itemised in `activeContext.md`) and **released in v0.2.0**
 - **Serialization**: `toArray()`/`fromArray()` on all DTOs; `Schedule` JSON round-tripping
 - **Quality gates**: 805 Pest tests / 10,270 assertions including property/invariant suites, PHPStan level 8, Rector, CS-Fixer, auto-validated examples (`tests/Feature/ExamplesTest.php` + `composer examples` in CI)
-- **Released**: v0.2.0 (2026-08-11) is the current tag — repacking plus review hardening on top of the v0.1.x line; release notes on GitHub
+- **Released**: v0.2.0 (2026-08-11) is the current tag, on top of the v0.1.x line; release list in `activeContext.md`, notes on GitHub
 
 ## What's Left to Build
 See docs/ROADMAP.md:
@@ -33,4 +33,4 @@ See docs/ROADMAP.md:
 - Perfect cross-group knockout pairing is guaranteed only for power-of-two group counts
 
 ## Status
-- **Last Updated**: 2026-08-12
+- **Last Updated**: 2026-10-05
