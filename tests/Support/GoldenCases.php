@@ -51,6 +51,11 @@ use Random\Randomizer;
  * Everything here goes through the public API only. Each case builds its
  * own scheduler, engine and randomizer, so no case depends on the state
  * another one left behind.
+ *
+ * The cases under `examples/` are different in kind: each is the exact
+ * standard output of one plain-text script in examples/, run in a PHP
+ * process of its own. Running an example only proves it does not crash;
+ * pinning what it prints catches one that prints a wrong or empty result.
  */
 final class GoldenCases
 {
@@ -67,6 +72,25 @@ final class GoldenCases
     private const ELIMINATION_SIZES = [5, 8, 12];
 
     private const REPACK_SIZES = [12, 16, 24];
+
+    /**
+     * The scripts in examples/ that print plain text, by file name without
+     * the extension. Each prints the same text on every run: none reads
+     * the clock, the environment or an unseeded randomizer.
+     *
+     * The HTML examples (01 to 12 and index.php) are not pinned: they are
+     * pages for a browser, and several print measured timings and memory
+     * figures that differ on every run.
+     */
+    public const PLAIN_TEXT_EXAMPLES = [
+        '13-swiss-stage-engine',
+        '14-groups-to-knockout',
+        '15-timeline-assignment',
+        '16-backtracking-generation',
+        '17-schedule-optimization',
+        '18-stateless-web-flow',
+        '19-repacking-a-season',
+    ];
 
     /** Upper bound on driver-loop rounds, so a broken engine fails instead of hanging. */
     private const MAX_ENGINE_ROUNDS = 64;
@@ -100,7 +124,62 @@ final class GoldenCases
         $cases[self::WIRE_SCHEDULE] = static fn (): string => self::wireSchedule() . "\n";
         $cases[self::WIRE_STAGE_STATE] = static fn (): string => self::wireStageState() . "\n";
 
+        foreach (self::PLAIN_TEXT_EXAMPLES as $example) {
+            $cases[self::exampleFixture($example)] = static fn (): string => self::exampleOutput($example);
+        }
+
         return $cases;
+    }
+
+    /**
+     * The fixture path, relative to the golden directory, that pins an
+     * example's output.
+     *
+     * @param string $example The script's file name without the extension
+     */
+    public static function exampleFixture(string $example): string
+    {
+        return 'examples/' . $example . '.txt';
+    }
+
+    /**
+     * Everything an example script prints, byte for byte. Standard error
+     * is folded into the text, so a diagnostic an example starts to emit
+     * shows up as a difference from the fixture.
+     *
+     * @throws LogicException When the script cannot be run or exits with a failure status
+     */
+    private static function exampleOutput(string $example): string
+    {
+        $script = dirname(__DIR__, 2) . '/examples/' . $example . '.php';
+
+        $captured = tempnam(sys_get_temp_dir(), 'example');
+        if ($captured === false) {
+            throw new LogicException('Could not create a temporary file in ' . sys_get_temp_dir());
+        }
+
+        try {
+            // Both streams append to one file, so they interleave as they were written
+            $process = proc_open(
+                [PHP_BINARY, '-d', 'error_reporting=-1', '-d', 'display_errors=1', '-d', 'html_errors=0', $script],
+                [1 => ['file', $captured, 'a'], 2 => ['file', $captured, 'a']],
+                $pipes
+            );
+            if ($process === false) {
+                throw new LogicException("Could not start PHP to run examples/{$example}.php");
+            }
+
+            $exitCode = proc_close($process);
+            $output = (string) file_get_contents($captured);
+        } finally {
+            unlink($captured);
+        }
+
+        if ($exitCode !== 0) {
+            throw new LogicException("examples/{$example}.php exited with code {$exitCode}:\n{$output}");
+        }
+
+        return $output;
     }
 
     /**

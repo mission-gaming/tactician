@@ -1,0 +1,12 @@
+Request 1: stage opened, state persisted (408 bytes)
+Request 2: round 1 paired and recorded (3 events)
+Request 3: round 2 paired and recorded (3 events)
+Request 4: round 3 paired and recorded (3 events)
+
+Final standings:
+  1. Ana (9.0)
+  2. Bea (6.0)
+  3. Cai (6.0)
+  4. Dia (3.0)
+  5. Eli (3.0)
+  6. Fio (0.0)

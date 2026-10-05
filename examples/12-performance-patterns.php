@@ -104,14 +104,15 @@ foreach ($participantSets as $setName => $participants) {
     $performanceResults[] = $result;
 }
 
-// Memory-efficient iteration patterns demonstration
+// Iteration patterns demonstration. The schedule holds every event in memory
+// already, so the patterns differ in time and in convenience, not in what is loaded
 function demonstrateIterationPatterns($schedule)
 {
     if (!$schedule) {
         return null;
     }
 
-    // Pattern 1: Direct iteration (memory efficient)
+    // Pattern 1: Direct iteration
     $start = microtime(true);
     $count1 = 0;
     foreach ($schedule as $event) {
@@ -121,7 +122,7 @@ function demonstrateIterationPatterns($schedule)
     }
     $time1 = (microtime(true) - $start) * 1000;
 
-    // Pattern 2: Convert to array (memory intensive)
+    // Pattern 2: Convert to array (a second list of the same events)
     $start = microtime(true);
     $eventsArray = iterator_to_array($schedule);
     $count2 = count($eventsArray);
@@ -131,7 +132,7 @@ function demonstrateIterationPatterns($schedule)
     }
     $time2 = (microtime(true) - $start) * 1000;
 
-    // Pattern 3: Count only (most efficient)
+    // Pattern 3: Count only
     $start = microtime(true);
     $count3 = count($schedule);
     $time3 = (microtime(true) - $start) * 1000;
@@ -211,7 +212,7 @@ function getMemoryColor($memory)
             <div class="flex items-center justify-between">
                 <div>
                     <h1 class="text-2xl font-bold">⚡ Performance Patterns</h1>
-                    <p class="text-blue-100">Memory-efficient scheduling for large tournaments</p>
+                    <p class="text-blue-100">Generation timings and iteration patterns for large tournaments</p>
                 </div>
                 <a href="index.php" class="bg-blue-700 hover:bg-blue-800 px-4 py-2 rounded-lg transition-colors">
                     ← Back to Examples
@@ -228,12 +229,13 @@ function getMemoryColor($memory)
                 <div>
                     <p class="text-gray-600 mb-4 leading-relaxed">
                         Tournament scheduling performance scales with the number of participants and constraints. 
-                        Understanding these patterns helps you build efficient systems that can handle everything 
-                        from small local tournaments to massive international events.
+                        A round robin has one event per pair of participants, so the event count grows with the 
+                        square of the field.
                     </p>
                     <p class="text-gray-600 leading-relaxed">
-                        This example demonstrates memory usage, execution time, and iteration patterns 
-                        across different tournament sizes and constraint complexities.
+                        This example measures generation time and memory across tournament sizes and constraint 
+                        sets, then compares the ways of reading a schedule. A schedule holds all of its events 
+                        in memory: it is iterable and countable, and nothing is loaded lazily.
                     </p>
                 </div>
                 <div class="bg-gray-50 rounded-lg p-4">
@@ -249,7 +251,7 @@ function getMemoryColor($memory)
                         </div>
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-purple-500 rounded-full mr-2"></span>
-                            <span>Memory allocation patterns</span>
+                            <span>Events held in memory (the whole schedule)</span>
                         </div>
                         <div class="flex items-center">
                             <span class="w-3 h-3 bg-orange-500 rounded-full mr-2"></span>
@@ -348,9 +350,9 @@ function getMemoryColor($memory)
                             <span class="font-medium"><?= $iterationResults['direct_iteration']['count']; ?></span>
                         </div>
                         <div class="text-xs text-gray-600 mt-2">
-                            ✅ Most memory efficient<br>
-                            ✅ Suitable for large tournaments<br>
-                            ✅ Streaming-friendly
+                            ✅ Visits every event in generated order<br>
+                            ✅ No extra list of events<br>
+                            ✅ Reads events already in memory
                         </div>
                     </div>
                 </div>
@@ -370,7 +372,7 @@ function getMemoryColor($memory)
                             <span class="font-medium"><?= $iterationResults['array_conversion']['count']; ?></span>
                         </div>
                         <div class="text-xs text-gray-600 mt-2">
-                            ⚠️ Higher memory usage<br>
+                            ⚠️ Builds a second list of the same events<br>
                             ✅ Random access to events<br>
                             ✅ Array functions available
                         </div>
@@ -393,7 +395,7 @@ function getMemoryColor($memory)
                         </div>
                         <div class="text-xs text-gray-600 mt-2">
                             ✅ Fastest execution<br>
-                            ✅ Minimal memory usage<br>
+                            ✅ No loop needed<br>
                             ✅ Perfect for totals only
                         </div>
                     </div>
@@ -466,7 +468,7 @@ $perRound = $schedule->getMetadataValue("events_per_round");'); ?></code></pre>
                         </li>
                         <li class="flex items-start">
                             <span class="text-green-500 mr-2 mt-0.5">✓</span>
-                            Memory usage is not a concern
+                            Any way of reading the schedule is fine
                         </li>
                     </ul>
                 </div>
@@ -476,7 +478,7 @@ $perRound = $schedule->getMetadataValue("events_per_round");'); ?></code></pre>
                     <ul class="space-y-2 text-sm text-gray-600">
                         <li class="flex items-start">
                             <span class="text-yellow-500 mr-2 mt-0.5">!</span>
-                            Prefer direct iteration when possible
+                            Generation time grows with the square of the field
                         </li>
                         <li class="flex items-start">
                             <span class="text-yellow-500 mr-2 mt-0.5">!</span>
@@ -484,7 +486,7 @@ $perRound = $schedule->getMetadataValue("events_per_round");'); ?></code></pre>
                         </li>
                         <li class="flex items-start">
                             <span class="text-green-500 mr-2 mt-0.5">✓</span>
-                            Array conversion still viable for processing
+                            Array conversion and by-round grouping remain cheap
                         </li>
                         <li class="flex items-start">
                             <span class="text-yellow-500 mr-2 mt-0.5">!</span>
@@ -498,11 +500,11 @@ $perRound = $schedule->getMetadataValue("events_per_round");'); ?></code></pre>
                     <ul class="space-y-2 text-sm text-gray-600">
                         <li class="flex items-start">
                             <span class="text-red-500 mr-2 mt-0.5">⚠</span>
-                            Always use direct iteration
+                            The whole schedule is in memory: plan for its size
                         </li>
                         <li class="flex items-start">
                             <span class="text-red-500 mr-2 mt-0.5">⚠</span>
-                            Avoid array conversion if possible
+                            Iterating saves no memory; avoid needless copies
                         </li>
                         <li class="flex items-start">
                             <span class="text-red-500 mr-2 mt-0.5">⚠</span>
@@ -510,11 +512,11 @@ $perRound = $schedule->getMetadataValue("events_per_round");'); ?></code></pre>
                         </li>
                         <li class="flex items-start">
                             <span class="text-red-500 mr-2 mt-0.5">⚠</span>
-                            Use count() for totals only
+                            Use count() when you only need the total
                         </li>
                         <li class="flex items-start">
                             <span class="text-red-500 mr-2 mt-0.5">⚠</span>
-                            Consider batch processing
+                            Write events to storage in batches
                         </li>
                     </ul>
                 </div>
@@ -545,10 +547,15 @@ $perRound = $schedule->getMetadataValue("events_per_round");'); ?></code></pre>
 
         <!-- Code Example -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Memory-Efficient Tournament Processing</h2>
+            <h2 class="text-xl font-bold text-gray-800 mb-4">Processing a Large Tournament</h2>
+            <p class="text-gray-600 mb-4">
+                The schedule returned by the scheduler holds every event. What the code below keeps small is 
+                what it builds on top: it summarises and exports one event at a time instead of collecting 
+                a second copy of the data.
+            </p>
             <div class="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto">
                 <pre><code><?= htmlspecialchars('<?php
-// Example: Processing a large tournament efficiently
+// Example: processing a large tournament without building extra copies
 
 class TournamentProcessor {
     private $scheduler;
@@ -565,14 +572,14 @@ class TournamentProcessor {
     public function processLargeTournament(array $participants): array {
         $schedule = $this->scheduler->schedule($participants);
         
-        // Get basic stats without loading all events
+        // Totals come from count() and the schedule metadata, without a loop
         $stats = [
             \'total_events\' => count($schedule),
             \'total_rounds\' => $schedule->getMetadataValue(\'total_rounds\'),
             \'events_per_round\' => $schedule->getMetadataValue(\'events_per_round\')
         ];
         
-        // Process events one by one (memory efficient)
+        // Summarise one event at a time; the events themselves are already in memory
         $roundSummaries = [];
         foreach ($schedule as $event) {
             $roundNum = $event->getRound()->getNumber();
@@ -586,7 +593,7 @@ class TournamentProcessor {
             
             $roundSummaries[$roundNum][\'matches\']++;
             
-            // Track participants without storing full objects
+            // Keep the participant ids only, not the objects
             foreach ($event->getParticipants() as $participant) {
                 $roundSummaries[$roundNum][\'participants\'][] = $participant->getId();
             }
@@ -601,7 +608,7 @@ class TournamentProcessor {
     public function exportMatches(array $participants, callable $exporter): void {
         $schedule = $this->scheduler->schedule($participants);
         
-        // Stream events to exporter without storing in memory
+        // Hand each event to the exporter as it is read, building no export list
         foreach ($schedule as $event) {
             $matchData = [
                 \'round\' => $event->getRound()->getNumber(),
@@ -639,7 +646,7 @@ $processor->exportMatches($participants, function($match) {
                     <div class="bg-yellow-100 rounded p-3 text-xs font-mono">
                         <div>memory_get_usage() - Current usage</div>
                         <div>memory_get_peak_usage() - Peak usage</div>
-                        <div>memory_limit_get() - Memory limit</div>
+                        <div>ini_get('memory_limit') - Memory limit</div>
                         <div>microtime() - Execution timing</div>
                     </div>
                 </div>
@@ -648,7 +655,7 @@ $processor->exportMatches($participants, function($match) {
                     <ul class="space-y-1 text-yellow-700">
                         <li>• Memory usage > 50MB for small tournaments</li>
                         <li>• Execution time > 1 second for < 20 teams</li>
-                        <li>• Memory increasing during iteration</li>
+                        <li>• Memory growing while you iterate (your own code is accumulating)</li>
                         <li>• PHP memory limit errors</li>
                         <li>• Slow array operations on schedules</li>
                     </ul>

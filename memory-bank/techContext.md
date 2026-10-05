@@ -19,7 +19,7 @@
 - Performance: comfortable into the hundreds of participants (a 200-participant two-leg round robin generates in well under a second)
 - Deterministic algorithms with seeded randomness (`Random\Randomizer` + `Mt19937` in tests)
 - Separation of fixture generation from timeline assignment (timeline is future work)
-- Iterator-based schedules for memory efficiency
+- Schedules hold all events in memory (an array); they are iterable and countable, not lazy
 
 ## Tool Usage Patterns
 - `composer ci` before every commit: normalize check, PHPStan, Rector, CS-Fixer, tests, example smoke-run
@@ -31,7 +31,7 @@
 1. Read the memory bank (start with projectbrief.md and activeContext.md) and AGENTS.md at the start of each session
 2. Branch from main — never commit to main directly; open a PR
 3. Test-driven development with Pest; extend the property/invariant suites when touching generation logic
-4. Execute any documentation snippet you change before committing it
+4. Documentation snippets in `README.md` and `docs/USAGE.md` are executed by `tests/Feature/DocumentationSnippetsTest.php`; run it after changing one
 5. Run `composer ci` before commits; keep commits small and single-purpose
 6. Update activeContext.md and progress.md after significant work
 

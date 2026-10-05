@@ -406,7 +406,7 @@ describe('Round Robin Integration', function (): void {
             expect($count)->toBe(15);
         }
 
-        // And: Iterator should handle large dataset efficiently (memory test)
+        // And: Iterating visits every event of a large schedule exactly once
         $iterationCount = 0;
         foreach ($schedule as $event) {
             expect($event->getParticipantCount())->toBe(2);

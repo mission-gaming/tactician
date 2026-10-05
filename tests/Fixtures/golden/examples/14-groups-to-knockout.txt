@@ -1,0 +1,24 @@
+=== Group stage: 2 serpentine pools of 4 ===
+
+Pool A:
+  1. Brazil       9 pts
+  2. England      6 pts
+  3. Spain        3 pts
+  4. Netherlands  0 pts
+
+Pool B:
+  1. Argentina    9 pts
+  2. France       6 pts
+  3. Germany      3 pts
+  4. Portugal     0 pts
+
+=== Knockout: Brazil, Argentina, England, France ===
+
+Semifinal:
+  Brazil vs France => Brazil
+  Argentina vs England => Argentina
+
+Final:
+  Brazil vs Argentina => Brazil
+
+Champions: Brazil
