@@ -22,6 +22,7 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Error Handling](#error-handling)
 - [Advanced Patterns](#advanced-patterns)
 - [Real-World Examples](#real-world-examples)
+- [Performance Considerations](#performance-considerations)
 
 ## Terminology
 
@@ -171,9 +172,9 @@ use MissionGaming\Tactician\DTO\Round;
 // Create a round with metadata
 $round = new Round(1, ['phase' => 'group-stage', 'court' => 'A']);
 
-// Create an event between participants
+// Create an event between two of the participants created above
 $event = new Event(
-    participants: [$participant1, $participant2],
+    participants: [$participant, $seededPlayer],
     round: $round,
     metadata: ['start_time' => '10:00', 'referee' => 'John Smith']
 );
@@ -184,7 +185,7 @@ $roundNumber = $event->getRound()->getNumber();
 $startTime = $event->getMetadataValue('start_time');
 
 // Check if a participant is in the event
-if ($event->hasParticipant($participant1)) {
+if ($event->hasParticipant($participant)) {
     echo "Participant is in this event\n";
 }
 ```
@@ -247,33 +248,39 @@ $metadataConstraints = ConstraintSet::create()
 ```php
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 
-// Custom constraint with lambda function
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
+
+// Custom constraint: a predicate that receives the candidate event and
+// the scheduling context, and returns whether the event is allowed
 $customConstraint = ConstraintSet::create()
     ->custom(
-        fn($event, $context) => {
+        function (Event $event, SchedulingContext $context): bool {
             $participants = $event->getParticipants();
+
             // Ensure participants have compatible equipment
             $equipment1 = $participants[0]->getMetadataValue('equipment');
             $equipment2 = $participants[1]->getMetadataValue('equipment');
+
             return $equipment1 === $equipment2;
         },
         'Compatible Equipment'
     )
     ->build();
 
-// Complex custom constraint
+// A custom constraint that reads the schedule built so far
 $advancedConstraint = ConstraintSet::create()
     ->custom(
-        function($event, $context) {
+        function (Event $event, SchedulingContext $context): bool {
             $participants = $event->getParticipants();
-            
-            // Don't allow the same participant to play more than twice per day
+
+            // Allow each participant at most three events in total
             $firstParticipantEvents = $context->getEventsForParticipant($participants[0]);
             $secondParticipantEvents = $context->getEventsForParticipant($participants[1]);
-            
+
             return count($firstParticipantEvents) < 3 && count($secondParticipantEvents) < 3;
         },
-        'Maximum Games Per Day'
+        'Maximum Three Events'
     )
     ->build();
 ```
@@ -281,6 +288,8 @@ $advancedConstraint = ConstraintSet::create()
 ### Role-Based Constraints
 
 ```php
+use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
+
 // Prevent more than 2 consecutive home games
 $homeAwayConstraint = ConsecutiveRoleConstraint::homeAway(2);
 
@@ -307,6 +316,7 @@ Multi-leg tournaments allow the same participants to play multiple times with di
 ### Available Leg Strategies
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
@@ -356,9 +366,32 @@ reject a schedule — but the circle method fixes which pairings share a
 round purely by list order, so it only ever sees a handful of round
 decompositions, and some satisfiable constraint sets fail every one of
 them. **Backtracking generation** searches the decompositions the
-rotations cannot reach:
+rotations cannot reach. The fixture-placement policy below is one such
+set: every rotation the greedy generator tries violates it, and the
+search finds the schedule that satisfies it:
 
 ```php
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\DTO\Event;
+
+// Celtic must meet Athletic in round 1, Livorno in round 2 and Red Star
+// in round 3
+$placement = ['athletic|celtic' => 1, 'celtic|livorno' => 2, 'celtic|redstar' => 3];
+
+$constraints = ConstraintSet::create()
+    ->custom(
+        function (Event $event) use ($placement): bool {
+            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            sort($ids);
+            $requiredRound = $placement[implode('|', $ids)] ?? null;
+            $round = $event->getRound()?->getNumber();
+
+            return $requiredRound === null || $round === null || $round === $requiredRound;
+        },
+        'Fixture Placement'
+    )
+    ->build();
+
 $schedule = (new RoundRobinScheduler($constraints))
     ->schedule($participants, new RoundRobinOptions(backtracking: true));
 ```
@@ -392,8 +425,8 @@ foreach ($mirroredSchedule->getEventsByRound() as $roundNumber => $events) {
     echo "Leg {$leg}, Round {$roundNumber}:\n";
 
     foreach ($events as $event) {
-        $participants = $event->getParticipants();
-        echo "  {$participants[0]->getLabel()} vs {$participants[1]->getLabel()}\n";
+        [$home, $away] = $event->getParticipants();
+        echo "  {$home->getLabel()} vs {$away->getLabel()}\n";
     }
 }
 ```
@@ -422,11 +455,25 @@ $schedule = $scheduler->schedule(
 Record outcomes with `Result` and build league tables with `StandingsCalculator`:
 
 ```php
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use MissionGaming\Tactician\Standings\WinsTiebreaker;
+
+$alice = new Participant('alice', 'Alice');
+$bob = new Participant('bob', 'Bob');
+$carol = new Participant('carol', 'Carol');
+$dave = new Participant('dave', 'Dave');
+$participants = [$alice, $bob, $carol, $dave];
+
+// Results are recorded against events - normally the ones a scheduler
+// or engine produced
+$eventOne = new Event([$alice, $bob]);
+$eventTwo = new Event([$alice, $carol]);
+$eventThree = new Event([$carol, $dave]);
 
 // A win, a draw (no winner), and a scored win
 $results = [
@@ -475,9 +522,15 @@ Every results-driven format shares one driver loop — the single
 integration a platform writes:
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\StageState;
+
+$participants = array_map(
+    fn (string $name) => new Participant(strtolower($name), $name),
+    ['Alice', 'Bob', 'Carol', 'Dave', 'Erin', 'Frank', 'Grace', 'Heidi']
+);
 
 // plannedRounds lets length-aware constraints (e.g. seed protection) size
 // their windows correctly, and tells isComplete() when the stage ends
@@ -532,10 +585,16 @@ positions 1 and 2 land in opposite halves), fields that are not a power of
 two give byes to the top positions, and every round carries a label.
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\StageState;
+
+$participants = array_map(
+    fn (string $name) => new Participant(strtolower($name), $name),
+    ['Alice', 'Bob', 'Carol', 'Dave', 'Erin', 'Frank', 'Grace', 'Heidi']
+);
 
 $engine = new SingleEliminationEngine();
 
@@ -587,9 +646,23 @@ errors; partially recorded rounds are completed with
 
 A **pool** is just a bucket of participants: what format the bucket plays,
 how it is scored, and how it progresses are separate concerns. The retired
-group-stage monolith is now a composition of generic primitives:
+group-stage monolith is now a composition of generic primitives
+(`playPool()` below stands for your application playing a pool's schedule
+and returning one `Result` per event):
+
+<!-- snippet: setup
+/** @return list<\MissionGaming\Tactician\DTO\Result> */
+function playPool(\MissionGaming\Tactician\DTO\Schedule $schedule): array
+{
+    return array_map(
+        static fn (\MissionGaming\Tactician\DTO\Event $event) => new \MissionGaming\Tactician\DTO\Result($event, $event->getParticipants()[0]),
+        $schedule->getEvents()
+    );
+}
+-->
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\PoolDistributor;
@@ -597,6 +670,12 @@ use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
+
+// Eight entrants in seeding order
+$participants = array_map(
+    fn (string $name) => new Participant(strtolower($name), $name),
+    ['Alice', 'Bob', 'Carol', 'Dave', 'Erin', 'Frank', 'Grace', 'Heidi']
+);
 
 // Serpentine pools by list position: with two pools, positions 1, 4, 5, 8
 // land in pool A and 2, 3, 6, 7 in B
@@ -640,6 +719,8 @@ one decision invites contradictory qualification — pick one ranking
 authority per decision):
 
 ```php
+use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+
 // Standings-based (rank slices):
 RankRangeSelector::topPerGroup(2);            // the classic qualifiers
 RankRangeSelector::perGroup(from: 3, to: 4);  // a losers' route
@@ -686,8 +767,19 @@ produces timestamped events deterministically. Round-aligned scheduling
 kickoffs are the same model with more slots:
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Timeline\TimelineAssigner;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
+
+// Any generated schedule: here a four-participant round robin
+$participants = [
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
+];
+$schedule = (new RoundRobinScheduler())->schedule($participants);
 
 // Weekly match days with three staggered kickoffs, an hour apart
 $timeline = new TimelineDefinition(
@@ -750,6 +842,12 @@ finals weekend are two `TimelineDefinition`s. For results-driven stages,
 assign round by round through the engine bridge:
 
 ```php
+use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\StageState;
+
+$engine = new SwissPairingEngine(plannedRounds: 3);
+$state = StageState::start($participants);
+
 $pairing = $engine->pairNextRound($state);
 $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
 ```
@@ -845,11 +943,17 @@ nowhere in the movable set (a withdrawn participant's played fixtures
 still block their opponents' positions):
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Repack\MovableEvent;
 use MissionGaming\Tactician\Repack\PinnedEvent;
 use MissionGaming\Tactician\Repack\RepackOptions;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\ScheduleRepacker;
+
+$celtic = new Participant('celtic', 'Celtic');
+$athletic = new Participant('athletic', 'Athletic Bilbao');
+$livorno = new Participant('livorno', 'AS Livorno');
+$rayo = new Participant('rayo', 'Rayo Vallecano');
 
 $request = new RepackRequest(
     movableEvents: [
@@ -938,17 +1042,29 @@ your policy, the scorer is the arithmetic — and reports per-metric
 values so a chosen schedule is explainable:
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Quality\PairingSpacingMetric;
 use MissionGaming\Tactician\Quality\RoleBalanceMetric;
 use MissionGaming\Tactician\Quality\ScheduleScorer;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+
+// The schedule to grade: a single-leg round robin, in which each of the
+// four participants has three events and so cannot split roles evenly
+$participants = [
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
+];
+$schedule = (new RoundRobinScheduler())->schedule($participants);
 
 $scorer = new ScheduleScorer([
     ['metric' => new RoleBalanceMetric(), 'weight' => 3.0],
     ['metric' => new PairingSpacingMetric(), 'weight' => 1.0],
 ]);
 
-$score = $scorer->score($schedule);   // weighted defect score
-$report = $scorer->report($schedule); // ['Role Balance' => 0.667, ...]
+$score = $scorer->score($schedule);   // 4.5: the weighted defect score (3.0 x 1.5 + 1.0 x 0.0)
+$report = $scorer->report($schedule); // ['Role Balance' => 1.5, 'Pairing Spacing' => 0.0]
 ```
 
 `ScheduleOptimizer` generates N candidates and keeps the best-scoring
@@ -1003,7 +1119,16 @@ Schedules round-trip through JSON; participants are listed once and
 referenced by ID, so restored schedules share participant instances:
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+
+$schedule = (new RoundRobinScheduler())->schedule([
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
+]);
 
 $json = $schedule->toJson();
 $restored = Schedule::fromJson($json);
@@ -1019,9 +1144,11 @@ Tactician includes comprehensive validation to ensure complete tournaments and p
 ### Basic Validation
 
 ```php
-use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
 $participants = [
     new Participant('celtic', 'Celtic'),
@@ -1117,10 +1244,33 @@ directly:
 • Derby Ban rejects Team 1 vs Team 2 in 3 of 3 rounds
 ```
 
-Programmatic access goes through the attached report:
+Programmatic access goes through the attached report. The configuration
+below is the one that produces the report above — a round robin needs
+every pair to meet, so banning one pairing cannot be satisfied:
 
 ```php
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+
+$participants = [
+    new Participant('team1', 'Team 1'),
+    new Participant('team2', 'Team 2'),
+    new Participant('team3', 'Team 3'),
+    new Participant('team4', 'Team 4'),
+];
+
+// Team 1 and Team 2 may never meet
+$derbyBan = ConstraintSet::create()
+    ->custom(
+        fn (Event $event) => !($event->hasParticipant($participants[0]) && $event->hasParticipant($participants[1])),
+        'Derby Ban'
+    )
+    ->build();
+
+$scheduler = new RoundRobinScheduler($derbyBan);
 
 try {
     $schedule = $scheduler->schedule($participants);
@@ -1152,7 +1302,6 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 
 try {
-    $scheduler = new RoundRobinScheduler($constraints);
     $schedule = $scheduler->schedule($participants);
     
 } catch (InvalidConfigurationException $e) {
@@ -1191,6 +1340,10 @@ function handleIncompleteSchedule(IncompleteScheduleException $e): void
 
 ### Custom Schedulers
 
+The class below is a sketch of the shape, not a complete scheduler: it
+leaves out `getPlan()` and the generation itself.
+
+<!-- snippet: skip reason="A sketch of a custom scheduler: it omits getPlan() and generateCustomEvents(), so the class cannot be declared." -->
 ```php
 use MissionGaming\Tactician\Scheduling\SchedulerInterface;
 use MissionGaming\Tactician\Scheduling\SchedulerOptions;
@@ -1227,10 +1380,18 @@ plan is what validation, diagnostics, and shape-aware constraints (e.g.
 `SeedProtectionConstraint`) consume — no component infers tournament shape:
 
 ```php
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
+
+$participants = [
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
+];
 
 $plan = (new RoundRobinScheduler())->getPlan($participants, new RoundRobinOptions(legs: 2));
 
@@ -1259,27 +1420,32 @@ schedulers run it automatically before returning a schedule.
 ### Scheduling Context
 
 ```php
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
+
+$existingEvents = [new Event([$participants[0], $participants[1]], new Round(1))];
 
 // Create context with participants, the stage plan, and existing events
 $context = new SchedulingContext(
     $participants,
     $plan,
     $existingEvents,
-    $currentLeg = 1,
-    $participantsPerEvent = 2
+    currentLeg: 1,
+    participantsPerEvent: 2
 );
 
 // Shape facts come from the plan
 $totalRounds = $context->getPlan()->getTotalRounds();
 
 // Check if participants have played together
-$havePlayed = $context->haveParticipantsPlayed($participants[0], $participants[1]);
+$havePlayed = $context->haveParticipantsPlayed($participants[0], $participants[1]); // true
 
 // Get events for a specific participant
 $playerEvents = $context->getEventsForParticipant($participants[0]);
 
-// Add new events to context
+// Add new events to context (contexts are immutable: this returns a new one)
+$newEvent = new Event([$participants[2], $participants[3]], new Round(1));
 $newContext = $context->withEvents([$newEvent]);
 ```
 
@@ -1300,20 +1466,34 @@ $schedule = $scheduler->schedule($participants);
 
 ## Real-World Examples
 
+Each example below is complete in itself and repeats the imports it needs.
+
 ### Premier League Style Tournament
 
 ```php
-// 20 teams, home and away legs
-$teams = [
-    new Participant('mci', 'Manchester City', 1),
-    new Participant('ars', 'Arsenal', 2),
-    new Participant('liv', 'Liverpool', 3),
-    // ... 17 more teams
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+
+// 20 teams in seeding order, home and away legs
+$clubs = [
+    'Manchester City', 'Arsenal', 'Liverpool', 'Aston Villa', 'Tottenham',
+    'Chelsea', 'Newcastle', 'Manchester United', 'West Ham', 'Crystal Palace',
+    'Brighton', 'Bournemouth', 'Fulham', 'Wolves', 'Everton',
+    'Brentford', 'Nottingham Forest', 'Leicester', 'Ipswich', 'Southampton',
 ];
+
+$teams = [];
+foreach ($clubs as $position => $club) {
+    $teams[] = new Participant(strtolower(str_replace(' ', '-', $club)), $club, $position + 1);
+}
 
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(new MinimumRestPeriodsConstraint(5))  // Participants don't meet again soon
+    ->add(new MinimumRestPeriodsConstraint(5))  // A pair's two meetings are at least 5 rounds apart
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
@@ -1325,56 +1505,103 @@ $season = $scheduler->schedule(
 );
 
 echo "Premier League season: " . count($season) . " matches\n";
-// Expected: 380 matches (20 teams × 19 opponents × 2 legs)
+// 380 matches: each of the 20 teams hosts each of the other 19 once
 ```
 
 ### Gaming Tournament with Skill Brackets
 
+A rule that forbids some pairings outright cannot be combined with a round
+robin, which needs every pair to meet. Swiss pairing has no such
+requirement, so it is the format for a bracketed field:
+
 ```php
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MetadataConstraint;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\SwissOptions;
+use MissionGaming\Tactician\Scheduling\SwissScheduler;
+
 $players = [
-    new Participant('pro1', 'ProGamer1', 1, ['skill' => 'professional']),
-    new Participant('pro2', 'ProGamer2', 2, ['skill' => 'professional']),
-    new Participant('semi1', 'SemiPro1', 3, ['skill' => 'semi-professional']),
-    new Participant('semi2', 'SemiPro2', 4, ['skill' => 'semi-professional']),
-    new Participant('am1', 'Amateur1', 5, ['skill' => 'amateur']),
-    new Participant('am2', 'Amateur2', 6, ['skill' => 'amateur']),
+    new Participant('pro1', 'ProGamer1', 1, ['tier' => 3]),
+    new Participant('pro2', 'ProGamer2', 2, ['tier' => 3]),
+    new Participant('semi1', 'SemiPro1', 3, ['tier' => 2]),
+    new Participant('semi2', 'SemiPro2', 4, ['tier' => 2]),
+    new Participant('semi3', 'SemiPro3', 5, ['tier' => 2]),
+    new Participant('semi4', 'SemiPro4', 6, ['tier' => 2]),
+    new Participant('am1', 'Amateur1', 7, ['tier' => 1]),
+    new Participant('am2', 'Amateur2', 8, ['tier' => 1]),
 ];
 
-// Only allow players of adjacent skill levels to play
+// Only players of the same or adjacent skill tiers may meet, so the
+// professionals (tier 3) never play the amateurs (tier 1). The values
+// must be numeric: requireAdjacentValues() ignores non-numeric values
 $constraints = ConstraintSet::create()
-    ->noRepeatPairings()
-    ->add(MetadataConstraint::requireAdjacentValues('skill'))
-    ->add(new SeedProtectionConstraint(2, 0.3))  // Protect top 2 for 30% of tournament
+    ->add(MetadataConstraint::requireAdjacentValues('tier'))
     ->build();
 
-$scheduler = new RoundRobinScheduler($constraints);
-$tournament = $scheduler->schedule($players);
+$tournament = (new SwissScheduler($constraints))->schedule($players, new SwissOptions(rounds: 3));
+
+echo count($tournament) . " matches\n"; // 12 matches: 4 per round
+```
+
+Asking a round robin for the same rule fails loudly instead of dropping
+the four professional-versus-amateur matches (this block is expected to
+throw, and the documentation test asserts that it does):
+
+<!-- snippet: throws="MissionGaming\Tactician\Exceptions\IncompleteScheduleException" -->
+```php
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+
+// Throws IncompleteScheduleException
+(new RoundRobinScheduler($constraints))->schedule($players);
 ```
 
 ### Corporate Team Building Tournament
 
+Pairing departments across buildings only is another rule a round robin
+cannot honour — Engineering and Sales share a building and would have to
+meet — so this is Swiss as well:
+
 ```php
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MetadataConstraint;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\SwissOptions;
+use MissionGaming\Tactician\Scheduling\SwissScheduler;
+
 $departments = [
-    new Participant('eng', 'Engineering', 1, ['location' => 'Building A', 'size' => 'large']),
-    new Participant('mark', 'Marketing', 2, ['location' => 'Building B', 'size' => 'medium']),
-    new Participant('sales', 'Sales', 3, ['location' => 'Building A', 'size' => 'large']),
-    new Participant('hr', 'Human Resources', 4, ['location' => 'Building B', 'size' => 'small']),
+    new Participant('eng', 'Engineering', 1, ['location' => 'Building A']),
+    new Participant('mark', 'Marketing', 2, ['location' => 'Building B']),
+    new Participant('sales', 'Sales', 3, ['location' => 'Building A']),
+    new Participant('hr', 'Human Resources', 4, ['location' => 'Building B']),
 ];
 
-// Mix departments from different buildings, balance team sizes
+// Cross-building pairings only
 $constraints = ConstraintSet::create()
-    ->noRepeatPairings()
-    ->add(MetadataConstraint::requireDifferentValues('location'))  // Cross-building teams
-    ->add(MetadataConstraint::maxUniqueValues('size', 2))  // Limit size variety per match
+    ->add(MetadataConstraint::requireDifferentValues('location'))
     ->build();
 
-$scheduler = new RoundRobinScheduler($constraints);
-$teamBuilding = $scheduler->schedule($departments);
+// Each department has two possible opponents, so the tournament is two rounds
+$teamBuilding = (new SwissScheduler($constraints))->schedule($departments, new SwissOptions(rounds: 2));
+
+foreach ($teamBuilding as $event) {
+    [$first, $second] = $event->getParticipants();
+    echo "Round {$event->getRound()?->getNumber()}: {$first->getLabel()} vs {$second->getLabel()}\n";
+}
 ```
 
-### Multi-Day Tournament with Rest Periods
+### Home-and-Away League with Spaced Return Fixtures
 
 ```php
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+
 $teams = [
     new Participant('team1', 'Team Alpha'),
     new Participant('team2', 'Team Beta'),
@@ -1384,50 +1611,80 @@ $teams = [
     new Participant('team6', 'Team Zeta'),
 ];
 
-// Ensure teams get adequate rest between matches
+// MinimumRestPeriodsConstraint spaces out repeat meetings of the same
+// pair: it only matters when there is more than one leg
 $constraints = ConstraintSet::create()
-    ->noRepeatPairings()
-    ->add(new MinimumRestPeriodsConstraint(4))  // 4 rounds minimum between encounters
+    ->add(new MinimumRestPeriodsConstraint(4))  // A pair's return fixture is at least 4 rounds later
     ->add(ConsecutiveRoleConstraint::homeAway(2))  // Max 2 consecutive home/away
     ->build();
 
 try {
     $scheduler = new RoundRobinScheduler($constraints);
-    $tournament = $scheduler->schedule($teams);
-    
+    $tournament = $scheduler->schedule(
+        $teams,
+        new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
+    );
+
     echo "Tournament scheduled successfully!\n";
-    echo "Total matches: " . count($tournament) . "\n";
-    echo "Total rounds: " . $tournament->getMetadataValue('total_rounds') . "\n";
-    
+    echo "Total matches: " . count($tournament) . "\n";                             // 30
+    echo "Total rounds: " . $tournament->getMetadataValue('total_rounds') . "\n";   // 10
+
 } catch (IncompleteScheduleException $e) {
     echo "Could not schedule with current constraints\n";
-    echo "Try reducing minimum rest periods or removing consecutive role limits\n";
+    echo "Try reducing the minimum rest period or relaxing the consecutive role limit\n";
 }
 ```
 
 ## Performance Considerations
 
-### Memory Efficiency
+### Iterating and Counting
+
+A `Schedule` holds every one of its events in memory, as an array:
+generation builds the whole schedule before returning it, and nothing is
+loaded lazily or released as you iterate. A schedule is iterable and
+countable, so you can loop over it and count it directly — that is a
+convenience, not a memory saving. Schedules are small in practice (a
+20-participant double round robin is 380 events); if memory does matter,
+it is a question of how your application stores and pages events, not of
+how you iterate.
 
 ```php
-// For large tournaments, iterate efficiently
-$largeSchedule = $scheduler->schedule($manyParticipants);
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
-// Memory-efficient iteration (doesn't load all events at once)
-foreach ($largeSchedule as $event) {
-    processEvent($event);
-    // Each event is garbage collected after processing
+$manyParticipants = [];
+for ($i = 1; $i <= 16; ++$i) {
+    $manyParticipants[] = new Participant("p{$i}", "Player {$i}");
 }
 
-// Count events without loading them all
-$totalEvents = count($largeSchedule);
+$largeSchedule = (new RoundRobinScheduler())->schedule($manyParticipants);
+
+// Iterate the schedule directly, in generated order
+foreach ($largeSchedule as $event) {
+    // ...process the event...
+}
+
+// Count the events: 16 participants meeting once each
+$totalEvents = count($largeSchedule); // 120
+
+// The same events as a plain array, or grouped by round number
+$events = $largeSchedule->getEvents();
+$eventsByRound = $largeSchedule->getEventsByRound();
 ```
 
 ### Constraint Optimization
 
+Constraints are evaluated in the order they were added, and evaluation
+stops at the first one that rejects an event:
+
 ```php
-// Order constraints from most restrictive to least restrictive
-// for better performance
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MetadataConstraint;
+use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
+
+// Put the constraints most likely to reject an event first, so the
+// later ones are evaluated less often
 $optimizedConstraints = ConstraintSet::create()
     ->add(new MinimumRestPeriodsConstraint(3))  // Most restrictive first
     ->add(ConsecutiveRoleConstraint::homeAway(2))
