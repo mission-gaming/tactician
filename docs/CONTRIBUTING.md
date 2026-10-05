@@ -94,13 +94,18 @@ so the test refuses it on CI.
   Say "participant", not "team", in library code and documentation prose.
 - Execute every documentation snippet before you commit it. Snippets that were
   never run have caused real bugs in this repository.
-- Example scripts in `examples/` are executable documentation.
-  `tests/Feature/ExamplesTest.php` discovers and runs every example under full
-  error reporting as part of `composer test`, so a new example is covered the
-  moment it is added: a non-zero exit, warning, notice, or deprecation fails
-  the suite. `composer examples` smoke-runs them directly for a faster loop.
-  An example that needs interactive input or an external service does not
-  belong in `examples/`.
+- Example scripts in `examples/` are executable documentation. An example
+  computes its results and hands them to the shared renderer; it does not
+  print or draw anything itself. `tests/Feature/ExamplesTest.php` runs every
+  example under full error reporting as part of `composer test` (a non-zero
+  exit, warning, notice, or deprecation fails the suite), asserts what each
+  example is there to demonstrate, and checks that the examples index and
+  README list every script; the golden test pins what each example computes.
+  A new example fails the suite until it has all of these:
+  [`examples/README.md`](../examples/README.md) lists the steps.
+  `composer examples` smoke-runs the scripts directly for a faster loop. An
+  example that needs interactive input or an external service does not belong
+  in `examples/`.
 
 ## Changelog
 
