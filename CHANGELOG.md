@@ -64,7 +64,8 @@ generated output for a fixed input and seed is identical.
   - The "Gaming Tournament with Skill Brackets" sample passed string skill
     names to `MetadataConstraint::requireAdjacentValues()`, which ignores
     non-numeric values, so the rule it described was never applied. It now uses
-    numeric tiers on a Swiss schedule.
+    numeric tiers on a Swiss schedule, with the entrants in an order in which
+    the rule changes the pairings.
   - The rest-period sample described `MinimumRestPeriodsConstraint` as rest
     between a participant's matches. The constraint spaces repeat meetings of
     the same pair, and the sample now has two legs so that it applies.

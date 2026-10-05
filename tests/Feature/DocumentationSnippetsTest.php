@@ -469,10 +469,17 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             'echo count($tournament) . " matches\n";',
             <<<'PHP'
-                foreach ($tournament as $event) {
-                    [$first, $second] = $event->getParticipants();
-                    assert(abs($first->getMetadataValue('tier') - $second->getMetadataValue('tier')) <= 1);
-                }
+                $tierSkips = static fn ($schedule): int => count(array_filter(
+                    $schedule->getEvents(),
+                    static fn ($event): bool => abs(
+                        $event->getParticipants()[0]->getMetadataValue('tier') - $event->getParticipants()[1]->getMetadataValue('tier')
+                    ) > 1
+                ));
+                assert($tierSkips($tournament) === 0);
+                // "left to itself, Swiss pairing would put a professional against an
+                // amateur four times": the rule changes the pairings rather than
+                // describing what the entrant order would have produced anyway
+                assert($tierSkips((new SwissScheduler())->schedule($players, new SwissOptions(rounds: 3))) === 4);
                 PHP,
         ],
         'team building is cross-building' => [

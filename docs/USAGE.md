@@ -229,7 +229,8 @@ $sameRegion = MetadataConstraint::requireSameValue('region');
 // Participants from different skill levels
 $differentSkills = MetadataConstraint::requireDifferentValues('skill_level');
 
-// Maximum 2 equipment types per match
+// Maximum 2 equipment types per match (this can only reject an event
+// with more than two participants)
 $equipmentLimit = MetadataConstraint::maxUniqueValues('equipment', 2);
 
 // Adjacent skill levels only (skill level 3 can play 2 or 4, not 1 or 5)
@@ -1521,15 +1522,18 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
 
+// Entrants in sign-up order, which is the order Swiss pairing works from.
+// It mixes the tiers: left to itself, Swiss pairing would put a
+// professional against an amateur four times in three rounds
 $players = [
     new Participant('pro1', 'ProGamer1', 1, ['tier' => 3]),
-    new Participant('pro2', 'ProGamer2', 2, ['tier' => 3]),
-    new Participant('semi1', 'SemiPro1', 3, ['tier' => 2]),
-    new Participant('semi2', 'SemiPro2', 4, ['tier' => 2]),
-    new Participant('semi3', 'SemiPro3', 5, ['tier' => 2]),
-    new Participant('semi4', 'SemiPro4', 6, ['tier' => 2]),
-    new Participant('am1', 'Amateur1', 7, ['tier' => 1]),
-    new Participant('am2', 'Amateur2', 8, ['tier' => 1]),
+    new Participant('am1', 'Amateur1', 2, ['tier' => 1]),
+    new Participant('pro2', 'ProGamer2', 3, ['tier' => 3]),
+    new Participant('am2', 'Amateur2', 4, ['tier' => 1]),
+    new Participant('semi1', 'SemiPro1', 5, ['tier' => 2]),
+    new Participant('semi2', 'SemiPro2', 6, ['tier' => 2]),
+    new Participant('semi3', 'SemiPro3', 7, ['tier' => 2]),
+    new Participant('semi4', 'SemiPro4', 8, ['tier' => 2]),
 ];
 
 // Only players of the same or adjacent skill tiers may meet, so the
@@ -1541,7 +1545,7 @@ $constraints = ConstraintSet::create()
 
 $tournament = (new SwissScheduler($constraints))->schedule($players, new SwissOptions(rounds: 3));
 
-echo count($tournament) . " matches\n"; // 12 matches: 4 per round
+echo count($tournament) . " matches\n"; // 12 matches: 4 per round, none of them professional v amateur
 ```
 
 Asking a round robin for the same rule fails loudly instead of dropping
@@ -1686,10 +1690,10 @@ use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 // Put the constraints most likely to reject an event first, so the
 // later ones are evaluated less often
 $optimizedConstraints = ConstraintSet::create()
-    ->add(new MinimumRestPeriodsConstraint(3))  // Most restrictive first
+    ->add(new MinimumRestPeriodsConstraint(3))  // The one you expect to reject most often
     ->add(ConsecutiveRoleConstraint::homeAway(2))
     ->add(MetadataConstraint::requireSameValue('division'))
-    ->noRepeatPairings()  // Least restrictive last
+    ->noRepeatPairings()  // The one you expect to reject least often
     ->build();
 ```
 
