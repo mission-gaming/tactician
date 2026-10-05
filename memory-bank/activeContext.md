@@ -1,7 +1,13 @@
 # Active Context: Tactician
 
+## Releases
+- **v0.2.0** (2026-08-11, tag on the PR #25 merge commit) — schedule repacking (`src/Repack/`) plus review hardening; additive, no existing APIs changed. Notes: https://github.com/mission-gaming/tactician/releases/tag/v0.2.0
+- **v0.1.1** (2026-07-04) — composer.json author email fix.
+- **v0.1.0** (2026-07-04) — first published release, all five roadmap phases.
+
 ## Current Work Focus
-- **Schedule repacking shipped** (2026-08-11, branch `feature/schedule-repack`): `src/Repack/` repairs an existing schedule onto an irregular `SessionGrid` — no double-booking ever, per-session contiguity satisfied or reported, pins immovable. Driven by a Metronome brief with a real production fixture (stage 162, copied to `tests/Fixtures/repack-scenario.json`); the production instance repacks clean and the mis-pinned variant reports `CapacityExceeded` (Foregone, shortfall 3). **Deliberate contract deviation**: infeasibility returns a `RepackOutcome` with structured violations rather than throwing. All decisions from the overnight autonomous run are logged in `docs/design/schedule-repack.md`.
+- **Schedule repacking shipped and released in v0.2.0** (2026-08-11, PR #25, merged to `main`): `src/Repack/` repairs an existing schedule onto an irregular `SessionGrid` — no double-booking ever, per-session contiguity satisfied or reported, pins immovable. Driven by a Metronome brief with a real production fixture (stage 162, copied to `tests/Fixtures/repack-scenario.json`); the production instance repacks clean and the mis-pinned variant reports `CapacityExceeded` (Foregone, shortfall 3). **Deliberate contract deviation**: infeasibility returns a `RepackOutcome` with structured violations rather than throwing. All decisions from the overnight autonomous run are logged in `docs/design/schedule-repack.md`.
+- **Pre-merge review hardening** (2026-08-11, medium `/code-review --fix`, the last 9 of PR #25's 12 commits): fixed PHP 8.4-only `new`-chaining in docs/example/tests (library must parse on 8.3), made `no_slot_available` literal (planner-rejected events re-enter the final sweep), capped parity bitmask reasoning at 20 slots per session (falls back to greedy beyond), fixed violation kind-then-scope ordering, removed `CapacityExceeded`'s never-constructed session scope, aligned kickoff serialization with the timeline family's UTC format, and added edge coverage (throw path, audit detector, DTO shapes, grid validation). Three cleanups were deliberately skipped — see Next Steps.
 
 ## Previous Work Focus
 - **Roadmap Phases 1 and 2 are complete** (see docs/ROADMAP.md): round robin core plus Swiss pairing, single/double elimination brackets, group stages, standings/tiebreakers, and JSON serialization all shipped with full CI (Pest, PHPStan level 8, Rector, CS-Fixer, example smoke-runs)
@@ -13,7 +19,8 @@
   - Phase 3: algorithm-neutral core (stage plans, typed options, engines, compositions).
   - Phase 4: timeline assignment (slot model, time-aware rules, named resources).
   - Phase 5: backtracking generation, quality metrics + best-of-N optimization, constraint attribution diagnostics, and framework integration guides (`docs/integrations/` — Symfony as the Metronome-shaped centrepiece, Laravel mirror, example 18 for the stateless request-cycle pattern).
-- **Future work is demand-gated**: cross-stage clash validation, per-resource availability windows, smarter optimization algorithms behind the existing scorer — and the Metronome integration conversation, now that the roadmap is done.
+- **Future work is demand-gated**: cross-stage clash validation, per-resource availability windows, smarter optimization algorithms behind the existing scorer — and the Metronome integration conversation, now that the roadmap is done and repacking is released in v0.2.0.
+- Repack follow-ups deliberately deferred from the review, so intentional rather than overlooked: DTO merge/shared base and `LoadPlanner` memoization — itemised with the reason in `progress.md` ("What's Left to Build").
 
 ## Active Decisions and Considerations
 - All results-driven engines conform to `StageEngineInterface`. **Position is authoritative** for stage entry: brackets fold and pools deal by list position, never by carried seed attributes. StageState records pairings (not just results), which powers results-free scheduling and repeat avoidance.
@@ -31,4 +38,4 @@
 - Immutable-context copying inside generation loops caused an O(events²) blowup once; batch context updates per round, not per event.
 
 ## Status
-- **Last Updated**: 2026-08-11
+- **Last Updated**: 2026-10-05
