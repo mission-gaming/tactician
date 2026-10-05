@@ -140,7 +140,12 @@ release is recorded in the [changelog](CHANGELOG.md).
 **Supported PHP versions:** `^8.3` (the Composer constraint). CI runs the suite
 on PHP 8.3, 8.4, and 8.5.
 
-**Stable** (namespaces are relative to `MissionGaming\Tactician`):
+The rules above apply to every namespace. The two lists below say where
+breaking changes are expected. Namespaces are relative to
+`MissionGaming\Tactician`.
+
+**Stable** (intended to keep its shape; a minor release breaks it only when
+there is no compatible alternative):
 
 - `DTO`
 - Round-robin scheduling: `Scheduling\RoundRobinScheduler`,
@@ -148,7 +153,7 @@ on PHP 8.3, 8.4, and 8.5.
 - `Repack`, excluding `Repack\Internal`
 - `Exceptions`
 
-**Experimental** (may change in a minor release):
+**Experimental** (still being designed; likely to change in a minor release):
 
 - The Swiss and elimination engines: `Scheduling\SwissPairingEngine`,
   `Scheduling\SwissScheduler`, `Scheduling\SwissOptions`,
@@ -158,6 +163,19 @@ on PHP 8.3, 8.4, and 8.5.
 - `Standings`
 - `Timeline`
 - `Quality`
+- `Constraints`
+- `Validation`
+- `Diagnostics`
+
+Anything not listed as stable is experimental, including the rest of
+`Scheduling`. `Repack\Internal` is internal: it is not public API and carries
+no compatibility guarantee.
+
+Some stable signatures carry experimental types: `RoundRobinScheduler` accepts
+a `Constraints\ConstraintSet` and returns a `Stage\RoundRobinPlan` from
+`getPlan()`, and `Exceptions\IncompleteScheduleException` exposes `Stage`,
+`Validation`, and `Diagnostics` types. Those types follow the experimental
+rule, so the parts of a stable class that use them can change with them.
 
 Releases are cut with the [release checklist](docs/RELEASING.md).
 
