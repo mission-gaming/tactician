@@ -8,7 +8,7 @@
 
 ## About Mission Gaming
 
-**[Mission Gaming](https://missiongaming.gg)** is an esports organization that runs competitive tournaments for EAFC Clubs (11v11 virtual football). Founded and operated by software engineers who are passionate about both competitive gaming and building exceptional technology, we created Tactician to solve our own scheduling challenges on our own tournament platform.
+**[Mission Gaming](https://missiongaming.gg)** is an esports organization that runs competitive tournaments for EAFC Clubs (11v11 virtual football). Founded and operated by software engineers who are passionate about both competitive gaming and building exceptional technology, we created Tactician to solve the scheduling challenges of our own tournament platform.
 
 After struggling with unmaintained libraries and limited PHP scheduling options, we decided to build the tournament scheduling solution we wished existed—then open source it for the community. We're expanding to other games and building what we believe will be the premier esports tournament platform.
 
