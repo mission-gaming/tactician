@@ -67,12 +67,9 @@ release:
   sessions fall back to the greedy path instead of an exponential search.
 - Violations are emitted in the documented kind-then-scope order, and
   `CapacityExceeded` has no session-scoped shape.
-
-### Fixed
-
-- PHP 8.4-only `new`-chaining syntax in the documentation, an example, and the
-  tests was rewritten in the PHP 8.3-compatible form, so the package parses on
-  its minimum supported PHP version.
+- The repack usage snippet, example, and tests use the PHP 8.3-compatible
+  `(new ScheduleRepacker())->` form. The PHP 8.4-only `new`-chaining form was
+  replaced before the release and never shipped.
 
 ## [0.1.1] - 2026-07-04
 
