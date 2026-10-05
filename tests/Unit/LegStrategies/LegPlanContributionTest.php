@@ -88,7 +88,7 @@ describe('LegStrategy plan contributions', function (): void {
 });
 
 describe('LegStrategy event generation edges', function (): void {
-    it('declines non-pairwise events and keeps first-leg order', function (): void {
+    it('returns no event for a non-pairwise group and keeps first-leg order', function (): void {
         $participants = contributionParticipants(3);
         $context = roundRobinContext($participants, [], legs: 2);
 

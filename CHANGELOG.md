@@ -26,6 +26,10 @@ generated output for a fixed input and seed is identical.
   schedules, bracket pairings, repack assignments, and the JSON wire shapes
   against text fixtures in `tests/Fixtures/golden/`, captured from 0.2.0. The
   development-only `composer golden-update` script regenerates them.
+- Optional, tracked settings in `.claude/` for contributors who use an AI
+  coding agent: a hook that formats each PHP file the agent edits and analyses it when it is
+  under `src/` or `tests/` (`tests/Feature/AgentHookTest.php` covers it), and `verify` and `release`
+  commands. The directory is not part of the installed package.
 - A test (`tests/Feature/DocumentationSnippetsTest.php`) that executes every
   `php` code block of `README.md` and `docs/USAGE.md`, each in a PHP process of
   its own under `E_ALL`. A block that does not parse, throws, or emits a
@@ -45,6 +49,12 @@ generated output for a fixed input and seed is identical.
 - The repack scenario test fixture is now a synthetic instance.
 - The CI workflow runs with least-privilege permissions and pinned actions, and
   Dependabot keeps the actions up to date.
+- `AGENTS.md` is now the single guide for contributors and AI coding agents,
+  corrected against the code. `docs/ROADMAP.md` marks every phase as shipped,
+  lists schedule repacking, and gains sections for known limitations and
+  deferred work.
+- Every PHP file now declares `strict_types=1`. Six test files and the
+  PHP-CS-Fixer configuration did not; a test now checks all of them.
 - The CI workflow runs the test and coverage jobs for every change set. Its
   documentation-only fast path is removed: the paths filter behind it matched
   every file, so it never skipped anything, and the suite now executes
@@ -52,6 +62,14 @@ generated output for a fixed input and seed is identical.
 - Every code block in `README.md` and `docs/USAGE.md` now runs as written:
   imports and the values a block depends on are shown, and inline value
   comments match what the code produces.
+
+### Removed
+
+- The editor-specific agent rule files and the session-notes directory at the
+  repository root. Their decisions that still hold are now in `AGENTS.md`,
+  `docs/ROADMAP.md`, and two decision records in the new `docs/adr/`; the
+  statements that no longer matched the code are gone. None of these files
+  was part of the installed package.
 
 ### Fixed
 

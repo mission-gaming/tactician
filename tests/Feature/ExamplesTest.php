@@ -78,8 +78,7 @@ it('pins only examples that exist and print plain text', function (string $examp
 // once said otherwise ("memory-efficient iteration", "count without loading"),
 // which sent readers after a saving that does not exist. The phrases below
 // are the ones those claims were made in; none may come back. The changelog
-// and the memory bank are left out: they describe the old claim in order to
-// record its removal.
+// is left out: it describes the old claim in order to record its removal.
 it('does not claim that reading a schedule saves memory', function (string $file): void {
     $text = (string) file_get_contents(dirname(__DIR__, 2) . '/' . $file);
     Assert::assertNotSame('', $text, "{$file} is missing or empty");

@@ -629,7 +629,7 @@ Five milestones, each shippable green:
    and outcome-based) with cardinality validation, the composition
    validator, `PoolDistributor`, `GroupStageEngine` retirement, elimination
    engines rebuilt as presets, two-legged ties.
-5. **Sweep** — docs, examples, memory bank, deprecated-class removals.
+5. **Sweep** — docs, examples, deprecated-class removals.
 
 ## Resolved decisions (2026-07-03)
 
