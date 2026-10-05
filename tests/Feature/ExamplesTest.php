@@ -164,3 +164,177 @@ it('prints the pinned output whatever the timezone, locale, precision and workin
     expect($exitCode)->toBe(0)
         ->and($output)->toBe((string) file_get_contents($root . '/tests/Fixtures/golden/' . GoldenCases::exampleFixture($example)));
 })->with(GoldenCases::PLAIN_TEXT_EXAMPLES);
+
+// `composer examples` (the last step of `composer ci`) is tests/bin/run-examples.php.
+// The runner is pointed here at throwaway directories, so that its failure
+// paths are exercised without breaking a real example. Gap left knowingly:
+// the runner is not run over the real examples/ in this file - the gate does
+// that, and the test above already runs every real example.
+$runExamples = function (array $scripts, bool $createDirectory = true): array {
+    $directory = sys_get_temp_dir() . '/run-examples-' . bin2hex(random_bytes(6));
+
+    if ($createDirectory && !mkdir($directory)) {
+        Assert::fail("Could not create {$directory}");
+    }
+
+    foreach ($scripts as $name => $source) {
+        file_put_contents($directory . '/' . $name, $source);
+    }
+
+    try {
+        $process = proc_open(
+            [PHP_BINARY, dirname(__DIR__) . '/bin/run-examples.php', $directory],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes
+        );
+        if ($process === false) {
+            Assert::fail('Could not start PHP to run tests/bin/run-examples.php');
+        }
+
+        $stdout = (string) stream_get_contents($pipes[1]);
+        $stderr = (string) stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $exitCode = proc_close($process);
+
+        $ran = is_file($directory . '/ran.log')
+            ? file($directory . '/ran.log', FILE_IGNORE_NEW_LINES) ?: []
+            : [];
+    } finally {
+        foreach (glob($directory . '/*') ?: [] as $file) {
+            unlink($file);
+        }
+        if (is_dir($directory)) {
+            rmdir($directory);
+        }
+    }
+
+    return ['exitCode' => $exitCode, 'stdout' => $stdout, 'stderr' => $stderr, 'ran' => $ran];
+};
+
+// Each throwaway script records that it ran, prints to standard output, and
+// exits with the given code
+$exampleSource = fn (string $label, int $exitCode = 0): string => sprintf(
+    "<?php\nfile_put_contents(__DIR__ . '/ran.log', %s . \"\\n\", FILE_APPEND);\necho %s;\nexit(%d);\n",
+    var_export($label, true),
+    var_export("output of {$label}\n", true),
+    $exitCode
+);
+
+it('wires `composer examples` and the gate to the example runner', function (): void {
+    $composer = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/composer.json'), true);
+
+    /** @var array{scripts: array<string, string|list<string>>} $composer */
+    expect($composer['scripts']['examples'])->toBe('@php tests/bin/run-examples.php')
+        ->and($composer['scripts']['ci'])->toContain('@examples')
+        ->and(is_file(dirname(__DIR__) . '/bin/run-examples.php'))->toBeTrue();
+});
+
+it('runs every script of the directory, in name order, and prints nothing when all succeed', function () use ($runExamples, $exampleSource): void {
+    $result = $runExamples([
+        '02-second.php' => $exampleSource('second'),
+        '10-third.php' => $exampleSource('third'),
+        '01-first.php' => $exampleSource('first'),
+        // Not a script: only *.php files are examples
+        'README.md' => 'not PHP',
+    ]);
+
+    expect($result)->toBe([
+        'exitCode' => 0,
+        'stdout' => '',
+        'stderr' => '',
+        'ran' => ['first', 'second', 'third'],
+    ]);
+});
+
+it('fails on the first script that exits non-zero, names it, shows its output, and runs no further script', function () use ($runExamples, $exampleSource): void {
+    $result = $runExamples([
+        '01-first.php' => $exampleSource('first'),
+        '02-broken.php' => $exampleSource('broken', 3),
+        '03-never.php' => $exampleSource('never'),
+    ]);
+
+    expect($result['exitCode'])->toBe(1)
+        ->and($result['ran'])->toBe(['first', 'broken'])
+        ->and($result['stdout'])->toBe('')
+        // The output of the script that failed, and of no other
+        ->and($result['stderr'])->toBe("output of broken\nExample 02-broken.php exited with code 3.\n");
+});
+
+it('fails when the last script is the one that exits non-zero', function () use ($runExamples, $exampleSource): void {
+    $result = $runExamples([
+        '01-first.php' => $exampleSource('first'),
+        '02-broken.php' => $exampleSource('broken', 255),
+    ]);
+
+    expect($result['exitCode'])->toBe(1)
+        ->and($result['ran'])->toBe(['first', 'broken'])
+        ->and($result['stderr'])->toContain('Example 02-broken.php exited with code 255.');
+});
+
+it('states the reason when a script dies of an uncaught exception', function () use ($runExamples): void {
+    // The configuration under which PHP prints the error to standard output
+    // only, which is the stream the runner captures: PHP with no php.ini
+    // behaves this way
+    $result = $runExamples([
+        '01-throws.php' => "<?php\nini_set('display_errors', '1');\nini_set('log_errors', '0');\n"
+            . "throw new RuntimeException('the reason');\n",
+    ]);
+
+    expect($result['exitCode'])->toBe(1)
+        ->and($result['stderr'])->toContain('the reason')
+        ->toContain('Example 01-throws.php exited with code 255.');
+});
+
+it('fails a script that does not parse', function () use ($runExamples): void {
+    $result = $runExamples(['01-broken.php' => "<?php\nthis is not PHP\n"]);
+
+    expect($result['exitCode'])->toBe(1)
+        ->and($result['stderr'])->toContain('Example 01-broken.php exited with code 255.');
+});
+
+// PHP exits with 0 after a warning, a notice or a deprecation, so the exit
+// code alone would let one through. The runner reports every level on
+// standard error and fails on anything written there.
+it('fails a script that exits zero after a diagnostic, names it, shows the diagnostic, and runs no further script', function (string $statement, string $expected) use ($runExamples, $exampleSource): void {
+    $result = $runExamples([
+        '01-first.php' => $exampleSource('first'),
+        '02-noisy.php' => "<?php\nfile_put_contents(__DIR__ . '/ran.log', \"noisy\\n\", FILE_APPEND);\n{$statement}\necho \"output of noisy\\n\";\n",
+        '03-never.php' => $exampleSource('never'),
+    ]);
+
+    expect($result['exitCode'])->toBe(1)
+        ->and($result['ran'])->toBe(['first', 'noisy'])
+        ->and($result['stdout'])->toBe('')
+        ->and($result['stderr'])->toContain($expected)
+        ->toContain("output of noisy\n")
+        ->toEndWith("Example 02-noisy.php wrote to standard error.\n");
+})->with([
+    'a warning' => ['$list = []; echo $list["missing"];', 'Undefined array key "missing"'],
+    'a warning from a variable never set' => ['echo $neverSet;', 'Undefined variable $neverSet'],
+    'a deprecation' => ['trigger_error("old call", E_USER_DEPRECATED);', 'old call'],
+    'a notice' => ['trigger_error("take note", E_USER_NOTICE);', 'take note'],
+    'a warning the script raises itself' => ['trigger_error("raised by hand", E_USER_WARNING);', 'raised by hand'],
+    'a direct write to standard error' => ['fwrite(STDERR, "written by hand\n");', 'written by hand'],
+]);
+
+it('does not fail a script whose standard output merely mentions a warning', function () use ($runExamples): void {
+    $result = $runExamples(['01-talks.php' => "<?php\necho \"Warning: this text is ordinary output\\n\";\n"]);
+
+    expect($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => '', 'ran' => []]);
+});
+
+// An empty run must not pass for a green one: a wrong path or a renamed
+// directory would otherwise turn the smoke-run into a check of nothing.
+it('fails when the directory holds no script', function (array $files, bool $createDirectory) use ($runExamples): void {
+    $result = $runExamples($files, $createDirectory);
+
+    expect($result['exitCode'])->toBe(1)
+        ->and($result['stdout'])->toBe('')
+        ->and($result['stderr'])->toStartWith('No example scripts found in ')
+        ->and($result['ran'])->toBe([]);
+})->with([
+    'an empty directory' => [[], true],
+    'a directory with no PHP file' => [['README.md' => 'not PHP'], true],
+    'a directory that does not exist' => [[], false],
+]);
