@@ -33,9 +33,14 @@ generated output for a fixed input and seed is identical.
   pull requests that touch either file.
 - Golden files for the output of the plain-text examples (`examples/13` to
   `examples/19`), so an example that prints a wrong or empty result fails.
+- Governance files: a security policy (`SECURITY.md`), code owners, a pull
+  request template with a compatibility section, and issue forms for bug
+  reports and feature requests.
 
 ### Changed
 
+- `docs/CONTRIBUTING.md` describes the current checks and rules, and states
+  one branch and commit convention.
 - The repack scenario test fixture is now a synthetic instance.
 - Every code block in `README.md` and `docs/USAGE.md` now runs as written:
   imports and the values a block depends on are shown, and inline value
