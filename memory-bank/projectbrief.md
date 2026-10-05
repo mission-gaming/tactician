@@ -18,7 +18,7 @@ Tactician is a modern PHP library for generating structured schedules between pa
 - Clean separation between pairing (who vs who) and timeline (when/where)
 - High developer ergonomics: fluent APIs, runnable (and tested) examples, executable documentation
 - Performance suitable for competitions into the hundreds of participants
-- Backwards compatibility is not a consideration currently — breaking changes are acceptable (unreleased, no tags)
+- Backwards compatibility follows the published policy (README "Versioning and stability"): patches never change correct output or a public signature; a 0.x minor may break, with a migration note in `CHANGELOG.md`
 
 ## Scope
 - In scope (shipped): core DTOs (Participant, Event, Round, Schedule, Result), ConstraintSet with built-in and custom predicates, RoundRobinScheduler, SimpleSwissScheduler, SwissPairingEngine, Single/DoubleEliminationEngine, GroupStageEngine, standings/tiebreakers, JSON serialization, examples, CI, documentation
