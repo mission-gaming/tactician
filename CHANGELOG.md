@@ -19,7 +19,9 @@ generated output for a fixed input and seed is identical.
 ### Added
 
 - This changelog, the versioning and stability policy in the README, and the
-  release checklist in `docs/RELEASING.md`.
+  release checklist in `docs/RELEASING.md`, with tests
+  (`tests/Feature/VersioningDocumentationTest.php`) that check them against
+  the repository.
 - Golden-output tests (`tests/Feature/GoldenOutputTest.php`) that pin generated
   schedules, bracket pairings, repack assignments, and the JSON wire shapes
   against text fixtures in `tests/Fixtures/golden/`, captured from 0.2.0. The
