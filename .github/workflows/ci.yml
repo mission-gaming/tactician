@@ -121,5 +121,8 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: build/clover.xml
-        fail_ci_if_error: true
+        # Dependabot-triggered runs cannot read Actions secrets, so the token
+        # is empty there and the upload may be rejected; that must not fail
+        # the dependency update's checks.
+        fail_ci_if_error: ${{ github.actor != 'dependabot[bot]' }}
         flags: php
