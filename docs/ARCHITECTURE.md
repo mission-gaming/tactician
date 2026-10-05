@@ -179,7 +179,7 @@ drift is impossible by construction.
 ### Architectural Patterns
 - **Strategy Pattern**: Pluggable leg strategies and scheduling algorithms
 - **Builder Pattern**: Fluent constraint configuration with ConstraintSet
-- **Iterator Pattern**: Memory-efficient traversal of schedules and events  
+- **Iterator Pattern**: Schedules are iterable and countable (the events themselves are held in memory)  
 - **Factory Pattern**: Constraint factory methods for common use cases
 - **All-or-Nothing Pattern**: Complete generation or clear failure with diagnostics
 
@@ -188,7 +188,7 @@ drift is impossible by construction.
 - **Integrated Generation**: Legs generated during core algorithm, not post-processing
 - **Real-Time Validation**: Constraints validated during generation with full context
 - **Deterministic Results**: Seeded randomization for reproducible outcomes
-- **Memory Efficiency**: Iterator patterns for large tournaments
+- **Whole Schedules in Memory**: A schedule is built completely and held as an array; it is iterable and countable
 - **Extensibility**: Clean extension points for additional tournament formats
 
 ## Advanced Constraint System
@@ -336,11 +336,10 @@ Tactician comfortably handles tournaments into the hundreds of participants
 (a 200-participant, two-leg round robin — nearly 40,000 events — generates in
 well under a second) with several performance features:
 
-### Memory Efficiency
-- **Iterator Pattern**: Schedule implements Iterator/Countable for memory-efficient traversal
-- **Lazy Evaluation**: Events not loaded into memory until needed
-- **Immutable Data Structures**: Readonly classes prevent memory leaks and unexpected mutations
-- **Generator-Based Patterns**: Efficient iteration without loading entire schedules
+### Memory
+- **Events are held in memory**: generation builds the whole schedule before returning it, and `Schedule` stores its events as an array. Nothing is loaded lazily and no generators are involved
+- **Iterable and countable**: `Schedule` implements `Iterator` and `Countable`, so it can be looped over and counted directly; that is a convenience, not a memory saving
+- **Immutable Data Structures**: Readonly value objects prevent unexpected mutations
 
 ### Constraint Optimization
 - **Early Termination**: Constraints fail-fast when violations detected
