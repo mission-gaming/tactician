@@ -20,8 +20,8 @@
 - **All five roadmap phases are complete** (see `docs/ROADMAP.md` for the per-phase detail — this file deliberately does not duplicate it):
   - Phase 3: algorithm-neutral core (stage plans, typed options, engines, compositions).
   - Phase 4: timeline assignment (slot model, time-aware rules, named resources).
-  - Phase 5: backtracking generation, quality metrics + best-of-N optimization, constraint attribution diagnostics, and framework integration guides (`docs/integrations/` — Symfony as the Metronome-shaped centrepiece, Laravel mirror, example 18 for the stateless request-cycle pattern).
-- **Future work is demand-gated**: cross-stage clash validation, per-resource availability windows, smarter optimization algorithms behind the existing scorer — and the Metronome integration conversation, now that the roadmap is done and repacking is released in v0.2.0.
+  - Phase 5: backtracking generation, quality metrics + best-of-N optimization, constraint attribution diagnostics, and framework integration guides (`docs/integrations/` — Symfony as the centrepiece, Laravel mirror, example 18 for the stateless request-cycle pattern).
+- **Future work is demand-gated**: cross-stage clash validation, per-resource availability windows, smarter optimization algorithms behind the existing scorer — and downstream integration work, now that the roadmap is done and repacking is released in v0.2.0.
 - Repack follow-ups deliberately deferred from the review, so intentional rather than overlooked: DTO merge/shared base and `LoadPlanner` memoization — itemised with the reason in `progress.md` ("What's Left to Build").
 
 ## Active Decisions and Considerations

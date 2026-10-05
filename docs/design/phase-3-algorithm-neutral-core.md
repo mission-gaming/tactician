@@ -70,7 +70,7 @@ concrete debts, each with a bug or wart already attributable to it:
 ## Scope alignment: the stage is Tactician's unit
 
 Consuming platforms model competition hierarchies above the schedule.
-Metronome's is representative:
+One such hierarchy is representative:
 
 ```
 CompetitionEvent            "UEFA Champions League"        (the competition as a concept)
@@ -172,7 +172,7 @@ Concretely:
   tournament", and similar are consumer interpretations of an outcome, not
   library concepts (see `StageOutcome`).
 
-**Config-constructibility.** Consuming platforms (Metronome explicitly) are
+**Config-constructibility.** Consuming platforms are typically
 config-driven, event-driven, strategy-derived systems: behavior is selected
 by strategy IDs plus JSON config, not code. Therefore every Phase 3 option
 object and selector must be constructible from plain data — named

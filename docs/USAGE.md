@@ -33,7 +33,7 @@ anything else that competes.
 | Term | Meaning |
 |------|---------|
 | **Participant** | An entity that competes. Identified by a unique string ID, with a display label, optional seed, and metadata. |
-| **Event** | A single match/fixture between participants (usually two). Metronome-style platforms would call this a fixture. |
+| **Event** | A single match/fixture between participants (usually two). Sports platforms often call this a fixture. |
 | **Pairing** | The unordered combination of participants in an event — "Alice vs Bob" regardless of who is home. |
 | **Round** | A set of events played at the same stage of the tournament. Round numbers are 1-based and continuous across legs (a two-leg, 4-participant round robin has rounds 1–6). |
 | **Leg** | One complete cycle of pairings. The leg count is *the number of times each participant meets each other participant*: a home-and-away league is 2 legs. Swiss and elimination formats have no legs concept. |
