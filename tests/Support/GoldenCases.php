@@ -456,6 +456,12 @@ final class GoldenCases
             );
         }
 
+        // Without either list the two sections below would be the same
+        // (or empty) repack, and the mis-pinned case would pin nothing.
+        if ($movable === [] || $pinned === []) {
+            throw new LogicException('The repack scenario fixture no longer provides both movable and evacuated events.');
+        }
+
         $repacker = new ScheduleRepacker();
 
         return GoldenText::document([
