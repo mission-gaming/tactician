@@ -6,7 +6,8 @@ The release checklist. The policy it enforces is in the README's
 ## Checklist
 
 1. **Changelog section.** In [`CHANGELOG.md`](../CHANGELOG.md), rename
-   `Unreleased` to the new version with today's date, add a fresh empty
+   `Unreleased` to the new version with the date the tag will be made (step
+   5), add a fresh empty
    `Unreleased` section above it, and update the comparison links at the
    bottom of the file. A tag without a changelog section is not a release.
 2. **Golden fixtures.** Compare `tests/Fixtures/golden/` with the previous
@@ -16,10 +17,16 @@ The release checklist. The policy it enforces is in the README's
    git diff --stat <previous-tag>..HEAD -- tests/Fixtures/golden/
    ```
 
-   The fixtures are either unchanged, or every change is listed in the new
-   changelog section under the heading "Output change (fix)". In a patch
-   release, a fixture change that is not the fix of a broken output blocks the
-   release.
+   Account for every file in that diff:
+
+   - An added fixture pins a new case and changes no output. It needs no
+     output-change entry.
+   - A changed or removed fixture that fixes an output which was itself broken
+     is listed in the new changelog section under the heading "Output change
+     (fix)".
+   - Any other changed or removed fixture is a change to correct output. It
+     blocks a patch release. In a 0.x minor it is a breaking change, listed
+     with a migration note.
 3. **Version number.** Check the changes against the policy: a patch changes
    no public signature and no correct output; a 0.x minor lists every breaking
    change with a migration note.
