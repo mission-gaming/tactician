@@ -1,0 +1,32 @@
+=== Swiss Tournament: 8 players, 3 rounds ===
+
+Round 1
+  Hikaru vs Magnus => Magnus
+  Ding vs Fabiano => Fabiano
+  Ian vs Alireza => Alireza
+  Anish vs Wesley => Wesley
+
+Round 2
+  Fabiano vs Magnus => Magnus
+  Wesley vs Alireza => Alireza
+  Ding vs Hikaru => Hikaru
+  Anish vs Ian => Ian
+
+Round 3
+  Alireza vs Magnus => Magnus
+  Fabiano vs Hikaru => Hikaru
+  Wesley vs Ian => Ian
+  Anish vs Ding => Ding
+
+=== Final Standings ===
+1. Magnus   9.0 pts (3W 0D 0L)
+2. Hikaru   6.0 pts (2W 0D 1L)
+3. Alireza  6.0 pts (2W 0D 1L)
+4. Ian      6.0 pts (2W 0D 1L)
+5. Fabiano  3.0 pts (1W 0D 2L)
+6. Ding     3.0 pts (1W 0D 2L)
+7. Wesley   3.0 pts (1W 0D 2L)
+8. Anish    0.0 pts (0W 0D 3L)
+
+Final round played: round 3
+Total results recorded: 12

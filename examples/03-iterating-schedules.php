@@ -89,12 +89,12 @@ $eventsArray = iterator_to_array($schedule);
             </div>
         </div>
 
-        <!-- Method 1: Direct Iteration (Memory Efficient) -->
+        <!-- Method 1: Direct Iteration -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Method 1: Direct Iteration (Memory Efficient)</h2>
+            <h2 class="text-xl font-bold text-gray-800 mb-4">Method 1: Direct Iteration</h2>
             <p class="text-gray-600 mb-4">
-                The most memory-efficient way to iterate through a schedule. Perfect for large tournaments 
-                as it doesn't load all events into memory at once.
+                A schedule is iterable, so <code>foreach</code> visits every event in generated order.
+                The schedule already holds all of its events in memory; iterating reads them, it does not load them.
             </p>
             
             <div class="bg-gray-900 text-gray-100 rounded-lg p-4 mb-4">
@@ -128,11 +128,11 @@ $eventsArray = iterator_to_array($schedule);
             </div>
         </div>
 
-        <!-- Method 2: Count Without Loading -->
+        <!-- Method 2: Counting Events -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Method 2: Counting Events (No Memory Load)</h2>
+            <h2 class="text-xl font-bold text-gray-800 mb-4">Method 2: Counting Events</h2>
             <p class="text-gray-600 mb-4">
-                You can count events without loading them all into memory using PHP's Countable interface.
+                A schedule is countable, so <code>count()</code> returns the number of events it holds without a loop.
             </p>
             
             <div class="bg-gray-900 text-gray-100 rounded-lg p-4 mb-4">
@@ -142,7 +142,7 @@ echo "Total events: " . $totalEvents;'); ?></code></pre>
 
             <div class="bg-blue-50 rounded-lg p-4">
                 <div class="text-2xl font-bold text-blue-600"><?= $totalEvents; ?></div>
-                <div class="text-blue-800">Total events counted without loading into memory</div>
+                <div class="text-blue-800">Total events, from <code>count($schedule)</code></div>
             </div>
         </div>
 
@@ -151,7 +151,8 @@ echo "Total events: " . $totalEvents;'); ?></code></pre>
             <h2 class="text-xl font-bold text-gray-800 mb-4">Method 3: Convert to Array (Random Access)</h2>
             <p class="text-gray-600 mb-4">
                 Convert the schedule to an array when you need random access or want to use array functions.
-                <strong>Note:</strong> This loads all events into memory.
+                <strong>Note:</strong> The events are already in memory, so this copies the list; nothing new is loaded.
+                <code>$schedule->getEvents()</code> returns the same array directly.
             </p>
             
             <div class="bg-gray-900 text-gray-100 rounded-lg p-4 mb-4">
@@ -307,30 +308,31 @@ if ($schedule->hasMetadata(\'creation_time\')) {
             </div>
         </div>
 
-        <!-- Performance Considerations -->
+        <!-- Memory -->
         <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mt-8">
-            <h3 class="text-lg font-semibold text-yellow-800 mb-3">⚡ Performance Considerations</h3>
+            <h3 class="text-lg font-semibold text-yellow-800 mb-3">Memory</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                 <div>
-                    <h4 class="font-medium text-yellow-800 mb-2">Memory Efficient</h4>
+                    <h4 class="font-medium text-yellow-800 mb-2">What a schedule holds</h4>
                     <ul class="space-y-1 text-yellow-700">
-                        <li>• Direct iteration (foreach)</li>
-                        <li>• Counting with count()</li>
-                        <li>• Processing one event at a time</li>
+                        <li>• Every event, in memory, as an array</li>
+                        <li>• Generation builds the whole schedule before returning it</li>
+                        <li>• Nothing is loaded lazily or released as you iterate</li>
                     </ul>
                 </div>
                 <div>
-                    <h4 class="font-medium text-yellow-800 mb-2">Higher Memory Usage</h4>
+                    <h4 class="font-medium text-yellow-800 mb-2">What the methods cost</h4>
                     <ul class="space-y-1 text-yellow-700">
-                        <li>• Converting to array (iterator_to_array)</li>
-                        <li>• Grouping all events</li>
-                        <li>• Random access patterns</li>
+                        <li>• foreach and count() read what is already there</li>
+                        <li>• iterator_to_array() and grouping build one more list of the same events</li>
+                        <li>• None of them changes how much the schedule itself holds</li>
                     </ul>
                 </div>
             </div>
             <div class="mt-4 text-yellow-700">
-                <strong>Recommendation:</strong> Use direct iteration for large tournaments (1000+ events). 
-                Convert to arrays only when you need random access or complex array operations.
+                <strong>Recommendation:</strong> Pick the method that reads best: iterate to visit every event,
+                count for a total, use an array or the by-round grouping for random access. Being iterable and
+                countable is a convenience, not a memory saving.
             </div>
         </div>
 

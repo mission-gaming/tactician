@@ -11,35 +11,6 @@ permissions:
   contents: read
 
 jobs:
-  # Detect whether the change set contains anything beyond documentation.
-  # Docs-only changes (Markdown, docs/, LICENSE)
-  # skip the test and coverage jobs; job-level skips report as "skipped",
-  # which satisfies required status checks (unlike workflow-level path
-  # filters, which would leave required checks pending).
-  changes:
-    runs-on: ubuntu-latest
-    name: Detect changes
-    # paths-filter lists a pull request's changed files through the API.
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      code: ${{ steps.filter.outputs.code }}
-
-    steps:
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-    - name: Check for non-documentation changes
-      uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
-      id: filter
-      with:
-        filters: |
-          code:
-            - '**'
-            - '!**/*.md'
-            - '!docs/**'
-            - '!LICENSE'
-
   # Fails when a tracked file, its path, or a symbolic link target contains a
   # term from the maintainers' restricted list. The list is a repository
   # secret, so the check is skipped where secrets are withheld (pull requests
@@ -59,10 +30,16 @@ jobs:
         RESTRICTED_TERMS: ${{ secrets.RESTRICTED_TERMS }}
       run: bash .github/scripts/check-restricted-terms.sh
 
+  # The test and coverage jobs run for every change set, with no path
+  # filter: the suite reads documentation as well as code. It executes the
+  # code blocks of README.md and docs/USAGE.md
+  # (tests/Feature/DocumentationSnippetsTest.php) and checks other Markdown
+  # files against the repository, so a documentation-only change can break
+  # it. Branch protection waits for the checks these jobs report (PHP 8.3,
+  # PHP 8.4, PHP 8.5 and Coverage), so they must never be skipped by a
+  # condition; tests/Feature/CiConfigurationTest.php pins that.
   test:
     runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
 
     strategy:
       matrix:
@@ -102,8 +79,6 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     name: Coverage
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
 
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

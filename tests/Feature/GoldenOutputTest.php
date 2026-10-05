@@ -17,6 +17,11 @@ use PHPUnit\Framework\Assert;
  * That is allowed, but never silently: explain the change in the
  * changelog and regenerate the fixtures with `composer golden-update`.
  *
+ * The files under examples/ pin something else: what each plain-text
+ * script in examples/ prints. A difference there means the example now
+ * prints something else, because the library changed or because the
+ * script was edited. Review the difference before regenerating.
+ *
  * The cases live in MissionGaming\Tactician\Tests\Support\GoldenCases;
  * this file only compares them with (or, when UPDATE_GOLDEN=1, writes
  * them to) the stored files.
@@ -107,17 +112,24 @@ function goldenMismatchMessage(string $file, string $expected, string $actual): 
         ++$line;
     }
 
+    $meaning = str_starts_with($file, 'examples/')
+        ? 'This file pins what an example script prints. If the new output is correct, regenerate the fixtures '
+            . 'with `composer golden-update` and review the difference; if the library produced it and the '
+            . 'example was not edited, it is a change to generated output and belongs in the changelog.'
+        : 'A difference from a golden file is a change to generated output. If it is intended, '
+            . 'explain it in the changelog and regenerate the fixtures with `composer golden-update`; '
+            . 'if it is not, the change under test altered output it should not have.';
+
     return sprintf(
         "Generated output differs from tests/Fixtures/golden/%s at line %d.\n"
         . "  stored:    %s\n"
         . "  generated: %s\n"
-        . 'A difference from a golden file is a change to generated output. If it is intended, '
-        . 'explain it in the changelog and regenerate the fixtures with `composer golden-update`; '
-        . 'if it is not, the change under test altered output it should not have.',
+        . '%s',
         $file,
         $line + 1,
         $expectedLines[$line] ?? '(end of file)',
-        $actualLines[$line] ?? '(end of file)'
+        $actualLines[$line] ?? '(end of file)',
+        $meaning
     );
 }
 
@@ -202,6 +214,13 @@ describe('Golden output', function (): void {
             'repack/round-robin.txt',
             'wire/schedule.json',
             'wire/stage-state.json',
+            'examples/13-swiss-stage-engine.txt',
+            'examples/14-groups-to-knockout.txt',
+            'examples/15-timeline-assignment.txt',
+            'examples/16-backtracking-generation.txt',
+            'examples/17-schedule-optimization.txt',
+            'examples/18-stateless-web-flow.txt',
+            'examples/19-repacking-a-season.txt',
         ]);
     });
 
@@ -380,6 +399,14 @@ describe('Golden harness', function (): void {
             ->toContain('stored:    b')
             ->toContain('generated: X')
             ->toContain('changelog')
+            ->toContain('composer golden-update');
+    });
+
+    it('says that an example fixture pins what the script prints', function (): void {
+        $message = goldenMismatchMessage('examples/13-swiss-stage-engine.txt', "Round 1\n", "Round 2\n");
+
+        expect($message)->toContain('tests/Fixtures/golden/examples/13-swiss-stage-engine.txt at line 1.')
+            ->toContain('pins what an example script prints')
             ->toContain('composer golden-update');
     });
 

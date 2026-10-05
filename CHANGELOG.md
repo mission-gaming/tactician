@@ -30,6 +30,14 @@ generated output for a fixed input and seed is identical.
   coding agent: a hook that formats each PHP file the agent edits and analyses it when it is
   under `src/` or `tests/` (`tests/Feature/AgentHookTest.php` covers it), and `verify` and `release`
   commands. The directory is not part of the installed package.
+- A test (`tests/Feature/DocumentationSnippetsTest.php`) that executes every
+  `php` code block of `README.md` and `docs/USAGE.md`, each in a PHP process of
+  its own under `E_ALL`. A block that does not parse, throws, or emits a
+  warning or deprecation fails the suite, as does one that stops before its
+  last line. The values and printed output the two documents state are pinned
+  in the same test.
+- Golden files for the output of the plain-text examples (`examples/13` to
+  `examples/19`), so an example that prints a wrong or empty result fails.
 - Governance files: a security policy (`SECURITY.md`), code owners, a pull
   request template with a compatibility section, and issue forms for bug
   reports and feature requests.
@@ -47,6 +55,13 @@ generated output for a fixed input and seed is identical.
   deferred work.
 - Every PHP file now declares `strict_types=1`. Six test files and the
   PHP-CS-Fixer configuration did not; a test now checks all of them.
+- The CI workflow runs the test and coverage jobs for every change set. Its
+  documentation-only fast path is removed: the paths filter behind it matched
+  every file, so it never skipped anything, and the suite now executes
+  documentation, so a documentation-only change must be tested.
+- Every code block in `README.md` and `docs/USAGE.md` now runs as written:
+  imports and the values a block depends on are shown, and inline value
+  comments match what the code produces.
 
 ### Removed
 
@@ -55,6 +70,27 @@ generated output for a fixed input and seed is identical.
   `docs/ROADMAP.md`, and two decision records in the new `docs/adr/`; the
   statements that no longer matched the code are gone. None of these files
   was part of the installed package.
+
+### Fixed
+
+- Documentation only; the library is unchanged.
+  - The custom-constraint sample in `docs/USAGE.md` was a parse error (an arrow
+    function with a block body).
+  - The "Corporate Team Building Tournament" sample threw
+    `IncompleteScheduleException`: its constraint forbade pairings a round
+    robin requires. It is now a Swiss schedule, which the rule fits.
+  - The "Gaming Tournament with Skill Brackets" sample passed string skill
+    names to `MetadataConstraint::requireAdjacentValues()`, which ignores
+    non-numeric values, so the rule it described was never applied. It now uses
+    numeric tiers on a Swiss schedule, with the entrants in an order in which
+    the rule changes the pairings.
+  - The rest-period sample described `MinimumRestPeriodsConstraint` as rest
+    between a participant's matches. The constraint spaces repeat meetings of
+    the same pair, and the sample now has two legs so that it applies.
+  - `README.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md` and
+    `examples/README.md` claimed that iterating a schedule is lazy or
+    memory-efficient. A `Schedule` holds all of its events in memory; it is
+    iterable and countable.
 
 ## [0.2.0] - 2026-08-11
 

@@ -73,7 +73,25 @@ foreach ($schedule as $event) {
 ## Beyond Round Robin
 
 Results feed standings, and standings drive the incremental engines for Swiss
-pairing, elimination brackets, and multi-stage tournaments:
+pairing, elimination brackets, and multi-stage tournaments. In the loop below,
+`$participants` is the list from the Quick Start and `playRound()` stands for
+your application playing a round and returning one `Result` per event:
+
+<!-- snippet: setup
+$participants = array_map(
+    static fn (int $seed) => new \MissionGaming\Tactician\DTO\Participant("p{$seed}", "Participant {$seed}", $seed),
+    range(1, 6)
+);
+
+/** @return list<\MissionGaming\Tactician\DTO\Result> */
+function playRound(\MissionGaming\Tactician\Stage\RoundPairing $pairing): array
+{
+    return array_map(
+        static fn (\MissionGaming\Tactician\DTO\Event $event) => new \MissionGaming\Tactician\DTO\Result($event, $event->getParticipants()[0]),
+        $pairing->getEvents()
+    );
+}
+-->
 
 ```php
 use MissionGaming\Tactician\DTO\Result;
@@ -115,7 +133,7 @@ between rounds instead of re-deriving.
 - **✅ Schedule Validation**: Mathematical validation prevents incomplete tournaments, with automatic retries over alternative orderings when constraints reject a schedule
 - **💾 Serialization**: JSON round-tripping for schedules, events, and participants
 - **🛡️ Production Ready**: PHPStan level 8 compliance, comprehensive test coverage
-- **⚡ Memory Efficient**: Iterator-based patterns for large tournaments
+- **🔁 Iterable Schedules**: A schedule holds its events in memory and is iterable, countable, and groupable by round
 - **🎯 Deterministic**: Seeded randomization for reproducible results
 
 ## Versioning and stability
