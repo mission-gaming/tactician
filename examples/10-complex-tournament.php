@@ -38,11 +38,14 @@ $isMismatch = static function (Event $event): bool {
 
 // Two legs of 7 rounds: 14 rounds in all
 $constraints = ConstraintSet::create()
-    // Each pair meets once per leg
+    // Each pair meets once per leg. A round robin does that anyway (example
+    // 04); the rule is here to state it
     ->noRepeatPairings()
     // The top 2 seeds do not meet in the first 20% of the rounds (rounds 1 and 2)
     ->add(new SeedProtectionConstraint(2, 0.2))
-    // The return fixture comes at least 7 rounds after the first meeting
+    // The return fixture comes at least 7 rounds after the first meeting. Two
+    // legs of 7 rounds in the same order already give exactly 7, so this one
+    // moves nothing either
     ->add(new MinimumRestPeriodsConstraint(7))
     // No S-tier against B-tier in the opening two rounds
     ->add(new CallableConstraint(
@@ -56,9 +59,9 @@ $homeAndAway = new RoundRobinOptions(legs: 2);
 // For comparison: the same season with no rules
 $unconstrained = (new RoundRobinScheduler())->schedule($entrants, $homeAndAway);
 
-// The first participant order breaks the rules, so the scheduler retries
-// with rotated orders and returns the first complete schedule that satisfies
-// every constraint. Had none done so it would have thrown
+// The first participant order breaks the seed and tier rules, so the
+// scheduler retries with rotated orders and returns the first complete
+// schedule that satisfies every constraint. Had none done so it would have thrown
 // IncompleteScheduleException: see examples 11 and 16.
 $schedule = (new RoundRobinScheduler($constraints))->schedule($entrants, $homeAndAway);
 
