@@ -52,7 +52,7 @@ sets of concurrent events. Swiss has rounds but no legs.
 
 ## Rules
 
-- Every PHP file in `src/` and `examples/` declares `strict_types=1`, and every new file must (six older files under `tests/` do not yet). Value objects are immutable: a change returns a new instance. PHPStan level 8 with zero errors is mandatory, and it checks exceptions: keep `@throws` accurate.
+- Every PHP file declares `strict_types=1`. Value objects are immutable: a change returns a new instance. PHPStan level 8 with zero errors is mandatory, and it checks exceptions: keep `@throws` accurate.
 - **The code must parse and run on PHP 8.3**, the Composer floor (CI runs 8.3, 8.4 and 8.5). No syntax from a later version, in `src/`, tests, examples or documentation snippets.
 - **Compatibility**: a patch release never changes a correct output for a fixed input and seed, and never changes a public signature; a 0.x minor may break, with a migration note in the changelog. The README's [Versioning and stability](README.md#versioning-and-stability) section is the policy and lists which namespaces are stable; `Repack\Internal` is not public API.
 - **Output is deterministic.** `src/` never asks for the current time and uses no global random function. Randomness goes through a `Random\Randomizer` the caller passes in; with a seeded one the same input gives the same output (`ShuffledLegStrategy` is the one class that makes an unseeded `Randomizer` when it is given none). Standings order is total, so nothing derived from a table depends on input order ([ADR 0002](docs/adr/0002-standings-order-is-total.md)).

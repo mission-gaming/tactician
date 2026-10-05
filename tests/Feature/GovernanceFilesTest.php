@@ -370,6 +370,34 @@ describe('contributor guides and the tooling', function () use ($root): void {
         }
     })->with(['AGENTS.md', 'docs/CONTRIBUTING.md']);
 
+    it('declares strict types in every PHP file, as the guides say', function () use ($root): void {
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toContain('Every PHP file declares `strict_types=1`.')
+            ->and((string) file_get_contents($root . '/docs/CONTRIBUTING.md'))->toContain('Every PHP file declares `strict_types=1`.');
+
+        // The configuration files at the root, and everything under the
+        // three directories that hold PHP. vendor/ is not the project's code.
+        $files = glob($root . '/{,.}*.php', GLOB_BRACE) ?: [];
+
+        foreach (['src', 'tests', 'examples'] as $directory) {
+            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/' . $directory, FilesystemIterator::SKIP_DOTS));
+
+            foreach ($iterator as $file) {
+                if ($file instanceof SplFileInfo && $file->getExtension() === 'php') {
+                    $files[] = $file->getPathname();
+                }
+            }
+        }
+
+        expect(count($files))->toBeGreaterThan(100);
+
+        $missing = array_values(array_filter(
+            $files,
+            static fn (string $file): bool => preg_match('/\A<\?php\s+(?:\/\*.*?\*\/\s*|\/\/[^\n]*\s*)*declare\(strict_types=1\);/s', (string) file_get_contents($file)) !== 1
+        ));
+
+        expect(array_map(static fn (string $file): string => substr($file, strlen($root) + 1), $missing))->toBe([]);
+    });
+
     it('lists the checks of the gate in the order the gate runs them', function () use ($root): void {
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
         $guide = (string) file_get_contents($root . '/docs/CONTRIBUTING.md');

@@ -45,6 +45,8 @@ generated output for a fixed input and seed is identical.
   corrected against the code. `docs/ROADMAP.md` marks every phase as shipped,
   lists schedule repacking, and gains sections for known limitations and
   deferred work.
+- Every PHP file now declares `strict_types=1`. Six test files and the
+  PHP-CS-Fixer configuration did not; a test now checks all of them.
 
 ### Removed
 
