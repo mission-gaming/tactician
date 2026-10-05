@@ -25,10 +25,15 @@ use MissionGaming\Tactician\Standings\Standings;
 final class GoldenText
 {
     /**
-     * A schedule as one `R<round>: a-b c-d` line per run of events
-     * sharing a round, in event order with the first-named participant
-     * first, followed by a `byes:` line when the schedule metadata
-     * records byes.
+     * A schedule as a `meta:` line carrying the schedule metadata, then
+     * one `R<round>: a-b c-d` line per run of events sharing a round, in
+     * event order with the first-named participant first, followed by a
+     * `byes:` line when the schedule metadata records byes.
+     *
+     * The `meta:` line lists every metadata key in generated order as
+     * `key=value`, apart from a non-empty `byes` map, which gets its own
+     * line. Metadata is part of the generated schedule and of its wire
+     * shape, so it is pinned with the events.
      *
      * Lines are run-length grouped rather than sorted, so events emitted
      * out of round order would show up as a repeated round line instead
@@ -40,7 +45,14 @@ final class GoldenText
      */
     public static function schedule(Schedule $schedule): array
     {
-        $lines = [];
+        $byes = $schedule->getMetadataValue('byes');
+        $hasByes = is_array($byes) && $byes !== [];
+
+        $metadata = $schedule->getMetadata();
+        if ($hasByes) {
+            unset($metadata['byes']);
+        }
+        $lines = [rtrim('meta: ' . self::fields($metadata))];
         $currentRound = null;
         $currentEvents = [];
 
@@ -57,8 +69,7 @@ final class GoldenText
             $lines[] = self::roundLabel($currentRound) . ': ' . implode(' ', $currentEvents);
         }
 
-        $byes = $schedule->getMetadataValue('byes');
-        if (is_array($byes) && $byes !== []) {
+        if ($hasByes) {
             $parts = [];
             foreach ($byes as $round => $participantId) {
                 $parts[] = 'R' . $round . '=' . self::scalar($participantId);
@@ -194,7 +205,7 @@ final class GoldenText
     }
 
     /**
-     * @param array<string, mixed> $fields
+     * @param array<array-key, mixed> $fields
      *
      * @throws JsonException
      */

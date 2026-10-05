@@ -2,11 +2,13 @@
 # Participants are "1".."n" in list order, seeded by position. The first
 # section succeeds only on a rotated retry of the participant order; the
 # backtracking sections succeed only with RoundRobinOptions(backtracking: true).
+# `meta:` is the schedule metadata.
 #
 # A difference from this file is a change to generated output. It must be
 # explained in the changelog; regenerate with `composer golden-update`.
 
 == rotation retry: n=6 legs=2, seed protection (top 2, first 25% of rounds) ==
+meta: algorithm=round-robin participant_count=6 legs=2 rounds_per_leg=5 total_rounds=10 expected_event_count=30 byes=[]
 R1: 3-2 4-1 5-6
 R2: 4-3 2-5 1-6
 R3: 3-5 6-4 1-2
@@ -19,11 +21,13 @@ R9: 3-6 1-5 2-4
 R10: 1-3 6-2 5-4
 
 == backtracking: n=4 legs=1, participant 1 meets 2, 3, 4 in rounds 1, 2, 3 ==
+meta: algorithm=round-robin participant_count=4 legs=1 rounds_per_leg=3 total_rounds=3 expected_event_count=6 byes=[]
 R1: 1-2 3-4
 R2: 3-1 4-2
 R3: 1-4 2-3
 
 == backtracking: n=5 legs=1, participant 1 meets 2 in round 5 and 3 in round 4 ==
+meta: algorithm=round-robin participant_count=5 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=10
 R1: 1-4 2-3
 R2: 5-1 4-2
 R3: 2-5 3-4

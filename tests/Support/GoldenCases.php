@@ -142,8 +142,9 @@ final class GoldenCases
         return GoldenText::document([
             "Round robin, {$strategy} legs, " . self::seedLabel($seed) . '.',
             'Participants are "1".."n" in list order. One section per field size and',
-            'leg count; `R<round>: a-b c-d` lists the round\'s events in generated',
-            'order, first-named participant first; `byes:` names who sits out each round.',
+            'leg count; `meta:` is the schedule metadata; `R<round>: a-b c-d` lists',
+            'the round\'s events in generated order, first-named participant first;',
+            '`byes:` names who sits out each round.',
             ...self::EXPLANATION,
         ], $sections);
     }
@@ -190,6 +191,7 @@ final class GoldenCases
             'Participants are "1".."n" in list order, seeded by position. The first',
             'section succeeds only on a rotated retry of the participant order; the',
             'backtracking sections succeed only with RoundRobinOptions(backtracking: true).',
+            '`meta:` is the schedule metadata.',
             ...self::EXPLANATION,
         ], $sections);
     }
@@ -256,9 +258,10 @@ final class GoldenCases
 
         return GoldenText::document([
             'Swiss whole-schedule preset (SwissScheduler): no results recorded.',
-            'Participants are "1".."n" in list order. `R<round>: a-b c-d` lists the',
-            'round\'s events in generated order, first-named participant first;',
-            '`byes:` names who sits out each round of an odd field.',
+            'Participants are "1".."n" in list order. `meta:` is the schedule',
+            'metadata; `R<round>: a-b c-d` lists the round\'s events in generated',
+            'order, first-named participant first; `byes:` names who sits out each',
+            'round of an odd field.',
             ...self::EXPLANATION,
         ], $sections);
     }

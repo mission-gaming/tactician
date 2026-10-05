@@ -1,36 +1,43 @@
 # Round robin, repeated legs, Mt19937 seed 1337.
 # Participants are "1".."n" in list order. One section per field size and
-# leg count; `R<round>: a-b c-d` lists the round's events in generated
-# order, first-named participant first; `byes:` names who sits out each round.
+# leg count; `meta:` is the schedule metadata; `R<round>: a-b c-d` lists
+# the round's events in generated order, first-named participant first;
+# `byes:` names who sits out each round.
 #
 # A difference from this file is a change to generated output. It must be
 # explained in the changelog; regenerate with `composer golden-update`.
 
 == n=2 legs=1 ==
+meta: algorithm=round-robin participant_count=2 legs=1 rounds_per_leg=1 total_rounds=1 expected_event_count=1 byes=[]
 R1: 1-2
 
 == n=2 legs=2 ==
+meta: algorithm=round-robin participant_count=2 legs=2 rounds_per_leg=1 total_rounds=2 expected_event_count=2 byes=[]
 R1: 1-2
 R2: 1-2
 
 == n=2 legs=3 ==
+meta: algorithm=round-robin participant_count=2 legs=3 rounds_per_leg=1 total_rounds=3 expected_event_count=3 byes=[]
 R1: 1-2
 R2: 1-2
 R3: 1-2
 
 == n=2 legs=4 ==
+meta: algorithm=round-robin participant_count=2 legs=4 rounds_per_leg=1 total_rounds=4 expected_event_count=4 byes=[]
 R1: 1-2
 R2: 1-2
 R3: 1-2
 R4: 1-2
 
 == n=3 legs=1 ==
+meta: algorithm=round-robin participant_count=3 legs=1 rounds_per_leg=3 total_rounds=3 expected_event_count=3
 R1: 3-2
 R2: 3-1
 R3: 1-2
 byes: R1=1 R2=2 R3=3
 
 == n=3 legs=2 ==
+meta: algorithm=round-robin participant_count=3 legs=2 rounds_per_leg=3 total_rounds=6 expected_event_count=6
 R1: 3-2
 R2: 3-1
 R3: 1-2
@@ -40,6 +47,7 @@ R6: 1-3
 byes: R1=1 R2=2 R3=3 R4=1 R5=3 R6=2
 
 == n=3 legs=3 ==
+meta: algorithm=round-robin participant_count=3 legs=3 rounds_per_leg=3 total_rounds=9 expected_event_count=9
 R1: 3-2
 R2: 3-1
 R3: 1-2
@@ -52,6 +60,7 @@ R9: 1-3
 byes: R1=1 R2=2 R3=3 R4=1 R5=3 R6=2 R7=1 R8=3 R9=2
 
 == n=3 legs=4 ==
+meta: algorithm=round-robin participant_count=3 legs=4 rounds_per_leg=3 total_rounds=12 expected_event_count=12
 R1: 3-2
 R2: 3-1
 R3: 1-2
@@ -67,11 +76,13 @@ R12: 1-3
 byes: R1=1 R2=2 R3=3 R4=1 R5=3 R6=2 R7=1 R8=3 R9=2 R10=1 R11=3 R12=2
 
 == n=4 legs=1 ==
+meta: algorithm=round-robin participant_count=4 legs=1 rounds_per_leg=3 total_rounds=3 expected_event_count=6 byes=[]
 R1: 3-4 1-2
 R2: 1-3 4-2
 R3: 3-2 4-1
 
 == n=4 legs=2 ==
+meta: algorithm=round-robin participant_count=4 legs=2 rounds_per_leg=3 total_rounds=6 expected_event_count=12 byes=[]
 R1: 3-4 1-2
 R2: 1-3 4-2
 R3: 3-2 4-1
@@ -80,6 +91,7 @@ R5: 2-1 4-3
 R6: 1-3 4-2
 
 == n=4 legs=3 ==
+meta: algorithm=round-robin participant_count=4 legs=3 rounds_per_leg=3 total_rounds=9 expected_event_count=18 byes=[]
 R1: 3-4 1-2
 R2: 1-3 4-2
 R3: 3-2 4-1
@@ -91,6 +103,7 @@ R8: 2-1 4-3
 R9: 1-3 4-2
 
 == n=4 legs=4 ==
+meta: algorithm=round-robin participant_count=4 legs=4 rounds_per_leg=3 total_rounds=12 expected_event_count=24 byes=[]
 R1: 3-4 1-2
 R2: 1-3 4-2
 R3: 3-2 4-1
@@ -105,6 +118,7 @@ R11: 2-1 4-3
 R12: 1-3 4-2
 
 == n=5 legs=1 ==
+meta: algorithm=round-robin participant_count=5 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=10
 R1: 5-1 3-2
 R2: 5-4 1-2
 R3: 4-3 2-5
@@ -113,6 +127,7 @@ R5: 4-1 5-3
 byes: R1=4 R2=3 R3=1 R4=5 R5=2
 
 == n=5 legs=2 ==
+meta: algorithm=round-robin participant_count=5 legs=2 rounds_per_leg=5 total_rounds=10 expected_event_count=20
 R1: 5-1 3-2
 R2: 5-4 1-2
 R3: 4-3 2-5
@@ -126,6 +141,7 @@ R10: 1-5 2-3
 byes: R1=4 R2=3 R3=1 R4=5 R5=2 R6=1 R7=3 R8=5 R9=2 R10=4
 
 == n=5 legs=3 ==
+meta: algorithm=round-robin participant_count=5 legs=3 rounds_per_leg=5 total_rounds=15 expected_event_count=30
 R1: 5-1 3-2
 R2: 5-4 1-2
 R3: 4-3 2-5
@@ -144,6 +160,7 @@ R15: 1-5 2-3
 byes: R1=4 R2=3 R3=1 R4=5 R5=2 R6=1 R7=3 R8=5 R9=2 R10=4 R11=1 R12=3 R13=5 R14=2 R15=4
 
 == n=5 legs=4 ==
+meta: algorithm=round-robin participant_count=5 legs=4 rounds_per_leg=5 total_rounds=20 expected_event_count=40
 R1: 5-1 3-2
 R2: 5-4 1-2
 R3: 4-3 2-5
@@ -167,6 +184,7 @@ R20: 1-5 2-3
 byes: R1=4 R2=3 R3=1 R4=5 R5=2 R6=1 R7=3 R8=5 R9=2 R10=4 R11=1 R12=3 R13=5 R14=2 R15=4 R16=1 R17=3 R18=5 R19=2 R20=4
 
 == n=6 legs=1 ==
+meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
 R1: 4-2 5-3 6-1
 R2: 5-4 2-6 3-1
 R3: 4-6 1-5 3-2
@@ -174,6 +192,7 @@ R4: 1-4 6-3 5-2
 R5: 4-3 2-1 5-6
 
 == n=6 legs=2 ==
+meta: algorithm=round-robin participant_count=6 legs=2 rounds_per_leg=5 total_rounds=10 expected_event_count=30 byes=[]
 R1: 4-2 5-3 6-1
 R2: 5-4 2-6 3-1
 R3: 4-6 1-5 3-2
@@ -186,6 +205,7 @@ R9: 4-1 3-5 2-6
 R10: 1-5 6-4 2-3
 
 == n=6 legs=3 ==
+meta: algorithm=round-robin participant_count=6 legs=3 rounds_per_leg=5 total_rounds=15 expected_event_count=45 byes=[]
 R1: 4-2 5-3 6-1
 R2: 5-4 2-6 3-1
 R3: 4-6 1-5 3-2
@@ -203,6 +223,7 @@ R14: 4-1 3-5 2-6
 R15: 1-5 6-4 2-3
 
 == n=6 legs=4 ==
+meta: algorithm=round-robin participant_count=6 legs=4 rounds_per_leg=5 total_rounds=20 expected_event_count=60 byes=[]
 R1: 4-2 5-3 6-1
 R2: 5-4 2-6 3-1
 R3: 4-6 1-5 3-2
@@ -225,6 +246,7 @@ R19: 4-1 3-5 2-6
 R20: 1-5 6-4 2-3
 
 == n=7 legs=1 ==
+meta: algorithm=round-robin participant_count=7 legs=1 rounds_per_leg=7 total_rounds=7 expected_event_count=21
 R1: 7-6 5-2 1-3
 R2: 7-4 6-1 2-3
 R3: 4-5 1-7 2-6
@@ -235,6 +257,7 @@ R7: 4-6 7-3 5-1
 byes: R1=4 R2=5 R3=3 R4=6 R5=7 R6=1 R7=2
 
 == n=7 legs=2 ==
+meta: algorithm=round-robin participant_count=7 legs=2 rounds_per_leg=7 total_rounds=14 expected_event_count=42
 R1: 7-6 5-2 1-3
 R2: 7-4 6-1 2-3
 R3: 4-5 1-7 2-6
@@ -252,6 +275,7 @@ R14: 1-7 2-5 3-4
 byes: R1=4 R2=5 R3=3 R4=6 R5=7 R6=1 R7=2 R8=1 R9=3 R10=5 R11=7 R12=2 R13=4 R14=6
 
 == n=7 legs=3 ==
+meta: algorithm=round-robin participant_count=7 legs=3 rounds_per_leg=7 total_rounds=21 expected_event_count=63
 R1: 7-6 5-2 1-3
 R2: 7-4 6-1 2-3
 R3: 4-5 1-7 2-6
@@ -276,6 +300,7 @@ R21: 1-7 2-5 3-4
 byes: R1=4 R2=5 R3=3 R4=6 R5=7 R6=1 R7=2 R8=1 R9=3 R10=5 R11=7 R12=2 R13=4 R14=6 R15=1 R16=3 R17=5 R18=7 R19=2 R20=4 R21=6
 
 == n=7 legs=4 ==
+meta: algorithm=round-robin participant_count=7 legs=4 rounds_per_leg=7 total_rounds=28 expected_event_count=84
 R1: 7-6 5-2 1-3
 R2: 7-4 6-1 2-3
 R3: 4-5 1-7 2-6
@@ -307,6 +332,7 @@ R28: 1-7 2-5 3-4
 byes: R1=4 R2=5 R3=3 R4=6 R5=7 R6=1 R7=2 R8=1 R9=3 R10=5 R11=7 R12=2 R13=4 R14=6 R15=1 R16=3 R17=5 R18=7 R19=2 R20=4 R21=6 R22=1 R23=3 R24=5 R25=7 R26=2 R27=4 R28=6
 
 == n=8 legs=1 ==
+meta: algorithm=round-robin participant_count=8 legs=1 rounds_per_leg=7 total_rounds=7 expected_event_count=28 byes=[]
 R1: 5-8 6-4 2-3 7-1
 R2: 6-5 8-2 4-7 3-1
 R3: 5-2 7-6 1-8 3-4
@@ -316,6 +342,7 @@ R6: 3-5 1-4 7-8 2-6
 R7: 5-4 8-3 6-1 2-7
 
 == n=8 legs=2 ==
+meta: algorithm=round-robin participant_count=8 legs=2 rounds_per_leg=7 total_rounds=14 expected_event_count=56 byes=[]
 R1: 5-8 6-4 2-3 7-1
 R2: 6-5 8-2 4-7 3-1
 R3: 5-2 7-6 1-8 3-4
@@ -332,6 +359,7 @@ R13: 6-1 5-7 4-8 3-2
 R14: 1-7 8-6 2-5 3-4
 
 == n=8 legs=3 ==
+meta: algorithm=round-robin participant_count=8 legs=3 rounds_per_leg=7 total_rounds=21 expected_event_count=84 byes=[]
 R1: 5-8 6-4 2-3 7-1
 R2: 6-5 8-2 4-7 3-1
 R3: 5-2 7-6 1-8 3-4
@@ -355,6 +383,7 @@ R20: 6-1 5-7 4-8 3-2
 R21: 1-7 8-6 2-5 3-4
 
 == n=8 legs=4 ==
+meta: algorithm=round-robin participant_count=8 legs=4 rounds_per_leg=7 total_rounds=28 expected_event_count=112 byes=[]
 R1: 5-8 6-4 2-3 7-1
 R2: 6-5 8-2 4-7 3-1
 R3: 5-2 7-6 1-8 3-4
@@ -385,6 +414,7 @@ R27: 6-1 5-7 4-8 3-2
 R28: 1-7 8-6 2-5 3-4
 
 == n=14 legs=1 ==
+meta: algorithm=round-robin participant_count=14 legs=1 rounds_per_leg=13 total_rounds=13 expected_event_count=91 byes=[]
 R1: 3-6 2-10 4-9 5-13 7-14 1-8 11-12
 R2: 2-3 6-4 10-5 9-7 13-1 14-11 8-12
 R3: 3-4 5-2 7-6 1-10 11-9 12-13 8-14
@@ -400,6 +430,7 @@ R12: 9-3 13-10 14-6 8-2 12-4 11-5 1-7
 R13: 3-10 6-9 2-13 4-14 5-8 7-12 1-11
 
 == n=14 legs=2 ==
+meta: algorithm=round-robin participant_count=14 legs=2 rounds_per_leg=13 total_rounds=26 expected_event_count=182 byes=[]
 R1: 3-6 2-10 4-9 5-13 7-14 1-8 11-12
 R2: 2-3 6-4 10-5 9-7 13-1 14-11 8-12
 R3: 3-4 5-2 7-6 1-10 11-9 12-13 8-14
@@ -428,6 +459,7 @@ R25: 12-1 11-13 10-14 9-2 8-3 7-4 6-5
 R26: 1-13 14-12 2-11 3-10 4-9 5-8 6-7
 
 == n=14 legs=3 ==
+meta: algorithm=round-robin participant_count=14 legs=3 rounds_per_leg=13 total_rounds=39 expected_event_count=273 byes=[]
 R1: 3-6 2-10 4-9 5-13 7-14 1-8 11-12
 R2: 2-3 6-4 10-5 9-7 13-1 14-11 8-12
 R3: 3-4 5-2 7-6 1-10 11-9 12-13 8-14
@@ -469,6 +501,7 @@ R38: 12-1 11-13 10-14 9-2 8-3 7-4 6-5
 R39: 1-13 14-12 2-11 3-10 4-9 5-8 6-7
 
 == n=14 legs=4 ==
+meta: algorithm=round-robin participant_count=14 legs=4 rounds_per_leg=13 total_rounds=52 expected_event_count=364 byes=[]
 R1: 3-6 2-10 4-9 5-13 7-14 1-8 11-12
 R2: 2-3 6-4 10-5 9-7 13-1 14-11 8-12
 R3: 3-4 5-2 7-6 1-10 11-9 12-13 8-14
@@ -523,6 +556,7 @@ R51: 12-1 11-13 10-14 9-2 8-3 7-4 6-5
 R52: 1-13 14-12 2-11 3-10 4-9 5-8 6-7
 
 == n=17 legs=1 ==
+meta: algorithm=round-robin participant_count=17 legs=1 rounds_per_leg=17 total_rounds=17 expected_event_count=136
 R1: 4-13 7-14 11-3 8-15 9-10 6-2 16-5 17-1
 R2: 4-12 13-11 14-8 3-9 15-6 10-16 2-17 5-1
 R3: 12-7 11-4 9-13 6-14 16-3 17-15 1-10 5-2
@@ -543,6 +577,7 @@ R17: 12-13 4-3 7-15 11-10 8-2 9-5 6-1 16-17
 byes: R1=12 R2=7 R3=8 R4=6 R5=17 R6=5 R7=10 R8=3 R9=13 R10=4 R11=11 R12=9 R13=16 R14=1 R15=2 R16=15 R17=14
 
 == n=17 legs=2 ==
+meta: algorithm=round-robin participant_count=17 legs=2 rounds_per_leg=17 total_rounds=34 expected_event_count=272
 R1: 4-13 7-14 11-3 8-15 9-10 6-2 16-5 17-1
 R2: 4-12 13-11 14-8 3-9 15-6 10-16 2-17 5-1
 R3: 12-7 11-4 9-13 6-14 16-3 17-15 1-10 5-2
@@ -580,6 +615,7 @@ R34: 1-17 2-15 3-14 4-13 5-12 6-11 7-10 8-9
 byes: R1=12 R2=7 R3=8 R4=6 R5=17 R6=5 R7=10 R8=3 R9=13 R10=4 R11=11 R12=9 R13=16 R14=1 R15=2 R16=15 R17=14 R18=1 R19=3 R20=5 R21=7 R22=9 R23=11 R24=13 R25=15 R26=17 R27=2 R28=4 R29=6 R30=8 R31=10 R32=12 R33=14 R34=16
 
 == n=17 legs=3 ==
+meta: algorithm=round-robin participant_count=17 legs=3 rounds_per_leg=17 total_rounds=51 expected_event_count=408
 R1: 4-13 7-14 11-3 8-15 9-10 6-2 16-5 17-1
 R2: 4-12 13-11 14-8 3-9 15-6 10-16 2-17 5-1
 R3: 12-7 11-4 9-13 6-14 16-3 17-15 1-10 5-2
@@ -634,6 +670,7 @@ R51: 1-17 2-15 3-14 4-13 5-12 6-11 7-10 8-9
 byes: R1=12 R2=7 R3=8 R4=6 R5=17 R6=5 R7=10 R8=3 R9=13 R10=4 R11=11 R12=9 R13=16 R14=1 R15=2 R16=15 R17=14 R18=1 R19=3 R20=5 R21=7 R22=9 R23=11 R24=13 R25=15 R26=17 R27=2 R28=4 R29=6 R30=8 R31=10 R32=12 R33=14 R34=16 R35=1 R36=3 R37=5 R38=7 R39=9 R40=11 R41=13 R42=15 R43=17 R44=2 R45=4 R46=6 R47=8 R48=10 R49=12 R50=14 R51=16
 
 == n=17 legs=4 ==
+meta: algorithm=round-robin participant_count=17 legs=4 rounds_per_leg=17 total_rounds=68 expected_event_count=544
 R1: 4-13 7-14 11-3 8-15 9-10 6-2 16-5 17-1
 R2: 4-12 13-11 14-8 3-9 15-6 10-16 2-17 5-1
 R3: 12-7 11-4 9-13 6-14 16-3 17-15 1-10 5-2
@@ -705,6 +742,7 @@ R68: 1-17 2-15 3-14 4-13 5-12 6-11 7-10 8-9
 byes: R1=12 R2=7 R3=8 R4=6 R5=17 R6=5 R7=10 R8=3 R9=13 R10=4 R11=11 R12=9 R13=16 R14=1 R15=2 R16=15 R17=14 R18=1 R19=3 R20=5 R21=7 R22=9 R23=11 R24=13 R25=15 R26=17 R27=2 R28=4 R29=6 R30=8 R31=10 R32=12 R33=14 R34=16 R35=1 R36=3 R37=5 R38=7 R39=9 R40=11 R41=13 R42=15 R43=17 R44=2 R45=4 R46=6 R47=8 R48=10 R49=12 R50=14 R51=16 R52=1 R53=3 R54=5 R55=7 R56=9 R57=11 R58=13 R59=15 R60=17 R61=2 R62=4 R63=6 R64=8 R65=10 R66=12 R67=14 R68=16
 
 == n=20 legs=1 ==
+meta: algorithm=round-robin participant_count=20 legs=1 rounds_per_leg=19 total_rounds=19 expected_event_count=190 byes=[]
 R1: 17-16 10-18 20-15 9-6 11-8 1-14 5-12 2-4 19-7 3-13
 R2: 10-17 16-20 18-9 15-11 6-1 8-5 14-2 12-19 4-3 7-13
 R3: 17-20 9-10 11-16 1-18 5-15 2-6 19-8 3-14 13-12 7-4
@@ -726,6 +764,7 @@ R18: 15-17 6-18 8-16 14-10 12-20 4-9 7-11 13-1 3-5 19-2
 R19: 17-18 16-15 10-6 20-8 9-14 11-12 1-4 5-7 2-13 19-3
 
 == n=20 legs=2 ==
+meta: algorithm=round-robin participant_count=20 legs=2 rounds_per_leg=19 total_rounds=38 expected_event_count=380 byes=[]
 R1: 17-16 10-18 20-15 9-6 11-8 1-14 5-12 2-4 19-7 3-13
 R2: 10-17 16-20 18-9 15-11 6-1 8-5 14-2 12-19 4-3 7-13
 R3: 17-20 9-10 11-16 1-18 5-15 2-6 19-8 3-14 13-12 7-4
@@ -766,6 +805,7 @@ R37: 18-1 17-19 16-20 15-2 14-3 13-4 12-5 11-6 10-7 9-8
 R38: 1-19 20-18 2-17 3-16 4-15 5-14 6-13 7-12 8-11 9-10
 
 == n=20 legs=3 ==
+meta: algorithm=round-robin participant_count=20 legs=3 rounds_per_leg=19 total_rounds=57 expected_event_count=570 byes=[]
 R1: 17-16 10-18 20-15 9-6 11-8 1-14 5-12 2-4 19-7 3-13
 R2: 10-17 16-20 18-9 15-11 6-1 8-5 14-2 12-19 4-3 7-13
 R3: 17-20 9-10 11-16 1-18 5-15 2-6 19-8 3-14 13-12 7-4
@@ -825,6 +865,7 @@ R56: 18-1 17-19 16-20 15-2 14-3 13-4 12-5 11-6 10-7 9-8
 R57: 1-19 20-18 2-17 3-16 4-15 5-14 6-13 7-12 8-11 9-10
 
 == n=20 legs=4 ==
+meta: algorithm=round-robin participant_count=20 legs=4 rounds_per_leg=19 total_rounds=76 expected_event_count=760 byes=[]
 R1: 17-16 10-18 20-15 9-6 11-8 1-14 5-12 2-4 19-7 3-13
 R2: 10-17 16-20 18-9 15-11 6-1 8-5 14-2 12-19 4-3 7-13
 R3: 17-20 9-10 11-16 1-18 5-15 2-6 19-8 3-14 13-12 7-4
