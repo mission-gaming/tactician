@@ -16,7 +16,13 @@ use PHPUnit\Framework\Assert;
 // examples/ of this repository, because the hook finds the repository from
 // its own location. The test writes one to a directory it creates under
 // tests/ and removes it again in a `finally`; a run that is killed half-way
-// can leave tests/agent-hook-probe-* behind, which is safe to delete.
+// can leave tests/agent-hook-probe-* or examples/agent-hook-probe-* behind,
+// which is safe to delete.
+//
+// The second group runs a copy of the script in a temporary tree, where
+// vendor/bin holds stand-ins that record how they were called. That shows
+// which tool the hook starts, from where and with which arguments, and what
+// it does with each way a tool can end, without a real PHPStan run per case.
 //
 // Gap left knowingly - nothing here proves that an agent reads
 // .claude/settings.json the way these tests do, or that it calls the hook
@@ -27,11 +33,14 @@ const AGENT_HOOK_SCRIPT = '.claude/hooks/format-and-analyse.sh';
 /**
  * Run a copy of the hook, or the hook itself, with the given stdin.
  *
+ * @param string|null $cwd The working directory, or null for the current one
+ * @param array<string, string> $environment Variables added to the current environment
+ *
  * @throws RuntimeException When the process cannot be started
  *
  * @return array{exitCode: int, stdout: string, stderr: string}
  */
-function runAgentHook(string $script, string $stdin): array
+function runAgentHook(string $script, string $stdin, ?string $cwd = null, array $environment = []): array
 {
     // The output goes to temporary files, not pipes: nothing reads a pipe
     // while stdin is being written, and a full pipe blocks its writer.
@@ -42,7 +51,13 @@ function runAgentHook(string $script, string $stdin): array
         throw new RuntimeException('Could not create temporary files for the hook output.');
     }
 
-    $process = proc_open(['bash', $script], [0 => ['pipe', 'r'], 1 => $stdout, 2 => $stderr], $pipes);
+    $process = proc_open(
+        ['bash', $script],
+        [0 => ['pipe', 'r'], 1 => $stdout, 2 => $stderr],
+        $pipes,
+        $cwd,
+        $environment === [] ? null : array_merge(getenv(), $environment)
+    );
 
     if (!is_resource($process)) {
         throw new RuntimeException('Could not start the hook.');
@@ -89,6 +104,89 @@ function agentHookProbeSource(string $function, string $expression): string
 function agentHookRemoveDirectory(string $directory): void
 {
     exec('rm -rf ' . escapeshellarg($directory));
+}
+
+/**
+ * A temporary directory that holds `repo`, a tree with a copy of the hook and
+ * the directories the hook looks at, but no vendor/. Returns the directory;
+ * the tree is at `<directory>/repo`. Remove the directory after the test.
+ *
+ * @throws RuntimeException When the directory cannot be created
+ * @throws Random\RandomException When no random name can be made
+ */
+function agentHookSandbox(string $hook): string
+{
+    // The real path: the hook resolves links, and the temporary directory
+    // is behind one on some systems.
+    $base = realpath(sys_get_temp_dir()) . '/tactician-agent-hook-' . bin2hex(random_bytes(6));
+
+    foreach (['.claude/hooks', 'src', 'tests', 'examples', 'docs'] as $directory) {
+        if (!mkdir($base . '/repo/' . $directory, 0o777, true)) {
+            throw new RuntimeException('Could not create the sandbox for the hook.');
+        }
+    }
+
+    copy($hook, $base . '/repo/' . AGENT_HOOK_SCRIPT);
+
+    return $base;
+}
+
+/**
+ * Put a stand-in for one of the two tools into the tree's vendor/bin. It adds
+ * one line to `<tree>/calls.log` (its name, its working directory and its
+ * arguments, as JSON), prints what it is given and ends with the given status.
+ */
+function agentHookStandIn(string $tree, string $tool, int $exitCode = 0, string $stdout = '', string $stderr = ''): void
+{
+    if (!is_dir($tree . '/vendor/bin')) {
+        mkdir($tree . '/vendor/bin', 0o777, true);
+    }
+
+    $file = $tree . '/vendor/bin/' . $tool;
+
+    file_put_contents($file, implode("\n", [
+        '#!/usr/bin/env php',
+        '<?php',
+        'file_put_contents(' . var_export($tree . '/calls.log', true) . ', json_encode([' . var_export($tool, true) . ', getcwd(), array_slice($argv, 1)]) . "\n", FILE_APPEND);',
+        'fwrite(STDOUT, ' . var_export($stdout, true) . ');',
+        'fwrite(STDERR, ' . var_export($stderr, true) . ');',
+        'exit(' . $exitCode . ');',
+        '',
+    ]));
+    chmod($file, 0o755);
+}
+
+/**
+ * The calls the stand-ins recorded, in order.
+ *
+ * @throws RuntimeException When a line of the log is not a recorded call
+ *
+ * @return list<array{tool: string, cwd: string, arguments: list<string>}>
+ */
+function agentHookCalls(string $tree): array
+{
+    $calls = [];
+
+    // No stand-in was started: there is no log.
+    if (!is_file($tree . '/calls.log')) {
+        return $calls;
+    }
+
+    foreach (file($tree . '/calls.log', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        $call = json_decode($line, true);
+
+        if (!is_array($call) || !is_string($call[0] ?? null) || !is_string($call[1] ?? null) || !is_array($call[2] ?? null)) {
+            throw new RuntimeException("The stand-in log holds a line that is not a call: {$line}");
+        }
+
+        $calls[] = [
+            'tool' => $call[0],
+            'cwd' => $call[1],
+            'arguments' => array_values(array_filter($call[2], is_string(...))),
+        ];
+    }
+
+    return $calls;
 }
 
 $root = dirname(__DIR__, 2);
@@ -256,25 +354,188 @@ describe('agent hook', function () use ($root, $hook): void {
             ->and($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => '']);
     });
 
-    it('does nothing where the tools are not installed', function () use ($hook): void {
-        // A copy of the hook in a tree that has no vendor/ directory. The
-        // file has the same type error as above, so only the missing tools
-        // can explain the silence.
-        $tree = sys_get_temp_dir() . '/tactician-agent-hook-' . bin2hex(random_bytes(6));
-        mkdir($tree . '/.claude/hooks', 0o777, true);
-        mkdir($tree . '/tests');
+    it('formats a file under examples/ and does not analyse it', function () use ($root, $hook): void {
+        // phpstan.neon analyses src/ and tests/ only, so the example scripts
+        // are not held to level 8 by the gate. This one has an untyped
+        // function, which level 8 reports, and it needs formatting.
+        $directory = $root . '/examples/agent-hook-probe-' . bin2hex(random_bytes(6));
+        $file = $directory . '/Probe.php';
+
+        mkdir($directory);
 
         try {
-            copy($hook, $tree . '/' . AGENT_HOOK_SCRIPT);
-            file_put_contents($tree . '/tests/Probe.php', agentHookProbeSource('agentHookProbe', '"not an integer"'));
-
-            $result = runAgentHook($tree . '/' . AGENT_HOOK_SCRIPT, agentHookToolCall($tree . '/tests/Probe.php'));
+            file_put_contents($file, "<?php\n\ndeclare(strict_types=1);\n\nfunction agentHookExample(\$value)\n{\n    return \"text\";\n}\n");
+            $result = runAgentHook($hook, agentHookToolCall($file));
+            $formatted = (string) file_get_contents($file);
         } finally {
-            agentHookRemoveDirectory($tree);
+            agentHookRemoveDirectory($directory);
         }
 
-        expect($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => '']);
+        expect($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => ''])
+            ->and($formatted)->toContain("return 'text';");
     });
+});
+
+describe('agent hook, with stand-ins for the tools', function () use ($hook): void {
+    it('runs the tools from the repository root with the file as one argument', function (string $relative, array $expectedTools) use ($hook): void {
+        $base = agentHookSandbox($hook);
+        $tree = $base . '/repo';
+        $file = $tree . '/' . $relative;
+
+        try {
+            agentHookStandIn($tree, 'php-cs-fixer');
+            agentHookStandIn($tree, 'phpstan', 1, "first error\nsecond error\n");
+            file_put_contents($file, "<?php\n");
+
+            $result = runAgentHook($tree . '/' . AGENT_HOOK_SCRIPT, agentHookToolCall($file));
+            $calls = agentHookCalls($tree);
+        } finally {
+            agentHookRemoveDirectory($base);
+        }
+
+        expect(array_column($calls, 'tool'))->toBe($expectedTools);
+
+        foreach ($calls as $call) {
+            // The path is the last argument and follows `--`, so a name that
+            // starts with a dash or holds a space is still one file.
+            expect($call['cwd'])->toBe($tree)
+                ->and(array_slice($call['arguments'], -2))->toBe(['--', $file]);
+        }
+
+        expect($result)->toBe(
+            in_array('phpstan', $expectedTools, true)
+                ? ['exitCode' => 2, 'stdout' => '', 'stderr' => "first error\nsecond error\n"]
+                : ['exitCode' => 0, 'stdout' => '', 'stderr' => '']
+        );
+    })->with([
+        'a file under src/' => ['src/Probe.php', ['php-cs-fixer', 'phpstan']],
+        'a file under tests/' => ['tests/Probe.php', ['php-cs-fixer', 'phpstan']],
+        'a file under examples/, which the gate does not analyse' => ['examples/Probe.php', ['php-cs-fixer']],
+        'a name made of spaces and shell syntax' => ['src/a b $(c) `d` ; e #.php', ['php-cs-fixer', 'phpstan']],
+        'a name that starts with a dash' => ['tests/--version.php', ['php-cs-fixer', 'phpstan']],
+    ]);
+
+    it('acts on the file a path leads to inside the repository', function (string $path, ?string $cwd) use ($hook): void {
+        $base = agentHookSandbox($hook);
+        $tree = $base . '/repo';
+
+        try {
+            agentHookStandIn($tree, 'php-cs-fixer');
+            agentHookStandIn($tree, 'phpstan');
+            file_put_contents($tree . '/src/Probe.php', "<?php\n");
+            symlink($tree, $base . '/link');
+
+            $result = runAgentHook(
+                $tree . '/' . AGENT_HOOK_SCRIPT,
+                agentHookToolCall(str_replace(['{tree}', '{base}'], [$tree, $base], $path)),
+                $cwd === null ? null : str_replace('{base}', $base, $cwd)
+            );
+            $calls = agentHookCalls($tree);
+        } finally {
+            agentHookRemoveDirectory($base);
+        }
+
+        expect($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => ''])
+            ->and(array_column($calls, 'tool'))->toBe(['php-cs-fixer', 'phpstan']);
+
+        foreach ($calls as $call) {
+            expect(array_slice($call['arguments'], -1))->toBe([$tree . '/src/Probe.php']);
+        }
+    })->with([
+        'through `..` and back in' => ['{tree}/docs/../src/Probe.php', null],
+        'through a link to the repository' => ['{base}/link/src/Probe.php', null],
+        // Relative to the repository, not to the working directory.
+        'a relative path, from another working directory' => ['src/Probe.php', '{base}'],
+    ]);
+
+    it('starts no tool for a path it does not check', function (string $create, string $path) use ($hook): void {
+        $base = agentHookSandbox($hook);
+        $tree = $base . '/repo';
+
+        try {
+            agentHookStandIn($tree, 'php-cs-fixer');
+            agentHookStandIn($tree, 'phpstan', 1, "an error\n");
+
+            if (!is_dir(dirname($base . '/' . $create))) {
+                mkdir(dirname($base . '/' . $create), 0o777, true);
+            }
+
+            file_put_contents($base . '/' . $create, "<?php\n");
+            file_put_contents($tree . '/src/Probe.php', "<?php\n");
+
+            $result = runAgentHook($tree . '/' . AGENT_HOOK_SCRIPT, agentHookToolCall(str_replace('{tree}', $tree, $path)));
+            $calls = agentHookCalls($tree);
+        } finally {
+            agentHookRemoveDirectory($base);
+        }
+
+        expect($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => ''])
+            ->and($calls)->toBe([]);
+    })->with([
+        'a directory named src that is not the one at the root' => ['repo/docs/src/Probe.php', '{tree}/docs/src/Probe.php'],
+        'a directory beside the repository whose name starts the same' => ['repo-other/src/Probe.php', '{tree}-other/src/Probe.php'],
+        'a file outside the repository, reached through src/' => ['repo-other/src/Probe.php', '{tree}/src/../../repo-other/src/Probe.php'],
+        'an extension in upper case' => ['repo/src/Upper.PHP', '{tree}/src/Upper.PHP'],
+        'a name that only contains .php' => ['repo/src/Probe.php.bak', '{tree}/src/Probe.php.bak'],
+        'a directory whose name ends in .php' => ['repo/src/Directory.php/file.txt', '{tree}/src/Directory.php'],
+    ]);
+
+    it('starts neither tool unless both are installed', function (array $installed) use ($hook): void {
+        // The control: with both stand-ins this tree reports an error (the
+        // first test of this group), so here only the missing tool explains
+        // the silence. A formatter that ran alone would rewrite a file that
+        // nothing then analyses.
+        $base = agentHookSandbox($hook);
+        $tree = $base . '/repo';
+
+        try {
+            foreach ($installed as $tool) {
+                agentHookStandIn($tree, $tool, 1, "an error\n");
+            }
+
+            file_put_contents($tree . '/tests/Probe.php', "<?php\n");
+
+            $result = runAgentHook($tree . '/' . AGENT_HOOK_SCRIPT, agentHookToolCall($tree . '/tests/Probe.php'));
+            $calls = agentHookCalls($tree);
+        } finally {
+            agentHookRemoveDirectory($base);
+        }
+
+        expect($result)->toBe(['exitCode' => 0, 'stdout' => '', 'stderr' => ''])
+            ->and($calls)->toBe([]);
+    })->with([
+        'no vendor/ directory' => [[]],
+        'PHP-CS-Fixer only' => [['php-cs-fixer']],
+        'PHPStan only' => [['phpstan']],
+    ]);
+
+    it('reports only what PHPStan prints on stdout when it fails', function (array $fixer, array $phpstan, array $expected) use ($hook): void {
+        $base = agentHookSandbox($hook);
+        $tree = $base . '/repo';
+
+        try {
+            agentHookStandIn($tree, 'php-cs-fixer', ...$fixer);
+            agentHookStandIn($tree, 'phpstan', ...$phpstan);
+            file_put_contents($tree . '/src/Probe.php', "<?php\n");
+
+            $result = runAgentHook($tree . '/' . AGENT_HOOK_SCRIPT, agentHookToolCall($tree . '/src/Probe.php'));
+            $calls = agentHookCalls($tree);
+        } finally {
+            agentHookRemoveDirectory($base);
+        }
+
+        // PHPStan runs whatever PHP-CS-Fixer did.
+        expect(array_column($calls, 'tool'))->toBe(['php-cs-fixer', 'phpstan'])
+            ->and($result)->toBe($expected);
+    })->with([
+        'PHPStan fails with errors' => [[0], [1, "src/Probe.php:1:An error.\n"], ['exitCode' => 2, 'stdout' => '', 'stderr' => "src/Probe.php:1:An error.\n"]],
+        'PHPStan fails with errors and its own messages' => [[0], [1, "src/Probe.php:1:An error.\n", "Note: Using configuration file.\n"], ['exitCode' => 2, 'stdout' => '', 'stderr' => "src/Probe.php:1:An error.\n"]],
+        // A crash, or "No files found to analyse": not an error in the file.
+        'PHPStan fails with nothing on stdout' => [[0], [255, '', "Fatal error: out of memory\n"], ['exitCode' => 0, 'stdout' => '', 'stderr' => '']],
+        'PHPStan passes and still prints' => [[0], [0, "[OK] No errors\n", "Note\n"], ['exitCode' => 0, 'stdout' => '', 'stderr' => '']],
+        'PHP-CS-Fixer fails and prints, PHPStan passes' => [[16, "fixer stdout\n", "fixer stderr\n"], [0], ['exitCode' => 0, 'stdout' => '', 'stderr' => '']],
+        'PHP-CS-Fixer fails and prints, PHPStan fails' => [[16, "fixer stdout\n", "fixer stderr\n"], [1, "src/Probe.php:1:An error.\n"], ['exitCode' => 2, 'stdout' => '', 'stderr' => "src/Probe.php:1:An error.\n"]],
+    ]);
 });
 
 describe('agent settings', function () use ($root): void {

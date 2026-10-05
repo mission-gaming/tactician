@@ -9,8 +9,10 @@
 # The script acts only on a regular file that ends in .php and is under src/,
 # tests/ or examples/ of this repository. It does not follow a symbolic link,
 # because PHP-CS-Fixer rewrites the file and the link's target can be anywhere.
-# For that file it runs PHP-CS-Fixer, then PHPStan with the repository's
-# configuration.
+# For that file it runs PHP-CS-Fixer, then, under src/ or tests/, PHPStan with
+# the repository's configuration. A file under examples/ is formatted only:
+# phpstan.neon does not analyse examples/, so the gate does not hold the
+# example scripts to level 8 and the hook must not either.
 #
 # Exit status:
 #   0  nothing to do, or the file is clean. Nothing is printed.
@@ -67,7 +69,8 @@ file="$directory/$(basename "$file")"
 [ -f "$file" ] || exit 0
 
 case "$file" in
-    "$root"/src/* | "$root"/tests/* | "$root"/examples/*) ;;
+    "$root"/src/* | "$root"/tests/*) analyse=yes ;;
+    "$root"/examples/*) analyse=no ;;
     *) exit 0 ;;
 esac
 
@@ -79,6 +82,8 @@ cd "$root" || exit 0
 # A file PHP-CS-Fixer cannot format (a syntax error, for example) is left as
 # it is; PHPStan reports the cause below.
 vendor/bin/php-cs-fixer fix --quiet -- "$file" > /dev/null 2>&1
+
+[ "$analyse" = yes ] || exit 0
 
 # The raw format prints one line per error on stdout. PHPStan's own messages
 # (the configuration note, "No files found to analyse" for a file that

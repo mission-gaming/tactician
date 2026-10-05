@@ -27,8 +27,8 @@ generated output for a fixed input and seed is identical.
   against text fixtures in `tests/Fixtures/golden/`, captured from 0.2.0. The
   development-only `composer golden-update` script regenerates them.
 - Optional, tracked settings in `.claude/` for contributors who use an AI
-  coding agent: a hook that formats and analyses each PHP file the agent edits
-  (`tests/Feature/AgentHookTest.php` covers it), and `verify` and `release`
+  coding agent: a hook that formats each PHP file the agent edits and analyses it when it is
+  under `src/` or `tests/` (`tests/Feature/AgentHookTest.php` covers it), and `verify` and `release`
   commands. The directory is not part of the installed package.
 - Governance files: a security policy (`SECURITY.md`), code owners, a pull
   request template with a compatibility section, and issue forms for bug
