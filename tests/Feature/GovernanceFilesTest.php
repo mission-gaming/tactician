@@ -161,6 +161,60 @@ describe('issue forms', function () use ($root, $topLevelKeys, $forms, $formData
             ->and(array_unique($ids))->toHaveCount(count($ids));
     })->with($formDataset);
 
+    it('uses only the top-level keys GitHub defines for a form', function (string $form) use ($topLevelKeys): void {
+        // An unknown key makes GitHub reject the form and hide it from the
+        // template chooser.
+        foreach ($topLevelKeys((string) file_get_contents($form)) as $key) {
+            expect($key)->toBeIn(['name', 'description', 'body', 'title', 'labels', 'assignees', 'projects', 'type']);
+        }
+    })->with($formDataset);
+
+    it('gives every element the attributes its type requires', function (string $form): void {
+        $name = basename($form);
+        $contents = (string) file_get_contents($form);
+
+        if (preg_match('/^body:\n(.*?)(?=^\S|\z)/ms', $contents, $body) !== 1) {
+            Assert::fail("{$name} has no body.");
+        }
+
+        $labels = [];
+
+        foreach (preg_split('/^  - /m', $body[1], flags: PREG_SPLIT_NO_EMPTY) ?: [] as $element) {
+            preg_match('/\Atype:\s*(\S+)/', $element, $type);
+
+            if (preg_match('/^      label:\s*(.+?)\s*$/m', $element, $label) === 1) {
+                $labels[] = strtolower($label[1]);
+            }
+
+            // Markdown shows nothing without its text.
+            if (($type[1] ?? null) === 'markdown') {
+                Assert::assertMatchesRegularExpression('/^      value:\s*\S/m', $element, "{$name} has a markdown element without a value.");
+            }
+
+            // A dropdown needs at least one option, and GitHub rejects
+            // options that repeat.
+            if (($type[1] ?? null) === 'dropdown') {
+                preg_match_all('/^        - (.+?)\s*$/m', $element, $options);
+
+                expect($options[1])->not->toBeEmpty()
+                    ->and(array_unique(array_map(strtolower(...), $options[1])))->toHaveCount(count($options[1]));
+            }
+
+            // `required` is the only validation GitHub defines, and it is a
+            // boolean.
+            if (preg_match('/^    validations:\n((?:      .*\n?)*)/m', $element, $validations) === 1) {
+                Assert::assertMatchesRegularExpression(
+                    '/\A      required: (?:true|false)\n?\z/',
+                    $validations[1],
+                    "{$name} has a validations block that is not a single boolean `required`."
+                );
+            }
+        }
+
+        // GitHub rejects a form in which two elements share a label.
+        expect(array_unique($labels))->toHaveCount(count($labels));
+    })->with($formDataset);
+
     it('applies only labels written as a flow sequence of quoted names', function (string $form): void {
         $contents = (string) file_get_contents($form);
 
@@ -219,6 +273,14 @@ describe('security policy', function () use ($root): void {
         expect($policy)->not->toContain('mailto:');
     });
 
+    it('commits to no response time', function () use ($root): void {
+        // The maintainers have agreed no response time, so the policy must
+        // not state one: a figure here is a promise to every reporter.
+        $policy = (string) preg_replace('/\s+/', ' ', (string) file_get_contents($root . '/SECURITY.md'));
+
+        expect($policy)->not->toMatch('/\b(?:\d+|one|two|three|four|five|six|seven|ten|fourteen|thirty|ninety)\s+(?:business |working )?(?:hours?|days?|weeks?|months?)\b/i');
+    });
+
     it('points to the Security tab of this repository', function () use ($root): void {
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
 
@@ -273,4 +335,51 @@ describe('branch and commit convention', function () use ($root, $branchTypes): 
         expect($examples[1])->toMatch('/^(?:' . implode('|', $branchTypes($path)) . ')\/[a-z\d]+(?:-[a-z\d]+)*$/')
             ->and($examples[2])->toMatch('/^[A-Z][^:]*\.$/');
     })->with(['AGENTS.md', 'docs/CONTRIBUTING.md']);
+});
+
+describe('contributor guides and the tooling', function () use ($root): void {
+    it('names only Composer scripts that exist', function (string $document) use ($root): void {
+        $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+
+        preg_match_all('/\bcomposer ([a-z][a-z-]*)/', (string) file_get_contents($root . '/' . $document), $commands);
+
+        expect($commands[1])->not->toBeEmpty();
+
+        foreach (array_unique($commands[1]) as $command) {
+            // `install` and `show` are Composer's own commands; every other
+            // name must be a script this project defines.
+            if (in_array($command, ['install', 'show'], true)) {
+                continue;
+            }
+
+            Assert::assertArrayHasKey($command, $composer['scripts'], "{$document} names `composer {$command}`, which composer.json does not define.");
+        }
+    })->with(['AGENTS.md', 'docs/CONTRIBUTING.md', '.github/pull_request_template.md', '.github/ISSUE_TEMPLATE/bug_report.yml']);
+
+    it('names only repository paths that exist', function (string $document) use ($root): void {
+        // Files under the directories the guides point into, and dotfiles
+        // at the root. A bare file name is left out: the contributing guide
+        // names its neighbours in `docs/` that way, and the link test in
+        // VersioningDocumentationTest.php resolves those.
+        preg_match_all('/`((?:tests|src|examples|\.github)\/[\w.\/-]+\.\w+|\.[a-z][\w.-]+)`/', (string) file_get_contents($root . '/' . $document), $paths);
+
+        expect($paths[1])->not->toBeEmpty();
+
+        foreach (array_unique($paths[1]) as $path) {
+            Assert::assertFileExists($root . '/' . $path, "{$document} names `{$path}`, which does not exist.");
+        }
+    })->with(['AGENTS.md', 'docs/CONTRIBUTING.md']);
+
+    it('lists the checks of the gate in the order the gate runs them', function () use ($root): void {
+        $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        $guide = (string) file_get_contents($root . '/docs/CONTRIBUTING.md');
+
+        if (preg_match('/# The checks it runs, one by one\n(.*?)\n\n/s', $guide, $block) !== 1) {
+            Assert::fail('The contributing guide does not list the checks of the gate.');
+        }
+
+        preg_match_all('/^composer ([a-z-]+)/m', $block[1], $listed);
+
+        expect($listed[1])->toBe(array_map(fn (string $script) => ltrim($script, '@'), $composer['scripts']['ci']));
+    });
 });
