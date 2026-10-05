@@ -20,6 +20,7 @@ tracks the current shape only, to avoid duplicating what rots.*
 - **Serialization**: `toArray()`/`fromArray()` on all DTOs; `Schedule` JSON round-tripping
 - **Quality gates**: 805 Pest tests / 10,270 assertions including property/invariant suites, PHPStan level 8, Rector, CS-Fixer, auto-validated examples (`tests/Feature/ExamplesTest.php` + `composer examples` in CI)
 - **Released**: v0.2.0 (2026-08-11) is the current tag, on top of the v0.1.x line; release list in `activeContext.md`, notes on GitHub
+- **Golden output** (`tests/Feature/GoldenOutputTest.php`, cases in `tests/Support/GoldenCases.php`): generated schedules, bracket pairings, repack assignments and JSON wire shapes pinned as text fixtures in `tests/Fixtures/golden/`, baseline `v0.2.0`; the rule for diffs is in `AGENTS.md`
 
 ## What's Left to Build
 See docs/ROADMAP.md:
