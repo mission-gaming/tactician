@@ -19,17 +19,20 @@
             "email": "jamie@missiongaming.gg"
         }
     ],
+    "homepage": "https://github.com/mission-gaming/tactician",
+    "support": {
+        "issues": "https://github.com/mission-gaming/tactician/issues",
+        "source": "https://github.com/mission-gaming/tactician",
+        "security": "https://github.com/mission-gaming/tactician/security/policy"
+    },
     "require": {
         "php": "^8.3"
     },
     "require-dev": {
         "ergebnis/composer-normalize": "^2.39",
-        "fakerphp/faker": "^1.23",
         "friendsofphp/php-cs-fixer": "^3.0",
-        "nunomaduro/collision": "^8.5",
         "pestphp/pest": "^4.0",
         "phpstan/phpstan": "^2.1",
-        "phpunit/phpunit": "^12.0",
         "rector/rector": "^2.0"
     },
     "minimum-stability": "stable",
@@ -66,7 +69,7 @@
         ],
         "cs-fixer": "php-cs-fixer fix --dry-run --diff",
         "cs-fixer-fix": "php-cs-fixer fix",
-        "examples": "for f in examples/*.php; do php \"$f\" > /dev/null || exit 1; done",
+        "examples": "@php tests/bin/run-examples.php",
         "golden-update": [
             "@putenv UPDATE_GOLDEN=1",
             "pest tests/Feature/GoldenOutputTest.php"
@@ -76,7 +79,11 @@
         "phpstan": "phpstan analyse --memory-limit=512M",
         "rector": "rector process --dry-run",
         "rector-fix": "rector process",
+        "security-audit": "@composer audit --locked --abandoned=report",
         "test": "pest",
-        "test-coverage": "mkdir -p build && pest --coverage --coverage-clover=build/clover.xml"
+        "test-coverage": [
+            "@putenv XDEBUG_MODE=coverage",
+            "pest --coverage --coverage-clover=build/clover.xml"
+        ]
     }
 }
