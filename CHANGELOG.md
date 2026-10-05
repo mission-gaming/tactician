@@ -29,8 +29,9 @@ generated output for a fixed input and seed is identical.
 - A test (`tests/Feature/DocumentationSnippetsTest.php`) that executes every
   `php` code block of `README.md` and `docs/USAGE.md`, each in a PHP process of
   its own under `E_ALL`. A block that does not parse, throws, or emits a
-  warning or deprecation fails the suite. CI runs it on documentation-only
-  pull requests that touch either file.
+  warning or deprecation fails the suite, as does one that stops before its
+  last line. The values and printed output the two documents state are pinned
+  in the same test.
 - Golden files for the output of the plain-text examples (`examples/13` to
   `examples/19`), so an example that prints a wrong or empty result fails.
 - Governance files: a security policy (`SECURITY.md`), code owners, a pull
@@ -42,6 +43,12 @@ generated output for a fixed input and seed is identical.
 - `docs/CONTRIBUTING.md` describes the current checks and rules, and states
   one branch and commit convention.
 - The repack scenario test fixture is now a synthetic instance.
+- The CI workflow runs with least-privilege permissions and pinned actions, and
+  Dependabot keeps the actions up to date.
+- The CI workflow runs the test and coverage jobs for every change set. Its
+  documentation-only fast path is removed: the paths filter behind it matched
+  every file, so it never skipped anything, and the suite now executes
+  documentation, so a documentation-only change must be tested.
 - Every code block in `README.md` and `docs/USAGE.md` now runs as written:
   imports and the values a block depends on are shown, and inline value
   comments match what the code produces.
@@ -65,8 +72,6 @@ generated output for a fixed input and seed is identical.
     `examples/README.md` claimed that iterating a schedule is lazy or
     memory-efficient. A `Schedule` holds all of its events in memory; it is
     iterable and countable.
-- The CI workflow runs with least-privilege permissions and pinned actions, and
-  Dependabot keeps the actions up to date.
 
 ## [0.2.0] - 2026-08-11
 

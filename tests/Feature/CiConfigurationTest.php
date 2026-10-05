@@ -6,9 +6,10 @@ use MissionGaming\Tactician\Tests\Support\DocumentationSnippets;
 use PHPUnit\Framework\Assert;
 
 // The CI hardening is configuration, so nothing in the library exercises it.
-// These tests pin its three guarantees: least-privilege token permissions,
-// actions referenced by immutable commit SHA, and Dependabot coverage that
-// keeps those pins current.
+// These tests pin its guarantees: least-privilege token permissions, actions
+// referenced by immutable commit SHA, Dependabot coverage that keeps those
+// pins current, and test jobs that run, under the check names branch
+// protection requires, for every change set.
 //
 // The files are read as text on purpose: the project has no YAML parser among
 // its dependencies. Gap left knowingly - nothing here proves the files are
@@ -93,32 +94,59 @@ it('grants no job a write scope', function (string $workflow): void {
     }
 })->with($workflowDataset);
 
-// The workflow has a fast path that skips the test jobs for a change set
-// holding documentation only. README.md and docs/USAGE.md are documentation
-// whose code blocks the suite executes, so a change to either must still run
-// the tests, or a broken snippet could merge on a documentation-only pull
-// request.
-it('runs the test jobs when a document with executed code blocks changes', function () use ($root): void {
+// The suite reads documentation as well as code: it executes the code blocks
+// of README.md and docs/USAGE.md and checks other Markdown files against the
+// repository. So the test and coverage jobs must run for every change set, a
+// documentation-only one included, or a broken snippet could merge unseen.
+//
+// The workflow once had a documentation-only fast path built on a paths
+// filter. It never skipped anything (the filter's `'**'` pattern matched
+// every file under the action's default quantifier), and had it worked it
+// would have skipped exactly the changes the documentation tests exist for.
+// These tests keep any such gate from coming back.
+it('runs the test and coverage jobs for every change set', function (string $job) use ($root): void {
     $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
 
-    // One glob, so the filter means the same whether paths-filter requires
-    // some pattern or every pattern to match
-    if (preg_match("/^          snippets:\n            - '\{([^}']+)\}'\n(?!            - )/m", $workflow, $filter) !== 1) {
-        Assert::fail('ci.yml has no `snippets` paths filter holding a single brace glob');
+    if (preg_match('/^  ' . preg_quote($job, '/') . ":\n((?:(?:    .*)?\n)*)/m", $workflow, $definition) !== 1) {
+        Assert::fail("ci.yml has no `{$job}` job");
     }
-    $filtered = explode(',', $filter[1]);
-    $executed = DocumentationSnippets::DOCUMENTS;
-    sort($filtered);
-    sort($executed);
-    expect($filtered)->toBe($executed);
 
-    expect($workflow)->toContain('      snippets: ${{ steps.filter.outputs.snippets }}' . "\n");
+    // A job-level condition or a dependency on another job can skip the job
+    expect($definition[1])->toContain("    steps:\n");
+    Assert::assertDoesNotMatchRegularExpression('/^    if:/m', $definition[1], "The `{$job}` job is conditional");
+    Assert::assertDoesNotMatchRegularExpression('/^    needs:/m', $definition[1], "The `{$job}` job waits on another job");
+})->with(['test', 'coverage']);
 
-    if (preg_match('/^  test:\n(?:(?:    .*)?\n)*?    if: (.+)$/m', $workflow, $condition) !== 1) {
-        Assert::fail('The test job in ci.yml has no `if:` condition');
+it('triggers on every push to main and every pull request, without a path or change filter', function () use ($root): void {
+    $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+
+    expect($workflow)->toContain("on:\n  push:\n    branches: [ main ]\n  pull_request:\n    branches: [ main ]\n\n");
+    Assert::assertDoesNotMatchRegularExpression('/^\s*paths(?:-ignore)?:/m', $workflow, 'ci.yml filters its triggers by path');
+    Assert::assertStringNotContainsString('paths-filter', $workflow, 'ci.yml detects changed paths to decide what runs');
+
+    // The documents the snippet test executes exist, so "every change set" covers them
+    foreach (DocumentationSnippets::DOCUMENTS as $document) {
+        expect(is_file($root . '/' . $document))->toBeTrue();
     }
-    expect($condition[1])->toContain("needs.changes.outputs.code == 'true'")
-        ->toContain("|| needs.changes.outputs.snippets == 'true'");
+});
+
+// Branch protection requires these checks by name; renaming one leaves the
+// required check waiting forever on every pull request.
+it('reports the checks named PHP 8.3, PHP 8.4, PHP 8.5 and Coverage', function () use ($root): void {
+    $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+
+    if (preg_match('/^  test:\n((?:(?:    .*)?\n)*)/m', $workflow, $test) !== 1) {
+        Assert::fail('ci.yml has no `test` job');
+    }
+    if (preg_match('/^  coverage:\n((?:(?:    .*)?\n)*)/m', $workflow, $coverage) !== 1) {
+        Assert::fail('ci.yml has no `coverage` job');
+    }
+
+    expect($test[1])->toContain("        php-version: ['8.3', '8.4', '8.5']\n")
+        ->toContain('    name: PHP ${{ matrix.php-version }}' . "\n")
+        // One version failing must not cancel the others' checks
+        ->toContain("      fail-fast: false\n");
+    expect($coverage[1])->toContain("    name: Coverage\n");
 });
 
 it('keeps Composer dependencies and the pinned actions current through Dependabot', function () use ($root): void {
