@@ -11,7 +11,7 @@ updates:
         update-types: [minor, patch]
     ignore:
       - dependency-name: "*"
-        update-types: [version-update:semver-major]
+        update-types: ["version-update:semver-major"]
 
   # Keeps the commit-pinned actions in the workflows current.
   - package-ecosystem: github-actions
