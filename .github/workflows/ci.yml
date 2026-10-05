@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   # Detect whether the change set contains anything beyond documentation.
-  # Docs-only changes (Markdown, docs/, memory-bank/, .clinerules, LICENSE)
+  # Docs-only changes (Markdown, docs/, LICENSE)
   # skip the test and coverage jobs; job-level skips report as "skipped",
   # which satisfies required status checks (unlike workflow-level path
   # filters, which would leave required checks pending).
@@ -38,8 +38,6 @@ jobs:
             - '**'
             - '!**/*.md'
             - '!docs/**'
-            - '!memory-bank/**'
-            - '!.clinerules'
             - '!LICENSE'
 
   # Fails when a tracked file, its path, or a symbolic link target contains a

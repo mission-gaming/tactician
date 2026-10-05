@@ -11,8 +11,6 @@ tests/Fixtures/golden/** text eol=lf
 # entry is missing from this list. Keep the leading slash: without it a
 # pattern matches at every depth and can remove files from src/ as well.
 /.claude               export-ignore
-/.clineignore          export-ignore
-/.clinerules           export-ignore
 /.editorconfig         export-ignore
 /.gitattributes        export-ignore
 /.github               export-ignore
@@ -23,7 +21,6 @@ tests/Fixtures/golden/** text eol=lf
 /composer.lock         export-ignore
 /docs                  export-ignore
 /examples              export-ignore
-/memory-bank           export-ignore
 /phpstan.neon          export-ignore
 /phpunit.xml           export-ignore
 /rector.php            export-ignore
