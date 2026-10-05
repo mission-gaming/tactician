@@ -457,7 +457,8 @@ describe('contributor guides and the tooling', function () use ($root): void {
         }
 
         // Written in two parts so that this file does not name them. The
-        // tool's name must start a word: "decline" is not a reference.
+        // tool's name must start a word; inside a longer word it is not a
+        // reference.
         $pattern = '/(?<![a-z])cl' . 'ine|memory[-_ ]?' . 'bank/i';
         $matches = [];
 
