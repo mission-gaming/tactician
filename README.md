@@ -133,9 +133,12 @@ release is recorded in the [changelog](CHANGELOG.md).
 - **Minor releases (0.x)** may contain breaking changes. The changelog lists
   each one with a migration note.
 - **Deprecations precede removals.**
-- **Generated output is pinned.** Output for a fixed input and seed is covered
-  by golden fixtures in [`tests/Fixtures/golden/`](tests/Fixtures/golden/), so
-  an output change cannot ship unnoticed.
+- **Generated output is pinned.** Golden fixtures in
+  [`tests/Fixtures/golden/`](tests/Fixtures/golden/) pin generated schedules,
+  bracket pairings, repack assignments, and the JSON wire shapes for a set of
+  fixed inputs and seeds, so a change to that output fails the test suite
+  instead of shipping unnoticed. The fixtures cover those cases only; they are
+  not a proof about every input.
 
 **Supported PHP versions:** `^8.3` (the Composer constraint). CI runs the suite
 on PHP 8.3, 8.4, and 8.5.
