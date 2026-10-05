@@ -19,6 +19,12 @@
             "email": "jamie@missiongaming.gg"
         }
     ],
+    "homepage": "https://github.com/mission-gaming/tactician",
+    "support": {
+        "issues": "https://github.com/mission-gaming/tactician/issues",
+        "source": "https://github.com/mission-gaming/tactician",
+        "security": "https://github.com/mission-gaming/tactician/security/policy"
+    },
     "require": {
         "php": "^8.3"
     },
