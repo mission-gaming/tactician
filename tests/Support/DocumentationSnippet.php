@@ -30,11 +30,13 @@ final readonly class DocumentationSnippet
     /**
      * @param string $file The document, as a path relative to the repository root
      * @param int $line 1-based line of the opening fence (or of the setup comment)
-     * @param string $section Text of the level-2 heading the block sits under; '' above the first one
+     * @param string $section Text of the level-1 or level-2 heading the block sits under; '' above the first one
      * @param list<string> $code The lines between the fences, without the fences
      * @param self::* $mode
      * @param string|null $reason Why a SKIP block is not executed
      * @param string|null $exception The fully qualified exception class a THROWS block must end in
+     * @param int $sectionLine 1-based line of that heading, 0 above the first one. It is the section's
+     *     identity: two headings may share their text, and their blocks must not build on each other
      */
     public function __construct(
         public string $file,
@@ -44,7 +46,16 @@ final readonly class DocumentationSnippet
         public string $mode = self::RUN,
         public ?string $reason = null,
         public ?string $exception = null,
+        public int $sectionLine = 0,
     ) {
+    }
+
+    /**
+     * Whether both blocks sit under the same heading of the same document.
+     */
+    public function inSameSectionAs(self $other): bool
+    {
+        return $this->file === $other->file && $this->sectionLine === $other->sectionLine;
     }
 
     /**
