@@ -25,6 +25,14 @@ use MissionGaming\Tactician\Exceptions\PinConflictException;
  * exception's context and its diagnostic report. A participant pinned twice
  * at one position throws the PinConflictException subclass, whose
  * `getEventIds()` returns the two pinned events that collide.
+ *
+ * The request is also where the objective weights meet the grid. The
+ * repacker scores a move as an integer no larger in magnitude than
+ * earlyFillWeight x (sessions - 1) + 2 x consolidationWeight. Weights for
+ * which that exceeds PHP_INT_MAX on this grid are rejected (reason
+ * IncompatibleOptions): PHP would compute the score as a float, where one
+ * weight can swallow the other, and the result would no longer be the
+ * trade the weights state.
  */
 final readonly class RepackRequest
 {
@@ -47,6 +55,20 @@ final readonly class RepackRequest
         private SessionGrid $grid,
         private RepackOptions $options = new RepackOptions()
     ) {
+        $spread = $grid->getSessionCount() - 1;
+        $headroom = PHP_INT_MAX - 2 * $options->consolidationWeight;
+        if ($spread > 0 && $options->earlyFillWeight > intdiv($headroom, $spread)) {
+            throw new InvalidConfigurationException(
+                'The objective weights are too large for a grid of this many sessions',
+                [
+                    'consolidation_weight' => $options->consolidationWeight,
+                    'early_fill_weight' => $options->earlyFillWeight,
+                    'sessions' => $grid->getSessionCount(),
+                ],
+                reason: InvalidConfigurationReason::IncompatibleOptions
+            );
+        }
+
         $seenIds = [];
         foreach (array_values($movableEvents) as $index => $event) {
             if (!$event instanceof MovableEvent) {
