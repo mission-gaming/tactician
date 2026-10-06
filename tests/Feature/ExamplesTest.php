@@ -1176,6 +1176,7 @@ function startExampleServer(string $workingDirectory, string $documentRoot, arra
         $failures[] = "  {$address}, " . ($running ? 'still not listening after 15 seconds' : 'the server exited') . ":\n" . exampleServerLogTail($log);
         stopExampleServer(['server' => $server, 'address' => $address, 'log' => $log]);
 
+        // Gap left knowingly: this branch has no test, since only a server that stays silent for 15 seconds reaches it
         if ($running) {
             break;
         }
