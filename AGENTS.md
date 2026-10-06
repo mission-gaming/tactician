@@ -19,6 +19,8 @@ and points to `docs/` for everything else; it does not repeat what is there.
 - `composer test-coverage` — the suite with line coverage, written to `build/clover.xml` (needs Xdebug or PCOV; the script sets `XDEBUG_MODE` itself)
 - `composer security-audit` — Composer's vulnerability audit of the dependencies in `composer.lock`; needs the network, so CI runs it as a job of its own (`Dependency audit`, not a required check) and it is not part of `composer ci`
 - `composer golden-update` — regenerate the golden-output fixtures in `tests/Fixtures/golden/` (see Rules)
+- `composer bench` — the benchmark suite in `tests/Benchmark/` (phpbench): repack at 24 and 40 participants, round robin with and without constraints, Swiss pairing. Timings depend on the machine, so it is not part of `composer ci`
+- `composer bench-compare -- <directory>` — benchmark a copy of `src/` from another commit and the working tree by turns, and fail when the working tree is more than 1.5 times slower; CI runs it for a pull request against its base as the job `Benchmarks`, which is not a required check
 - `vendor/bin/pest tests/Unit/Scheduling/RoundRobinSchedulerTest.php` — run a single test file
 - `vendor/bin/pest tests/Feature/DocumentationSnippetsTest.php` — execute every `php` block of `README.md` and `docs/USAGE.md`
 
