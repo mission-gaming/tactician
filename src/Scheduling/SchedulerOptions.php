@@ -39,10 +39,12 @@ interface SchedulerOptions
      * Serialize back to the plain-data form fromArray() accepts: scalar
      * values under string keys, so the array can be stored as JSON.
      *
+     * An implementation whose options can hold something that has no
+     * plain-data form says so on its own toArray(): RoundRobinOptions
+     * refuses a leg strategy or a role assignment that is not one of the
+     * built-ins.
+     *
      * @return array<string, mixed>
-     * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the options hold
-     *                                                                            something that has no
-     *                                                                            plain-data form
      */
     public function toArray(): array;
 }
