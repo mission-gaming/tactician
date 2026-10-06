@@ -40,9 +40,6 @@ heading **Output change (fix)**.
   0.1 + 0.2 gives `30%`. The name therefore does not identify the period
   exactly: two periods closer than 0.0001 can share a name, as 1/3 and 0.3333
   do. No other constraint's name changes, and no schedule changes.
-
-### Fixed
-
 - `IncompleteScheduleException::getDiagnosticReport()` writes the share of
   missing events with `.` as the decimal separator whatever the locale:
   `Missing Events: 6 (100.0%)`. Under a locale that writes a decimal comma it
