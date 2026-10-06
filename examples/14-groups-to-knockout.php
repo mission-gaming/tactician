@@ -64,17 +64,21 @@ $scheduler = new RoundRobinScheduler();
 $poolOutcomes = [];
 $poolTables = [];
 
-foreach ($pools as $label => $poolTeams) {
-    $schedule = $scheduler->schedule($poolTeams);
+foreach ($pools as $label => $poolParticipants) {
+    $schedule = $scheduler->schedule($poolParticipants);
     $results = $playEvents($schedule);
 
-    // Never qualify from a partial table
-    $unplayed = $scheduler->getPlan($poolTeams)->findUnplayedPairings($results);
+    // Never qualify from a partial table. The check counts a pairing as
+    // played once it has one result, which is the whole of it in a pool of
+    // one leg, as here. In a pool of several legs it does not notice a
+    // missing later leg: compare the number of results with the plan's
+    // expected event count there as well.
+    $unplayed = $scheduler->getPlan($poolParticipants)->findUnplayedPairings($results);
     if ($unplayed !== []) {
         throw new RuntimeException("Pool {$label} incomplete: " . implode(', ', $unplayed));
     }
 
-    $standings = $calculator->calculate($poolTeams, $results);
+    $standings = $calculator->calculate($poolParticipants, $results);
     $poolOutcomes[$label] = new StageOutcome($standings, $results);
     $poolTables['Pool ' . $label] = $standings;
 }

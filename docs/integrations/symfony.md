@@ -76,6 +76,13 @@ are two participants. Use the entity's primary key, cast to a string:
 - Writing a schedule or a stage state as JSON needs every ID to be valid
   UTF-8.
 
+**One object for each participant.** Build each participant once for a
+call and pass the same objects everywhere in it, as the excerpt does with
+its map by club ID. `ConsecutiveRoleConstraint` and
+`SeedProtectionConstraint` recognise a participant by the object and not
+by its ID, so a second `Participant` built from the same row is not the
+one they are looking for.
+
 **The order.** Put the list in the order your application means, the
 strongest entrant first. What reads that order depends on the format:
 
@@ -116,7 +123,10 @@ settings table can hold them. One thing to know when you do that:
 `EliminationOptions`, `RepackOptions`, `SessionGrid` and
 `TimelineDefinition` ignores one. There a misspelt key (`'legz' => 2`)
 gives the default silently, so check the keys in your own configuration
-code.
+code. And `'strategy' => 'shuffled'` in plain data builds a
+`ShuffledLegStrategy` with no seed, so that schedule is not repeatable;
+construct the strategy with a seeded `Randomizer` in code when it must
+be.
 
 ### The output copied into entities
 
@@ -173,6 +183,12 @@ schedule can only disagree with them. The library does not need the
 schedule back: standings are computed from results on events you build
 from your own rows (`new Event([$home, $away], new Round($number))`), and
 a repack takes your fixture IDs and participants.
+
+Build one `Event` for each fixture when you do that. `StandingsCalculator`
+refuses two results on the same `Event` object, and that is the only
+duplicate it can see: two results on two `Event` objects built from the
+same row are both counted. One result for each fixture is the
+application's to guarantee.
 
 Storing the library's JSON is right in three cases:
 
@@ -865,8 +881,10 @@ for the current time. An application that stores local wall-clock time
 converts at its own boundary, in the adapter.
 
 **Instants.** A timeline or an instant-based grid is declared in a
-timezone, and its arithmetic is wall-clock in that zone: a weekly 19:00
-kickoff stays 19:00 local when the clocks change. What comes back
+timezone. An interval in days or weeks is wall-clock time in that zone:
+a weekly 19:00 kickoff (`P7D`) stays 19:00 local when the clocks change.
+An interval in hours is elapsed time: `PT168H` is 18:00 local the week
+after the clocks go back. What comes back
 (`ScheduledEvent::getKickoff()`, `SlotAssignment::getKickoff()`) is a
 `DateTimeImmutable` in UTC.
 
@@ -889,6 +907,10 @@ $timeline = TimelineDefinition::fromArray([
 Store the UTC instant, or convert it with
 `$kickoff->setTimezone(new DateTimeZone('Europe/London'))` and store the
 local time, whichever your schema holds. Do the conversion in one place.
+
+`TimelineAssigner` fills slots and checks the rules it was given. With
+no rule it does not stop one participant being in two events at the same
+instant; a `MinimumRestRule` does, as in example 15.
 
 **Positions.** If the application has no instants to give, it does not
 have to make any up. A shape-only grid takes and returns positions, and
