@@ -540,7 +540,7 @@ describe('ScheduleValidator', function (): void {
             );
 
             // Then: Should provide generic suggestion since 'seed' != 'Seed' (case-sensitive check)
-            expect($suggestions)->toContain('Review configuration for \'Seed Protection (top 1, 0.5% period)\'');
+            expect($suggestions)->toContain('Review configuration for \'Seed Protection (top 1, 50% period)\'');
         });
 
         // Tests high violation ratio warning and suggestions
@@ -750,7 +750,7 @@ describe('ScheduleValidator', function (): void {
             // Then: Should include suggestions based on actual case-sensitive pattern matching
             expect($suggestions)->toContain('Consider increasing the consecutive limit');
             expect($suggestions)->toContain('Review configuration for \'Minimum Rest Periods (2 rounds)\'');
-            expect($suggestions)->toContain('Review configuration for \'Seed Protection (top 1, 0.3% period)\'');
+            expect($suggestions)->toContain('Review configuration for \'Seed Protection (top 1, 30% period)\'');
         });
     });
 });
