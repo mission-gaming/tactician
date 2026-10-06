@@ -3,10 +3,14 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\SwissPlan;
 use MissionGaming\Tactician\Tests\Support\DeprecatedCall;
+use MissionGaming\Tactician\Tests\Support\DeprecatedCallProbe;
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippets;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
@@ -278,6 +282,42 @@ describe('a deprecated method is called by nothing that ships or is documented',
             ->and($calls)->toBe([]);
     })->with(DocumentationSnippets::DOCUMENTS);
 
+    // The two documents above are the ones the snippet harness executes. The
+    // architecture notes, the design notes, the integration guides and the
+    // examples' own README are never run, so a call there would say nothing
+    // on any PHP version; their fenced `php` blocks are scanned here.
+    it('in the php blocks of every Markdown file, executed or not', function () use ($root, $callsIn, $deprecatedMethodNames): void {
+        $documents = ['AGENTS.md', 'CHANGELOG.md', 'README.md', 'examples/README.md'];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/docs', FilesystemIterator::SKIP_DOTS));
+        foreach ($iterator as $file) {
+            if ($file instanceof SplFileInfo && $file->getExtension() === 'md') {
+                $documents[] = substr($file->getPathname(), strlen($root) + 1);
+            }
+        }
+        sort($documents);
+
+        $blocks = 0;
+        $calls = [];
+
+        foreach ($documents as $document) {
+            preg_match_all('/^```php\n(.*?)^```/ms', (string) file_get_contents($root . '/' . $document), $matches);
+
+            foreach ($matches[1] as $block) {
+                ++$blocks;
+                $code = str_starts_with(ltrim($block), '<?php') ? $block : "<?php\n" . $block;
+
+                foreach ($callsIn($code, $deprecatedMethodNames()) as $call) {
+                    $calls[] = "{$document}: {$call}";
+                }
+            }
+        }
+
+        expect($documents)->toContain('docs/ARCHITECTURE.md', 'docs/integrations/symfony.md', 'docs/integrations/laravel.md')
+            // 107 blocks when this was written
+            ->and($blocks)->toBeGreaterThan(50)
+            ->and($calls)->toBe([]);
+    });
+
     it('finds a call when there is one', function () use ($callsIn): void {
         $methods = ['getTotalLegs', 'invalidSchedule'];
 
@@ -353,6 +393,78 @@ describe('SchedulingContext::getTotalLegs()', function (): void {
     })->with(['swiss', 'single-elimination', 'double-elimination']);
 });
 
+describe('the replacement the usage guide gives for a SchedulingException factory', function () use ($root): void {
+    // The guide says how to build what each factory built: the sentence as
+    // the issue and as the message, the context, the reason, and the
+    // round-robin requirements. An application that follows it must get an
+    // exception that reads the same everywhere, or the advice is wrong.
+    it('builds the exception the factory built', function (string $factory, string $argument, string $sentence, array $context, InvalidConfigurationReason $reason, string $documented) use ($root): void {
+        $built = DeprecatedCall::to(SchedulingException::class, $factory, $factory === 'invalidParticipantCount' ? (int) $argument : $argument);
+        $replacement = new InvalidConfigurationException(
+            $sentence,
+            $context,
+            $sentence,
+            reason: $reason,
+            requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
+        );
+
+        expect($built)->toBeInstanceOf(InvalidConfigurationException::class);
+        assert($built instanceof InvalidConfigurationException);
+
+        expect($replacement->getMessage())->toBe($built->getMessage())
+            ->and($replacement->getConfigurationIssue())->toBe($built->getConfigurationIssue())
+            ->and($replacement->getContext())->toBe($built->getContext())
+            ->and($replacement->getReason())->toBe($built->getReason())
+            ->and($replacement->getRequirements())->toBe($built->getRequirements())
+            ->and($replacement->getCode())->toBe($built->getCode())
+            ->and($replacement->getDiagnosticReport())->toBe($built->getDiagnosticReport());
+
+        // The guide states the sentence and the reason of each factory
+        // (line breaks of the prose folded, so that a rewrap changes nothing)
+        $guide = (string) preg_replace('/\s+/', ' ', (string) file_get_contents($root . '/docs/USAGE.md'));
+
+        expect($guide)->toContain($documented)
+            ->and($guide)->toContain('the reason `' . $reason->name . '`');
+    })->with([
+        'invalidParticipantCount()' => [
+            'invalidParticipantCount',
+            '1',
+            'Invalid participant count: 1. Must be at least 2.',
+            ['participant_count' => 1, 'minimum_required' => 2],
+            InvalidConfigurationReason::TooFewParticipants,
+            '`"Invalid participant count: {$count}. Must be at least 2."`',
+        ],
+        'constraintViolation()' => [
+            'constraintViolation',
+            'no repeats',
+            'Constraint violation: no repeats',
+            ['constraint' => 'no repeats'],
+            InvalidConfigurationReason::ConstraintViolation,
+            '`"Constraint violation: {$constraint}"`',
+        ],
+        'invalidSchedule()' => [
+            'invalidSchedule',
+            'a round is short',
+            'Invalid schedule: a round is short',
+            ['reason' => 'a round is short'],
+            InvalidConfigurationReason::InvalidSchedule,
+            '`"Invalid schedule: {$reason}"`',
+        ],
+    ]);
+
+    it('differs from the factory in the two ways the guide names when the message and the requirements are left out', function (): void {
+        $short = new InvalidConfigurationException(
+            'Invalid participant count: 1. Must be at least 2.',
+            ['participant_count' => 1, 'minimum_required' => 2],
+            reason: InvalidConfigurationReason::TooFewParticipants
+        );
+
+        expect($short->getMessage())->toBe('Invalid scheduler configuration: Invalid participant count: 1. Must be at least 2.')
+            ->and($short->getRequirements())->toBe([])
+            ->and($short->getDiagnosticReport())->not->toContain('REQUIREMENTS');
+    });
+});
+
 describe('DeprecatedCall', function (): void {
     it('returns what the deprecated method returns and takes the notice of that call only', function (): void {
         $seen = [];
@@ -376,6 +488,63 @@ describe('DeprecatedCall', function (): void {
         // seen by whoever was listening before it.
         expect($exception)->toBeInstanceOf(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class)
             ->and($seen)->toBe(['another deprecation of the same test']);
+    });
+
+    // PHP gives an error the newest handler does not listen to to its own
+    // built-in handler, never to the handler before it. A helper that only
+    // listened for deprecations would therefore hide a warning raised inside
+    // the deprecated method from PHPUnit, in a suite that fails on a warning.
+    it('passes on whatever else the deprecated method raises while it runs', function (int $level, string $message): void {
+        $seen = [];
+        set_error_handler(
+            static function (int $seenLevel, string $seenMessage) use (&$seen): bool {
+                $seen[] = [$seenLevel, $seenMessage];
+
+                return true;
+            }
+        );
+
+        try {
+            $result = DeprecatedCall::to(new DeprecatedCallProbe(), 'raising', $level, $message);
+        } finally {
+            restore_error_handler();
+        }
+
+        // The notice of the call itself is not among them: the helper took it
+        expect($result)->toBe('returned')
+            ->and($seen)->toBe([[$level, $message]]);
+    })->with([
+        'a warning' => [E_USER_WARNING, 'a warning from inside the deprecated method'],
+        'a notice' => [E_USER_NOTICE, 'a notice from inside the deprecated method'],
+        'a deprecation of something else' => [E_USER_DEPRECATED, 'Method Other::thing() is deprecated since 0.1.0'],
+        'a deprecation that only mentions the method' => [E_USER_DEPRECATED, 'see Method ' . DeprecatedCallProbe::class . '::raising() is deprecated since 0.2.2'],
+    ]);
+
+    it('gives the handler back when the deprecated method throws', function (): void {
+        $seen = [];
+        $handler = static function (int $level, string $message) use (&$seen): bool {
+            $seen[] = $message;
+
+            return true;
+        };
+        set_error_handler($handler);
+
+        try {
+            expect(fn(): mixed => DeprecatedCall::to(new DeprecatedCallProbe(), 'throwing'))
+                ->toThrow(RuntimeException::class, 'thrown by the deprecated method');
+
+            trigger_error('raised after the method threw', E_USER_WARNING);
+        } finally {
+            $restored = set_error_handler(null);
+            restore_error_handler();
+            restore_error_handler();
+        }
+
+        // The handler in place after the call is the one this test set, and
+        // not the helper's: the helper would have handed the warning to this
+        // one as well, so the count alone would not tell them apart.
+        expect($seen)->toBe(['raised after the method threw'])
+            ->and($restored)->toBe($handler);
     });
 
     it('refuses a method that is not deprecated', function (): void {
