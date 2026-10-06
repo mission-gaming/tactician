@@ -5,6 +5,8 @@ declare(strict_types=1);
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
+use Random\Engine\Mt19937;
+use Random\Randomizer;
 
 /**
  * A leg written as ids, turned into the rounds a role assignment receives.
@@ -225,6 +227,73 @@ describe('BalancedRoleAssignment', function (): void {
         expect($differences['c'])->toBe(0);
         expect(abs($differences['d']))->toBe(1);
         expect(abs($differences['e']))->toBe(1);
+    });
+
+    // "Whatever the pairings in them are": legs no generator would produce.
+    // Pairings repeat, rounds are ragged or empty, bye seatings sit anywhere,
+    // and participants play different numbers of events. The ids include
+    // numeric strings that PHP would merge or reorder as array keys if the
+    // class were careless with them.
+    it('balances any leg at all, changes nothing but roles, and leaves its own answer alone', function (): void {
+        $randomizer = new Randomizer(new Mt19937(46));
+        $ids = ['a', 'b', 'c', 'd', 'e', 'f', '1', '01', '1.0', '10', '-1', ' 1'];
+        $assignment = new BalancedRoleAssignment();
+        $faults = [];
+
+        for ($case = 0; $case < 400; ++$case) {
+            $field = array_slice($ids, 0, $randomizer->getInt(2, count($ids)));
+            $proposed = [];
+            for ($round = $randomizer->getInt(0, 9); $round > 0; --$round) {
+                $seatings = [];
+                for ($seating = $randomizer->getInt(0, 5); $seating > 0; --$seating) {
+                    [$first, $second] = $randomizer->pickArrayKeys($field, 2);
+                    $pair = [$field[$first], $field[$second]];
+                    $roll = $randomizer->getInt(0, 9);
+                    $seatings[] = match (true) {
+                        $roll === 0 => [$pair[0], ''],
+                        $roll === 1 => ['', $pair[1]],
+                        $roll < 6 => $pair,
+                        default => [$pair[1], $pair[0]],
+                    };
+                }
+                $proposed[] = $seatings;
+            }
+
+            $rounds = seatedRounds($proposed);
+            $answer = $assignment->assignRoles($rounds);
+            $assigned = seatedIds($answer);
+
+            if (array_keys($assigned) !== array_keys($proposed)) {
+                $faults[] = "case {$case}: the rounds changed";
+
+                continue;
+            }
+            foreach ($proposed as $round => $seatings) {
+                if (array_keys($assigned[$round]) !== array_keys($seatings)) {
+                    $faults[] = "case {$case}: the seatings of a round changed";
+
+                    continue;
+                }
+                foreach ($seatings as $position => $seating) {
+                    if (!in_array($assigned[$round][$position], [$seating, [$seating[1], $seating[0]]], true)) {
+                        $faults[] = "case {$case}: a seating is neither as given nor reversed";
+                    }
+                }
+            }
+
+            // At most 1 apart is exactly 0 apart for an even number of events
+            foreach (seatedDifferences($assigned) as $id => $difference) {
+                if (abs($difference) > 1) {
+                    $faults[] = "case {$case}: {$id} is {$difference} apart";
+                }
+            }
+
+            if ($assignment->assignRoles($answer) !== $answer) {
+                $faults[] = "case {$case}: a balanced answer was changed again";
+            }
+        }
+
+        expect($faults)->toBe([]);
     });
 
     it('gives the same answer for the same rounds', function (): void {
