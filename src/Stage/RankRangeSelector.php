@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Stage;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Override;
 
 /**
@@ -41,7 +42,8 @@ final readonly class RankRangeSelector implements ProgressionSelector
         if ($from < 1 || $to < $from) {
             throw new InvalidConfigurationException(
                 'Rank range must satisfy 1 <= from <= to',
-                ['from' => $from, 'to' => $to]
+                ['from' => $from, 'to' => $to],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
     }
@@ -91,7 +93,8 @@ final readonly class RankRangeSelector implements ProgressionSelector
         if (!in_array($mode, [self::MODE_OVERALL, self::MODE_PER_GROUP], true)) {
             throw new InvalidConfigurationException(
                 'Unknown rank range mode',
-                ['mode' => $mode, 'known' => [self::MODE_OVERALL, self::MODE_PER_GROUP]]
+                ['mode' => $mode, 'known' => [self::MODE_OVERALL, self::MODE_PER_GROUP]],
+                reason: InvalidConfigurationReason::UnknownIdentifier
             );
         }
 
@@ -100,7 +103,8 @@ final readonly class RankRangeSelector implements ProgressionSelector
         if (!is_int($from) || !is_int($to)) {
             throw new InvalidConfigurationException(
                 'Rank range bounds must be integers',
-                ['from' => $from, 'to' => $to]
+                ['from' => $from, 'to' => $to],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -125,7 +129,8 @@ final readonly class RankRangeSelector implements ProgressionSelector
         if (!$outcome->hasPools()) {
             throw new InvalidConfigurationException(
                 'Per-group rank selection requires a pooled outcome',
-                ['mode' => $this->mode]
+                ['mode' => $this->mode],
+                reason: InvalidConfigurationReason::IncompatibleOutcome
             );
         }
 
@@ -138,7 +143,8 @@ final readonly class RankRangeSelector implements ProgressionSelector
                 if (!isset($entries[$rank - 1])) {
                     throw new InvalidConfigurationException(
                         "Pool {$label} has no rank {$rank}",
-                        ['pool' => $label, 'rank' => $rank, 'pool_size' => count($entries)]
+                        ['pool' => $label, 'rank' => $rank, 'pool_size' => count($entries)],
+                        reason: InvalidConfigurationReason::RankUnavailable
                     );
                 }
                 $selected[] = $entries[$rank - 1]->getParticipant();
@@ -166,7 +172,8 @@ final readonly class RankRangeSelector implements ProgressionSelector
         if (count($entries) < $this->to) {
             throw new InvalidConfigurationException(
                 "Rank range extends past {$description}",
-                ['to' => $this->to, 'available' => count($entries)]
+                ['to' => $this->to, 'available' => count($entries)],
+                reason: InvalidConfigurationReason::RankUnavailable
             );
         }
 

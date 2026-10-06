@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
@@ -43,7 +44,9 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         if ($legs < 1) {
             throw new InvalidConfigurationException(
                 'Legs must be a positive integer',
-                ['legs' => $legs, 'minimum_required' => 1]
+                ['legs' => $legs, 'minimum_required' => 1],
+                reason: InvalidConfigurationReason::InvalidLegCount,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 
@@ -64,7 +67,9 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         if (!is_int($legs)) {
             throw new InvalidConfigurationException(
                 'Legs must be an integer',
-                ['legs' => $legs]
+                ['legs' => $legs],
+                reason: InvalidConfigurationReason::InvalidLegCount,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 
@@ -72,7 +77,9 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         if (!is_string($strategyId) || !isset(self::STRATEGY_IDENTIFIERS[$strategyId])) {
             throw new InvalidConfigurationException(
                 'Unknown leg strategy identifier',
-                ['strategy' => $strategyId, 'known' => array_keys(self::STRATEGY_IDENTIFIERS)]
+                ['strategy' => $strategyId, 'known' => array_keys(self::STRATEGY_IDENTIFIERS)],
+                reason: InvalidConfigurationReason::UnknownIdentifier,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 
@@ -80,7 +87,9 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         if (!is_bool($backtracking)) {
             throw new InvalidConfigurationException(
                 'backtracking must be a boolean',
-                ['backtracking' => $backtracking]
+                ['backtracking' => $backtracking],
+                reason: InvalidConfigurationReason::WrongValueType,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 
@@ -107,7 +116,9 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         if ($identifier === false) {
             throw new InvalidConfigurationException(
                 'Custom leg strategies have no stable configuration identifier and cannot be serialized',
-                ['strategy' => $this->strategy::class]
+                ['strategy' => $this->strategy::class],
+                reason: InvalidConfigurationReason::NotSerializable,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 

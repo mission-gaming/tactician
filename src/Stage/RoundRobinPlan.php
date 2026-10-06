@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Stage;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Override;
 
 /**
@@ -45,14 +46,18 @@ final readonly class RoundRobinPlan implements PairwisePlan
         if ($legs < 1) {
             throw new InvalidConfigurationException(
                 'Legs must be a positive integer',
-                ['legs' => $legs, 'minimum_required' => 1]
+                ['legs' => $legs, 'minimum_required' => 1],
+                reason: InvalidConfigurationReason::InvalidLegCount,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Round-robin scheduling requires at least 2 participants',
-                ['participant_count' => count($participants), 'minimum_required' => 2]
+                ['participant_count' => count($participants), 'minimum_required' => 2],
+                reason: InvalidConfigurationReason::TooFewParticipants,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 

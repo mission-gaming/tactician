@@ -13,6 +13,7 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
@@ -131,7 +132,9 @@ class RoundRobinScheduler implements SchedulerInterface
         if (!$options instanceof RoundRobinOptions) {
             throw new InvalidConfigurationException(
                 'Round-robin scheduling requires RoundRobinOptions',
-                ['options' => $options::class]
+                ['options' => $options::class],
+                reason: InvalidConfigurationReason::UnsupportedOptions,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 
@@ -164,7 +167,9 @@ class RoundRobinScheduler implements SchedulerInterface
                     'strategy' => $strategy::class,
                     'unsatisfiable_reasons' => $contribution->unsatisfiableReasons,
                     'warnings' => $contribution->warnings,
-                ]
+                ],
+                reason: InvalidConfigurationReason::UnsatisfiableLegStrategy,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 
@@ -188,7 +193,9 @@ class RoundRobinScheduler implements SchedulerInterface
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Round-robin scheduling requires at least 2 participants',
-                ['participant_count' => count($participants), 'minimum_required' => 2]
+                ['participant_count' => count($participants), 'minimum_required' => 2],
+                reason: InvalidConfigurationReason::TooFewParticipants,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
 
@@ -197,7 +204,9 @@ class RoundRobinScheduler implements SchedulerInterface
         if (count($ids) !== count(array_unique($ids))) {
             throw new InvalidConfigurationException(
                 'All participants must have unique IDs',
-                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))]
+                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))],
+                reason: InvalidConfigurationReason::DuplicateParticipantIds,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
     }

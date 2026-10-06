@@ -329,6 +329,40 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Schedule could not be completed:\n", "- Constraint 'Derby Ban' violated", "Completion: 5/6 events\n"],
             [],
         ],
+        // The pin conflict names both events, and its report has no requirements block
+        'pin conflict event ids and report' => [
+            'docs/USAGE.md',
+            '} catch (PinConflictException $e) {',
+            [
+                "Unpin one of: e1, e2\n"
+                . "Reason: pin_conflict\n"
+                . "=== INVALID CONFIGURATION DIAGNOSTIC REPORT ===\n"
+                . "\n"
+                . "Issue: A participant is pinned twice at one position\n"
+                . "\n"
+                . "=== CONFIGURATION DETAILS ===\n"
+                . "• participant: team1\n"
+                . "• session: 0\n"
+                . "• slot: 3\n"
+                . "• event_ids: [\"e1\", \"e2\"]\n",
+            ],
+            ['REQUIREMENTS', '[2 items]'],
+        ],
+        'configuration error reason and report' => [
+            'docs/USAGE.md',
+            'echo match ($e->getReason()) {',
+            [
+                "Check the date, the timezone name and the durations.\n"
+                . "=== INVALID CONFIGURATION DIAGNOSTIC REPORT ===\n"
+                . "\n"
+                . "Issue: start or its timezone is not parseable\n"
+                . "\n"
+                . "=== CONFIGURATION DETAILS ===\n"
+                . "• start: 2026-08-01 19:00:00\n"
+                . "• timezone: Europe/Edinburg\n",
+            ],
+            ['REQUIREMENTS', 'See the report.'],
+        ],
         'one catch clause for the library' => [
             'docs/USAGE.md',
             '} catch (TacticianException $e) {',

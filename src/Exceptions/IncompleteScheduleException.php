@@ -240,7 +240,7 @@ class IncompleteScheduleException extends SchedulingException
 
             switch ($constraintName) {
                 case 'ConsecutiveRoleConstraint':
-                    $suggestions[] = '• Try reducing the consecutive role constraint limit';
+                    $suggestions[] = '• Try raising the consecutive role constraint limit';
                     $suggestions[] = '• Consider increasing the number of participants';
                     $suggestions[] = $hasLegs
                         ? '• Add more legs to provide more scheduling flexibility'

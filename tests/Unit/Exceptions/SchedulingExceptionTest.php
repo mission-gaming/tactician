@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
 
 describe('SchedulingException', function (): void {
@@ -237,5 +238,42 @@ describe('SchedulingException', function (): void {
         expect($exception)->toBeInstanceOf(SchedulingException::class);
         expect($exception)->toBeInstanceOf(\Exception::class);
         expect($exception)->toBeInstanceOf(\Throwable::class);
+    });
+
+    // Tests that each factory states why the configuration was rejected,
+    // and that its report is the one it has always written
+    it('gives each factory exception a reason and leaves its report as it was', function (): void {
+        // Given: One exception from each factory
+        $count = SchedulingException::invalidParticipantCount(1);
+        $constraint = SchedulingException::constraintViolation('test constraint');
+        $schedule = SchedulingException::invalidSchedule('test reason');
+
+        // Then: Each has the reason of its factory
+        assert($count instanceof InvalidConfigurationException);
+        assert($constraint instanceof InvalidConfigurationException);
+        assert($schedule instanceof InvalidConfigurationException);
+        expect($count->getReason())->toBe(InvalidConfigurationReason::TooFewParticipants);
+        expect($constraint->getReason())->toBe(InvalidConfigurationReason::ConstraintViolation);
+        expect($schedule->getReason())->toBe(InvalidConfigurationReason::InvalidSchedule);
+
+        // And: The report is unchanged, requirements included
+        expect($count->getDiagnosticReport())->toBe(
+            "=== INVALID CONFIGURATION DIAGNOSTIC REPORT ===\n"
+            . "\n"
+            . "Issue: Invalid participant count: 1. Must be at least 2.\n"
+            . "\n"
+            . "=== CONFIGURATION DETAILS ===\n"
+            . "• participant_count: 1\n"
+            . "• minimum_required: 2\n"
+            . "\n"
+            . "=== REQUIREMENTS ===\n"
+            . "• Participants array must contain at least 2 participants\n"
+            . "• Legs must be a positive integer (≥ 1)\n"
+            . "• All participants must have unique IDs\n"
+            . "• Constraint set must be valid\n"
+            . '• Scheduler must support the requested configuration'
+        );
+        expect($constraint->getRequirements())->toBe(InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS);
+        expect($schedule->getRequirements())->toBe(InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS);
     });
 });

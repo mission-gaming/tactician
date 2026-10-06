@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Quality;
 
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * Composes quality metrics into one weighted score.
@@ -30,7 +31,7 @@ final readonly class ScheduleScorer
     public function __construct(array $weightedMetrics)
     {
         if ($weightedMetrics === []) {
-            throw new InvalidConfigurationException('A scorer needs at least one metric', []);
+            throw new InvalidConfigurationException('A scorer needs at least one metric', [], reason: InvalidConfigurationReason::EmptyList);
         }
 
         $names = [];
@@ -38,13 +39,15 @@ final readonly class ScheduleScorer
             if (!is_array($entry)) {
                 throw new InvalidConfigurationException(
                     'Every scorer entry must be an array with metric and weight keys',
-                    ['index' => $index, 'given' => get_debug_type($entry)]
+                    ['index' => $index, 'given' => get_debug_type($entry)],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
             if (!($entry['metric'] ?? null) instanceof QualityMetric) {
                 throw new InvalidConfigurationException(
                     'Every scorer entry needs a metric implementing QualityMetric',
-                    ['index' => $index]
+                    ['index' => $index],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
 
@@ -54,7 +57,8 @@ final readonly class ScheduleScorer
             if (isset($names[$name])) {
                 throw new InvalidConfigurationException(
                     'Metric names must be unique within a scorer',
-                    ['index' => $index, 'metric' => $name]
+                    ['index' => $index, 'metric' => $name],
+                    reason: InvalidConfigurationReason::DuplicateName
                 );
             }
             $names[$name] = true;
@@ -62,13 +66,15 @@ final readonly class ScheduleScorer
             if (!is_float($weight) && !is_int($weight)) {
                 throw new InvalidConfigurationException(
                     'Every scorer entry needs a numeric weight',
-                    ['index' => $index, 'metric' => $entry['metric']->getName()]
+                    ['index' => $index, 'metric' => $entry['metric']->getName()],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
             if ($weight <= 0) {
                 throw new InvalidConfigurationException(
                     'Metric weights must be positive',
-                    ['index' => $index, 'metric' => $entry['metric']->getName(), 'weight' => $weight]
+                    ['index' => $index, 'metric' => $entry['metric']->getName(), 'weight' => $weight],
+                    reason: InvalidConfigurationReason::ValueOutOfRange
                 );
             }
             // NAN fails no comparison and INF is positive, so both pass the
