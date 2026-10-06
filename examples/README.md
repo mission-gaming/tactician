@@ -110,6 +110,10 @@ wrapped in `Measured` with the reason. Example 12 does this for its timings.
 3. `tests/Feature/GoldenOutputTest.php` pins the results as readable text in
    `tests/Fixtures/golden/examples/`, in the form the other golden fixtures
    use. A `Measured` value is pinned as its unit and reason, not its value.
+4. `tests/Feature/IntegrationGuidesTest.php` compares the excerpts that the
+   guides in `docs/integrations/` quote with the scripts they come from. When
+   you edit lines of an example that a guide quotes, copy them into the guide
+   again.
 
 The same test fails when a script is missing from the table above or from
 `index.php`, or when either lists a script that does not exist.
