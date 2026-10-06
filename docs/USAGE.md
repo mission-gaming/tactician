@@ -2389,7 +2389,7 @@ identifier for logs and stored data):
 | `IncompatibleOutcome` | `incompatible_outcome` | A progression selector was given an outcome of a shape it cannot read |
 | `RankUnavailable` | `rank_unavailable` | A progression selector asked for a rank the standings do not have |
 | `RoundOutOfSequence` | `round_out_of_sequence` | A round was recorded out of play order: its number is not above the last recorded one |
-| `EventNotInRound` | `event_not_in_round` | An event, or the event of a result, does not belong to the round it was recorded with |
+| `EventNotInRound` | `event_not_in_round` | An event, or the event of a result, does not belong to the round it was recorded with (one with no round number at all is `EventWithoutRoundNumber`) |
 | `NoRoundRecorded` | `no_round_recorded` | Results were added or replaced in a stage with no recorded round |
 | `ResultNotRecorded` | `result_not_recorded` | A result was to be replaced for an event that has no recorded result |
 | `RoundSuperseded` | `round_superseded` | A result was to be replaced in a round that a later round was paired from |

@@ -87,7 +87,8 @@ final readonly class StageState
      * @throws InvalidConfigurationException When the pairing does not follow the recorded rounds
      *                                       (reason `RoundOutOfSequence`), or an event or result
      *                                       belongs to a different round or is not in the pairing
-     *                                       (`EventNotInRound`)
+     *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when the
+     *                                       event carries no round number at all)
      */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self
     {
@@ -106,7 +107,9 @@ final readonly class StageState
                 throw new InvalidConfigurationException(
                     'Pairing contains an event from a different round',
                     ['pairing_round' => $pairing->getRoundNumber(), 'event_round' => $eventRound],
-                    reason: InvalidConfigurationReason::EventNotInRound
+                    reason: $eventRound === null
+                        ? InvalidConfigurationReason::EventWithoutRoundNumber
+                        : InvalidConfigurationReason::EventNotInRound
                 );
             }
         }
@@ -141,7 +144,9 @@ final readonly class StageState
                 throw new InvalidConfigurationException(
                     'Result belongs to a different round than the pairing being recorded',
                     ['pairing_round' => $pairing->getRoundNumber(), 'result_round' => $resultRound],
-                    reason: InvalidConfigurationReason::EventNotInRound
+                    reason: $resultRound === null
+                        ? InvalidConfigurationReason::EventWithoutRoundNumber
+                        : InvalidConfigurationReason::EventNotInRound
                 );
             }
 
@@ -178,7 +183,9 @@ final readonly class StageState
      * @param array<Result> $results
      * @throws InvalidConfigurationException When no round is recorded (reason `NoRoundRecorded`) or
      *                                       a result belongs to a different round or to an event
-     *                                       the last round does not hold (`EventNotInRound`)
+     *                                       the last round does not hold (`EventNotInRound`;
+     *                                       `EventWithoutRoundNumber` when its event carries no
+     *                                       round number at all)
      */
     public function withAdditionalResults(array $results): self
     {

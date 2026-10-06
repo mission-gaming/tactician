@@ -172,9 +172,12 @@ describe('the reason of a configuration error', function (): void {
         expect($without)->toBe([], "These sites build an InvalidConfigurationException without `reason:`:\n" . implode("\n", $without));
 
         // The reader of the source does find the sites of StageState, which
-        // were the last to gain a reason.
-        $files = array_unique(array_column($sites, 'file'));
-        expect($files)->toContain('src/Stage/StageState.php');
+        // were the last to gain a reason: as many as the file has, counted
+        // another way, so that the rule cannot hold there for want of sites.
+        $inStageState = array_filter($sites, fn(array $site): bool => $site['file'] === 'src/Stage/StageState.php');
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/src/Stage/StageState.php');
+        expect(count($inStageState))->toBe(substr_count($source, 'new InvalidConfigurationException('))
+            ->and(count($inStageState))->toBeGreaterThan(0);
     });
 
     it('names only cases that exist', function (): void {
@@ -835,11 +838,27 @@ function stageStateMistakes(): array
             'Pairing contains an event from a different round',
             ['pairing_round' => 1, 'event_round' => 2],
         ],
+        // An event with no round number at all is the mistake the engines
+        // and the timeline assigner report as EventWithoutRoundNumber. It is
+        // the same mistake here, with the message this error always had.
         'a pairing that holds an event with no round' => [
             fn() => $start()->withRoundPlayed(new RoundPairing(1, null, [new Event([$alice, $bob])]), []),
-            InvalidConfigurationReason::EventNotInRound,
+            InvalidConfigurationReason::EventWithoutRoundNumber,
             'Pairing contains an event from a different round',
             ['pairing_round' => 1, 'event_round' => null],
+        ],
+        'a result whose event has no round, recorded with round 1' => [
+            fn() => $start()->withRoundPlayed($roundOne, [new Result(new Event([$alice, $bob]), $alice)]),
+            InvalidConfigurationReason::EventWithoutRoundNumber,
+            'Result belongs to a different round than the pairing being recorded',
+            ['pairing_round' => 1, 'result_round' => null],
+        ],
+        'a further result whose event has no round' => [
+            fn() => $start()->withRoundPlayed($roundOne, [])
+                ->withAdditionalResults([new Result(new Event([$alice, $bob]), $alice)]),
+            InvalidConfigurationReason::EventWithoutRoundNumber,
+            'Result belongs to a different round than the pairing being recorded',
+            ['pairing_round' => 1, 'result_round' => null],
         ],
         'a result of round 2 recorded with round 1' => [
             fn() => $start()->withRoundPlayed($roundOne, [new Result($second, $bob)]),

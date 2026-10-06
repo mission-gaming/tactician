@@ -137,7 +137,8 @@ enum InvalidConfigurationReason: string
     /**
      * An event, or the event of a result, does not belong to the round it
      * was recorded with: it carries another round number, or the round's
-     * pairing does not hold it.
+     * pairing does not hold it. An event that carries no round number at
+     * all is {@see self::EventWithoutRoundNumber}.
      */
     case EventNotInRound = 'event_not_in_round';
 

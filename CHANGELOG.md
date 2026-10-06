@@ -303,9 +303,10 @@ heading **Output change (fix)**.
   `EventNotInRound`, `NoRoundRecorded`, `ResultNotRecorded`,
   `RoundSuperseded`, `EmptyEngineFingerprint` and
   `EngineFingerprintMismatch` for recording a round or its results,
-  replacing a result and the engine fingerprint). `getReason()` returns null
-  only for an exception that code outside the library builds without a
-  reason. A `match` over the reason needs a `default` arm, because a release
+  replacing a result and the engine fingerprint; an event with no round
+  number at all is `EventWithoutRoundNumber` there too). `getReason()`
+  returns null only for an exception that code outside the library builds
+  without a reason. A `match` over the reason needs a `default` arm, because a release
   may add a case.
 - `Exceptions\PinConflictException`, thrown by `RepackRequest` when one
   participant is pinned in two events at the same session and slot.
