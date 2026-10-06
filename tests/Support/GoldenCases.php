@@ -28,6 +28,8 @@ use MissionGaming\Tactician\Repack\PinnedEvent;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\PotDrawOptions;
@@ -74,6 +76,9 @@ final class GoldenCases
 
     private const array ROUND_ROBIN_LEGS = [1, 2, 3, 4];
 
+    /** Leg strategy and seed of each round-robin file generated with the balanced role assignment. */
+    private const array BALANCED_ROUND_ROBINS = [['mirrored', null], ['mirrored', 42], ['repeated', null]];
+
     private const array ELIMINATION_SIZES = [5, 8, 12];
 
     /** Entrants, pots and opponents per pot of the pot draw's worked cases. */
@@ -105,6 +110,15 @@ final class GoldenCases
         }
 
         $cases['round-robin/constrained.txt'] = self::constrainedRoundRobin(...);
+
+        // The opt-in balanced role assignment. The cases above name no role
+        // assignment, so they pin the default.
+        foreach (self::BALANCED_ROUND_ROBINS as [$strategy, $seed]) {
+            $cases['round-robin/balanced-' . $strategy . '-' . self::seedSlug($seed) . '.txt']
+                = static fn(): string => self::roundRobin($strategy, $seed, new BalancedRoleAssignment());
+        }
+        $cases['round-robin/balanced-constrained.txt'] = self::balancedConstrainedRoundRobin(...);
+
         $cases['swiss.txt'] = self::swiss(...);
         $cases['pot-draw.txt'] = self::potDraw(...);
         $cases['single-elimination.txt'] = self::singleElimination(...);
@@ -149,27 +163,28 @@ final class GoldenCases
     }
 
     /**
-     * One strategy and seed across every field size and leg count.
+     * One strategy and seed across every field size and leg count, with
+     * the default role assignment unless one is given.
      *
      * @throws IncompleteScheduleException
      * @throws InvalidConfigurationException
      * @throws JsonException
      */
-    private static function roundRobin(string $strategy, ?int $seed): string
+    private static function roundRobin(string $strategy, ?int $seed, ?RoleAssignmentInterface $roleAssignment = null): string
     {
         $sections = [];
         foreach (self::ROUND_ROBIN_SIZES as $size) {
             foreach (self::ROUND_ROBIN_LEGS as $legs) {
                 $schedule = (new RoundRobinScheduler(null, self::randomizer($seed)))->schedule(
                     self::field($size),
-                    new RoundRobinOptions($legs, self::legStrategy($strategy))
+                    new RoundRobinOptions($legs, self::legStrategy($strategy), false, $roleAssignment)
                 );
                 $sections["n={$size} legs={$legs}"] = GoldenText::schedule($schedule);
             }
         }
 
         return GoldenText::document([
-            "Round robin, {$strategy} legs, " . self::seedLabel($seed) . '.',
+            "Round robin, {$strategy} legs, " . ($roleAssignment === null ? '' : 'balanced role assignment, ') . self::seedLabel($seed) . '.',
             'Participants are "1".."n" in list order. One section per field size and',
             'leg count; `meta:` is the schedule metadata; `R<round>: a-b c-d` lists',
             'the round\'s events in generated order, first-named participant first;',
@@ -226,20 +241,70 @@ final class GoldenCases
     }
 
     /**
+     * The same two generation paths with the balanced role assignment: a
+     * rotated retry, and first legs that only the backtracking search finds
+     * and whose roles the search leaves out of balance. Each case asserts
+     * its own premise.
+     *
+     * @throws IncompleteScheduleException
+     * @throws InvalidConfigurationException
+     * @throws JsonException
+     */
+    private static function balancedConstrainedRoundRobin(): string
+    {
+        $sections = [];
+
+        $seeded = self::field(6, true);
+        $options = new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment());
+        $protected = ConstraintSet::create()->add(new SeedProtectionConstraint(2, 0.25))->build();
+        $retried = GoldenText::schedule((new RoundRobinScheduler($protected))->schedule($seeded, $options));
+        if ($retried === GoldenText::schedule((new RoundRobinScheduler())->schedule($seeded, $options))) {
+            throw new LogicException('The rotation-retry case no longer needs a retry: its first ordering satisfies the constraint.');
+        }
+        $sections['rotation retry: n=6 legs=2, seed protection (top 2, first 25% of rounds)'] = $retried;
+
+        $placements = [
+            'backtracking: n=4 legs=1, participant 1 meets 3, 2, 4 in rounds 1, 2, 3' => [4, ['1|3' => 1, '1|2' => 2, '1|4' => 3]],
+            'backtracking: n=5 legs=1, participant 1 meets 2 in round 5 and 3 in round 4' => [5, ['1|2' => 5, '1|3' => 4]],
+        ];
+        foreach ($placements as $title => [$size, $roundByPair]) {
+            $constraints = self::placementConstraints($roundByPair);
+            $balanced = self::backtracked($constraints, $size, new BalancedRoleAssignment());
+            if ($balanced === self::backtracked($constraints, $size)) {
+                throw new LogicException('The balanced backtracking case pins nothing: the roles the search chose are already balanced.');
+            }
+            $sections[$title] = $balanced;
+        }
+
+        return GoldenText::document([
+            'Round robin under constraints, balanced role assignment, unseeded.',
+            'Participants are "1".."n" in list order, seeded by position. The first',
+            'section succeeds only on a rotated retry of the participant order; the',
+            'backtracking sections succeed only with RoundRobinOptions(backtracking: true),',
+            'and the roles the search chose for them are not balanced.',
+            '`meta:` is the schedule metadata.',
+            ...self::EXPLANATION,
+        ], $sections);
+    }
+
+    /**
      * @return list<string>
      *
      * @throws IncompleteScheduleException
      * @throws InvalidConfigurationException
      * @throws JsonException
      */
-    private static function backtracked(ConstraintSet $constraints, int $size): array
-    {
+    private static function backtracked(
+        ConstraintSet $constraints,
+        int $size,
+        ?RoleAssignmentInterface $roleAssignment = null
+    ): array {
         try {
             (new RoundRobinScheduler($constraints))->schedule(self::field($size, true));
         } catch (IncompleteScheduleException) {
             return GoldenText::schedule((new RoundRobinScheduler($constraints))->schedule(
                 self::field($size, true),
-                new RoundRobinOptions(backtracking: true)
+                new RoundRobinOptions(backtracking: true, roleAssignment: $roleAssignment)
             ));
         }
 

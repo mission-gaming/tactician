@@ -10,6 +10,9 @@ use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
@@ -29,6 +32,18 @@ function completenessParticipants(int $count): array
     }
 
     return $participants;
+}
+
+/**
+ * @throws UnexpectedValueException When the name is not one of the two built-in role assignments
+ */
+function completenessRoleAssignment(string $name): RoleAssignmentInterface
+{
+    return match ($name) {
+        'round_parity' => new RoundParityRoleAssignment(),
+        'balanced' => new BalancedRoleAssignment(),
+        default => throw new UnexpectedValueException($name),
+    };
 }
 
 /**
@@ -72,10 +87,13 @@ function assertCompleteRoundRobin(Schedule $schedule, int $participantCount, int
 
 // Regression: odd participant counts historically dropped the bye round in
 // legs after the first, producing incomplete multi-leg schedules.
-it('generates complete schedules for every participant count, leg count, and strategy', function (
+//
+// A role assignment decides roles only, so completeness holds under each.
+it('generates complete schedules for every participant count, leg count, strategy, and role assignment', function (
     int $participantCount,
     int $legs,
-    string $strategyName
+    string $strategyName,
+    string $roleAssignmentName
 ): void {
     $strategy = match ($strategyName) {
         'mirrored' => new MirroredLegStrategy(),
@@ -85,37 +103,50 @@ it('generates complete schedules for every participant count, leg count, and str
 
     $schedule = (new RoundRobinScheduler())->schedule(
         completenessParticipants($participantCount),
-        new RoundRobinOptions(legs: $legs, strategy: $strategy)
+        new RoundRobinOptions(
+            legs: $legs,
+            strategy: $strategy,
+            roleAssignment: completenessRoleAssignment($roleAssignmentName)
+        )
     );
 
     assertCompleteRoundRobin($schedule, $participantCount, $legs);
 })
     ->with([[3], [4], [5], [6], [7]])
     ->with([[1], [2], [3]])
-    ->with([['mirrored'], ['repeated']]);
+    ->with([['mirrored'], ['repeated']])
+    ->with([['round_parity'], ['balanced']]);
 
 // Regression: shuffling with a randomizer historically corrupted the bye
 // sentinel for odd participant counts, producing duplicate pairings.
 it('generates complete randomized schedules for odd and even participant counts', function (
     int $participantCount,
     int $legs,
-    int $seed
+    int $seed,
+    string $roleAssignmentName
 ): void {
     $scheduler = new RoundRobinScheduler(null, new Randomizer(new Mt19937($seed)));
-    $schedule = $scheduler->schedule(completenessParticipants($participantCount), new RoundRobinOptions(legs: $legs));
+    $schedule = $scheduler->schedule(
+        completenessParticipants($participantCount),
+        new RoundRobinOptions(legs: $legs, roleAssignment: completenessRoleAssignment($roleAssignmentName))
+    );
 
     assertCompleteRoundRobin($schedule, $participantCount, $legs);
 })
     ->with([[5], [6]])
     ->with([[1], [2]])
-    ->with([[42], [1337]]);
+    ->with([[42], [1337]])
+    ->with([['round_parity'], ['balanced']]);
 
-it('generates complete schedules with the shuffled leg strategy', function (): void {
+it('generates complete schedules with the shuffled leg strategy', function (string $roleAssignmentName): void {
     $strategy = new ShuffledLegStrategy(new Randomizer(new Mt19937(42)));
-    $schedule = (new RoundRobinScheduler())->schedule(completenessParticipants(5), new RoundRobinOptions(legs: 2, strategy: $strategy));
+    $schedule = (new RoundRobinScheduler())->schedule(
+        completenessParticipants(5),
+        new RoundRobinOptions(legs: 2, strategy: $strategy, roleAssignment: completenessRoleAssignment($roleAssignmentName))
+    );
 
     assertCompleteRoundRobin($schedule, 5, 2);
-});
+})->with([['round_parity'], ['balanced']]);
 
 // Awkward-id sweeps. An id is any string and only ever a name: ids that are
 // equal as numbers ('01' and '1', '1e3' and '1000'), that contain the `|` or
