@@ -54,6 +54,8 @@ Added after the five phases and released in 0.2.0.
 - ✅ Schedule repair onto an irregular grid (`src/Repack/`): `ScheduleRepacker` assigns existing movable events to `(session, slot)` positions on a declarative `SessionGrid`, around pinned events that may not move, with no participant double-booked and each participant's events within a session back to back where possible
 - ✅ Infeasibility reported as data: `RepackOutcome` carries itemised violations instead of throwing — the one sanctioned exception to the loud-failure rule; `RepackOptions(throwOnViolations: true)` opts back into throwing
 
+- ✅ API additions in 0.2.2: a shape-only `SessionGrid` for callers with no instants, with `ordinalOf()` and `positionOf()` lookups; unbounded slot capacity (`capacityPerSlot: null`); a typed accessor on `RepackOutcome` per violation kind; `isBudgetExhausted()`; and `fingerprint()`, a versioned hash of the outcome that is the same on every PHP version and platform
+
 **Design (implemented): [docs/design/schedule-repack.md](design/schedule-repack.md)**
 
 ## Pot Draws ✅

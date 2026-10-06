@@ -124,6 +124,12 @@ describe('Example renderer', function (): void {
             ->toContain("== Repack ==\nAssignments:\n  (none)\nCompromises:\n  None: every event placed, nobody double-booked.\n");
     });
 
+    it('draws an assignment made on a shape-only grid with a note where the kickoff would be', function (): void {
+        $text = Example::renderText('T', 'S', ['Repack' => new RepackOutcome([new SlotAssignment('e1', 0, 2, null)], [], [])]);
+
+        expect($text)->toContain('e1')->toContain('(none: shape-only grid)');
+    });
+
     it('gives a standings row a dash for a tiebreaker only other rows carry', function (): void {
         $text = Example::renderText('T', 'S', ['Table' => new Standings([
             (new StandingEntry(new Participant('a', 'Alpha'), 1, 1, 0, 0, 3.0))->withTiebreakers(['wins' => 1.0]),
