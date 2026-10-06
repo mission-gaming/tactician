@@ -109,34 +109,78 @@ use Random\Randomizer;
  * member is first against the next member and second against the previous
  * one; against every other pot one of the two meetings has it first.
  *
+ * ## Mixing the rounds
+ *
+ * Built as above, a round sets whole pots against each other, the events
+ * inside the pots share a few rounds, and one pot is first against another
+ * for a whole round. None of that is part of the format, so the rounds are
+ * mixed before they are returned. No event is changed: only the round an
+ * event is in.
+ *
+ * Take two rounds X and Y. Each has every entrant exactly once and they
+ * share no pairing, because no pairing is in the schedule twice. Start at
+ * any entrant, follow its event in X to its opponent, that opponent's event
+ * in Y to the next entrant, and so on. Every entrant has exactly one event
+ * in X and one in Y, so the walk closes into a cycle that uses events of X
+ * and Y in turn, and the entrants fall into such cycles with none left
+ * over. The entrants of one cycle are exactly the entrants of its events
+ * from X, and exactly the entrants of its events from Y. So moving the
+ * cycle's X events to Y and its Y events to X leaves each of those
+ * entrants in X once and in Y once, and touches nobody else: both rounds
+ * still have every entrant exactly once.
+ *
+ * One exchange draws two different rounds and, for each of their cycles,
+ * a coin that decides whether the cycle trades. The scheduler makes
+ * 8 × (number of rounds) exchanges. The events themselves, and so the set
+ * of pairings and the role of each entrant in each event, are the same
+ * before and after. Everything proved above about opponents per pot,
+ * rematches and roles is a statement about that set, so it still holds.
+ * Two rounds whose events form one single cycle can only swap as wholes,
+ * which is why the smallest configurations (6 entrants in 3 pots of 2,
+ * say) come out with the shape they were built with.
+ *
+ * Last, the order of the rounds and the order of the events inside each
+ * round are shuffled.
+ *
  * ## The seed
  *
- * The seed chooses one member of this family of schedules: the order of the
- * members inside each pot (which decides who meets whom), the order of the
- * pots in the pot-level matchings, the matchings and shifts used, which
- * side is first, and the order of the rounds. The draw is not uniform over
- * every schedule the format allows. Between two given pots, or inside one,
- * every pairing is as likely as any other, because the members of each pot
- * are shuffled first. The shape of a round is the construction's and no
- * seed changes it: in a round the members of a pot all meet members of one
- * other pot, or of their own (with an odd pot size, three rounds mix the
- * two and hold every event inside a pot), and with an even k one of two
- * pots is in the first role in every event between them in a round.
+ * The seed chooses the order of the members inside each pot (which decides
+ * who meets whom), the order of the pots in the pot-level matchings, the
+ * matchings and shifts used, which side is first, which rounds trade which
+ * cycles, and the order of the rounds and of the events in them. Between
+ * two given pots, or inside one, every pairing is as likely as any other,
+ * because the members of each pot are shuffled first.
+ *
+ * The draw is not uniform over every schedule the format allows. The
+ * pairings between two pots are always cyclic shifts of one order of their
+ * members, and inside a pot they come from one 1-factorisation (or one
+ * cycle, for an odd pot size); the mixing changes which round an event is
+ * in and nothing else, and it stops after a fixed number of exchanges, so
+ * a round is now and then still made of whole pots.
  *
  * The same entrants, options and seed give the same schedule on every
  * call: each call builds its own `Random\Randomizer` on the
  * `Xoshiro256StarStar` engine from the seed and keeps no state between
- * calls.
+ * calls. Nothing in the draw depends on anything but the entrants' list
+ * positions and that randomizer.
  *
  * ## Cost
  *
  * Time and memory are proportional to the number of events,
- * entrants × pots × opponents per pot / 2, for generation and for the
- * validation that follows it.
+ * entrants × pots × opponents per pot / 2: for the construction, for the
+ * mixing (one exchange visits every entrant once, and there are
+ * 8 × rounds of them, so 16 visits per event) and for the validation that
+ * follows.
  */
 class PotDrawScheduler implements SchedulerInterface
 {
     use ValidatesScheduleCompleteness;
+
+    /**
+     * How many times, per round of the schedule, two rounds trade events
+     * when the rounds are mixed. Part of the output for a seed.
+     */
+    private const int EXCHANGES_PER_ROUND = 8;
 
     public function __construct()
     {
@@ -171,12 +215,13 @@ class PotDrawScheduler implements SchedulerInterface
             ? $this->drawEvenPots($plan->getPots(), $plan->getPotSize(), $plan->getOpponentsPerPot(), $randomizer)
             : $this->drawOddPots($plan->getPots(), $plan->getPotSize(), $randomizer);
 
+        $rounds = $this->mixRounds($rounds, count($entrants), $randomizer);
         $rounds = $randomizer->shuffleArray($rounds);
 
         $events = [];
         foreach (array_values($rounds) as $index => $pairs) {
             $round = new Round($index + 1);
-            foreach ($pairs as [$first, $second]) {
+            foreach ($randomizer->shuffleArray($pairs) as [$first, $second]) {
                 $events[] = new Event([$entrants[$first], $entrants[$second]], $round);
             }
         }
@@ -457,6 +502,112 @@ class PotDrawScheduler implements SchedulerInterface
         }
 
         return $rounds;
+    }
+
+    /**
+     * Mix the events across the rounds without changing any event (see
+     * "Mixing the rounds" in the class docblock): `EXCHANGES_PER_ROUND` ×
+     * the number of rounds times, two different rounds are drawn and trade
+     * events along the cycles their events form together.
+     *
+     * Each round has every entrant once and two rounds share no pairing,
+     * so following an entrant's event in one round, then its opponent's
+     * event in the other, and so on, closes a cycle of even length whose
+     * events come from the two rounds in turn. Each cycle either stays as
+     * it is or has its events change rounds, on the draw of a coin. The
+     * entrants of a cycle are in each round exactly once before and after,
+     * so both rounds still have every entrant once.
+     *
+     * With fewer than two rounds there is nothing to trade and the rounds
+     * are returned as they are.
+     *
+     * @param list<list<array{int, int}>> $rounds
+     * @param int $entrants How many entrants there are; every round has each of 0 .. `$entrants` − 1 once
+     * @return list<list<array{int, int}>> The same events, each still [first role, second role],
+     *                                     and every round still with every entrant once
+     */
+    private function mixRounds(array $rounds, int $entrants, Randomizer $randomizer): array
+    {
+        $count = count($rounds);
+        if ($count < 2) {
+            return $rounds;
+        }
+
+        // A round as two maps over the entrants: the opponent of each, and
+        // whether it is in the first role. Trading an event between two
+        // rounds is then swapping the entries of its two entrants.
+        $opponent = [];
+        $isFirst = [];
+        foreach ($rounds as $round => $pairs) {
+            foreach ($pairs as [$first, $second]) {
+                $opponent[$round][$first] = $second;
+                $opponent[$round][$second] = $first;
+                $isFirst[$round][$first] = true;
+                $isFirst[$round][$second] = false;
+            }
+        }
+
+        for ($exchange = 0; $exchange < self::EXCHANGES_PER_ROUND * $count; ++$exchange) {
+            $x = $randomizer->getInt(0, $count - 1);
+            $y = $randomizer->getInt(0, $count - 2);
+            if ($y >= $x) {
+                ++$y;
+            }
+
+            $opponentX = $opponent[$x];
+            $opponentY = $opponent[$y];
+            $isFirstX = $isFirst[$x];
+            $isFirstY = $isFirst[$y];
+
+            // Entrants are taken in index order, so the cycles are found in
+            // an order that depends on nothing but the two rounds.
+            $visited = [];
+            for ($start = 0; $start < $entrants; ++$start) {
+                if (isset($visited[$start])) {
+                    continue;
+                }
+
+                $cycle = [];
+                $entrant = $start;
+                do {
+                    $other = $opponent[$x][$entrant];
+                    $visited[$entrant] = true;
+                    $visited[$other] = true;
+                    $cycle[] = $entrant;
+                    $cycle[] = $other;
+                    $entrant = $opponent[$y][$other];
+                } while ($entrant !== $start);
+
+                if ($randomizer->getInt(0, 1) === 0) {
+                    continue;
+                }
+
+                foreach ($cycle as $member) {
+                    $opponentX[$member] = $opponent[$y][$member];
+                    $opponentY[$member] = $opponent[$x][$member];
+                    $isFirstX[$member] = $isFirst[$y][$member];
+                    $isFirstY[$member] = $isFirst[$x][$member];
+                }
+            }
+
+            $opponent[$x] = $opponentX;
+            $opponent[$y] = $opponentY;
+            $isFirst[$x] = $isFirstX;
+            $isFirst[$y] = $isFirstY;
+        }
+
+        $mixed = [];
+        for ($round = 0; $round < $count; ++$round) {
+            $pairs = [];
+            for ($entrant = 0; $entrant < $entrants; ++$entrant) {
+                if ($isFirst[$round][$entrant]) {
+                    $pairs[] = [$entrant, $opponent[$round][$entrant]];
+                }
+            }
+            $mixed[] = $pairs;
+        }
+
+        return $mixed;
     }
 
     /**

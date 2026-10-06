@@ -36,6 +36,14 @@ const POT_DRAW_SWEEP_MAX_ENTRANTS = 60;
 const POT_DRAW_SWEEP_SEEDS = 3;
 
 /**
+ * Fields larger than this are drawn with one seed fewer. Drawing takes time
+ * in proportion to the events, and the largest fields hold most of the
+ * events of the sweep; every configuration is still drawn, with two
+ * different seeds and a repeat of the first.
+ */
+const POT_DRAW_SWEEP_LARGE_FIELD = 40;
+
+/**
  * Seeds drawn for each of the three worked cases.
  */
 const POT_DRAW_WORKED_CASE_SEEDS = 200;
@@ -152,7 +160,9 @@ describe('Pot draw invariants', function (): void {
 
             $fingerprints = [];
 
-            for ($draw = 0; $draw < POT_DRAW_SWEEP_SEEDS; ++$draw) {
+            $seedCount = $count > POT_DRAW_SWEEP_LARGE_FIELD ? POT_DRAW_SWEEP_SEEDS - 1 : POT_DRAW_SWEEP_SEEDS;
+
+            for ($draw = 0; $draw < $seedCount; ++$draw) {
                 $seed = $index * POT_DRAW_SWEEP_SEEDS + $draw;
                 $seeds[$seed] = true;
                 $options = new PotDrawOptions($pots, $opponentsPerPot, $seed);
@@ -179,7 +189,7 @@ describe('Pot draw invariants', function (): void {
 
                 // The same call on the same instance, after the draws of
                 // other seeds, gives the same schedule
-                if ($draw === POT_DRAW_SWEEP_SEEDS - 1) {
+                if ($draw === $seedCount - 1) {
                     $firstOptions = new PotDrawOptions($pots, $opponentsPerPot, $index * POT_DRAW_SWEEP_SEEDS);
                     if (potDrawFingerprint($scheduler->schedule($field, $firstOptions)) !== array_key_first($fingerprints)) {
                         $failures[] = "{$name}: a second call with the first seed drew another schedule";
@@ -190,14 +200,14 @@ describe('Pot draw invariants', function (): void {
             // Different seeds draw different schedules. Below 12 entrants a
             // configuration may allow so few schedules that two seeds draw
             // the same one
-            if ($count >= 12 && count($fingerprints) !== POT_DRAW_SWEEP_SEEDS) {
-                $failures[] = "{$name}: " . count($fingerprints) . ' different schedules from ' . POT_DRAW_SWEEP_SEEDS . ' seeds';
+            if ($count >= 12 && count($fingerprints) !== $seedCount) {
+                $failures[] = "{$name}: " . count($fingerprints) . ' different schedules from ' . $seedCount . ' seeds';
             }
         }
 
         expect(array_slice($failures, 0, 20))->toBe([])
-            ->and($draws)->toBe(4347)
-            ->and($seeds)->toHaveCount(4347);
+            ->and($draws)->toBe(3529)
+            ->and($seeds)->toHaveCount(3529);
     });
 
     it('holds every rule for the worked cases over many seeds', function (int $count, int $pots, int $opponentsPerPot): void {

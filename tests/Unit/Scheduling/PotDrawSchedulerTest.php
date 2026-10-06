@@ -327,67 +327,127 @@ describe('PotDrawScheduler', function (): void {
         '16 in 2 pots, three opponents' => [16, 2, 3],
     ]);
 
-    // The usage guide states what no seed changes ("The seed and
-    // determinism"). This is a limit of the construction and not a rule
-    // of the format: if the generator learns to mix the pots within a
-    // round, this test and that passage change together.
-    it('keeps whole pots together in a round whatever the seed', function (
+    // As it is built, a draw sets whole pots against each other in every
+    // round, keeps the events inside the pots in a few rounds, has one pot
+    // first against another for a whole round, and lists a round's events
+    // pot pair by pot pair. The scheduler mixes the rounds so that none of
+    // that is certain. The comments on the bounds say what the unmixed
+    // construction gives; each bound is far from that and far from what
+    // the mixed draws measure.
+    it('does not give the rounds the shape they were built with', function (
         int $count,
         int $pots,
-        int $opponentsPerPot,
-        int $roundsWithEventsInsideAPot
+        int $opponentsPerPot
     ): void {
         $entrants = potDrawEntrants($count);
         $potSize = intdiv($count, $pots);
-        $potOf = [];
-        foreach ($entrants as $position => $entrant) {
-            $potOf[$entrant->getId()] = intdiv($position, $potSize);
+        $position = [];
+        foreach ($entrants as $index => $entrant) {
+            $position[$entrant->getId()] = $index;
         }
 
-        for ($seed = 0; $seed < 20; ++$seed) {
+        $rounds = 0;
+        $wholePotRounds = 0;
+        $blocks = 0;
+        $blocksWithOnePotFirst = 0;
+        $roundsListedByPotPair = 0;
+        $roundsListedInSeedingOrder = 0;
+        $roundsWithEventsInsideAPot = [];
+
+        for ($seed = 0; $seed < 40; ++$seed) {
             $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed));
 
-            $potsMet = [];
+            $potPairs = [];
+            $firstPositions = [];
             $firstRoleHolders = [];
-            $inside = [];
             foreach ($schedule->getEvents() as $event) {
                 [$first, $second] = $event->getParticipants();
                 $round = (int) $event->getRound()?->getNumber();
-                $a = $potOf[$first->getId()];
-                $b = $potOf[$second->getId()];
-                $potsMet[$round][$a][$b] = true;
-                $potsMet[$round][$b][$a] = true;
-                if ($a === $b) {
-                    $inside[$round] = true;
-                } else {
-                    $firstRoleHolders[$round][min($a, $b) . '-' . max($a, $b)][$a] = true;
+                $a = intdiv($position[$first->getId()], $potSize);
+                $b = intdiv($position[$second->getId()], $potSize);
+                $potPair = min($a, $b) . '-' . max($a, $b);
+                $potPairs[$round][] = $potPair;
+                $firstPositions[$round][] = $position[$first->getId()];
+                if ($a !== $b) {
+                    $firstRoleHolders[$round][$potPair][] = $a;
                 }
             }
 
-            foreach ($potsMet as $round => $byPot) {
-                foreach ($byPot as $pot => $met) {
-                    // One pot only, unless the round also has events inside pots
-                    expect(count($met))->toBeLessThanOrEqual(isset($inside[$round]) ? 2 : 1, "seed {$seed}, round {$round}, pot {$pot}");
-                }
-            }
-            expect($inside)->toHaveCount($roundsWithEventsInsideAPot, "seed {$seed}");
+            $withInside = 0;
+            foreach ($potPairs as $round => $listed) {
+                ++$rounds;
 
-            if ($opponentsPerPot % 2 === 0) {
-                foreach ($firstRoleHolders as $round => $byPotPair) {
-                    foreach ($byPotPair as $potPair => $holders) {
-                        expect($holders)->toHaveCount(1, "seed {$seed}, round {$round}, pots {$potPair}");
+                // Whole pots: every pot is in one pot pair only
+                $pairsOfPot = [];
+                $inside = false;
+                foreach (array_unique($listed) as $potPair) {
+                    [$a, $b] = explode('-', $potPair);
+                    $pairsOfPot[$a][$potPair] = true;
+                    $pairsOfPot[$b][$potPair] = true;
+                    $inside = $inside || $a === $b;
+                }
+                $wholePotRounds += max(array_map(count(...), $pairsOfPot)) === 1 ? 1 : 0;
+                $withInside += $inside ? 1 : 0;
+
+                // Listed pot pair by pot pair: no pot pair comes back after another
+                $runs = 1;
+                for ($i = 1; $i < count($listed); ++$i) {
+                    $runs += $listed[$i] !== $listed[$i - 1] ? 1 : 0;
+                }
+                $roundsListedByPotPair += $runs === count(array_unique($listed)) ? 1 : 0;
+
+                $sorted = $firstPositions[$round];
+                sort($sorted);
+                $roundsListedInSeedingOrder += $sorted === $firstPositions[$round] ? 1 : 0;
+
+                foreach ($firstRoleHolders[$round] ?? [] as $holders) {
+                    if (count($holders) >= 2) {
+                        ++$blocks;
+                        $blocksWithOnePotFirst += count(array_unique($holders)) === 1 ? 1 : 0;
                     }
                 }
             }
+            $roundsWithEventsInsideAPot[$withInside] = true;
+        }
+
+        // Unmixed: every round, or five rounds in eight for 36 entrants
+        expect($wholePotRounds / $rounds)->toBeLessThan(0.25)
+            // Unmixed: the same number of rounds for every seed
+            ->and(count($roundsWithEventsInsideAPot))->toBeGreaterThan(1)
+            // Unmixed: every round
+            ->and($roundsListedByPotPair / $rounds)->toBeLessThan(0.5)
+            // Without the shuffle of a round's events: every round
+            ->and($roundsListedInSeedingOrder / $rounds)->toBeLessThan(0.1);
+
+        if ($opponentsPerPot % 2 === 0) {
+            // Unmixed: every time two pots meet more than once in a round
+            expect($blocksWithOnePotFirst / $blocks)->toBeLessThan(0.9);
         }
     })->with([
-        // An even pot size and an even number of pots: the pots play
-        // inside themselves in as many rounds as there are opponents per pot
-        '16 in 4 pots of 4, two opponents' => [16, 4, 2, 2],
-        '24 in 4 pots of 6, three opponents' => [24, 4, 3, 3],
-        // An odd pot size: three rounds hold every event inside a pot
-        '36 in 4 pots of 9, two opponents' => [36, 4, 2, 3],
-        '18 in 6 pots of 3, two opponents' => [18, 6, 2, 3],
+        '16 in 4 pots of 4, two opponents' => [16, 4, 2],
+        '24 in 4 pots of 6, three opponents' => [24, 4, 3],
+        '36 in 4 pots of 9, two opponents' => [36, 4, 2],
+        '20 in 5 pots of 4, one opponent' => [20, 5, 1],
+    ]);
+
+    // With fewer than two rounds there is nothing to mix, and the smallest
+    // fields leave the mixing no choice: they are drawn all the same
+    it('draws the configurations too small to mix', function (int $count, int $pots, int $opponentsPerPot, int $events): void {
+        $entrants = potDrawEntrants($count);
+
+        foreach ([0, 1, 2, 3, 4] as $seed) {
+            $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed));
+
+            expect($schedule->count())->toBe($events)
+                ->and(PotDrawAudit::of($schedule, $entrants, $pots)->violations($entrants, $pots, $opponentsPerPot))->toBe([], "seed {$seed}");
+        }
+    })->with([
+        '2 entrants, one round of one event' => [2, 1, 1, 1],
+        '4 entrants as one pot, one round' => [4, 1, 1, 2],
+        '4 entrants as one pot, three rounds' => [4, 1, 3, 6],
+        '4 entrants in 2 pots of 2, two rounds' => [4, 2, 1, 4],
+        '6 entrants in 2 pots of 3, four rounds' => [6, 2, 2, 12],
+        '12 entrants in 6 pots of 2, six rounds' => [12, 6, 1, 36],
     ]);
 
     it('takes the pots from list position and reads no seed attribute', function (): void {

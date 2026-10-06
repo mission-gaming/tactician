@@ -19,14 +19,14 @@ Events: 144
 
 == The draw ==
 meta: algorithm=pot-draw participant_count=36 pots=4 pot_size=9 opponents_per_pot=2 seed=2026 total_rounds=8 expected_event_count=144
-R1: club23-club04 club19-club02 club26-club05 club20-club07 club21-club06 club22-club03 club27-club08 club24-club09 club25-club01 club13-club29 club18-club33 club17-club34 club10-club28 club16-club36 club15-club31 club12-club30 club14-club32 club11-club35
-R2: club04-club02 club05-club07 club06-club03 club08-club09 club29-club33 club34-club28 club36-club31 club30-club32 club01-club35 club24-club25 club23-club19 club26-club20 club21-club22 club14-club11 club13-club18 club17-club10 club16-club15 club27-club12
-R3: club02-club05 club07-club06 club03-club08 club09-club01 club33-club34 club28-club36 club31-club30 club32-club35 club04-club29 club25-club23 club19-club26 club20-club21 club22-club27 club11-club13 club18-club17 club10-club16 club15-club12 club24-club14
-R4: club13-club04 club18-club02 club17-club05 club10-club07 club16-club06 club15-club03 club12-club08 club14-club09 club11-club01 club20-club29 club21-club33 club22-club34 club27-club28 club24-club36 club25-club31 club23-club30 club19-club32 club26-club35
-R5: club33-club04 club34-club02 club28-club05 club36-club07 club31-club06 club30-club03 club32-club08 club35-club09 club29-club01 club17-club24 club10-club25 club16-club23 club15-club19 club12-club26 club14-club20 club11-club21 club13-club22 club18-club27
-R6: club01-club04 club35-club29 club02-club33 club05-club34 club07-club28 club06-club36 club03-club31 club08-club30 club09-club32 club27-club24 club12-club14 club25-club11 club23-club13 club19-club18 club26-club17 club20-club10 club21-club16 club22-club15
-R7: club04-club25 club02-club23 club05-club19 club07-club26 club06-club20 club03-club21 club08-club22 club09-club27 club01-club24 club29-club10 club33-club16 club34-club15 club28-club12 club36-club14 club31-club11 club30-club13 club32-club18 club35-club17
-R8: club04-club11 club02-club13 club05-club18 club07-club17 club06-club10 club03-club16 club08-club15 club09-club12 club01-club14 club29-club19 club33-club26 club34-club20 club28-club21 club36-club22 club31-club27 club30-club24 club32-club25 club35-club23
+R1: club35-club17 club09-club01 club07-club06 club33-club26 club02-club23 club11-club21 club24-club25 club22-club27 club34-club28 club16-club15 club12-club14 club03-club08 club32-club18 club30-club13 club20-club10 club05-club19 club04-club29 club36-club31
+R2: club27-club08 club24-club09 club26-club17 club35-club23 club33-club16 club19-club32 club05-club34 club13-club18 club36-club07 club28-club12 club06-club20 club25-club11 club21-club22 club29-club10 club04-club02 club01-club14 club30-club03 club15-club31
+R3: club04-club11 club02-club13 club35-club29 club22-club34 club15-club12 club27-club28 club24-club36 club19-club26 club18-club33 club14-club20 club03-club21 club17-club05 club16-club23 club09-club32 club08-club30 club25-club01 club31-club06 club10-club07
+R4: club32-club25 club36-club14 club22-club03 club10-club28 club16-club06 club30-club24 club20-club21 club08-club15 club31-club27 club17-club34 club23-club13 club05-club18 club29-club33 club11-club35 club09-club12 club01-club04 club19-club02 club07-club26
+R5: club01-club24 club26-club05 club34-club02 club18-club17 club20-club07 club12-club30 club32-club35 club25-club31 club06-club10 club28-club21 club23-club19 club33-club04 club09-club27 club08-club22 club15-club03 club13-club29 club16-club36 club14-club11
+R6: club21-club33 club06-club36 club29-club19 club31-club30 club12-club26 club22-club15 club28-club05 club14-club32 club01-club35 club03-club16 club10-club25 club08-club09 club07-club17 club34-club20 club27-club24 club11-club13 club18-club02 club23-club04
+R7: club24-club14 club04-club25 club13-club22 club23-club30 club26-club20 club31-club11 club34-club15 club27-club12 club28-club36 club17-club10 club05-club07 club19-club18 club02-club33 club35-club09 club06-club03 club21-club16 club32-club08 club29-club01
+R8: club36-club22 club03-club31 club07-club28 club13-club04 club30-club32 club14-club09 club33-club34 club20-club29 club18-club27 club15-club19 club12-club08 club26-club35 club17-club24 club21-club06 club25-club23 club11-club01 club10-club16 club02-club05
 
 == Opponents of the top seed ==
 Pot 1: first role against Club 4, second role against Club 9
