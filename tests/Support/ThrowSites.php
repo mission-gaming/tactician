@@ -29,16 +29,21 @@ use Throwable;
  * - `throw Name::method(...)`: a static factory. Its declared return type
  *   must implement the marker; a factory with no return type is a problem.
  * - `throw $variable`: a rethrow. Every type the file binds to that name (in
- *   a `catch` clause, by `$variable = new Name`, or by assignment from
- *   another such variable) must implement the marker. The binding is looked
- *   up in the whole file, not in the enclosing function: that is stricter
- *   than PHP's scoping, never looser.
+ *   a `catch` clause, as the class type of a parameter, by
+ *   `$variable = new Name`, or by assignment from another such variable)
+ *   must implement the marker. The binding is looked up in the whole file,
+ *   not in the enclosing function. So that this is never looser than PHP's
+ *   scoping, a name the file also fills in a way the scan cannot read is a
+ *   problem wherever it is thrown: a parameter of any function with no
+ *   class type, a `foreach` variable, or an assignment of anything but
+ *   `new Name`, another variable or `null`.
  * - `new Name(...)` anywhere else, when `Name` is a `Throwable`: an exception
  *   built in one place to be thrown from another.
  *
  * Anything else after `throw` (`throw $this->make()`, `throw new $class`, an
- * anonymous class) is reported as a problem, because the class cannot be
- * read from the source: the rule is that a site is proven, not assumed.
+ * anonymous class, a call chained onto a factory) is reported as a problem,
+ * because the class cannot be read from the source: the rule is that a site
+ * is proven, not assumed.
  *
  * The classes named must be loadable, since the check is made by reflection.
  *
@@ -83,11 +88,15 @@ final class ThrowSites
         /** @var array{name: ?string}|null $pendingClass a class header whose body has not opened yet */
         $pendingClass = null;
         $depth = 0;
+        /** @var int $parametersEnd the closing `)` of the last parameter list the cursor entered */
+        $parametersEnd = -1;
 
         /** @var array<string, list<string>> $bindings variable => the classes the file binds to it */
         $bindings = [];
         /** @var array<string, list<string>> $copies variable => the variables assigned to it */
         $copies = [];
+        /** @var array<string, string> $opaque variable => how the file fills it in a way the scan cannot read */
+        $opaque = [];
         /** @var list<array{line: int, kind: self::KIND_*, subject: string, classes: list<string>, variable: ?string, problem: ?string}> $found */
         $found = [];
 
@@ -146,8 +155,54 @@ final class ThrowSites
                 continue;
             }
 
+            // A parameter of a function, a closure or an arrow function holds
+            // whatever the caller passes: its declared classes when it has
+            // some, anything at all when it has none.
+            if ($token->id === T_FUNCTION || $token->id === T_FN) {
+                $open = $i + 1;
+                while ($open < $count && $tokens[$open]->text !== '(') {
+                    ++$open;
+                }
+                $parametersEnd = self::closingParenthesis($tokens, $open);
+
+                foreach (self::parameters($tokens, $open, $parametersEnd) as $variable => $typeTokens) {
+                    $types = [];
+                    foreach ($typeTokens as $typeToken) {
+                        $class = self::resolve($typeToken, $namespace, $imports, $current);
+                        if ($class === null || (!class_exists($class) && !interface_exists($class))) {
+                            // `mixed`, `object`, a scalar, or a name that cannot be loaded.
+                            $types = [];
+
+                            break;
+                        }
+                        $types[] = $class;
+                    }
+
+                    if ($types === []) {
+                        $opaque[$variable] = 'is a parameter with no class type';
+                    } else {
+                        $bindings[$variable] = [...($bindings[$variable] ?? []), ...$types];
+                    }
+                }
+
+                continue;
+            }
+
+            // `foreach (... as $v)` and `foreach (... as $k => $v)`.
+            if (
+                $token->id === T_VARIABLE
+                && ($previous?->id === T_AS || ($previous?->id === T_DOUBLE_ARROW && ($tokens[$i - 3] ?? null)?->id === T_AS))
+            ) {
+                $opaque[$token->text] = 'is a foreach variable';
+            }
+
+            if ($token->id === T_VARIABLE && $next?->id === T_COALESCE_EQUAL) {
+                $opaque[$token->text] = 'is assigned with ??=';
+            }
+
             // `$a = $b;` and `$a = new Name`: what a later `throw $a` holds.
-            if ($token->id === T_VARIABLE && $next?->text === '=' && $previous?->id !== T_DOUBLE_COLON && $previous?->id !== T_OBJECT_OPERATOR) {
+            // The default value of a parameter is not such an assignment.
+            if ($token->id === T_VARIABLE && $next?->text === '=' && $i > $parametersEnd && $previous?->id !== T_DOUBLE_COLON && $previous?->id !== T_OBJECT_OPERATOR) {
                 $value = $tokens[$i + 2] ?? null;
                 $after = $tokens[$i + 3] ?? null;
                 if ($value?->id === T_VARIABLE && $after?->text === ';') {
@@ -157,6 +212,8 @@ final class ThrowSites
                     if ($class !== null) {
                         $bindings[$token->text][] = $class;
                     }
+                } elseif (!($value?->id === T_STRING && strtolower($value->text) === 'null' && $after?->text === ';')) {
+                    $opaque[$token->text] = 'is assigned something other than `new Name`, a variable or null';
                 }
 
                 continue;
@@ -196,6 +253,12 @@ final class ThrowSites
                     [$returned, $problem] = $class === null
                         ? [[], "cannot resolve {$next->text} outside a class"]
                         : self::factoryReturnTypes($class, $third->text);
+                    // `throw Name::factory()->other()` throws what `other()`
+                    // returns, which the factory's return type does not say.
+                    $closing = self::closingParenthesis($tokens, $i + 4);
+                    if ($problem === null && !in_array(($tokens[$closing + 1] ?? null)?->text, [';', ')', ',', ']'], true)) {
+                        $problem = 'the class thrown cannot be read from the source; something is chained onto the factory call';
+                    }
                     $found[] = [
                         'line' => $token->line,
                         'kind' => self::KIND_THROW_FACTORY,
@@ -244,9 +307,11 @@ final class ThrowSites
             $classes = $site['classes'];
 
             if ($problem === null && $site['variable'] !== null) {
-                $classes = self::boundClasses($site['variable'], $bindings, $copies);
+                [$classes, $unreadable] = self::boundClasses($site['variable'], $bindings, $copies, $opaque);
                 if ($classes === []) {
                     $problem = "nothing in the file says what {$site['variable']} holds (no catch clause, no `= new`)";
+                } elseif ($unreadable !== null) {
+                    $problem = "the file does not say everything {$site['variable']} can hold: {$unreadable}";
                 }
             }
 
@@ -323,15 +388,18 @@ final class ThrowSites
 
     /**
      * Every class the file binds to a variable, following assignments from
-     * other variables.
+     * other variables, and the first way one of those variables is filled
+     * that the scan cannot read.
      *
      * @param array<string, list<string>> $bindings
      * @param array<string, list<string>> $copies
-     * @return list<string>
+     * @param array<string, string> $opaque
+     * @return array{list<string>, ?string} The classes, and what cannot be read (null when all of it can)
      */
-    private static function boundClasses(string $variable, array $bindings, array $copies): array
+    private static function boundClasses(string $variable, array $bindings, array $copies, array $opaque): array
     {
         $classes = [];
+        $unreadable = null;
         $seen = [];
         $queue = [$variable];
         while ($queue !== []) {
@@ -342,9 +410,68 @@ final class ThrowSites
             $seen[$name] = true;
             $classes = [...$classes, ...($bindings[$name] ?? [])];
             $queue = [...$queue, ...($copies[$name] ?? [])];
+            if (isset($opaque[$name])) {
+                $unreadable ??= "{$name} {$opaque[$name]}";
+            }
         }
 
-        return array_values(array_unique($classes));
+        return [array_values(array_unique($classes)), $unreadable];
+    }
+
+    /**
+     * The parameters in the list that follows a `function` or `fn` token,
+     * each with the name tokens of its declared type (`null` left out). A
+     * default value cannot hold a variable, so every variable between the
+     * parentheses is a parameter.
+     *
+     * @param list<PhpToken> $tokens
+     * @param int $open The index of the list's `(`
+     * @param int $closing The index of its `)`
+     * @return array<string, list<PhpToken>> variable => the names in its type; empty when it declares none
+     */
+    private static function parameters(array $tokens, int $open, int $closing): array
+    {
+        $parameters = [];
+        for ($i = $open + 1; $i < $closing; ++$i) {
+            if ($tokens[$i]->id !== T_VARIABLE) {
+                continue;
+            }
+
+            // The type is what stands between the variable and the `,` or
+            // `(` before it. `array` and `callable` are not name tokens, so
+            // their presence is recorded as a name no class has.
+            $type = [];
+            for ($j = $i - 1; $j > $open && $tokens[$j]->text !== ','; --$j) {
+                $isName = in_array($tokens[$j]->id, self::NAME_TOKENS, true) || in_array($tokens[$j]->id, [T_ARRAY, T_CALLABLE], true);
+                if ($isName && strtolower($tokens[$j]->text) !== 'null') {
+                    $type[] = $tokens[$j];
+                }
+            }
+            $parameters[$tokens[$i]->text] = $type;
+        }
+
+        return $parameters;
+    }
+
+    /**
+     * The index of the `)` that closes the `(` at an index (the number of
+     * tokens when it is never closed).
+     *
+     * @param list<PhpToken> $tokens
+     */
+    private static function closingParenthesis(array $tokens, int $open): int
+    {
+        $count = count($tokens);
+        $depth = 0;
+        for ($i = $open; $i < $count; ++$i) {
+            if ($tokens[$i]->text === '(') {
+                ++$depth;
+            } elseif ($tokens[$i]->text === ')' && --$depth === 0) {
+                return $i;
+            }
+        }
+
+        return $count;
     }
 
     /**

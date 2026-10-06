@@ -262,6 +262,15 @@ describe('ThrowSites', function (): void {
             'namespace App; function f(callable $c): void { $last = null; try { $c(); } catch (\Exception $e) { $last = $e; } if ($last !== null) { throw $last; } }',
             'Exception',
         ],
+        'thrown from a parameter, by its declared type' => ['namespace App; function f(\Throwable $e): never { throw $e; }', 'Throwable'],
+        // Bindings are read file-wide: the catch clause in g() must not
+        // vouch for the parameter of f().
+        'thrown from a parameter named like a variable caught elsewhere' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\TacticianException; '
+                . 'function f(TacticianException|\RuntimeException $e): never { throw $e; } '
+                . 'function g(callable $c): void { try { $c(); } catch (TacticianException $e) { } }',
+            'RuntimeException',
+        ],
         'from a static factory, by its return type' => [
             'namespace App; use MissionGaming\Tactician\Tests\Support\BareExceptionFactory; function f(): never { throw BareExceptionFactory::typed(); }',
             'RuntimeException',
@@ -280,7 +289,7 @@ describe('ThrowSites', function (): void {
         expect($problems)->toHaveCount(1);
         expect($problems[0])->toContain($problem);
     })->with([
-        'a variable nothing binds' => ['namespace App; function f(\Throwable $e): never { throw $e; }', 'nothing in the file says what $e holds'],
+        'a variable nothing binds' => ['namespace App; function f(): never { global $e; throw $e; }', 'nothing in the file says what $e holds'],
         'a method call' => ['namespace App; final class A { public function f(): never { throw $this->make(); } }', 'cannot be read from the source'],
         'a class held in a variable' => ['namespace App; function f(string $c): never { throw new $c("x"); }', 'cannot be read from the source'],
         'a factory with no return type' => [
@@ -290,6 +299,53 @@ describe('ThrowSites', function (): void {
         'a factory that does not exist' => [
             'namespace App; use MissionGaming\Tactician\Exceptions\SchedulingException; function f(): never { throw SchedulingException::nope(); }',
             'does not exist',
+        ],
+        'a call chained onto a factory' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\JsonConversionException; '
+                . 'function f(\JsonException $e): never { throw JsonConversionException::from($e)->getPrevious(); }',
+            'something is chained onto the factory call',
+        ],
+        // Bindings are read file-wide, so each of these would pass on the
+        // strength of the catch clause in g() if only that clause were read.
+        'an untyped parameter named like a variable caught elsewhere' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\TacticianException; '
+                . 'function f($e): never { throw $e; } '
+                . 'function g(callable $c): void { try { $c(); } catch (TacticianException $e) { } }',
+            '$e is a parameter with no class type',
+        ],
+        'a parameter typed as any object' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\TacticianException; '
+                . 'final class A { public function __construct(private readonly ?object $e = null) {} } '
+                . 'function g(callable $c): void { try { $c(); } catch (TacticianException $e) { throw $e; } }',
+            '$e is a parameter with no class type',
+        ],
+        'an untyped parameter of an arrow function' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\TacticianException; '
+                . '$f = fn($e): never => throw $e; '
+                . 'function g(callable $c): void { try { $c(); } catch (TacticianException $e) { } }',
+            '$e is a parameter with no class type',
+        ],
+        'a variable also assigned from a call' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\TacticianException; '
+                . 'function f(object $o): never { $e = $o->make(); throw $e; } '
+                . 'function g(callable $c): void { try { $c(); } catch (TacticianException $e) { } }',
+            '$e is assigned something other than',
+        ],
+        'a variable copied from one assigned from a call' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\TacticianException; '
+                . 'function f(object $o, callable $c): never { $made = $o->make(); try { $c(); } catch (TacticianException $e) { } $e = $made; throw $e; }',
+            '$made is assigned something other than',
+        ],
+        'a variable also assigned with ??=' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\TacticianException; '
+                . 'function f(object $o, callable $c): never { $e = null; try { $c(); } catch (TacticianException $e) { } $e ??= $o->make(); throw $e; }',
+            '$e is assigned with ??=',
+        ],
+        'a foreach variable named like a variable caught elsewhere' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\TacticianException; '
+                . 'function f(array $all): never { foreach ($all as $key => $e) { throw $e; } } '
+                . 'function g(callable $c): void { try { $c(); } catch (TacticianException $e) { } }',
+            '$e is a foreach variable',
         ],
     ]);
 
@@ -326,6 +382,16 @@ describe('ThrowSites', function (): void {
         ],
         'rethrown from a catch' => [
             'namespace App; use MissionGaming\Tactician\Exceptions\TacticianException; function f(callable $c): void { try { $c(); } catch (TacticianException $e) { throw $e; } }',
+            [ThrowSites::KIND_RETHROW],
+        ],
+        'thrown from a parameter typed as a library exception' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\IncompleteScheduleException; '
+                . 'function f(?IncompleteScheduleException $failure = null, int ...$rest): void { if ($failure !== null) { throw $failure; } }',
+            [ThrowSites::KIND_RETHROW],
+        ],
+        'rethrown after being kept in a variable that starts as null' => [
+            'namespace App; use MissionGaming\Tactician\Exceptions\SchedulingException; '
+                . 'function f(callable $c): void { $last = null; try { $c(); } catch (SchedulingException $e) { $last = $e; } if ($last !== null) { throw $last; } }',
             [ThrowSites::KIND_RETHROW],
         ],
         'built and returned' => [
