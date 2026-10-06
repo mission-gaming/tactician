@@ -56,12 +56,21 @@ readonly class MinimumRestPeriodsConstraint implements ConstraintInterface
     {
         $lastRound = null;
 
-        foreach ($context->getExistingEvents() as $existingEvent) {
-            if ($existingEvent->hasParticipant($participant1) && $existingEvent->hasParticipant($participant2)) {
-                $roundNumber = $existingEvent->getRound()?->getNumber();
-                if ($roundNumber !== null && ($lastRound === null || $roundNumber > $lastRound)) {
-                    $lastRound = $roundNumber;
-                }
+        // A context of exactly this class returns the pair's meetings from
+        // its index. A subclass may answer getExistingEvents() its own way,
+        // so for one the events it returns are scanned as before.
+        $meetings = $context::class === SchedulingContext::class
+            ? $context->getEventsBetween($participant1, $participant2)
+            : array_filter(
+                $context->getExistingEvents(),
+                static fn(Event $existingEvent): bool => $existingEvent->hasParticipant($participant1)
+                    && $existingEvent->hasParticipant($participant2)
+            );
+
+        foreach ($meetings as $meeting) {
+            $roundNumber = $meeting->getRound()?->getNumber();
+            if ($roundNumber !== null && ($lastRound === null || $roundNumber > $lastRound)) {
+                $lastRound = $roundNumber;
             }
         }
 
