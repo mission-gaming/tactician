@@ -192,7 +192,14 @@ describe('Swiss invariants', function (): void {
                 }
                 if ($run['failedRound'] !== null) {
                     ++$failed[$size];
-                    // Never before the last two rounds
+                    // Recorded with the counts, and no more of a rule than
+                    // they are: none of these stages fails before its last
+                    // two rounds. The format allows an earlier failure (ten
+                    // participants, each of whom has met the five of the
+                    // other half in five rounds, are left with two groups
+                    // of five, and a group of five cannot be paired in a
+                    // sixth), so a change that moves this is to be
+                    // explained, not presumed wrong.
                     expect($run['failedRound'])->toBeGreaterThanOrEqual($size - 2);
                 } else {
                     expect($run['rounds'])->toBe($size - 1);

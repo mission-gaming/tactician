@@ -100,6 +100,15 @@ describe('the default role assignment', function (): void {
     // - repeated: every leg as leg 1, so legs times the single-leg figure.
     //
     // A change in either direction fails: these are exact values.
+    //
+    // For mirrored legs the count starts from what the strategy does today,
+    // and for three legs or more that is not what is wanted: issue #47
+    // (mirrored legs reverse every leg after the first instead of
+    // alternating) changes it to a reversal in the even-numbered legs only.
+    // The factor is then 1 for an odd number of legs and 0 for an even
+    // one, so the rows for four mirrored legs here, and the mirrored rows
+    // for three and four legs of the next test, are a record of the output
+    // before that fix and change with it. One and two legs do not.
     it('ends several legs out of balance by the single-leg figure times what the leg strategy makes of it', function (
         string $strategyName,
         int $legs
