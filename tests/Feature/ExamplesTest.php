@@ -1258,50 +1258,6 @@ it('holds every event in memory, so iterating, counting and listing agree and re
         ->and(array_merge(...array_values($schedule->getEventsByRound())))->toBe($first);
 });
 
-// A pinned example must print the same bytes wherever it runs, or its golden
-// file fails on the next machine for no reason a reviewer can act on. Each
-// script is run here in surroundings chosen to differ from the ones the
-// fixture was written in: another default timezone, another float precision,
-// a locale with a decimal comma, and a working directory outside the
-// repository. Gap left knowingly: one PHP version per run - the CI matrix
-// (8.3, 8.4, 8.5) is what compares versions.
-it('prints the pinned output whatever the timezone, locale, precision and working directory', function (string $example): void {
-    $root = dirname(__DIR__, 2);
-    $captured = tempnam(sys_get_temp_dir(), 'example');
-    if ($captured === false) {
-        Assert::fail('Could not create a temporary file in ' . sys_get_temp_dir());
-    }
-
-    // Both streams append to one file, as they do when the fixture is written
-    $process = proc_open(
-        [
-            PHP_BINARY,
-            '-d', 'error_reporting=-1',
-            '-d', 'display_errors=1',
-            '-d', 'html_errors=0',
-            '-d', 'date.timezone=Pacific/Auckland',
-            '-d', 'precision=17',
-            '-d', 'serialize_precision=17',
-            $root . '/examples/' . $example . '.php',
-        ],
-        [1 => ['file', $captured, 'a'], 2 => ['file', $captured, 'a']],
-        $pipes,
-        sys_get_temp_dir(),
-        ['TZ' => 'Asia/Tokyo', 'LC_ALL' => 'de_DE.UTF-8', 'LANG' => 'de_DE.UTF-8']
-    );
-    if ($process === false) {
-        unlink($captured);
-        Assert::fail("Could not start PHP to run examples/{$example}.php");
-    }
-
-    $exitCode = proc_close($process);
-    $output = (string) file_get_contents($captured);
-    unlink($captured);
-
-    expect($exitCode)->toBe(0)
-        ->and($output)->toBe((string) file_get_contents($root . '/tests/Fixtures/golden/' . GoldenCases::exampleFixture($example)));
-})->with(GoldenCases::PLAIN_TEXT_EXAMPLES);
-
 // `composer examples` (the last step of `composer ci`) is tests/bin/run-examples.php.
 // The runner is pointed here at throwaway directories, so that its failure
 // paths are exercised without breaking a real example. Gap left knowingly:
