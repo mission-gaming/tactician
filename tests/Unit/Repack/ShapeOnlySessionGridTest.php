@@ -273,10 +273,10 @@ describe('SessionGrid capacity', function (): void {
             . 'Check hasUnboundedCapacity() first, or read getCapacityLimit(), which returns null for it.'
         );
     })->with([
-            'instant-based' => [fn() => instantGrid(null)],
-            'shape-only' => [fn() => SessionGrid::shapeOnly(2, 3, [], null)],
-            'from plain data' => [fn() => SessionGrid::fromArray(['session_count' => 2, 'capacity_per_slot' => SessionGrid::UNBOUNDED])],
-        ]);
+        'instant-based' => [fn() => instantGrid(null)],
+        'shape-only' => [fn() => SessionGrid::shapeOnly(2, 3, [], null)],
+        'from plain data' => [fn() => SessionGrid::fromArray(['session_count' => 2, 'capacity_per_slot' => SessionGrid::UNBOUNDED])],
+    ]);
 
     it('writes an unbounded capacity as a word and reads it back', function (): void {
         $grid = instantGrid(null);
