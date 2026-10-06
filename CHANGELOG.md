@@ -13,10 +13,15 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-06
+
 No library behavior changes: under `src/`, only the formatting and a number
 of expressions rewritten to an equivalent form have changed since 0.2.0. No
 public signature has changed, and generated output for a fixed input and seed
-is identical.
+is identical. Upgrading from 0.2.0 needs no code change.
+
+The installed package is smaller: it now carries only `src/`, `composer.json`,
+`LICENSE`, `README.md` and `CHANGELOG.md`.
 
 ### Added
 
@@ -99,6 +104,16 @@ is identical.
   so both work without a prepared environment. `composer examples` now also
   fails an example that emits a warning, a notice or a deprecation, and prints
   the output of the example that failed.
+- The dist archive, which is what Composer installs, carries only the
+  library: `src/`, `composer.json`, `LICENSE`, `README.md` and `CHANGELOG.md`.
+  Tests, documentation, examples and tool configuration are no longer
+  installed into a consumer's `vendor/` directory. A test
+  (`tests/Feature/DistArchiveTest.php`) guards the archive's contents. The
+  repository also gains an `.editorconfig`, and its `.gitignore` patterns are
+  anchored to the root.
+- Documentation and design notes describe consuming applications generically.
+  A `Restricted terms` CI job checks tracked files and paths against a list
+  the maintainers keep as a repository secret.
 - `docs/CONTRIBUTING.md` describes the current checks and rules, and states
   one branch and commit convention.
 - The repack scenario test fixture is now a synthetic instance.
@@ -272,7 +287,8 @@ PHP 8.3+.
 - **Immutable DTOs**: readonly value objects with `toArray()`/`fromArray()`;
   `Schedule` round-trips JSON.
 
-[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/mission-gaming/tactician/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mission-gaming/tactician/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/mission-gaming/tactician/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/mission-gaming/tactician/releases/tag/v0.1.0
