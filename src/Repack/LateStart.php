@@ -16,6 +16,8 @@ use Override;
  * Starting late is an objective, not a hard rule — a pin partway down a
  * session can force it (the contiguous run then builds around the pin) —
  * so the caller decides whether a given late start matters.
+ *
+ * @api
  */
 final readonly class LateStart implements RepackViolation
 {

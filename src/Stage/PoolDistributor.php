@@ -18,6 +18,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * per-stage format, StandingsCalculator, progression selectors over the
  * pools' combined StageOutcome). "Group stage vs bracket" is a matter of
  * per-pool format and display, not a different kind of object.
+ *
+ * @experimental
  */
 final readonly class PoolDistributor
 {

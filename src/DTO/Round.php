@@ -12,6 +12,8 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * A Round encapsulates the logical concept of a tournament round with
  * custom metadata. Rounds are immutable value objects that can be
  * compared and provide utility methods for schedule management.
+ *
+ * @api
  */
 readonly class Round implements \Stringable
 {

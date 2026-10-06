@@ -15,6 +15,8 @@ use Exception;
  * or malformed serialized data is an {@see InvalidInputException}, which is
  * not a `SchedulingException`. To catch every library exception with one
  * clause, catch {@see TacticianException}.
+ *
+ * @api
  */
 abstract class SchedulingException extends Exception implements TacticianException
 {

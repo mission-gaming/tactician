@@ -22,6 +22,8 @@ use Override;
  *   is exactly the ordering fold seeding wants for cross-pool knockout
  *   pairings
  * - topPerGroup(n) is the per-group 1..n convenience
+ *
+ * @experimental
  */
 final readonly class RankRangeSelector implements ProgressionSelector
 {

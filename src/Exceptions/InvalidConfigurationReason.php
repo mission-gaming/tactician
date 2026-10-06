@@ -17,6 +17,8 @@ namespace MissionGaming\Tactician\Exceptions;
  * The backing strings are stable identifiers for logs, serialization and
  * caller-side dispatch. New cases may be added in any release, so a `match`
  * over the reason needs a `default` arm.
+ *
+ * @api
  */
 enum InvalidConfigurationReason: string
 {

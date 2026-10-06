@@ -15,6 +15,8 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * the algorithm's declaration of the stage's shape. Constraints and
  * schedulers reason about rounds, legs, and expected size by reading the
  * plan; the context never infers shape facts itself.
+ *
+ * @experimental
  */
 readonly class SchedulingContext
 {

@@ -34,6 +34,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * {@see self::MAX_CONSOLIDATION_WEIGHT} is rejected. The part that depends
  * on the number of sessions is checked by RepackRequest, which has the
  * grid.
+ *
+ * @api
  */
 final readonly class RepackOptions
 {

@@ -20,6 +20,8 @@ use Override;
  * and Countable for convenient traversal and counting operations.
  *
  * @implements Iterator<int, Event>
+ *
+ * @api
  */
 class Schedule implements Iterator, Countable, JsonSerializable
 {

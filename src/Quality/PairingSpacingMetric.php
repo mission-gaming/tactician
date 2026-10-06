@@ -18,6 +18,8 @@ use Override;
  * repeat gaps. Single-meeting pairs (and single-leg schedules with
  * them) contribute nothing, so the metric is zero where the concept
  * does not apply. Round-less and non-pairwise events are skipped.
+ *
+ * @experimental
  */
 final readonly class PairingSpacingMetric implements QualityMetric
 {

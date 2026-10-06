@@ -12,6 +12,8 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * A Participant contains identifying information, display labels, optional seeding
  * for ranking/bracket purposes, and custom metadata. Participants are immutable
  * and identified by their unique ID.
+ *
+ * @api
  */
 readonly class Participant
 {

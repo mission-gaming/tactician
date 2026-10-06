@@ -13,6 +13,8 @@ use Override;
  *
  * Swiss has rounds, not legs — this typed object is what retires the old
  * interface's overloaded "legs means rounds here" scalar.
+ *
+ * @experimental
  */
 final readonly class SwissOptions implements SchedulerOptions
 {

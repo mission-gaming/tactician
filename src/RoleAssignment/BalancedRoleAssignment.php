@@ -38,6 +38,8 @@ use Override;
  *
  * Only step 2 says anything about streaks. It needs no randomness, and the
  * same rounds always give the same answer.
+ *
+ * @experimental
  */
 final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
 {

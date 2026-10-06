@@ -48,6 +48,8 @@ use MissionGaming\Tactician\Repack\Internal\StepBudget;
  * RepackOutcome carries the schedule plus every compromise as structured
  * data, and the caller decides what is fatal
  * (RepackOptions(throwOnViolations: true) opts into throwing).
+ *
+ * @api
  */
 final readonly class ScheduleRepacker
 {

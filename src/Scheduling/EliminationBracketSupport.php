@@ -21,6 +21,8 @@ use MissionGaming\Tactician\Stage\TieDecision;
  * per the stage entry contract) — carried seed attributes are display
  * facts, not pairing inputs, so consumer-derived entrant lists and
  * selector outputs behave identically by construction.
+ *
+ * @internal Not public API: implementation the two elimination engines share.
  */
 trait EliminationBracketSupport
 {

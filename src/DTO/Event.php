@@ -12,6 +12,8 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * An Event contains a group of participants who will compete against each other,
  * along with optional round information and custom metadata. Events are immutable
  * and must contain at least 2 participants.
+ *
+ * @api
  */
 readonly class Event
 {

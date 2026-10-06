@@ -16,6 +16,8 @@ namespace MissionGaming\Tactician\Scheduling;
  * (fromArray()) and serializable back to it (toArray()), so config-driven
  * platforms can map stored configuration to library behaviour without
  * writing code per option.
+ *
+ * @experimental
  */
 interface SchedulerOptions
 {

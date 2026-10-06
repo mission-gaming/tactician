@@ -17,6 +17,8 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * front (getTotalRounds() returns null), no window can be computed and
  * the constraint is satisfied — protection is effectively off for such
  * stages rather than guessed from a fabricated round count.
+ *
+ * @experimental
  */
 readonly class SeedProtectionConstraint implements ConstraintInterface
 {

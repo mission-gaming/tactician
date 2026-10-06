@@ -51,6 +51,8 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
  * fall outside the grid entirely cannot collide with it and are the
  * caller's to filter — collision is exact (session, slot) identity, by
  * design; there is no fuzzy time-overlap detection.
+ *
+ * @api
  */
 final readonly class SessionGrid
 {

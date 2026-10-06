@@ -23,6 +23,8 @@ use MissionGaming\Tactician\DTO\Schedule;
  * arithmetic is exactly the silent-wrongness bug class this abstraction
  * exists to remove. A consumer wanting a display default writes `?? 1` at
  * its own edge, where context justifies it.
+ *
+ * @experimental
  */
 interface StagePlan
 {

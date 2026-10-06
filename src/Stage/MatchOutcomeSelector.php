@@ -27,6 +27,8 @@ use Override;
  * A tie that finished level (one event drawn, or two legs that do not
  * decide) is read through its recorded tie decision: the participant it
  * names is the winner and the other one the loser (see TieDecision).
+ *
+ * @experimental
  */
 final readonly class MatchOutcomeSelector implements ProgressionSelector
 {

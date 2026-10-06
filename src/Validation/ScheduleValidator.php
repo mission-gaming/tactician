@@ -16,6 +16,10 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * event count and the plan's format-specific integrity checks. All shape
  * facts come from the plan; this service performs no algorithm-specific
  * arithmetic of its own.
+ *
+ * @internal Not public API: the schedulers run it before they return a
+ *           schedule. To check a schedule yourself, call the plan's
+ *           `validateIntegrity()`.
  */
 class ScheduleValidator
 {

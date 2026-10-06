@@ -15,6 +15,8 @@ namespace MissionGaming\Tactician\LegStrategies;
  * A non-empty $unsatisfiableReasons fails plan construction loudly with
  * those reasons as diagnostics; $warnings are carried onto the plan
  * without failing it.
+ *
+ * @api
  */
 final readonly class LegPlanContribution
 {

@@ -10,6 +10,8 @@ namespace MissionGaming\Tactician\Diagnostics;
  * This value object contains detailed diagnostic information about
  * why a tournament schedule could not be generated, along with
  * actionable suggestions for resolving the issues.
+ *
+ * @experimental
  */
 readonly class DiagnosticReport
 {

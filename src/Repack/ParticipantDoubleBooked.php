@@ -14,6 +14,8 @@ use Override;
  * participant already occupies, counting pinned events. The final audit
  * still checks for it — if this violation ever appears, the algorithm is
  * wrong, and the invariant tests assert its absence.
+ *
+ * @api
  */
 final readonly class ParticipantDoubleBooked implements RepackViolation
 {

@@ -7,6 +7,11 @@ namespace MissionGaming\Tactician\Constraints;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
+/**
+ * A constraint whose rule is a callable the application supplies.
+ *
+ * @experimental
+ */
 class CallableConstraint implements ConstraintInterface
 {
     /**

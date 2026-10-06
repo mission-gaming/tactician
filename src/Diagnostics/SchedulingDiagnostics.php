@@ -21,6 +21,10 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * issues. All shape facts (expected events, legs, pairwise meetings) are
  * read from the stage plan rather than recomputed, so the analysis is
  * correct for whatever format the plan describes.
+ *
+ * @internal Not public API: the scheduler runs it when generation fails, and
+ *           the exception it throws carries the resulting
+ *           {@see DiagnosticReport}.
  */
 class SchedulingDiagnostics
 {

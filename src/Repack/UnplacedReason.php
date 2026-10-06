@@ -9,6 +9,8 @@ namespace MissionGaming\Tactician\Repack;
  *
  * The backing strings are stable identifiers for serialization and
  * caller-side dispatch.
+ *
+ * @api
  */
 enum UnplacedReason: string
 {

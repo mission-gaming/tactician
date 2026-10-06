@@ -171,6 +171,8 @@ use Random\Randomizer;
  * mixing (one exchange visits every entrant once, and there are
  * 8 × rounds of them, so 16 visits per event) and for the validation that
  * follows.
+ *
+ * @experimental
  */
 class PotDrawScheduler implements SchedulerInterface
 {

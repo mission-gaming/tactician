@@ -12,6 +12,8 @@ use Override;
  *
  * Mirrors the outcome's unplaced list into the violation stream so a
  * caller dispatching on violations alone misses nothing.
+ *
+ * @api
  */
 final readonly class EventUnplaced implements RepackViolation
 {
