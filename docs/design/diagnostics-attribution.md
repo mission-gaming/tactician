@@ -41,9 +41,20 @@ and report the answers instead of guessing from constraint names.
   sections. Diagnostics remain independently callable.
 - **Pairwise plans only, bounded cost.** Missing-pairing analysis is a
   pairwise-plan capability; the probe is
-  pairings × rounds × orientations × constraints evaluations at failure
-  time — a few thousand predicate calls in the worst realistic case,
-  and only ever on the failure path.
+  missing pairings × rounds × orientations × (constraints + 1)
+  evaluations (each candidate is put to the whole set and to each
+  constraint). For 24 participants over two legs with one constraint and
+  the second leg missing that is at most 276 × 46 × 2 × 2 = 50,784
+  evaluations, not a few thousand: about a tenth of a second when each
+  reads the context's index.
+- **Once per failure.** The round-robin scheduler tries up to
+  min(participants, 25) orderings and reports the last. Only that one is
+  analysed: the earlier attempts' exceptions are caught and dropped, so
+  nothing reads a report built for them. It used to build one per
+  attempt, which was 98% of the time a failure took: 46 seconds for the
+  24-participant case above, against 0.13 seconds now (PHP 8.4, no
+  OPcache, one core). A schedule that succeeds on a later ordering builds
+  none. `tests/Feature/FailureAnalysisCostTest.php` counts the analyses.
 - **Honest scope**: probing answers "could this pairing join what was
   built?" — attribution against a *different* partial schedule could
   differ. That is the right question for the failure at hand, and the

@@ -233,6 +233,11 @@ before (31 and 32); the changelog lists them as output changes.
     caller of `isExhausted()` asks only while it has more to search, which
     is what makes a true answer a search cut short; spending the last
     step on a search that then finishes is not exhaustion.
+    `hasStepsLeft()` is the same question asked without recording
+    anything, for the one caller that asks before it knows whether there
+    is a search to stop: `IntervalPlacement::enumerate()`, which with no
+    step left decides only whether a placement exists, and calls
+    `isExhausted()` when one does.
 28. **What the flag means.** False: the budget stopped nothing, so the
     run is the run any larger budget gives (an invariant test checks
     that). True: a search was cut short and a larger budget may differ.
