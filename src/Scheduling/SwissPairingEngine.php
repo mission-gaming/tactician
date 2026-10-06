@@ -12,6 +12,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
+use MissionGaming\Tactician\Stage\EngineFingerprint;
+use MissionGaming\Tactician\Stage\FingerprintedEngine;
 use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
@@ -52,7 +54,7 @@ use Random\Randomizer;
  * SeedProtectionConstraint) need to know the planned number of rounds;
  * provide it via the plannedRounds constructor argument.
  */
-readonly class SwissPairingEngine implements StageEngineInterface
+readonly class SwissPairingEngine implements StageEngineInterface, FingerprintedEngine
 {
     /**
      * @param int|null $plannedRounds Total rounds the tournament will run, exposed to
@@ -77,17 +79,41 @@ readonly class SwissPairingEngine implements StageEngineInterface
 
     /**
      * What this engine stamps a stage state with, and requires of a state
-     * that carries a stamp: the format and its planned rounds, as
-     * `swiss:planned-rounds=5`, or `swiss:planned-rounds=none` for an
-     * open-ended stage.
+     * that carries a stamp (see FingerprintedEngine for the contract).
      *
-     * Compare the string; do not parse it. The constraints, the standings
-     * calculator and the randomizer are objects the engine cannot name
-     * and are not part of it. See StageState::withEngineFingerprint().
+     * With a standings calculator built without arguments it names the
+     * format and nothing else. Part of it when not at the default, because
+     * each round is paired from the table:
+     *
+     * - the ranking scale: the three values of a WinDrawLossRanking, with
+     *   3/1/0 as the default. Any other RankingStrategy is stated as custom,
+     *   so it differs from every win/draw/loss scale; two strategies of
+     *   your own are not told apart;
+     * - the tiebreakers, by name and in order (default: none);
+     * - a subclass of StandingsCalculator, stated as custom.
+     *
+     * Not part of it:
+     *
+     * - the planned rounds. They say when the stage ends. No round is
+     *   paired or read differently for them, so a stage extended or cut
+     *   short by a round keeps its stamp;
+     * - the constraints and the randomizer. They do change pairings, and
+     *   the engine cannot describe them: a closure and a seed have no name.
+     *   Keeping them the same between rounds is the caller's to do.
+     *
+     * A subclass does not inherit this engine's fingerprint, because it may
+     * pair differently: its fingerprint says that it is a subclass, without
+     * naming the class, so every subclass that does not override this
+     * method has the same one. Override it to return a string of your own
+     * (one that does not begin with `tactician:`) to tell them apart.
      */
+    #[Override]
     public function getFingerprint(): string
     {
-        return 'swiss:planned-rounds=' . ($this->plannedRounds ?? 'none');
+        return EngineFingerprint::of('swiss')
+            ->withStandingsRules($this->standingsCalculator)
+            ->with('subclass', static::class !== self::class, false)
+            ->toString();
     }
 
     /**

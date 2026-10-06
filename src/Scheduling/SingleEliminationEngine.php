@@ -9,6 +9,8 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\EliminationPlan;
+use MissionGaming\Tactician\Stage\EngineFingerprint;
+use MissionGaming\Tactician\Stage\FingerprintedEngine;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -42,7 +44,7 @@ use Override;
  * standings, or MatchOutcomeSelector::winners() over the final round, is
  * the consumer's derivation.
  */
-final readonly class SingleEliminationEngine implements StageEngineInterface
+final readonly class SingleEliminationEngine implements StageEngineInterface, FingerprintedEngine
 {
     use EliminationBracketSupport;
 
@@ -53,17 +55,34 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
 
     /**
      * What this engine stamps a stage state with, and requires of a state
-     * that carries a stamp: the format and the two options that shape its
-     * rounds, as `single-elimination:legs-per-tie=1,reseed-each-round=no`.
+     * that carries a stamp (see FingerprintedEngine for the contract).
      *
-     * Compare the string; do not parse it. The standings calculator is an
-     * object the engine cannot name and is not part of it. See
-     * StageState::withEngineFingerprint().
+     * With default options it names the format and nothing else. Part of
+     * it when not at the default: legsPerTie (default 1) and
+     * reseedEachRound (default false). A re-seeded bracket is paired from
+     * the table after every round, so there the rules of the standings
+     * calculator are part of it as well, when they are not the default:
+     * the ranking scale (the three values of a WinDrawLossRanking, default
+     * 3/1/0; any other RankingStrategy is stated as custom and not told
+     * apart from another of your own), the tiebreakers by name and in
+     * order, and a subclass of StandingsCalculator, stated as custom.
+     *
+     * Not part of it: grandFinalReset, which this engine does not read,
+     * and the standings calculator of a bracket on a fixed path, which
+     * orders the outcome and pairs nothing.
      */
+    #[Override]
     public function getFingerprint(): string
     {
-        return 'single-elimination:legs-per-tie=' . $this->options->legsPerTie
-            . ',reseed-each-round=' . ($this->options->reseedEachRound ? 'yes' : 'no');
+        $fingerprint = EngineFingerprint::of('single-elimination')
+            ->with('legs-per-tie', $this->options->legsPerTie, 1)
+            ->with('reseed-each-round', $this->options->reseedEachRound, false);
+
+        if ($this->options->reseedEachRound) {
+            $fingerprint = $fingerprint->withStandingsRules($this->standingsCalculator);
+        }
+
+        return $fingerprint->toString();
     }
 
     /**

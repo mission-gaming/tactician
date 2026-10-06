@@ -267,16 +267,39 @@ heading **Output change (fix)**.
   `withEngineFingerprint()`, `getEngineFingerprint()` and
   `requireEngineFingerprint()`, and `getFingerprint()` on
   `SwissPairingEngine`, `SingleEliminationEngine` and
-  `DoubleEliminationEngine`. A state did not say which engine paired its
-  rounds, so a state restored into another engine, or into the same engine
-  built from other options, was replayed as that engine's own history. A
-  state stamped with a fingerprint is refused by `getPlan()`,
+  `DoubleEliminationEngine`, which implement the new interface
+  `Stage\FingerprintedEngine` (`StageEngineInterface` is unchanged; test for
+  the new interface where you hold the old one). A state did not say which
+  engine paired its rounds, so a state restored into another engine, or into
+  the same engine built from other options, was replayed as that engine's
+  own history. A state stamped with a fingerprint is refused by `getPlan()`,
   `pairNextRound()`, `isComplete()` and `getOutcome()` of every engine whose
-  fingerprint differs, with an `InvalidConfigurationException`. The stamp is
+  fingerprint differs, with an `InvalidConfigurationException` whose message
+  and context (`differences`) say where the two differ. The stamp is
   opt-in. An unstamped state is accepted by every engine as before and
   serializes exactly as before; a stamped one adds an `engine_fingerprint`
   key to `toArray()` and `toJson()`, and `fromArray()` loads data without
   the key as an unstamped state.
+
+  A fingerprint is an opaque string, compared for equality. It stands for
+  the format and for the options that shape which rounds the format has or
+  how they are paired, and an option at its default is left out: an engine
+  that gains an option in a later release keeps the fingerprint of every
+  configuration that does not use it, so states stamped by this release are
+  still accepted. For one configuration the string does not change in later
+  releases. Part of it when not at the default: for the elimination
+  engines `legsPerTie`, and `reseedEachRound` (single) or `grandFinalReset`
+  (double); for Swiss, and for a re-seeded bracket, the standings rules a
+  round is paired from (the `WinDrawLossRanking` scale, the tiebreakers in
+  order). Not part of it: the planned rounds of a Swiss stage, which may be
+  extended without a new stamp, and the constraints and the randomizer,
+  which the engine cannot describe. A `RankingStrategy` of your own and a
+  subclass of `StandingsCalculator` or of `SwissPairingEngine` are stated as
+  such without being named, so each differs from the library's own and not
+  from another of yours. Fingerprints that begin with `tactician:` are the
+  library's; give an engine of your own a string that does not.
+- `StandingsCalculator::getTiebreakers()`, the tiebreakers in the order they
+  are applied, beside `getRankingStrategy()`.
 - Property tests over awkward participant ids: numerically equal strings,
   leading zeros, exponent forms, ids that contain `|`, `:` or `\`,
   empty-looking ids, Unicode and control characters, across round robin

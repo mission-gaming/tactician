@@ -288,8 +288,23 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         'a stamped state refused by another engine' => [
             'docs/USAGE.md',
             '->withEngineFingerprint($engine->getFingerprint());',
-            ["swiss:planned-rounds=5\n4 events\nRefused: recorded by swiss:planned-rounds=5\n"],
+            ["4 events\nRefused: format: recorded swiss, this engine single-elimination\n"],
             ['Paired as a bracket'],
+        ],
+        'what a fingerprint covers' => [
+            'docs/USAGE.md',
+            '$default = (new SwissPairingEngine())->getFingerprint();',
+            [
+                "bool(true)\nbool(true)\nbool(false)\n"
+                . "Refused: ranking: recorded the default, this engine win-draw-loss,1,0.5,0\n",
+            ],
+            ['Paired on the chess scale'],
+        ],
+        'a state stamped through the engine interface' => [
+            'docs/USAGE.md',
+            'function startStage(StageEngineInterface $engine, array $participants): StageState',
+            ["bool(true)\n"],
+            [],
         ],
         'schedule metadata' => [
             'docs/USAGE.md',
