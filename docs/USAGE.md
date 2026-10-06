@@ -3567,13 +3567,37 @@ var_dump($swissContext->getPlan()->getLegs());      // NULL: Swiss has no legs
 var_dump($swissContext->getPlan()->getLegs() ?? 1); // int(1): a default you chose, where you need one
 
 // Was: SchedulingException::invalidParticipantCount(1)
+$issue = 'Invalid participant count: 1. Must be at least 2.';
 $tooFew = new InvalidConfigurationException(
-    'Invalid participant count: 1. Must be at least 2.',
+    $issue,
     ['participant_count' => 1, 'minimum_required' => 2],
-    reason: InvalidConfigurationReason::TooFewParticipants
+    $issue,
+    reason: InvalidConfigurationReason::TooFewParticipants,
+    requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
 );
 
 var_dump($tooFew->getReason() === InvalidConfigurationReason::TooFewParticipants); // bool(true)
+var_dump($tooFew->getMessage()); // string(49) "Invalid participant count: 1. Must be at least 2."
 ```
+
+The three factories built their exception the same way, and the block above
+builds exactly what `invalidParticipantCount(1)` returned: the sentence is
+both the issue and the exception message (leave the third argument out and
+the message begins "Invalid scheduler configuration: "), and the requirements
+are the round-robin list (leave them out and the diagnostic report has no
+"REQUIREMENTS" block). The other two differ in the sentence and the context
+only:
+
+- `invalidParticipantCount($count)`: the sentence
+  `"Invalid participant count: {$count}. Must be at least 2."`, the context
+  `['participant_count' => $count, 'minimum_required' => 2]`, the reason
+  `TooFewParticipants`.
+- `constraintViolation($constraint)`: the sentence
+  `"Constraint violation: {$constraint}"`, the context
+  `['constraint' => $constraint]`, the reason `ConstraintViolation`.
+- `invalidSchedule($reason)`: the sentence `"Invalid schedule: {$reason}"`,
+  the context `['reason' => $reason]`, the reason `InvalidSchedule`.
+
+---
 
 This guide covers the essential patterns for using Tactician effectively. For more advanced use cases or when contributing to the library, see the [Architecture documentation](ARCHITECTURE.md) and [Contributing guidelines](CONTRIBUTING.md).

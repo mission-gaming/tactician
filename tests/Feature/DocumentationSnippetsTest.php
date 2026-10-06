@@ -281,7 +281,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         'the leg count of a format without legs, and the exception a deprecated factory built' => [
             'docs/USAGE.md',
             '$swissContext->getPlan()->getLegs()',
-            ["NULL\nint(1)\nbool(true)\n"],
+            ["NULL\nint(1)\nbool(true)\nstring(49) \"Invalid participant count: 1. Must be at least 2.\"\n"],
             [],
         ],
         'a result replaced in the last round' => [

@@ -278,9 +278,9 @@ enum InvalidConfigurationReason: string
 
     // The generic factories on SchedulingException
 
-    /** Built by {@see SchedulingException::constraintViolation()}. */
+    /** Built by {@see SchedulingException::constraintViolation()}, which is deprecated. */
     case ConstraintViolation = 'constraint_violation';
 
-    /** Built by {@see SchedulingException::invalidSchedule()}. */
+    /** Built by {@see SchedulingException::invalidSchedule()}, which is deprecated. */
     case InvalidSchedule = 'invalid_schedule';
 }
