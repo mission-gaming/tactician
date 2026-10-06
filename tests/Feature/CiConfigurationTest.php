@@ -386,10 +386,10 @@ it('caches the Composer download directory, keyed on the lock file, and never ve
     Assert::assertDoesNotMatchRegularExpression('/^\s*path:\s*["\']?vendor/m', $workflow, 'ci.yml caches vendor/');
 });
 
-// tests/Unit/Constraints/SeedProtectionConstraintTest.php has a test that
-// needs a locale with a decimal comma. Where none is installed it skips on a
-// developer's machine and fails on CI, so every job that runs the suite must
-// generate one first; the runner image ships none.
+// The tests that use tests/Support/DecimalCommaLocale.php need a locale with
+// a decimal comma. Where none is installed they skip on a developer's machine
+// and fail on CI, so every job that runs the suite must generate one first;
+// the runner image ships none.
 it('generates a locale with a decimal comma before every run of the test suite', function (string $workflow): void {
     $contents = (string) file_get_contents($workflow);
     $jobs = preg_split('/^  (?=[a-z][a-z0-9-]*:\n)/m', $contents);

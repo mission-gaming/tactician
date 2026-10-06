@@ -6,8 +6,7 @@ use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
-use MissionGaming\Tactician\Tests\Support\CiEnvironment;
-use PHPUnit\Framework\Assert;
+use MissionGaming\Tactician\Tests\Support\DecimalCommaLocale;
 
 describe('SeedProtectionConstraint', function (): void {
     it('reads the protection window from the plan total rounds for multi-leg stages', function (): void {
@@ -165,42 +164,17 @@ describe('SeedProtectionConstraint', function (): void {
     ]);
 
     it('writes the decimal point as a dot under a locale that writes a comma', function (): void {
-        $previous = setlocale(LC_NUMERIC, '0');
-        if ($previous === false) {
-            $this->markTestSkipped('The current locale cannot be read, so it could not be restored.');
-        } elseif (setlocale(LC_NUMERIC, ['de_DE.UTF-8', 'de_DE.utf8', 'de_DE', 'fr_FR.UTF-8', 'fr_FR.utf8', 'fr_FR']) === false) {
-            // Harness limitation: the locales installed differ by machine.
-            // The CI workflow generates de_DE.UTF-8, so there the test must
-            // run; a skip would let the check pass without it.
-            if (CiEnvironment::isCi(getenv('CI'))) {
-                Assert::fail('No locale with a decimal comma is installed. On CI this check must run; a skip would hide it.');
-            }
+        $names = DecimalCommaLocale::during(fn(): array => [
+            (new SeedProtectionConstraint(2, 0.125))->getName(),
+            (new SeedProtectionConstraint(2, 1 / 3))->getName(),
+            (new SeedProtectionConstraint(2, 0.0015))->getName(),
+        ]);
 
-            $this->markTestSkipped('No locale with a decimal comma is installed.');
-        } else {
-            try {
-                $decimalPoint = localeconv()['decimal_point'];
-                // What a locale-aware conversion gives here, to prove the
-                // locale changes how a number is written.
-                $localeAware = sprintf('%.1f', 12.5);
-                $names = [
-                    (new SeedProtectionConstraint(2, 0.125))->getName(),
-                    (new SeedProtectionConstraint(2, 1 / 3))->getName(),
-                    (new SeedProtectionConstraint(2, 0.0015))->getName(),
-                ];
-            } finally {
-                setlocale(LC_NUMERIC, $previous);
-            }
-
-            // The first two expectations prove the locale was in force.
-            expect($decimalPoint)->toBe(',')
-                ->and($localeAware)->toBe('12,5')
-                ->and($names)->toBe([
-                    'Seed Protection (top 2, 12.5% period)',
-                    'Seed Protection (top 2, 33.33% period)',
-                    'Seed Protection (top 2, 0.15% period)',
-                ]);
-        }
+        expect($names)->toBe([
+            'Seed Protection (top 2, 12.5% period)',
+            'Seed Protection (top 2, 33.33% period)',
+            'Seed Protection (top 2, 0.15% period)',
+        ]);
     });
 
     // The accepted cost of a short name: it does not identify the period

@@ -17,6 +17,7 @@ use MissionGaming\Tactician\Repack\UnplacedReason;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
+use MissionGaming\Tactician\Tests\Support\DecimalCommaLocale;
 use MissionGaming\Tactician\Tests\Support\ExampleResults;
 use MissionGaming\Tactician\Timeline\ScheduledEvent;
 use MissionGaming\Tactician\Timeline\ScheduledSchedule;
@@ -296,7 +297,11 @@ describe('Example renderer', function (): void {
         date_default_timezone_set('Pacific/Auckland');
         setlocale(LC_ALL, 'de_DE.UTF-8', 'de_DE', 'fr_FR.UTF-8');
         try {
-            $text = Example::renderText('T', 'S', ['When' => $instant, 'Share' => 0.25]);
+            // The helper proves a decimal comma is in force, and fails on CI
+            // where no such locale is installed.
+            $text = DecimalCommaLocale::during(
+                fn(): string => Example::renderText('T', 'S', ['When' => $instant, 'Share' => 0.25])
+            );
         } finally {
             date_default_timezone_set($timezone);
             setlocale(LC_ALL, (string) $locale);
