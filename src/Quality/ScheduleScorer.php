@@ -24,7 +24,8 @@ final readonly class ScheduleScorer
     /**
      * @param array<array{metric: QualityMetric, weight: float}> $weightedMetrics
      *
-     * @throws InvalidConfigurationException When no metrics are given or a weight is not positive
+     * @throws InvalidConfigurationException When no metrics are given, or a weight is not
+     *                                       positive or not finite (NAN, INF)
      */
     public function __construct(array $weightedMetrics)
     {
@@ -70,6 +71,14 @@ final readonly class ScheduleScorer
                     ['index' => $index, 'metric' => $entry['metric']->getName(), 'weight' => $weight]
                 );
             }
+            // NAN fails no comparison and INF is positive, so both pass the
+            // check above; a score they touch can never be compared.
+            if (!is_finite((float) $weight)) {
+                throw new InvalidConfigurationException(
+                    'Metric weights must be finite',
+                    ['index' => $index, 'metric' => $entry['metric']->getName(), 'weight' => (string) $weight]
+                );
+            }
         }
 
         $this->weightedMetrics = array_map(fn(array $entry) => [
@@ -93,12 +102,25 @@ final readonly class ScheduleScorer
 
     /**
      * The weighted defect score; lower is better, zero is ideal.
+     *
+     * Always a finite number: a score that is NAN or INF cannot be compared
+     * with another, so it is refused here and not handed on.
+     *
+     * @throws InvalidConfigurationException When a metric measures NAN or INF, or the
+     *                                       weighted sum overflows
      */
     public function score(Schedule $schedule): float
     {
         $score = 0.0;
         foreach ($this->weightedMetrics as $entry) {
-            $score += $entry['weight'] * $entry['metric']->measure($schedule);
+            $score += $entry['weight'] * $this->measure($entry['metric'], $schedule);
+        }
+
+        if (!is_finite($score)) {
+            throw new InvalidConfigurationException(
+                'The weighted score is not finite',
+                ['score' => (string) $score]
+            );
         }
 
         return $score;
@@ -108,14 +130,33 @@ final readonly class ScheduleScorer
      * Raw per-metric measurements, keyed by metric name.
      *
      * @return array<string, float>
+     *
+     * @throws InvalidConfigurationException When a metric measures NAN or INF
      */
     public function report(Schedule $schedule): array
     {
         $report = [];
         foreach ($this->weightedMetrics as $entry) {
-            $report[$entry['metric']->getName()] = $entry['metric']->measure($schedule);
+            $report[$entry['metric']->getName()] = $this->measure($entry['metric'], $schedule);
         }
 
         return $report;
+    }
+
+    /**
+     * @throws InvalidConfigurationException When the metric measures NAN or INF
+     */
+    private function measure(QualityMetric $metric, Schedule $schedule): float
+    {
+        $measurement = $metric->measure($schedule);
+
+        if (!is_finite($measurement)) {
+            throw new InvalidConfigurationException(
+                "Metric {$metric->getName()} measured a value that is not finite",
+                ['metric' => $metric->getName(), 'value' => (string) $measurement]
+            );
+        }
+
+        return $measurement;
     }
 }

@@ -48,7 +48,8 @@ final readonly class ScheduleOptimizer
      * @param callable(Randomizer): Schedule $generate Builds one candidate from a seeded randomizer
      * @param int $samples How many candidates to generate
      *
-     * @throws InvalidConfigurationException When samples is not positive
+     * @throws InvalidConfigurationException When samples is not positive, or a metric
+     *                                       measures a candidate as NAN or INF
      * @throws IncompleteScheduleException When every sample fails generation
      */
     public function optimize(callable $generate, int $samples): OptimizedSchedule
@@ -61,7 +62,7 @@ final readonly class ScheduleOptimizer
         }
 
         $best = null;
-        $bestScore = INF;
+        $bestScore = 0.0;
         $generated = 0;
         $failed = 0;
         $lastFailure = null;
@@ -79,7 +80,8 @@ final readonly class ScheduleOptimizer
 
             ++$generated;
             $score = $this->scorer->score($candidate);
-            if ($score < $bestScore) {
+            // The first candidate is the best so far whatever it scores.
+            if ($best === null || $score < $bestScore) {
                 $best = $candidate;
                 $bestScore = $score;
             }

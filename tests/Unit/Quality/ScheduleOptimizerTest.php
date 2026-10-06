@@ -10,6 +10,7 @@ use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\Quality\PairingSpacingMetric;
+use MissionGaming\Tactician\Quality\QualityMetric;
 use MissionGaming\Tactician\Quality\RoleBalanceMetric;
 use MissionGaming\Tactician\Quality\RoleStreakMetric;
 use MissionGaming\Tactician\Quality\ScheduleOptimizer;
@@ -20,6 +21,28 @@ use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
+
+/**
+ * A metric that measures the same value for every schedule.
+ */
+function constantMetric(float $value, string $name = 'Constant'): QualityMetric
+{
+    return new readonly class ($value, $name) implements QualityMetric {
+        public function __construct(private float $value, private string $name) {}
+
+        #[Override]
+        public function getName(): string
+        {
+            return $this->name;
+        }
+
+        #[Override]
+        public function measure(Schedule $schedule): float
+        {
+            return $this->value;
+        }
+    };
+}
 
 describe('ScheduleScorer', function (): void {
     it('weights metrics into one score and reports per metric', function (): void {
@@ -72,6 +95,60 @@ describe('ScheduleScorer', function (): void {
             ->toThrow(InvalidConfigurationException::class, 'numeric weight');
         expect(fn() => new ScheduleScorer([['metric' => new RoleBalanceMetric(), 'weight' => 0]]))
             ->toThrow(InvalidConfigurationException::class, 'positive');
+    });
+
+    // NAN is neither positive nor not positive, and INF is positive, so
+    // both passed the weight check; every score they touch is NAN or INF.
+    it('rejects a weight that is not a finite number', function (float $weight): void {
+        new ScheduleScorer([['metric' => new RoleBalanceMetric(), 'weight' => $weight]]);
+    })->with([
+        'NAN' => [NAN],
+        'INF' => [INF],
+    ])->throws(InvalidConfigurationException::class, 'Metric weights must be finite');
+
+    it('still calls a weight of minus infinity not positive', function (): void {
+        new ScheduleScorer([['metric' => new RoleBalanceMetric(), 'weight' => -INF]]);
+    })->throws(InvalidConfigurationException::class, 'Metric weights must be positive');
+
+    it('rejects a measurement that is not a finite number', function (float $measurement): void {
+        $scorer = new ScheduleScorer([
+            ['metric' => new RoleBalanceMetric(), 'weight' => 1.0],
+            ['metric' => constantMetric($measurement, 'Broken'), 'weight' => 1.0],
+        ]);
+
+        expect(fn() => $scorer->score(new Schedule([])))
+            ->toThrow(InvalidConfigurationException::class, 'Metric Broken measured a value that is not finite');
+        expect(fn() => $scorer->report(new Schedule([])))
+            ->toThrow(InvalidConfigurationException::class, 'Metric Broken measured a value that is not finite');
+    })->with([
+        'NAN' => [NAN],
+        'INF' => [INF],
+        '-INF' => [-INF],
+    ]);
+
+    it('names the metric and the value in the context of the failure', function (): void {
+        $scorer = ScheduleScorer::of(constantMetric(INF, 'Broken'));
+
+        try {
+            $scorer->score(new Schedule([]));
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getContext())->toBe(['metric' => 'Broken', 'value' => 'INF']);
+
+            return;
+        }
+
+        throw new LogicException('The infinite measurement was scored.');
+    });
+
+    it('rejects a weighted sum that overflows', function (): void {
+        $scorer = new ScheduleScorer([
+            ['metric' => constantMetric(1.0e200, 'Large'), 'weight' => 1.0e200],
+        ]);
+
+        // The raw measurements are finite, so the report still stands.
+        expect($scorer->report(new Schedule([])))->toBe(['Large' => 1.0e200]);
+        expect(fn() => $scorer->score(new Schedule([])))
+            ->toThrow(InvalidConfigurationException::class, 'The weighted score is not finite');
     });
 });
 
@@ -191,6 +268,35 @@ describe('ScheduleOptimizer', function (): void {
         expect(fn() => $optimizer->optimize(function (Randomizer $randomizer) use ($plan, $a, $b): Schedule {
             throw new IncompleteScheduleException(1, 0, new ConstraintViolationCollector(), $plan, [$a, $b], 'nothing works');
         }, 3))->toThrow(IncompleteScheduleException::class, 'nothing works');
+    });
+
+    // With a NAN score no candidate was ever "better than the best so
+    // far", so the optimizer ended with no winner and no failure to
+    // rethrow: an AssertionError, or `throw null` with assertions off.
+    it('reports a measurement that is not finite instead of ending without a winner', function (float $measurement): void {
+        $optimizer = new ScheduleOptimizer(
+            ScheduleScorer::of(constantMetric($measurement, 'Broken')),
+            new Randomizer(new Mt19937(1))
+        );
+
+        $optimizer->optimize(fn(Randomizer $randomizer): Schedule => new Schedule([]), 3);
+    })->with([
+        'NAN' => [NAN],
+        'INF' => [INF],
+    ])->throws(InvalidConfigurationException::class, 'Metric Broken measured a value that is not finite');
+
+    it('keeps the only candidate, however poor its score', function (): void {
+        $optimizer = new ScheduleOptimizer(
+            ScheduleScorer::of(constantMetric(PHP_FLOAT_MAX, 'Poor')),
+            new Randomizer(new Mt19937(1))
+        );
+        $schedule = new Schedule([]);
+
+        $optimized = $optimizer->optimize(fn(Randomizer $randomizer): Schedule => $schedule, 2);
+
+        expect($optimized->getSchedule())->toBe($schedule)
+            ->and($optimized->getScore())->toBe(PHP_FLOAT_MAX)
+            ->and($optimized->getSamplesGenerated())->toBe(2);
     });
 
     it('rejects a non-positive sample count', function (): void {
