@@ -559,7 +559,9 @@ the fallback is equal: the ranking value, the value of each configured
 tiebreaker, the score difference and scores-for
 (`StandingEntry::isLevelWith()` is that comparison). A **tied set**
 (`TiedSet`) is a group of two or more level entries, as large as it can be.
-Level entries are always next to each other in the table, so a set spans the
+In a table the calculator built, level entries are always next to each other
+(a `Standings` constructed by hand is read in the order it was given, and
+only adjacent level entries form a set), so a set spans the
 consecutive positions from `getFirstPosition()` to `getLastPosition()`, and
 `getEntries()` and `getParticipants()` list its members in table order. The
 sets are returned in table order; a table with two separate ties returns two
