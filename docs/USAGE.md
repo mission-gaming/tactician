@@ -1719,6 +1719,13 @@ identifier for logs and stored data):
 | `UndecidedTie` | `undecided_tie` | A tie that must produce a winner has none |
 | `IncompatibleOutcome` | `incompatible_outcome` | A progression selector was given an outcome of a shape it cannot read |
 | `RankUnavailable` | `rank_unavailable` | A progression selector asked for a rank the standings do not have |
+| `RoundOutOfSequence` | `round_out_of_sequence` | A round was recorded out of play order: its number is not above the last recorded one |
+| `EventNotInRound` | `event_not_in_round` | An event, or the event of a result, does not belong to the round it was recorded with |
+| `NoRoundRecorded` | `no_round_recorded` | Results were added or replaced in a stage with no recorded round |
+| `ResultNotRecorded` | `result_not_recorded` | A result was to be replaced for an event that has no recorded result |
+| `RoundSuperseded` | `round_superseded` | A result was to be replaced in a round that a later round was paired from |
+| `EmptyEngineFingerprint` | `empty_engine_fingerprint` | A stage state was to be stamped with an empty engine fingerprint |
+| `EngineFingerprintMismatch` | `engine_fingerprint_mismatch` | A stage state carries the fingerprint of another engine or configuration than the one reading it |
 | `EmptyEventId` | `empty_event_id` | A movable or pinned event has an empty ID |
 | `IdenticalParticipants` | `identical_participants` | An event names the same participant on both sides |
 | `DuplicateEventId` | `duplicate_event_id` | Two events of one repack request share an ID |
@@ -1736,13 +1743,9 @@ identifier for logs and stored data):
 
 A case says what kind of mistake was made, not which component found it:
 `TooFewParticipants` comes from the round-robin scheduler, the Swiss engine
-and the elimination engines alike. One group of errors has no reason yet:
-those `StageState` raises (`withRoundPlayed()`, `withAdditionalResults()`,
-`withResultReplaced()`, the engine fingerprint, and a duplicate ID given to
-`start()`). Their `getReason()` returns null. The report of the first two
-and of `start()` also still ends with the round-robin "REQUIREMENTS" block,
-which does not describe them, because they state neither a reason nor
-requirements. Both are known gaps.
+and the elimination engines alike. Every configuration error the library
+raises states one; `getReason()` returns null only for an exception that
+code outside the library builds without a reason.
 
 ### Catching Every Library Exception
 

@@ -175,11 +175,12 @@ heading **Output change (fix)**.
   also unchanged for the three factories on `SchedulingException` and for an
   `InvalidConfigurationException` that code outside the library builds the
   way it did before, because the library cannot tell what those describe.
-  Six of the errors `Stage\StageState` raises (see "Added" below) are built
-  that way too, so their report still ends with the round-robin block, which
-  does not describe them: a known gap. Every other configuration error the library
-  raises now has no "REQUIREMENTS" block, and its report ends with the
-  configuration details.
+  Every other configuration error the library raises now has no
+  "REQUIREMENTS" block, and its report ends with the configuration details.
+  That includes the errors of `Stage\StageState` (a duplicate ID given to
+  `start()`, a round recorded out of order, an event or a result that does
+  not belong to the round recorded), which are not about a round robin
+  either.
 - The suggestion `IncompleteScheduleException::getDiagnosticReport()` gives
   for a consecutive role constraint pointed the wrong way. The limit of a
   `ConsecutiveRoleConstraint` is the most events in a row a participant may
@@ -245,15 +246,17 @@ heading **Output change (fix)**.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
-  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 32 more; the
+  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 39 more; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). 127 of the 138 sites that build the exception set one. The
-  eleven that do not are in `Stage\StageState` (recording a round or its
-  results, replacing a result, the engine fingerprint, and a duplicate ID
-  given to `start()`): `getReason()` returns null
-  for those, and for an exception that code outside the library builds
-  without a reason. A `match` over the reason needs a `default` arm, because
-  a release may add a case.
+  identifiers). Every site in the library that builds the exception sets
+  one, those of `Stage\StageState` included (`RoundOutOfSequence`,
+  `EventNotInRound`, `NoRoundRecorded`, `ResultNotRecorded`,
+  `RoundSuperseded`, `EmptyEngineFingerprint` and
+  `EngineFingerprintMismatch` for recording a round or its results,
+  replacing a result and the engine fingerprint). `getReason()` returns null
+  only for an exception that code outside the library builds without a
+  reason. A `match` over the reason needs a `default` arm, because a release
+  may add a case.
 - `Exceptions\PinConflictException`, thrown by `RepackRequest` when one
   participant is pinned in two events at the same session and slot.
   `getEventIds()` returns the IDs of the two events, and `getParticipantId()`,

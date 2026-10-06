@@ -60,9 +60,8 @@ class InvalidConfigurationException extends SchedulingException
      * @param string $message The exception message; empty for "Invalid scheduler
      *                        configuration: " followed by the issue
      * @param ?InvalidConfigurationReason $reason The kind of mistake. The library sets one
-     *                                            everywhere except in `Stage\StageState`; null is
-     *                                            for those errors and for code outside the library
-     *                                            that builds one without it
+     *                                            everywhere; null is for code outside the library
+     *                                            that builds the exception without it
      * @param ?list<string> $requirements What the failing component requires, one statement per
      *                                    entry, for the "REQUIREMENTS" block of the report. With
      *                                    a reason and no requirements the report has no such
@@ -100,11 +99,8 @@ class InvalidConfigurationException extends SchedulingException
      * The kind of mistake, for code that has to tell configuration errors
      * apart without reading the message.
      *
-     * @return ?InvalidConfigurationReason Null when the exception was built without a reason: by
-     *                                     code outside the library, or by `Stage\StageState`,
-     *                                     whose errors (recording a round or its results,
-     *                                     replacing a result, the engine fingerprint, a
-     *                                     duplicate ID given to `start()`) do not state one yet
+     * @return ?InvalidConfigurationReason Null when the exception was built without a reason,
+     *                                     which only code outside the library does
      */
     public function getReason(): ?InvalidConfigurationReason
     {

@@ -8,6 +8,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
 
@@ -52,7 +53,8 @@ final readonly class StageState
      * Order is authoritative: engines seed and pair from list position.
      *
      * @param array<Participant> $participants
-     * @throws InvalidConfigurationException When participant IDs collide
+     * @throws InvalidConfigurationException When participant IDs collide (reason
+     *                                       `DuplicateParticipantIds`)
      */
     public static function start(array $participants): self
     {
@@ -62,7 +64,8 @@ final readonly class StageState
         if (count($ids) !== count(array_unique($ids))) {
             throw new InvalidConfigurationException(
                 'All participants must have unique IDs',
-                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))]
+                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))],
+                reason: InvalidConfigurationReason::DuplicateParticipantIds
             );
         }
 
@@ -81,8 +84,10 @@ final readonly class StageState
      * never contradict itself.
      *
      * @param array<Result> $results
-     * @throws InvalidConfigurationException When the pairing does not follow the recorded rounds,
-     *                                       or an event or result belongs to a different round
+     * @throws InvalidConfigurationException When the pairing does not follow the recorded rounds
+     *                                       (reason `RoundOutOfSequence`), or an event or result
+     *                                       belongs to a different round or is not in the pairing
+     *                                       (`EventNotInRound`)
      */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self
     {
@@ -90,7 +95,8 @@ final readonly class StageState
         if ($lastRound !== null && $pairing->getRoundNumber() <= $lastRound->getRoundNumber()) {
             throw new InvalidConfigurationException(
                 'Rounds must be recorded in play order with increasing round numbers',
-                ['last_round' => $lastRound->getRoundNumber(), 'pairing_round' => $pairing->getRoundNumber()]
+                ['last_round' => $lastRound->getRoundNumber(), 'pairing_round' => $pairing->getRoundNumber()],
+                reason: InvalidConfigurationReason::RoundOutOfSequence
             );
         }
 
@@ -99,7 +105,8 @@ final readonly class StageState
             if ($eventRound !== $pairing->getRoundNumber()) {
                 throw new InvalidConfigurationException(
                     'Pairing contains an event from a different round',
-                    ['pairing_round' => $pairing->getRoundNumber(), 'event_round' => $eventRound]
+                    ['pairing_round' => $pairing->getRoundNumber(), 'event_round' => $eventRound],
+                    reason: InvalidConfigurationReason::EventNotInRound
                 );
             }
         }
@@ -133,14 +140,16 @@ final readonly class StageState
             if ($resultRound !== $pairing->getRoundNumber()) {
                 throw new InvalidConfigurationException(
                     'Result belongs to a different round than the pairing being recorded',
-                    ['pairing_round' => $pairing->getRoundNumber(), 'result_round' => $resultRound]
+                    ['pairing_round' => $pairing->getRoundNumber(), 'result_round' => $resultRound],
+                    reason: InvalidConfigurationReason::EventNotInRound
                 );
             }
 
             if (!isset($pairingEventKeys[$this->eventKey($result->getEvent())])) {
                 throw new InvalidConfigurationException(
                     'Result references an event that is not part of the pairing being recorded',
-                    ['pairing_round' => $pairing->getRoundNumber(), 'event' => $this->eventKey($result->getEvent())]
+                    ['pairing_round' => $pairing->getRoundNumber(), 'event' => $this->eventKey($result->getEvent())],
+                    reason: InvalidConfigurationReason::EventNotInRound
                 );
             }
         }
@@ -167,7 +176,9 @@ final readonly class StageState
      * results arrive here.
      *
      * @param array<Result> $results
-     * @throws InvalidConfigurationException When no round is recorded or a result belongs to a different round
+     * @throws InvalidConfigurationException When no round is recorded (reason `NoRoundRecorded`) or
+     *                                       a result belongs to a different round or to an event
+     *                                       the last round does not hold (`EventNotInRound`)
      */
     public function withAdditionalResults(array $results): self
     {
@@ -175,7 +186,8 @@ final readonly class StageState
         if ($lastRound === null) {
             throw new InvalidConfigurationException(
                 'No round has been recorded to add results to',
-                []
+                [],
+                reason: InvalidConfigurationReason::NoRoundRecorded
             );
         }
 
@@ -221,22 +233,19 @@ final readonly class StageState
      * A replacement removes nothing but the old result: an event whose
      * result should not exist at all is not what this verb is for.
      *
-     * @throws InvalidConfigurationException When no round has been recorded, when the event
-     *                                       has no recorded result, or when its round is not
-     *                                       the last recorded round
+     * @throws InvalidConfigurationException When no round has been recorded (reason
+     *                                       `NoRoundRecorded`), when the event has no recorded
+     *                                       result (`ResultNotRecorded`), or when its round is not
+     *                                       the last recorded round (`RoundSuperseded`)
      */
     public function withResultReplaced(Result $result): self
     {
         $lastRound = $this->getLastRound();
         if ($lastRound === null) {
-            // The errors of this method and of the fingerprint state no
-            // reason, like the others of this class, and name an empty list
-            // of requirements: without it their report would end with the
-            // round-robin requirements, which do not describe them.
             throw new InvalidConfigurationException(
                 'No round has been recorded to replace a result in',
                 [],
-                requirements: []
+                reason: InvalidConfigurationReason::NoRoundRecorded
             );
         }
 
@@ -268,7 +277,7 @@ final readonly class StageState
                         $event->getParticipants()
                     ),
                 ],
-                requirements: []
+                reason: InvalidConfigurationReason::ResultNotRecorded
             );
         }
 
@@ -278,7 +287,7 @@ final readonly class StageState
                     . " results of round {$round}. Rebuild the state up to round {$round} with the corrected result"
                     . ' (StageState::start(), then withRoundPlayed() for each round that stands) and pair again.',
                 ['round' => $round, 'last_round' => $lastRound->getRoundNumber()],
-                requirements: []
+                reason: InvalidConfigurationReason::RoundSuperseded
             );
         }
 
@@ -330,7 +339,7 @@ final readonly class StageState
     public function withEngineFingerprint(?string $fingerprint): self
     {
         if ($fingerprint === '') {
-            throw new InvalidConfigurationException('An engine fingerprint cannot be empty', [], requirements: []);
+            throw new InvalidConfigurationException('An engine fingerprint cannot be empty', [], reason: InvalidConfigurationReason::EmptyEngineFingerprint);
         }
 
         return new self($this->participants, $this->roundsPlayed, $this->results, $fingerprint);
@@ -362,7 +371,7 @@ final readonly class StageState
                 'The stage state was recorded by a different engine or configuration; stamp it again with'
                     . ' withEngineFingerprint() if the change is deliberate',
                 ['recorded' => $this->engineFingerprint, 'engine' => $fingerprint],
-                requirements: []
+                reason: InvalidConfigurationReason::EngineFingerprintMismatch
             );
         }
     }
