@@ -178,6 +178,20 @@ describe('InvalidConfigurationException', function (): void {
         'an empty array' => [[], '[0 items]'],
         'a nested array' => [[[1, 2], [3]], '[[1, 2], [3]]'],
         'a list of strings' => [['a', '', 'b, c'], '["a", "", "b, c"]'],
+        // One entry stays one quoted run on one line, whatever it holds: a
+        // quote in it cannot close it, and a line break cannot split the report
+        'a string that holds the list separator and quotes' => [['a", "b'], '["a\", \"b"]'],
+        'a string that holds a backslash' => [['a\\', 'b'], '["a\\\\", "b"]'],
+        'a string that holds a line break and a tab' => [["one\ntwo\tthree\r"], '["one\ntwo\tthree\r"]'],
+        'a string that holds a NUL byte' => [["Europe/Lon\0don"], '["Europe/Lon\000don"]'],
+        'a string that is not UTF-8' => [["caf\xE9"], "[\"caf\xE9\"]"],
+        'a list of numbers, booleans and null' => [[1, -2, 1.5, true, false, null], '[1, -2, 1.5, true, false, null]'],
+        'a list of floats that are not finite' => [[NAN, INF, -INF], '[NAN, INF, -INF]'],
+        // The internal name of an anonymous class holds a NUL byte and the path
+        // of the file that declares it; the report must not differ by machine
+        'an object of an anonymous class' => [new class {}, 'class@anonymous'],
+        'an object of an anonymous class that extends one' => [new class extends ArrayObject {}, 'ArrayObject@anonymous'],
+        'a list that holds an object of an anonymous class' => [[new class {}, new stdClass()], '[class@anonymous, stdClass]'],
         // Pest calls a closure it finds in a dataset, so this one returns the value.
         'a closure' => [fn(): Closure => fn(): int => 1, Closure::class],
         'an object that can be a string' => [new MissionGaming\Tactician\DTO\Round(2), MissionGaming\Tactician\DTO\Round::class],
@@ -447,6 +461,42 @@ describe('InvalidConfigurationException', function (): void {
             . "• start: 2026-08-01 19:00:00\n"
             . '• timezone: Neverland/Nowhere'
         );
+    });
+
+    // Tests that a subclass written before the reason existed, which passes
+    // the five old parameters by position, is built as it was
+    it('is built as before by a subclass that passes the old five parameters', function (): void {
+        // Given: A subclass with a constructor of its own
+        $previous = new RuntimeException('cause');
+        $exception = new class ('Issue', $previous) extends InvalidConfigurationException {
+            public function __construct(string $issue, Throwable $previous)
+            {
+                parent::__construct($issue, ['key' => 1], 'Message', 7, $previous);
+            }
+        };
+
+        // Then: Everything it passed is there, with no reason and the block it always had
+        expect($exception->getConfigurationIssue())->toBe('Issue');
+        expect($exception->getContext())->toBe(['key' => 1]);
+        expect($exception->getMessage())->toBe('Message');
+        expect($exception->getCode())->toBe(7);
+        expect($exception->getPrevious())->toBe($previous);
+        expect($exception->getReason())->toBeNull();
+        expect($exception->getRequirements())->toBe(InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS);
+    });
+
+    // Tests the bound on a keyed array: it is cut like a list, keys kept
+    it('cuts a long keyed array at the limit', function (): void {
+        $keyed = [];
+        for ($i = 1; $i <= 21; ++$i) {
+            $keyed["k{$i}"] = $i;
+        }
+        $exception = new InvalidConfigurationException('Issue', ['keyed' => $keyed]);
+
+        $report = $exception->getDiagnosticReport();
+        expect($report)->toContain('• keyed: [k1: 1, k2: 2,');
+        expect($report)->toContain('k20: 20, ... 1 more of 21]');
+        expect($report)->not->toContain('k21');
     });
 
     it('lists the requirements it was given, one bullet each', function (): void {

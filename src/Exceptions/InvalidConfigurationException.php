@@ -59,9 +59,10 @@ class InvalidConfigurationException extends SchedulingException
      * @param array<string, mixed> $context The values involved, keyed by name
      * @param string $message The exception message; empty for "Invalid scheduler
      *                        configuration: " followed by the issue
-     * @param ?InvalidConfigurationReason $reason The kind of mistake. Every exception the library
-     *                                            builds has one; null is for code outside the
-     *                                            library that builds one without it
+     * @param ?InvalidConfigurationReason $reason The kind of mistake. The library sets one
+     *                                            everywhere except in `Stage\StageState`; null is
+     *                                            for those errors and for code outside the library
+     *                                            that builds one without it
      * @param ?list<string> $requirements What the failing component requires, one statement per
      *                                    entry, for the "REQUIREMENTS" block of the report. With
      *                                    a reason and no requirements the report has no such
@@ -99,8 +100,10 @@ class InvalidConfigurationException extends SchedulingException
      * The kind of mistake, for code that has to tell configuration errors
      * apart without reading the message.
      *
-     * @return ?InvalidConfigurationReason Null only when the exception was built outside the
-     *                                     library without a reason
+     * @return ?InvalidConfigurationReason Null when the exception was built without a reason: by
+     *                                     code outside the library, or by `Stage\StageState`,
+     *                                     whose errors (recording a round or its results, a
+     *                                     duplicate ID given to `start()`) do not state one yet
      */
     public function getReason(): ?InvalidConfigurationReason
     {
@@ -132,9 +135,14 @@ class InvalidConfigurationException extends SchedulingException
      *
      * A context value that is a list is written out in full, in the order
      * it has, with strings in double quotes: `event_ids: ["e1", "e2"]`.
-     * Keys are written where the array is not a list:
+     * Inside the quotes a double quote and a backslash are written with a
+     * backslash before them, and a control character as its C escape (`\n`,
+     * `\t`, `\000` for a NUL byte), so one entry is always one quoted run on
+     * one line. A string that is a context value itself, outside any list,
+     * is written as it is. Keys are written where the array is not a list:
      * `[from: "2026-01-01", to: "2026-01-02"]`. An object is written as its
-     * class name. Two bounds keep the report readable: a list longer than
+     * class name (an anonymous class as `class@anonymous`, or the name of
+     * its parent or first interface before `@anonymous`). Two bounds keep the report readable: a list longer than
      * {@see self::REPORT_LIST_LIMIT} entries is cut there and followed by
      * the number left out (`... 80 more of 100`), and a list nested deeper
      * than {@see self::REPORT_NESTING_LIMIT} levels is written as its size
@@ -177,7 +185,10 @@ class InvalidConfigurationException extends SchedulingException
         }
 
         if (is_object($value)) {
-            return $value::class;
+            // Not `$value::class`: the name of an anonymous class holds a NUL
+            // byte and the path of the file that declares it, so the report
+            // would differ from one machine to the next.
+            return get_debug_type($value);
         }
 
         if (is_bool($value)) {
@@ -191,7 +202,10 @@ class InvalidConfigurationException extends SchedulingException
         if (is_string($value) && $depth > 0) {
             // Inside a list a string is quoted, so that an empty one and one
             // holding a comma can still be told apart from their neighbours.
-            return '"' . $value . '"';
+            // A quote or a backslash in it is escaped, or the string could
+            // close itself and read as two entries; a control character is
+            // escaped so that an entry cannot break the line it is on.
+            return '"' . addcslashes($value, "\0..\37\177\\\"") . '"';
         }
 
         if (is_scalar($value)) {

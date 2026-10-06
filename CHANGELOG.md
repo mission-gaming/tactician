@@ -62,11 +62,27 @@ heading **Output change (fix)**.
 
   A list is written in its own order, with strings in double quotes and with
   keys where the array is not a list (`[from: "2026-01-01", to: "2026-01-02"]`).
+  Inside the quotes a double quote and a backslash are written with a
+  backslash before them and a control character as its C escape (`\n`,
+  `\000`), so one entry is always one quoted run on one line.
   An object is still written as its class name. A list of more than 20
   entries is cut after the twentieth and followed by the number left out
   (`... 80 more of 100`), and a list nested more than three levels deep is
   still written as its size. An empty list is still `[0 items]`, and a value
   that is not a list is written as before. `getContext()` is unchanged.
+- The same report writes an object of an anonymous class as
+  `class@anonymous` (or the name of its parent or first interface before
+  `@anonymous`). It wrote the internal name of the class, which holds a NUL
+  byte and the absolute path of the file that declares it, so the report of
+  one error differed from one machine to the next and put a filesystem path
+  in a log:
+
+  ```
+  • strategy: class@anonymous<NUL>/srv/app/src/League.php:12$0    before
+  • strategy: class@anonymous                                     after
+  ```
+
+  An object of a named class is written as its class name, as before.
 - The "REQUIREMENTS" block of that report no longer lists the round-robin
   requirements under an error that has nothing to do with a round robin.
   Every configuration error ended with the same five lines ("Participants
@@ -98,8 +114,11 @@ heading **Output change (fix)**.
   also unchanged for the three factories on `SchedulingException` and for an
   `InvalidConfigurationException` that code outside the library builds the
   way it did before, because the library cannot tell what those describe.
-  Every other configuration error the library raises now has no
-  "REQUIREMENTS" block, and its report ends with the configuration details.
+  The six errors `Stage\StageState` raises (see "Added" below) are built that
+  way too, so their report still ends with the round-robin block, which does
+  not describe them: a known gap. Every other configuration error the library
+  raises now has no "REQUIREMENTS" block, and its report ends with the
+  configuration details.
 - The suggestion `IncompleteScheduleException::getDiagnosticReport()` gives
   for a consecutive role constraint pointed the wrong way. The limit of a
   `ConsecutiveRoleConstraint` is the most events in a row a participant may
