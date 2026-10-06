@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippet;
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippets;
 use PHPUnit\Framework\Assert;
@@ -213,6 +214,8 @@ describe('Documentation snippets', function () use ($extracted, $blocks, $skippe
 
     it('expects only the blocks listed here to throw', function () use ($extracted): void {
         expect(snippetsMarked($extracted, DocumentationSnippet::THROWS))->toBe([
+            // Asking a shape-only session grid for a slot time
+            'docs/USAGE.md / Schedule Repacking: ' . UnavailableValueException::class,
             'docs/USAGE.md / Real-World Examples: ' . IncompleteScheduleException::class,
         ]);
     });
@@ -271,6 +274,26 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         }
     })->with([
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'ids that are equal as numbers or hold a separator' => ['docs/USAGE.md', 'count($entrySchedule)', ["6 events\n"], []],
+        'a result replaced in the last round' => [
+            'docs/USAGE.md',
+            '$corrected = $state->withResultReplaced(',
+            ["20 results before, 20 after\n"],
+            [],
+        ],
+        // The block is there to show the refusal
+        'a result of an earlier round refused' => [
+            'docs/USAGE.md',
+            '$firstRoundEvent = ',
+            ["Refused: round 1 is not the last recorded round (5)\n"],
+            ['Replaced'],
+        ],
+        'a stamped state refused by another engine' => [
+            'docs/USAGE.md',
+            '->withEngineFingerprint($engine->getFingerprint());',
+            ["swiss:planned-rounds=5\n4 events\nRefused: recorded by swiss:planned-rounds=5\n"],
+            ['Paired as a bracket'],
+        ],
         'schedule metadata' => [
             'docs/USAGE.md',
             "getMetadataValue('participant_count')",
@@ -300,6 +323,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$standings->getPosition(',
             ["1. Carol: 4 pts (1W 1D 0L)\n2. Alice: 4 pts (1W 1D 0L)\n3. Bob: 0 pts (0W 0D 1L)\n4. Dave: 0 pts (0W 0D 1L)\n"],
+            [],
+        ],
+        'tied sets' => [
+            'docs/USAGE.md',
+            '$unplayed->getTiedSets()',
+            ["Positions 1 to 4: Alice, Bob, Carol, Dave\nThe results do not decide who takes the top 2 positions\n0 tied sets\n"],
             [],
         ],
         'elimination round labels' => ['docs/USAGE.md', 'echo "{$pairing->getLabel()}\n";', ["quarterfinal\nsemifinal\nfinal\n"], []],
@@ -370,6 +399,52 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '} catch (\InvalidArgumentException $e) {',
             ["Round number must be positive\nSyntax error\n"],
+            [],
+        ],
+        'repack onto a shape-only grid' => [
+            'docs/USAGE.md',
+            '$shape->ordinalOf($assignment->getSession(), $assignment->getSlot())',
+            [
+                "e03: session 0, slot 1, ordinal 1\n"
+                . "e04: session 0, slot 2, ordinal 2\n"
+                . "{\"session\":1,\"slot\":2}\n"
+                . "null\n"
+                . "{\"session_count\":2,\"slots_per_session\":3,\"capacity_per_slot\":3,\"slots_per_session_overrides\":{\"1\":4}}\n",
+            ],
+            ['kickoff'],
+        ],
+        'position of an instant' => [
+            'docs/USAGE.md',
+            '$grid->positionOf($halfPastEight)',
+            ["{\"session\":1,\"slot\":1}\n4\nbool(true)\n"],
+            [],
+        ],
+        'repack with unbounded capacity' => [
+            'docs/USAGE.md',
+            '$open->hasUnboundedCapacity()',
+            ["2 placed, 3 unplaced\n4 placed, 1 unplaced\nbool(true)\nNULL\nunbounded\n"],
+            [],
+        ],
+        'repack violations by typed accessor' => [
+            'docs/USAGE.md',
+            '$crowded->getCapacityExceededViolations() as $violation',
+            [
+                "Celtic: 3 needed, 2 available, 1 short\n"
+                . "the grid: 4 needed, 2 available, 2 short\n"
+                . "Rayo Vallecano starts at slot 2 of session 0\n"
+                . "e05: participant_over_capacity (Celtic)\n"
+                . "e06: no_slot_available (nobody in particular)\n"
+                . "e07: no_slot_available (nobody in particular)\n"
+                . "3\n0\n0\n",
+            ],
+            [],
+        ],
+        'repack step budget flag' => ['docs/USAGE.md', '$starved->isBudgetExhausted()', ["bool(false)\nbool(true)\n"], []],
+        // The literal is the documented fingerprint of the section's first repack
+        'repack outcome fingerprint' => [
+            'docs/USAGE.md',
+            '$recomputed->fingerprint() === $outcome->fingerprint()',
+            ["v1:170a5b5c2b8386a00fa959d26afcd76fab43b8521e08106b3bdbbf2334dbc945\nbool(true)\nbool(false)\n"],
             [],
         ],
         'premier league season' => ['docs/USAGE.md', 'echo "Premier League season: "', ["Premier League season: 380 matches\n"], []],

@@ -20,6 +20,8 @@ use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Exceptions\TacticianException;
+use MissionGaming\Tactician\Exceptions\UnavailableValueException;
+use MissionGaming\Tactician\Repack\SlotAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\RoundPairing;
@@ -470,6 +472,17 @@ describe('TacticianException', function (): void {
         expect(get_parent_class(SchedulingException::class))->toBe(Exception::class);
         // LogicException itself: an internal defect is not a rejected argument.
         expect(get_parent_class(InvariantViolationException::class))->toBe(LogicException::class);
+        // LogicException as well, and so unchecked: a caller's mistake, which
+        // the object's own has...() method would have prevented.
+        expect(get_parent_class(UnavailableValueException::class))->toBe(LogicException::class);
+        expect((new ReflectionClass(UnavailableValueException::class))->isFinal())->toBeTrue();
+    });
+
+    it('is caught as a TacticianException and as a LogicException when an object is asked for a value it does not hold', function (): void {
+        $outcome = tacticianOutcome(fn() => (new SlotAssignment('e1', 0, 0, null))->getKickoff());
+
+        expect($outcome['thrown'])->toBeInstanceOf(UnavailableValueException::class);
+        expect($outcome['caughtBy'])->toBe([TacticianException::class, LogicException::class]);
     });
 
     it('constructs the SPL subclasses with the SPL arguments', function (): void {
@@ -478,6 +491,7 @@ describe('TacticianException', function (): void {
             new InvalidInputException('message', 7, $cause),
             new InvariantViolationException('message', 7, $cause),
             new JsonConversionException('message', 7, $cause),
+            new UnavailableValueException('message', 7, $cause),
         ];
 
         foreach ($exceptions as $exception) {

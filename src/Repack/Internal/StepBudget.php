@@ -11,11 +11,21 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * RepackOptions::$stepBudget is a genuine whole-run bound. Steps, not
  * wall clock: behaviour is reproducible.
  *
+ * The budget also records whether it ever stopped a search
+ * ({@see self::stoppedASearch()}), which the outcome reports. Both ways a
+ * search learns that the budget is gone set the record: consume()
+ * refusing, and isExhausted() answering true. Every caller asks
+ * isExhausted() only while it still has something to search, so a true
+ * answer is always a search cut short; a caller that asks for another
+ * purpose must not use isExhausted().
+ *
  * @internal
  */
 final class StepBudget
 {
     private int $remaining;
+
+    private bool $stoppedASearch = false;
 
     public function __construct(int $steps)
     {
@@ -30,6 +40,7 @@ final class StepBudget
     {
         if ($this->remaining < $steps) {
             $this->remaining = 0;
+            $this->stoppedASearch = true;
 
             return false;
         }
@@ -39,8 +50,29 @@ final class StepBudget
         return true;
     }
 
+    /**
+     * Whether no step is left. Asked by a search that would otherwise go
+     * on, so a true answer is recorded as a search the budget stopped.
+     */
     public function isExhausted(): bool
     {
-        return $this->remaining <= 0;
+        if ($this->remaining <= 0) {
+            $this->stoppedASearch = true;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the budget has stopped a search at any point: a step was
+     * refused, or a search asked whether to go on and was told no. Spending
+     * the last step on a search that then finishes without asking for
+     * another does not count.
+     */
+    public function stoppedASearch(): bool
+    {
+        return $this->stoppedASearch;
     }
 }

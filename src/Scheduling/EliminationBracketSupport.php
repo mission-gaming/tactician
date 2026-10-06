@@ -10,6 +10,7 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\TieDecision;
 
 /**
@@ -146,8 +147,7 @@ trait EliminationBracketSupport
             $key = $this->legKey($round, $eventParticipants[0], $eventParticipants[1], $event->getMetadataValue('tie_leg'));
 
             if (isset($index[$key])) {
-                $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
-                sort($ids);
+                $ids = PairKey::order([$eventParticipants[0]->getId(), $eventParticipants[1]->getId()]);
                 throw new InvalidConfigurationException(
                     "Two results reference the same elimination match ({$ids[0]} vs {$ids[1]}, round {$round})",
                     ['round' => $round, 'participants' => $ids],
@@ -190,11 +190,8 @@ trait EliminationBracketSupport
 
     private function legKey(int $round, Participant $first, Participant $second, mixed $tieLeg): string
     {
-        $ids = [$first->getId(), $second->getId()];
-        sort($ids);
-
         $leg = is_int($tieLeg) ? $tieLeg : 1;
 
-        return $round . ':' . implode('|', $ids) . ':' . $leg;
+        return $round . ':' . PairKey::of($first->getId(), $second->getId()) . ':' . $leg;
     }
 }
