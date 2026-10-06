@@ -85,6 +85,12 @@ enum InvalidConfigurationReason: string
     case UnsatisfiableLegStrategy = 'unsatisfiable_leg_strategy';
 
     /**
+     * A role assignment returned something other than the seatings it was
+     * given, each one unchanged or reversed. It may decide roles only.
+     */
+    case InvalidRoleAssignment = 'invalid_role_assignment';
+
+    /**
      * Plain-data configuration holds a key the options do not have. The
      * context lists the unknown keys and the known ones.
      */
