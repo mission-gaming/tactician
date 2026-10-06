@@ -20,7 +20,10 @@ use Override;
 final readonly class ParticipantDoubleBooked implements RepackViolation
 {
     /**
-     * @param array<string> $eventIds The ids of the colliding events, sorted
+     * @param int $session 0-based session index
+     * @param int $slot 0-based slot index within the session
+     * @param array<string> $eventIds The ids of the colliding events, pinned or
+     *                                movable, in ascending byte order
      */
     public function __construct(
         private Participant $participant,
@@ -29,28 +32,43 @@ final readonly class ParticipantDoubleBooked implements RepackViolation
         private array $eventIds
     ) {}
 
+    /**
+     * Always ViolationKind::ParticipantDoubleBooked.
+     */
     #[Override]
     public function getKind(): ViolationKind
     {
         return ViolationKind::ParticipantDoubleBooked;
     }
 
+    /**
+     * The participant that is at one position twice.
+     */
     public function getParticipant(): Participant
     {
         return $this->participant;
     }
 
+    /**
+     * The 0-based session index of the position.
+     */
     public function getSession(): int
     {
         return $this->session;
     }
 
+    /**
+     * The 0-based slot index of the position within its session.
+     */
     public function getSlot(): int
     {
         return $this->slot;
     }
 
     /**
+     * The ids of the events that put the participant at the position, two
+     * or more, in ascending byte order.
+     *
      * @return array<string>
      */
     public function getEventIds(): array
@@ -59,6 +77,8 @@ final readonly class ParticipantDoubleBooked implements RepackViolation
     }
 
     /**
+     * Serialize to plain data; the participant by its ID.
+     *
      * @return array{kind: string, participant: string, session: int, slot: int, event_ids: array<string>}
      */
     #[Override]

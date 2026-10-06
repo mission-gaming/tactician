@@ -10,8 +10,14 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * Phase B is an exact search against the contiguity targets: slot c must
  * hold a perfect matching on exactly the participants targeting c, so a
  * budget-bounded depth-first search with fail-first vertex selection
- * either packs the session with zero gaps and zero late starts by
- * construction, or proves the targets unreachable within budget.
+ * either packs the session with every participant on its target, or
+ * finds no such packing: every placement of the runs was tried and
+ * failed, or the budget ran out first. A packing it finds gives an
+ * unpinned participant one run with no gap, and among the run placements
+ * it is the first that packs when they are tried in order of total late
+ * start, all runs from the top first. A pinned participant's target can
+ * itself start late or keep a gap its load cannot bridge
+ * (ContiguityTargets).
  *
  * Phase C is the honest fallback: a prioritized greedy packing
  * (participants who must play every remaining slot go first), a direct

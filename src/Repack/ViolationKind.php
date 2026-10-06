@@ -31,6 +31,6 @@ enum ViolationKind: string
     /** A participant's first event in a session is not the session's first slot. */
     case LateStart = 'late_start';
 
-    /** More events need positions than exist — for a participant, a session, or the grid. */
+    /** More events need positions than exist — for a participant, or for the grid as a whole. */
     case CapacityExceeded = 'capacity_exceeded';
 }

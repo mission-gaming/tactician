@@ -15,6 +15,11 @@ namespace MissionGaming\Tactician\Repack;
  */
 interface RepackViolation
 {
+    /**
+     * Which kind of compromise this is; the same for every instance of a
+     * class. The repacker orders an outcome's violations by it, in the
+     * order the enum declares its cases.
+     */
     public function getKind(): ViolationKind;
 
     /**

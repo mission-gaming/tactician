@@ -23,8 +23,15 @@ use Override;
 final readonly class CapacityExceeded implements RepackViolation
 {
     /**
-     * @param int $demand How many positions were needed
-     * @param int $capacity How many positions exist in this scope
+     * @param Participant|null $participant The participant whose events do not fit, or
+     *                                      null when it is the grid that is too small
+     * @param int $demand How many movable events need a place: the participant's, or all
+     *                    of them. Events already left out for an over-capacity
+     *                    participant are not counted again
+     * @param int $capacity How many of them the scope can take: the positions the
+     *                      participant is not pinned at, or the places for an event on the
+     *                      whole grid (positions times capacity per slot, less the pinned
+     *                      events)
      */
     public function __construct(
         private ?Participant $participant,
@@ -32,29 +39,47 @@ final readonly class CapacityExceeded implements RepackViolation
         private int $capacity
     ) {}
 
+    /**
+     * Always ViolationKind::CapacityExceeded.
+     */
     #[Override]
     public function getKind(): ViolationKind
     {
         return ViolationKind::CapacityExceeded;
     }
 
+    /**
+     * The participant with more movable events than free positions; null
+     * when the violation is about the grid as a whole.
+     */
     public function getParticipant(): ?Participant
     {
         return $this->participant;
     }
 
+    /**
+     * How many movable events needed a place in this scope.
+     */
     public function getDemand(): int
     {
         return $this->demand;
     }
 
+    /**
+     * How many events the scope can take (see the constructor for what is
+     * counted in each scope).
+     */
     public function getCapacity(): int
     {
         return $this->capacity;
     }
 
     /**
-     * How many events cannot fit in this scope.
+     * How many events cannot fit in this scope: demand less capacity, and
+     * never below 0. For a participant, the repacker leaves exactly this
+     * many of its events unplaced with the reason ParticipantOverCapacity
+     * and the participant named; for the grid, at least this many events
+     * are unplaced.
      */
     public function getShortfall(): int
     {
@@ -62,6 +87,8 @@ final readonly class CapacityExceeded implements RepackViolation
     }
 
     /**
+     * Serialize to plain data; the participant by its ID, or null.
+     *
      * @return array{kind: string, participant: string|null, demand: int, capacity: int, shortfall: int}
      */
     #[Override]

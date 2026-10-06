@@ -22,12 +22,19 @@ namespace MissionGaming\Tactician\Timeline;
 interface TimelineRule
 {
     /**
-     * Human-readable rule name for diagnostics.
+     * Human-readable rule name for diagnostics. The assigner prefixes each
+     * of the rule's violations with it, in square brackets.
      */
     public function getName(): string;
 
     /**
      * Validate an assigned timeline.
+     *
+     * An implementation reports and does not throw: the assigner collects
+     * the descriptions of every rule and throws once, with all of them.
+     * Kickoffs are UTC instants (ScheduledEvent::getKickoff()). The answer
+     * should depend on the scheduled events alone, so that the same
+     * timeline always gets the same report.
      *
      * @return array<string> Human-readable violation descriptions; empty means the rule holds
      */
