@@ -14,6 +14,7 @@ use MissionGaming\Tactician\Repack\PinnedEvent;
 use MissionGaming\Tactician\Repack\RepackOptions;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
@@ -244,6 +245,7 @@ describe('the reason of a configuration error', function (): void {
             'DuplicateName' => 'duplicate_name',
             'NotSerializable' => 'not_serializable',
             'UnsatisfiableLegStrategy' => 'unsatisfiable_leg_strategy',
+            'InvalidRoleAssignment' => 'invalid_role_assignment',
             'BracketComplete' => 'bracket_complete',
             'RoundPartiallyResolved' => 'round_partially_resolved',
             'EventWithoutRoundNumber' => 'event_without_round_number',
@@ -310,6 +312,33 @@ describe('the reason of a configuration error', function (): void {
         'a leg strategy nobody knows' => [
             fn() => RoundRobinOptions::fromArray(['strategy' => 'sideways']),
             InvalidConfigurationReason::UnknownIdentifier,
+        ],
+        'a role assignment nobody knows' => [
+            fn() => RoundRobinOptions::fromArray(['role_assignment' => 'fair']),
+            InvalidConfigurationReason::UnknownIdentifier,
+        ],
+        'a custom role assignment serialized to plain data' => [
+            fn() => (new RoundRobinOptions(roleAssignment: new class implements RoleAssignmentInterface {
+                #[Override]
+                public function assignRoles(array $rounds): array
+                {
+                    return $rounds;
+                }
+            }))->toArray(),
+            InvalidConfigurationReason::NotSerializable,
+        ],
+        'a role assignment that drops a round' => [
+            fn() => (new RoundRobinScheduler())->schedule(
+                [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C')],
+                new RoundRobinOptions(roleAssignment: new class implements RoleAssignmentInterface {
+                    #[Override]
+                    public function assignRoles(array $rounds): array
+                    {
+                        return array_slice($rounds, 1);
+                    }
+                })
+            ),
+            InvalidConfigurationReason::InvalidRoleAssignment,
         ],
         'Swiss options given to the round-robin scheduler' => [
             fn() => (new RoundRobinScheduler())->schedule(

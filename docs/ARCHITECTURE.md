@@ -33,9 +33,10 @@ play completes. The `src/Stage/` family:
 ### Scheduling System
 - **SchedulerInterface**: Contract for whole-schedule generators — participants and typed options in, a validated schedule out; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
 - **SchedulerOptions**: Typed per-algorithm options, one type per scheduler — no overloaded scalars. Config-constructible (`fromArray()`/`toArray()`) with stable identifiers.
-- **RoundRobinOptions / SwissOptions**: Legs + leg strategy for round robin; rounds for Swiss (retiring the old "legs means rounds here" overload)
+- **RoundRobinOptions / SwissOptions**: Legs, leg strategy, backtracking and role assignment for round robin; rounds for Swiss (retiring the old "legs means rounds here" overload)
+- **RoleAssignmentInterface** (`src/RoleAssignment/`): Which participant of each round-robin pairing is first-named. The generator hands over one leg with the roles it proposes and takes it back with seatings reversed; the scheduler refuses an answer that changes anything else. `RoundParityRoleAssignment` (the default) returns the proposal. `BalancedRoleAssignment` ends every leg with each participant's two role counts at most 1 apart (field of even size) or equal (field of odd size): a closed rule for a circle layout, a chain-reversing repair for any other. See `docs/design/role-assignment.md`.
 - **BacktrackingRoundRobinGenerator**: Opt-in search over the round decompositions the circle method cannot reach (`RoundRobinOptions(backtracking: true)`): per-round perfect matchings built seat by seat under the constraints, both orientations tried, dead ends backtracking across rounds. Deterministic, step-bounded, loud about budget-exhausted vs proven-unsatisfiable.
-- **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, round-parity home/away role alternation, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first and generates from it.
+- **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, roles proposed by round parity and decided by the configured role assignment, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first and generates from it.
 - **SwissScheduler**: Whole-schedule Swiss preset — drives SwissPairingEngine through the stage driver loop recording no results, which reduces Monrad pairing to random non-repeat pairing
 - **SchedulingContext**: Multi-leg aware historical state management carrying the stage plan (`getPlan()`)
 
@@ -189,7 +190,7 @@ drift is impossible by construction.
 - **Interface Segregation**: Clean contracts for schedulers and constraints
 
 ### Architectural Patterns
-- **Strategy Pattern**: Pluggable leg strategies and scheduling algorithms
+- **Strategy Pattern**: Pluggable leg strategies, role assignments and scheduling algorithms
 - **Builder Pattern**: Fluent constraint configuration with ConstraintSet
 - **Iterator Pattern**: Schedules are iterable and countable (the events themselves are held in memory)  
 - **Factory Pattern**: Constraint factory methods for common use cases
@@ -430,9 +431,9 @@ ProgressionSelector::select($outcome)  ──►  ordered entrants of the next s
 ```
 
 ### Data Flow
-1. **Input**: Participants, constraints, leg strategy
+1. **Input**: Participants, constraints, leg strategy, role assignment
 2. **Planning**: Scheduler builds the StagePlan from the strategy's LegPlanContribution; unsatisfiable configurations fail here with diagnostics
-3. **Generation**: Integrated multi-leg event generation reading shape facts from the plan, with real-time validation
+3. **Generation**: Integrated multi-leg event generation reading shape facts from the plan, with real-time validation. Each leg is laid out, the role assignment decides its roles, and only then are its events checked against the constraints
 4. **Validation**: The schedule is verified against the plan (event counts and format integrity)
 5. **Output**: Complete Schedule or detailed exception carrying the plan and diagnostics
 
@@ -441,4 +442,5 @@ ProgressionSelector::select($outcome)  ──►  ordered entrants of the next s
 - **SchedulingContext**: Central state management with cross-leg visibility
 - **ConstraintSet**: Flexible constraint composition with builder pattern
 - **LegStrategyInterface**: Integrated generation strategies with constraint planning
+- **RoleAssignmentInterface**: The roles of each leg, decided before the constraints see its events
 - **Validation System**: Comprehensive validation with diagnostic reporting

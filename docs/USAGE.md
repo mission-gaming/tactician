@@ -38,7 +38,9 @@ anything else that competes.
 | **Pairing** | The unordered combination of participants in an event — "Alice vs Bob" regardless of who is home. |
 | **Round** | A set of events played at the same stage of the tournament. Round numbers are 1-based and continuous across legs (a two-leg, 4-participant round robin has rounds 1–6). |
 | **Leg** | One complete cycle of pairings. The leg count is *the number of times each participant meets each other participant*: a home-and-away league is 2 legs. Swiss and elimination formats have no legs concept. |
-| **Home/Away roles** | The participant order within an event: the first participant is home, the second away. The round-robin generator alternates roles with round parity, which bounds how far a participant's home and away counts can drift apart; it does not make them equal. |
+| **Home/Away roles** | The participant order within an event: the first participant is home, the second away. The round-robin generator alternates roles with round parity, which bounds how far a participant's home and away counts can drift apart; it does not make them equal. The balanced **role assignment** does, as far as the number of events allows. |
+| **Role** | The position of a participant in an event: first-named (index 0 of `getParticipants()`) or second-named (index 1). The neutral name for what a sport calls home and away, white and black, or server and receiver. |
+| **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `RoundParityRoleAssignment` (the default) alternates with round parity; `BalancedRoleAssignment` ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size. See [Role Assignment](#role-assignment). |
 | **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events — round robin records them in the `byes` schedule metadata, and the Swiss/elimination engines report them on the round pairing. |
 | **Seed** | A participant's ranking, used for bracket placement, serpentine group distribution, and seed-protection constraints. Lower numbers are better; 1 is the top seed. |
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
@@ -355,7 +357,8 @@ $shuffledSchedule = $scheduler->schedule(
 ```
 
 Options are plain-data constructible for config-driven platforms, with the
-stable strategy identifiers `mirrored`, `repeated`, and `shuffled`:
+stable strategy identifiers `mirrored`, `repeated`, and `shuffled` (and
+`round_parity` and `balanced` for the [role assignment](#role-assignment)):
 
 ```php
 $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'mirrored']);
@@ -452,6 +455,181 @@ $schedule = $scheduler->schedule(
     new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
 );
 ```
+
+### Role Assignment
+
+The **role** of a participant in an event is its position: first-named or
+second-named (home and away in a football league, white and black on a chess
+board). A **role assignment** decides the roles of a round robin, one leg at
+a time. It never changes who meets whom, or in which round.
+
+`RoundRobinOptions` takes one as `roleAssignment`:
+
+| Role assignment | Roles of a single leg | Identifier |
+|-----------------|-----------------------|------------|
+| `RoundParityRoleAssignment` (the default) | Alternate with round parity. A participant ends up to 3 apart in a field of even size and up to 4 apart in a field of odd size. Of four participants, one is second-named in all three of its events. | `round_parity` |
+| `BalancedRoleAssignment` | As even as the leg allows. A participant ends at most 1 apart in a field of even size, where it plays an odd number of events, and exactly 0 apart in a field of odd size. | `balanced` |
+
+"Apart" is the difference between the number of events a participant plays
+first-named and the number it plays second-named.
+
+```php
+use MissionGaming\Tactician\Quality\RoleBalanceMetric;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+
+$parity = (new RoundRobinScheduler())->schedule($participants);
+$balanced = (new RoundRobinScheduler())->schedule(
+    $participants,
+    new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())
+);
+
+foreach ($balanced as $event) {
+    [$first, $second] = $event->getParticipants();
+    echo "Round {$event->getRound()?->getNumber()}: {$first->getLabel()} v {$second->getLabel()}\n";
+}
+
+// The mean distance between a participant's two role counts
+(new RoleBalanceMetric())->measure($parity);   // 1.5
+(new RoleBalanceMetric())->measure($balanced); // 1.0
+```
+
+The block prints:
+
+```
+Round 1: Red Star FC v Celtic
+Round 1: Athletic Bilbao v AS Livorno
+Round 2: Celtic v Athletic Bilbao
+Round 2: AS Livorno v Red Star FC
+Round 3: AS Livorno v Celtic
+Round 3: Red Star FC v Athletic Bilbao
+```
+
+The pairings, their rounds, their order and the byes are the ones the default
+produces: only the roles differ. For a single leg of 2 to 30 participants the
+balanced roles also keep these two limits, which the test suite checks:
+
+- No participant plays in the same role more than twice in a row. The default
+  reaches four in a row.
+- While the leg is played, no participant is more than 1 apart in a field of
+  even size, or more than 2 apart in a field of odd size.
+
+The option is plain data too. `toArray()` writes the `role_assignment` key
+only when the role assignment is not the default, so options that do not set
+it serialize as before:
+
+```php
+$balancedOptions = RoundRobinOptions::fromArray(['legs' => 2, 'role_assignment' => 'balanced']);
+$balancedOptions->toArray();
+// ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']
+```
+
+`BalancedRoleAssignment` becomes the default in 0.3. To keep the roles of
+today after that release, name the current default now:
+`new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())`, or
+`'role_assignment' => 'round_parity'` in plain data.
+
+#### Legs after the first
+
+The role assignment decides the roles of every leg as the generator lays it
+out. The leg strategy then does to those roles what it does to any roles, so
+no leg strategy changes its meaning. With `BalancedRoleAssignment`, for 1 to
+6 legs:
+
+| Leg strategy | Each leg on its own | Whole schedule, even field | Whole schedule, odd field | Each pairing |
+|--------------|---------------------|----------------------------|---------------------------|--------------|
+| `MirroredLegStrategy` | Every leg is within the limit of a single leg | 1, 0, 1, 2, 3 and 4 apart for 1 to 6 legs: leg 1 is played one way and every later leg the other way | 0 apart | One meeting one way and the others the other way: an even split for 2 legs, one apart for 3 legs |
+| `RepeatedLegStrategy` | Every leg is within the limit of a single leg | As many apart as there are legs: every leg has the roles of leg 1 | 0 apart | Every meeting the same way |
+| `ShuffledLegStrategy` | Leg 1 is within the limit of a single leg | No limit: the roles of the later legs are random | No limit | Random after leg 1 |
+
+Two things the table does not promise:
+
+- **A schedule from a scheduler that has a `Randomizer`.** The scheduler
+  shuffles the participant order for the first leg only. It lays the later
+  legs out from the order as given, so they are not the first leg mirrored or
+  repeated pairing by pairing. Each leg is still within the limit of a single
+  leg: the whole schedule is 0 apart in a field of odd size, and at most as
+  many apart as there are legs in a field of even size. The columns "Whole
+  schedule, even field" and "Each pairing" are for a scheduler without a
+  `Randomizer`.
+- **Streaks across two legs.** The limit of two in a row holds inside a leg.
+  Where one leg ends and the next begins, a role can repeat more often. Two
+  mirrored legs end balanced under either role assignment; the balanced one
+  also balances the halfway point, and in a field of even size it can put a
+  participant in the same role three times in a row across the middle of the
+  schedule.
+
+#### Role assignments and constraints
+
+Constraints stay hard filters. A constraint sees every event with the roles
+the role assignment gave it, and the scheduler never falls back to other
+roles to satisfy one:
+
+- **Role constraints the balanced roles satisfy.** For a single leg of 2 to 30
+  participants, `ConsecutiveRoleConstraint` with a limit of 2 holds, and so
+  does `RoleBalanceConstraint` with a limit of 1 in a field of even size (2 in
+  a field of odd size). The default roles break both for four participants.
+- **Role constraints the balanced roles break.** Generation fails with an
+  `IncompleteScheduleException` that names the constraint, as it does when
+  the default roles break one. A limit of one same-role event in a row is an
+  example: no round robin of an even number of participants, four or more,
+  has it.
+- **Rotated retries.** Every retry lays the legs out again and asks the role
+  assignment again, so a schedule that needed a retry keeps the limits above.
+- **Backtracking.** The search chooses the roles of the first leg itself,
+  while it satisfies the constraints. The role assignment is then asked about
+  the leg the search found. `BalancedRoleAssignment` leaves a balanced leg
+  alone and otherwise reverses chains of pairings until every participant is
+  within the limit of a single leg (it promises nothing about streaks there).
+  Roles that changed are checked against the constraints again, and a
+  rejection fails with an `IncompleteScheduleException`: the scheduler does
+  not keep the roles of the search, because that would silently drop the
+  balance that was asked for. Constraints that do not read roles are never
+  affected.
+
+#### Writing a role assignment
+
+Implement `RoleAssignmentInterface`. `assignRoles()` receives one leg as a
+list of rounds; a round is a list of seatings, and a seating is two seats in
+the roles the generator proposes, the first-named participant at index 0. In
+a field of odd size the seating of the bye has `null` in one seat. Return the
+same rounds with each seating unchanged or reversed:
+
+```php
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+
+// The participant with the better seed is first-named in every event
+final class BetterSeedFirst implements RoleAssignmentInterface
+{
+    public function assignRoles(array $rounds): array
+    {
+        foreach ($rounds as $round => $seatings) {
+            foreach ($seatings as $position => [$first, $second]) {
+                if ($first !== null && $second !== null && $second->getSeed() < $first->getSeed()) {
+                    $rounds[$round][$position] = [$second, $first];
+                }
+            }
+        }
+
+        return $rounds;
+    }
+}
+
+$seededClubs = [
+    new Participant('celtic', 'Celtic', 1),
+    new Participant('athletic', 'Athletic Bilbao', 2),
+    new Participant('livorno', 'AS Livorno', 3),
+];
+
+$seedFirst = (new RoundRobinScheduler())->schedule(
+    $seededClubs,
+    new RoundRobinOptions(roleAssignment: new BetterSeedFirst())
+);
+```
+
+An answer that drops, adds, moves or re-pairs a seating is refused with an
+`InvalidConfigurationException` whose reason is `InvalidRoleAssignment`. A
+custom role assignment has no plain-data identifier, so `toArray()` refuses
+options that carry one, as it does for a custom leg strategy.
 
 ## Results and Standings
 
@@ -1524,6 +1702,7 @@ identifier for logs and stored data):
 | `DuplicateName` | `duplicate_name` | Two entries of one list carry the same name |
 | `NotSerializable` | `not_serializable` | The configuration has no plain-data form to serialize to |
 | `UnsatisfiableLegStrategy` | `unsatisfiable_leg_strategy` | The leg strategy cannot produce the legs asked for |
+| `InvalidRoleAssignment` | `invalid_role_assignment` | A role assignment returned something other than the seatings it was given, unchanged or reversed |
 | `BracketComplete` | `bracket_complete` | A further round was asked of a finished bracket |
 | `RoundPartiallyResolved` | `round_partially_resolved` | The next round was asked for while ties of the current one have no complete result |
 | `EventWithoutRoundNumber` | `event_without_round_number` | An event has no round number where one is required |

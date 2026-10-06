@@ -144,12 +144,51 @@ heading **Output change (fix)**.
 
 ### Added
 
+- Balanced role assignment for round robin, opt-in:
+  `new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())`, or
+  `'role_assignment' => 'balanced'` in plain data. The role of a participant
+  in an event is its position, first-named or second-named. With the default
+  roles a single leg ends up to 3 apart between the two for one participant in
+  a field of even size and up to 4 apart in a field of odd size; of four
+  participants, one is second-named in all three of its events. With the
+  balanced roles every participant ends a leg at most 1 apart in a field of
+  even size, which is the least possible because it plays an odd number of
+  events, and exactly 0 apart in a field of odd size. The pairings, their
+  rounds, their order and the byes do not change: only who is first-named
+  does. In a single leg of 2 to 30 participants no participant plays more
+  than two events in a row in the same role (the default reaches four), and
+  while the leg is played no participant is more than 1 apart in a field of
+  even size or 2 apart in a field of odd size.
+
+  The new namespace `RoleAssignment` holds `RoleAssignmentInterface` and its
+  two implementations: `RoundParityRoleAssignment`, which is the default and
+  keeps the roles the library has always produced, and
+  `BalancedRoleAssignment`. `RoundRobinOptions` gains a fourth constructor
+  parameter, `roleAssignment`, and a public property of the same name;
+  `fromArray()` reads the optional key `role_assignment` (`round_parity` or
+  `balanced`), and `toArray()` writes that key only when the role assignment
+  is not the default, so options that do not set it serialize to the three
+  keys they always have. `InvalidConfigurationReason::InvalidRoleAssignment`
+  is the reason when a custom role assignment returns anything but the
+  seatings it was given, each unchanged or reversed.
+
+  No output changes for options that do not set the role assignment, and the
+  existing golden fixtures are unchanged. What the balanced roles add up to over
+  several legs depends on the leg strategy, which keeps its meaning, and a
+  role constraint that the balanced roles break fails generation loudly: the
+  section "Role Assignment" of the usage guide has the table per leg strategy
+  and the rules for constraints and backtracking.
+
+  **The balanced role assignment becomes the default in 0.3.** To keep the
+  roles of today after that release, name the current default now:
+  `new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())`,
+  or `'role_assignment' => 'round_parity'`.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
-  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 32 more; the
+  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 33 more; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). 124 of the 130 sites that build the exception set one. The
+  identifiers). 127 of the 133 sites that build the exception set one. The
   six that do not are in `Stage\StageState` (recording a round or its
   results, and a duplicate ID given to `start()`): `getReason()` returns null
   for those, and for an exception that code outside the library builds

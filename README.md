@@ -21,10 +21,12 @@ the last one, which is about the library as a whole.
 
 - **Round robin**, single or multi-leg, by the circle method. Roles (first-named
   and second-named, read as home and away) alternate by round; the split is
-  bounded, not equal. Legs after the first are mirrored, repeated or shuffled,
-  and an odd field gets a bye in every round.
+  bounded, not equal. An opt-in balanced role assignment makes the split of a
+  leg as even as the field allows. Legs after the first are mirrored, repeated
+  or shuffled, and an odd field gets a bye in every round.
   [Basic usage](docs/USAGE.md#basic-usage),
-  [multi-leg tournaments](docs/USAGE.md#multi-leg-tournaments)
+  [multi-leg tournaments](docs/USAGE.md#multi-leg-tournaments),
+  [role assignment](docs/USAGE.md#role-assignment)
 - **Swiss**: each round is paired from the standings so far (Monrad pairing),
   avoiding repeat pairings, rotating byes, balancing roles, and allowing
   withdrawals. [Swiss tournaments](docs/USAGE.md#swiss-tournaments)
@@ -241,6 +243,7 @@ before `1.0.0`):
 - `Constraints`
 - `Validation`
 - `Diagnostics`
+- `RoleAssignment`
 
 Anything not listed as stable is experimental, including the rest of
 `Scheduling`. `Repack\Internal` is internal: it is not public API and carries
@@ -248,7 +251,8 @@ no compatibility guarantee.
 
 Some stable signatures carry experimental types. For example,
 `RoundRobinScheduler` accepts a `Constraints\ConstraintSet` and returns a
-`Stage\RoundRobinPlan` from `getPlan()`, the leg strategies receive a
+`Stage\RoundRobinPlan` from `getPlan()`, `RoundRobinOptions` carries a
+`RoleAssignment\RoleAssignmentInterface`, the leg strategies receive a
 `Constraints\ConstraintSet` and a `Scheduling\SchedulingContext`, and
 `Exceptions\IncompleteScheduleException` exposes `Stage`, `Validation`, and
 `Diagnostics` types. Those types are experimental, so the parts of a stable

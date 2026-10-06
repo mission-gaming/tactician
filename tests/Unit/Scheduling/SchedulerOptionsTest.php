@@ -7,6 +7,9 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
@@ -61,6 +64,56 @@ describe('RoundRobinOptions', function (): void {
 
         (new RoundRobinOptions(legs: 2, strategy: $custom))->toArray();
     })->throws(InvalidConfigurationException::class);
+
+    it('defaults to the round-parity role assignment', function (): void {
+        expect((new RoundRobinOptions())->roleAssignment)->toBeInstanceOf(RoundParityRoleAssignment::class);
+        expect(RoundRobinOptions::fromArray([])->roleAssignment)->toBeInstanceOf(RoundParityRoleAssignment::class);
+
+        // A payload written before the option existed
+        expect(RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'repeated', 'backtracking' => true])->roleAssignment)
+            ->toBeInstanceOf(RoundParityRoleAssignment::class);
+    });
+
+    it('maps stable identifiers to the built-in role assignments', function (): void {
+        expect(RoundRobinOptions::fromArray(['role_assignment' => 'round_parity'])->roleAssignment)
+            ->toBeInstanceOf(RoundParityRoleAssignment::class);
+        expect(RoundRobinOptions::fromArray(['role_assignment' => 'balanced'])->roleAssignment)
+            ->toBeInstanceOf(BalancedRoleAssignment::class);
+    });
+
+    // The wire shape of options that do not set the role assignment is the
+    // three keys it has always been: the key appears only when it says
+    // something other than the default
+    it('serializes the role assignment only when it is not the default', function (): void {
+        expect((new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()))->toArray())
+            ->toBe(['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false]);
+        expect(RoundRobinOptions::fromArray(['role_assignment' => 'round_parity'])->toArray())
+            ->toBe(['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false]);
+
+        $balanced = new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment());
+
+        expect($balanced->toArray())
+            ->toBe(['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);
+        expect(RoundRobinOptions::fromArray($balanced->toArray())->toArray())->toBe($balanced->toArray());
+    });
+
+    it('rejects a role assignment identifier it does not know', function (mixed $identifier): void {
+        expect(fn() => RoundRobinOptions::fromArray(['role_assignment' => $identifier]))
+            ->toThrow(InvalidConfigurationException::class, 'Unknown role assignment identifier');
+    })->with([['fair'], ['Balanced'], [true], [1]]);
+
+    it('refuses to serialize a custom role assignment', function (): void {
+        $custom = new class implements RoleAssignmentInterface {
+            #[Override]
+            public function assignRoles(array $rounds): array
+            {
+                return $rounds;
+            }
+        };
+
+        expect(fn() => (new RoundRobinOptions(roleAssignment: $custom))->toArray())
+            ->toThrow(InvalidConfigurationException::class, 'Custom role assignments');
+    });
 });
 
 describe('SwissOptions', function (): void {

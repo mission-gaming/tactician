@@ -85,6 +85,12 @@ enum InvalidConfigurationReason: string
     /** The leg strategy cannot produce the legs the configuration asks for. */
     case UnsatisfiableLegStrategy = 'unsatisfiable_leg_strategy';
 
+    /**
+     * A role assignment returned something other than the seatings it was
+     * given, each one unchanged or reversed. It may decide roles only.
+     */
+    case InvalidRoleAssignment = 'invalid_role_assignment';
+
     // Results-driven stages
 
     /** A further round was asked of a bracket that has already finished. */
