@@ -1,7 +1,7 @@
 # Design note: Constraint Attribution Diagnostics
 
-**Status: IMPLEMENTED** — ROADMAP Phase 5's "advanced diagnostic
-reporting and constraint suggestion systems".
+**Status: IMPLEMENTED** in 0.1.0 (Phase 5 of the roadmap); the "once per
+failure" decision below is in `main` and not yet in a release.
 
 ## Position
 
@@ -12,11 +12,14 @@ constraint blocks which pairing where** — `SchedulingDiagnostics`
 shipped with its deep-analysis methods as documented stubs, and the
 diagnostics class was not wired into the failure path at all.
 
-Attribution is answerable by probing: constraints are pure predicates
-over an event and a context, so for every missing pairing we can ask
-each constraint directly — "would you accept this pairing in round r,
-in either orientation, given everything that was actually generated?" —
-and report the answers instead of guessing from constraint names.
+Attribution is answerable by probing: a constraint is a predicate over an
+event and a context, so for every missing pairing we can ask each
+constraint directly — "would you accept this pairing in round r, in either
+orientation, given everything that was actually generated?" — and report
+the answers instead of guessing from constraint names. That treats a
+constraint as a pure predicate, which the built-in ones are and which
+nothing requires of a caller's ("Unless the constraints could tell", below,
+is the consequence).
 
 ## Settled decisions
 
@@ -24,7 +27,11 @@ and report the answers instead of guessing from constraint names.
   orientations, every candidate round) and evaluates the real
   constraints against the real partial context. No name matching, no
   per-constraint special cases; custom constraints are attributed
-  exactly like built-ins.
+  exactly like built-ins. (This is about the attribution.
+  `IncompleteScheduleException::getDiagnosticReport()` still ends with a
+  list of general suggestions that it picks by the class of the
+  constraints that recorded violations; that list predates the attribution
+  and is advice, not a finding.)
 - **Three findings, three vocabularies**:
   - *Impossible pairings* — blocked in every round and orientation,
     with the constraints that reject everywhere named as culprits.
@@ -38,7 +45,9 @@ and report the answers instead of guessing from constraint names.
   optionally carries a `DiagnosticReport`; the round-robin scheduler
   attaches one (built from the actual partial events) at its generation
   failure sites, and `getDiagnosticReport()` renders the attribution
-  sections. Diagnostics remain independently callable.
+  sections. Only the round-robin scheduler attaches one. `SchedulingDiagnostics` is
+  `@internal`: the analysis reaches a caller through the exception
+  (`getAnalysis()`), not by calling the class.
 - **Pairwise plans only, bounded cost.** Missing-pairing analysis is a
   pairwise-plan capability; the probe is
   missing pairings × rounds × orientations × (constraints + 1)

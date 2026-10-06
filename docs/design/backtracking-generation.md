@@ -1,7 +1,8 @@
 # Design note: Backtracking Generation
 
-**Status: IMPLEMENTED — first cut (round robin)** — ROADMAP Phase 5's
-answer to the repository's longest-recorded known limitation: greedy
+**Status: IMPLEMENTED** in 0.1.0 for round robin, the first leg only
+(searching across legs is [deferred](../ROADMAP.md#deferred-work)). It is
+Phase 5's answer to the repository's longest-recorded known limitation: greedy
 circle-method generation retries bounded rotated orderings when
 constraints reject a schedule, and throws `IncompleteScheduleException`
 even when a valid schedule exists in principle. The circle method fixes
@@ -54,7 +55,8 @@ constraint-satisfaction problem over perfect matchings:
   written (`tests/Unit/Scheduling/BacktrackingSearchOrderTest.php`).
 - **Deterministic.** Seat order, opponent order, and orientation order
   are fixed (the optional `Randomizer` shuffles the initial field order,
-  matching greedy). The same inputs always produce the same schedule or
+  matching greedy). The same inputs, and for a scheduler with a
+  `Randomizer` the same state of it, always produce the same schedule or
   the same failure.
 - **Multi-leg scope**: leg 1 is searched; later legs derive from leg 1's
   *actual* rounds through the leg strategy (the greedy path re-derives

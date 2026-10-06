@@ -1,9 +1,12 @@
 # Design note: Schedule Repacking
 
-**Status: IMPLEMENTED** — built from an external brief (v2, the revision
-with an empty pinned set on the reference instance). This note doubles as
-the decisions log for the overnight implementation run; every judgement
-call made without the maintainer awake is recorded here.
+**Status: IMPLEMENTED** in 0.2.0, with the additions under
+[API additions](#api-additions-022) in `main` and not yet in a release. It
+was built from an external brief (v2, the revision with an empty pinned set
+on the reference instance). This note doubles as the decisions log of that
+implementation: every judgement call made while building it is recorded
+here, in the order it was made, so a later entry can replace an earlier
+one. Where that happened the earlier entry says so.
 
 ## Position
 
@@ -23,7 +26,7 @@ throwing. The operator needs "here is the schedule and its four
 compromises", not an exception. `RepackOptions(throwOnViolations: true)`
 exists as a convenience.
 
-## Decisions log (maintainer asleep — review these)
+## Decisions log
 
 1. **Brief validated before building.** Fixture v2 checked internally and
    against the prose: 14 participants, 71 movable events (59 pairings, 12
@@ -88,11 +91,16 @@ exists as a convenience.
       slot-level parity (|{v : d_v > c}| must be even) by further moves —
       computed against pin-adjusted target sets, so pins are consulted
       *before* loads are fixed (the Cinder Row trap).
-    - **Phase B** packs each session by prefix-target matching: each
-      participant's ideal slot set is computed around its pins (bridge
-      internal gaps first, extend downward toward slot 0, then upward),
-      and a bounded depth-first search places one perfect matching per
-      slot. Success means zero gaps and zero late starts by construction.
+    - **Phase B**, as first built, packed each session by prefix-target
+      matching: each participant's ideal slot set was computed around its
+      pins (bridge internal gaps first, extend downward toward slot 0, then
+      upward), and a bounded depth-first search placed one perfect matching
+      per slot, so that success meant zero gaps and zero late starts.
+      **Replaced by decision 16**: the shipped Phase B places each
+      participant on a gap-free run that need not start at slot 0, tries
+      the placements with the least total late start first, and still
+      places one perfect matching per slot. Success means zero gaps; a
+      late start is reported.
     - **Phase C** falls back to prioritized greedy packing
       (critical-participant-first) plus bounded repair moves within the
       session (direct moves, then two-colour alternating-chain (Kempe)
@@ -151,10 +159,11 @@ exists as a convenience.
     interior gaps caused by the pins — reported honestly, asserted
     loosely (the brief demands the capacity story, not gap-freeness,
     from the deliberately-wrong instance).
-19. **`examples/index.php` not updated** for example 19 — it only lists
-    examples 1–12; examples 13–18 already shipped without index entries,
-    so this follows the established practice rather than fixing the
-    drift mid-feature.
+19. **`examples/index.php` was not updated** for example 19 at the time:
+    it listed examples 1–12 only, and examples 13–18 had shipped without
+    index entries. **No longer true**: since 0.2.1 the index and
+    `examples/README.md` list every example, and
+    `tests/Feature/ExamplesTest.php` fails when either is missing one.
 
 ## API additions (0.2.2)
 

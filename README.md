@@ -40,8 +40,8 @@ the last one, which is about the library as a whole.
   elimination, and an optional grand-final reset for double elimination.
   [Elimination brackets](docs/USAGE.md#elimination-brackets)
 - **Group stages and multi-stage tournaments**, composed from serpentine pools
-  and progression selectors, with the structure validated before any event
-  exists. [Pools, progression, and multi-stage tournaments](docs/USAGE.md#pools-progression-and-multi-stage-tournaments)
+  and progression selectors. A declared chain of stages can be checked for
+  matching entrant counts before any event exists. [Pools, progression, and multi-stage tournaments](docs/USAGE.md#pools-progression-and-multi-stage-tournaments)
 
 **Rules and quality**
 
@@ -79,9 +79,11 @@ the last one, which is about the library as a whole.
 
 - **Deterministic**: the library never reads the clock and uses no global
   random function. Randomness comes from a `Random\Randomizer` you pass in, and
-  a seeded one gives the same output for the same input (`ShuffledLegStrategy`
-  creates an unseeded one when you give it none). A pot draw takes an integer
-  seed in its options and builds its own seeded one.
+  a freshly seeded one gives the same output for the same input
+  (`ShuffledLegStrategy` creates an unseeded one when you give it none). A
+  scheduler that holds a randomizer draws from it on every call, so its second
+  call continues the sequence and returns a different schedule. A pot draw
+  takes an integer seed in its options and builds its own seeded one.
   [Deterministic randomization](docs/USAGE.md#deterministic-randomization)
 - **Serialization**: `Schedule`, `StageState` and `ScheduledSchedule`
   round-trip JSON, and the value objects convert to and from arrays.
@@ -90,7 +92,7 @@ the last one, which is about the library as a whole.
   and is iterable, countable, and groupable by round.
   [Iterating and counting](docs/USAGE.md#iterating-and-counting)
 - **PHP 8.3+, strictly typed**: `strict_types` throughout, immutable value
-  objects, and PHPStan level 9 with zero errors. The library is at 0.x: see
+  objects, and `src/` held to PHPStan level 9 with zero errors by the build. The library is at 0.x: see
   [Versioning and stability](#versioning-and-stability) for which namespaces
   are stable.
 
@@ -312,7 +314,7 @@ Releases are cut with the [release checklist](docs/RELEASING.md).
 📚 **[Complete Usage Guide](docs/USAGE.md)** - Comprehensive examples and patterns  
 🧩 **[Framework Integration](docs/integrations/symfony.md)** - Wiring Tactician into [Symfony](docs/integrations/symfony.md) and [Laravel](docs/integrations/laravel.md) applications  
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** - Technical design and core components  
-🛣️ **[Roadmap](docs/ROADMAP.md)** - Detailed development phases and use cases  
+🛣️ **[Roadmap](docs/ROADMAP.md)** - What has shipped, known limitations and deferred work  
 📖 **[Contributing Guidelines](docs/CONTRIBUTING.md)** - Development setup and contribution process  
 📚 **[Background](docs/BACKGROUND.md)** - Mission Gaming story and problem space details
 

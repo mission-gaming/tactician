@@ -860,6 +860,117 @@ usage guide lists the same methods under "Deprecations".
 
 ### Fixed
 
+- Documentation only; the library is unchanged. The guides were checked
+  statement by statement against `src/`, and the statements below were
+  false. If you relied on one of them, the behaviour is what it always was;
+  what changed is the text.
+  - **Rank 1 of an elimination outcome's standings is not always the
+    participant who won the bracket.** The usage guide and the architecture
+    document said the champion is "rank 1 of the standings, or the winners
+    of the final round". The table is a win/loss record of the whole stage.
+    In a double-elimination bracket of eight, a participant who loses
+    round 1, wins the losers bracket and the first grand final is rank 1
+    with five wins, above the participant who wins the reset. Two finalists
+    of a two-legged tie who win a leg each are level in the table whatever
+    `tie_winner` says, and a bye is no win in a bracket's table, so the
+    fallback order can put the runner-up first. Read the winner with
+    `MatchOutcomeSelector::winners()`. The usage guide shows all three
+    cases under "Who won the bracket".
+  - **"The same seed always produces the same schedule" holds for a new
+    scheduler, not for a second call.** A scheduler or engine that holds a
+    `Random\Randomizer` draws from it on every call, so its second
+    `schedule()` returns a different schedule; a new scheduler with the same
+    seed repeats the first. `RoundRobinOptions::fromArray()` with
+    `'strategy' => 'shuffled'` builds a `ShuffledLegStrategy` with no
+    randomizer, so that schedule is not repeatable even from a seeded
+    scheduler.
+  - **A `RoleBalanceConstraint` limit of 3 (field of even size) or 4 (odd)
+    is not "always satisfiable".** It holds for one leg and for two or three
+    mirrored legs. It fails for four mirrored legs and for two repeated legs
+    at four participants and from six up, and can fail for a seeded
+    scheduler over several legs. The usage guide has the table.
+  - **Timeline intervals in hours are elapsed time.** The guide said
+    interval arithmetic is wall-clock, so that a weekly kickoff keeps its
+    time across a daylight-saving change. That is true of `P7D` and `P1D`.
+    `PT168H` and `PT24H` are an hour off after the change.
+  - **The seed attribute does not place anyone in a bracket, a pool or a
+    pot.** The glossary said it drives bracket placement and pool
+    distribution; those read list position. The attribute is read by
+    `SeedProtectionConstraint` and by the last fallback of the standings
+    order, which the glossary did not say.
+  - **`MinimumRestPeriodsConstraint` is not about time or about a
+    participant's rest.** The architecture document called it "time-based
+    rest period enforcement". It counts the rounds between two meetings of
+    the same pair, and rejects nothing in a single leg.
+  - **`docs/ARCHITECTURE.md`, second half, rewritten.** It described lazy
+    evaluation and generator patterns (a schedule is built whole and held in
+    an array), memory that grows linearly with participants (it grows with
+    the events, which is quadratic), `SchedulingException` as the base of
+    all exceptions (the marker interface `TacticianException` is; four
+    classes are outside `SchedulingException`), every DTO as a readonly
+    class (`Schedule` is not, and has one iteration cursor: a loop over a
+    schedule nested in a loop over the same object ends the outer one), a
+    round-robin plan that makes a disagreement between plan and generator
+    "impossible by construction" (the generator lays out its own rounds, and
+    the finished schedule is checked against the plan), leg strategies that
+    plan against the constraints (none reads them), multi-leg awareness in
+    every component (legs belong to round robin), double elimination as a
+    graph an application could compose from library parts (no public part
+    pairs one knockout round), and a component diagram of the round-robin
+    path only. It now also says what the event index is, what the library
+    assumes of a constraint, and which namespace refers to which.
+  - **What a custom constraint may rely on** is stated in the usage guide:
+    the answer must depend only on the event and the context, and neither
+    the number of times a constraint is asked nor the order is promised. A
+    rejected event is asked about a second time, retries and searches ask
+    again, and a failure analysis asks about events that were never
+    candidates. This is the assumption behind the performance entry under
+    "Changed" above.
+  - **Smaller corrections in the usage guide**: `StandingsCalculator`
+    recognises a repeated event by the `Event` object, so two objects for
+    one match are counted twice; `SeedProtectionConstraint` and the
+    `ConsecutiveRoleConstraint` factories look for the participant object
+    and do not recognise a second object with the same ID; a
+    `SwissScheduler` without a randomizer pairs the same way on every
+    call, in the order of a table with no results (seed, label, ID) and not
+    in list order, and refuses more rounds than participants minus one; the
+    timeline assigner does not check that a participant is in one event at
+    a time unless a `MinimumRestRule` is given; a serialized schedule lists
+    participants in order of first appearance, not in the entrant order;
+    `ScheduleOptimizer` skips a sample only for an
+    `IncompleteScheduleException`.
+  - **More corrections in the usage guide**: in a results-free Swiss
+    schedule of a field of odd size the participants are not all level,
+    because a bye counts as a win in the pairing order (and as nothing in
+    the outcome's table), and the bound of participants minus one rounds
+    refuses a field of odd size a last round it could play without a repeat; a bracket re-seeded each round ranks an entrant who
+    had a bye below the winners of that round; a constraint asked by the
+    backtracking search or the Swiss round search sees the pairings already
+    made in the candidate's own round; `CompositionValidator` counts a
+    `MatchOutcomeSelector` as the hand-off after one knockout round, which
+    is not what the selector returns from a whole bracket; a zone written
+    into a configured datetime must be the declared `timezone` spelled the
+    same way (`+01:00` is refused under `Europe/London`, a Unix timestamp
+    under `UTC`); a kickoff in the hour the clocks skip moves every later
+    round; malformed or out-of-range configuration is an
+    `InvalidConfigurationException` and not an `InvalidInputException`, and
+    `Schedule::fromArray([])` is an empty schedule and not an error; an odd
+    pot-draw field of one entrant is reported as too few, not as odd; a
+    `SlotAssignment` built by hand writes its kickoff out unconverted.
+  - **`AGENTS.md` and `docs/CONTRIBUTING.md`** no longer say that a stage
+    never reads the seed attribute, that nothing derived from a table
+    depends on input order, or that every DTO is readonly.
+  - **`docs/ROADMAP.md`** says in which release each part shipped and what
+    is in `main` but not yet released, and its known limitations are the
+    ones above. **The design notes** state their status (two still read
+    "implementing" or "proposed" for features that shipped in 0.1.0) and
+    list where the shipped code differs from the design: there is no
+    `GroupStagePlan`, selectors do not reseed with `withSeed()`, and the
+    elimination engines are not compositions of single-round stages.
+  - **Two entries of this changelog**: 0.1.0 named a `PointsSystem` class,
+    which that release did not contain (it shipped `RankingStrategy` and
+    `WinDrawLossRanking`), and 0.2.0 called the repacker "seeded" (it takes
+    no seed and draws nothing at random).
 - `InvalidConfigurationException::getDiagnosticReport()` no longer raises a
   PHP warning on PHP 8.5 when a context value is the float `NAN`. PHP 8.5
   warns when `NAN` is cast to a string, and the report cast it. The text is
@@ -1246,8 +1357,9 @@ well as generate one. The release is additive; no existing API changed.
   This is the one sanctioned exception to the library's loud-failure rule.
   `RepackOptions(throwOnViolations: true)` opts back into throwing through the
   new `RepackViolationsException`.
-- Seeded, step-bounded solving configured through `RepackOptions`. Kickoffs
-  serialize in the timeline family's UTC format.
+- Deterministic, step-bounded solving configured through `RepackOptions` (the
+  repacker draws nothing at random and takes no seed). Kickoffs serialize in
+  the timeline family's UTC format.
 - Repack documentation in `docs/USAGE.md` (with glossary entries),
   `docs/ARCHITECTURE.md`, and the design log `docs/design/schedule-repack.md`,
   plus the runnable example `examples/19-repacking-a-season.php`.
@@ -1288,8 +1400,8 @@ PHP 8.3+.
   `EliminationOptions`.
 - **Group stages**: pool distribution, progression selectors, and composition
   validation.
-- **Standings**: `StandingsCalculator` with a configurable `PointsSystem` and
-  pluggable tiebreakers.
+- **Standings**: `StandingsCalculator` with a pluggable `RankingStrategy`
+  (`WinDrawLossRanking`) and pluggable tiebreakers.
 - **Constraints**: the `ConstraintSet` builder; constraints are hard filters
   that fail loudly with diagnostics instead of silently dropping matches.
 - **Timeline**: deterministic UTC kickoff assignment that decorates events
