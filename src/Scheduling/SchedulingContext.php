@@ -14,7 +14,9 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * This class provides generated tournament state plus the stage plan —
  * the algorithm's declaration of the stage's shape. Constraints and
  * schedulers reason about rounds, legs, and expected size by reading the
- * plan; the context never infers shape facts itself.
+ * plan. The context adds one reading of its own: a plan without legs (a
+ * Swiss stage, a bracket) is treated as a single leg that holds every
+ * event.
  *
  * The lookups by participant, by pairing, by round and by leg read an index
  * of the event list, built on first use, so each costs the events it

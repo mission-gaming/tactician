@@ -16,9 +16,12 @@ use Override;
  * Every pair of participants meets exactly once per leg, so the plan knows
  * everything up front: rounds per leg (n-1 for even fields, n for odd
  * fields, whose bye adds a round to the rotation), total rounds, expected
- * event counts, and pairwise meeting multiplicities. Generation, validation,
- * and diagnostics all read these facts from here — this class is the single
- * home of the round-robin arithmetic.
+ * event counts, and pairwise meeting multiplicities. Validation and
+ * diagnostics read these facts from here. Generation reads the legs and the
+ * rounds per leg from here, for the round numbers of later legs, but lays
+ * out the rounds of a leg from the size of the field itself: nothing makes
+ * the two agree by construction, and it is the validation of the finished
+ * schedule against the plan that catches a difference.
  *
  * @experimental
  */

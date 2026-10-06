@@ -91,9 +91,18 @@ readonly class Participant
     /**
      * Create a copy of this participant with a different seed.
      *
-     * Useful when reseeding for a new tournament stage (e.g. group qualifiers
-     * entering a knockout bracket). Identity is preserved: the copy has the
-     * same ID, so existing events and results still match it.
+     * The copy has the same ID, label and metadata, so whatever matches
+     * participants by ID (results, standings, the engines) still matches
+     * it. It is a new object: the two constraints that recognise a
+     * participant as the same object (SeedProtectionConstraint, the role
+     * factories of ConsecutiveRoleConstraint) do not.
+     *
+     * The seed attribute does not place a participant in a stage: a bracket
+     * and a pool distribution seed from list position, so to reseed for a
+     * new stage, order the list. The attribute is read by
+     * SeedProtectionConstraint and, between participants level on
+     * everything else, by the standings order (which is also the order a
+     * Swiss stage pairs its first round from).
      */
     public function withSeed(?int $seed): self
     {

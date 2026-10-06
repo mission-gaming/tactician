@@ -26,7 +26,8 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  * and the first grand final and loses the reset has more wins than the
  * title holder; a two-legged final that a tie decision settles adds the
  * same to both finalists' records, so the table does not say which of
- * them it sent on). Read who won a bracket from its final round, with
+ * them it sent on; a bye is not a win, so a participant who had one and
+ * won the final can be level with the one it beat). Read who won a bracket from its final round, with
  * MatchOutcomeSelector::winners().
  *
  * Pooled stages combine into one outcome optionally carrying the pool

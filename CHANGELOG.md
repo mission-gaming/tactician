@@ -969,6 +969,15 @@ usage guide lists the same methods under "Deprecations".
     strategy's flags against the events it generates;
     `LegStrategyInterface::generateEventForLeg()` did not say that it is
     called for legs 2 and up only.
+  - `RoundRobinPlan` called itself the single home of the round-robin
+    arithmetic that generation reads; the scheduler lays out the rounds of a
+    leg from the size of the field itself, and the validation of the
+    finished schedule is what catches a difference. `SchedulingContext`
+    said it never infers a shape fact; it treats a plan without legs as one
+    leg. `Participant::withSeed()` was described as the way to reseed for a
+    new stage; stages seed from list position, and the copy is not
+    recognised by the two constraints that match a participant as the same
+    object.
   - `Schedule` called itself immutable and able to add metadata: its events
     and metadata never change, but it is its own iterator and keeps a
     cursor, and nothing adds metadata. `Round::getMetadataValue()` returns
