@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    The tests `composer mutation` runs. Every change the mutation runner
+    makes to the source starts a test process of its own, which loads every
+    test file named here and runs the test files that cover the changed
+    line from first test to last. So this is not the whole suite: it is the
+    unit tests of the two directories that are mutated and the feature tests
+    of the same code that run in about a second or less.
+
+    Left out, with what that costs: the property sweeps (the completeness,
+    Swiss, repack, elimination, role-assignment and pot-draw invariants, the
+    golden output) and every test of another part of the library. With the
+    sweeps that cover these two directories, a fifth of the changes took 20
+    minutes on twelve cores. A change the sweeps would notice and the tests
+    here do not is reported as untested.
+
+    The attributes are the ones of phpunit.xml: a mutation run fails a test
+    on the same things an ordinary run does.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.5/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         executionOrder="random"
+         failOnWarning="true"
+         failOnNotice="true"
+         failOnDeprecation="true"
+         failOnRisky="true"
+         failOnPhpunitDeprecation="true"
+         failOnPhpunitNotice="true"
+         failOnPhpunitWarning="true"
+         beStrictAboutOutputDuringTests="true"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         displayDetailsOnTestsThatTriggerNotices="true"
+         displayDetailsOnTestsThatTriggerDeprecations="true"
+         displayDetailsOnTestsThatTriggerErrors="true"
+         displayDetailsOnPhpunitDeprecations="true"
+         displayDetailsOnPhpunitNotices="true"
+>
+    <testsuites>
+        <testsuite name="Mutation">
+            <directory suffix="Test.php">./tests/Unit/Scheduling</directory>
+            <directory suffix="Test.php">./tests/Unit/Repack</directory>
+            <file>./tests/Feature/ComplexConstraintTest.php</file>
+            <file>./tests/Feature/ConstraintRetryTest.php</file>
+            <file>./tests/Feature/GroupsToKnockoutTest.php</file>
+            <file>./tests/Feature/LevelSingleLegEliminationTest.php</file>
+            <file>./tests/Feature/MultiLegSchedulingTest.php</file>
+            <file>./tests/Feature/ParticipantIdKeysTest.php</file>
+            <file>./tests/Feature/RepackRelocationTest.php</file>
+            <file>./tests/Feature/RepackScenarioTest.php</file>
+            <file>./tests/Feature/RoundRobinIntegrationTest.php</file>
+            <file>./tests/Feature/SeedsDecideTest.php</file>
+            <file>./tests/Feature/UncoveredPathsTest.php</file>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory suffix=".php">./src</directory>
+        </include>
+    </source>
+</phpunit>

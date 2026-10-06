@@ -2,99 +2,61 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Tests\Support\RoleCounts;
 
 describe('MirroredLegStrategy Integration', function (): void {
-    it('actually reverses participant order in full schedule generation', function (): void {
-        $participants = [
+    beforeEach(function (): void {
+        $this->participants = [
             new Participant('celtic', 'Celtic'),
             new Participant('athletic', 'Athletic Bilbao'),
             new Participant('livorno', 'AS Livorno'),
             new Participant('redstar', 'Red Star FC'),
         ];
-
-        $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule(
-            $participants,
+        $this->schedule = (new RoundRobinScheduler())->schedule(
+            $this->participants,
             new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
         );
-
-        $roundsPerLeg = $schedule->getMetadataValue('rounds_per_leg');
-
-        // Collect first leg and second leg events for comparison
-        $firstLegEvents = [];
-        $secondLegEvents = [];
-
-        foreach ($schedule as $event) {
-            $roundNumber = $event->getRound()?->getNumber() ?? 0;
-            if ($roundNumber <= $roundsPerLeg) {
-                $firstLegEvents[] = $event;
-            } else {
-                $secondLegEvents[] = $event;
-            }
-        }
-
-        expect(count($firstLegEvents))->toBe(count($secondLegEvents));
-        expect(count($firstLegEvents))->toBeGreaterThan(0);
-
-        // For debugging: let's check the actual participant order
-        $firstEvent = $firstLegEvents[0];
-        $correspondingSecondEvent = $secondLegEvents[0];
-
-        $firstLegParticipants = $firstEvent->getParticipants();
-        $secondLegParticipants = $correspondingSecondEvent->getParticipants();
-
-        // They should be the same participants, but in reversed order
-        expect($firstLegParticipants[0]->getId())->toBe($secondLegParticipants[1]->getId());
-        expect($firstLegParticipants[1]->getId())->toBe($secondLegParticipants[0]->getId());
-
-        // Test a few more events to ensure consistency
-        if (count($firstLegEvents) > 1) {
-            $firstEvent2 = $firstLegEvents[1];
-            $correspondingSecondEvent2 = $secondLegEvents[1];
-
-            $firstLegParticipants2 = $firstEvent2->getParticipants();
-            $secondLegParticipants2 = $correspondingSecondEvent2->getParticipants();
-
-            expect($firstLegParticipants2[0]->getId())->toBe($secondLegParticipants2[1]->getId());
-            expect($firstLegParticipants2[1]->getId())->toBe($secondLegParticipants2[0]->getId());
-        }
     });
 
-    it('demonstrates the Celtic always home issue in examples', function (): void {
-        $participants = [
-            new Participant('celtic', 'Celtic'),
-            new Participant('athletic', 'Athletic Bilbao'),
-            new Participant('livorno', 'AS Livorno'),
-            new Participant('redstar', 'Red Star FC'),
-        ];
+    // Every event of the second leg, not only the first two: the event in
+    // the same place of the first leg, three rounds later, the other way
+    // round.
+    it('plays every event of the first leg again in the second with the roles reversed', function (): void {
+        $firstLeg = RoleCounts::leg($this->schedule, 1, 3);
+        $secondLeg = RoleCounts::leg($this->schedule, 2, 3);
 
-        $scheduler = new RoundRobinScheduler();
-        $schedule = $scheduler->schedule(
-            $participants,
-            new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
+        $asRows = fn(array $events, int $roundOffset, bool $reversed): array => array_map(
+            function (Event $event) use ($roundOffset, $reversed): array {
+                [$first, $second] = $event->getParticipants();
+
+                return [
+                    ($event->getRound()?->getNumber() ?? 0) + $roundOffset,
+                    $reversed ? $second->getId() : $first->getId(),
+                    $reversed ? $first->getId() : $second->getId(),
+                ];
+            },
+            $events
         );
 
-        $celticHomeCount = 0;
-        $celticAwayCount = 0;
+        expect($firstLeg)->toHaveCount(6)
+            ->and($asRows($secondLeg, 0, false))->toBe($asRows($firstLeg, 3, true));
+    });
 
-        foreach ($schedule as $event) {
-            $eventParticipants = $event->getParticipants();
+    // Once titled "demonstrates the Celtic always home issue": the issue is
+    // the one this guards against. Mirroring gives every participant, and
+    // not only the one in the fixed seat of the circle method, as many
+    // first-named as second-named events, and every pairing one of each.
+    it('gives every participant as many first-named as second-named events', function (): void {
+        $differences = RoleCounts::differences($this->schedule);
+        ksort($differences);
 
-            // Check if Celtic is involved and count home/away
-            if ($eventParticipants[0]->getId() === 'celtic') {
-                ++$celticHomeCount;
-            } elseif ($eventParticipants[1]->getId() === 'celtic') {
-                ++$celticAwayCount;
-            }
-        }
-
-        // If MirroredLegStrategy is working, Celtic should play both home and away
-        expect($celticHomeCount)->toBeGreaterThan(0);
-        expect($celticAwayCount)->toBeGreaterThan(0);
-        expect($celticHomeCount)->toBe($celticAwayCount); // Should be equal for mirrored strategy
+        expect($differences)->toBe(['athletic' => 0, 'celtic' => 0, 'livorno' => 0, 'redstar' => 0])
+            ->and(RoleCounts::pairingSplits($this->schedule))->toHaveCount(6)
+            ->and(array_values(array_unique(RoleCounts::pairingSplits($this->schedule))))->toBe([0]);
     });
 });

@@ -1,0 +1,107 @@
+name: Mutation testing
+
+# A report, not a gate. Mutation testing of src/Scheduling and
+# src/Repack/Internal: one change at a time is made to the source, and the
+# tests that cover the line are run to see whether any of them notices. The
+# share that is noticed is the mutation score.
+#
+# It runs here, once a week and on demand, and not on pull requests: every
+# change starts a test process of its own, and the 3,400 changes of the two
+# directories take hours of a runner. It is a workflow of its own, apart from
+# scheduled.yml, so that a slow or stopped run here can never turn that
+# workflow red and hide what its jobs found.
+#
+# This workflow has no pull request trigger and none of its checks may be made
+# a required check: it runs on the default branch only, so a required check
+# from it would never report on a pull request.
+on:
+  schedule:
+    # Wednesdays at 02:47 UTC: another day than scheduled.yml, and off the
+    # hour, where scheduled runs are delayed most.
+    - cron: '47 2 * * 3'
+  workflow_dispatch:
+
+# Least privilege: no job needs more than read access to the repository.
+permissions:
+  contents: read
+
+jobs:
+  # One job per shard. A shard is a list of source files, and every PHP file
+  # of the two directories is in exactly one shard:
+  # tests/Feature/CiConfigurationTest.php fails when a file is in none or in
+  # two, so a new file cannot fall outside mutation testing unseen.
+  #
+  # The size of a shard follows from the one measurement there is: 907
+  # changes took 35 minutes on twelve cores, which is about 0.12 minutes a
+  # change on the four cores of a standard runner. The shards of
+  # src/Scheduling hold about 650 to 700 changes each (some 80 minutes at
+  # that rate), the two of src/Repack/Internal about 440 each. The limit is
+  # more than twice the estimate, because the rate is not even: a change that
+  # makes a search run for ever costs its whole time limit.
+  #
+  # A job reports its shard in its summary and does not fail on the score
+  # (the script sets no minimum). It fails when the tests themselves do not
+  # pass, and when the run is stopped at its limit. A stopped shard is red on
+  # purpose: it has no score, its summary says how many changes it got
+  # through and what it found in them, and it needs to be split, not given
+  # more time. The other shards are not cancelled with it.
+  mutation:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: round robin
+            path: src/Scheduling/RoundRobinScheduler.php,src/Scheduling/RoundRobinOptions.php,src/Scheduling/SchedulerInterface.php,src/Scheduling/SchedulerOptions.php
+          - shard: pot draw and context
+            path: src/Scheduling/PotDrawScheduler.php,src/Scheduling/PotDrawOptions.php,src/Scheduling/SchedulingContext.php
+          - shard: Swiss and backtracking
+            path: src/Scheduling/SwissPairingEngine.php,src/Scheduling/SwissScheduler.php,src/Scheduling/SwissOptions.php,src/Scheduling/BacktrackingRoundRobinGenerator.php
+          - shard: elimination
+            path: src/Scheduling/DoubleEliminationEngine.php,src/Scheduling/SingleEliminationEngine.php,src/Scheduling/EliminationBracketSupport.php,src/Scheduling/EliminationOptions.php
+          - shard: repack load planning
+            path: src/Repack/Internal/LoadPlanner.php,src/Repack/Internal/LoadPlan.php,src/Repack/Internal/StepBudget.php,src/Repack/Internal/BudgetExhausted.php,src/Repack/Internal/CanonicalEncoding.php
+          - shard: repack session packing
+            path: src/Repack/Internal/SessionPacker.php,src/Repack/Internal/ContiguityTargets.php,src/Repack/Internal/IntervalPlacement.php,src/Repack/Internal/RepackAuditor.php
+
+    name: Mutation testing, ${{ matrix.shard }}
+    timeout-minutes: 180
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      with:
+        php-version: '8.4'
+        extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
+        # Only the lines a test executes are mutated, so the run needs a
+        # coverage driver.
+        coverage: xdebug
+
+    # From the lock file, unlike the jobs of scheduled.yml: the score is of
+    # the tests, and must not move with a tool release.
+    - name: Install dependencies
+      run: composer install --prefer-dist --no-progress
+
+    # As in ci.yml: the locale tests must run here too.
+    - name: Generate a locale with a decimal comma
+      run: sudo locale-gen de_DE.UTF-8
+
+    # The path given here replaces the two of the script: the option takes
+    # one comma-separated list, and the last one given wins. `pipefail` (set
+    # by naming the shell) keeps the exit status of the run when its output
+    # goes through `tee`. The step has a limit of its own, below the job's,
+    # so that a run that is stopped still gets its summary.
+    - name: Run mutation testing
+      shell: bash
+      timeout-minutes: 170
+      run: |
+        mkdir -p build
+        composer mutation -- --path=${{ matrix.path }} 2>&1 | tee build/mutation.log
+
+    # Also after a run that failed or was stopped, with whatever it printed.
+    - name: Report the shard in the job summary
+      if: ${{ !cancelled() }}
+      run: php tests/bin/mutation-summary.php build/mutation.log "${{ matrix.shard }}" "${{ matrix.path }}" >> "$GITHUB_STEP_SUMMARY"

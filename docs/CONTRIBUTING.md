@@ -95,6 +95,85 @@ touches generation logic, extend the property tests
 `tests/Feature/ScheduleCompletenessTest.php`) and do not only pin single
 examples.
 
+### Mutation testing
+
+```bash
+# Change the source one thing at a time and see whether a test notices
+# (needs a coverage driver; the script sets XDEBUG_MODE=coverage itself)
+composer mutation
+
+# One directory or one file: the path replaces the two of the script
+composer mutation -- --path=src/Repack/Internal
+```
+
+Line coverage says that a line was executed, not that a test would notice
+if it were wrong. Mutation testing asks the second question. Pest's
+mutation runner makes one small change at a time to `src/Scheduling` and
+`src/Repack/Internal` (a `<` becomes a `<=`, a call is removed, a constant
+is one more or one less), runs the tests that cover the changed line, and
+counts the change as tested when a test fails and as untested when they all
+still pass. The score is the share that was tested. The run prints every
+untested change with its diff.
+
+Read the score with two things in mind. The runner counts a change whose
+tests ran into its time limit as tested, although no test failed on it: a
+change that makes a search run for ever is "noticed" only in that sense.
+The summary script therefore also gives the share that a failing test
+noticed. And leave the number of processes to `--parallel`, which the
+script passes: with `--processes` added, the test process of every change
+fails to start, and the run reports every change as tested, a score of
+100% that means nothing.
+
+It is not part of the gate and it enforces no minimum. A run over both
+directories takes hours, because every one of some 3,400 changes starts a
+test process of its own, and a change that makes a search run for ever is
+only stopped by a timeout; `src/Repack/Internal` alone takes a few minutes
+on a fast machine. Some changes cannot be noticed at all, because they
+change nothing a caller can see (the order in which two equal candidates
+are tried, a guard that cannot be reached).
+
+In CI it has a workflow of its own, `.github/workflows/mutation.yml`, which
+runs once a week and which a maintainer can start by hand. It does not run
+for a pull request, and it is apart from the scheduled workflow above so
+that a slow run cannot hide what that one found. The source is mutated in
+shards, one `Mutation testing, <shard>` job each, so that every job ends
+well inside its limit on a standard runner. A shard is a list of files, and
+every PHP file of the two directories is in exactly one:
+`tests/Feature/CiConfigurationTest.php` fails when a file is in none or in
+two, so when you add a file to either directory, add it to a shard of that
+workflow. Each job publishes its shard's score, the counts and the first
+untested changes in its job summary. A job that is stopped at its time
+limit is red and has no score; its summary says how many changes it got
+through and what it found in them, and the shard is then to be split. Read
+the summaries when you change generation or repack logic: an untested
+change in the lines you touched is a test to write.
+
+The scores have not been confirmed in CI yet. The workflow runs on the
+default branch only, so its first run is started by hand there after the
+change that adds it is merged; the size of the shards rests on one local
+measurement until then.
+
+The run does not use the whole suite. Every change starts a test process
+of its own, so the tests are the ones named in `phpunit.mutation.xml`: the
+unit tests of the two directories and the feature tests of the same code
+that run in a few seconds or less. The longer sweeps are left out, and a
+change that only they would notice is reported as untested: check a change
+on that list against them before you write a test for it. When you add a
+fast test of generation or repack logic under `tests/Feature/`, name it in
+that file.
+
+To see the summary of a local run:
+
+```bash
+composer mutation -- --path=src/Repack/Internal 2>&1 | tee build/mutation.log
+php tests/bin/mutation-summary.php build/mutation.log
+```
+
+The tool is Pest's own (`pestphp/pest-plugin-mutate`, installed with Pest),
+not Infection: Infection has no adapter for Pest, and through its PHPUnit
+adapter it cannot tell a passing Pest run from a failing one, so it reports
+every change as tested.
+
 ## Golden fixtures
 
 `tests/Feature/GoldenOutputTest.php` compares generated schedules, bracket

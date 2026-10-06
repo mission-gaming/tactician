@@ -6,6 +6,7 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
@@ -18,6 +19,7 @@ use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Tests\Support\AwkwardIds;
+use MissionGaming\Tactician\Tests\Support\RoundRobinAudit;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -348,3 +350,131 @@ it('pairs a Swiss stage without a repeat whatever the ids are', function (
     ->with(AwkwardIds::dataset())
     ->with([[4], [5], [6]])
     ->with([[42], [1337]]);
+
+// The wide sweep: every field size from 2 to 30, single and multi-leg, each
+// leg strategy, and a scheduler that shuffles the field. Each schedule is
+// held to everything a complete round robin is
+// (tests/Support/RoundRobinAudit.php): every pairing once in every leg,
+// nobody twice in a round, every round full, rounds 1-based and continuous
+// across legs, and the byes of an odd field recorded for the right
+// participant in the right round, one per participant per leg, with none in
+// an even field.
+//
+// One test per variant loops over the field sizes, so the sweep adds a
+// dozen tests and not several hundred dataset rows.
+it('generates a complete round robin with the right byes for every field size from 2 to 30', function (
+    string $variant,
+    int $legs
+): void {
+    for ($size = 2; $size <= 30; ++$size) {
+        $participants = completenessParticipants($size);
+        $strategy = match ($variant) {
+            'mirrored', 'shuffled field' => new MirroredLegStrategy(),
+            'repeated' => new RepeatedLegStrategy(),
+            'shuffled legs' => new ShuffledLegStrategy(new Randomizer(new Mt19937(100 + $size))),
+            default => throw new UnexpectedValueException($variant),
+        };
+        $scheduler = $variant === 'shuffled field'
+            ? new RoundRobinScheduler(null, new Randomizer(new Mt19937(200 + $size)))
+            : new RoundRobinScheduler();
+
+        $schedule = $scheduler->schedule($participants, new RoundRobinOptions(legs: $legs, strategy: $strategy));
+
+        expect(RoundRobinAudit::faults($schedule, $participants, $legs))
+            ->toBe([], "{$variant}, {$legs} leg(s), {$size} participants");
+
+        $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
+        expect($schedule->getMetadataValue('participant_count'))->toBe($size)
+            ->and($schedule->getMetadataValue('legs'))->toBe($legs)
+            ->and($schedule->getMetadataValue('rounds_per_leg'))->toBe($roundsPerLeg)
+            ->and($schedule->getMetadataValue('total_rounds'))->toBe($roundsPerLeg * $legs)
+            ->and($schedule->getMetadataValue('expected_event_count'))->toBe(intdiv($size * ($size - 1), 2) * $legs);
+    }
+})
+    ->with([['mirrored'], ['repeated'], ['shuffled legs'], ['shuffled field']])
+    ->with([[1], [2], [3]]);
+
+// The audit must see what it is there to see: a schedule with one thing
+// wrong is reported for that thing.
+it('audits a round robin for each rule it states', function (Closure $spoil, string $expected): void {
+    $participants = completenessParticipants(5);
+    $schedule = (new RoundRobinScheduler())->schedule($participants, new RoundRobinOptions(legs: 2));
+    expect(RoundRobinAudit::faults($schedule, $participants, 2))->toBe([]);
+
+    $faults = RoundRobinAudit::faults($spoil($schedule), $participants, 2);
+
+    expect(implode("\n", $faults))->toContain($expected);
+})->with([
+    'an event dropped' => [
+        fn(Schedule $schedule): Schedule => new Schedule(array_slice($schedule->getEvents(), 1), $schedule->getMetadata()),
+        '19 events, expected 20',
+    ],
+    'a round left short' => [
+        fn(Schedule $schedule): Schedule => new Schedule(array_slice($schedule->getEvents(), 1), $schedule->getMetadata()),
+        'round 1 has 1 events, expected 2',
+    ],
+    'a pairing played twice in a leg' => [
+        function (Schedule $schedule): Schedule {
+            $events = $schedule->getEvents();
+            $events[1] = new Event($events[0]->getParticipants(), $events[1]->getRound());
+
+            return new Schedule($events, $schedule->getMetadata());
+        },
+        'meet 2 times in leg 1',
+    ],
+    'a participant twice in a round' => [
+        function (Schedule $schedule): Schedule {
+            $events = $schedule->getEvents();
+            $events[1] = new Event($events[0]->getParticipants(), $events[1]->getRound());
+
+            return new Schedule($events, $schedule->getMetadata());
+        },
+        'is in two events of round 1',
+    ],
+    'a round past the last' => [
+        function (Schedule $schedule): Schedule {
+            $events = $schedule->getEvents();
+            $events[0] = new Event($events[0]->getParticipants(), new Round(11));
+
+            return new Schedule($events, $schedule->getMetadata());
+        },
+        'is in round 11, outside 1 to 10',
+    ],
+    'a round left empty' => [
+        fn(Schedule $schedule): Schedule => new Schedule(array_slice($schedule->getEvents(), 2), $schedule->getMetadata()),
+        'the rounds used are not exactly 1 to 10',
+    ],
+    'the byes of two rounds swapped' => [
+        function (Schedule $schedule): Schedule {
+            $byes = $schedule->getMetadataValue('byes');
+            assert(is_array($byes));
+            [$byes[1], $byes[2]] = [$byes[2], $byes[1]];
+
+            return new Schedule($schedule->getEvents(), ['byes' => $byes] + $schedule->getMetadata());
+        },
+        'round 1 records the bye of',
+    ],
+    'a bye missing' => [
+        function (Schedule $schedule): Schedule {
+            $byes = $schedule->getMetadataValue('byes');
+            assert(is_array($byes));
+            unset($byes[10]);
+
+            return new Schedule($schedule->getEvents(), ['byes' => $byes] + $schedule->getMetadata());
+        },
+        'has 0 byes in leg 2',
+    ],
+    'no byes recorded' => [
+        fn(Schedule $schedule): Schedule => new Schedule($schedule->getEvents(), ['byes' => []] + $schedule->getMetadata()),
+        'byes are not recorded for exactly the rounds 1 to 10, in order',
+    ],
+]);
+
+it('reports a bye recorded in a field of even size', function (): void {
+    $participants = completenessParticipants(4);
+    $schedule = (new RoundRobinScheduler())->schedule($participants);
+
+    expect(RoundRobinAudit::faults($schedule, $participants, 1))->toBe([])
+        ->and(RoundRobinAudit::faults(new Schedule($schedule->getEvents(), ['byes' => [1 => 'p1']]), $participants, 1))
+        ->toBe(['1 bye(s) recorded in a field of even size']);
+});

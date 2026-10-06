@@ -5,11 +5,34 @@ declare(strict_types=1);
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Tests\Support\RoundRobinAudit;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
+
+/**
+ * The events of the first rounds in which both participants are among the
+ * top seeds, as "round r: first v second".
+ *
+ * @return list<string>
+ */
+function topSeedMeetings(Schedule $schedule, int $topSeeds, int $rounds): array
+{
+    $meetings = [];
+    foreach ($schedule->getEvents() as $event) {
+        [$first, $second] = $event->getParticipants();
+        $round = $event->getRound()?->getNumber() ?? 0;
+
+        if ($round <= $rounds && max($first->getSeed() ?? PHP_INT_MAX, $second->getSeed() ?? PHP_INT_MAX) <= $topSeeds) {
+            $meetings[] = "round {$round}: {$first->getId()} v {$second->getId()}";
+        }
+    }
+
+    return $meetings;
+}
 
 describe('Round Robin Integration', function (): void {
     // Tests that the round-robin algorithm generates the correct number of matches (6)
@@ -285,47 +308,21 @@ describe('Round Robin Integration', function (): void {
 
         $constraints = ConstraintSet::create()
             ->noRepeatPairings()
-            ->add(new MissionGaming\Tactician\Constraints\SeedProtectionConstraint(4, 0.1))
+            ->add(new SeedProtectionConstraint(2, 0.3))
             ->build();
 
         // When: Generating schedule with complex constraints
         $scheduler = new RoundRobinScheduler($constraints);
         $schedule = $scheduler->schedule($participants);
 
-        // Then: Should generate mathematically correct schedule
-        expect($schedule->count())->toBe(28); // C(8,2) = 28 matches
+        // Then: a complete single leg, so no pairing repeats
+        expect(RoundRobinAudit::faults($schedule, $participants, 1))->toBe([]);
 
-        // And: No pairings should repeat (constraint validation)
-        $pairingSeen = [];
-        foreach ($schedule as $event) {
-            $eventParticipants = $event->getParticipants();
-            $pair = [
-                $eventParticipants[0]->getId(),
-                $eventParticipants[1]->getId(),
-            ];
-            sort($pair);
-            $pairKey = implode('-', $pair);
-
-            expect($pairingSeen)->not->toContain($pairKey);
-            $pairingSeen[] = $pairKey;
-        }
-
-        // And: Top seeds should have some protection early in tournament
-        $earlyRounds = array_filter(
-            iterator_to_array($schedule),
-            fn($event) => $event->getRound() && $event->getRound()->getNumber() <= 4
-        );
-
-        $topSeedCollisions = 0;
-        foreach ($earlyRounds as $event) {
-            $seeds = array_map(fn($p) => $p->getSeed(), $event->getParticipants());
-            $topSeedsInEvent = count(array_filter($seeds, fn($s) => $s !== null && $s <= 4));
-            if ($topSeedsInEvent > 1) {
-                ++$topSeedCollisions;
-            }
-        }
-
-        expect($topSeedCollisions)->toBeLessThan(5); // Some protection should be evident
+        // And: the top two seeds do not meet in rounds 1 and 2, the rounds
+        // that lie wholly inside the first 30% of 7. Without the constraint
+        // they meet in round 2, so the protection is what moved them.
+        expect(topSeedMeetings($schedule, 2, 2))->toBe([])
+            ->and(topSeedMeetings((new RoundRobinScheduler())->schedule($participants), 2, 2))->toBe(['round 2: p2 v p1']);
     });
 
     // Tests multi-leg tournament with different leg strategies to validate
@@ -373,9 +370,11 @@ describe('Round Robin Integration', function (): void {
         }
     });
 
-    // Tests scheduler performance and mathematical correctness with large participant count
-    // to validate circular algorithm efficiency and Iterator pattern memory usage
-    it('handles large participant count stress test', function (): void {
+    // Sixteen participants: 120 events in 15 rounds, 15 events each, and the
+    // iterator visits every one of them once. (Once titled a "stress test";
+    // it measures nothing. Field sizes up to 30 are swept in
+    // tests/Feature/ScheduleCompletenessTest.php.)
+    it('generates and iterates a complete schedule for sixteen participants', function (): void {
         // Given: 16 participants (larger tournament)
         $participants = [];
         for ($i = 1; $i <= 16; ++$i) {
@@ -386,7 +385,8 @@ describe('Round Robin Integration', function (): void {
         $scheduler = new RoundRobinScheduler();
         $schedule = $scheduler->schedule($participants);
 
-        // Then: Should generate mathematically correct large schedule
+        // Then: a complete single leg
+        expect(RoundRobinAudit::faults($schedule, $participants, 1))->toBe([]);
         expect($schedule->count())->toBe(120); // C(16,2) = 120 matches
 
         $maxRound = $schedule->getMaxRound();
@@ -452,36 +452,23 @@ describe('Round Robin Integration', function (): void {
 
         $constraints = ConstraintSet::create()
             ->noRepeatPairings()
-            ->add(new MissionGaming\Tactician\Constraints\SeedProtectionConstraint(4, 0.15))
+            ->add(new SeedProtectionConstraint(4, 0.2))
             ->build();
 
         // When: Generating seeded tournament
         $scheduler = new RoundRobinScheduler($constraints);
         $schedule = $scheduler->schedule($participants);
 
-        // Then: Should generate correct number of matches
-        expect($schedule->count())->toBe(66); // C(12,2) = 66 matches
+        // Then: a complete single leg of 66 events
+        expect(RoundRobinAudit::faults($schedule, $participants, 1))->toBe([]);
 
-        // And: Top 4 seeds should be protected in first half of tournament
-        $midTournament = 6; // Approximately half of 11 rounds
-        $earlyEvents = array_filter(
-            iterator_to_array($schedule),
-            fn($event) => $event->getRound() && $event->getRound()->getNumber() <= $midTournament
-        );
-
-        $topSeedClashes = 0;
-        foreach ($earlyEvents as $event) {
-            $topSeeds = array_filter(
-                $event->getParticipants(),
-                fn($p) => $p->getSeed() !== null && $p->getSeed() <= 4
-            );
-            if (count($topSeeds) > 1) {
-                ++$topSeedClashes;
-            }
-        }
-
-        // Should have significantly fewer top seed clashes in early rounds
-        expect($topSeedClashes)->toBeLessThan(count($earlyEvents) * 0.5);
+        // And: no two of the top four seeds meet in rounds 1 and 2, the
+        // rounds that lie wholly inside the first 20% of 11. Without the
+        // constraint two of them meet in round 2. (This test used to assert
+        // that fewer than half of the events of rounds 1 to 6 are between
+        // top seeds, which any schedule satisfies.)
+        expect(topSeedMeetings($schedule, 4, 2))->toBe([])
+            ->and(topSeedMeetings((new RoundRobinScheduler())->schedule($participants), 4, 2))->toBe(['round 2: seed2 v seed1']);
     });
 
     // Tests metadata-based custom constraints with complex business logic
