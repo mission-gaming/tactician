@@ -7,7 +7,7 @@ to bottom as ordinary library usage and works in two ways:
 - **Under a web server** it shows the same results as an HTML page, followed
   by the code that produced them.
 
-There are no separate "browser" and "command-line" examples: all 22 scripts
+There are no separate "browser" and "command-line" examples: all 24 scripts
 are both. `index.php` is the one exception, a page of links for the browser.
 
 ## Running them
@@ -65,6 +65,8 @@ with an error.
 | [20-double-elimination.php](20-double-elimination.php) | A double-elimination bracket with a grand final reset |
 | [21-standings-and-tiebreakers.php](21-standings-and-tiebreakers.php) | A standings table and a chain of tiebreakers |
 | [22-pot-draw.php](22-pot-draw.php) | A league phase drawn up front from seeded pots, with balanced roles |
+| [23-application-adapter-and-repack.php](23-application-adapter-and-repack.php) | An application's adapter: its records in, fixture rows out, and a previewed repack applied by fingerprint |
+| [24-recording-bracket-results.php](24-recording-bracket-results.php) | A stamped bracket state between requests: a level event decided, a result corrected, a wrong engine refused |
 
 The sample data uses sports teams and players because that is what most
 schedules are for. The library itself only knows participants.
