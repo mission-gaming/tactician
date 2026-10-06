@@ -180,7 +180,10 @@ both, even when the answer is no.
   [Versioning and stability](../README.md#versioning-and-stability) section
   says what each means and which namespaces are stable;
   `tests/Feature/StabilityAnnotationsTest.php` fails for a type without one
-  and for a new namespace the README does not classify.
+  and for a new namespace the README does not classify. A new `@internal`
+  type outside `Repack\Internal` goes into the list that test pins, and may
+  not appear in a public or protected signature of a type that is not
+  internal. A type the README lists as stable cannot be marked `@internal`.
 - A deprecated method carries the `@deprecated` docblock tag
   (`@deprecated since <version>, removed in 1.0.0.`, then why and what to use
   instead) and the `#[\Deprecated]` attribute, and gets a row under

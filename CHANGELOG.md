@@ -290,12 +290,15 @@ heading **Output change (fix)**.
   docblock, with exactly one of `@api` (stable surface), `@experimental`
   (public, expected to change in a minor release before `1.0.0`) and
   `@internal` (not public API). The README's "Versioning and stability"
-  section still decides which of the first two a type is: a type in a
-  namespace of its stable list is `@api`, a type in a namespace of its
-  experimental list is `@experimental`. No type moved between the two lists.
+  section still decides which of the first two a type is: a type that an
+  entry of its stable list covers is `@api`, and every other public type is
+  `@experimental`. No type moved between the two lists.
   An architecture test (`tests/Feature/StabilityAnnotationsTest.php`) fails
   when a type has no annotation or more than one, when an annotation
-  contradicts the README, and when a namespace is in neither list.
+  contradicts the README, when a namespace is in neither list, when a type
+  the README lists as stable is `@internal`, and when a public signature
+  hands out or asks for an `@internal` type. It pins the `@internal` types
+  outside `Repack\Internal`.
 
 - Balanced role assignment for round robin, opt-in:
   `new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())`, or
@@ -614,7 +617,11 @@ heading **Output change (fix)**.
   scheduler throws, and pass a configured datetime to the `fromArray()`
   factory that reads it. The public method the validation trait declares,
   `getViolationCollector()`, is still part of each scheduler that uses the
-  trait.
+  trait. The protected members it supplies (`$validator`,
+  `$violationCollector`, `initializeValidation()`,
+  `validateGeneratedSchedule()`, `recordViolation()` and `clearViolations()`)
+  are internal with it: a subclass of `RoundRobinScheduler`, `SwissScheduler`
+  or `PotDrawScheduler` that uses one should stop.
 
 - The refusal of a drawn single-leg elimination event that names nobody
   now says how to record the decision. Its message begins with the words it
@@ -663,12 +670,15 @@ usage guide lists the same methods under "Deprecations".
 - `SchedulingContext::getTotalLegs()`. It answers 1 for a format that has no
   legs (Swiss, elimination), which is not a fact about the stage. Read
   `getPlan()->getLegs()` instead: it is `null` where the concept does not
-  apply.
+  apply. `isMultiLeg()` and `getEventsForLeg()` answer as before and no
+  longer call it, so a subclass of `SchedulingContext` that overrides
+  `getTotalLegs()` no longer changes what those two answer.
 - The three static factories of `SchedulingException`:
   `invalidParticipantCount()`, `constraintViolation()` and
   `invalidSchedule()`. Nothing in the library calls them. Construct an
   `InvalidConfigurationException` with the `InvalidConfigurationReason`
-  instead.
+  instead; the usage guide gives the arguments that build exactly what each
+  factory built.
 - `ScheduleValidator::generateDiagnosticReport()` and
   `ScheduleValidator::generateConstraintSuggestions()`. Nothing in the
   library calls them, and there is no replacement: the report of a generation
