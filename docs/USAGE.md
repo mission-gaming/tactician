@@ -61,7 +61,7 @@ anything else that competes.
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
 | **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format and for the options that shape which rounds the format has or how they are paired, and an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
-| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. Level means equal; two `WinDrawLossRanking` totals that differ only by the rounding of a float sum are level too, so the same results added in another order do not split a group. |
+| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. The ranking value it groups by includes a win for every bye a participant has had. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary. The standings are a table of the whole stage, and rank 1 of an elimination stage is not always the participant who won its last tie: read that with `MatchOutcomeSelector::winners()` (see [Who won the bracket](#who-won-the-bracket)). |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
@@ -71,7 +71,7 @@ anything else that competes.
 | **Quality metric** | A graded, lower-is-better measure of a valid schedule (`QualityMetric`): role balance, alternation streaks, rest rhythm, repeat spacing. Metrics measure defects — zero is ideal. Composed with weights by `ScheduleScorer`; policy (which metrics, what weights) stays application-side. |
 | **Optimization** | Best-of-N sampling (`ScheduleOptimizer`): generate N candidate schedules from one master seed, score each, keep the best. Deterministic when every randomness source uses the supplied child randomizer. Whole-schedule generators only. |
 | **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach. Greedy always runs first; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
-| **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — minimum rest in hours (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
+| **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — a minimum time between a participant's kickoffs (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
 | **Session** | One match night (or day) on a repack grid: an ordered position in the grid's explicit session list, holding a fixed number of slots. Deliberately not a "round" — a round is a set of concurrent events, a session is a container of consecutive slots. |
 | **Session grid** | The declarative position model repacking assigns onto (`SessionGrid`): an explicit ordered list of zoned session starts, a slot interval, a per-session slot count (overridable — final sessions often run deeper), and a per-slot concurrency capacity. Irregular by design, unlike `TimelineDefinition`'s cadence. A grid built this way is instant-based; see **Shape-only grid** for the other form. |
 | **Position** | One assignable place on a session grid: a 0-based session and a 0-based slot within it. A position hosts as many concurrent events as the grid's capacity allows. |
@@ -216,8 +216,10 @@ Two things to know when the IDs are numbers:
   scores of a `Result`), cast the key back with `(string)` before you
   compare it with an ID.
 - The last fallback of the standings order compares IDs as PHP compares two
-  strings, so `'9'` sorts before `'10'`. It is reached only when ranking
-  value, tiebreakers, scores, seed and label are all equal.
+  strings, which is as numbers when both are numeric: `'9'` sorts before
+  `'10'`, and two IDs that are equal as numbers (`'01'` and `'1'`) are not
+  ordered by it and keep the order they were given in. It is reached only
+  when ranking value, tiebreakers, scores, seed and label are all equal.
 
 Use one `Participant` object per participant within a generation. Almost
 everything matches participants by ID, but `SeedProtectionConstraint` and
@@ -387,10 +389,13 @@ that an event it is asked about ends up in the schedule:
   missing pairing, in every round, with either participant first-named,
   against the events of the failed attempt.
 - **The context is the generation's, not the final schedule's.** It holds
-  what was generated before the event. For a round robin that is the
-  earlier rounds: the other events of the round being laid out are not in
-  it yet. In an attempt that is later discarded, it holds events that are
-  in no schedule.
+  what was generated before the event, and never the event itself. For a
+  round robin laid out by the circle method that is the earlier rounds: the
+  other events of the round being laid out are not in it yet. The
+  backtracking search and the Swiss round search add each pairing as they
+  make it, so there the context also holds the pairings already made in
+  the event's own round. In an attempt that is later discarded, it holds
+  events that are in no schedule.
 
 So a constraint must not count its calls, read a random source or the
 clock, or remember what it was asked. One that does gets a schedule that
@@ -406,11 +411,12 @@ rule gets back. Two shortcuts are taken only for a `ConstraintSet` made of
 `NoRepeatPairings`, `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint`
 and `SeedProtectionConstraint` objects, which run no code of yours: a round
 robin that cannot be completed is analysed once and not once per order
-tried, and a Swiss round search skips the branches that hold no pairing. A
-set that holds anything that runs your code (a callable, a role extractor
-or metadata validator, a class or subclass of your own, or a subclass of
-`ConstraintSet`) gets the same results without the shortcuts, which on
-those two failure paths takes longer.
+tried, and a Swiss round search skips the branches that hold no pairing.
+Any other set gets the same results without the shortcuts, which on those
+two failure paths takes longer: a set that holds a `CallableConstraint`, a
+`MetadataConstraint` or a `ConsecutiveRoleConstraint` (each holds a
+callable, also when one of its factories built it), a class or subclass of
+your own, or a set that is a subclass of `ConstraintSet`.
 
 ### Role-Based Constraints
 
@@ -997,12 +1003,18 @@ thrown with a diagnostic report.
 
 For a whole Swiss schedule without recorded results, use the
 `SwissScheduler` preset, which drives this engine through the same loop
-while recording no results. With no results every participant is level, so
-each round is a non-repeat pairing of the field: drawn at random when the
-scheduler has a `Randomizer`, as below, and otherwise in the order of the
-table, the same on every call. A table with no results is in its fallback
-order: by seed, then label, then ID, and not by position in the list. It refuses more rounds than the number of
-participants minus one, the most a field can play without a repeat:
+while recording no results. With no results every participant of a field
+of even size is level, so each round is a non-repeat pairing of the field:
+drawn at random when the scheduler has a `Randomizer`, as below, and
+otherwise in the order of the table, the same on every call. A table with
+no results is in its fallback order: by seed, then label, then ID, and not
+by position in the list. In a field of odd size one participant has a bye
+in every round, and a bye counts as a win in the pairing order: the
+participants who have had a bye are ordered ahead of the others, with or
+without a `Randomizer`, and are the first to be paired, so those rounds are not a uniform draw. The scheduler refuses more rounds than the
+number of participants minus one. That is the most a field of even size
+can play without a repeat; a field of odd size could play one round more
+and is refused it:
 
 ```php
 use MissionGaming\Tactician\Scheduling\SwissOptions;
@@ -1342,10 +1354,11 @@ The draw is still not uniform over every schedule the format allows:
 
 - the pairings between two pots follow one pattern (a rotation of the two
   pots' members against each other), and no seed draws a schedule outside it;
-- the mixing is a fixed amount of work, so now and then a round is left in
-  which every pot meets one other pot only (about one round in ten for 16
-  entrants in 4 pots with two opponents per pot, and fewer than one in
-  twenty for the larger cases measured);
+- the mixing is a fixed amount of work, so now and then a round is left
+  that is still made of whole pots, each meeting one other pot or playing
+  inside itself (about one round in ten for 16 entrants in 4 pots with two
+  opponents per pot, and fewer than one in twenty for the larger cases
+  measured);
 - the smallest fields leave the mixing nothing to trade: with 6 entrants in
   3 pots of 2, every round has one pot playing inside itself and the other
   two meeting each other.
@@ -1406,7 +1419,7 @@ foreach ($attempts as $name => [$count, $pots, $opponentsPerPot]) {
 
 | Reason | The configuration |
 |------|------|
-| `OddParticipantCount` | Has an odd number of entrants. It is checked first, so an odd field is reported as odd whatever the pots |
+| `OddParticipantCount` | Has an odd number of entrants. It is checked before the rules on pots, so an odd field of three or more is reported as odd whatever the pots (a field of one is `TooFewParticipants`) |
 | `UnequalPots` | Does not divide into the pots asked for |
 | `TooManyOpponentsPerPot` | Asks for more opponents from a pot than a pot has other members |
 | `OddPotWithOddOpponents` | Has pots of odd size and an odd number of opponents per pot |
@@ -1479,7 +1492,12 @@ That reading does not hold for every bracket; see
 `fromArray()`):
 
 - `reseedEachRound: true` re-ranks survivors by standings and re-folds
-  every round, instead of the default fixed bracket path.
+  every round, instead of the default fixed bracket path. The standings
+  are the win/loss table of the stage so far. Survivors who are level in
+  it are ordered by the table's fallback, which is seed, label and ID and not list position.
+  A bye is no win in that table, so an entrant who had a bye ranks below
+  the winners of the round: in a field of five, the entrants in positions
+  1 and 2 meet in the semifinal.
 - `legsPerTie: 2` plays every tie over two mirrored legs (annotated with
   `tie_leg` metadata). Whoever wins more legs advances; when the legs are
   level, the aggregate is **yours** to resolve — away goals, extra time,
@@ -1675,10 +1693,13 @@ echo ($recorded->isDraw() ? 'drawn' : 'won') . ', '
 In the outcome's standings a level event that was decided this way counts
 as a win for the participant who advanced and a loss for the other, with
 the scores as recorded. The table of a single-leg bracket therefore places
-it as it does when every event has a winner: in single elimination the
-participant who advanced from a level final is rank 1 and not level with
-the runner-up, and re-seeding (`reseedEachRound`) ranks the survivor of a
-level event with the other winners of the round.
+it as it does when every event has a winner: in a single-elimination
+bracket without byes the participant who advanced from a level final is
+rank 1 and not level with the runner-up, and re-seeding
+(`reseedEachRound`) ranks the survivor of a level event with the other
+winners of the round. (With a bye in the bracket, rank 1 need not be the
+winner whether or not an event was level; see
+[Who won the bracket](#who-won-the-bracket).)
 
 Only the table the engine computes reads the decision. The outcome's
 results are the results as recorded, so a table you compute from them
@@ -1863,6 +1884,14 @@ $violations = (new CompositionValidator())->validateChain(16, [
 // [] - the chain telescopes: 16 -> 8 -> 4 -> 2
 ```
 
+The validator counts; it runs nothing. It reads a `MatchOutcomeSelector`
+as the hand-off after one knockout round of the previous stage's entrants:
+winners are half of them, rounded up for a bye, and losers half, rounded
+down. That is the arithmetic of a chain whose stages are single knockout
+rounds, as declared above. It is not what the selector returns from the
+outcome of a whole bracket played by one of the elimination engines, which
+is the one winner (or loser) of the final.
+
 Consumer-derived selections participate by declaring expected entrant
 counts (a transition without a selector); concurrent routes (winners
 forward, losers to a repechage) validate as separate chains from the same
@@ -1922,7 +1951,11 @@ The rules of the mechanism:
   from a 19:00 start is 19:00 every week. One written in hours, minutes or
   seconds is elapsed time: `PT168H` is 19:00 until the clocks change and an
   hour off from then on, and `PT24H` likewise. Write a round interval of
-  whole days as `P1D` or `P7D` (see the example below this list).
+  whole days as `P1D` or `P7D` (see the example below this list). One
+  case keeps neither: a kickoff that falls in the hour the clocks skip
+  (01:30 in London on the night they go forward) is moved an hour later
+  by PHP, and because each round is the round before plus the interval,
+  every later round keeps the moved time.
 - **Deterministic filling.** A round's events fill its slots in schedule
   order against slot time order — the same schedule and timeline always
   produce the same kickoffs.
@@ -2018,11 +2051,15 @@ $timeline = TimelineDefinition::fromArray([
 and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
 day is optional and defaults to midnight (`2026-11-09` is
 `2026-11-09 00:00:00`); so do the seconds and a fraction of a second. The
-zone comes from the `timezone` field, and a zone or offset written into the
-string must not contradict it. This holds wherever a datetime is read from
-plain data: the `start` of a timeline, the `from` and `to` of a blackout
-window, the `sessions` of a session grid and the `kickoff` of a serialized
-scheduled event (which is UTC unless the string carries a zone).
+zone comes from the `timezone` field. A zone or offset written into the
+string as well must be that field's value, spelled the same way: it is
+compared as a name, not as an offset, so `+01:00` or `BST` is refused under
+`Europe/London` even in summer, and `Z` or a Unix timestamp under `UTC`
+(the reason is `TimezoneMismatch`). This holds wherever a datetime is read
+from plain data: the `start` of a timeline, the `from` and `to` of a
+blackout window and the `sessions` of a session grid. The `kickoff` of a
+serialized scheduled event declares no zone: it is UTC unless the string
+carries one, and any zone the string carries is accepted.
 
 Two kinds of string are rejected, with the reason `UnparseableTime` (the
 kickoff with an `InvalidInputException`):
@@ -2035,7 +2072,9 @@ kickoff with an `InvalidInputException`):
   that does not exist (`2026-02-30 20:00`, `2026-08-01 24:00`,
   `2026-08-01 23:59:60`), a weekday that is not the weekday of its date
   (`Mon, 01 Aug 2026 19:00:00`: 1 August 2026 is a Saturday), or a second
-  timezone that is not the first (`2026-08-01 19:00 +01:00 +05:00`).
+  timezone that is not the first (`2026-08-01 19:00 +01:00 +05:00`; where
+  a `timezone` field is declared and the first zone is not it, the reason
+  is `TimezoneMismatch`, because that check comes first).
 
 PHP's date parser accepts all of these. It resolves the first kind against
 the clock, so the same configuration would give a different timeline each
@@ -2055,9 +2094,12 @@ TimelineDefinition::fromArray([
 ```
 
 Every other string PHP reads is accepted, and read as PHP reads it: a month
-name (`1 August 2026 19:00`), RFC 2822 with the right weekday, an ISO 8601
-week date (`2026-W31-6T19:00`) or ordinal date (`2026-213T19:00`), a Unix
-timestamp (`@1785610800`), a timezone written twice (`+0000 (UTC)`). That
+name (`1 August 2026 19:00`), an RFC 2822 date with the right weekday (its
+offset falls under the rule on zones above), an ISO 8601
+week date (`2026-W31-6T19:00`) or ordinal date (`2026-213T19:00`), and,
+where the rule on zones above allows the zone they carry (a kickoff, or a
+`timezone` field of `+00:00`), a Unix timestamp (`@1785610800`) and a
+timezone written twice (`+0000 (UTC)`). That
 includes an offset from a date the string states, which is counted from that
 date and not from today: `2026-08-01 20:00 +1 week` is 8 August at 20:00,
 and `first monday of August 2026 19:00` is 3 August. A relative date with no
@@ -2294,7 +2336,7 @@ $shape->getSlotTime(0, 0);
 Two lookups turn a position into something an application can index its
 own records by, and back. They work on both forms of grid. A position's
 **ordinal** is its 0-based index in grid order, session by session and
-slot by slot: `ordinalOf($session, $slot)` returns it (and throws
+slot by slot: `ordinalOf($session, $slot)` returns it (and throws an `InvalidConfigurationException` with the reason
 `PositionOutOfRange` for a position the grid does not have), and
 `positionOf($ordinal)` returns `['session' => ..., 'slot' => ...]`, or
 null when no position has that ordinal. On an instant-based grid
@@ -2460,10 +2502,12 @@ between 0.1 and 1.3 seconds; the slower figures are requests that use the
 whole budget. A step costs a few microseconds. Sessions of many slots add
 work the budget does not count, because the repacker first works out which
 start slots can give gap-free runs at all, and that grows with two to the
-power of the slot count: about a second at 16 slots per session and
-several seconds at 20, the widest it reasons about (a wider session is
-packed greedily). That work takes memory too: about 100 MB at 18 slots
-per session, 200 MB at 19 and 400 MB at 20, which is past PHP's default
+power of the slot count: on the requests measured, up to several seconds
+at 16 slots per session and over ten seconds at 20, the widest it reasons
+about (a wider session is packed greedily, and a request whose sessions
+pack without a search costs milliseconds at any width). That work takes
+memory too: on the same requests up to about 100 MB at 18 slots per
+session, 200 MB at 19 and 400 MB at 20, which is past PHP's default
 `memory_limit` of 128 MB, and running out of memory is not an exception a
 caller can catch. Give a wide grid a time limit of your own if the request
 is made while a person waits, and a memory limit that fits it. `composer bench` measures the machine at
@@ -2726,7 +2770,7 @@ hand, in a test for example.
 | `getSession()` | The 0-based session |
 | `getSlot()` | The 0-based slot within the session |
 | `hasKickoff()` | False when the grid is shape-only |
-| `getKickoff()` | The position's time in UTC; throws an `UnavailableValueException` when there is none |
+| `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, and writes it out with a `Z` without converting it: pass UTC); throws an `UnavailableValueException` when there is none |
 | `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null |
 
 #### `UnplacedEvent`
@@ -2967,8 +3011,10 @@ What a round trip keeps is what JSON can hold:
   need it again, in its order, which is the seeding.
 
 Text that is not valid JSON is reported by a `JsonConversionException` (a
-`\JsonException`), and valid JSON or an array of the wrong shape by an
-`InvalidInputException` (an `\InvalidArgumentException`). Both are covered by
+`\JsonException`), and valid JSON or an array with an entry of the wrong
+shape by an `InvalidInputException` (an `\InvalidArgumentException`). A
+missing top-level key is not an error: `Schedule::fromArray([])` is an empty
+schedule. Both exceptions are covered by
 `catch (TacticianException)`: see [Error Handling](#exception-hierarchy).
 
 ## Schedule Validation
@@ -3143,14 +3189,15 @@ parent type matches too.
 | `IncompleteScheduleException` | `SchedulingException` | Constraints leave a schedule that cannot be completed. |
 | `NoValidPairingException` | `SchedulingException` | No complete pairing exists for a Swiss round. |
 | `RepackViolationsException` | `SchedulingException` | A repack leaves violations and `RepackOptions(throwOnViolations: true)` asked for an exception instead of the outcome. |
-| `InvalidInputException` | `\InvalidArgumentException` | An argument is outside its allowed range, or the data given to a `fromArray()` or `fromJson()` method is malformed: a missing field, a value of the wrong type, an unknown participant ID. |
+| `InvalidInputException` | `\InvalidArgumentException` | An argument of a value object is outside its allowed range (`new Round(0)`), or the serialized data given to the `fromArray()` or `fromJson()` of a value object, a stage state or a scheduled schedule is malformed: a missing field of an entry, a value of the wrong type, an unknown participant ID. Malformed or out-of-range configuration (options, timelines, grids, rules, selectors, a ranking) is an `InvalidConfigurationException` instead. |
 | `JsonConversionException` | `\JsonException` | A `fromJson()` method is given text that is not valid JSON, or a `toJson()` method meets a value JSON cannot represent. The message and code are PHP's; the PHP exception is the previous one. |
 | `InvariantViolationException` | `\LogicException` | The library reached a state its own logic rules out. It reports a defect in the library, not a mistake in the input. |
 | `UnavailableValueException` | `\LogicException` | An object was asked for a value it does not hold: a time from a shape-only `SessionGrid`, the kickoff of an assignment made on one, the capacity of an unbounded grid as a number. It reports a mistake in the calling code, which the object's `has...()` method (named in the message) would have prevented. It is not a configuration error and not a library defect. |
 
 `SchedulingException` is the base of the scheduling failures only. A rejected
-argument or malformed data is an `InvalidInputException`, which is not a
-`SchedulingException`: catch `TacticianException` for both.
+argument of a value object or malformed serialized data is an
+`InvalidInputException`, which is not a `SchedulingException`: catch
+`TacticianException` for both.
 
 The scheduling failures are told apart by class:
 
