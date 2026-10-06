@@ -28,8 +28,11 @@ return RectorConfig::configure()
     // can see. Each entry says what the change would be.
     ->withSkip([
         // Promotion renames the constructor parameter to the property name,
-        // which breaks a caller that passes the argument by name.
-        ClassPropertyAssignToConstructorPromotionRector::class,
+        // which breaks a caller that passes the argument by name. This is
+        // the one class where the two names differ.
+        ClassPropertyAssignToConstructorPromotionRector::class => [
+            __DIR__ . '/src/Repack/Internal/StepBudget.php',
+        ],
         // These hold public constants. A type on a public constant changes
         // its declaration, so it waits for a release that may change one.
         AddTypeToConstRector::class => [
