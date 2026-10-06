@@ -470,6 +470,35 @@ describe('PHPUnit configuration', function () use ($root): void {
         'beStrictAboutOutputDuringTests',
     ]);
 
+    // A test marked `todo` is not run, and a run with one in it still
+    // passes: none of the failOn* settings above reads it. So the mark is a
+    // way to switch a failing test off without anyone seeing a failure. The
+    // tests that carry it are named here, each with the behaviour it waits
+    // for; another one fails this test until it is listed with its reason.
+    it('marks as todo only the tests named here', function () use ($root): void {
+        $mark = '->' . 'todo(';
+        $marked = [];
+
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/tests', FilesystemIterator::SKIP_DOTS));
+        foreach ($files as $file) {
+            Assert::assertInstanceOf(SplFileInfo::class, $file);
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $count = substr_count((string) file_get_contents($file->getPathname()), $mark);
+            if ($count > 0) {
+                $marked[str_replace($root . '/', '', $file->getPathname())] = $count;
+            }
+        }
+
+        expect($marked)->toBe([
+            // "schedules the two legs with roles the constraints accept":
+            // a schedule exists and generation does not find it
+            'tests/Feature/ComplexConstraintTest.php' => 1,
+        ]);
+    });
+
     it('is valid against the schema of the installed PHPUnit', function () use ($root): void {
         // PHPUnit does not stop for a configuration that fails validation:
         // it warns and carries on, so a misspelt failOn* attribute is a flag
