@@ -46,22 +46,7 @@ use PHPUnit\Framework\AssertionFailedError;
 // builds an InvalidConfigurationException passes `reason:` by name, and every
 // case of the enum is passed somewhere. Then real mistakes are made, and the
 // exception that comes out is asked for its reason, its message and its
-// report.
-//
-// Gap left knowingly - the eleven sites in src/Stage/StageState.php pass no
-// reason yet, so an error from recording a round or its results, from
-// replacing a result or from the engine fingerprint has a null reason. The
-// file is listed below with the number of sites, so the test fails when a
-// site there gains a reason or a twelfth appears, and the entry has to be
-// revisited.
-
-/**
- * Files whose sites build the exception without a reason, with how many
- * such sites each has.
- */
-const CONFIGURATION_SITES_WITHOUT_A_REASON = [
-    'src/Stage/StageState.php' => 11,
-];
+// report. The rule has no exception: no file is allowed a site without one.
 
 /**
  * The first line of the diagnostic report's requirements for a round robin.
@@ -178,26 +163,24 @@ function configurationErrorFrom(Closure $mistake): InvalidConfigurationException
 
 describe('the reason of a configuration error', function (): void {
     it('is set at every site in src/ that builds one', function (): void {
+        $sites = configurationErrorSites();
+
         $without = [];
-        foreach (configurationErrorSites() as $site) {
+        foreach ($sites as $site) {
             if ($site['reasons'] === []) {
-                $without[$site['file']][] = "{$site['file']}:{$site['line']}";
+                $without[] = "{$site['file']}:{$site['line']}";
             }
         }
 
-        $unexpected = [];
-        foreach ($without as $file => $lines) {
-            if (count($lines) !== (CONFIGURATION_SITES_WITHOUT_A_REASON[$file] ?? 0)) {
-                $unexpected = [...$unexpected, ...$lines];
-            }
-        }
-        foreach (CONFIGURATION_SITES_WITHOUT_A_REASON as $file => $expected) {
-            if (!isset($without[$file])) {
-                $unexpected[] = "{$file} is listed with {$expected} site(s) without a reason and has none: remove it from the list";
-            }
-        }
+        expect($without)->toBe([], "These sites build an InvalidConfigurationException without `reason:`:\n" . implode("\n", $without));
 
-        expect($unexpected)->toBe([], "These sites build an InvalidConfigurationException without `reason:`:\n" . implode("\n", $unexpected));
+        // The reader of the source does find the sites of StageState, which
+        // were the last to gain a reason: as many as the file has, counted
+        // another way, so that the rule cannot hold there for want of sites.
+        $inStageState = array_filter($sites, fn(array $site): bool => $site['file'] === 'src/Stage/StageState.php');
+        $source = (string) file_get_contents(dirname(__DIR__, 2) . '/src/Stage/StageState.php');
+        expect(count($inStageState))->toBe(substr_count($source, 'new InvalidConfigurationException('))
+            ->and(count($inStageState))->toBeGreaterThan(0);
     });
 
     it('names only cases that exist', function (): void {
@@ -264,6 +247,13 @@ describe('the reason of a configuration error', function (): void {
             'UndecidedTie' => 'undecided_tie',
             'IncompatibleOutcome' => 'incompatible_outcome',
             'RankUnavailable' => 'rank_unavailable',
+            'RoundOutOfSequence' => 'round_out_of_sequence',
+            'EventNotInRound' => 'event_not_in_round',
+            'NoRoundRecorded' => 'no_round_recorded',
+            'ResultNotRecorded' => 'result_not_recorded',
+            'RoundSuperseded' => 'round_superseded',
+            'EmptyEngineFingerprint' => 'empty_engine_fingerprint',
+            'EngineFingerprintMismatch' => 'engine_fingerprint_mismatch',
             'EmptyEventId' => 'empty_event_id',
             'IdenticalParticipants' => 'identical_participants',
             'DuplicateEventId' => 'duplicate_event_id',
@@ -807,8 +797,7 @@ describe('the requirements of a configuration error', function (): void {
             configurationErrorField(19),
             new PotDrawOptions(pots: 1, opponentsPerPot: 2)
         )],
-        // The errors StageState gained after the block was scoped. They
-        // state no reason, and still do not carry the round-robin block.
+        // The errors of StageState are covered one by one further down
         'a result replaced before any round is recorded' => [function (): void {
             $alice = new Participant('a', 'Alice');
             $bob = new Participant('b', 'Bob');
@@ -857,6 +846,200 @@ describe('the requirements of a configuration error', function (): void {
             . "=== CONFIGURATION DETAILS ===\n"
             . "• start: 2026-08-01 19:00:00\n"
             . '• timezone: Neverland/Nowhere'
+        );
+    });
+});
+
+/**
+ * Every configuration error `Stage\StageState` raises, by the mistake that
+ * raises it: the reason it states, the issue it reports and its context.
+ *
+ * The issue and the context are the ones each error had before it stated a
+ * reason. Alice (`a`), Bob (`b`), Carol (`c`) and Dan (`d`) are the field.
+ *
+ * @return array<string, array{0: Closure(): mixed, 1: InvalidConfigurationReason, 2: string, 3: array<string, mixed>}>
+ */
+function stageStateMistakes(): array
+{
+    $alice = new Participant('a', 'Alice');
+    $bob = new Participant('b', 'Bob');
+    $carol = new Participant('c', 'Carol');
+    $dan = new Participant('d', 'Dan');
+
+    $first = new Event([$alice, $bob], new Round(1));
+    $second = new Event([$bob, $alice], new Round(2));
+    $roundOne = new RoundPairing(1, null, [$first]);
+    $roundTwo = new RoundPairing(2, null, [$second]);
+
+    $start = fn(): StageState => StageState::start([$alice, $bob, $carol, $dan]);
+
+    return [
+        'two participants with one ID at the start of a stage' => [
+            fn() => StageState::start([$alice, new Participant('a', 'Alice again'), $bob]),
+            InvalidConfigurationReason::DuplicateParticipantIds,
+            'All participants must have unique IDs',
+            ['participant_count' => 3, 'unique_ids' => 2],
+        ],
+        'a round recorded a second time' => [
+            fn() => $start()->withRoundPlayed($roundOne, [])->withRoundPlayed($roundOne, []),
+            InvalidConfigurationReason::RoundOutOfSequence,
+            'Rounds must be recorded in play order with increasing round numbers',
+            ['last_round' => 1, 'pairing_round' => 1],
+        ],
+        'round 1 recorded after round 2' => [
+            fn() => $start()->withRoundPlayed($roundTwo, [])->withRoundPlayed($roundOne, []),
+            InvalidConfigurationReason::RoundOutOfSequence,
+            'Rounds must be recorded in play order with increasing round numbers',
+            ['last_round' => 2, 'pairing_round' => 1],
+        ],
+        'a pairing of round 1 that holds an event of round 2' => [
+            fn() => $start()->withRoundPlayed(new RoundPairing(1, null, [$first, $second]), []),
+            InvalidConfigurationReason::EventNotInRound,
+            'Pairing contains an event from a different round',
+            ['pairing_round' => 1, 'event_round' => 2],
+        ],
+        // An event with no round number at all is the mistake the engines
+        // and the timeline assigner report as EventWithoutRoundNumber. It is
+        // the same mistake here, with the message this error always had.
+        'a pairing that holds an event with no round' => [
+            fn() => $start()->withRoundPlayed(new RoundPairing(1, null, [new Event([$alice, $bob])]), []),
+            InvalidConfigurationReason::EventWithoutRoundNumber,
+            'Pairing contains an event from a different round',
+            ['pairing_round' => 1, 'event_round' => null],
+        ],
+        'a result whose event has no round, recorded with round 1' => [
+            fn() => $start()->withRoundPlayed($roundOne, [new Result(new Event([$alice, $bob]), $alice)]),
+            InvalidConfigurationReason::EventWithoutRoundNumber,
+            'Result belongs to a different round than the pairing being recorded',
+            ['pairing_round' => 1, 'result_round' => null],
+        ],
+        'a further result whose event has no round' => [
+            fn() => $start()->withRoundPlayed($roundOne, [])
+                ->withAdditionalResults([new Result(new Event([$alice, $bob]), $alice)]),
+            InvalidConfigurationReason::EventWithoutRoundNumber,
+            'Result belongs to a different round than the pairing being recorded',
+            ['pairing_round' => 1, 'result_round' => null],
+        ],
+        'a result of round 2 recorded with round 1' => [
+            fn() => $start()->withRoundPlayed($roundOne, [new Result($second, $bob)]),
+            InvalidConfigurationReason::EventNotInRound,
+            'Result belongs to a different round than the pairing being recorded',
+            ['pairing_round' => 1, 'result_round' => 2],
+        ],
+        'a result for an event the round does not hold' => [
+            fn() => $start()->withRoundPlayed($roundOne, [new Result(new Event([$carol, $dan], new Round(1)), $carol)]),
+            InvalidConfigurationReason::EventNotInRound,
+            'Result references an event that is not part of the pairing being recorded',
+            ['pairing_round' => 1, 'event' => '1:c|d:1'],
+        ],
+        'a further result for an event the last round does not hold' => [
+            fn() => $start()->withRoundPlayed($roundOne, [])
+                ->withAdditionalResults([new Result(new Event([$carol, $dan], new Round(1)), $carol)]),
+            InvalidConfigurationReason::EventNotInRound,
+            'Result references an event that is not part of the pairing being recorded',
+            ['pairing_round' => 1, 'event' => '1:c|d:1'],
+        ],
+        'further results before any round is recorded' => [
+            fn() => $start()->withAdditionalResults([new Result($first, $alice)]),
+            InvalidConfigurationReason::NoRoundRecorded,
+            'No round has been recorded to add results to',
+            [],
+        ],
+        'a result replaced before any round is recorded' => [
+            fn() => $start()->withResultReplaced(new Result($first, $alice)),
+            InvalidConfigurationReason::NoRoundRecorded,
+            'No round has been recorded to replace a result in',
+            [],
+        ],
+        'a result replaced that was never recorded' => [
+            fn() => $start()->withRoundPlayed($roundOne, [])->withResultReplaced(new Result($first, $alice)),
+            InvalidConfigurationReason::ResultNotRecorded,
+            'No result is recorded for the event; record a first result with withRoundPlayed() or withAdditionalResults()',
+            ['round' => 1, 'participants' => ['a', 'b']],
+        ],
+        'a result of round 1 replaced after round 2 was recorded' => [
+            fn() => $start()
+                ->withRoundPlayed($roundOne, [new Result($first, $alice)])
+                ->withRoundPlayed($roundTwo, [])
+                ->withResultReplaced(new Result($first, $bob)),
+            InvalidConfigurationReason::RoundSuperseded,
+            'A result of round 1 cannot be replaced: round 2 was paired from the results of round 1. Rebuild the state'
+                . ' up to round 1 with the corrected result (StageState::start(), then withRoundPlayed() for each round'
+                . ' that stands) and pair again.',
+            ['round' => 1, 'last_round' => 2],
+        ],
+        'an empty engine fingerprint' => [
+            fn() => $start()->withEngineFingerprint(''),
+            InvalidConfigurationReason::EmptyEngineFingerprint,
+            'An engine fingerprint cannot be empty',
+            [],
+        ],
+        'a state stamped by one engine and read by another' => [
+            fn() => $start()->withEngineFingerprint('engine-one')->requireEngineFingerprint('engine-two'),
+            InvalidConfigurationReason::EngineFingerprintMismatch,
+            "The stage state was recorded by a different engine or configuration (the stamp is not this engine's);"
+                . ' stamp it again with withEngineFingerprint() if the change is deliberate',
+            ['recorded' => 'engine-one', 'engine' => 'engine-two', 'differences' => ["the stamp is not this engine's"]],
+        ],
+    ];
+}
+
+describe('a configuration error of StageState', function (): void {
+    it('states the reason the mistake calls for', function (Closure $mistake, InvalidConfigurationReason $reason): void {
+        expect(configurationErrorFrom($mistake)->getReason())->toBe($reason);
+    })->with(fn(): array => stageStateMistakes());
+
+    // Stating a reason changed nothing else a caller can read
+    it('keeps its message, its context, its code and no previous exception', function (
+        Closure $mistake,
+        InvalidConfigurationReason $reason,
+        string $issue,
+        array $context
+    ): void {
+        $exception = configurationErrorFrom($mistake);
+
+        expect($exception->getConfigurationIssue())->toBe($issue)
+            ->and($exception->getMessage())->toBe("Invalid scheduler configuration: {$issue}")
+            ->and($exception->getContext())->toBe($context)
+            ->and($exception->getCode())->toBe(0)
+            ->and($exception->getPrevious())->toBeNull();
+    })->with(fn(): array => stageStateMistakes());
+
+    // None of them is about a round robin, and three of them ended with the
+    // round-robin requirements all the same.
+    it('lists no requirements, and no round-robin requirement in its report', function (Closure $mistake): void {
+        $exception = configurationErrorFrom($mistake);
+        $report = $exception->getDiagnosticReport();
+
+        expect($exception->getRequirements())->toBe([])
+            ->and($report)->not->toContain('REQUIREMENTS')
+            ->and($report)->not->toContain(ROUND_ROBIN_REQUIREMENT);
+    })->with(fn(): array => stageStateMistakes());
+
+    it('is raised through the engines with the same reason', function (): void {
+        $exception = configurationErrorFrom(fn() => (new SingleEliminationEngine())->isComplete(
+            StageState::start([new Participant('a', 'A'), new Participant('b', 'B')])
+                ->withEngineFingerprint((new SwissPairingEngine())->getFingerprint())
+        ));
+
+        expect($exception->getReason())->toBe(InvalidConfigurationReason::EngineFingerprintMismatch);
+    });
+
+    it('writes the whole report of a round recorded out of order', function (): void {
+        $event = new Event([new Participant('a', 'Alice'), new Participant('b', 'Bob')], new Round(1));
+        $pairing = new RoundPairing(1, null, [$event]);
+        $exception = configurationErrorFrom(
+            fn() => StageState::start($event->getParticipants())->withRoundPlayed($pairing, [])->withRoundPlayed($pairing, [])
+        );
+
+        expect($exception->getDiagnosticReport())->toBe(
+            "=== INVALID CONFIGURATION DIAGNOSTIC REPORT ===\n"
+            . "\n"
+            . "Issue: Rounds must be recorded in play order with increasing round numbers\n"
+            . "\n"
+            . "=== CONFIGURATION DETAILS ===\n"
+            . "• last_round: 1\n"
+            . '• pairing_round: 1'
         );
     });
 });

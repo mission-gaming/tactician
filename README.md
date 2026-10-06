@@ -252,7 +252,8 @@ before `1.0.0`):
 
 Anything not listed as stable is experimental, including the rest of
 `Scheduling`. `Repack\Internal` is internal: it is not public API and carries
-no compatibility guarantee.
+no compatibility guarantee. Neither does a class in any other namespace whose
+docblock is marked `@internal` (`Stage\PairKey`, `Timeline\DateTimeString`).
 
 Some stable signatures carry experimental types. For example,
 `RoundRobinScheduler` accepts a `Constraints\ConstraintSet` and returns a

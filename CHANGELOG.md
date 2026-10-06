@@ -175,11 +175,12 @@ heading **Output change (fix)**.
   also unchanged for the three factories on `SchedulingException` and for an
   `InvalidConfigurationException` that code outside the library builds the
   way it did before, because the library cannot tell what those describe.
-  Six of the errors `Stage\StageState` raises (see "Added" below) are built
-  that way too, so their report still ends with the round-robin block, which
-  does not describe them: a known gap. Every other configuration error the library
-  raises now has no "REQUIREMENTS" block, and its report ends with the
-  configuration details.
+  Every other configuration error the library raises now has no
+  "REQUIREMENTS" block, and its report ends with the configuration details.
+  That includes the errors of `Stage\StageState` (a duplicate ID given to
+  `start()`, a round recorded out of order, an event or a result that does
+  not belong to the round recorded), which are not about a round robin
+  either.
 - The suggestion `IncompleteScheduleException::getDiagnosticReport()` gives
   for a consecutive role constraint pointed the wrong way. The limit of a
   `ConsecutiveRoleConstraint` is the most events in a row a participant may
@@ -202,6 +203,49 @@ heading **Output change (fix)**.
   previous exception. Code that caught `\ValueError` or `\Error` around these
   calls for this case no longer sees it there: catch
   `InvalidConfigurationException`.
+- A datetime in plain-data configuration that PHP would resolve against the
+  clock, or read to another instant than the one written, is rejected.
+  **Configuration that writes the date of each datetime in full
+  (`2026-08-01 19:00`, `2026-08-01T19:00:00`, `2026-11-09`) is unaffected:
+  every such string parses to the instant it did before, and a date without
+  a time of day is still midnight.** The string went straight to PHP's date
+  parser, which also accepts `now`, `tomorrow`, `+1 week`,
+  `next monday 20:00` and the empty string and resolves them against the
+  clock, so the same configuration gave a different timeline or session grid
+  each time it was loaded. That contradicts the rule that the library never
+  asks for the current time. These are now rejected with an
+  `InvalidConfigurationException` (reason `UnparseableTime`, the message an
+  unparseable string gives: `start or its timezone is not parseable`) by
+  `TimelineDefinition::fromArray()` (`start`), `SessionGrid::fromArray()`
+  (`sessions`) and `BlackoutRule::fromArray()` (`from`, `to`), and with an
+  `InvalidInputException` (`Scheduled event kickoff is not parseable`) by
+  `ScheduledEvent::fromArray()` and `ScheduledSchedule::fromArray()`/
+  `fromJson()` (`kickoff`):
+  - a string whose answer came from the clock: one relative to the current
+    time, the empty string, a time of day without a date (`20:00`), and a
+    date without its year (`August 1 20:00`);
+  - a date or a time that does not exist, which PHP rolled over into the
+    next one: `2026-02-30 20:00` (read as 2 March), `2026-08-01 24:00`,
+    `2026-08-01 23:59:60`, the 366th day of a year that has 365;
+  - a weekday name that is not the weekday of the date
+    (`Mon, 01 Aug 2026 19:00:00 +0000`, a Saturday, which PHP moved to the
+    Monday after);
+  - a second timezone that is not the first
+    (`2026-08-01 19:00 +01:00 +05:00`, of which PHP read the first and
+    ignored the second).
+
+  What to check: configuration or stored data that holds one of these.
+  Everything else PHP reads is accepted as before and parses to the same
+  instant: a date without a time of day, a month name
+  (`1 August 2026 19:00`), RFC 2822 with the right weekday, an ISO 8601 week
+  date (`2026-W31-6T19:00`) or ordinal date (`2026-213T19:00`), a Unix
+  timestamp (`@1785610800`), a timezone written twice (`+0000 (UTC)`), and
+  an offset from a date the string states (`2026-08-01 20:00 +1 week`,
+  `first monday of August 2026 19:00`), which PHP counts from that date and
+  not from the clock. A zone or offset in the string is still checked
+  against the `timezone` field, and a string that has both faults is still
+  reported for its timezone (`TimezoneMismatch`). A relative date with no
+  date to count from is for the application to compute and pass on.
 - A repack request whose objective weights are too large to keep the
   objective an integer is rejected with an `InvalidConfigurationException`.
   It returned an outcome before. The repacker scores a move as at most
@@ -323,13 +367,16 @@ heading **Output change (fix)**.
   of the new backed enum `Exceptions\InvalidConfigurationReason`
   (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and others; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). Every site that builds the exception sets one, except eleven
-  in `Stage\StageState` (recording a round or its results, replacing a
-  result, the engine fingerprint, and a duplicate ID given to `start()`):
-  `getReason()` returns null
-  for those, and for an exception that code outside the library builds
-  without a reason. A `match` over the reason needs a `default` arm, because
-  a release may add a case.
+  identifiers). Every site in the library that builds the exception sets
+  one, those of `Stage\StageState` included (`RoundOutOfSequence`,
+  `EventNotInRound`, `NoRoundRecorded`, `ResultNotRecorded`,
+  `RoundSuperseded`, `EmptyEngineFingerprint` and
+  `EngineFingerprintMismatch` for recording a round or its results,
+  replacing a result and the engine fingerprint; an event with no round
+  number at all is `EventWithoutRoundNumber` there too). `getReason()`
+  returns null only for an exception that code outside the library builds
+  without a reason. A `match` over the reason needs a `default` arm, because a release
+  may add a case.
 - `Exceptions\PinConflictException`, thrown by `RepackRequest` when one
   participant is pinned in two events at the same session and slot.
   `getEventIds()` returns the IDs of the two events, and `getParticipantId()`,
