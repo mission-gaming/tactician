@@ -100,6 +100,13 @@ jobs:
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
 
+    # Some tests prove that text the library builds does not follow the
+    # locale's decimal separator, and need a locale that writes a comma. The
+    # runner image ships none, and on CI those tests fail instead of skipping
+    # (tests/Support/DecimalCommaLocale.php).
+    - name: Generate a locale with a decimal comma
+      run: sudo locale-gen de_DE.UTF-8
+
     - name: Run CI suite
       run: composer ci
 
@@ -131,6 +138,10 @@ jobs:
 
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
+
+    # As in the test job: the locale tests must run here too.
+    - name: Generate a locale with a decimal comma
+      run: sudo locale-gen de_DE.UTF-8
 
     - name: Run tests with coverage
       run: composer test-coverage

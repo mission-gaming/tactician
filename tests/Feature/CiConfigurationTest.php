@@ -386,6 +386,37 @@ it('caches the Composer download directory, keyed on the lock file, and never ve
     Assert::assertDoesNotMatchRegularExpression('/^\s*path:\s*["\']?vendor/m', $workflow, 'ci.yml caches vendor/');
 });
 
+// The tests that use tests/Support/DecimalCommaLocale.php need a locale with
+// a decimal comma. Where none is installed they skip on a developer's machine
+// and fail on CI, so every job that runs the suite must generate one first;
+// the runner image ships none.
+it('generates a locale with a decimal comma before every run of the test suite', function (string $workflow): void {
+    $contents = (string) file_get_contents($workflow);
+    $jobs = preg_split('/^  (?=[a-z][a-z0-9-]*:\n)/m', $contents);
+
+    if ($jobs === false) {
+        Assert::fail(basename($workflow) . ' could not be split into jobs.');
+    }
+
+    $suiteRuns = 0;
+
+    foreach ($jobs as $job) {
+        if (preg_match('/^      run: composer (?:ci|test|test-coverage)$/m', $job, $suite, PREG_OFFSET_CAPTURE) !== 1) {
+            continue;
+        }
+
+        ++$suiteRuns;
+        $locale = strpos($job, "      run: sudo locale-gen de_DE.UTF-8\n");
+
+        expect($locale)->not->toBeFalse()
+            ->and($locale)->toBeLessThan($suite[0][1]);
+    }
+
+    // Both workflows run the suite; a pattern that stopped matching would
+    // otherwise pass by finding nothing.
+    expect($suiteRuns)->toBe(2);
+})->with($workflowDataset);
+
 // Pest requires PHPUnit and Collision itself, at the versions it supports; a
 // second, direct requirement can only disagree with it. Faker was never used.
 it('requires no development package that is unused or that Pest already brings', function () use ($root): void {
