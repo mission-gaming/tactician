@@ -6,12 +6,16 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
+use MissionGaming\Tactician\Standings\RankingStrategy;
 use MissionGaming\Tactician\Standings\SonnebornBergerTiebreaker;
 use MissionGaming\Tactician\Standings\StandingEntry;
+use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\TiebreakerInterface;
+use MissionGaming\Tactician\Standings\TiedSet;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use MissionGaming\Tactician\Standings\WinsTiebreaker;
+use Override;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -292,6 +296,16 @@ function tiedSetChain(array $chain): array
     }, $chain);
 }
 
+/**
+ * The ids p1 to p<count>.
+ *
+ * @return list<string>
+ */
+function tiedSetIds(int $count): array
+{
+    return array_map(static fn(int $number): string => "p{$number}", range(1, $count));
+}
+
 $rankings = [
     'the default ranking' => [new WinDrawLossRanking(), [3.0, 1.0, 0.0]],
     '3/1/0' => [WinDrawLossRanking::threeOneZero(), [3.0, 1.0, 0.0]],
@@ -429,3 +443,184 @@ it('reports exactly the groups that only the fallback orders, for any results', 
         ->and($tablesWithSeveralSets)->toBeGreaterThan(10)
         ->and($setsBelowFirstPosition)->toBeGreaterThan(20);
 })->with($configurations);
+
+/*
+ * Agreement with the calculator for any float, by behaviour.
+ *
+ * The oracle above needs exact sums, so it covers whole numbers and halves.
+ * This test needs no arithmetic. It builds the same table twice with the
+ * seeds reversed and nothing else changed. Every participant has a seed of
+ * its own, so the fallback always decides at the seed, and reversing the
+ * seeds reverses the order of exactly the pairs that nothing before the
+ * fallback orders. Two participants are therefore tied when, and only when,
+ * their order in the two tables differs. That is read from the order of the
+ * table alone: no figure is compared here.
+ *
+ * The ranking strategy and the tiebreakers are stand-ins that return stated
+ * values, drawn from floats that expose a comparison with a tolerance or by
+ * text: sums with no exact binary form, neighbouring floats, both zeros,
+ * the infinities and the largest float. Scores are fractions as well, so the
+ * score difference and scores-for are sums of that kind too. NAN is left
+ * out: a table that holds one has no defined order (see the unit tests).
+ */
+it('reports as tied exactly the pairs whose order follows the fallback, for any float values', function (array $names): void {
+    /** @var list<string> $names */
+    $pool = [
+        0.0, -0.0, 0.1 + 0.2, 0.3, 0.1 + 0.7, 0.8, 1.0, 1.0 + PHP_FLOAT_EPSILON,
+        -0.3, PHP_FLOAT_MAX, INF, -INF,
+    ];
+    $scores = [0, 1, 2, 0.1, 0.2, 0.3, 0.7];
+
+    $tiedPairs = 0;
+    $separatedPairs = 0;
+    $tiedOnAnInexactSum = 0;
+    $separatedByLessThanATolerance = 0;
+    $setsOfThreeOrMore = 0;
+
+    for ($seed = 1; $seed <= 400; ++$seed) {
+        $rng = new Randomizer(new Mt19937($seed));
+        $count = $rng->getInt(2, 7);
+        $ids = tiedSetIds($count);
+
+        // A few values per table, so that equal figures are common
+        $draw = static function () use ($rng, $pool, $ids): array {
+            $few = array_slice($rng->shuffleArray($pool), 0, $rng->getInt(1, 3));
+            $values = [];
+            foreach ($ids as $id) {
+                $values[$id] = $few[$rng->getInt(0, count($few) - 1)];
+            }
+
+            return $values;
+        };
+
+        $rankingValues = $draw();
+        $ranking = new class ($rankingValues) implements RankingStrategy {
+            /** @param array<string, float> $values */
+            public function __construct(private array $values) {}
+
+            #[Override]
+            public function rank(Participant $participant, array $results): float
+            {
+                return $this->values[$participant->getId()];
+            }
+        };
+
+        $tiebreakers = [];
+        foreach ($names as $name) {
+            $tiebreakers[] = new class ($name, $draw()) implements TiebreakerInterface {
+                /** @param array<string, float> $values */
+                public function __construct(private readonly string $name, private array $values) {}
+
+                #[Override]
+                public function getName(): string
+                {
+                    return $this->name;
+                }
+
+                #[Override]
+                public function calculate(Participant $participant, array $results, array $entries): float
+                {
+                    return $this->values[$participant->getId()];
+                }
+            };
+        }
+
+        $games = [];
+        $density = $rng->getInt(0, 6);
+        foreach ($ids as $i => $home) {
+            foreach (array_slice($ids, $i + 1) as $away) {
+                if ($rng->getInt(1, 10) <= $density) {
+                    $games[] = [
+                        $home,
+                        $away,
+                        $scores[$rng->getInt(0, count($scores) - 1)],
+                        $scores[$rng->getInt(0, count($scores) - 1)],
+                    ];
+                }
+            }
+        }
+
+        $calculator = new StandingsCalculator($ranking, $tiebreakers);
+        $table = static function (bool $reversed) use ($calculator, $ids, $games, $count): Standings {
+            $participants = [];
+            foreach ($ids as $index => $id) {
+                $participants[$id] = new Participant($id, 'Same', $reversed ? $count - $index : $index + 1);
+            }
+
+            $results = [];
+            foreach ($games as [$home, $away, $homeScore, $awayScore]) {
+                $results[] = new Result(
+                    new Event([$participants[$home], $participants[$away]]),
+                    null,
+                    [$home => $homeScore, $away => $awayScore]
+                );
+            }
+
+            return $calculator->calculate(array_values($participants), $results);
+        };
+
+        $standings = $table(false);
+        $reversed = $table(true);
+        $context = "seed {$seed}";
+
+        $position = [];
+        $reversedPosition = [];
+        $entries = [];
+        foreach (array_values($standings->getEntries()) as $index => $entry) {
+            $position[$entry->getParticipant()->getId()] = $index;
+            $entries[$entry->getParticipant()->getId()] = $entry;
+        }
+        foreach (array_values($reversed->getEntries()) as $index => $entry) {
+            $reversedPosition[$entry->getParticipant()->getId()] = $index;
+        }
+
+        $setOf = [];
+        foreach ($standings->getTiedSets() as $number => $tiedSet) {
+            foreach ($tiedSet->getParticipants() as $participant) {
+                $setOf[$participant->getId()] = $number;
+            }
+            $setsOfThreeOrMore += count($tiedSet) >= 3 ? 1 : 0;
+        }
+
+        foreach ($ids as $i => $one) {
+            foreach (array_slice($ids, $i + 1) as $other) {
+                $orderFollowsTheFallback = ($position[$one] < $position[$other]) !== ($reversedPosition[$one] < $reversedPosition[$other]);
+                $inOneSet = isset($setOf[$one], $setOf[$other]) && $setOf[$one] === $setOf[$other];
+
+                // Every pair, adjacent or not: a level pair that the table
+                // kept apart would fail here
+                expect($inOneSet)->toBe($orderFollowsTheFallback, "{$context}, {$one} and {$other}")
+                    ->and($entries[$one]->isLevelWith($entries[$other]))->toBe($orderFollowsTheFallback, "{$context}, {$one} and {$other}")
+                    ->and($entries[$other]->isLevelWith($entries[$one]))->toBe($orderFollowsTheFallback, "{$context}, {$other} and {$one}");
+
+                $gap = abs($rankingValues[$one] - $rankingValues[$other]);
+                $tiedPairs += $orderFollowsTheFallback ? 1 : 0;
+                $separatedPairs += $orderFollowsTheFallback ? 0 : 1;
+                $tiedOnAnInexactSum += $orderFollowsTheFallback && $rankingValues[$one] === 0.1 + 0.2 ? 1 : 0;
+                $separatedByLessThanATolerance += !$orderFollowsTheFallback && $gap > 0.0 && $gap < 1e-9 ? 1 : 0;
+            }
+        }
+
+        // The same sets at the same positions under either fallback; only
+        // the order inside a set differs
+        $summary = static fn(Standings $table): array => array_map(static function (TiedSet $tiedSet): array {
+            $members = array_map(static fn(Participant $participant): string => $participant->getId(), $tiedSet->getParticipants());
+            sort($members);
+
+            return [$members, $tiedSet->getFirstPosition(), $tiedSet->getLastPosition()];
+        }, $table->getTiedSets());
+        expect($summary($reversed))->toBe($summary($standings), $context);
+    }
+
+    // Both answers occur, on the values that matter, so nothing above is vacuous
+    expect($tiedPairs)->toBeGreaterThan(200)
+        ->and($separatedPairs)->toBeGreaterThan(200)
+        ->and($tiedOnAnInexactSum)->toBeGreaterThan(5)
+        ->and($separatedByLessThanATolerance)->toBeGreaterThan(5)
+        ->and($setsOfThreeOrMore)->toBeGreaterThan(20);
+})->with([
+    'no tiebreakers' => [[]],
+    'one tiebreaker' => [['first']],
+    'two tiebreakers' => [['first', 'second']],
+    'two tiebreakers that share a name' => [['same', 'same']],
+]);
