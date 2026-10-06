@@ -928,10 +928,16 @@ echo ($recorded->isDraw() ? 'drawn' : 'won') . ', '
 In the outcome's standings a level event that was decided this way counts
 as a win for the participant who advanced and a loss for the other, with
 the scores as recorded. The table of a single-leg bracket therefore places
-it as it does when every event has a winner: the participant who advanced
-from a level final is rank 1 and not level with the runner-up, and
-re-seeding (`reseedEachRound`) ranks the survivor of a level event with the
-other winners of the round.
+it as it does when every event has a winner: in single elimination the
+participant who advanced from a level final is rank 1 and not level with
+the runner-up, and re-seeding (`reseedEachRound`) ranks the survivor of a
+level event with the other winners of the round.
+
+Only the table the engine computes reads the decision. The outcome's
+results are the results as recorded, so a table you compute from them
+yourself counts the level event as a draw, and so does
+`StageOutcome::combining()`, which computes its combined table from the
+results of the outcomes it is given.
 
 A level event that names nobody is refused, and so is one that names a
 participant who is not in the event. The state itself accepts the result,

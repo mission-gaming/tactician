@@ -255,7 +255,9 @@ heading **Output change (fix)**.
   that did not happen. The recorded result stays a draw; in the standings
   the engines compute, a level event decided this way counts as a win for
   the participant who advanced, so the table places the bracket as it does
-  when every event has a winner. A decision that names a participant
+  when every event has a winner. A table computed from the recorded
+  results, the combined table of `StageOutcome::combining()` included,
+  counts it as the draw it was. A decision that names a participant
   outside the event is refused as it is for two legs
   (`InvalidConfigurationReason::InvalidResult`). No input that worked
   before gives another output: the decision is read only when the result is
