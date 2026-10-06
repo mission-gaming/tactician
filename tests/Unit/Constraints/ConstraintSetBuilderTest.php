@@ -28,7 +28,7 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('adds constraints via add method', function (): void {
-        $constraint = $this->createMock(ConstraintInterface::class);
+        $constraint = $this->createStub(ConstraintInterface::class);
 
         $constraintSet = $this->builder
             ->add($constraint)
@@ -39,8 +39,8 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('maintains builder chain immutability', function (): void {
-        $constraint1 = $this->createMock(ConstraintInterface::class);
-        $constraint2 = $this->createMock(ConstraintInterface::class);
+        $constraint1 = $this->createStub(ConstraintInterface::class);
+        $constraint2 = $this->createStub(ConstraintInterface::class);
 
         $builder1 = $this->builder->add($constraint1);
         $builder2 = $builder1->add($constraint2);
@@ -97,9 +97,9 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('chains multiple add method calls', function (): void {
-        $constraint1 = $this->createMock(ConstraintInterface::class);
-        $constraint2 = $this->createMock(ConstraintInterface::class);
-        $constraint3 = $this->createMock(ConstraintInterface::class);
+        $constraint1 = $this->createStub(ConstraintInterface::class);
+        $constraint2 = $this->createStub(ConstraintInterface::class);
+        $constraint3 = $this->createStub(ConstraintInterface::class);
 
         $constraintSet = $this->builder
             ->add($constraint1)
@@ -112,7 +112,7 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('chains mixed method types in any order', function (): void {
-        $customConstraint = $this->createMock(ConstraintInterface::class);
+        $customConstraint = $this->createStub(ConstraintInterface::class);
 
         $constraintSet = $this->builder
             ->custom(fn($event, $context) => false, 'First Custom')

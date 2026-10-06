@@ -1,8 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+    A test run fails on anything PHP or PHPUnit reports, not only on a failed
+    assertion: a warning, a notice, a deprecation, or a risky test (one that
+    asserts nothing or prints output). The displayDetailsOn* attributes make
+    the run say where each one came from.
+-->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.3/phpunit.xsd"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/12.5/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          colors="true"
+         executionOrder="random"
+         failOnWarning="true"
+         failOnNotice="true"
+         failOnDeprecation="true"
+         failOnRisky="true"
+         failOnPhpunitDeprecation="true"
+         failOnPhpunitNotice="true"
+         failOnPhpunitWarning="true"
+         beStrictAboutOutputDuringTests="true"
+         displayDetailsOnTestsThatTriggerWarnings="true"
+         displayDetailsOnTestsThatTriggerNotices="true"
+         displayDetailsOnTestsThatTriggerDeprecations="true"
+         displayDetailsOnTestsThatTriggerErrors="true"
+         displayDetailsOnPhpunitDeprecations="true"
+         displayDetailsOnPhpunitNotices="true"
 >
     <testsuites>
         <testsuite name="Test Suite">

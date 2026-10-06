@@ -25,7 +25,7 @@ describe('ConstraintSet', function (): void {
     });
 
     it('creates constraint set with constraints', function (): void {
-        $constraint = $this->createMock(ConstraintInterface::class);
+        $constraint = $this->createStub(ConstraintInterface::class);
         $constraintSet = new ConstraintSet([$constraint]);
 
         expect($constraintSet->isEmpty())->toBeFalse();
@@ -34,8 +34,8 @@ describe('ConstraintSet', function (): void {
     });
 
     it('handles multiple constraints', function (): void {
-        $constraint1 = $this->createMock(ConstraintInterface::class);
-        $constraint2 = $this->createMock(ConstraintInterface::class);
+        $constraint1 = $this->createStub(ConstraintInterface::class);
+        $constraint2 = $this->createStub(ConstraintInterface::class);
         $constraintSet = new ConstraintSet([$constraint1, $constraint2]);
 
         expect($constraintSet->count())->toBe(2);
@@ -115,12 +115,12 @@ describe('ConstraintSet', function (): void {
     });
 
     it('maintains constraints array integrity', function (): void {
-        $constraint = $this->createMock(ConstraintInterface::class);
+        $constraint = $this->createStub(ConstraintInterface::class);
         $originalConstraints = [$constraint];
         $constraintSet = new ConstraintSet($originalConstraints);
 
         // Modify the original array
-        $originalConstraints[] = $this->createMock(ConstraintInterface::class);
+        $originalConstraints[] = $this->createStub(ConstraintInterface::class);
 
         // ConstraintSet should maintain its original state
         expect($constraintSet->count())->toBe(1);
@@ -128,11 +128,11 @@ describe('ConstraintSet', function (): void {
     });
 
     it('returns defensive copy of constraints array', function (): void {
-        $constraint = $this->createMock(ConstraintInterface::class);
+        $constraint = $this->createStub(ConstraintInterface::class);
         $constraintSet = new ConstraintSet([$constraint]);
 
         $retrieved = $constraintSet->getConstraints();
-        $retrieved[] = $this->createMock(ConstraintInterface::class);
+        $retrieved[] = $this->createStub(ConstraintInterface::class);
 
         // Original constraint set should be unchanged
         expect($constraintSet->count())->toBe(1);
