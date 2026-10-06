@@ -141,6 +141,43 @@ heading **Output change (fix)**.
   previous exception. Code that caught `\ValueError` or `\Error` around these
   calls for this case no longer sees it there: catch
   `InvalidConfigurationException`.
+- A repack request whose objective weights are too large to keep the
+  objective an integer is rejected with an `InvalidConfigurationException`.
+  It returned an outcome before. The repacker scores a move as at most
+  `earlyFillWeight × (sessions − 1) + 2 × consolidationWeight`; beyond
+  `PHP_INT_MAX` PHP computed that as a float, in which the smaller weight
+  was lost, so the sessions chosen were not the trade the two weights
+  state. The outcome was still a proper one (no participant double-booked,
+  every event assigned or reported), which is why this is listed as a
+  change and not only as a fix. `RepackOptions` rejects a consolidation
+  weight above `RepackOptions::MAX_CONSOLIDATION_WEIGHT` (half of
+  `PHP_INT_MAX`, reason `ValueOutOfRange`), and `RepackRequest` rejects
+  weights for which the expression is too large for the number of sessions
+  of its grid (reason `IncompatibleOptions`). Before and after, on a grid of
+  four sessions:
+
+  ```
+  new RepackOptions(consolidationWeight: PHP_INT_MAX)    before: accepted, and the request repacked
+                                                         after: InvalidConfigurationException
+  new RepackOptions(earlyFillWeight: PHP_INT_MAX)        before: accepted, and the request repacked
+                                                         after: accepted; RepackRequest throws
+  ```
+
+  Code that passed `PHP_INT_MAX` to make one weight outrank the other must
+  pass a smaller number: a consolidation weight above
+  `earlyFillWeight × (sessions − 1)`, or an early-fill weight above
+  `2 × consolidationWeight`, already outranks the other in every move. No
+  request with weights within the bounds is affected, and its outcome is
+  unchanged.
+- A `RepackOutcome` built with a list that holds something other than the
+  objects it is for (`new RepackOutcome(['x'], [], [])`) is rejected with an
+  `Exceptions\InvalidInputException` that names the list, the key and the
+  type found. A wrong entry among the assignments died with a PHP `Error` (a
+  method call on a string) in the constructor. A wrong entry among the
+  unplaced events or the violations was accepted, returned as it was by
+  `getUnplaced()` and `getViolations()`, and died with a PHP `TypeError` in
+  `toArray()` and `getViolationsOfKind()`; such an outcome can no longer be
+  built.
 
 ### Added
 
@@ -222,7 +259,9 @@ heading **Output change (fix)**.
   that the getters of a kind can be read without `instanceof`:
   `getParticipantDoubleBookedViolations()`, `getEventUnplacedViolations()`,
   `getContiguityBrokenViolations()`, `getLateStartViolations()` and
-  `getCapacityExceededViolations()`.
+  `getCapacityExceededViolations()`. Each returns objects of its own class:
+  a violation of a class from outside the library, in an outcome built by
+  hand, is returned by `getViolationsOfKind()` and by none of them.
 - Repack: `RepackOutcome::isBudgetExhausted()` says whether the step budget
   stopped a search. False means a larger budget gives the same outcome; true
   means it may give a different one. The flag is the optional fourth
@@ -233,7 +272,9 @@ heading **Output change (fix)**.
   and the SHA-256 of a canonical encoding that the usage guide and the
   method's docblock specify as a contract; it does not depend on the order
   of the lists, the PHP version, the platform, the locale or an ini setting.
-  The budget flag is not part of it.
+  The scheme names the keys of each record it covers, so a key added to a
+  `toArray()` in a later release does not change a `v1` fingerprint. The
+  budget flag is not part of it.
 - The usage guide documents every public class and method of the Repack
   namespace, among them `getViolationsOfKind()`, `ViolationKind`,
   `UnplacedEvent` and the getters of the five violation classes, which were
@@ -270,23 +311,6 @@ heading **Output change (fix)**.
 
 ### Fixed
 
-- A `RepackOutcome` built with a list that holds something other than the
-  objects it is for (`new RepackOutcome(['x'], [], [])`) is rejected with an
-  `Exceptions\InvalidInputException` that names the list, the key and the
-  type found. It died with a PHP `Error` (a method call on a string) in the
-  constructor or, for the unplaced events and the violations, on the first
-  call that read them.
-- Repack objective weights too large to keep the objective an integer are
-  rejected with an `InvalidConfigurationException`. The repacker scores a
-  move as at most `earlyFillWeight × (sessions − 1) + 2 × consolidationWeight`;
-  beyond `PHP_INT_MAX` PHP computed that as a float, in which the smaller
-  weight was lost, so the result was not the trade the weights state.
-  `RepackOptions` rejects a consolidation weight above
-  `RepackOptions::MAX_CONSOLIDATION_WEIGHT` (half of `PHP_INT_MAX`, reason
-  `ValueOutOfRange`), and `RepackRequest` rejects weights for which the
-  expression is too large for the number of sessions of its grid (reason
-  `IncompatibleOptions`). No weight below those bounds is affected, and no
-  outcome changes.
 - `InvalidConfigurationException::getDiagnosticReport()` no longer raises a
   PHP warning on PHP 8.5 when a context value is the float `NAN`. PHP 8.5
   warns when `NAN` is cast to a string, and the report cast it. The text is
