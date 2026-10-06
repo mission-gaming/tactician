@@ -26,6 +26,7 @@ use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\TiebreakerInterface;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
+use MissionGaming\Tactician\Standings\WinsTiebreaker;
 use MissionGaming\Tactician\Tests\Support\DecimalCommaLocale;
 
 // A state does not say which engine paired its rounds, so nothing stops a
@@ -213,6 +214,20 @@ function fingerprintTiebreakerNamed(string $name): TiebreakerInterface
 }
 
 /**
+ * The names of the parameters a class is built with, in order.
+ *
+ * @param class-string $class
+ * @return list<string>
+ */
+function fingerprintConstructorParameters(string $class): array
+{
+    return array_map(
+        fn(ReflectionParameter $parameter): string => $parameter->getName(),
+        (new ReflectionClass($class))->getConstructor()?->getParameters() ?? []
+    );
+}
+
+/**
  * A Swiss engine that pairs by the chess scale.
  */
 function fingerprintSwissOnTheChessScale(int $plannedRounds): SwissPairingEngine
@@ -257,10 +272,13 @@ describe('engine fingerprints', function (): void {
         ];
     });
 
-    // Written out: a stored state carries these strings, so a change to one
-    // of them refuses every state stamped before it. They are pinned here
-    // and nowhere promised: callers compare fingerprints, they do not read
-    // them.
+    // Written out, as literals: a stored state carries these strings, so a
+    // change to one of them is a breaking change. It refuses every state
+    // stamped before it, in every application that stored one. A row is
+    // added when an engine gains an option (the option used); no row is
+    // edited or removed. If this test fails, the fix is in the code, not
+    // in the string. The strings are pinned here and nowhere promised:
+    // callers compare fingerprints, they do not read them.
     it('gives each configuration the string stored states carry', function (
         FingerprintedEngine $engine,
         string $fingerprint
@@ -300,11 +318,39 @@ describe('engine fingerprints', function (): void {
             fn() => new SwissPairingEngine(standingsCalculator: new readonly class extends StandingsCalculator {}),
             'tactician:v1:swiss;standings=custom',
         ],
+        'Swiss with a calculator of the application, built with rules' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new readonly class (WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()]) extends StandingsCalculator {}),
+            'tactician:v1:swiss;standings=custom',
+        ],
         'a subclass of the Swiss engine' => [
             fn() => new readonly class extends SwissPairingEngine {},
             'tactician:v1:swiss;subclass=yes',
         ],
+        'Swiss with the wins tiebreaker' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(tiebreakers: [new WinsTiebreaker()])),
+            'tactician:v1:swiss;tiebreakers=wins',
+        ],
+        'Swiss with every option that is part of it' => [
+            fn() => new readonly class (standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker(), new WinsTiebreaker()])) extends SwissPairingEngine {},
+            'tactician:v1:swiss;ranking=win-draw-loss,1,0.5,0;subclass=yes;tiebreakers=buchholz,sonneborn-berger,wins',
+        ],
+        'Swiss on a scale of tens' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(100.0, 10.0, 0.0))),
+            'tactician:v1:swiss;ranking=win-draw-loss,100,10,0',
+        ],
+        'Swiss with a ranking strategy of the application and a tiebreaker' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fingerprintCustomRanking(), [new BuchholzTiebreaker()])),
+            'tactician:v1:swiss;ranking=custom;tiebreakers=buchholz',
+        ],
         'single elimination' => [fn() => new SingleEliminationEngine(), 'tactician:v1:single-elimination'],
+        'two-legged single elimination' => [
+            fn() => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
+            'tactician:v1:single-elimination;legs-per-tie=2',
+        ],
+        're-seeded single elimination' => [
+            fn() => new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true)),
+            'tactician:v1:single-elimination;reseed-each-round=yes',
+        ],
         'two-legged, re-seeded single elimination' => [
             fn() => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2, reseedEachRound: true)),
             'tactician:v1:single-elimination;legs-per-tie=2;reseed-each-round=yes',
@@ -316,16 +362,94 @@ describe('engine fingerprints', function (): void {
             ),
             'tactician:v1:single-elimination;ranking=win-draw-loss,1,0.5,0;reseed-each-round=yes;tiebreakers=buchholz',
         ],
-        'double elimination' => [fn() => new DoubleEliminationEngine(), 'tactician:v1:double-elimination'],
-        'double elimination without a reset' => [
-        'Swiss with a calculator of the application, built with rules' => [
-            fn() => new SwissPairingEngine(standingsCalculator: new readonly class (WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()]) extends StandingsCalculator {}),
-            'tactician:v1:swiss;standings=custom',
+        're-seeded single elimination with a calculator of the application' => [
+            fn() => new SingleEliminationEngine(
+                new EliminationOptions(reseedEachRound: true),
+                new readonly class extends StandingsCalculator {}
+            ),
+            'tactician:v1:single-elimination;reseed-each-round=yes;standings=custom',
         ],
+        'single elimination on a fixed path, whatever its calculator' => [
+            fn() => new SingleEliminationEngine(
+                new EliminationOptions(grandFinalReset: false),
+                new StandingsCalculator(fingerprintCustomRanking(), [new BuchholzTiebreaker()])
+            ),
+            'tactician:v1:single-elimination',
+        ],
+        'double elimination' => [fn() => new DoubleEliminationEngine(), 'tactician:v1:double-elimination'],
+        'two-legged double elimination' => [
+            fn() => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
+            'tactician:v1:double-elimination;legs-per-tie=2',
+        ],
+        'one-legged double elimination without a reset' => [
+            fn() => new DoubleEliminationEngine(new EliminationOptions(grandFinalReset: false)),
+            'tactician:v1:double-elimination;grand-final-reset=no',
+        ],
+        'double elimination without a reset' => [
             fn() => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2, grandFinalReset: false)),
             'tactician:v1:double-elimination;grand-final-reset=no;legs-per-tie=2',
         ],
+        'double elimination, whatever its calculator' => [
+            fn() => new DoubleEliminationEngine(
+                new EliminationOptions(),
+                new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()])
+            ),
+            'tactician:v1:double-elimination',
+        ],
     ]);
+
+    // Every way an engine can be configured is listed here as part of its
+    // fingerprint or not. A constructor parameter or an option the list
+    // does not hold fails the test, so an engine cannot gain one without a
+    // decision about its fingerprint: an option that shapes which rounds
+    // exist or how they are paired is stated through EngineFingerprint
+    // with the default that reproduces the behaviour before it existed,
+    // and gets a row in the test above.
+    it('has a decision on record for every way an engine is configured', function (): void {
+        $constructor = fingerprintConstructorParameters(...);
+
+        expect($constructor(SwissPairingEngine::class))->toBe([
+            'constraints',          // out: cannot be described
+            'standingsCalculator',  // in: ranking, tiebreakers, standings
+            'plannedRounds',        // out: when the stage ends
+            'randomizer',           // out: cannot be described
+        ])->and($constructor(SingleEliminationEngine::class))->toBe([
+            'options',              // in, see EliminationOptions below
+            'standingsCalculator',  // in when re-seeding, otherwise out
+        ])->and($constructor(DoubleEliminationEngine::class))->toBe([
+            'options',              // in, see EliminationOptions below
+            'standingsCalculator',  // out: orders the outcome only
+        ])->and($constructor(EliminationOptions::class))->toBe([
+            'legsPerTie',           // in: legs-per-tie, default 1
+            'reseedEachRound',      // in for single (default false); double rejects it
+            'grandFinalReset',      // in for double (default true); single does not read it
+        ])->and($constructor(StandingsCalculator::class))->toBe([
+            'rankingStrategy',      // in: ranking, default 3/1/0
+            'tiebreakers',          // in: tiebreakers, default none
+        ])->and($constructor(WinDrawLossRanking::class))->toBe([
+            'winValue',             // in, default 3
+            'drawValue',            // in, default 1
+            'lossValue',            // in, default 0
+        ]);
+
+        // A tiebreaker is stated by its name alone, which is right while
+        // none of the library's takes an option.
+        foreach ([BuchholzTiebreaker::class, SonnebornBergerTiebreaker::class, WinsTiebreaker::class] as $tiebreaker) {
+            expect($constructor($tiebreaker))->toBe([]);
+        }
+    });
+
+    it('states the defaults the constructors have', function (): void {
+        // The other half of the rule: what the fingerprint leaves out as
+        // the default is what an engine built without arguments does.
+        $options = new EliminationOptions();
+        $ranking = (new StandingsCalculator())->getRankingStrategy();
+        assert($ranking instanceof WinDrawLossRanking);
+
+        expect([$options->legsPerTie, $options->reseedEachRound, $options->grandFinalReset])->toBe([1, false, true])
+            ->and($ranking->toArray())->toBe(['win' => 3.0, 'draw' => 1.0, 'loss' => 0.0])
+            ->and((new StandingsCalculator())->getTiebreakers())->toBe([]);
+    });
 
     it('names the format only when every option is at its default', function (
         FingerprintedEngine $engine,
@@ -776,6 +900,49 @@ describe('engine fingerprints', function (): void {
             ->toBe((new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fingerprintCustomRanking())))->getFingerprint());
     });
 
+    it('reads nothing from a calculator of the application', function (): void {
+        // A subclass whose constructor does not call the one it inherits
+        // has no ranking strategy and no tiebreakers to read: reading them
+        // is an Error. Such a calculator ordered a re-seeded bracket before
+        // the fingerprint existed, and still does, stamped or not. The
+        // object is built without its constructor here to be in that state.
+        $subclass = new readonly class extends StandingsCalculator {
+            #[Override]
+            public function calculate(array $participants, array $results): Standings
+            {
+                return (new StandingsCalculator())->calculate($participants, $results);
+            }
+        };
+        $calculator = (new ReflectionClass($subclass))->newInstanceWithoutConstructor();
+        expect(fn() => $calculator->getTiebreakers())->toThrow(Error::class);
+
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator);
+
+        $state = StageState::start($this->participants);
+        $pairing = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($pairing, array_map(
+            fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+            $pairing->getEvents()
+        ));
+
+        expect($engine->getFingerprint())->toBe('tactician:v1:single-elimination;reseed-each-round=yes;standings=custom')
+            ->and($engine->pairNextRound($state)->getRoundNumber())->toBe(2)
+            ->and($engine->pairNextRound($state->withEngineFingerprint($engine->getFingerprint()))->getRoundNumber())->toBe(2);
+    });
+
+    it('does not tell two calculators of the application apart, whatever they were built with', function (): void {
+        // The same limit as for a ranking strategy of the application: the
+        // library cannot know which of the rules a subclass still applies.
+        $build = fn(StandingsCalculator $calculator): string => (new SwissPairingEngine(standingsCalculator: $calculator))
+            ->getFingerprint();
+
+        $onTheChessScale = $build(new readonly class (WinDrawLossRanking::oneHalfZero()) extends StandingsCalculator {});
+        $withATiebreaker = $build(new readonly class (tiebreakers: [new BuchholzTiebreaker()]) extends StandingsCalculator {});
+
+        expect($onTheChessScale)->toBe($withATiebreaker)
+            ->and($onTheChessScale)->not->toBe($build(new StandingsCalculator()));
+    });
+
     it('writes a ranking value the same way whatever the float settings and the locale', function (): void {
         $build = fn(): string => (new SwissPairingEngine(
             standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(1 / 3, 0.1 + 0.2, -0.0))
@@ -884,7 +1051,40 @@ describe('the fingerprint builder', function (): void {
         'an option without a value' => ['tactician:v1:swiss;ranking'],
         'an option without a name' => ['tactician:v1:swiss;=custom'],
         'another case' => ['Tactician:v1:swiss'],
+        // Spelled otherwise than toString() spells it, so put together by hand.
+        'options out of order' => ['tactician:v1:swiss;subclass=yes;ranking=custom'],
+        'an option twice' => ['tactician:v1:swiss;ranking=custom;ranking=custom'],
+        'a separator at the end' => ['tactician:v1:swiss;'],
     ]);
+
+    it('writes every float so that it reads back as the same float, with no character of the structure', function (): void {
+        $randomizer = new Random\Randomizer(new Random\Engine\Mt19937(20260203));
+        $written = [];
+        $floats = [];
+
+        for ($sample = 0; $sample < 5000; ++$sample) {
+            // Any eight bytes are a float; one in two thousand is not finite.
+            $unpacked = unpack('e', $randomizer->getBytes(8));
+            $float = is_array($unpacked) ? $unpacked[1] : null;
+            assert(is_float($float));
+            if (!is_finite($float)) {
+                continue;
+            }
+
+            $text = substr(
+                EngineFingerprint::of('ladder')->with('option', $float, 'the default')->toString(),
+                strlen('tactician:v1:ladder;option=')
+            );
+
+            expect($text)->toMatch('/^-?(0|[1-9]\d*)(\.\d*[1-9])?(e[+-][1-9]\d*)?$/')
+                ->and((float) $text)->toBe($float);
+            $written[$text] = true;
+            $floats[pack('e', $float)] = true;
+        }
+
+        // No two floats share a string.
+        expect(count($written))->toBe(count($floats));
+    });
 
     it('says where two fingerprints differ', function (string $recorded, string $engine, array $differences): void {
         expect(EngineFingerprint::differences($recorded, $engine))->toBe($differences);
@@ -900,49 +1100,6 @@ describe('the fingerprint builder', function (): void {
             'tactician:v1:ladder;a=yes;c=3',
             [
                 'a: recorded the default, this engine yes',
-    it('reads nothing from a calculator of the application', function (): void {
-        // A subclass whose constructor does not call the one it inherits
-        // has no ranking strategy and no tiebreakers to read: reading them
-        // is an Error. Such a calculator ordered a re-seeded bracket before
-        // the fingerprint existed, and still does, stamped or not. The
-        // object is built without its constructor here to be in that state.
-        $subclass = new readonly class extends StandingsCalculator {
-            #[Override]
-            public function calculate(array $participants, array $results): Standings
-            {
-                return (new StandingsCalculator())->calculate($participants, $results);
-            }
-        };
-        $calculator = (new ReflectionClass($subclass))->newInstanceWithoutConstructor();
-        expect(fn() => $calculator->getTiebreakers())->toThrow(Error::class);
-
-        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator);
-
-        $state = StageState::start($this->participants);
-        $pairing = $engine->pairNextRound($state);
-        $state = $state->withRoundPlayed($pairing, array_map(
-            fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
-            $pairing->getEvents()
-        ));
-
-        expect($engine->getFingerprint())->toBe('tactician:v1:single-elimination;reseed-each-round=yes;standings=custom')
-            ->and($engine->pairNextRound($state)->getRoundNumber())->toBe(2)
-            ->and($engine->pairNextRound($state->withEngineFingerprint($engine->getFingerprint()))->getRoundNumber())->toBe(2);
-    });
-
-    it('does not tell two calculators of the application apart, whatever they were built with', function (): void {
-        // The same limit as for a ranking strategy of the application: the
-        // library cannot know which of the rules a subclass still applies.
-        $build = fn(StandingsCalculator $calculator): string => (new SwissPairingEngine(standingsCalculator: $calculator))
-            ->getFingerprint();
-
-        $onTheChessScale = $build(new readonly class (WinDrawLossRanking::oneHalfZero()) extends StandingsCalculator {});
-        $withATiebreaker = $build(new readonly class (tiebreakers: [new BuchholzTiebreaker()]) extends StandingsCalculator {});
-
-        expect($onTheChessScale)->toBe($withATiebreaker)
-            ->and($onTheChessScale)->not->toBe($build(new StandingsCalculator()));
-    });
-
                 'b: recorded 1, this engine the default',
                 'c: recorded 2, this engine 3',
             ],
@@ -976,36 +1133,3 @@ describe('the fingerprint builder', function (): void {
         'two stamps of the application' => ['my-swiss', 'my-ladder', ["the stamp is not this engine's"]],
     ]);
 });
-    it('writes every float so that it reads back as the same float, with no character of the structure', function (): void {
-        $randomizer = new Random\Randomizer(new Random\Engine\Mt19937(20260203));
-        $written = [];
-        $floats = [];
-
-        for ($sample = 0; $sample < 5000; ++$sample) {
-            // Any eight bytes are a float; one in two thousand is not finite.
-            $unpacked = unpack('e', $randomizer->getBytes(8));
-            $float = is_array($unpacked) ? $unpacked[1] : null;
-            assert(is_float($float));
-            if (!is_finite($float)) {
-                continue;
-            }
-
-            $text = substr(
-                EngineFingerprint::of('ladder')->with('option', $float, 'the default')->toString(),
-                strlen('tactician:v1:ladder;option=')
-            );
-
-            expect($text)->toMatch('/^-?(0|[1-9]\d*)(\.\d*[1-9])?(e[+-][1-9]\d*)?$/')
-                ->and((float) $text)->toBe($float);
-            $written[$text] = true;
-            $floats[pack('e', $float)] = true;
-        }
-
-        // No two floats share a string.
-        expect(count($written))->toBe(count($floats));
-    });
-
-        // Spelled otherwise than toString() spells it, so put together by hand.
-        'options out of order' => ['tactician:v1:swiss;subclass=yes;ranking=custom'],
-        'an option twice' => ['tactician:v1:swiss;ranking=custom;ranking=custom'],
-        'a separator at the end' => ['tactician:v1:swiss;'],
