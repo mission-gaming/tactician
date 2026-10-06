@@ -577,5 +577,119 @@ describe('a custom role assignment', function (): void {
             $rounds[2],
         ]],
         'nothing at all' => [static fn(): array => []],
+        'an extra round' => [static fn(array $rounds): array => [...$rounds, $rounds[0]]],
+        'an extra seating' => [static fn(array $rounds): array => [[...$rounds[0], $rounds[0][0]], $rounds[1], $rounds[2]]],
+        'rounds numbered from 1' => [static fn(array $rounds): array => [1 => $rounds[0], 2 => $rounds[1], 3 => $rounds[2]]],
+        'a round that is not a list of seatings' => [static fn(array $rounds): array => ['round 1', $rounds[1], $rounds[2]]],
+        'a seating that is not a pair of seats' => [static fn(array $rounds): array => [['p1 v p4', $rounds[0][1]], $rounds[1], $rounds[2]]],
+        'a seating with a third seat' => [static fn(array $rounds): array => [
+            [[...$rounds[0][0], $rounds[0][1][0]], $rounds[0][1]],
+            $rounds[1],
+            $rounds[2],
+        ]],
+        'a seating with an empty seat' => [static fn(array $rounds): array => [
+            [[$rounds[0][0][0], null], $rounds[0][1]],
+            $rounds[1],
+            $rounds[2],
+        ]],
+        'a participant seated against itself' => [static fn(array $rounds): array => [
+            [[$rounds[0][0][0], $rounds[0][0][0]], $rounds[0][1]],
+            $rounds[1],
+            $rounds[2],
+        ]],
+        'a participant that is not in the field' => [static fn(array $rounds): array => [
+            [[new Participant('p9', 'Participant 9'), $rounds[0][0][1]], $rounds[0][1]],
+            $rounds[1],
+            $rounds[2],
+        ]],
+        // Equal to the participant it replaces, and not the same object
+        'a copy of a participant' => [static fn(array $rounds): array => [
+            [[new Participant('p1', 'Participant 1', 1), $rounds[0][0][1]], $rounds[0][1]],
+            $rounds[1],
+            $rounds[2],
+        ]],
+        'ids in place of participants' => [static fn(array $rounds): array => array_map(
+            static fn(array $seatings): array => array_map(
+                static fn(array $seating): array => [$seating[0]?->getId(), $seating[1]?->getId()],
+                $seatings
+            ),
+            $rounds
+        )],
     ]);
+
+    // A searched leg goes to the role assignment as well, and its answer is
+    // held to the same rule.
+    it('is refused for a wrong answer about a leg the backtracking search found', function (): void {
+        $constraints = ConstraintSet::create()
+            ->custom(rolePlacementConstraint(['p1 + p3' => 1, 'p1 + p2' => 2, 'p1 + p4' => 3]), 'Fixture Placement')
+            ->build();
+        $dropsARound = new class implements RoleAssignmentInterface {
+            #[Override]
+            public function assignRoles(array $rounds): array
+            {
+                // The circle layouts of the failed attempts pass; the searched
+                // leg, which lists rounds of the same size, loses its last round
+                return count($rounds[0]) === 2 && $rounds[0][0][0]?->getId() === 'p1' && $rounds[0][0][1]?->getId() === 'p3'
+                    ? array_slice($rounds, 0, 2)
+                    : $rounds;
+            }
+        };
+
+        try {
+            (new RoundRobinScheduler($constraints))->schedule(
+                roleField(4),
+                new RoundRobinOptions(backtracking: true, roleAssignment: $dropsARound)
+            );
+            Assert::fail('The schedule was generated.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::InvalidRoleAssignment);
+        }
+    });
+
+    // A role assignment that leaves a searched leg alone gets the schedule
+    // of the search, byes included: nothing is replayed or rebuilt.
+    it('leaves a searched leg as the search found it when it changes no role', function (int $size, array $placement): void {
+        $constraints = ConstraintSet::create()->custom(rolePlacementConstraint($placement), 'Fixture Placement')->build();
+        $keepsEveryRole = new class implements RoleAssignmentInterface {
+            #[Override]
+            public function assignRoles(array $rounds): array
+            {
+                return $rounds;
+            }
+        };
+
+        $searched = (new RoundRobinScheduler($constraints))->schedule(
+            roleField($size),
+            new RoundRobinOptions(backtracking: true)
+        );
+        $kept = (new RoundRobinScheduler($constraints))->schedule(
+            roleField($size),
+            new RoundRobinOptions(backtracking: true, roleAssignment: $keepsEveryRole)
+        );
+
+        expect($kept->toArray())->toBe($searched->toArray());
+    })->with([
+        'four participants' => [4, ['p1 + p3' => 1, 'p1 + p2' => 2, 'p1 + p4' => 3]],
+        'five participants, with byes' => [5, ['p1 + p2' => 5, 'p1 + p3' => 4]],
+    ]);
+
+    // Every leg is asked about and every answer is checked: a role
+    // assignment that answers the first leg well is still refused for what
+    // it does to the second.
+    it('is refused for a wrong answer about a later leg', function (): void {
+        $secondLegBroken = new class implements RoleAssignmentInterface {
+            private int $legsAnswered = 0;
+
+            #[Override]
+            public function assignRoles(array $rounds): array
+            {
+                return ++$this->legsAnswered === 2 ? array_reverse($rounds) : $rounds;
+            }
+        };
+
+        expect(fn() => (new RoundRobinScheduler())->schedule(
+            roleField(4),
+            new RoundRobinOptions(legs: 2, roleAssignment: $secondLegBroken)
+        ))->toThrow(InvalidConfigurationException::class, 'Role assignment must return the seatings it was given');
+    });
 });

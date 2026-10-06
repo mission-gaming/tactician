@@ -583,19 +583,7 @@ class RoundRobinScheduler implements SchedulerInterface
     {
         $assigned = $roleAssignment->assignRoles($rounds);
 
-        $sameSeatings = array_keys($assigned) === array_keys($rounds);
-        foreach ($rounds as $index => $seatings) {
-            $assignedSeatings = $assigned[$index] ?? [];
-            $sameSeatings = $sameSeatings && array_keys($assignedSeatings) === array_keys($seatings);
-
-            foreach ($seatings as $position => $seating) {
-                $assignedSeating = $assignedSeatings[$position] ?? null;
-                $sameSeatings = $sameSeatings
-                    && ($assignedSeating === $seating || $assignedSeating === [$seating[1], $seating[0]]);
-            }
-        }
-
-        if (!$sameSeatings) {
+        if (!$this->differsInRolesOnly($assigned, $rounds)) {
             throw new InvalidConfigurationException(
                 'Role assignment must return the seatings it was given, each one unchanged or reversed',
                 ['role_assignment' => $roleAssignment::class],
@@ -605,6 +593,37 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         return $assigned;
+    }
+
+    /**
+     * Whether an answer is the rounds that were handed over with nothing but
+     * roles changed. The answer comes from code outside the library, so
+     * nothing about its shape is taken on trust: a round or a seating that
+     * is not an array is a wrong answer, not a type error.
+     *
+     * @param list<list<array{0: Participant|null, 1: Participant|null}>> $rounds
+     */
+    private function differsInRolesOnly(mixed $answer, array $rounds): bool
+    {
+        if (!is_array($answer) || array_keys($answer) !== array_keys($rounds)) {
+            return false;
+        }
+
+        foreach ($rounds as $index => $seatings) {
+            $answeredSeatings = $answer[$index];
+            if (!is_array($answeredSeatings) || array_keys($answeredSeatings) !== array_keys($seatings)) {
+                return false;
+            }
+
+            foreach ($seatings as $position => $seating) {
+                $answered = $answeredSeatings[$position];
+                if ($answered !== $seating && $answered !== [$seating[1], $seating[0]]) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**
