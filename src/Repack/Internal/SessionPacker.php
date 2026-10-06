@@ -56,6 +56,26 @@ final class SessionPacker
     /** @var array<int, bool> */
     private array $usedEvents = [];
 
+    /**
+     * @var array<int, list<int>> Slot => the participants targeting it under the placement being tried,
+     *                            in matching order
+     */
+    private array $slotParticipants = [];
+
+    /**
+     * @var array<int, array<int, list<array{int, int}>>> Slot => participant => [event, opponent] for each
+     *                                                    of its events both ends target at that slot,
+     *                                                    events ascending
+     */
+    private array $slotEvents = [];
+
+    /**
+     * @var array<int, array<int, int>> Slot => participant not yet matched at it on the current search
+     *                                  path => how many events it could still play there: events not
+     *                                  yet used whose opponent is not yet matched at the slot either
+     */
+    private array $optionsAt = [];
+
     public function __construct(private readonly StepBudget $budget) {}
 
     /**
@@ -201,126 +221,192 @@ final class SessionPacker
      */
     private function tryPlacement(array $fixedTargets, array $flexiblePids, array $flexibleLengths, array $starts): ?array
     {
+        // How many participants target each slot. Most placements fail
+        // here, on a slot with an odd number of them or more than it has
+        // room for, so this is counted before anything else is built.
+        $targeting = array_fill(0, $this->slotCount, 0);
+        foreach ($fixedTargets as $target) {
+            foreach ($target as $slot) {
+                ++$targeting[$slot];
+            }
+        }
+        foreach ($flexiblePids as $index => $pid) {
+            for ($slot = $starts[$index], $end = $slot + $flexibleLengths[$index]; $slot < $end; ++$slot) {
+                ++$targeting[$slot];
+            }
+        }
+        foreach ($targeting as $slot => $count) {
+            $free = $this->capacity - ($this->pinCounts[$slot] ?? 0);
+            if ($count % 2 !== 0 || intdiv($count, 2) > $free) {
+                return null;
+            }
+        }
+
+        // Per participant, the slots it targets; per slot, the participants
+        // targeting it, pinned ones first and then the flexible ones, each
+        // in the order given: the order the matching search expands them in.
         $targets = [];
-        $matchSet = array_fill(0, $this->slotCount, []);
+        $slotParticipants = array_fill(0, $this->slotCount, []);
         foreach ($fixedTargets as $pid => $target) {
             $targets[$pid] = array_fill_keys($target, true);
             foreach ($target as $slot) {
-                $matchSet[$slot][$pid] = true;
+                $slotParticipants[$slot][] = $pid;
             }
         }
         foreach ($flexiblePids as $index => $pid) {
             $targets[$pid] = [];
-            for ($slot = $starts[$index]; $slot < $starts[$index] + $flexibleLengths[$index]; ++$slot) {
+            for ($slot = $starts[$index], $end = $slot + $flexibleLengths[$index]; $slot < $end; ++$slot) {
                 $targets[$pid][$slot] = true;
-                $matchSet[$slot][$pid] = true;
+                $slotParticipants[$slot][] = $pid;
             }
         }
 
-        foreach ($matchSet as $slot => $pids) {
-            $free = $this->capacity - ($this->pinCounts[$slot] ?? 0);
-            if (count($pids) % 2 !== 0 || intdiv(count($pids), 2) > $free) {
-                return null;
-            }
-        }
-
-        $usable = [];
+        // An event can play at the slots both its participants target; one
+        // with no such slot rules the placement out.
+        $slotEvents = array_fill(0, $this->slotCount, []);
         foreach ($this->edges as $eventIndex => [$a, $b]) {
-            $slots = array_keys(array_intersect_key($targets[$a], $targets[$b]));
-            if ($slots === []) {
+            $shared = array_intersect_key($targets[$a], $targets[$b]);
+            if ($shared === []) {
                 return null;
             }
-            sort($slots);
-            $usable[$eventIndex] = $slots;
+            foreach ($shared as $slot => $unused) {
+                $slotEvents[$slot][$a][] = [$eventIndex, $b];
+                $slotEvents[$slot][$b][] = [$eventIndex, $a];
+            }
         }
 
+        $this->slotParticipants = $slotParticipants;
+        $this->slotEvents = $slotEvents;
+        $this->optionsAt = array_fill(0, $this->slotCount, []);
         $this->slotOf = [];
         $this->usedEvents = [];
 
-        if ($this->solveSlot(0, $matchSet, $usable)) {
+        try {
+            $solved = $this->solveSlot(0);
             $assignments = $this->slotOf;
+        } finally {
+            $this->slotParticipants = [];
+            $this->slotEvents = [];
+            $this->optionsAt = [];
             $this->slotOf = [];
             $this->usedEvents = [];
-
-            return $assignments;
         }
 
-        $this->slotOf = [];
-        $this->usedEvents = [];
-
-        return null;
+        return $solved ? $assignments : null;
     }
 
     /**
-     * @param array<int, array<int, bool>> $matchSet Slot => participants targeting it
-     * @param array<int, array<int>> $usable Event => slots both endpoints target
-     *
      * @throws BudgetExhausted
      */
-    private function solveSlot(int $slot, array $matchSet, array $usable): bool
+    private function solveSlot(int $slot): bool
     {
         if ($slot === $this->slotCount) {
             return true;
         }
 
-        return $this->matchNext($slot, $matchSet[$slot], $matchSet, $usable);
+        // No participant is matched at this slot yet, so a participant's
+        // options are its events here that no earlier slot has used.
+        $options = [];
+        foreach ($this->slotParticipants[$slot] as $pid) {
+            $count = 0;
+            foreach ($this->slotEvents[$slot][$pid] ?? [] as [$eventIndex]) {
+                if (!isset($this->usedEvents[$eventIndex])) {
+                    ++$count;
+                }
+            }
+            $options[$pid] = $count;
+        }
+        $this->optionsAt[$slot] = $options;
+
+        return $this->matchNext($slot, count($this->slotParticipants[$slot]));
     }
 
     /**
-     * @param array<int, bool> $unmatched Participants still to match at this slot
-     * @param array<int, array<int, bool>> $matchSet
-     * @param array<int, array<int>> $usable
+     * Extend the matching of one slot's participants by one event.
+     *
+     * The participants still to match are the slot's participants, in
+     * their order, less the ones matched on the path so far: the ones
+     * that still have an entry in $optionsAt. That is the list this search
+     * used to carry as a copy per node; it is read here from the fixed
+     * list and the entries, which give the same participants in the same
+     * order.
+     *
+     * How many options each of them has is kept in $optionsAt and brought
+     * up to date as a pair is matched and released, where it used to be
+     * counted afresh for every participant at every node. The number is
+     * the same one: the participant's events at this slot that are unused
+     * and whose opponent is unmatched.
+     *
+     * @param int $unmatchedCount How many of the slot's participants are still to match
      *
      * @throws BudgetExhausted
      */
-    private function matchNext(int $slot, array $unmatched, array $matchSet, array $usable): bool
+    private function matchNext(int $slot, int $unmatchedCount): bool
     {
-        if ($unmatched === []) {
-            return $this->solveSlot($slot + 1, $matchSet, $usable);
+        if ($unmatchedCount === 0) {
+            return $this->solveSlot($slot + 1);
         }
 
         if (!$this->budget->consume()) {
             throw new BudgetExhausted();
         }
 
-        // Fail-first: expand the participant with the fewest options
-        $chosen = null;
-        $chosenCandidates = [];
-        foreach (array_keys($unmatched) as $pid) {
-            $candidates = [];
-            foreach ($this->eventsOf[$pid] as $eventIndex) {
-                if (isset($this->usedEvents[$eventIndex]) || !in_array($slot, $usable[$eventIndex], true)) {
-                    continue;
-                }
-                [$a, $b] = $this->edges[$eventIndex];
-                $other = $a === $pid ? $b : $a;
-                if (isset($unmatched[$other])) {
-                    $candidates[] = $eventIndex;
-                }
-            }
+        $options = &$this->optionsAt[$slot];
+        $eventsHere = $this->slotEvents[$slot];
 
-            if ($chosen === null || count($candidates) < count($chosenCandidates)) {
+        // Fail-first: expand the participant with the fewest options, the
+        // first such in order.
+        $chosen = null;
+        $fewest = PHP_INT_MAX;
+        foreach ($this->slotParticipants[$slot] as $pid) {
+            $count = $options[$pid] ?? PHP_INT_MAX;
+            if ($count < $fewest) {
                 $chosen = $pid;
-                $chosenCandidates = $candidates;
-                if ($candidates === []) {
+                $fewest = $count;
+                if ($count === 0) {
                     break;
                 }
             }
         }
 
-        foreach ($chosenCandidates as $eventIndex) {
-            [$a, $b] = $this->edges[$eventIndex];
-            $other = $a === $chosen ? $b : $a;
+        if ($chosen === null || $fewest === 0) {
+            return false;
+        }
 
+        $candidates = [];
+        foreach ($eventsHere[$chosen] as [$eventIndex, $other]) {
+            if (!isset($this->usedEvents[$eventIndex]) && isset($options[$other])) {
+                $candidates[] = [$eventIndex, $other];
+            }
+        }
+
+        foreach ($candidates as [$eventIndex, $other]) {
+            $otherOptions = $options[$other];
             $this->usedEvents[$eventIndex] = true;
             $this->slotOf[$eventIndex] = $slot;
-            $remaining = $unmatched;
-            unset($remaining[$chosen], $remaining[$other]);
+            unset($options[$chosen], $options[$other]);
 
-            if ($this->matchNext($slot, $remaining, $matchSet, $usable)) {
+            // Every unmatched opponent of the two loses the option of
+            // playing one of them here.
+            $lostAnOption = [];
+            foreach ([$chosen, $other] as $end) {
+                foreach ($eventsHere[$end] as [$theirEvent, $opponent]) {
+                    if (isset($options[$opponent]) && !isset($this->usedEvents[$theirEvent])) {
+                        --$options[$opponent];
+                        $lostAnOption[] = $opponent;
+                    }
+                }
+            }
+
+            if ($this->matchNext($slot, $unmatchedCount - 2)) {
                 return true;
             }
 
+            foreach ($lostAnOption as $opponent) {
+                ++$options[$opponent];
+            }
+            $options[$chosen] = $fewest;
+            $options[$other] = $otherOptions;
             unset($this->usedEvents[$eventIndex], $this->slotOf[$eventIndex]);
         }
 

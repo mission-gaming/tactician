@@ -24,6 +24,7 @@ use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\Repack\MovableEvent;
 use MissionGaming\Tactician\Repack\PinnedEvent;
+use MissionGaming\Tactician\Repack\RepackOptions;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
@@ -75,6 +76,10 @@ final class GoldenCases
 
     private const array REPACK_SIZES = [12, 16, 24];
 
+    private const array REPACK_BUDGET_SIZES = [8, 12, 16, 20, 24];
+
+    private const array REPACK_STEP_BUDGETS = [1, 30, 1_000, 30_000, 200_000];
+
     /** Upper bound on driver-loop rounds, so a broken engine fails instead of hanging. */
     private const int MAX_ENGINE_ROUNDS = 64;
 
@@ -104,6 +109,7 @@ final class GoldenCases
         $cases['double-elimination.txt'] = self::doubleElimination(...);
         $cases['repack/scenario.txt'] = self::repackScenario(...);
         $cases['repack/round-robin.txt'] = self::repackRoundRobin(...);
+        $cases['repack/budget-stops.txt'] = self::repackBudgetStops(...);
         $cases[self::WIRE_SCHEDULE] = static fn(): string => self::wireSchedule() . "\n";
         $cases[self::WIRE_STAGE_STATE] = static fn(): string => self::wireStageState() . "\n";
 
@@ -539,6 +545,92 @@ final class GoldenCases
             'pair order (1v2, 1v3, ..., 2v3, ...). Sessions are weekly from',
             '2026-01-07 19:00 UTC with 30-minute slots.',
             ...self::repackHeader(),
+        ], $sections);
+    }
+
+    /**
+     * Where each step budget stops a repack: the same requests repacked
+     * with a budget of one step, of a few, and of the default, down to the
+     * fingerprint of what each returns.
+     *
+     * A budget counts steps of the searches, so how far a given budget gets
+     * is part of the output. A change to what a step is, or to the order a
+     * search tries things in, shows here as a different fingerprint under
+     * some budget, even where the unlimited result is the same.
+     *
+     * @throws InvalidConfigurationException
+     * @throws RepackViolationsException
+     */
+    private static function repackBudgetStops(): string
+    {
+        $sections = [];
+        foreach (self::REPACK_BUDGET_SIZES as $size) {
+            $participants = self::field($size);
+            $pairs = [];
+            for ($a = 0; $a < $size; ++$a) {
+                for ($b = $a + 1; $b < $size; ++$b) {
+                    $pairs[] = [$a, $b];
+                }
+            }
+            $pairs = (new Randomizer(new Mt19937($size)))->shuffleArray($pairs);
+
+            foreach (['tight' => 0, 'pinned' => 3] as $shape => $pinCount) {
+                // "tight": sessions of four slots at n/2 events a slot, one
+                // session more than the events need. "pinned": sessions of
+                // five and six slots by turns at n/4 events a slot, with a
+                // quarter more room than the events need and three events
+                // held where they are.
+                $capacity = $shape === 'tight' ? intdiv($size, 2) : intdiv($size, 4);
+                $roomNeeded = $shape === 'tight' ? count($pairs) + 1 : intdiv(count($pairs) * 5, 4);
+                $overrides = [];
+                for ($room = 0; $room < $roomNeeded; $room += $slots * $capacity) {
+                    $slots = $shape === 'tight' ? 4 : 5 + count($overrides) % 2;
+                    $overrides[] = $slots;
+                }
+                $sessionCount = count($overrides);
+                $grid = SessionGrid::shapeOnly($sessionCount, 4, $overrides, $capacity);
+
+                $pinPositions = [[0, 0], [1, 2], [$sessionCount - 1, 1]];
+                $movable = [];
+                $pinned = [];
+                foreach ($pairs as $index => [$a, $b]) {
+                    $id = sprintf('e%03d', $index + 1);
+                    if ($index < $pinCount) {
+                        $pinned[] = new PinnedEvent($id, $participants[$a], $participants[$b], $pinPositions[$index][0], $pinPositions[$index][1]);
+                    } else {
+                        $movable[] = new MovableEvent($id, $participants[$a], $participants[$b]);
+                    }
+                }
+
+                $lines = [];
+                foreach (self::REPACK_STEP_BUDGETS as $stepBudget) {
+                    $outcome = (new ScheduleRepacker())->repack(
+                        new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $stepBudget))
+                    );
+                    $lines[] = 'step budget ' . $stepBudget
+                        . ': ' . ($outcome->isBudgetExhausted() ? 'stopped a search' : 'stopped nothing')
+                        . ', ' . count($outcome->getAssignments()) . ' assigned'
+                        . ', ' . count($outcome->getUnplaced()) . ' unplaced'
+                        . ', ' . count($outcome->getViolations()) . ' violations'
+                        . ', fingerprint ' . $outcome->fingerprint();
+                }
+
+                $sections["n={$size}, {$shape}: " . count($movable) . ' movable, ' . count($pinned) . " pinned, {$sessionCount} sessions, capacityPerSlot={$capacity}"]
+                    = $lines;
+            }
+        }
+
+        return GoldenText::document([
+            'Schedule repack under a range of step budgets.',
+            'Participants are "1".."n". The events are the pairings of a complete',
+            'single round robin, shuffled by Mt19937 seeded with n, with ids',
+            '"e001".."eNNN" in that order. "tight" grids have sessions of four slots',
+            'and one session more than the events need; "pinned" grids have sessions',
+            'of five and six slots by turns, a quarter more room than the events',
+            'need, and the first three events pinned. Grids are shape-only.',
+            'Each line is one repack of the same request: whether the budget stopped',
+            'a search, the counts of the outcome, and its fingerprint.',
+            ...self::EXPLANATION,
         ], $sections);
     }
 

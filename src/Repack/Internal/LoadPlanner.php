@@ -74,6 +74,15 @@ final class LoadPlanner
     /** @var array<int, int> */
     private array $sessionByEvent = [];
 
+    /**
+     * @var array<string, int> Placement scores already worked out, by slot count, fixed mask and
+     *                         the flexible loads in ascending order
+     */
+    private array $scoreByLoads = [];
+
+    /** @var array<int, array<int, array<int, int>>> Session => pinned participant => movable load => fixed mask */
+    private array $fixedMaskByLoad = [];
+
     public function __construct(
         private readonly RepackOptions $options,
         private readonly StepBudget $budget
@@ -151,6 +160,8 @@ final class LoadPlanner
         $this->used = array_fill(0, $this->sessionCount, 0);
         $this->mov = array_fill(0, $this->sessionCount, []);
         $this->sessionByEvent = [];
+        $this->scoreByLoads = [];
+        $this->fixedMaskByLoad = [];
 
         $this->assignGreedily($active, $unplaced);
         $this->improve();
@@ -608,18 +619,31 @@ final class LoadPlanner
     private function tryParitySwap(array &$scores, int $total): ?int
     {
         // Every non-returning path below restores its moves, so the key
-        // set of sessionByEvent is stable across the whole scan
+        // set of sessionByEvent, the session of every event and the scores
+        // are stable across the whole scan. The pairs worth a step are
+        // therefore known up front: the second event must sit in a later
+        // session than the first, and one of the two sessions must be
+        // infeasible. Which second events qualify depends only on the first
+        // event's session, so the list is made once per session and not
+        // once per first event; the pairs come in the order they always did.
         $eventIndexes = array_keys($this->sessionByEvent);
+        $sessionOf = $this->sessionByEvent;
+        /** @var array<int, list<int>> $secondsAfter Session of the first event => second events worth a step */
+        $secondsAfter = [];
         foreach ($eventIndexes as $first) {
-            foreach ($eventIndexes as $second) {
-                $from = $this->sessionByEvent[$first];
-                $to = $this->sessionByEvent[$second];
-                if ($from >= $to) {
-                    continue;
+            $from = $sessionOf[$first];
+            if (!isset($secondsAfter[$from])) {
+                $secondsAfter[$from] = [];
+                foreach ($eventIndexes as $second) {
+                    $to = $sessionOf[$second];
+                    if ($from < $to && ($scores[$from] !== 0 || $scores[$to] !== 0)) {
+                        $secondsAfter[$from][] = $second;
+                    }
                 }
-                if ($scores[$from] === 0 && $scores[$to] === 0) {
-                    continue;
-                }
+            }
+
+            foreach ($secondsAfter[$from] as $second) {
+                $to = $sessionOf[$second];
                 if (!$this->budget->consume()) {
                     return null;
                 }
@@ -667,22 +691,38 @@ final class LoadPlanner
             return 0;
         }
 
+        $slotCount = $this->slotCounts[$session];
+        $sessionPins = $this->pinSlots[$session] ?? [];
+
         $fixedMask = 0;
         $flexible = [];
         foreach ($this->mov[$session] as $pid => $load) {
             if ($load < 1) {
                 continue;
             }
-            $pins = $this->pinSlots[$session][$pid] ?? [];
+            $pins = $sessionPins[$pid] ?? [];
             if ($pins === []) {
                 $flexible[] = $load;
                 continue;
             }
 
-            $target = ContiguityTargets::movableTarget($pins, $load, $this->slotCounts[$session]);
-            $fixedMask ^= IntervalPlacement::maskOfSet($target, $this->slotCounts[$session]);
+            // A pinned participant's target, and so its mask, depends only
+            // on its pins (fixed) and its load.
+            $fixedMask ^= $this->fixedMaskByLoad[$session][$pid][$load]
+                ??= IntervalPlacement::maskOfSet(
+                    ContiguityTargets::movableTarget($pins, $load, $slotCount),
+                    $slotCount
+                );
         }
 
-        return IntervalPlacement::minOddScore($fixedMask, $flexible, $this->slotCounts[$session]);
+        // The score is a function of the fixed mask and of which run
+        // lengths there are, in any order (IntervalPlacement works on the
+        // set of masks the runs can reach). The repair pass scores the same
+        // few load shapes over and over as it tries moves and takes them
+        // back, so each shape is worked out once.
+        sort($flexible);
+        $shape = $slotCount . '|' . $fixedMask . '|' . implode(',', $flexible);
+
+        return $this->scoreByLoads[$shape] ??= IntervalPlacement::minOddScore($fixedMask, $flexible, $slotCount);
     }
 }

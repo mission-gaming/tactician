@@ -73,6 +73,74 @@ final class IntervalPlacement
     }
 
     /**
+     * The boundary-flip mask of every run of one length, by start slot.
+     *
+     * @return list<int>
+     */
+    private static function runMasks(int $length, int $slotCount): array
+    {
+        $masks = [];
+        for ($start = 0; $start + $length <= $slotCount; ++$start) {
+            $masks[] = self::maskOfRun($start, $length, $slotCount);
+        }
+
+        return $masks;
+    }
+
+    /**
+     * Every boundary-flip mask some placement of the flexible runs ends on.
+     *
+     * The set is the same in whatever order the runs are applied (each
+     * placement XORs one run mask per participant into the fixed mask), so
+     * runs of one length are applied together. For one length, let R(k) be
+     * the set after k of its runs. R(k) holds R(k - 2): take any mask of
+     * R(k - 2) and apply one run twice, which changes nothing. So when
+     * R(k) is no larger than R(k - 2) the two are the same set, and from
+     * there the sets repeat with period two: R(k + 1) is R(k - 1), R(k + 2)
+     * is R(k), and so on. The remaining runs of that length need not be
+     * applied, only counted. (A length with no run that fits gives the
+     * empty set from its first run on, which the same test covers.)
+     *
+     * @param array<int> $flexibleLengths Run length per unpinned participant
+     * @return array<int, true> Keyed by mask
+     */
+    private static function reachableMasks(int $fixedMask, array $flexibleLengths, int $slotCount): array
+    {
+        $copiesByLength = array_count_values($flexibleLengths);
+        ksort($copiesByLength);
+
+        $states = [$fixedMask => true];
+        foreach ($copiesByLength as $length => $copies) {
+            $runMasks = self::runMasks($length, $slotCount);
+            $sizeTwoBack = -1;
+
+            for ($applied = 1; $applied <= $copies; ++$applied) {
+                $next = [];
+                foreach ($states as $mask => $unused) {
+                    foreach ($runMasks as $runMask) {
+                        $next[$mask ^ $runMask] = true;
+                    }
+                }
+
+                if (count($next) === $sizeTwoBack) {
+                    // $next is R(applied) = R(applied - 2) and $states is
+                    // R(applied - 1): an even number of runs left ends on
+                    // the first, an odd number on the second.
+                    if (($copies - $applied) % 2 === 0) {
+                        $states = $next;
+                    }
+                    break;
+                }
+
+                $sizeTwoBack = count($states);
+                $states = $next;
+            }
+        }
+
+        return $states;
+    }
+
+    /**
      * How many positions cannot be parity-cancelled by any placement of
      * the flexible runs — 0 means a gap-free placement exists in parity
      * terms.
@@ -82,19 +150,13 @@ final class IntervalPlacement
      */
     public static function minOddScore(int $fixedMask, array $flexibleLengths, int $slotCount): int
     {
-        $states = [$fixedMask => true];
-        foreach ($flexibleLengths as $length) {
-            $next = [];
-            foreach (array_keys($states) as $mask) {
-                for ($start = 0; $start + $length <= $slotCount; ++$start) {
-                    $next[$mask ^ self::maskOfRun($start, $length, $slotCount)] = true;
-                }
-            }
-            $states = $next;
+        $states = self::reachableMasks($fixedMask, $flexibleLengths, $slotCount);
+        if (isset($states[0])) {
+            return 0;
         }
 
         $best = PHP_INT_MAX;
-        foreach (array_keys($states) as $mask) {
+        foreach ($states as $mask => $unused) {
             $odd = 0;
             for ($position = 0; $position < $slotCount; ++$position) {
                 $odd += ($mask >> $position) & 1;
@@ -126,21 +188,43 @@ final class IntervalPlacement
         $count = count($flexibleLengths);
         $lengths = array_values($flexibleLengths);
 
+        if (!$budget->hasStepsLeft()) {
+            // Nothing can be enumerated: the loop below would stop at its
+            // first look at the budget. All that is left to decide is
+            // whether it would have got that far, which is whether any
+            // placement ends on parity zero. The set of reachable masks
+            // answers that without the cost table, which is what holds a
+            // row of up to 2^slotCount entries for every participant.
+            if (isset(self::reachableMasks($fixedMask, $lengths, $slotCount)[0])) {
+                // Recorded as a search the budget stopped, as the loop does.
+                $budget->isExhausted();
+            }
+
+            return false;
+        }
+
+        /** @var list<list<int>> $runMasks Run masks by participant, then by start slot */
+        $runMasks = [];
+        foreach ($lengths as $length) {
+            $runMasks[] = self::runMasks($length, $slotCount);
+        }
+
         // minCost[i][mask]: cheapest total start depth for runs i.. to end
         // on parity zero, PHP_INT_MAX when unreachable
         $minCost = array_fill(0, $count + 1, []);
         $minCost[$count] = [0 => 0];
         for ($i = $count - 1; $i >= 0; --$i) {
-            $length = $lengths[$i];
+            $row = [];
             foreach ($minCost[$i + 1] as $mask => $cost) {
-                for ($start = 0; $start + $length <= $slotCount; ++$start) {
-                    $reached = $mask ^ self::maskOfRun($start, $length, $slotCount);
+                foreach ($runMasks[$i] as $start => $runMask) {
+                    $reached = $mask ^ $runMask;
                     $candidate = $cost + $start;
-                    if ($candidate < ($minCost[$i][$reached] ?? PHP_INT_MAX)) {
-                        $minCost[$i][$reached] = $candidate;
+                    if ($candidate < ($row[$reached] ?? PHP_INT_MAX)) {
+                        $row[$reached] = $candidate;
                     }
                 }
             }
+            $minCost[$i] = $row;
         }
 
         if (!isset($minCost[0][$fixedMask])) {
@@ -157,7 +241,7 @@ final class IntervalPlacement
             if ($budget->isExhausted()) {
                 return false;
             }
-            $found = self::search(0, $fixedMask, $target, $lengths, $slotCount, $minCost, $starts, $budget, $tryPlacement);
+            $found = self::search(0, $fixedMask, $target, $runMasks, $minCost, $starts, $budget, $tryPlacement);
             if ($found !== null) {
                 return $found;
             }
@@ -170,7 +254,7 @@ final class IntervalPlacement
      * Depth-first enumeration of placements whose total start depth is
      * exactly $remaining, in ascending start order per participant.
      *
-     * @param array<int> $lengths
+     * @param list<list<int>> $runMasks Run masks by participant, then by start slot
      * @param array<int, array<int, int>> $minCost
      * @param array<int> $starts Mutated in place
      * @param callable(array<int>): bool $tryPlacement
@@ -181,14 +265,13 @@ final class IntervalPlacement
         int $index,
         int $mask,
         int $remaining,
-        array $lengths,
-        int $slotCount,
+        array $runMasks,
         array $minCost,
         array &$starts,
         StepBudget $budget,
         callable $tryPlacement
     ): ?bool {
-        if ($index === count($lengths)) {
+        if (!isset($runMasks[$index])) {
             if ($mask !== 0 || $remaining !== 0) {
                 return null;
             }
@@ -200,16 +283,20 @@ final class IntervalPlacement
             return false;
         }
 
-        $length = $lengths[$index];
-        for ($start = 0; $start + $length <= $slotCount && $start <= $remaining; ++$start) {
-            $reached = $mask ^ self::maskOfRun($start, $length, $slotCount);
-            $suffixCost = $minCost[$index + 1][$reached] ?? PHP_INT_MAX;
+        $suffixCosts = $minCost[$index + 1];
+        foreach ($runMasks[$index] as $start => $runMask) {
+            if ($start > $remaining) {
+                break;
+            }
+
+            $reached = $mask ^ $runMask;
+            $suffixCost = $suffixCosts[$reached] ?? PHP_INT_MAX;
             if ($suffixCost > $remaining - $start) {
                 continue;
             }
 
             $starts[$index] = $start;
-            $result = self::search($index + 1, $reached, $remaining - $start, $lengths, $slotCount, $minCost, $starts, $budget, $tryPlacement);
+            $result = self::search($index + 1, $reached, $remaining - $start, $runMasks, $minCost, $starts, $budget, $tryPlacement);
             if ($result !== null) {
                 return $result;
             }

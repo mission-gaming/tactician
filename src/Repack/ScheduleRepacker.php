@@ -161,16 +161,16 @@ final readonly class ScheduleRepacker
         $positions = [];
         $leftovers = [];
         $packer = new SessionPacker($budget);
+        // The plan lists events in ascending index order, so each session's
+        // events come out in that order too.
+        /** @var array<int, array<int, array{int, int}>> $edgesBySession */
+        $edgesBySession = [];
+        foreach ($plan->sessionByEvent as $eventIndex => $assignedSession) {
+            $edgesBySession[$assignedSession][$eventIndex] = $edges[$eventIndex];
+        }
         for ($session = 0; $session < $sessionCount; ++$session) {
-            $sessionEdges = [];
-            foreach ($plan->sessionByEvent as $eventIndex => $assignedSession) {
-                if ($assignedSession === $session) {
-                    $sessionEdges[$eventIndex] = $edges[$eventIndex];
-                }
-            }
-
             $packed = $packer->pack(
-                $sessionEdges,
+                $edgesBySession[$session] ?? [],
                 $pinSlots[$session] ?? [],
                 $pinCounts[$session] ?? [],
                 $slotCounts[$session],
