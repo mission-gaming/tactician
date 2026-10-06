@@ -1,14 +1,28 @@
 name: CI
 
+# The pull request trigger keeps GitHub's default activity types (opened,
+# synchronize, reopened), and a draft pull request runs every job like any
+# other. `workflow_dispatch` lets a maintainer start a run by hand, on any
+# branch.
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 # Least privilege: no job needs more than read access to the repository.
 permissions:
   contents: read
+
+# A newer run for the same pull request cancels the one in progress: only the
+# result for the latest commit is of use. Every other run (a push to main, a
+# manual run) gets a group of its own, so it is never cancelled and never
+# waits. One shared group for main would not be enough: a group holds a single
+# pending run, so a third push would replace the second one in the queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Fails when a tracked file, its path, or a symbolic link target contains a
@@ -37,7 +51,10 @@ jobs:
   # files against the repository, so a documentation-only change can break
   # it. Branch protection waits for the checks these jobs report (PHP 8.3,
   # PHP 8.4, PHP 8.5 and Coverage), so they must never be skipped by a
-  # condition; tests/Feature/CiConfigurationTest.php pins that.
+  # condition, a draft pull request included: GitHub reports a skipped job as
+  # passed, and a required check is satisfied by that result. A check that
+  # passed without running must never be what lets a pull request merge.
+  # tests/Feature/CiConfigurationTest.php pins that.
   test:
     runs-on: ubuntu-latest
 
@@ -55,20 +72,30 @@ jobs:
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
       with:
         php-version: ${{ matrix.php-version }}
-        extensions: mbstring, xml, ctype, iconv, intl, pdo, dom, filter, gd, iconv, json, mbstring
-        coverage: xdebug
+        # What the development tools require (`composer check-platform-reqs`);
+        # the library itself requires no extension.
+        extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
+        # Only the coverage job needs a coverage driver.
+        coverage: none
 
     - name: Validate composer.json and composer.lock
       run: composer validate --strict
 
-    - name: Cache Composer packages
+    # Composer's download cache, not vendor/: `composer install` still builds
+    # vendor/ from the lock file, so a stale cache cannot change what is
+    # installed. The archives do not depend on the PHP version, so every job
+    # shares one key.
+    - name: Find the Composer download cache
       id: composer-cache
+      run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Composer downloads
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: vendor
-        key: ${{ runner.os }}-php-${{ matrix.php-version }}-${{ hashFiles('**/composer.lock') }}
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
         restore-keys: |
-          ${{ runner.os }}-php-${{ matrix.php-version }}-
+          ${{ runner.os }}-composer-
 
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
@@ -87,23 +114,23 @@ jobs:
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
       with:
         php-version: '8.4'
-        extensions: mbstring, xml, ctype, iconv, intl, pdo, dom, filter, gd, iconv, json, mbstring
+        extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
         coverage: xdebug
 
-    - name: Cache Composer packages
+    - name: Find the Composer download cache
       id: composer-cache
+      run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Composer downloads
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: vendor
-        key: ${{ runner.os }}-php-8.4-${{ hashFiles('**/composer.lock') }}
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
         restore-keys: |
-          ${{ runner.os }}-php-8.4-
+          ${{ runner.os }}-composer-
 
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
-
-    - name: Prepare build directory
-      run: mkdir -p build
 
     - name: Run tests with coverage
       run: composer test-coverage
@@ -113,8 +140,36 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: build/clover.xml
-        # Dependabot-triggered runs cannot read Actions secrets, so the token
-        # is empty there and the upload may be rejected; that must not fail
-        # the dependency update's checks.
-        fail_ci_if_error: ${{ github.actor != 'dependabot[bot]' }}
+        # Runs for a pull request from a fork or from Dependabot receive no
+        # Actions secrets, so the token is empty there and the upload may be
+        # rejected. The upload is still attempted, but only a run that has the
+        # token fails when it does not go through: the Coverage check reports
+        # on the tests, and an upload that could not authenticate must not
+        # turn it red.
+        fail_ci_if_error: ${{ secrets.CODECOV_TOKEN != '' }}
         flags: php
+
+  # Known vulnerabilities in the locked dependencies. A job of its own, under
+  # a name that is not a required check: an advisory can be published against
+  # a development tool at any time, and it must be seen on every pull request
+  # and push without blocking every merge until the tool is updated. For the
+  # same reason it is not part of `composer ci`: it asks Packagist for
+  # advisories, so it needs the network and its result can change without a
+  # commit. It reads composer.lock, so nothing is installed. An abandoned
+  # package is reported in the log and does not fail the job; the weekly
+  # workflow is where that fails.
+  audit:
+    runs-on: ubuntu-latest
+    name: Dependency audit
+
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      with:
+        php-version: '8.4'
+        coverage: none
+
+    - name: Audit the locked dependencies for known vulnerabilities
+      run: composer security-audit

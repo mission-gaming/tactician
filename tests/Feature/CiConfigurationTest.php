@@ -8,8 +8,10 @@ use PHPUnit\Framework\Assert;
 // The CI hardening is configuration, so nothing in the library exercises it.
 // These tests pin its guarantees: least-privilege token permissions, actions
 // referenced by immutable commit SHA, Dependabot coverage that keeps those
-// pins current, and test jobs that run, under the check names branch
-// protection requires, for every change set.
+// pins current, test jobs that run, under the check names branch protection
+// requires, for every change set, cancellation limited to superseded pull
+// request runs, a dependency audit that is visible without being one of those
+// required checks, and a scheduled workflow that stays off pull requests.
 //
 // The files are read as text on purpose: the project has no YAML parser among
 // its dependencies. Gap left knowingly - nothing here proves the files are
@@ -104,7 +106,13 @@ it('grants no job a write scope', function (string $workflow): void {
 // every file under the action's default quantifier), and had it worked it
 // would have skipped exactly the changes the documentation tests exist for.
 // These tests keep any such gate from coming back.
-it('runs the test and coverage jobs for every change set', function (string $job) use ($root): void {
+//
+// No condition is allowed, not even one that skips a draft pull request.
+// GitHub reports a job skipped by a condition as passed, and that result
+// satisfies a required check. Nothing documented says that the skipped result
+// stops counting once the draft is marked as ready, before the real run for
+// the same commit has finished, so the jobs simply always run.
+it('runs the test and coverage jobs for every change set, a draft pull request included', function (string $job) use ($root): void {
     $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
 
     if (preg_match('/^  ' . preg_quote($job, '/') . ":\n((?:(?:    .*)?\n)*)/m", $workflow, $definition) !== 1) {
@@ -115,19 +123,306 @@ it('runs the test and coverage jobs for every change set', function (string $job
     expect($definition[1])->toContain("    steps:\n");
     Assert::assertDoesNotMatchRegularExpression('/^    if:/m', $definition[1], "The `{$job}` job is conditional");
     Assert::assertDoesNotMatchRegularExpression('/^    needs:/m', $definition[1], "The `{$job}` job waits on another job");
+
+    // Nor may the job pass without its work being done: a tolerated failure
+    // reports the required check as passed just as a skipped job does
+    Assert::assertDoesNotMatchRegularExpression('/^\s*continue-on-error:/m', $definition[1], "The `{$job}` job tolerates a failure");
+    Assert::assertStringNotContainsString('draft', $definition[1], "The `{$job}` job reads the draft state of the pull request");
 })->with(['test', 'coverage']);
 
 it('triggers on every push to main and every pull request, without a path or change filter', function () use ($root): void {
     $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
 
-    expect($workflow)->toContain("on:\n  push:\n    branches: [ main ]\n  pull_request:\n    branches: [ main ]\n\n");
+    // No `types` list: GitHub's defaults (opened, synchronize, reopened) run
+    // the workflow for every commit of a pull request. A list is how an
+    // activity type gets dropped, and with it the run for a new commit
+    expect($workflow)->toContain(
+        "on:\n  push:\n    branches: [ main ]\n  pull_request:\n    branches: [ main ]\n  workflow_dispatch:\n\n"
+    );
+    Assert::assertDoesNotMatchRegularExpression('/^\s*types:/m', $workflow, 'ci.yml restricts the activity types of a trigger');
     Assert::assertDoesNotMatchRegularExpression('/^\s*paths(?:-ignore)?:/m', $workflow, 'ci.yml filters its triggers by path');
+    Assert::assertDoesNotMatchRegularExpression('/^\s*branches-ignore:/m', $workflow, 'ci.yml excludes branches from its triggers');
     Assert::assertStringNotContainsString('paths-filter', $workflow, 'ci.yml detects changed paths to decide what runs');
 
     // The documents the snippet test executes exist, so "every change set" covers them
     foreach (DocumentationSnippets::DOCUMENTS as $document) {
         expect(is_file($root . '/' . $document))->toBeTrue();
     }
+});
+
+// A superseded run for a pull request is cancelled; a run on main never is.
+// Both halves depend on the event name: only the runs of one pull request
+// share a group, and only those runs cancel one another.
+it('cancels a superseded run for a pull request and no other run', function () use ($root): void {
+    $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+
+    expect($workflow)->toContain(
+        "\nconcurrency:\n"
+        . '  group: ${{ github.workflow }}-${{ github.event_name == \'pull_request\' && github.ref || github.run_id }}' . "\n"
+        . '  cancel-in-progress: ${{ github.event_name == \'pull_request\' }}' . "\n"
+    );
+    Assert::assertDoesNotMatchRegularExpression(
+        '/^\s*cancel-in-progress:\s*true\s*$/m',
+        $workflow,
+        'ci.yml cancels runs in progress unconditionally, which includes runs on main'
+    );
+
+    // The workflow-level block is the only one: a job-level group shared by
+    // runs on main would queue them, and drop all but the newest one waiting
+    expect(preg_match_all('/^\s*concurrency:/m', $workflow))->toBe(1);
+    expect(preg_match_all('/^\s*cancel-in-progress:/m', $workflow))->toBe(1);
+});
+
+// `pull_request_target` runs in the context of the base branch, with its
+// secrets, while the workflow may check out the pull request's code. No
+// workflow here needs it. Comments are searched too, on purpose.
+it('never uses pull_request_target', function (string $workflow): void {
+    Assert::assertStringNotContainsString(
+        'pull_request_target',
+        (string) file_get_contents($workflow),
+        basename($workflow) . ' mentions pull_request_target'
+    );
+})->with($workflowDataset);
+
+// The scheduled workflow is an early warning against freshly resolved
+// dependencies and the next PHP version. It must stay off pull requests: its
+// result depends on the day it runs, not on the change under review.
+it('keeps the scheduled workflow off pull requests and pushes', function () use ($root, $workflows): void {
+    // Discovered, so the pin and permission checks above cover it
+    expect(array_map(fn (string $workflow) => basename($workflow), $workflows))->toContain('scheduled.yml');
+
+    $workflow = (string) file_get_contents($root . '/.github/workflows/scheduled.yml');
+
+    if (preg_match('/^on:\n((?:(?:  .*)?\n)*)/m', $workflow, $triggers) !== 1) {
+        Assert::fail('scheduled.yml has no `on` block');
+    }
+
+    preg_match_all('/^  (\w+):/m', $triggers[1], $events);
+    expect($events[1])->toBe(['schedule', 'workflow_dispatch']);
+
+    // The block read above ends at the first line that is not indented, a
+    // comment in column one included, so the whole file is searched as well
+    Assert::assertDoesNotMatchRegularExpression(
+        '/^\s*["\']?(?:push|pull_request\w*)["\']?\s*:/m',
+        $workflow,
+        'scheduled.yml triggers on a push or a pull request'
+    );
+    Assert::assertMatchesRegularExpression('/^    - cron: \'[^\']+\'$/m', $triggers[1], 'scheduled.yml has no schedule');
+
+    $jobs = [];
+    foreach (['unlocked', 'next-php'] as $job) {
+        if (preg_match('/^  ' . preg_quote($job, '/') . ":\n((?:(?:    .*)?\n)*)/m", $workflow, $definition) !== 1) {
+            Assert::fail("scheduled.yml has no `{$job}` job");
+        }
+        $jobs[$job] = $definition[1];
+
+        // Resolved afresh: a step that runs, not a mention in a comment
+        expect($definition[1])->toContain("      run: composer update --prefer-dist --no-progress\n");
+        Assert::assertDoesNotMatchRegularExpression('/^\s*run: composer install/m', $definition[1], "The `{$job}` job installs from the lock file");
+    }
+
+    // The supported versions run the whole gate and must pass; a failure is
+    // tolerated on the next PHP version only
+    expect($jobs['unlocked'])->toContain("        php-version: ['8.3', '8.4', '8.5']\n")
+        ->toContain("      fail-fast: false\n")
+        ->toContain("      run: composer ci\n");
+    Assert::assertStringNotContainsString('continue-on-error', $jobs['unlocked'], 'The `unlocked` job is allowed to fail');
+    expect($jobs['next-php'])->toContain("        php-version: nightly\n")
+        ->toContain("    continue-on-error: true\n")
+        ->toContain("      run: composer test\n")
+        ->toContain("      run: composer examples\n");
+    expect(substr_count($workflow, 'continue-on-error:'))->toBe(1);
+
+    // None of its checks may take a name that is required on pull requests,
+    // however the name is written
+    Assert::assertDoesNotMatchRegularExpression(
+        '/^\s*name:\s*["\']?(?:PHP \S+|Coverage)["\']?\s*$/m',
+        $workflow,
+        'scheduled.yml reports a check under a name that is required on pull requests'
+    );
+});
+
+// A coverage driver slows every test down, so only the job that measures
+// coverage loads one.
+it('loads a coverage driver in the coverage job only', function () use ($root): void {
+    $ci = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+    $scheduled = (string) file_get_contents($root . '/.github/workflows/scheduled.yml');
+
+    $drivers = function (string $workflow, string $job): array {
+        if (preg_match('/^  ' . preg_quote($job, '/') . ":\n((?:(?:    .*)?\n)*)/m", $workflow, $definition) !== 1) {
+            Assert::fail("No `{$job}` job");
+        }
+        preg_match_all('/^        coverage: (\S+)$/m', $definition[1], $matches);
+
+        return $matches[1];
+    };
+
+    expect($drivers($ci, 'test'))->toBe(['none'])
+        ->and($drivers($ci, 'coverage'))->toBe(['xdebug'])
+        ->and($drivers($scheduled, 'unlocked'))->toBe(['none'])
+        ->and($drivers($scheduled, 'next-php'))->toBe(['none']);
+
+    // Every PHP setup states its choice: the action's default is a driver
+    expect(substr_count($ci . $scheduled, 'shivammathur/setup-php@'))
+        ->toBe(preg_match_all('/^        coverage: \S+$/m', $ci . $scheduled));
+});
+
+// `composer test-coverage` must work with no prepared environment, and the
+// report it writes must be the file the workflow uploads.
+it('measures coverage with a self-contained script whose report the workflow uploads', function () use ($root): void {
+    $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+    $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
+
+    /** @var array{scripts: array<string, string|list<string>>} $composer */
+    $script = $composer['scripts']['test-coverage'];
+
+    // Xdebug measures nothing unless its mode includes `coverage`; the
+    // variable has to be set before the command that needs it
+    expect($script)->toBe([
+        '@putenv XDEBUG_MODE=coverage',
+        'pest --coverage --coverage-clover=build/clover.xml',
+    ]);
+
+    expect($workflow)->toContain("      run: composer test-coverage\n")
+        ->toContain("        files: build/clover.xml\n");
+
+    // The report is a build product, never a tracked file
+    expect(file($root . '/.gitignore', FILE_IGNORE_NEW_LINES))->toContain('/build');
+});
+
+// A run for a pull request from a fork, or from Dependabot, receives no
+// secrets. Its upload may be rejected, and that must not turn the Coverage
+// check red; a run that does have the token must still fail loudly.
+it('fails the coverage upload only for a run that has the upload token', function () use ($root): void {
+    $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+
+    expect($workflow)->toContain("        token: \${{ secrets.CODECOV_TOKEN }}\n")
+        ->toContain("        fail_ci_if_error: \${{ secrets.CODECOV_TOKEN != '' }}\n");
+    expect(preg_match_all('/^\s*fail_ci_if_error:/m', $workflow))->toBe(1);
+
+    // Nor may the job hide a failed upload, or a failed test, another way
+    if (preg_match('/^  coverage:\n((?:(?:    .*)?\n)*)/m', $workflow, $coverage) !== 1) {
+        Assert::fail('ci.yml has no `coverage` job');
+    }
+    expect($coverage[1])->toContain('        fail_ci_if_error: ');
+    Assert::assertStringNotContainsString('continue-on-error', $coverage[1], 'The `coverage` job tolerates a failing step');
+});
+
+it('sets a patch coverage target and a tolerance for the project status', function () use ($root): void {
+    $config = (string) file_get_contents($root . '/codecov.yml');
+
+    Assert::assertMatchesRegularExpression(
+        '/^coverage:\n  status:\n(?:    .*\n)*?    patch:\n      default:\n        target: \d+%\n/m',
+        $config,
+        'codecov.yml sets no patch coverage target'
+    );
+    Assert::assertMatchesRegularExpression(
+        '/^    project:\n      default:\n        target: auto\n        threshold: \d+(?:\.\d+)?%\n/m',
+        $config,
+        'codecov.yml sets no project threshold'
+    );
+});
+
+// vendor/ is rebuilt from the lock file on every run; what is cached is
+// Composer's download directory. A cached vendor/ restored under a key that
+// no longer matches the lock file is how a stale dependency reaches a run.
+it('caches the Composer download directory, keyed on the lock file, and never vendor', function () use ($root): void {
+    $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+
+    // At least the test and the coverage job; every use must look the same
+    $caches = (int) preg_match_all('/^      uses: actions\/cache@/m', $workflow);
+    expect($caches)->toBeGreaterThanOrEqual(2);
+
+    expect(substr_count($workflow, "      id: composer-cache\n      run: echo \"dir=\$(composer config cache-files-dir)\" >> \"\$GITHUB_OUTPUT\"\n"))->toBe($caches)
+        ->and(substr_count($workflow, "        path: \${{ steps.composer-cache.outputs.dir }}\n"))->toBe($caches)
+        ->and(substr_count($workflow, "        key: \${{ runner.os }}-composer-\${{ hashFiles('composer.lock') }}\n"))->toBe($caches)
+        ->and(preg_match_all('/^        path:/m', $workflow))->toBe($caches);
+
+    // The step that names the directory comes before the step that reads it
+    foreach (explode('uses: actions/cache@', $workflow, -1) as $before) {
+        expect(strrpos($before, 'id: composer-cache'))->not->toBeFalse();
+    }
+
+    // The lock file the key hashes is tracked and installed from
+    expect(is_file($root . '/composer.lock'))->toBeTrue();
+    expect(substr_count($workflow, "      run: composer install --prefer-dist --no-progress\n"))->toBeGreaterThanOrEqual($caches);
+    Assert::assertDoesNotMatchRegularExpression('/^\s*path:\s*["\']?vendor/m', $workflow, 'ci.yml caches vendor/');
+});
+
+// Pest requires PHPUnit and Collision itself, at the versions it supports; a
+// second, direct requirement can only disagree with it. Faker was never used.
+it('requires no development package that is unused or that Pest already brings', function () use ($root): void {
+    $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
+    $lock = json_decode((string) file_get_contents($root . '/composer.lock'), true);
+
+    /** @var array{require: array<string, string>, require-dev: array<string, string>} $composer */
+    expect(array_keys($composer['require']))->toBe(['php']);
+    expect($composer['require-dev'])->not->toHaveKeys(['fakerphp/faker', 'nunomaduro/collision', 'phpunit/phpunit']);
+
+    /** @var array{packages: list<array{name: string}>, packages-dev: list<array{name: string}>} $lock */
+    $locked = array_column($lock['packages-dev'], 'name');
+
+    expect($lock['packages'])->toBe([])
+        ->and($locked)->not->toContain('fakerphp/faker')
+        // Still installed, through Pest: the tests use PHPUnit's Assert
+        ->and($locked)->toContain('pestphp/pest', 'phpunit/phpunit', 'nunomaduro/collision');
+});
+
+// The audit asks Packagist for advisories: it needs the network, and its
+// result can change without a commit. So it is not part of `composer ci`,
+// which must also pass offline, and it is not a step of a required check
+// either: an advisory published against a development tool would otherwise
+// block every merge. It runs in a job of its own, for every pull request and
+// push, under a name branch protection does not require.
+it('audits dependencies in a job of its own that is not a required check, and keeps the audit out of the local gate', function () use ($root): void {
+    $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+    $scheduled = (string) file_get_contents($root . '/.github/workflows/scheduled.yml');
+    $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
+
+    $jobs = [];
+    foreach (['test', 'coverage', 'audit'] as $job) {
+        if (preg_match('/^  ' . preg_quote($job, '/') . ":\n((?:(?:    .*)?\n)*)/m", $workflow, $definition) !== 1) {
+            Assert::fail("ci.yml has no `{$job}` job");
+        }
+        $jobs[$job] = $definition[1];
+    }
+
+    // The audit runs once, in the audit job, and in neither required job
+    expect($jobs['audit'])->toContain("      run: composer security-audit\n");
+    expect(preg_match_all('/^\s*run:.*\baudit\b/m', $workflow))->toBe(1);
+    foreach (['test', 'coverage'] as $required) {
+        Assert::assertDoesNotMatchRegularExpression('/^\s*run:.*\baudit\b/m', $jobs[$required], "The required `{$required}` job audits dependencies");
+    }
+
+    // Its check name is its own, and none of the four that are required
+    preg_match_all('/^    name: (.+)$/m', $jobs['audit'], $names);
+    expect($names[1])->toBe(['Dependency audit']);
+    expect(preg_match_all('/^    name: Dependency audit$/m', $workflow))->toBe(1);
+
+    // It runs for every pull request and push, and a finding fails it: no
+    // condition, no dependency on another job, no tolerated failure
+    foreach (['if', 'needs', 'continue-on-error'] as $key) {
+        Assert::assertDoesNotMatchRegularExpression('/^\s*' . $key . ':/m', $jobs['audit'], "The `audit` job sets `{$key}`");
+    }
+
+    // It reads composer.lock, so the job installs nothing
+    Assert::assertDoesNotMatchRegularExpression('/^\s*run: composer (?:install|update)/m', $jobs['audit'], 'The `audit` job installs dependencies');
+    expect(is_file($root . '/composer.lock'))->toBeTrue();
+    expect($composer)->toBeArray();
+
+    /** @var array{scripts: array<string, string|list<string>>} $composer */
+    expect($composer['scripts']['security-audit'])->toBe('@composer audit --locked --abandoned=report');
+    expect($composer['scripts']['ci'])->not->toContain('@security-audit');
+    foreach ($composer['scripts'] as $name => $script) {
+        if ($name !== 'security-audit') {
+            expect(implode(' ', (array) $script))->not->toContain('audit');
+        }
+    }
+
+    // An abandoned package is reported on a pull request, and fails only in
+    // the weekly run, where a maintainer is the one who sees it
+    expect($scheduled)->toContain("      run: composer audit --abandoned=fail\n");
+    Assert::assertStringNotContainsString('--abandoned=fail', $workflow, 'ci.yml fails on an abandoned package');
 });
 
 // Branch protection requires these checks by name; renaming one leaves the

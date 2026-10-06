@@ -16,6 +16,8 @@ and points to `docs/` for everything else; it does not repeat what is there.
 - `composer phpstan` / `composer rector` / `composer cs-fixer` / `composer norm` — one check of the gate on its own
 - `composer cs-fixer-fix` / `composer rector-fix` / `composer norm-fix` — auto-fix style, modernization and `composer.json` ordering findings
 - `composer examples` — smoke-run every script in `examples/` (each prints its results as text; `php -S localhost:8000 -t examples` serves them as pages)
+- `composer test-coverage` — the suite with line coverage, written to `build/clover.xml` (needs Xdebug or PCOV; the script sets `XDEBUG_MODE` itself)
+- `composer security-audit` — Composer's vulnerability audit of the dependencies in `composer.lock`; needs the network, so CI runs it as a job of its own (`Dependency audit`, not a required check) and it is not part of `composer ci`
 - `composer golden-update` — regenerate the golden-output fixtures in `tests/Fixtures/golden/` (see Rules)
 - `vendor/bin/pest tests/Unit/Scheduling/RoundRobinSchedulerTest.php` — run a single test file
 - `vendor/bin/pest tests/Feature/DocumentationSnippetsTest.php` — execute every `php` block of `README.md` and `docs/USAGE.md`

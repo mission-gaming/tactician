@@ -21,9 +21,9 @@ composer install
 
 ## The gate
 
-`composer ci` is the gate: it must exit 0 before every commit. CI runs it on
-every pull request that changes more than documentation, on PHP 8.3, 8.4, and
-8.5.
+`composer ci` is the gate: it must exit 0 before every commit. It needs no
+network. CI runs it on every pull request, a draft one included, on PHP 8.3,
+8.4, and 8.5.
 
 ```bash
 # Run every check
@@ -43,15 +43,35 @@ composer rector-fix       # Apply modernization
 composer cs-fixer-fix     # Fix code style
 ```
 
+CI also runs one check that is not part of the gate, because it needs the
+network and its result can change without a commit:
+
+```bash
+composer security-audit   # Known vulnerabilities in the locked dependencies
+```
+
+It reads `composer.lock`, so it works before `composer install`. It fails on a
+security advisory. It reports an abandoned package without failing, because no
+change to the pull request can repair that. In CI it is the `Dependency audit`
+job, which runs on every pull request and every push to `main`. That job is
+not a required check: a new advisory against a development tool shows as a
+failed job on every pull request, and does not stop the others from merging
+while the tool is updated.
+
+A weekly scheduled workflow (`.github/workflows/scheduled.yml`) runs the gate
+against dependencies resolved afresh, without the lock file, and the test
+suite against the next PHP version. It does not run on pull requests. If it fails,
+the cause is a new release of a tool or of PHP, not your change.
+
 ## Testing
 
 ```bash
 # Run the test suite
 composer test
 
-# Run with coverage (needs a coverage driver: Xdebug with
-# XDEBUG_MODE=coverage, or PCOV)
-XDEBUG_MODE=coverage composer test-coverage
+# Run with coverage (needs a coverage driver: Xdebug or PCOV). The script
+# sets XDEBUG_MODE=coverage itself and writes build/clover.xml
+composer test-coverage
 
 # Run one test file
 vendor/bin/pest tests/Unit/Scheduling/RoundRobinSchedulerTest.php
