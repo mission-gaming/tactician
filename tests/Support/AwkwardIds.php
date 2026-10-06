@@ -27,6 +27,9 @@ final class AwkwardIds
         return [
             'ordinary ids' => ['a', 'b', 'c', 'd', 'e', 'f'],
             'plain decimals' => ['8', '9', '10', '11', '100', '2'],
+            // PHP turns each of these into an integer array key, and the
+            // keys 0 to 5 are the ones a renumbered list takes.
+            'decimals from zero' => ['1', '2', '3', '4', '5', '0'],
             'leading zeros' => ['01', '1', '001', '2', '02', '3'],
             'exponent forms' => ['1e3', '1000', '1E3', '10e2', '0e1', '0e2'],
             'decimal forms of one' => ['1.0', '1', '1.', '+1', ' 1', '1 '],
