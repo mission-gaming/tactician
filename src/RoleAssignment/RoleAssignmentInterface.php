@@ -24,6 +24,8 @@ use MissionGaming\Tactician\DTO\Participant;
  * legs than the schedule has: the answers of a rejected attempt are thrown
  * away. An implementation gets the rounds and nothing else. It is not told
  * which leg it is deciding or what the constraints are.
+ *
+ * @experimental
  */
 interface RoleAssignmentInterface
 {

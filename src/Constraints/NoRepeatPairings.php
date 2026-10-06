@@ -17,6 +17,8 @@ use Override;
  * are checked in full. Pass acrossLegs: true to forbid repeats anywhere in
  * the tournament (which makes complete multi-leg round robins impossible by
  * design).
+ *
+ * @experimental
  */
 readonly class NoRepeatPairings implements ConstraintInterface
 {

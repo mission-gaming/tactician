@@ -25,5 +25,7 @@ use Throwable;
  * by a callable or a collaborator the caller supplied (a constraint predicate,
  * the engine of a `Random\Randomizer`), and PHP's own `\Error` family
  * (`\TypeError` for an argument of the wrong type, `\AssertionError`).
+ *
+ * @api
  */
 interface TacticianException extends Throwable {}

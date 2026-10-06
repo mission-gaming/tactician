@@ -15,6 +15,8 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * rounds label themselves ('semifinal', 'losers round 2'), and byes are a
  * list because brackets can award several in one round while Swiss awards
  * at most one.
+ *
+ * @experimental
  */
 final readonly class RoundPairing
 {

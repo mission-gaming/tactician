@@ -16,6 +16,8 @@ namespace MissionGaming\Tactician\Exceptions;
  * - `getContext()` is the values involved, keyed by name;
  * - `getDiagnosticReport()` is both as text for an operator, with every
  *   context value written out.
+ *
+ * @api
  */
 class InvalidConfigurationException extends SchedulingException
 {

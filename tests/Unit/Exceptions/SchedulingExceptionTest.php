@@ -5,6 +5,7 @@ declare(strict_types=1);
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
+use MissionGaming\Tactician\Tests\Support\DeprecatedCall;
 
 describe('SchedulingException', function (): void {
     // Tests that factory method creates invalid participant count exceptions with correct context
@@ -13,7 +14,7 @@ describe('SchedulingException', function (): void {
         $count = 1;
 
         // When: Using factory method
-        $exception = SchedulingException::invalidParticipantCount($count);
+        $exception = DeprecatedCall::to(SchedulingException::class, 'invalidParticipantCount', $count);
 
         // Then: Should create InvalidConfigurationException with proper context
         expect($exception)->toBeInstanceOf(InvalidConfigurationException::class);
@@ -33,7 +34,7 @@ describe('SchedulingException', function (): void {
         $constraint = 'NoRepeatPairings: Cannot pair Alice and Bob again';
 
         // When: Using factory method
-        $exception = SchedulingException::constraintViolation($constraint);
+        $exception = DeprecatedCall::to(SchedulingException::class, 'constraintViolation', $constraint);
 
         // Then: Should create InvalidConfigurationException with constraint context
         expect($exception)->toBeInstanceOf(InvalidConfigurationException::class);
@@ -52,7 +53,7 @@ describe('SchedulingException', function (): void {
         $reason = 'Schedule contains duplicate events in round 3';
 
         // When: Using factory method
-        $exception = SchedulingException::invalidSchedule($reason);
+        $exception = DeprecatedCall::to(SchedulingException::class, 'invalidSchedule', $reason);
 
         // Then: Should create InvalidConfigurationException with reason context
         expect($exception)->toBeInstanceOf(InvalidConfigurationException::class);
@@ -68,9 +69,9 @@ describe('SchedulingException', function (): void {
     // Tests that factory methods return InvalidConfigurationException instances
     it('factory methods return InvalidConfigurationException instances', function (): void {
         // Given: Various factory method calls
-        $participantException = SchedulingException::invalidParticipantCount(0);
-        $constraintException = SchedulingException::constraintViolation('test constraint');
-        $scheduleException = SchedulingException::invalidSchedule('test reason');
+        $participantException = DeprecatedCall::to(SchedulingException::class, 'invalidParticipantCount', 0);
+        $constraintException = DeprecatedCall::to(SchedulingException::class, 'constraintViolation', 'test constraint');
+        $scheduleException = DeprecatedCall::to(SchedulingException::class, 'invalidSchedule', 'test reason');
 
         // When: Checking instance types
         // Then: All should be InvalidConfigurationException instances
@@ -91,7 +92,7 @@ describe('SchedulingException', function (): void {
 
         foreach ($zeroCases as $count) {
             // When: Creating exception with edge case count
-            $exception = SchedulingException::invalidParticipantCount($count);
+            $exception = DeprecatedCall::to(SchedulingException::class, 'invalidParticipantCount', $count);
 
             // Then: Should handle gracefully with consistent messaging
             expect($exception->getMessage())->toContain("Invalid participant count: $count");
@@ -111,7 +112,7 @@ describe('SchedulingException', function (): void {
 
         foreach ($emptyCases as $constraintName) {
             // When: Creating constraint violation with empty name
-            $exception = SchedulingException::constraintViolation($constraintName);
+            $exception = DeprecatedCall::to(SchedulingException::class, 'constraintViolation', $constraintName);
 
             // Then: Should handle gracefully
             expect($exception->getMessage())->toBe("Constraint violation: $constraintName");
@@ -127,7 +128,7 @@ describe('SchedulingException', function (): void {
 
         foreach ($emptyCases as $reason) {
             // When: Creating invalid schedule with empty reason
-            $exception = SchedulingException::invalidSchedule($reason);
+            $exception = DeprecatedCall::to(SchedulingException::class, 'invalidSchedule', $reason);
 
             // Then: Should handle gracefully
             expect($exception->getMessage())->toBe("Invalid schedule: $reason");
@@ -154,9 +155,9 @@ describe('SchedulingException', function (): void {
     it('factory methods create exceptions with diagnostic capabilities', function (): void {
         // Given: Exceptions from all factory methods
         $exceptions = [
-            SchedulingException::invalidParticipantCount(1),
-            SchedulingException::constraintViolation('test constraint'),
-            SchedulingException::invalidSchedule('test reason'),
+            DeprecatedCall::to(SchedulingException::class, 'invalidParticipantCount', 1),
+            DeprecatedCall::to(SchedulingException::class, 'constraintViolation', 'test constraint'),
+            DeprecatedCall::to(SchedulingException::class, 'invalidSchedule', 'test reason'),
         ];
 
         foreach ($exceptions as $exception) {
@@ -173,7 +174,7 @@ describe('SchedulingException', function (): void {
     // Tests that factory methods preserve standard exception functionality
     it('factory methods preserve standard exception functionality', function (): void {
         // Given: Exception from factory method
-        $exception = SchedulingException::invalidParticipantCount(1);
+        $exception = DeprecatedCall::to(SchedulingException::class, 'invalidParticipantCount', 1);
 
         // When: Using standard exception methods
         // Then: Should work as expected
@@ -192,20 +193,20 @@ describe('SchedulingException', function (): void {
         // Given: Realistic scheduling scenarios
 
         // Scenario 1: Single participant tournament
-        $singleParticipantException = SchedulingException::invalidParticipantCount(1);
+        $singleParticipantException = DeprecatedCall::to(SchedulingException::class, 'invalidParticipantCount', 1);
         expect($singleParticipantException->getDiagnosticReport())->toContain('participant_count: 1');
         expect($singleParticipantException->getDiagnosticReport())->toContain('minimum_required: 2');
 
         // Scenario 2: Complex constraint violation
         $complexConstraint = 'ConsecutiveRoleConstraint: Player Alice would exceed maximum consecutive home games (3) in round 4';
-        $constraintException = SchedulingException::constraintViolation($complexConstraint);
+        $constraintException = DeprecatedCall::to(SchedulingException::class, 'constraintViolation', $complexConstraint);
         /** @var InvalidConfigurationException $constraintException */
         expect($constraintException->getContext()['constraint'])->toBe($complexConstraint);
         expect($constraintException->getDiagnosticReport())->toContain($complexConstraint);
 
         // Scenario 3: Schedule validation failure
         $validationReason = 'Generated schedule has 8 events but expected 12 for 4 participants with 2 legs';
-        $scheduleException = SchedulingException::invalidSchedule($validationReason);
+        $scheduleException = DeprecatedCall::to(SchedulingException::class, 'invalidSchedule', $validationReason);
         /** @var InvalidConfigurationException $scheduleException */
         expect($scheduleException->getContext()['reason'])->toBe($validationReason);
         expect($scheduleException->getDiagnosticReport())->toContain($validationReason);
@@ -218,7 +219,7 @@ describe('SchedulingException', function (): void {
 
         foreach ($largeCounts as $count) {
             // When: Creating exception with large count
-            $exception = SchedulingException::invalidParticipantCount($count);
+            $exception = DeprecatedCall::to(SchedulingException::class, 'invalidParticipantCount', $count);
 
             // Then: Should handle without overflow or errors
             /** @var InvalidConfigurationException $exception */
@@ -230,7 +231,7 @@ describe('SchedulingException', function (): void {
     // Tests that factory method exceptions have proper inheritance chain
     it('factory method exceptions have proper inheritance chain', function (): void {
         // Given: Exception from factory method
-        $exception = SchedulingException::invalidParticipantCount(1);
+        $exception = DeprecatedCall::to(SchedulingException::class, 'invalidParticipantCount', 1);
 
         // When: Checking inheritance
         // Then: Should have complete inheritance chain
@@ -244,9 +245,9 @@ describe('SchedulingException', function (): void {
     // and that its report is the one it has always written
     it('gives each factory exception a reason and leaves its report as it was', function (): void {
         // Given: One exception from each factory
-        $count = SchedulingException::invalidParticipantCount(1);
-        $constraint = SchedulingException::constraintViolation('test constraint');
-        $schedule = SchedulingException::invalidSchedule('test reason');
+        $count = DeprecatedCall::to(SchedulingException::class, 'invalidParticipantCount', 1);
+        $constraint = DeprecatedCall::to(SchedulingException::class, 'constraintViolation', 'test constraint');
+        $schedule = DeprecatedCall::to(SchedulingException::class, 'invalidSchedule', 'test reason');
 
         // Then: Each has the reason of its factory
         assert($count instanceof InvalidConfigurationException);

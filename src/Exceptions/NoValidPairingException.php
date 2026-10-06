@@ -11,6 +11,8 @@ use MissionGaming\Tactician\DTO\Participant;
  *
  * Raised when repeat-pairing avoidance and constraints leave no complete
  * set of pairings for the round being generated.
+ *
+ * @api
  */
 class NoValidPairingException extends SchedulingException
 {

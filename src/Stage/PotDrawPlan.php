@@ -40,6 +40,8 @@ use Override;
  * The plan describes every feasible configuration, including those
  * `Scheduling\PotDrawScheduler` cannot draw yet, so a schedule made
  * elsewhere can be validated against it.
+ *
+ * @experimental
  */
 final readonly class PotDrawPlan implements StagePlan
 {

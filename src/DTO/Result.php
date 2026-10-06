@@ -12,6 +12,8 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * A Result records which participant won (or that the event was drawn) and
  * optionally the numeric scores per participant. Events without a Result are
  * simply not played yet.
+ *
+ * @api
  */
 readonly class Result
 {

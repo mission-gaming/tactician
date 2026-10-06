@@ -8,6 +8,8 @@ use MissionGaming\Tactician\DTO\Participant;
 
 /**
  * Collects and organizes constraint violations during scheduling.
+ *
+ * @experimental
  */
 class ConstraintViolationCollector
 {

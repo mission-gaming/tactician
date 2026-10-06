@@ -16,6 +16,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * never orders results by anything else. Two movable events may carry the
  * same participant pairing (the input is a multigraph); only the id is
  * unique.
+ *
+ * @api
  */
 final readonly class MovableEvent
 {

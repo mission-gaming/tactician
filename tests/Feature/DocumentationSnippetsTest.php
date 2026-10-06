@@ -278,6 +278,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
     })->with([
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
         'ids that are equal as numbers or hold a separator' => ['docs/USAGE.md', 'count($entrySchedule)', ["6 events\n"], []],
+        'the leg count of a format without legs, and the exception a deprecated factory built' => [
+            'docs/USAGE.md',
+            '$swissContext->getPlan()->getLegs()',
+            ["NULL\nint(1)\nbool(true)\nstring(49) \"Invalid participant count: 1. Must be at least 2.\"\n"],
+            [],
+        ],
         'a result replaced in the last round' => [
             'docs/USAGE.md',
             '$corrected = $state->withResultReplaced(',

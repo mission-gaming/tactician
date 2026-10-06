@@ -9,6 +9,8 @@ use Override;
 
 /**
  * Breaks ties by number of wins.
+ *
+ * @experimental
  */
 readonly class WinsTiebreaker implements TiebreakerInterface
 {

@@ -17,6 +17,8 @@ use Override;
  *   slots — the operator must add);
  * - participant null — the grid as a whole is smaller than the event
  *   list.
+ *
+ * @api
  */
 final readonly class CapacityExceeded implements RepackViolation
 {

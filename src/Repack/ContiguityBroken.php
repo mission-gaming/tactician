@@ -14,6 +14,8 @@ use Override;
  * movable assignment — pinned slots count toward the occupancy pattern,
  * but a purely-pinned session is historical fact the repack cannot
  * influence. The magnitude is the number of empty interior slots.
+ *
+ * @api
  */
 final readonly class ContiguityBroken implements RepackViolation
 {

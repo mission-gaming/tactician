@@ -20,6 +20,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  *
  * Which events are pinned is domain policy about historical provenance
  * and stays entirely on the caller's side.
+ *
+ * @api
  */
 final readonly class PinnedEvent
 {

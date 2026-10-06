@@ -15,6 +15,8 @@ use Exception;
  * or malformed serialized data is an {@see InvalidInputException}, which is
  * not a `SchedulingException`. To catch every library exception with one
  * clause, catch {@see TacticianException}.
+ *
+ * @api
  */
 abstract class SchedulingException extends Exception implements TacticianException
 {
@@ -24,6 +26,12 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
      */
     abstract public function getDiagnosticReport(): string;
 
+    /**
+     * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
+     *             it. Construct an `InvalidConfigurationException` with
+     *             `InvalidConfigurationReason::TooFewParticipants` instead.
+     */
+    #[\Deprecated(message: 'construct an InvalidConfigurationException with an InvalidConfigurationReason instead', since: '0.2.2')]
     public static function invalidParticipantCount(int $count): self
     {
         $message = "Invalid participant count: {$count}. Must be at least 2.";
@@ -37,6 +45,12 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
         );
     }
 
+    /**
+     * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
+     *             it. Construct an `InvalidConfigurationException` with
+     *             `InvalidConfigurationReason::ConstraintViolation` instead.
+     */
+    #[\Deprecated(message: 'construct an InvalidConfigurationException with an InvalidConfigurationReason instead', since: '0.2.2')]
     public static function constraintViolation(string $constraint): self
     {
         $message = "Constraint violation: {$constraint}";
@@ -50,6 +64,12 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
         );
     }
 
+    /**
+     * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
+     *             it. Construct an `InvalidConfigurationException` with
+     *             `InvalidConfigurationReason::InvalidSchedule` instead.
+     */
+    #[\Deprecated(message: 'construct an InvalidConfigurationException with an InvalidConfigurationReason instead', since: '0.2.2')]
     public static function invalidSchedule(string $reason): self
     {
         $message = "Invalid schedule: {$reason}";

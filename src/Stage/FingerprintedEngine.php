@@ -36,6 +36,8 @@ namespace MissionGaming\Tactician\Stage;
  *
  * Fingerprints that begin with `tactician:` are the library's. Give an
  * engine of your own a string that does not.
+ *
+ * @experimental
  */
 interface FingerprintedEngine
 {

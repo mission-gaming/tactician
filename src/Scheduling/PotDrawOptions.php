@@ -21,6 +21,8 @@ use Override;
  * the scheduler, so that a draw can be stored and repeated from plain data:
  * the same entrants, pots, opponents per pot and seed give the same schedule
  * on every call.
+ *
+ * @experimental
  */
 final readonly class PotDrawOptions implements SchedulerOptions
 {

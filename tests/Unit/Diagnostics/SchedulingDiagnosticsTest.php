@@ -11,6 +11,7 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StagePlan;
+use MissionGaming\Tactician\Tests\Support\DeprecatedCall;
 
 describe('SchedulingDiagnostics', function (): void {
     beforeEach(function (): void {
@@ -121,7 +122,9 @@ describe('SchedulingDiagnostics', function (): void {
     });
 
     it('flags small multi-leg fields as conflicts', function (): void {
-        $conflicts = $this->diagnostics->identifyConstraintConflicts(
+        $conflicts = DeprecatedCall::to(
+            $this->diagnostics,
+            'identifyConstraintConflicts',
             $this->participants,
             $this->constraints,
             new RoundRobinPlan($this->participants, 2)
@@ -171,7 +174,9 @@ describe('SchedulingDiagnostics', function (): void {
             }
         };
 
-        $conflicts = $this->diagnostics->identifyConstraintConflicts(
+        $conflicts = DeprecatedCall::to(
+            $this->diagnostics,
+            'identifyConstraintConflicts',
             [$this->alice],
             $this->constraints,
             $emptyPlan
@@ -236,7 +241,7 @@ describe('SchedulingDiagnostics', function (): void {
             impossiblePairings: ['Alice vs Bob']
         );
 
-        $suggestions = $this->diagnostics->suggestConstraintAdjustments($report);
+        $suggestions = DeprecatedCall::to($this->diagnostics, 'suggestConstraintAdjustments', $report);
 
         expect($suggestions)->toContain('Some participant pairings cannot be satisfied with current constraints');
         expect($suggestions)->toContain('Review constraint configuration for potential conflicts');
@@ -251,7 +256,7 @@ describe('SchedulingDiagnostics', function (): void {
             ['leg' => 2]
         );
 
-        $suggestions = $this->diagnostics->suggestConstraintAdjustments($report);
+        $suggestions = DeprecatedCall::to($this->diagnostics, 'suggestConstraintAdjustments', $report);
 
         expect($suggestions)->toContain('Consider relaxing constraints that may be preventing event generation');
         expect($suggestions)->toContain('Multi-leg constraint validation may require different strategy');

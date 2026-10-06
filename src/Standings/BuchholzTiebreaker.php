@@ -11,6 +11,8 @@ use Override;
  * Breaks ties by the sum of all opponents' ranking values (Buchholz system).
  *
  * Rewards having faced stronger opposition; commonly used in Swiss events.
+ *
+ * @experimental
  */
 readonly class BuchholzTiebreaker implements TiebreakerInterface
 {

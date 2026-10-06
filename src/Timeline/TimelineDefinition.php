@@ -26,6 +26,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * The definition owns the mechanism only: which slots exist. Parsing
  * competition config into a slot pattern, persistence, notifications,
  * and rescheduling policy stay application-side.
+ *
+ * @experimental
  */
 final readonly class TimelineDefinition
 {

@@ -15,6 +15,8 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * Each scheduler accepts exactly one SchedulerOptions type and rejects any
  * other loudly — there are no overloaded scalars whose meaning depends on
  * the algorithm. Null options mean the algorithm's documented defaults.
+ *
+ * @experimental
  */
 interface SchedulerInterface
 {

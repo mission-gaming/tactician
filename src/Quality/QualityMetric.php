@@ -15,6 +15,8 @@ use MissionGaming\Tactician\DTO\Schedule;
  * repeat spacing. One convention for all of them: **lower is better and
  * zero is ideal** — metrics measure defects, so weighted composition
  * needs no per-metric direction flags.
+ *
+ * @experimental
  */
 interface QualityMetric
 {

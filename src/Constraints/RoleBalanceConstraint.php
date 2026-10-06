@@ -21,6 +21,8 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * shifts one player's parity), so limits at or above those bounds are always
  * satisfiable with the built-in generator; mirrored multi-leg schedules
  * additionally end perfectly balanced.
+ *
+ * @experimental
  */
 readonly class RoleBalanceConstraint implements ConstraintInterface
 {

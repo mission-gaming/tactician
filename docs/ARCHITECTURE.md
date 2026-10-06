@@ -40,7 +40,7 @@ play completes. The `src/Stage/` family:
 - **RoundRobinOptions / SwissOptions**: Legs, leg strategy, backtracking and role assignment for round robin; rounds for Swiss (retiring the old "legs means rounds here" overload)
 - **RoleAssignmentInterface** (`src/RoleAssignment/`): Which participant of each round-robin pairing is first-named. The generator hands over one leg with the roles it proposes and takes it back with seatings reversed; the scheduler refuses an answer that changes anything else. `RoundParityRoleAssignment` (the default) returns the proposal. `BalancedRoleAssignment` ends every leg with each participant's two role counts at most 1 apart (field of even size) or equal (field of odd size): a closed rule for a circle layout, a chain-reversing repair for any other. See `docs/design/role-assignment.md`.
 - **PotDrawOptions**: Pots, opponents per pot and the seed of the draw. The seed is an option and not a `Randomizer`, so a draw is repeatable from plain data; `fromArray()` refuses unknown keys.
-- **BacktrackingRoundRobinGenerator**: Opt-in search over the round decompositions the circle method cannot reach (`RoundRobinOptions(backtracking: true)`): per-round perfect matchings built seat by seat under the constraints, both orientations tried, dead ends backtracking across rounds. Deterministic, step-bounded, loud about budget-exhausted vs proven-unsatisfiable.
+- **BacktrackingRoundRobinGenerator** (`@internal`): Opt-in search over the round decompositions the circle method cannot reach (`RoundRobinOptions(backtracking: true)`): per-round perfect matchings built seat by seat under the constraints, both orientations tried, dead ends backtracking across rounds. Deterministic, step-bounded, loud about budget-exhausted vs proven-unsatisfiable.
 - **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, roles proposed by round parity and decided by the configured role assignment, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first and generates from it.
 - **SwissScheduler**: Whole-schedule Swiss preset — drives SwissPairingEngine through the stage driver loop recording no results, which reduces Monrad pairing to random non-repeat pairing
 - **PotDrawScheduler**: Whole-schedule pot draw — a pot-constrained partial round robin, drawn up front and unrelated to Swiss pairing. Built by direct construction, with no search: within-pot rounds from a 1-factorisation of the pot, cross-pot rounds from cyclic shifts between two pots, scheduled by a 1-factorisation of the pots themselves; pots of odd size (two opponents per pot) pair up as partners that share four rounds. Roles are assigned inside the construction. The rounds are then mixed: pairs of rounds trade events along their alternating cycles, which moves events between rounds and changes none. The class docblock holds the argument for why every round is a perfect matching. It takes no constraints and no `Randomizer`: each call seeds its own from the options, so it keeps no state between calls. Pairwise by nature.
@@ -59,7 +59,7 @@ Maps generated schedules onto dates and times — the mechanism only; slot
 patterns come from application config, and persistence/notification
 policy stays app-side:
 - **TimelineDefinition**: The declarative per-stage slot model (zoned start, round interval, slots per round, slot interval, named resources), config-constructible with ISO 8601 durations. Wall-clock arithmetic in the stage's timezone (DST-safe weekly kickoffs); slot times emit in UTC. Resources (venue/pitch/court/board — generic by design) give each slot concurrent capacity, one event per resource.
-- **ZonedTime**: The one parser of a configured datetime, shared by the timeline, the blackout windows and the session grid. The declared timezone is authoritative, and the string must state its date in full and mean what it writes: PHP's parser would resolve `tomorrow`, `+1 week`, the empty string or a missing date against the clock, and would read a date that does not exist, a weekday name that is not the weekday of the date or a second timezone to another instant than the one written, so those are rejected before PHP sees them (the check is `DateTimeString`, internal, which reads the string with `date_parse()` and never the clock; `ScheduledEvent::fromArray()` applies it to a kickoff). A date without a time of day is midnight. The usage guide states the accepted form.
+- **ZonedTime** (`@internal`): The one parser of a configured datetime, shared by the timeline, the blackout windows and the session grid. The declared timezone is authoritative, and the string must state its date in full and mean what it writes: PHP's parser would resolve `tomorrow`, `+1 week`, the empty string or a missing date against the clock, and would read a date that does not exist, a weekday name that is not the weekday of the date or a second timezone to another instant than the one written, so those are rejected before PHP sees them (the check is `DateTimeString`, internal, which reads the string with `date_parse()` and never the clock; `ScheduledEvent::fromArray()` applies it to a kickoff). A date without a time of day is midnight. The usage guide states the accepted form.
 - **TimelineAssigner**: Deterministic slot filling over `Schedule::getEventsByRound()` (whole schedules) or a `RoundPairing` (results-driven stages). Loud validation: round overflow and round-less events fail with diagnostics.
 - **ScheduledEvent / ScheduledSchedule**: Decorations wrapping untouched events with their UTC kickoffs; serializable, so re-assignment is cheap and platforms persist assigned times.
 - **TimelineRule**: Time-aware validation over assigned kickoffs — `MinimumRestRule` (absolute rest between a participant's consecutive kickoffs, UTC-compared) and `BlackoutRule` (half-open windows, config-constructible). Deterministic assignment cannot route around a violated rule, so the assigner fails loudly with every violation; rules also validate standalone against accumulated round-by-round timelines. Deliberately distinct from generation constraints.
@@ -108,10 +108,10 @@ hard filters; metrics measure what remains:
 - **CallableConstraint**: Custom predicate constraints
 
 ### Validation & Diagnostics
-- **ScheduleValidator**: Core validation logic with mathematical verification
+- **ScheduleValidator** (`@internal`): Core validation logic with mathematical verification
 - **ConstraintViolationCollector**: Tracks and reports constraint violations
 - **DiagnosticReport**: Rich failure analysis and reporting system
-- **SchedulingDiagnostics**: Failure analysis with constraint attribution by probing — each missing pairing is tested against each constraint across candidate rounds and both orientations, against the actually-generated events. Yields blocked pairings (culprits named), per-constraint rejection counts, and structural-fullness notes; attached to generation failures via `IncompleteScheduleException::getAnalysis()`.
+- **SchedulingDiagnostics** (`@internal`): Failure analysis with constraint attribution by probing — each missing pairing is tested against each constraint across candidate rounds and both orientations, against the actually-generated events. Yields blocked pairings (culprits named), per-constraint rejection counts, and structural-fullness notes; attached to generation failures via `IncompleteScheduleException::getAnalysis()`.
 
 ### Exception Hierarchy
 - **TacticianException**: Marker interface (extends `\Throwable`, adds no method) implemented by every exception the library throws on purpose, so one catch clause covers the library. `tests/Feature/ExceptionMarkerTest.php` fails for a `throw` in `src/` of anything else
@@ -254,14 +254,14 @@ Tactician includes a sophisticated validation system ensuring tournament complet
 ### Validation Architecture
 
 #### Core Validation Components
-- **ValidatesScheduleCompleteness**: Trait providing common validation functionality
+- **ValidatesScheduleCompleteness** (`@internal`): Trait providing common validation functionality
 - **StagePlan**: Supplies the expected event count and format-specific integrity checks (`validateIntegrity()`) that validation runs against
-- **ScheduleValidator**: Validates a schedule against its plan — no algorithm-specific arithmetic of its own
+- **ScheduleValidator** (`@internal`): Validates a schedule against its plan — no algorithm-specific arithmetic of its own
 - **ConstraintViolationCollector**: Tracks and aggregates constraint violations during generation
 
 #### Diagnostic Infrastructure  
 - **DiagnosticReport**: Rich failure analysis with completion statistics and suggestions
-- **SchedulingDiagnostics**: Comprehensive diagnostic analysis and reporting system
+- **SchedulingDiagnostics** (`@internal`): Comprehensive diagnostic analysis and reporting system
 - **ConstraintViolation**: Detailed violation information with context and descriptions
 
 ### Validation Process

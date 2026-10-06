@@ -19,6 +19,8 @@ use Override;
  * event counts, and pairwise meeting multiplicities. Generation, validation,
  * and diagnostics all read these facts from here — this class is the single
  * home of the round-robin arithmetic.
+ *
+ * @experimental
  */
 final readonly class RoundRobinPlan implements PairwisePlan
 {

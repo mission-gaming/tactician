@@ -20,6 +20,8 @@ namespace MissionGaming\Tactician\Stage;
  *         $state = $state->withRoundPlayed($pairing, $results);
  *     }
  *     $outcome = $engine->getOutcome($state);          // feed progression
+ *
+ * @experimental
  */
 interface StageEngineInterface
 {

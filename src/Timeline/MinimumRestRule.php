@@ -19,6 +19,8 @@ use Override;
  * so DST transitions cannot shrink or stretch the guaranteed rest. Any
  * positive rest also forbids double-booking (two kickoffs at the same
  * instant violate it by definition).
+ *
+ * @experimental
  */
 final readonly class MinimumRestRule implements TimelineRule
 {

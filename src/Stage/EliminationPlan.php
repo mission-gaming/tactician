@@ -23,6 +23,8 @@ use Override;
  * that — legsPerTie is a tie-structure fact exposed as getLegsPerTie(),
  * and conflating the two would recreate the legs/rounds overload this
  * design removed.
+ *
+ * @experimental
  */
 final readonly class EliminationPlan implements StagePlan
 {
