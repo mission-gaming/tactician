@@ -8,8 +8,9 @@ namespace MissionGaming\Tactician\Exceptions;
  * Why a configuration was rejected, as a value code can branch on.
  *
  * {@see InvalidConfigurationException::getReason()} returns one of these for
- * every configuration error the library raises, so a caller does not have to
- * match the message text. A case says what kind of mistake was made, not
+ * a configuration error the library raises, so a caller does not have to
+ * match the message text. The errors of `Stage\StageState` are the exception:
+ * they state no reason yet, and `getReason()` returns null for them. A case says what kind of mistake was made, not
  * which component found it: `TooFewParticipants` comes from the round-robin
  * scheduler, the Swiss engine and the elimination engines alike. The
  * exception's context (`getContext()`) carries the values involved.
@@ -59,7 +60,9 @@ enum InvalidConfigurationReason: string
 
     /**
      * A value has the wrong type: a string where an integer is needed, an
-     * object of the wrong class, a list entry of the wrong shape.
+     * object of the wrong class, a list entry of the wrong shape. A required
+     * key that plain-data configuration leaves out is reported this way too:
+     * the value read for it is null, which is not of the type needed.
      */
     case WrongValueType = 'wrong_value_type';
 

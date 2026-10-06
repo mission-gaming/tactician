@@ -12,6 +12,14 @@ namespace MissionGaming\Tactician\Exceptions;
  * other and no repack can be built over them: one of the two events has to
  * be moved or unpinned by the caller. `getEventIds()` says which two.
  *
+ * The request checks the capacity of a slot before it checks participants.
+ * Two events pinned at one position of a grid whose slots hold one event
+ * (the default) are therefore reported as
+ * {@see InvalidConfigurationReason::PinCapacityExceeded}, by a plain
+ * InvalidConfigurationException that carries the position and no event ID,
+ * whether or not they share a participant. This exception is raised where
+ * the slot has room for both events and a participant is in both.
+ *
  * It is an {@see InvalidConfigurationException}, so a catch clause written
  * for that class still matches. Its reason is always
  * {@see InvalidConfigurationReason::PinConflict}, and its context holds the

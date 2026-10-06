@@ -69,7 +69,7 @@ anything else that competes.
 | **Movable event** | An existing event the repack may place (`MovableEvent`): an opaque caller-supplied stable id and two participants. The movable set is a multigraph — the same pairing may occur more than once. |
 | **Pinned event** | An event already on the grid that must not move (`PinnedEvent`). It occupies its position for both participants, consumes slot capacity, and may name participants absent from the movable set. Which events are pinned is caller policy about historical provenance. |
 | **Repack violation** | One structured compromise in a repack outcome (`RepackViolation`): double-booking (audited, never produced), unplaced events, interior gaps, late starts, exceeded capacity — data with participant/session/magnitude, never prose. The caller renders its own messages and decides what is fatal. |
-| **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. |
+| **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. Where the two events also exceed the capacity of the slot, the request reports that instead (`PinCapacityExceeded`). |
 | **Configuration error reason** | The kind of mistake behind an `InvalidConfigurationException`, as a case of the `InvalidConfigurationReason` enum (`getReason()`). It says what was wrong, not which component found it, and its backing string is a stable identifier. Code branches on the reason and never on the message text. See [Configuration Errors](#configuration-errors). |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
@@ -1379,9 +1379,12 @@ a different reader:
 | `getRequirements()` | What the failing component requires, one statement per entry; empty when it states none | A screen that lists the rules next to the error |
 | `getDiagnosticReport()` | The issue, every context value and the requirements, as text | An operator, a log |
 
-The message (`getMessage()`) is the same sentence for every instance of a
-mistake. It names no event and no participant; those are in the context and
-in the report.
+The message (`getMessage()`) is a sentence for a person. Most messages are
+the same for every instance of a mistake and name no event and no
+participant (every repack request error is like that); a few write a value
+into the sentence, such as the labels of a drawn tie. Either way, read the
+values from the context and the report, and tell mistakes apart by the
+reason.
 
 A repack request that pins one participant in two events at the same session
 and slot throws `PinConflictException`, a subclass that carries the two event
@@ -1433,6 +1436,12 @@ Issue: A participant is pinned twice at one position
 • event_ids: ["e1", "e2"]
 ```
 
+The grid above holds two events per slot. A request checks the capacity of a
+slot before it checks participants, so on a grid whose slots hold one event
+(the default) the same two pins are reported as `PinCapacityExceeded`, by an
+`InvalidConfigurationException` whose context has the session, the slot and
+the capacity, and no event ID.
+
 `PinConflictException` also has `getParticipantId()`, `getSession()` and
 `getSlot()`. It is an `InvalidConfigurationException`, so a catch clause
 written for that class matches it, and its message is the one that class
@@ -1478,7 +1487,10 @@ JSON-decoded configuration can) is reported the same way, with the reason
 
 The report writes a list value out in full, in its own order, with strings in
 double quotes (`event_ids: ["e1", "e2"]`) and with keys where the array is not
-a list (`[from: "2026-01-01", to: "2026-01-02"]`). An object is written as its
+a list (`[from: "2026-01-01", to: "2026-01-02"]`). Inside the quotes a double
+quote and a backslash are written with a backslash before them and a control
+character as its C escape (`\n`, `\000`), so one entry is one quoted run on
+one line. An object is written as its
 class name. Two bounds keep it readable: a list of more than 20 entries is cut
 after the twentieth and followed by the number left out
 (`... 80 more of 100`), and a list nested more than three levels deep is
@@ -1506,7 +1518,7 @@ identifier for logs and stored data):
 | `UnsupportedOptions` | `unsupported_options` | A scheduler was given the options object of another format |
 | `IncompatibleOptions` | `incompatible_options` | Two valid settings cannot be used together, or one needs another that is missing |
 | `UnknownIdentifier` | `unknown_identifier` | A strategy, algorithm or mode string is not a known identifier |
-| `WrongValueType` | `wrong_value_type` | A value has the wrong type |
+| `WrongValueType` | `wrong_value_type` | A value has the wrong type, or a required key of plain-data configuration is missing |
 | `ValueOutOfRange` | `value_out_of_range` | A number is outside the range allowed for it |
 | `EmptyList` | `empty_list` | A list that needs at least one entry is empty |
 | `DuplicateName` | `duplicate_name` | Two entries of one list carry the same name |
@@ -1540,7 +1552,9 @@ A case says what kind of mistake was made, not which component found it:
 and the elimination engines alike. One group of errors has no reason yet:
 those `StageState` raises while a round or its results are recorded
 (`withRoundPlayed()`, `withAdditionalResults()`, and a duplicate ID given to
-`start()`). Their `getReason()` returns null.
+`start()`). Their `getReason()` returns null, and because they state neither
+a reason nor requirements their report still ends with the round-robin
+"REQUIREMENTS" block, which does not describe them. Both are known gaps.
 
 ### Catching Every Library Exception
 
