@@ -20,8 +20,8 @@ of expressions rewritten to an equivalent form have changed since 0.2.0. No
 public signature has changed, and generated output for a fixed input and seed
 is identical. Upgrading from 0.2.0 needs no code change.
 
-The installed package is smaller: it now carries only `src/`, `composer.json`,
-`LICENSE`, `README.md` and `CHANGELOG.md`.
+The installed package is smaller: tests, documentation, examples and tool
+configuration are no longer installed into a consumer's `vendor/` directory.
 
 ### Added
 
@@ -41,8 +41,9 @@ The installed package is smaller: it now carries only `src/`, `composer.json`,
   `php` code block of `README.md` and `docs/USAGE.md`, each in a PHP process of
   its own under `E_ALL`. A block that does not parse, throws, or emits a
   warning or deprecation fails the suite, as does one that stops before its
-  last line. The values and printed output the two documents state are pinned
-  in the same test.
+  last line. A block that never returns is stopped by a time limit and fails
+  by name instead of hanging the suite. The values and printed output the two
+  documents state are pinned in the same test.
 - Checked results for every example. Each script in `examples/` now computes
   a named set of results and hands it to one shared renderer
   (`examples/support/Example.php`), which shows it as text on the command line
@@ -56,10 +57,6 @@ The installed package is smaller: it now carries only `src/`, `composer.json`,
 - A test that fails when a script in `examples/` is missing from
   `examples/README.md` or `examples/index.php`, or when either lists a script
   that does not exist.
-- A time limit on each block the documentation-snippet test executes: a block
-  that never returns is stopped and fails by name instead of hanging the
-  suite.
-- A documentation step in the release checklist (`docs/RELEASING.md`).
 - Governance files: a security policy (`SECURITY.md`), code owners, a pull
   request template with a compatibility section, and issue forms for bug
   reports and feature requests.
@@ -78,9 +75,8 @@ The installed package is smaller: it now carries only `src/`, `composer.json`,
 
 - The workflows use the current major versions of the checkout, cache and
   coverage-upload actions.
-- The static analysis gates now check something. None of this changes what
-  the library does: under `src/` it is a reformat and rewrites with the same
-  result.
+- The static analysis gates now check something. The reformat and the
+  equivalent rewrites under `src/` come from them.
   - PHPStan analyses `src/` at level 9 (the tests stay at level 8), with
     `phpstan-strict-rules` and `phpstan-deprecation-rules`. What the strict
     rules found in existing code and was not fixed is recorded in two baseline
@@ -106,11 +102,9 @@ The installed package is smaller: it now carries only `src/`, `composer.json`,
   the output of the example that failed.
 - The dist archive, which is what Composer installs, carries only the
   library: `src/`, `composer.json`, `LICENSE`, `README.md` and `CHANGELOG.md`.
-  Tests, documentation, examples and tool configuration are no longer
-  installed into a consumer's `vendor/` directory. A test
-  (`tests/Feature/DistArchiveTest.php`) guards the archive's contents. The
-  repository also gains an `.editorconfig`, and its `.gitignore` patterns are
-  anchored to the root.
+  A test (`tests/Feature/DistArchiveTest.php`) guards the archive's contents.
+  The repository also gains an `.editorconfig`, and its `.gitignore` patterns
+  are anchored to the root.
 - Documentation and design notes describe consuming applications generically.
   A `Restricted terms` CI job checks tracked files and paths against a list
   the maintainers keep as a repository secret.
