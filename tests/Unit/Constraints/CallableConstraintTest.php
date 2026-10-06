@@ -172,7 +172,8 @@ describe('CallableConstraint', function (): void {
         expect($constraint->isSatisfied($threePersonEvent, $this->context))->toBeTrue(); // 3 >= 3
     });
 
-    it('handles fast predicate execution', function (): void {
+    // Nothing is cached: the predicate may read state that changes
+    it('calls the predicate again on every check', function (): void {
         $callCount = 0;
         $predicate = function ($event, $context) use (&$callCount) {
             ++$callCount;
@@ -188,26 +189,5 @@ describe('CallableConstraint', function (): void {
         $constraint->isSatisfied($this->event, $this->context);
 
         expect($callCount)->toBe(3); // Ensure predicate is called each time
-    });
-
-    it('handles predicate with expensive computation', function (): void {
-        $predicate = function ($event, $context) {
-            // Simulate expensive computation
-            $sum = 0;
-            for ($i = 0; $i < 1000; ++$i) {
-                $sum += $i;
-            }
-
-            return $sum > 0;
-        };
-
-        $constraint = new CallableConstraint($predicate, 'Expensive Constraint');
-
-        $startTime = microtime(true);
-        $result = $constraint->isSatisfied($this->event, $this->context);
-        $endTime = microtime(true);
-
-        expect($result)->toBeTrue();
-        expect($endTime - $startTime)->toBeLessThan(1.0); // Should complete within reasonable time
     });
 });

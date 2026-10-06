@@ -18,6 +18,8 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * logic and schedule serialization stay unaware of times and
  * re-assignment is cheap. Kickoffs are always UTC — display-timezone
  * policy stays application-side.
+ *
+ * @experimental
  */
 final readonly class ScheduledEvent
 {

@@ -20,5 +20,7 @@ namespace MissionGaming\Tactician\Exceptions;
  * `\LogicException` and reports a defect in the library, and from
  * {@see InvalidConfigurationException}, which reports a configuration that
  * cannot work: an object without the value is configured correctly.
+ *
+ * @api
  */
 final class UnavailableValueException extends \LogicException implements TacticianException {}

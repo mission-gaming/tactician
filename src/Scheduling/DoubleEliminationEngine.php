@@ -46,6 +46,8 @@ use Override;
  * deliberately no champion accessor - rank 1 of the outcome's standings,
  * or MatchOutcomeSelector::winners() over the final round, is the
  * consumer's derivation.
+ *
+ * @experimental
  */
 final readonly class DoubleEliminationEngine implements StageEngineInterface, FingerprintedEngine
 {

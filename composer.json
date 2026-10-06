@@ -85,6 +85,11 @@
             "@putenv UPDATE_GOLDEN=1",
             "pest tests/Feature/GoldenOutputTest.php"
         ],
+        "mutation": [
+            "Composer\\Config::disableProcessTimeout",
+            "@putenv XDEBUG_MODE=coverage",
+            "pest --configuration=phpunit.mutation.xml --mutate --everything --covered-only --path=src/Scheduling,src/Repack/Internal --parallel"
+        ],
         "norm": "composer normalize --dry-run",
         "norm-fix": "composer normalize",
         "phpstan": [

@@ -20,6 +20,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  *   cut.
  * - grandFinalReset: double elimination's reset match when the losers
  *   champion wins the grand final.
+ *
+ * @experimental
  */
 final readonly class EliminationOptions
 {

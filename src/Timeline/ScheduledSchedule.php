@@ -22,6 +22,8 @@ use Override;
  * against a different timeline just produces another ScheduledSchedule.
  *
  * @implements IteratorAggregate<int, ScheduledEvent>
+ *
+ * @experimental
  */
 final readonly class ScheduledSchedule implements Countable, IteratorAggregate, JsonSerializable
 {

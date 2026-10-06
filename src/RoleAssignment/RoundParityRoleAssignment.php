@@ -18,6 +18,8 @@ use Override;
  *
  * This is the default of `RoundRobinOptions`, and it is what the library
  * did before role assignments existed.
+ *
+ * @experimental
  */
 final readonly class RoundParityRoleAssignment implements RoleAssignmentInterface
 {

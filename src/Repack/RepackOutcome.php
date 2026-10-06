@@ -21,6 +21,8 @@ use MissionGaming\Tactician\Repack\Internal\CanonicalEncoding;
  *
  * All three lists are deterministically ordered, so two outcomes from the
  * same input serialize byte-identically.
+ *
+ * @api
  */
 final readonly class RepackOutcome
 {

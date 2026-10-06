@@ -16,6 +16,10 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * event count and the plan's format-specific integrity checks. All shape
  * facts come from the plan; this service performs no algorithm-specific
  * arithmetic of its own.
+ *
+ * @internal Not public API: the schedulers run it before they return a
+ *           schedule. To check a schedule yourself, call the plan's
+ *           `validateIntegrity()`.
  */
 class ScheduleValidator
 {
@@ -66,7 +70,13 @@ class ScheduleValidator
 
     /**
      * Generate a detailed diagnostic report.
+     *
+     * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
+     *             it. There is no replacement: a generation that fails
+     *             throws an `IncompleteScheduleException`, and its
+     *             `getDiagnosticReport()` is the report.
      */
+    #[\Deprecated(message: 'there is no replacement; read IncompleteScheduleException::getDiagnosticReport() for the report of a failed generation', since: '0.2.2')]
     public function generateDiagnosticReport(
         ConstraintViolationCollector $violations,
         int $expectedEvents,
@@ -111,8 +121,14 @@ class ScheduleValidator
     /**
      * Generate constraint adjustment suggestions.
      *
+     * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
+     *             it. There is no replacement: the suggestions for a
+     *             generation that failed are in the `DiagnosticReport` that
+     *             `IncompleteScheduleException::getAnalysis()` returns.
+     *
      * @throws \DivisionByZeroError
      */
+    #[\Deprecated(message: 'there is no replacement; read the suggestions of a failed generation from IncompleteScheduleException::getAnalysis()', since: '0.2.2')]
     public function generateConstraintSuggestions(
         ConstraintViolationCollector $violations,
         int $participantCount

@@ -19,6 +19,8 @@ use MissionGaming\Tactician\DTO\Participant;
  * their own qualification hand the next stage that list directly with no
  * penalty. Per selection decision, use one ranking authority — Tactician's
  * standings or your own tables, not both for the same pool.
+ *
+ * @experimental
  */
 interface ProgressionSelector
 {

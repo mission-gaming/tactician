@@ -8,6 +8,8 @@ use MissionGaming\Tactician\DTO\Participant;
 
 /**
  * A single participant's line in the standings table.
+ *
+ * @experimental
  */
 readonly class StandingEntry
 {

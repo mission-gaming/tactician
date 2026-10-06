@@ -23,6 +23,12 @@ use MissionGaming\Tactician\Validation\ValidatesScheduleCompleteness;
 use Override;
 use Random\Randomizer;
 
+/**
+ * Generates a complete round-robin schedule up front: every participant
+ * meets every other participant once per leg, under the given constraints.
+ *
+ * @api
+ */
 class RoundRobinScheduler implements SchedulerInterface
 {
     use ValidatesScheduleCompleteness;

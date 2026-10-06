@@ -21,6 +21,8 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * returns and not a scan of the whole schedule. They return exactly what a
  * scan returns: the same events, under the keys they have in
  * getExistingEvents(), in that order.
+ *
+ * @experimental
  */
 readonly class SchedulingContext
 {
@@ -86,10 +88,16 @@ readonly class SchedulingContext
      *
      * Generation always runs leg by leg, so formats without a legs concept
      * (where the plan reports null) run as a single generation leg.
+     *
+     * @deprecated since 0.2.2, removed in 1.0.0. It answers 1 for a format
+     *             that has no legs (Swiss, elimination), which is not a
+     *             fact about the stage. Read `getPlan()->getLegs()` instead:
+     *             it is null where the concept does not apply.
      */
+    #[\Deprecated(message: 'it answers 1 for a format without legs; read getPlan()->getLegs() instead, which is null there', since: '0.2.2')]
     public function getTotalLegs(): int
     {
-        return $this->plan->getLegs() ?? 1;
+        return $this->generationLegs();
     }
 
     /**
@@ -105,7 +113,7 @@ readonly class SchedulingContext
      */
     public function isMultiLeg(): bool
     {
-        return $this->getTotalLegs() > 1;
+        return $this->generationLegs() > 1;
     }
 
     /**
@@ -117,7 +125,7 @@ readonly class SchedulingContext
      */
     public function getEventsForLeg(int $leg): array
     {
-        $totalLegs = $this->getTotalLegs();
+        $totalLegs = $this->generationLegs();
 
         if ($leg < 1 || $leg > $totalLegs) {
             return [];
@@ -278,5 +286,14 @@ readonly class SchedulingContext
         $next->index->adopt($this->index);
 
         return $next;
+    }
+
+    /**
+     * The number of legs generation runs through: the plan's, or one for a
+     * format without legs, whose events all belong to that single pass.
+     */
+    private function generationLegs(): int
+    {
+        return $this->plan->getLegs() ?? 1;
     }
 }

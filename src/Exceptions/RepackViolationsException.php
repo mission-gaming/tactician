@@ -15,6 +15,8 @@ use Override;
  * the schedule and the itemised compromises are both on the exception.
  * The default contract returns the outcome instead of throwing — see
  * RepackOutcome for why.
+ *
+ * @api
  */
 class RepackViolationsException extends SchedulingException
 {

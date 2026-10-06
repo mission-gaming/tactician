@@ -11,6 +11,8 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 /**
  * Ensures minimum number of rounds between repeat meetings of the same participants.
+ *
+ * @experimental
  */
 readonly class MinimumRestPeriodsConstraint implements ConstraintInterface
 {

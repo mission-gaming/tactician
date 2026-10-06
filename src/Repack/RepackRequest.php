@@ -33,6 +33,8 @@ use MissionGaming\Tactician\Exceptions\PinConflictException;
  * IncompatibleOptions): PHP would compute the score as a float, where one
  * weight can swallow the other, and the result would no longer be the
  * trade the weights state.
+ *
+ * @api
  */
 final readonly class RepackRequest
 {

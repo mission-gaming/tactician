@@ -15,6 +15,8 @@ use MissionGaming\Tactician\Exceptions\UnavailableValueException;
  * hasKickoff() is false, getKickoff() throws an
  * UnavailableValueException, and toArray() carries a null
  * `kickoff`. The grid has no instants, so the library states none.
+ *
+ * @api
  */
 final readonly class SlotAssignment
 {

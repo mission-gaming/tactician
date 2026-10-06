@@ -17,6 +17,8 @@ use MissionGaming\Tactician\DTO\Result;
  * pluggable value rather than assuming points. Tiebreakers already follow
  * the same shape (comparable values computed per participant); this is
  * the primary ranking made pluggable the same way.
+ *
+ * @experimental
  */
 interface RankingStrategy
 {

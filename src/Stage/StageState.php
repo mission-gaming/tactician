@@ -31,6 +31,8 @@ use MissionGaming\Tactician\Exceptions\JsonConversionException;
  *         $state = $state->withRoundPlayed($pairing, $results);
  *     }
  *     $outcome = $engine->getOutcome($state);
+ *
+ * @experimental
  */
 final readonly class StageState
 {

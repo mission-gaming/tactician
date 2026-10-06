@@ -22,6 +22,8 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  * Pooled stages combine into one outcome optionally carrying the pool
  * structure, so intra-pool slices (top 2 per pool) and cross-pool queries
  * (best 8 overall) share one input type.
+ *
+ * @experimental
  */
 final readonly class StageOutcome
 {

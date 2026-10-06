@@ -7,6 +7,12 @@ namespace MissionGaming\Tactician\Constraints;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
+/**
+ * A hard rule on a single event: generation keeps a candidate event only
+ * when every constraint it runs under is satisfied.
+ *
+ * @experimental
+ */
 interface ConstraintInterface
 {
     /**

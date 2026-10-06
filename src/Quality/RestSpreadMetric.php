@@ -16,6 +16,8 @@ use Override;
  * variance of those gaps. A participant playing every round — or resting
  * on a perfectly regular cycle — contributes zero. Round-less events
  * have no position in the rhythm and are skipped.
+ *
+ * @experimental
  */
 final readonly class RestSpreadMetric implements QualityMetric
 {

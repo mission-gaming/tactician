@@ -10,6 +10,8 @@ use MissionGaming\Tactician\DTO\Participant;
 
 /**
  * Represents a constraint violation that occurred during scheduling.
+ *
+ * @experimental
  */
 readonly class ConstraintViolation
 {

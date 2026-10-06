@@ -17,6 +17,8 @@ namespace MissionGaming\Tactician\Exceptions;
  * The backing strings are stable identifiers for logs, serialization and
  * caller-side dispatch. New cases may be added in any release, so a `match`
  * over the reason needs a `default` arm.
+ *
+ * @api
  */
 enum InvalidConfigurationReason: string
 {
@@ -276,9 +278,9 @@ enum InvalidConfigurationReason: string
 
     // The generic factories on SchedulingException
 
-    /** Built by {@see SchedulingException::constraintViolation()}. */
+    /** Built by {@see SchedulingException::constraintViolation()}, which is deprecated. */
     case ConstraintViolation = 'constraint_violation';
 
-    /** Built by {@see SchedulingException::invalidSchedule()}. */
+    /** Built by {@see SchedulingException::invalidSchedule()}, which is deprecated. */
     case InvalidSchedule = 'invalid_schedule';
 }

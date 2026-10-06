@@ -9,6 +9,8 @@ use MissionGaming\Tactician\DTO\Result;
 
 /**
  * A tiebreaker producing a comparable value per participant (higher is better).
+ *
+ * @experimental
  */
 interface TiebreakerInterface
 {

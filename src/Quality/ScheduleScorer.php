@@ -16,6 +16,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * lower-is-better with zero ideal, the score is a plain weighted sum,
  * and per-metric values are reported alongside it so a chosen schedule
  * is explainable rather than just "best".
+ *
+ * @experimental
  */
 final readonly class ScheduleScorer
 {

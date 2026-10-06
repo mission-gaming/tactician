@@ -32,6 +32,9 @@ use Throwable;
  * configuration contradict itself. Everywhere the timeline system accepts
  * plain-data times, the declared timezone field is authoritative and an
  * embedded zone that contradicts it is rejected loudly.
+ *
+ * @internal Not public API: the parser behind the `fromArray()` factories that
+ *           read a configured datetime. It carries no compatibility guarantee.
  */
 final readonly class ZonedTime
 {

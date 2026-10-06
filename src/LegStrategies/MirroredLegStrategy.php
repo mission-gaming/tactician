@@ -17,6 +17,8 @@ use Override;
  * In subsequent legs, the order is reversed — read as home/away in
  * football, red/blue corner in combat sports; the core concept is the
  * position within the event.
+ *
+ * @api
  */
 readonly class MirroredLegStrategy implements LegStrategyInterface
 {

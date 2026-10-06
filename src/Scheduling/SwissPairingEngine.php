@@ -52,6 +52,8 @@ use Random\Randomizer;
  * Constraints that reason about the tournament length (e.g.
  * SeedProtectionConstraint) need to know the planned number of rounds;
  * provide it via the plannedRounds constructor argument.
+ *
+ * @experimental
  */
 readonly class SwissPairingEngine implements StageEngineInterface, FingerprintedEngine
 {

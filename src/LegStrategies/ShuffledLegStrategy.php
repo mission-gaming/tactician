@@ -17,6 +17,8 @@ use Random\Randomizer;
  * This strategy randomizes the positional order of participants in each
  * pairing for every leg after the first, creating varied encounters
  * across legs while maintaining the same participant combinations.
+ *
+ * @api
  */
 readonly class ShuffledLegStrategy implements LegStrategyInterface
 {

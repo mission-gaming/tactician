@@ -26,6 +26,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * the event's winner or the leg wins decide, 'tie_winner' is not read at
  * all: it cannot overturn a decisive result, and a value that names
  * nobody in the tie goes unnoticed there.
+ *
+ * @experimental
  */
 final readonly class TieDecision
 {

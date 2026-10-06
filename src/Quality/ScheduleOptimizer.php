@@ -35,6 +35,8 @@ use Random\Randomizer;
  * Whole-schedule generators only: results-driven engines (Swiss,
  * elimination) pair from results that do not exist yet, so there is
  * nothing to sample up front.
+ *
+ * @experimental
  */
 final readonly class ScheduleOptimizer
 {

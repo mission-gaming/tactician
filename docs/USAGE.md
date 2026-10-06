@@ -24,6 +24,7 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Advanced Patterns](#advanced-patterns)
 - [Real-World Examples](#real-world-examples)
 - [Performance Considerations](#performance-considerations)
+- [Deprecations](#deprecations)
 
 ## Terminology
 
@@ -3103,8 +3104,8 @@ identifier for logs and stored data):
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
 | `TimelineCapacityExceeded` | `timeline_capacity_exceeded` | A round has more events than the timeline has places for |
-| `ConstraintViolation` | `constraint_violation` | Built by `SchedulingException::constraintViolation()` |
-| `InvalidSchedule` | `invalid_schedule` | Built by `SchedulingException::invalidSchedule()` |
+| `ConstraintViolation` | `constraint_violation` | Built by `SchedulingException::constraintViolation()`, which is [deprecated](#deprecations) |
+| `InvalidSchedule` | `invalid_schedule` | Built by `SchedulingException::invalidSchedule()`, which is [deprecated](#deprecations) |
 
 A case says what kind of mistake was made, not which component found it:
 `TooFewParticipants` comes from the round-robin scheduler, the Swiss engine
@@ -3540,5 +3541,97 @@ $optimizedConstraints = ConstraintSet::create()
     ->noRepeatPairings()  // The one you expect to reject least often
     ->build();
 ```
+
+## Deprecations
+
+A deprecated method still works and still returns what it returned before. It
+is removed in `1.0.0`. Until then, each one is marked in two ways:
+
+- The `@deprecated` docblock tag, which an IDE and a static analyser such as
+  PHPStan report where you call the method, on every PHP version.
+- PHP's `#[\Deprecated]` attribute. From PHP 8.4, a call emits an
+  `E_USER_DEPRECATED` notice that names the method and what to use instead.
+  PHP 8.3 does not act on the attribute, so a call there emits nothing.
+
+An application that turns every notice into an exception will therefore see a
+call to one of these methods fail on PHP 8.4 or later where it passes on
+PHP 8.3. Nothing in the library calls a deprecated method.
+
+All of the following are deprecated since `0.2.2`. Namespaces are relative to
+`MissionGaming\Tactician`.
+
+| Deprecated | Use instead |
+|------------|-------------|
+| `Scheduling\SchedulingContext::getTotalLegs()` | `getPlan()->getLegs()`. The method answers 1 for a format that has no legs (Swiss, elimination); the plan answers `null` there, because the concept does not apply. |
+| `Exceptions\SchedulingException::invalidParticipantCount()` | `new InvalidConfigurationException(...)` with `InvalidConfigurationReason::TooFewParticipants` |
+| `Exceptions\SchedulingException::constraintViolation()` | `new InvalidConfigurationException(...)` with `InvalidConfigurationReason::ConstraintViolation` |
+| `Exceptions\SchedulingException::invalidSchedule()` | `new InvalidConfigurationException(...)` with `InvalidConfigurationReason::InvalidSchedule` |
+| `Validation\ScheduleValidator::generateDiagnosticReport()` | No replacement. The report of a generation that failed is `IncompleteScheduleException::getDiagnosticReport()`. |
+| `Validation\ScheduleValidator::generateConstraintSuggestions()` | No replacement. The suggestions for a generation that failed are in the `DiagnosticReport` that `IncompleteScheduleException::getAnalysis()` returns. |
+| `Diagnostics\SchedulingDiagnostics::identifyConstraintConflicts()` | No replacement. |
+| `Diagnostics\SchedulingDiagnostics::suggestConstraintAdjustments()` | No replacement. The suggestions of an analysis are `DiagnosticReport::getSuggestions()`. |
+
+`getTotalLegs()` goes because of what it answers. The others are helpers
+that nothing in the library called. `ScheduleValidator` and
+`SchedulingDiagnostics` are also `@internal`: the schedulers run them, and
+what they find reaches you through the exception a scheduler throws (see
+[Error Handling](#error-handling)).
+
+Reading the leg count from the plan, and building the exception the factories
+built:
+
+```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
+use MissionGaming\Tactician\Stage\SwissPlan;
+
+$field = [
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
+];
+
+$swissContext = new SchedulingContext($field, new SwissPlan($field, 3));
+
+// Was: $swissContext->getTotalLegs(), which answered 1
+var_dump($swissContext->getPlan()->getLegs());      // NULL: Swiss has no legs
+var_dump($swissContext->getPlan()->getLegs() ?? 1); // int(1): a default you chose, where you need one
+
+// Was: SchedulingException::invalidParticipantCount(1)
+$issue = 'Invalid participant count: 1. Must be at least 2.';
+$tooFew = new InvalidConfigurationException(
+    $issue,
+    ['participant_count' => 1, 'minimum_required' => 2],
+    $issue,
+    reason: InvalidConfigurationReason::TooFewParticipants,
+    requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
+);
+
+var_dump($tooFew->getReason() === InvalidConfigurationReason::TooFewParticipants); // bool(true)
+var_dump($tooFew->getMessage()); // string(49) "Invalid participant count: 1. Must be at least 2."
+```
+
+The three factories built their exception the same way, and the block above
+builds exactly what `invalidParticipantCount(1)` returned: the sentence is
+both the issue and the exception message (leave the third argument out and
+the message begins "Invalid scheduler configuration: "), and the requirements
+are the round-robin list (leave them out and the diagnostic report has no
+"REQUIREMENTS" block). The other two differ in the sentence and the context
+only:
+
+- `invalidParticipantCount($count)`: the sentence
+  `"Invalid participant count: {$count}. Must be at least 2."`, the context
+  `['participant_count' => $count, 'minimum_required' => 2]`, the reason
+  `TooFewParticipants`.
+- `constraintViolation($constraint)`: the sentence
+  `"Constraint violation: {$constraint}"`, the context
+  `['constraint' => $constraint]`, the reason `ConstraintViolation`.
+- `invalidSchedule($reason)`: the sentence `"Invalid schedule: {$reason}"`,
+  the context `['reason' => $reason]`, the reason `InvalidSchedule`.
+
+---
 
 This guide covers the essential patterns for using Tactician effectively. For more advanced use cases or when contributing to the library, see the [Architecture documentation](ARCHITECTURE.md) and [Contributing guidelines](CONTRIBUTING.md).

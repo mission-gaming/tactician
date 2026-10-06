@@ -15,6 +15,11 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * This trait adds schedule completeness validation to scheduler classes,
  * ensuring that generated schedules match their stage plan and providing
  * detailed diagnostics when they don't.
+ *
+ * @internal Not public API: implementation the schedulers share. The public
+ *           method it declares is part of each scheduler that uses it; the
+ *           protected members are not, and a subclass of a scheduler must
+ *           not rely on them.
  */
 trait ValidatesScheduleCompleteness
 {

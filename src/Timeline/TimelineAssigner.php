@@ -23,6 +23,8 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  * loud: rounds with more events than slots, and schedules carrying
  * round-less events (which the round-grouped view would silently drop),
  * fail with diagnostics.
+ *
+ * @experimental
  */
 final readonly class TimelineAssigner
 {
