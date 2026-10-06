@@ -1542,6 +1542,8 @@ identifier for logs and stored data):
 | `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
+| `GridWithoutInstants` | `grid_without_instants` | A time was asked of a shape-only session grid, or of an assignment made on one |
+| `UnboundedCapacity` | `unbounded_capacity` | The capacity of a session grid was asked for as a number and is unbounded |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
 | `TimelineCapacityExceeded` | `timeline_capacity_exceeded` | A round has more events than the timeline has places for |
 | `ConstraintViolation` | `constraint_violation` | Built by `SchedulingException::constraintViolation()` |

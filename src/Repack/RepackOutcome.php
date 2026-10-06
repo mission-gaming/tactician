@@ -107,7 +107,7 @@ final readonly class RepackOutcome
      * Serialize to plain data. Deterministic: the same input request
      * always produces the same array, whatever order its lists were in.
      *
-     * @return array{assignments: array<array{event_id: string, session: int, slot: int, kickoff: string}>, unplaced: array<array{event_id: string, reason: string, participant: string|null}>, violations: array<array<string, mixed>>}
+     * @return array{assignments: array<array{event_id: string, session: int, slot: int, kickoff: string|null}>, unplaced: array<array{event_id: string, reason: string, participant: string|null}>, violations: array<array<string, mixed>>}
      */
     public function toArray(): array
     {

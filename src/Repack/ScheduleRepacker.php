@@ -35,6 +35,14 @@ use MissionGaming\Tactician\Repack\Internal\StepBudget;
  * nothing else). Pure: no clock reads, no I/O, no persistence. Bounded:
  * every search spends from the options' step budget.
  *
+ * A shape-only grid is repacked exactly as the instant-based grid of the
+ * same shape is: positions are all the algorithm reads. The assignments
+ * then carry no kickoff. A grid of unbounded capacity is repacked with no
+ * limit on the events sharing a slot other than that no participant is in
+ * two of them; it never produces a CapacityExceeded for the grid as a
+ * whole, and still produces one for a participant with more events than
+ * free positions, which no capacity changes.
+ *
  * Infeasibility is an outcome, not an exception: the returned
  * RepackOutcome carries the schedule plus every compromise as structured
  * data, and the caller decides what is fatal
@@ -129,6 +137,11 @@ final readonly class ScheduleRepacker
         }
         unset($byParticipant);
 
+        // An unbounded capacity becomes the number of events in the
+        // request: no slot can ever hold more than all of them, so that
+        // limit never binds, and no arithmetic on it can overflow
+        $capacityPerSlot = $grid->getCapacityLimit() ?? max(1, count($movables) + count($pins));
+
         $budget = new StepBudget($options->stepBudget);
 
         // Phase A: which session does every event play in?
@@ -137,7 +150,7 @@ final readonly class ScheduleRepacker
             $pinSlots,
             $pinCounts,
             $slotCounts,
-            $grid->getCapacityPerSlot(),
+            $capacityPerSlot,
             $eventIds,
             $participants
         );
@@ -160,7 +173,7 @@ final readonly class ScheduleRepacker
                 $pinSlots[$session] ?? [],
                 $pinCounts[$session] ?? [],
                 $slotCounts[$session],
-                $grid->getCapacityPerSlot()
+                $capacityPerSlot
             );
             foreach ($packed['assignments'] as $eventIndex => $slot) {
                 $positions[$eventIndex] = [$session, $slot];
@@ -193,7 +206,7 @@ final readonly class ScheduleRepacker
                 $pinSlots,
                 $pinCounts,
                 $slotCounts,
-                $grid->getCapacityPerSlot()
+                $capacityPerSlot
             );
             if ($position === null) {
                 $unplaced[] = new UnplacedEvent($eventIds[$eventIndex], UnplacedReason::NoSlotAvailable);
@@ -243,7 +256,7 @@ final readonly class ScheduleRepacker
                 $eventIds[$eventIndex],
                 $session,
                 $slot,
-                $grid->getSlotTime($session, $slot)
+                $grid->hasInstants() ? $grid->getSlotTime($session, $slot) : null
             );
         }
 

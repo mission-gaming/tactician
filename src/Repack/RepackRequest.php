@@ -102,13 +102,14 @@ final readonly class RepackRequest
 
             $position = $event->getSession() . ':' . $event->getSlot();
             $pinnedPerPosition[$position] = ($pinnedPerPosition[$position] ?? 0) + 1;
-            if ($pinnedPerPosition[$position] > $grid->getCapacityPerSlot()) {
+            $capacityLimit = $grid->getCapacityLimit();
+            if ($capacityLimit !== null && $pinnedPerPosition[$position] > $capacityLimit) {
                 throw new InvalidConfigurationException(
                     'Pinned events overflow a slot\'s declared capacity',
                     [
                         'session' => $event->getSession(),
                         'slot' => $event->getSlot(),
-                        'capacity_per_slot' => $grid->getCapacityPerSlot(),
+                        'capacity_per_slot' => $capacityLimit,
                     ],
                     reason: InvalidConfigurationReason::PinCapacityExceeded
                 );
