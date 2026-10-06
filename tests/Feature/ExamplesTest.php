@@ -1030,6 +1030,171 @@ it('displays nothing when another script includes the example', function (): voi
 });
 
 /**
+ * Whether the CI environment variable says this run is on CI.
+ *
+ * @param string|false $ci The CI environment variable, false when unset
+ */
+function exampleServerRunsOnCi(string|false $ci): bool
+{
+    return $ci !== false && !in_array(strtolower($ci), ['', '0', 'false'], true);
+}
+
+/**
+ * End a test that needs the built-in web server where none could be started.
+ *
+ * Elsewhere than on CI that is a harness limitation (a sandbox that forbids
+ * listening sockets) and the test is skipped with the reason. On CI a skip
+ * would let the page test pass without having run, so there it fails.
+ *
+ * @param string|false $ci The CI environment variable, false when unset
+ *
+ * @throws PHPUnit\Framework\AssertionFailedError On CI, where the test must run
+ * @throws PHPUnit\Framework\SkippedWithMessageException Elsewhere
+ */
+function exampleServerUnavailable(string $reason, string|false $ci): never
+{
+    if (exampleServerRunsOnCi($ci)) {
+        Assert::fail($reason . "\nOn CI this test must run; a skip would hide it.");
+    }
+
+    Assert::markTestSkipped($reason);
+}
+
+/**
+ * A local address (`127.0.0.1:port`) nothing listens on at the moment, or
+ * null when no local port can be opened here.
+ *
+ * The port is released again so that the server can bind it, which leaves a
+ * moment in which another process can take it: startExampleServer() asks for
+ * another address when that happens.
+ */
+function exampleServerFreeAddress(): ?string
+{
+    $probe = withoutWarnings(static fn () => stream_socket_server('tcp://127.0.0.1:0'));
+    if ($probe === false) {
+        return null;
+    }
+
+    $address = (string) stream_socket_get_name($probe, false);
+    fclose($probe);
+
+    return $address;
+}
+
+/**
+ * The last lines of what the server logged, indented, as they go into a report.
+ */
+function exampleServerLogTail(string $log): string
+{
+    $logged = array_slice(withoutWarnings(static fn () => file($log, FILE_IGNORE_NEW_LINES)) ?: [], -15);
+
+    return '    ' . implode("\n    ", $logged === [] ? ['(empty)'] : $logged);
+}
+
+// How often a server is started before the test gives up: once, and twice more on another port
+const EXAMPLE_SERVER_START_ATTEMPTS = 3;
+
+/**
+ * Start PHP's built-in web server on an address the callback supplies.
+ *
+ * The server is ready when it has logged that it started on that address,
+ * which it does once it listens. A connection that succeeds would not prove
+ * as much: it can be answered by another process that took the port first.
+ *
+ * A server that exits without having started (the port was taken between the
+ * probe and the bind) is started again on a new address, EXAMPLE_SERVER_START_ATTEMPTS
+ * times in all. A server that runs and still does not report itself within
+ * 15 seconds is not tried again: a new port would not change that.
+ *
+ * @param array<string, string> $environment Environment variables for the server, on top of the inherited ones
+ * @param Closure(): ?string $freeAddress An address to bind, as exampleServerFreeAddress() gives it
+ *
+ * @return array{server: resource, address: string, log: string}|string The running server (stop it with
+ *                                                                      stopExampleServer()), or the reason why none was started
+ *
+ * @throws PHPUnit\Framework\Exception
+ */
+function startExampleServer(string $workingDirectory, string $documentRoot, array $environment, Closure $freeAddress): array|string
+{
+    $failures = [];
+
+    for ($attempt = 1; $attempt <= EXAMPLE_SERVER_START_ATTEMPTS; ++$attempt) {
+        $address = $freeAddress();
+        if ($address === null) {
+            $failures[] = '  no local port can be opened here';
+
+            break;
+        }
+
+        $log = tempnam(sys_get_temp_dir(), 'example-server');
+        Assert::assertIsString($log);
+
+        $server = proc_open(
+            [
+                PHP_BINARY,
+                '-d', 'error_reporting=-1',
+                '-d', 'display_errors=1',
+                // The JIT is switched off for this server. OPcache does not run on
+                // the command line unless it is asked to, but the built-in server
+                // is another SAPI: there it runs, with whatever JIT the machine
+                // configures, and the PHP setup of the CI jobs turns the tracing
+                // JIT on. The tracing JIT of PHP 8.3 (seen on 8.3.35, on x86-64 and
+                // on ARM64) crashes the server process once the code the examples
+                // share has run often enough to be compiled: served in order, the
+                // fifteenth page kills it, on some runs and not on others. The
+                // crash is in the engine. It needs neither this harness nor a
+                // particular example, and the same pages are served complete
+                // without the JIT. What is tested here is the page each example
+                // serves, so the server gets the engine every PHP has by default.
+                '-d', 'opcache.jit=disable',
+                '-S', $address,
+                '-t', $documentRoot,
+            ],
+            [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => ['file', $log, 'a'], 2 => ['file', $log, 'a']],
+            $pipes,
+            $workingDirectory,
+            $environment === [] ? null : array_merge(getenv(), $environment)
+        );
+        Assert::assertIsResource($server, 'Could not start the built-in web server');
+
+        $deadline = microtime(true) + 15.0;
+        while (true) {
+            if (str_contains((string) file_get_contents($log), "(http://{$address}) started")) {
+                return ['server' => $server, 'address' => $address, 'log' => $log];
+            }
+
+            $running = proc_get_status($server)['running'];
+            if (!$running || microtime(true) > $deadline) {
+                break;
+            }
+            usleep(20_000);
+        }
+
+        $failures[] = "  {$address}, " . ($running ? 'still not listening after 15 seconds' : 'the server exited') . ":\n" . exampleServerLogTail($log);
+        stopExampleServer(['server' => $server, 'address' => $address, 'log' => $log]);
+
+        if ($running) {
+            break;
+        }
+    }
+
+    return 'The built-in web server did not start, after ' . count($failures) . ' of ' . EXAMPLE_SERVER_START_ATTEMPTS
+        . " attempts:\n" . implode("\n", $failures);
+}
+
+/**
+ * Stop a server startExampleServer() started and remove its log.
+ *
+ * @param array{server: resource, address: string, log: string} $started
+ */
+function stopExampleServer(array $started): void
+{
+    proc_terminate($started['server']);
+    proc_close($started['server']);
+    unlink($started['log']);
+}
+
+/**
  * Start PHP's built-in web server on a free local port, hand the callback a
  * function that requests a path from it, and stop it afterwards whatever
  * happens.
@@ -1039,54 +1204,24 @@ it('displays nothing when another script includes the example', function (): voi
  * the exchange to use as an assertion message: the address, the status line
  * or the error, the size of the body, whether the server is still running
  * or how it ended, and the end of what the server logged. A failure on CI
- * must be diagnosable from that report alone.
+ * must be diagnosable from that report alone. A request is made once: a
+ * server that does not answer is a finding, not something to try again.
  *
  * @param Closure(Closure(string): array{status: ?string, body: string, report: string}): void $requests
  * @param array<string, string> $environment Environment variables for the server, on top of the inherited ones
  *
  * @throws PHPUnit\Framework\Exception
- * @throws PHPUnit\Framework\SkippedWithMessageException When no server can be started here
+ * @throws PHPUnit\Framework\AssertionFailedError When no server can be started on CI
+ * @throws PHPUnit\Framework\SkippedWithMessageException When no server can be started elsewhere
  */
 function withExampleServer(string $workingDirectory, string $documentRoot, Closure $requests, array $environment = []): void
 {
-    // Ask the system for a free port, then release it for the server
-    $probe = withoutWarnings(static fn () => stream_socket_server('tcp://127.0.0.1:0'));
-    if ($probe === false) {
-        Assert::markTestSkipped('No local port can be opened here.');
+    $started = startExampleServer($workingDirectory, $documentRoot, $environment, exampleServerFreeAddress(...));
+    if (is_string($started)) {
+        exampleServerUnavailable($started, getenv('CI'));
     }
-    $address = (string) stream_socket_get_name($probe, false);
-    fclose($probe);
 
-    $log = tempnam(sys_get_temp_dir(), 'example-server');
-    Assert::assertIsString($log);
-
-    $server = proc_open(
-        [
-            PHP_BINARY,
-            '-d', 'error_reporting=-1',
-            '-d', 'display_errors=1',
-            // The JIT is switched off for this server. OPcache does not run on
-            // the command line unless it is asked to, but the built-in server
-            // is another SAPI: there it runs, with whatever JIT the machine
-            // configures, and the PHP setup of the CI jobs turns the tracing
-            // JIT on. The tracing JIT of PHP 8.3 (seen on 8.3.35, on x86-64 and
-            // on ARM64) crashes the server process once the code the examples
-            // share has run often enough to be compiled: served in order, the
-            // fifteenth page kills it, on some runs and not on others. The
-            // crash is in the engine. It needs neither this harness nor a
-            // particular example, and the same pages are served complete
-            // without the JIT. What is tested here is the page each example
-            // serves, so the server gets the engine every PHP has by default.
-            '-d', 'opcache.jit=disable',
-            '-S', $address,
-            '-t', $documentRoot,
-        ],
-        [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => ['file', $log, 'a'], 2 => ['file', $log, 'a']],
-        $pipes,
-        $workingDirectory,
-        $environment === [] ? null : array_merge(getenv(), $environment)
-    );
-    Assert::assertIsResource($server, 'Could not start the built-in web server');
+    ['server' => $server, 'address' => $address, 'log' => $log] = $started;
 
     // How the server ended, once it has: PHP names the signal only the first time it is asked
     $ended = null;
@@ -1130,8 +1265,6 @@ function withExampleServer(string $workingDirectory, string $documentRoot, Closu
             usleep(20_000);
         }
 
-        $logged = array_slice(file($log, FILE_IGNORE_NEW_LINES) ?: [], -15);
-
         return [
             'status' => $status,
             'body' => $body,
@@ -1140,33 +1273,14 @@ function withExampleServer(string $workingDirectory, string $documentRoot, Closu
                 . '  error: ' . ($error ?? '(none)') . "\n"
                 . '  body: ' . strlen($body) . " bytes\n"
                 . '  server: ' . ($ended ?? 'running') . "\n"
-                . "  end of the server log:\n    " . implode("\n    ", $logged === [] ? ['(empty)'] : $logged) . "\n",
+                . "  end of the server log:\n" . exampleServerLogTail($log) . "\n",
         ];
     };
 
     try {
-        // The server needs a moment before it accepts connections
-        $deadline = microtime(true) + 15.0;
-        $port = (int) substr($address, (int) strrpos($address, ':') + 1);
-        while (true) {
-            $connection = withoutWarnings(static fn () => fsockopen('127.0.0.1', $port, $code, $message, 0.2));
-            if ($connection !== false) {
-                fclose($connection);
-
-                break;
-            }
-            if (!proc_get_status($server)['running'] || microtime(true) > $deadline) {
-                // The harness limitation: a sandbox that forbids listening sockets. Not a failure of the examples
-                Assert::markTestSkipped('The built-in web server did not start: ' . trim((string) file_get_contents($log)));
-            }
-            usleep(20_000);
-        }
-
         $requests($request);
     } finally {
-        proc_terminate($server);
-        proc_close($server);
-        unlink($log);
+        stopExampleServer($started);
     }
 }
 
@@ -1356,6 +1470,141 @@ it('reports a server that died while answering, and how it ended', function (): 
         $after = $request('/dies.php');
         expect($after['status'])->toBeNull()
             ->and($after['report'])->toContain("  server: stopped by signal 9\n");
+    });
+});
+
+it('tells a CI run from a local one for the example server', function (string|false $ci, bool $expected): void {
+    expect(exampleServerRunsOnCi($ci))->toBe($expected);
+})->with([
+    'unset' => [false, false],
+    'empty' => ['', false],
+    'zero' => ['0', false],
+    'false' => ['false', false],
+    'FALSE' => ['FALSE', false],
+    'true' => ['true', true],
+    'TRUE' => ['TRUE', true],
+    'one' => ['1', true],
+]);
+
+// SkippedWithMessageException is an AssertionFailedError as well, so the class is compared, not the type
+it('fails on CI and skips elsewhere when no server can be started, with the reason', function (string|false $ci, string $expected): void {
+    $thrown = null;
+
+    try {
+        exampleServerUnavailable('The built-in web server did not start: the reason', $ci);
+    } catch (PHPUnit\Framework\AssertionFailedError $caught) {
+        $thrown = $caught;
+    }
+
+    expect($thrown)->not->toBeNull()
+        ->and($thrown::class)->toBe($expected)
+        ->and($thrown->getMessage())->toStartWith('The built-in web server did not start: the reason');
+
+    if ($expected === PHPUnit\Framework\AssertionFailedError::class) {
+        expect($thrown->getMessage())->toContain('On CI this test must run');
+    }
+})->with([
+    'on CI' => ['true', PHPUnit\Framework\AssertionFailedError::class],
+    'on CI, spelled 1' => ['1', PHPUnit\Framework\AssertionFailedError::class],
+    'not on CI' => [false, PHPUnit\Framework\SkippedWithMessageException::class],
+    'CI switched off' => ['false', PHPUnit\Framework\SkippedWithMessageException::class],
+]);
+
+/**
+ * Hold a local port for as long as the callback runs, and hand it the address.
+ *
+ * @param Closure(string): void $whileTaken
+ *
+ * @throws PHPUnit\Framework\Exception
+ * @throws PHPUnit\Framework\AssertionFailedError When no port can be opened on CI
+ * @throws PHPUnit\Framework\SkippedWithMessageException When no port can be opened elsewhere
+ */
+function withTakenAddress(Closure $whileTaken): void
+{
+    $holder = withoutWarnings(static fn () => stream_socket_server('tcp://127.0.0.1:0'));
+    if ($holder === false) {
+        exampleServerUnavailable('No local port can be opened here.', getenv('CI'));
+    }
+
+    try {
+        $whileTaken((string) stream_socket_get_name($holder, false));
+    } finally {
+        fclose($holder);
+    }
+}
+
+// The race the probe leaves: the port it found is taken before the server binds it
+it('starts the server on another port when the one it was given has been taken', function (): void {
+    withTakenAddress(function (string $taken): void {
+        $offered = [];
+        $started = startExampleServer(sys_get_temp_dir(), sys_get_temp_dir(), [], function () use (&$offered, $taken): ?string {
+            $offered[] = $offered === [] ? $taken : exampleServerFreeAddress();
+
+            return $offered[array_key_last($offered)];
+        });
+
+        Assert::assertIsArray($started, is_string($started) ? $started : '');
+
+        try {
+            expect($offered)->toHaveCount(2)
+                ->and($started['address'])->toBe($offered[1])
+                ->and($started['address'])->not->toBe($taken)
+                ->and(proc_get_status($started['server'])['running'])->toBeTrue()
+                ->and((string) file_get_contents($started['log']))->toContain("(http://{$started['address']}) started");
+        } finally {
+            stopExampleServer($started);
+        }
+
+        expect(file_exists($started['log']))->toBeFalse();
+    });
+});
+
+it('gives up after a bounded number of ports, and says what each server logged', function (): void {
+    withTakenAddress(function (string $taken): void {
+        $asked = 0;
+        $reason = startExampleServer(sys_get_temp_dir(), sys_get_temp_dir(), [], function () use (&$asked, $taken): string {
+            ++$asked;
+
+            return $taken;
+        });
+
+        if (is_array($reason)) {
+            stopExampleServer($reason);
+        }
+        Assert::assertIsString($reason, 'A server started on a port that is taken');
+
+        expect($asked)->toBe(EXAMPLE_SERVER_START_ATTEMPTS)
+            ->and($reason)->toStartWith('The built-in web server did not start, after 3 of 3 attempts:')
+            ->and(substr_count($reason, "  {$taken}, the server exited:\n"))->toBe(3)
+            ->and(substr_count($reason, 'Failed to listen on ' . $taken))->toBe(3);
+    });
+});
+
+it('does not try again where no local port can be opened at all', function (): void {
+    $asked = 0;
+    $reason = startExampleServer(sys_get_temp_dir(), sys_get_temp_dir(), [], function () use (&$asked): ?string {
+        ++$asked;
+
+        return null;
+    });
+
+    expect($asked)->toBe(1)
+        ->and($reason)->toBe("The built-in web server did not start, after 1 of 3 attempts:\n  no local port can be opened here");
+});
+
+// A request is made once. A harness that asked again would turn a server that
+// answers every other time into a green test
+it('requests a page once, whatever the server answers', function (): void {
+    withThrowawayServer([
+        'counted.php' => '<?php $file = __DIR__ . "/count"; $count = (int) @file_get_contents($file) + 1; file_put_contents($file, (string) $count); '
+            . 'http_response_code(500); echo $count;',
+    ], function (Closure $request): void {
+        $first = $request('/counted.php');
+        $second = $request('/counted.php');
+
+        expect($first['status'])->toBe('HTTP/1.1 500 Internal Server Error')
+            ->and($first['body'])->toBe('1')
+            ->and($second['body'])->toBe('2');
     });
 });
 
