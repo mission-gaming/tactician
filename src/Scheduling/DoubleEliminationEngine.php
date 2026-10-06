@@ -10,6 +10,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\Stage\EliminationPlan;
+use MissionGaming\Tactician\Stage\EngineFingerprint;
+use MissionGaming\Tactician\Stage\FingerprintedEngine;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -45,7 +47,7 @@ use Override;
  * or MatchOutcomeSelector::winners() over the final round, is the
  * consumer's derivation.
  */
-final readonly class DoubleEliminationEngine implements StageEngineInterface
+final readonly class DoubleEliminationEngine implements StageEngineInterface, FingerprintedEngine
 {
     use EliminationBracketSupport;
 
@@ -67,17 +69,22 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
 
     /**
      * What this engine stamps a stage state with, and requires of a state
-     * that carries a stamp: the format and the two options that shape its
-     * rounds, as `double-elimination:legs-per-tie=1,grand-final-reset=yes`.
+     * that carries a stamp (see FingerprintedEngine for the contract).
      *
-     * Compare the string; do not parse it. The standings calculator is an
-     * object the engine cannot name and is not part of it. See
-     * StageState::withEngineFingerprint().
+     * With default options it names the format and nothing else. Part of
+     * it when not at the default: legsPerTie (default 1) and
+     * grandFinalReset (default true).
+     *
+     * Not part of it: reseedEachRound, which this engine rejects, and the
+     * standings calculator, which orders the outcome and pairs nothing.
      */
+    #[Override]
     public function getFingerprint(): string
     {
-        return 'double-elimination:legs-per-tie=' . $this->options->legsPerTie
-            . ',grand-final-reset=' . ($this->options->grandFinalReset ? 'yes' : 'no');
+        return EngineFingerprint::of('double-elimination')
+            ->with('legs-per-tie', $this->options->legsPerTie, 1)
+            ->with('grand-final-reset', $this->options->grandFinalReset, true)
+            ->toString();
     }
 
     /**

@@ -11,6 +11,7 @@ This comprehensive guide covers all aspects of using Tactician for tournament sc
 - [Multi-Leg Tournaments](#multi-leg-tournaments)
 - [Results and Standings](#results-and-standings)
 - [Swiss Tournaments](#swiss-tournaments)
+- [Pot Draws](#pot-draws)
 - [Elimination Brackets](#elimination-brackets)
 - [Pools, Progression, and Multi-Stage Tournaments](#pools-progression-and-multi-stage-tournaments)
 - [Timeline Assignment](#timeline-assignment)
@@ -49,12 +50,14 @@ anything else that competes.
 | **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
 | **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out, a `StageOutcome` when play completes. Stages compose via pools and progression selectors. |
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
+| **Pot** | One of the equal blocks a seeded list of entrants is cut into for a pot draw, in list order: the first block is pot 1, the next pot 2, and so on. A pot is not a pool: the members of a pool play each other and are ranked together, while a pot only limits who an entrant can draw. |
+| **Pot draw** | A format in which every round is drawn before any event is played (`PotDrawScheduler`): every entrant meets the same number of opponents from every pot, its own included, with no rematch, and is in every round. Often called "Swiss", but nothing is paired from results. See [Pot Draws](#pot-draws). |
 | **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
 | **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as `tie_winner` metadata on the event's result, or on a leg's result. Ties are not legs: brackets have no legs concept. |
-| **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
+| **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
-| **Engine fingerprint** | An optional stamp on a stage state naming the engine that pairs it (`StageState::withEngineFingerprint()`): the format and the options that shape its rounds, as each engine's `getFingerprint()` gives them. An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
+| **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format and for the options that shape which rounds the format has or how they are paired, and an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
 | **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. Level means equal; two `WinDrawLossRanking` totals that differ only by the rounding of a float sum are level too, so the same results added in another order do not split a group. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary — those are consumer interpretations of the outcome. |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
@@ -766,7 +769,7 @@ A stage state does not say which engine paired its rounds, and an engine
 replays whatever it is handed. A Swiss state restored into a bracket
 engine, or a two-legged bracket into an engine built for one leg, is read
 as that engine's own history. Stamp the state with the engine's
-**fingerprint** and every other engine refuses it:
+**fingerprint** and every engine with another fingerprint refuses it:
 
 ```php
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
@@ -775,8 +778,6 @@ $engine = new SwissPairingEngine(plannedRounds: 5);
 
 $stamped = StageState::start($participants)
     ->withEngineFingerprint($engine->getFingerprint());
-
-echo $stamped->getEngineFingerprint() . "\n"; // swiss:planned-rounds=5
 
 // The stamp is stored with the state and comes back with it
 $restored = StageState::fromJson($stamped->toJson());
@@ -787,7 +788,8 @@ try {
     (new SingleEliminationEngine())->pairNextRound($restored);
     echo "Paired as a bracket\n";
 } catch (InvalidConfigurationException $e) {
-    echo "Refused: recorded by {$e->getContext()['recorded']}\n"; // Refused: recorded by swiss:planned-rounds=5
+    echo 'Refused: ' . implode('; ', $e->getContext()['differences']) . "\n";
+    // Refused: format: recorded swiss, this engine single-elimination
 }
 ```
 
@@ -796,17 +798,332 @@ serializes without the `engine_fingerprint` key, and data stored before the
 stamp existed loads as an unstamped state. A stamped state keeps its stamp
 through every verb.
 
-A fingerprint names the format and the options that shape its rounds, for
-example `swiss:planned-rounds=5`. It is an opaque string: compare it with
-the one an engine gives, and do not parse it or write one by hand. Constraints, the standings calculator and the randomizer are
-objects the engine cannot name, so they are not part of it. All four
-engine methods (`getPlan()`, `pairNextRound()`, `isComplete()`,
+**What a fingerprint covers.** Two engines have the same fingerprint when
+they are the same format and agree on every option that shapes which rounds
+the format has or how they are paired. An option at its default value is
+not part of the fingerprint. An engine that gains an option in a later
+release therefore keeps the fingerprint of every configuration that leaves
+the option alone, and the states stamped before are still accepted. For one
+configuration the fingerprint is the same in every later release.
+
+| Engine | Part of the fingerprint when not at the default | Not part of it |
+| --- | --- | --- |
+| `SwissPairingEngine` | The standings rules a round is paired from: the ranking scale (default 3/1/0), the tiebreakers in order (default none) | `plannedRounds`, the constraints, the randomizer |
+| `SingleEliminationEngine` | `legsPerTie` (default 1), `reseedEachRound` (default off); in a re-seeded bracket also the standings rules, as for Swiss | `grandFinalReset`; the standings calculator of a bracket on a fixed path |
+| `DoubleEliminationEngine` | `legsPerTie` (default 1), `grandFinalReset` (default on) | The standings calculator |
+
+```php
+use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
+
+$default = (new SwissPairingEngine())->getFingerprint();
+
+// The length of a Swiss stage is not part of it: a stage that is extended
+// by a round keeps its stamp
+var_dump((new SwissPairingEngine(plannedRounds: 6))->getFingerprint() === $default); // bool(true)
+
+// 3/1/0 is the default scale, stated or not
+$threeOneZero = new StandingsCalculator(WinDrawLossRanking::threeOneZero());
+var_dump((new SwissPairingEngine(standingsCalculator: $threeOneZero))->getFingerprint() === $default); // bool(true)
+
+// Another scale pairs the same results differently
+$chess = new SwissPairingEngine(standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero()));
+var_dump($chess->getFingerprint() === $default); // bool(false)
+
+try {
+    $chess->pairNextRound($restored);
+    echo "Paired on the chess scale\n";
+} catch (InvalidConfigurationException $e) {
+    echo 'Refused: ' . implode('; ', $e->getContext()['differences']) . "\n";
+    // Refused: ranking: recorded the default, this engine win-draw-loss,1,0.5,0
+}
+```
+
+The planned rounds of a Swiss stage say when it ends; no round is paired or
+read differently for them. The standings calculator of a bracket that is not
+re-seeded orders the outcome and pairs nothing.
+
+**What it cannot cover.** A fingerprint describes what the library can
+describe, and these limits follow from that:
+
+- The constraints and the randomizer of a Swiss engine change pairings and
+  are not part of the fingerprint: a closure and a seed have no name.
+  Restore them with the state, as you do today.
+- A `RankingStrategy` of your own is stated as "custom". The engine tells it
+  from every `WinDrawLossRanking` scale and not from another strategy of
+  your own. A subclass of `StandingsCalculator` is stated as "custom" too,
+  whatever ranking strategy and tiebreakers it was built with: it may order
+  the table by rules of its own, so it differs from the library's
+  calculator and not from another subclass. A tiebreaker is stated by its
+  `getName()`, so one that orders differently needs a name of its own,
+  including a subclass of one of the library's.
+- A subclass of `SwissPairingEngine` (the class is not final) does not have
+  the fingerprint of the engine it extends, because it may pair differently.
+  Two subclasses have the same one unless they override `getFingerprint()`.
+
+**Treat the string as opaque.** Compare it for equality with the one an
+engine gives. Do not parse it, write one by hand or rely on how it is
+spelled: only its stability for one configuration is promised. A
+fingerprint that begins with `tactician:` is the library's. An engine of
+your own can use any non-empty string that does not begin with it, and
+call `$state->requireEngineFingerprint()` with that string.
+
+All four engine methods (`getPlan()`, `pairNextRound()`, `isComplete()`,
 `getOutcome()`) refuse a state stamped with another fingerprint, with an
-`InvalidConfigurationException`. To change the configuration on purpose in
-mid-stage, such as extending a Swiss stage by a round, stamp the state again:
+`InvalidConfigurationException`. Its message, and the list `differences` in
+its context, say where the two differ: the format, or each option with its
+value on either side. That text is for a person and may change; the context
+also holds the two fingerprints as `recorded` and `engine`. To change the
+configuration on purpose in mid-stage, stamp the state again:
 `$state->withEngineFingerprint($newEngine->getFingerprint())`; passing
-`null` removes the stamp. An engine of your own can use any non-empty
-string and call `$state->requireEngineFingerprint()` with it.
+`null` removes the stamp.
+
+The three engines implement `Stage\FingerprintedEngine`. `getFingerprint()`
+is not part of `StageEngineInterface`, so that an engine written against
+that interface keeps working; code that holds a `StageEngineInterface`
+tests for it before it stamps:
+
+```php
+use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\StageEngineInterface;
+
+function startStage(StageEngineInterface $engine, array $participants): StageState
+{
+    $state = StageState::start($participants);
+
+    return $engine instanceof FingerprintedEngine
+        ? $state->withEngineFingerprint($engine->getFingerprint())
+        : $state;
+}
+
+var_dump(startStage(new SingleEliminationEngine(), $participants)->getEngineFingerprint() !== null); // bool(true)
+```
+
+## Pot Draws
+
+A pot draw is a format for a league phase or a seeding stage. The entrants
+are ordered by seed and cut into **pots** of equal size, in order: the first
+block of the list is pot 1, the next pot 2, and so on. Every entrant meets a
+fixed number of opponents from every pot, its own included, never the same
+opponent twice, and every entrant is in every round. Every round is drawn
+before any event is played. The UEFA Champions League league phase since
+2024/25 is the best-known example: 36 entrants, 4 pots of 9, two opponents
+from every pot, so 8 events each.
+
+Operators often call this format "Swiss". It is not Swiss pairing: nothing is
+paired from results, and no standings exist while it is drawn. It is a
+partial round robin constrained by pots. For pairing from results, use the
+[Swiss engine](#swiss-tournaments).
+
+`PotDrawScheduler` is a whole-schedule generator, like `RoundRobinScheduler`.
+Its options are the number of pots, the number of opponents an entrant meets
+from each pot, and the seed of the draw. The number of rounds is derived:
+pots × opponents per pot.
+
+```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\PotDrawOptions;
+use MissionGaming\Tactician\Scheduling\PotDrawScheduler;
+
+// 36 entrants in seeding order. List position is the seeding: the first
+// nine are pot 1. No seed attribute is read.
+$entrants = [];
+for ($position = 1; $position <= 36; ++$position) {
+    $entrants[] = new Participant("e{$position}", "Entrant {$position}");
+}
+
+$drawOptions = new PotDrawOptions(pots: 4, opponentsPerPot: 2, seed: 2026);
+$scheduler = new PotDrawScheduler();
+
+// The plan knows the shape before anything is drawn
+$plan = $scheduler->getPlan($entrants, $drawOptions);
+echo $plan->getAlgorithm() . "\n";          // pot-draw
+echo $plan->getPotSize() . "\n";            // 9
+echo $plan->getTotalRounds() . "\n";        // 8
+echo $plan->getEventsPerRound() . "\n";     // 18
+echo $plan->getExpectedEventCount() . "\n"; // 144
+
+$schedule = $scheduler->schedule($entrants, $drawOptions);
+echo count($schedule) . "\n";               // 144
+```
+
+The result is an ordinary `Schedule`: iterate it, group it by round,
+serialize it, or hand it to the [timeline assigner](#timeline-assignment).
+`$plan->getPotOf($participant)` gives the 1-based pot of an entrant and
+`$plan->getPotMembers(1)` the members of a pot. With one pot the format is a
+draw of non-repeat pairings over the whole field.
+
+The generator is pairwise: every event has two participants. It takes no
+`ConstraintSet`; pairs of entrants that must not meet are not an input yet.
+
+### Roles
+
+A role is the position of a participant in an event: the first-named
+participant is in the first role (home, white, server) and the other in the
+second. A pot draw balances them:
+
+- the two role counts of an entrant differ by at most one, and are equal when
+  the entrant has an even number of events;
+- with an even number of opponents per pot, an entrant is in each role
+  exactly half the time against every pot.
+
+In the draw above every entrant has four events in each role, one of each
+against every pot:
+
+```php
+$topSeed = $entrants[0];
+$rolesByPot = [];
+foreach ($schedule as $event) {
+    if (!$event->hasParticipant($topSeed)) {
+        continue;
+    }
+
+    [$first, $second] = $event->getParticipants();
+    $isFirst = $first->getId() === $topSeed->getId();
+    $rolesByPot[$plan->getPotOf($isFirst ? $second : $first)][] = $isFirst ? 'first' : 'second';
+}
+
+ksort($rolesByPot);
+foreach ($rolesByPot as $pot => $roles) {
+    sort($roles);
+    echo "Pot {$pot}: " . implode(', ', $roles) . "\n";
+}
+```
+
+```text
+Pot 1: first, second
+Pot 2: first, second
+Pot 3: first, second
+Pot 4: first, second
+```
+
+### The seed and determinism
+
+The seed is an option, not a `Random\Randomizer` handed to the scheduler, so
+that a draw can be stored as plain data and repeated. The same entrants, pots,
+opponents per pot and seed give the same schedule on every call, on one
+scheduler or on a new one; the scheduler keeps no state between calls. Another
+seed gives another schedule. Any integer is a seed, and the default is 0.
+This seed names a draw. It has nothing to do with the seed of a participant,
+which is a ranking.
+
+```php
+use MissionGaming\Tactician\DTO\Schedule;
+
+$stored = $drawOptions->toArray(); // ['pots' => 4, 'opponents_per_pot' => 2, 'seed' => 2026]
+
+$again = (new PotDrawScheduler())->schedule($entrants, PotDrawOptions::fromArray($stored));
+$other = $scheduler->schedule($entrants, new PotDrawOptions(pots: 4, opponentsPerPot: 2, seed: 2027));
+
+$events = fn (Schedule $drawn): array => $drawn->toArray()['events'];
+var_dump($events($again) === $events($schedule)); // bool(true)
+var_dump($events($other) === $events($schedule)); // bool(false)
+```
+
+`PotDrawOptions::fromArray()` refuses a key it does not know (reason
+`UnknownOptionKey`), so a misspelt option is not silently read as its default.
+A key that is left out takes its default: one pot, one opponent per pot,
+seed 0.
+
+The seed chooses the order of the members inside each pot, the order of the
+pots, which matchings are used, which side is first, how the events are
+spread over the rounds, and the order of the rounds and of the events in
+them. The engine behind it (`Random\Engine\Xoshiro256StarStar`) is part of
+the output, and the golden fixtures pin one draw of each worked case.
+
+Who meets whom is drawn evenly: between two given pots, or inside one, every
+pairing is as likely as any other. The generator first builds rounds in which
+whole pots meet each other, and then mixes them: two rounds at a time trade
+events in a way that keeps every entrant in both rounds exactly once, eight
+times the number of rounds over. No event is changed by this, so the
+opponents and the roles are the ones first built. After it a round mixes the
+pots, the events inside the pots are spread over the rounds, and which of
+two pots is first varies from event to event within a round.
+
+The draw is still not uniform over every schedule the format allows:
+
+- the pairings between two pots follow one pattern (a rotation of the two
+  pots' members against each other), and no seed draws a schedule outside it;
+- the mixing is a fixed amount of work, so now and then a round is left in
+  which every pot meets one other pot only (about one round in ten for 16
+  entrants in 4 pots with two opponents per pot, and fewer than one in
+  twenty for the larger cases measured);
+- the smallest fields leave the mixing nothing to trade: with 6 entrants in
+  3 pots of 2, every round has one pot playing inside itself and the other
+  two meeting each other.
+
+### Feasible, supported and refused configurations
+
+A configuration can exist only if all four hold:
+
+1. the number of entrants is even, because every entrant is in every round
+   and no bye is issued;
+2. the entrants divide into pots of equal size, because pots of unequal size
+   cannot give every entrant the same number of opponents from every pot;
+3. opponents per pot is at most pot size minus one, because an entrant cannot
+   meet more members of its own pot than the pot has;
+4. pot size × opponents per pot is even, because the events inside one pot
+   number half of that product.
+
+Of the configurations that can exist, this version draws those it can build
+directly, without a search:
+
+| Pot size | Opponents per pot | |
+|------|------|------|
+| Even | Any, up to pot size minus one | Drawn |
+| Odd | 2 | Drawn (the number of pots is then even) |
+| Odd | 4, 6, ... | Refused as not yet supported |
+
+Everything else is refused before anything is drawn, by `getPlan()` and
+`schedule()` alike, with an `InvalidConfigurationException` whose reason says
+which rule failed and whose context carries the numbers:
+
+```php
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+
+$attempts = [
+    '19 entrants, 1 pot, 2 per pot' => [19, 1, 2],
+    '20 entrants, 3 pots, 1 per pot' => [20, 3, 1],
+    '20 entrants, 5 pots of 4, 4 per pot' => [20, 5, 4],
+    '20 entrants, 4 pots of 5, 1 per pot' => [20, 4, 1],
+    '36 entrants, 4 pots of 9, 4 per pot' => [36, 4, 4],
+];
+
+foreach ($attempts as $name => [$count, $pots, $opponentsPerPot]) {
+    try {
+        $scheduler->getPlan(array_slice($entrants, 0, $count), new PotDrawOptions($pots, $opponentsPerPot));
+    } catch (InvalidConfigurationException $e) {
+        echo "{$name}: {$e->getReason()?->value} " . json_encode($e->getContext()) . "\n";
+    }
+}
+```
+
+```text
+19 entrants, 1 pot, 2 per pot: odd_participant_count {"participant_count":19}
+20 entrants, 3 pots, 1 per pot: unequal_pots {"participant_count":20,"pots":3,"remainder":2}
+20 entrants, 5 pots of 4, 4 per pot: too_many_opponents_per_pot {"opponents_per_pot":4,"pot_size":4,"maximum_opponents_per_pot":3}
+20 entrants, 4 pots of 5, 1 per pot: odd_pot_with_odd_opponents {"pot_size":5,"opponents_per_pot":1,"participant_slots_inside_one_pot":5}
+36 entrants, 4 pots of 9, 4 per pot: configuration_not_yet_supported {"participant_count":36,"pots":4,"pot_size":9,"opponents_per_pot":4,"supported_opponents_per_pot_for_odd_pot_size":[2]}
+```
+
+| Reason | The configuration |
+|------|------|
+| `OddParticipantCount` | Has an odd number of entrants. It is checked first, so an odd field is reported as odd whatever the pots |
+| `UnequalPots` | Does not divide into the pots asked for |
+| `TooManyOpponentsPerPot` | Asks for more opponents from a pot than a pot has other members |
+| `OddPotWithOddOpponents` | Has pots of odd size and an odd number of opponents per pot |
+| `ConfigurationNotYetSupported` | Can exist, and has no direct construction yet: pots of odd size with four or more opponents per pot |
+
+`ConfigurationNotYetSupported` is raised by the scheduler. `Stage\PotDrawPlan`
+itself describes every configuration that can exist, so a schedule made
+elsewhere can be checked with `validateIntegrity()`. That check is of the
+format and not only of the counts: every entrant once in every round, the
+exact number of opponents from every pot, no rematch, and the role balance.
+The scheduler runs it on every schedule it returns.
+
+Generation takes time proportional to the number of events (entrants × pots ×
+opponents per pot / 2), the mixing included: a few milliseconds for 60
+entrants in 6 pots with three opponents per pot.
 
 ## Elimination Brackets
 
@@ -2470,6 +2787,12 @@ identifier for logs and stored data):
 | `DuplicateName` | `duplicate_name` | Two entries of one list carry the same name |
 | `NotSerializable` | `not_serializable` | The configuration has no plain-data form to serialize to |
 | `UnsatisfiableLegStrategy` | `unsatisfiable_leg_strategy` | The leg strategy cannot produce the legs asked for |
+| `UnknownOptionKey` | `unknown_option_key` | Plain-data configuration holds a key the options do not have |
+| `OddParticipantCount` | `odd_participant_count` | The format has every participant in every round, issues no bye, and was given an odd number of participants |
+| `UnequalPots` | `unequal_pots` | The participants do not divide into the number of pots asked for |
+| `TooManyOpponentsPerPot` | `too_many_opponents_per_pot` | More opponents are asked from one pot than a pot has other members |
+| `OddPotWithOddOpponents` | `odd_pot_with_odd_opponents` | A pot of odd size cannot hold an odd number of events per member inside itself |
+| `ConfigurationNotYetSupported` | `configuration_not_yet_supported` | The configuration is feasible and the library has no construction for it yet |
 | `BracketComplete` | `bracket_complete` | A further round was asked of a finished bracket |
 | `RoundPartiallyResolved` | `round_partially_resolved` | The next round was asked for while ties of the current one have no complete result |
 | `EventWithoutRoundNumber` | `event_without_round_number` | An event has no round number where one is required |

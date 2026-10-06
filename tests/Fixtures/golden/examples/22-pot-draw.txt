@@ -1,0 +1,45 @@
+# The results of examples/22-pot-draw.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Plan, before the draw ==
+Algorithm: pot-draw
+Pots: 4
+Clubs per pot: 9
+Rounds: 8
+Events per round: 18
+Events: 144
+
+== The draw ==
+meta: algorithm=pot-draw participant_count=36 pots=4 pot_size=9 opponents_per_pot=2 seed=2026 total_rounds=8 expected_event_count=144
+R1: club35-club17 club09-club01 club07-club06 club33-club26 club02-club23 club11-club21 club24-club25 club22-club27 club34-club28 club16-club15 club12-club14 club03-club08 club32-club18 club30-club13 club20-club10 club05-club19 club04-club29 club36-club31
+R2: club27-club08 club24-club09 club26-club17 club35-club23 club33-club16 club19-club32 club05-club34 club13-club18 club36-club07 club28-club12 club06-club20 club25-club11 club21-club22 club29-club10 club04-club02 club01-club14 club30-club03 club15-club31
+R3: club04-club11 club02-club13 club35-club29 club22-club34 club15-club12 club27-club28 club24-club36 club19-club26 club18-club33 club14-club20 club03-club21 club17-club05 club16-club23 club09-club32 club08-club30 club25-club01 club31-club06 club10-club07
+R4: club32-club25 club36-club14 club22-club03 club10-club28 club16-club06 club30-club24 club20-club21 club08-club15 club31-club27 club17-club34 club23-club13 club05-club18 club29-club33 club11-club35 club09-club12 club01-club04 club19-club02 club07-club26
+R5: club01-club24 club26-club05 club34-club02 club18-club17 club20-club07 club12-club30 club32-club35 club25-club31 club06-club10 club28-club21 club23-club19 club33-club04 club09-club27 club08-club22 club15-club03 club13-club29 club16-club36 club14-club11
+R6: club21-club33 club06-club36 club29-club19 club31-club30 club12-club26 club22-club15 club28-club05 club14-club32 club01-club35 club03-club16 club10-club25 club08-club09 club07-club17 club34-club20 club27-club24 club11-club13 club18-club02 club23-club04
+R7: club24-club14 club04-club25 club13-club22 club23-club30 club26-club20 club31-club11 club34-club15 club27-club12 club28-club36 club17-club10 club05-club07 club19-club18 club02-club33 club35-club09 club06-club03 club21-club16 club32-club08 club29-club01
+R8: club36-club22 club03-club31 club07-club28 club13-club04 club30-club32 club14-club09 club33-club34 club20-club29 club18-club27 club15-club19 club12-club08 club26-club35 club17-club24 club21-club06 club25-club23 club11-club01 club10-club16 club02-club05
+
+== Opponents of the top seed ==
+Pot 1: first role against Club 4, second role against Club 9
+Pot 2: first role against Club 14, second role against Club 11
+Pot 3: first role against Club 24, second role against Club 25
+Pot 4: first role against Club 35, second role against Club 29
+
+== Seeds ==
+Seed 2026 drawn again gives the same schedule: true
+Seed 2027 gives another schedule: true
+
+== Twenty clubs in four pots of five, one opponent per pot ==
+MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid scheduler configuration: A pot of odd size cannot hold an odd number of events per member inside itself
+
+== Its reason ==
+odd_pot_with_odd_opponents

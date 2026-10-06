@@ -319,11 +319,15 @@ final readonly class StageState
      * every engine, as before the stamp existed, and serializes without
      * the key. The stamp survives every other verb and toArray()/toJson().
      * To change the engine's configuration on purpose in mid-stage (a
-     * Swiss stage extended by a round), stamp the state again with the
-     * new engine's fingerprint.
+     * bracket moved from a fixed path to a re-seeded one), stamp the state
+     * again with the new engine's fingerprint.
      *
-     * The library's engines each offer getFingerprint(); any non-empty
-     * string will do for an engine of your own.
+     * The library's engines each offer getFingerprint() (see
+     * FingerprintedEngine for what a fingerprint covers: an option at its
+     * default is not part of it, so an engine that gains an option still
+     * accepts the states stamped before). Their fingerprints begin with
+     * `tactician:`; any non-empty string that does not will do for an
+     * engine of your own.
      *
      * @throws InvalidConfigurationException When the fingerprint is an empty string
      */
@@ -353,15 +357,24 @@ final readonly class StageState
      * pairNextRound(), isComplete() and getOutcome(); an engine of your own
      * can do the same.
      *
+     * The error says where the two differ, in its message and as the list
+     * `differences` of its context: the format, or each option with its
+     * value on either side (`legs-per-tie: recorded 2, this engine the
+     * default`). That wording is for a person to read and may change. The
+     * context also holds the two fingerprints, as `recorded` and `engine`.
+     *
      * @throws InvalidConfigurationException When the state is stamped with a different fingerprint
      */
     public function requireEngineFingerprint(string $fingerprint): void
     {
         if ($this->engineFingerprint !== null && $this->engineFingerprint !== $fingerprint) {
+            $differences = EngineFingerprint::differences($this->engineFingerprint, $fingerprint);
+
             throw new InvalidConfigurationException(
-                'The stage state was recorded by a different engine or configuration; stamp it again with'
+                'The stage state was recorded by a different engine or configuration ('
+                    . implode('; ', $differences) . '); stamp it again with'
                     . ' withEngineFingerprint() if the change is deliberate',
-                ['recorded' => $this->engineFingerprint, 'engine' => $fingerprint],
+                ['recorded' => $this->engineFingerprint, 'engine' => $fingerprint, 'differences' => $differences],
                 requirements: []
             );
         }
