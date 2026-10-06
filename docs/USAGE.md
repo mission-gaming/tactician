@@ -1099,33 +1099,58 @@ $timeline = TimelineDefinition::fromArray([
 ]);
 ```
 
-**A datetime in plain data states a complete, absolute date and time**:
-the year, the month, the day, the hour and the minute, as in
-`2026-08-01 18:00` or `2026-08-01T18:00:00`. Seconds and a fraction of a
-second are optional and default to zero. The zone comes from the `timezone`
-field, and a zone or offset written into the string must not contradict it.
-This holds wherever a datetime is read from plain data: the `start` of a
-timeline, the `from` and `to` of a blackout window, the `sessions` of a
-session grid and the `kickoff` of a serialized scheduled event (which is
-UTC unless the string carries a zone).
+**A datetime in plain data states its date in full**: the year, the month
+and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
+day is optional and defaults to midnight (`2026-11-09` is
+`2026-11-09 00:00:00`); so do the seconds and a fraction of a second. The
+zone comes from the `timezone` field, and a zone or offset written into the
+string must not contradict it. This holds wherever a datetime is read from
+plain data: the `start` of a timeline, the `from` and `to` of a blackout
+window, the `sessions` of a session grid and the `kickoff` of a serialized
+scheduled event (which is UTC unless the string carries a zone).
 
-Anything else is rejected, with the reason `UnparseableTime` (the kickoff
-with an `InvalidInputException`):
+Two kinds of string are rejected, with the reason `UnparseableTime` (the
+kickoff with an `InvalidInputException`):
 
-- a string that is relative to the current time: `now`, `tomorrow`,
-  `+1 week`, `next monday 20:00`, the empty string;
-- a string that leaves a part out: `2026-08-01` (no time of day; write
-  `2026-08-01 00:00` for midnight), `20:00` (no date), `August 1 20:00`
-  (no year);
-- a relative part on top of a complete date and time
-  (`2026-08-01 20:00 +1 week`);
-- a date or a time that does not exist, which PHP would roll over into the
-  next one: `2026-02-30 20:00`, `2026-08-01 24:00`.
+- A string whose answer would come from the clock. It is relative to the
+  current time (`now`, `tomorrow`, `+1 week`, `next monday 20:00`, the
+  empty string), or it has no date (`20:00`), or its date has no year
+  (`August 1 20:00`).
+- A string that does not mean what it writes. It names a date or a time
+  that does not exist (`2026-02-30 20:00`, `2026-08-01 24:00`,
+  `2026-08-01 23:59:60`), a weekday that is not the weekday of its date
+  (`Mon, 01 Aug 2026 19:00:00`: 1 August 2026 is a Saturday), or a second
+  timezone that is not the first (`2026-08-01 19:00 +01:00 +05:00`).
 
-PHP's date parser accepts all of these, and resolves the first two kinds
-against the clock, so the same configuration would give a different
-timeline each time it is loaded. The library never asks for the current
-time. Compute a relative date in the application and pass the result.
+PHP's date parser accepts all of these. It resolves the first kind against
+the clock, so the same configuration would give a different timeline each
+time it is loaded, and the library never asks for the current time. It
+reads the second kind to another instant than the one written: 30 February
+as 2 March, `24:00` as the next day, the Saturday as the Monday after it,
+and the first of two timezones.
+
+<!-- snippet: throws="MissionGaming\Tactician\Exceptions\InvalidConfigurationException" -->
+```php
+// "tomorrow" is a different day each time the configuration is loaded
+TimelineDefinition::fromArray([
+    'start' => 'tomorrow 18:00',
+    'timezone' => 'Europe/London',
+    'round_interval' => 'P7D',
+]);
+```
+
+Every other string PHP reads is accepted, and read as PHP reads it: a month
+name (`1 August 2026 19:00`), RFC 2822 with the right weekday, an ISO 8601
+week date (`2026-W31-6T19:00`) or ordinal date (`2026-213T19:00`), a Unix
+timestamp (`@1785610800`), a timezone written twice (`+0000 (UTC)`). That
+includes an offset from a date the string states, which is counted from that
+date and not from today: `2026-08-01 20:00 +1 week` is 8 August at 20:00,
+and `first monday of August 2026 19:00` is 3 August. A relative date with no
+date to count from is for the application to compute and pass on.
+
+One local time is still read to another: a time that a clock change skips
+in the declared timezone (`2026-03-29 01:30` in `Europe/London`) is moved
+forward by the hour that was skipped.
 
 ### Time-Aware Rules
 
@@ -2337,8 +2362,8 @@ Issue: start or its timezone is not parseable
 
 A timezone string that PHP cannot use at all (one that holds a NUL byte, as
 JSON-decoded configuration can) is reported the same way, with the reason
-`UnparseableTime`. So is a datetime that does not state a complete, absolute
-date and time, such as `tomorrow` or `2026-08-01` (see
+`UnparseableTime`. So is a datetime that does not state an instant by
+itself, such as `tomorrow`, `20:00` or `2026-02-30 20:00` (see
 [Timeline Assignment](#timeline-assignment) for the form a datetime takes).
 
 The report writes a list value out in full, in its own order, with strings in
@@ -2402,7 +2427,7 @@ identifier for logs and stored data):
 | `PinCapacityExceeded` | `pin_capacity_exceeded` | More events are pinned at one position than a slot can hold |
 | `PinConflict` | `pin_conflict` | One participant is pinned in two events at one position (`PinConflictException`) |
 | `PositionOutOfRange` | `position_out_of_range` | A session, slot, round or resource index is outside the grid or timeline |
-| `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed, or the datetime is not a complete, absolute date and time |
+| `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed, or the datetime is relative to the current time, has no date or no year, or does not mean what it writes |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |

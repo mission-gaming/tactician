@@ -203,43 +203,49 @@ heading **Output change (fix)**.
   previous exception. Code that caught `\ValueError` or `\Error` around these
   calls for this case no longer sees it there: catch
   `InvalidConfigurationException`.
-- A datetime in plain-data configuration must state a complete, absolute date
-  and time. **Configuration that writes its datetimes out in full
-  (`2026-08-01 19:00`, `2026-08-01T19:00:00`, with or without seconds or a
-  fraction) is unaffected: every such string parses to the instant it did
-  before.** The string went straight to PHP's date parser, which also accepts
-  `now`, `tomorrow`, `+1 week`, `next monday 20:00` and the empty string and
-  resolves them against the clock, so the same configuration gave a
-  different timeline or session grid each time it was loaded. That
-  contradicts the rule that the library never asks for the current time.
-  These are now rejected with an `InvalidConfigurationException` (reason
-  `UnparseableTime`, the message an unparseable string gives: `start or its
-  timezone is not parseable`) by `TimelineDefinition::fromArray()` (`start`),
-  `SessionGrid::fromArray()` (`sessions`) and `BlackoutRule::fromArray()`
-  (`from`, `to`), and with an `InvalidInputException` (`Scheduled event
-  kickoff is not parseable`) by `ScheduledEvent::fromArray()` and
-  `ScheduledSchedule::fromArray()`/`fromJson()` (`kickoff`):
-  - a string relative to the current time, and the empty string;
-  - a string that leaves a part out: a time of day without a date (`20:00`),
-    a date without its year (`August 1 20:00`), and **a date without a time
-    of day (`2026-11-09`), which PHP read as midnight: write
-    `2026-11-09 00:00`**;
-  - a relative part on top of a complete date and time
-    (`2026-08-01 20:00 +1 week`), and a weekday name that contradicts the
-    date (`Mon, 01 Aug 2026 19:00:00 +0000`, a Saturday, which PHP moved to
-    the Monday after);
+- A datetime in plain-data configuration that PHP would resolve against the
+  clock, or read to another instant than the one written, is rejected.
+  **Configuration that writes the date of each datetime in full
+  (`2026-08-01 19:00`, `2026-08-01T19:00:00`, `2026-11-09`) is unaffected:
+  every such string parses to the instant it did before, and a date without
+  a time of day is still midnight.** The string went straight to PHP's date
+  parser, which also accepts `now`, `tomorrow`, `+1 week`,
+  `next monday 20:00` and the empty string and resolves them against the
+  clock, so the same configuration gave a different timeline or session grid
+  each time it was loaded. That contradicts the rule that the library never
+  asks for the current time. These are now rejected with an
+  `InvalidConfigurationException` (reason `UnparseableTime`, the message an
+  unparseable string gives: `start or its timezone is not parseable`) by
+  `TimelineDefinition::fromArray()` (`start`), `SessionGrid::fromArray()`
+  (`sessions`) and `BlackoutRule::fromArray()` (`from`, `to`), and with an
+  `InvalidInputException` (`Scheduled event kickoff is not parseable`) by
+  `ScheduledEvent::fromArray()` and `ScheduledSchedule::fromArray()`/
+  `fromJson()` (`kickoff`):
+  - a string whose answer came from the clock: one relative to the current
+    time, the empty string, a time of day without a date (`20:00`), and a
+    date without its year (`August 1 20:00`);
   - a date or a time that does not exist, which PHP rolled over into the
     next one: `2026-02-30 20:00` (read as 2 March), `2026-08-01 24:00`,
-    `2026-08-01 23:59:60`;
-  - a string with two timezones (`2026-08-01 19:00 UTC UTC`).
+    `2026-08-01 23:59:60`, the 366th day of a year that has 365;
+  - a weekday name that is not the weekday of the date
+    (`Mon, 01 Aug 2026 19:00:00 +0000`, a Saturday, which PHP moved to the
+    Monday after);
+  - a second timezone that is not the first
+    (`2026-08-01 19:00 +01:00 +05:00`, of which PHP read the first and
+    ignored the second).
 
-  What to check: configuration or stored data that holds one of these. The
-  other absolute forms PHP reads are accepted as before, among them a month
-  name (`1 August 2026 19:00`), RFC 2822, an ISO 8601 week date
-  (`2026-W31-6T19:00`) or ordinal date (`2026-213T19:00`) and a Unix
-  timestamp (`@1785610800`); a zone or offset in the string is still checked
-  against the `timezone` field afterwards. A relative date is for the
-  application to compute and pass on.
+  What to check: configuration or stored data that holds one of these.
+  Everything else PHP reads is accepted as before and parses to the same
+  instant: a date without a time of day, a month name
+  (`1 August 2026 19:00`), RFC 2822 with the right weekday, an ISO 8601 week
+  date (`2026-W31-6T19:00`) or ordinal date (`2026-213T19:00`), a Unix
+  timestamp (`@1785610800`), a timezone written twice (`+0000 (UTC)`), and
+  an offset from a date the string states (`2026-08-01 20:00 +1 week`,
+  `first monday of August 2026 19:00`), which PHP counts from that date and
+  not from the clock. A zone or offset in the string is still checked
+  against the `timezone` field, and a string that has both faults is still
+  reported for its timezone (`TimezoneMismatch`). A relative date with no
+  date to count from is for the application to compute and pass on.
 - A repack request whose objective weights are too large to keep the
   objective an integer is rejected with an `InvalidConfigurationException`.
   It returned an outcome before. The repacker scores a move as at most

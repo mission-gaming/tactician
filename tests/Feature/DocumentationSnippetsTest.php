@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippet;
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippets;
@@ -214,6 +215,8 @@ describe('Documentation snippets', function () use ($extracted, $blocks, $skippe
 
     it('expects only the blocks listed here to throw', function () use ($extracted): void {
         expect(snippetsMarked($extracted, DocumentationSnippet::THROWS))->toBe([
+            // A timeline that starts "tomorrow", which is read from the clock
+            'docs/USAGE.md / Timeline Assignment: ' . InvalidConfigurationException::class,
             // Asking a shape-only session grid for a slot time
             'docs/USAGE.md / Schedule Repacking: ' . UnavailableValueException::class,
             'docs/USAGE.md / Real-World Examples: ' . IncompleteScheduleException::class,

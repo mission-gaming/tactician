@@ -269,10 +269,11 @@ final readonly class SessionGrid
      *  'capacity_per_slot' => 7].
      *
      * The timezone is required and authoritative for every session start,
-     * same convention as the timeline family. Each session start states a
-     * complete, absolute date and time, as the start of a timeline does:
-     * a relative string (`tomorrow`, `+1 week`), an empty one or a date
-     * without a time of day is rejected (see ZonedTime).
+     * same convention as the timeline family. Each session start states its
+     * date in full, as the start of a timeline does: a relative string
+     * (`tomorrow`, `+1 week`), an empty one, a time of day without a date
+     * or a date that does not exist is rejected, and a date without a time
+     * of day is midnight (see ZonedTime).
      *
      * A shape-only grid is the same data with `session_count` in place of
      * `sessions`, `timezone` and `slot_interval`:
@@ -288,7 +289,7 @@ final readonly class SessionGrid
      * @param array<string, mixed> $config
      *
      * @throws InvalidConfigurationException When a value is missing or malformed, or a session
-     *                                       start is not a complete, absolute date and time
+     *                                       start does not state an instant by itself
      */
     public static function fromArray(array $config): self
     {

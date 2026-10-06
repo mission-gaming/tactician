@@ -13,16 +13,19 @@ use Throwable;
 /**
  * Parses configuration times against an authoritative declared timezone.
  *
- * A time is a string that states a complete, absolute date and time: the
- * year, the month, the day, the hour and the minute, as in
- * `2026-08-01 19:00` or `2026-08-01T19:00:00`. Seconds are optional and
- * default to zero. A string that is relative to the current time (`now`,
- * `tomorrow`, `+1 week`, the empty string), that leaves the date or the time
- * of day out, or that names a date or a time that does not exist
- * (`2026-02-30 19:00`, `2026-08-01 24:00`) is rejected: PHP would resolve
- * the first two against the clock and roll the third over, and the library
- * never asks for the current time ({@see DateTimeString::isAbsolute()} has
- * the full rule).
+ * A time is a string that states its date in full: the year, the month and
+ * the day, as in `2026-08-01 19:00` or `2026-08-01T19:00:00`. The time of
+ * day is optional and defaults to midnight (`2026-11-09` is
+ * `2026-11-09 00:00:00`), and so are the seconds. A string that is relative
+ * to the current time (`now`, `tomorrow`, `+1 week`, the empty string), or
+ * that leaves the date or its year out (`20:00`, `August 1 20:00`), is
+ * rejected: PHP would resolve it against the clock, and the library never
+ * asks for the current time. So is a string that does not mean what it
+ * writes: a date or a time that does not exist (`2026-02-30 19:00`,
+ * `2026-08-01 24:00`), which PHP would roll over into the next one, a
+ * weekday name that is not the weekday of the date, and a second timezone
+ * that is not the first ({@see DateTimeString::statesAnInstant()} has the
+ * full rule).
  *
  * PHP honours a timezone or offset embedded in a datetime string and
  * silently ignores the DateTimeZone argument, which would let
@@ -37,8 +40,9 @@ final readonly class ZonedTime
      *
      * @throws InvalidConfigurationException When the values are malformed (a timezone PHP rejects
      *                                       outright, such as one holding a NUL byte, included),
-     *                                       the string does not state a complete, absolute date
-     *                                       and time, or it embeds a contradictory timezone
+     *                                       the string does not state an instant by itself (see
+     *                                       the class description), or it embeds a
+     *                                       contradictory timezone
      */
     public static function parse(mixed $value, mixed $timezoneValue, string $field): DateTimeImmutable
     {
@@ -51,9 +55,9 @@ final readonly class ZonedTime
         }
 
         // A string that is relative to the current time, or leaves a part of
-        // the instant out, is never handed to PHP: PHP would answer from the
+        // the date out, is never handed to PHP: PHP would answer from the
         // clock. A string PHP cannot parse is handed over, for PHP's error.
-        $statesInstant = DateTimeString::isAbsolute($value);
+        $statesInstant = DateTimeString::statesAnInstant($value);
         $timezone = null;
         $time = null;
         $previous = null;
@@ -72,6 +76,27 @@ final readonly class ZonedTime
             $previous = $exception;
         }
 
+        // A timezone or offset embedded in the string overrides the
+        // declared zone during parsing; the declared field is authoritative.
+        // A string that was not handed to PHP is asked for its timezone
+        // without PHP building anything from it: a string with both faults
+        // is reported for its timezone, as it was before the other fault
+        // was looked for.
+        if ($timezone !== null && $previous === null) {
+            $embedded = $time !== null ? $time->getTimezone()->getName() : DateTimeString::timezoneName($value);
+            if ($embedded !== null && $embedded !== $timezone->getName()) {
+                throw new InvalidConfigurationException(
+                    "The {$field} string carries its own timezone; declare the zone only via the 'timezone' field",
+                    [
+                        $field => $value,
+                        'timezone' => $timezoneValue,
+                        'embedded_timezone' => $embedded,
+                    ],
+                    reason: InvalidConfigurationReason::TimezoneMismatch
+                );
+            }
+        }
+
         if (!$statesInstant || $timezone === null || $time === null) {
             throw new InvalidConfigurationException(
                 "{$field} or its timezone is not parseable",
@@ -80,20 +105,6 @@ final readonly class ZonedTime
                 0,
                 $previous,
                 reason: InvalidConfigurationReason::UnparseableTime
-            );
-        }
-
-        // A timezone or offset embedded in the string overrides the
-        // declared zone during parsing; the declared field is authoritative.
-        if ($time->getTimezone()->getName() !== $timezone->getName()) {
-            throw new InvalidConfigurationException(
-                "The {$field} string carries its own timezone; declare the zone only via the 'timezone' field",
-                [
-                    $field => $value,
-                    'timezone' => $timezoneValue,
-                    'embedded_timezone' => $time->getTimezone()->getName(),
-                ],
-                reason: InvalidConfigurationReason::TimezoneMismatch
             );
         }
 

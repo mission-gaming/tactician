@@ -85,10 +85,11 @@ final readonly class ScheduledEvent
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
      * @throws InvalidInputException When fields are malformed or a participant ID is unknown, or
-     *                               the kickoff is not a complete, absolute date and time (the
-     *                               form `toArray()` writes is; `now`, `tomorrow`, an empty
-     *                               string or a date without a time of day is not). A kickoff
-     *                               without a zone is read as UTC
+     *                               the kickoff does not state an instant by itself (the form
+     *                               `toArray()` writes does; `now`, `tomorrow`, an empty
+     *                               string, a time of day without a date or a date that does
+     *                               not exist does not). A kickoff without a zone is read as
+     *                               UTC, and one without a time of day as midnight
      */
     public static function fromArray(array $data, array $participantsById): self
     {
@@ -105,10 +106,10 @@ final readonly class ScheduledEvent
         }
 
         // A kickoff is an instant. A string that is relative to the current
-        // time, or leaves a part of the instant out, is never handed to PHP,
+        // time, or leaves a part of the date out, is never handed to PHP,
         // which would answer from the clock. A string PHP cannot parse is
         // handed over, for PHP's error.
-        $statesInstant = DateTimeString::isAbsolute($kickoffValue);
+        $statesInstant = DateTimeString::statesAnInstant($kickoffValue);
         $kickoff = null;
         $previous = null;
         if ($statesInstant || DateTimeString::isMalformed($kickoffValue)) {

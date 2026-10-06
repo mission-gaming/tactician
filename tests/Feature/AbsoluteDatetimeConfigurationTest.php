@@ -11,6 +11,7 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Repack\SessionGrid;
 use MissionGaming\Tactician\Tests\Support\DatetimeCorpus;
 use MissionGaming\Tactician\Timeline\BlackoutRule;
+use MissionGaming\Tactician\Timeline\DateTimeString;
 use MissionGaming\Tactician\Timeline\ScheduledEvent;
 use MissionGaming\Tactician\Timeline\ScheduledSchedule;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
@@ -18,26 +19,44 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 
-// The rule: a datetime read from plain data states a complete, absolute date
-// and time. PHP's parser also accepts `now`, `tomorrow`, `+1 week` and the
-// empty string, and fills a part a string leaves out from the clock, so a
-// timeline or a session grid built from such a string was a different one
-// each time the configuration was loaded. The library never asks for the
-// current time; such a string is a configuration error.
+// The rule: a datetime read from plain data states its date in full, and
+// means what it writes. PHP's parser also accepts `now`, `tomorrow`,
+// `+1 week` and the empty string, and fills a date, or the year of one, that
+// a string leaves out from the clock, so a timeline or a session grid built
+// from such a string was a different one each time the configuration was
+// loaded. The library never asks for the current time; such a string is a
+// configuration error. So is a string that PHP reads to another instant than
+// the one written: a date or a time that does not exist, a weekday name that
+// is not the weekday of the date, a second timezone that is not the first.
+//
+// Everything else PHP reads is accepted as it was, to the same instant. A
+// date without a time of day is midnight, and an offset on top of a stated
+// date (`2026-08-01 20:00 +1 week`) is counted from that date: PHP takes
+// neither from the clock.
 //
 // The library has no clock to replace in a test, and is not to grow one for
 // this. That no accepted string depends on the current time is shown another
 // way, in three parts:
 //
 // 1. Every string of a generated corpus of absolute datetimes parses to the
-//    fields that were written into it. The expected fields come from the
-//    numbers the string was built from, not from PHP's reading of it, so a
-//    field taken from the clock would have to equal the written one by
-//    chance, for every one of several thousand strings.
+//    fields that were written into it, and every string of a corpus of
+//    offsets from a stated date to the fields the offset gives from that
+//    date. The expected fields come from the numbers the string was built
+//    from, not from PHP's reading of it, so a field taken from the clock
+//    would have to equal the written one by chance, for every one of several
+//    thousand strings.
 // 2. Every string of a corpus of relative and partial datetimes is rejected.
 // 3. A child process under another default timezone, in which "today" is
 //    another day for part of every day, gives the same verdict on every
-//    string of both corpora.
+//    string of the corpora.
+//
+// Gap left knowingly: no test here runs under another clock, because the
+// suite has no means to fake one. A child process under another default
+// timezone moves "today" by a day at most, which a string that took only its
+// year from the clock would not show; part 1 is what covers that. When this
+// rule was written, the corpora and some 130,000 further strings were also
+// run under two faked system clocks years apart, on PHP 8.3 and 8.5, and
+// every verdict was the same.
 
 /**
  * The data of one scheduled event between two participants, with the given
@@ -132,12 +151,13 @@ describe('a datetime string that does not state an instant', function (): void {
         'tomorrow' => ['tomorrow'],
         'a relative offset' => ['+1 week'],
         'a relative weekday with a time' => ['next monday 20:00'],
-        'a date without a time of day' => ['2026-08-01'],
         'a time of day without a date' => ['20:00'],
         'a date without its year' => ['August 1 20:00'],
-        'a relative part on top of a date and time' => ['2026-08-01 20:00 +1 week'],
         'a day the month does not have' => ['2026-02-30 20:00'],
+        'a day the month does not have, without a time' => ['2026-02-30'],
         'an hour the day does not have' => ['2026-08-01 24:00'],
+        'a second the minute does not have' => ['2026-08-01 23:59:60'],
+        'a weekday that is not the weekday of the date' => ['Mon, 01 Aug 2026 19:00:00'],
     ])->with([
         'ZonedTime::parse()' => [
             fn(string $value) => ZonedTime::parse($value, 'Europe/London', 'start'),
@@ -184,10 +204,67 @@ describe('a datetime string that does not state an instant', function (): void {
         'tomorrow' => ['tomorrow'],
         'a relative offset' => ['+1 week'],
         'a relative weekday with a time' => ['next monday 20:00'],
-        'a date without a time of day' => ['2026-08-01'],
         'a time of day without a date' => ['20:00'],
-        'a relative part on top of a date and time' => ['2026-08-01T19:00:00Z +1 week'],
+        'a date without its year' => ['August 1 20:00'],
         'a day the month does not have' => ['2026-02-30T19:00:00Z'],
+        'an hour the day does not have' => ['2026-08-01T24:00:00Z'],
+        'a weekday that is not the weekday of the date' => ['Mon, 01 Aug 2026 19:00:00 +0000'],
+        'two offsets that differ' => ['2026-08-01T19:00:00 +01:00 +05:00'],
+    ]);
+
+    // A second timezone is a contradiction only when it is not the first.
+    // The declared timezone is the one both strings carry, so neither is
+    // rejected for it.
+    it('is a configuration error when it carries two timezones that differ', function (): void {
+        expect(ZonedTime::parse('2026-08-01 19:00 +01:00 +01:00', '+01:00', 'start')->format(DATE_ATOM))->toBe('2026-08-01T19:00:00+01:00');
+
+        $exception = null;
+        try {
+            ZonedTime::parse('2026-08-01 19:00 +01:00 +05:00', '+01:00', 'start');
+        } catch (InvalidConfigurationException $thrown) {
+            $exception = $thrown;
+        }
+
+        expect($exception?->getReason())->toBe(InvalidConfigurationReason::UnparseableTime)
+            ->and($exception?->getPrevious())->toBeNull();
+    });
+
+    // A string with both faults was reported for its timezone before the
+    // other fault was looked for, and still is.
+    it('is reported for a timezone that contradicts the declared one first', function (string $value, string $embedded): void {
+        $exception = null;
+        try {
+            ZonedTime::parse($value, 'Europe/London', 'start');
+        } catch (InvalidConfigurationException $thrown) {
+            $exception = $thrown;
+        }
+
+        expect($exception?->getReason())->toBe(InvalidConfigurationReason::TimezoneMismatch)
+            ->and($exception?->getMessage())->toBe(
+                "Invalid scheduler configuration: The start string carries its own timezone; declare the zone only via the 'timezone' field"
+            )
+            ->and($exception?->getContext())->toBe(['start' => $value, 'timezone' => 'Europe/London', 'embedded_timezone' => $embedded]);
+    })->with([
+        'tomorrow in another zone' => ['tomorrow UTC', 'UTC'],
+        'a time of day with an offset' => ['20:00 +05:00', '+05:00'],
+        'a day the month does not have, with Z' => ['2026-02-30T19:00:00Z', 'Z'],
+        'the wrong weekday, as RFC 2822 writes it' => ['Mon, 01 Aug 2026 19:00:00 +0000', '+00:00'],
+        'an hour the day does not have, with an abbreviation' => ['2026-08-01 24:00 EST', 'EST'],
+        'two offsets that differ' => ['2026-08-01 19:00 +01:00 +05:00', '+01:00'],
+    ]);
+
+    it('is unparseable, not a timezone mismatch, when its timezone is the declared one', function (string $value): void {
+        $exception = null;
+        try {
+            ZonedTime::parse($value, 'Europe/London', 'start');
+        } catch (InvalidConfigurationException $thrown) {
+            $exception = $thrown;
+        }
+
+        expect($exception?->getReason())->toBe(InvalidConfigurationReason::UnparseableTime);
+    })->with([
+        'tomorrow in the declared zone' => ['tomorrow Europe/London'],
+        'a day the month does not have' => ['2026-02-30 19:00 Europe/London'],
     ]);
 
     // PHP's own error stays attached where PHP raised one: a string its
@@ -284,12 +361,43 @@ describe('an absolute datetime string', function (): void {
         'a Unix timestamp' => ['@1785610800', '+00:00', '2026-08-01T19:00:00.000000Z'],
         'a Unix timestamp before 1970' => ['@-5', '+00:00', '1969-12-31T23:59:55.000000Z'],
         'a Unix timestamp with a fraction' => ['@1785610800.5', '+00:00', '2026-08-01T19:00:00.500000Z'],
+        // A date without a time of day is midnight in the declared timezone
+        'a date without a time of day' => ['2026-11-09', 'Europe/London', '2026-11-09T00:00:00.000000Z'],
+        'a date without a time of day, in summer' => ['2026-08-01', 'Europe/London', '2026-07-31T23:00:00.000000Z'],
+        'a date with a month name and no time of day' => ['9 November 2026', 'UTC', '2026-11-09T00:00:00.000000Z'],
+        'a week date without a time of day' => ['2026-W31-6', 'UTC', '2026-08-01T00:00:00.000000Z'],
+        'a month and a year, which is the first of the month' => ['August 2026 19:00', 'UTC', '2026-08-01T19:00:00.000000Z'],
+        'noon on a date' => ['2026-08-01 noon', 'UTC', '2026-08-01T12:00:00.000000Z'],
+        // An offset from a stated date, counted from that date
+        'a week after a date' => ['2026-08-01 20:00 +1 week', 'Europe/London', '2026-08-08T19:00:00.000000Z'],
+        'a week after a date, across a clock change' => ['2026-10-24 20:00 +1 week', 'Europe/London', '2026-10-31T20:00:00.000000Z'],
+        'the first Monday of a month' => ['first monday of August 2026 19:00', 'UTC', '2026-08-03T19:00:00.000000Z'],
+        'the declared zone written twice' => ['2026-08-01 19:00 Europe/London Europe/London', 'Europe/London', '2026-08-01T18:00:00.000000Z'],
         // A local time that a clock change skips. PHP moves it forward by
         // the hour that was skipped, as it did before.
         'a time in the hour a clock change skips' => ['2026-03-29 01:30', 'Europe/London', '2026-03-29T01:30:00.000000Z'],
         // A local time that occurs twice. PHP takes the later one.
         'a time in the hour a clock change repeats' => ['2026-10-25 01:30', 'Europe/London', '2026-10-25T01:30:00.000000Z'],
     ]);
+
+    // A date without a time of day was read as midnight before the rule,
+    // from the string and not from the clock, and still is: at every place
+    // that reads a configured instant.
+    it('is midnight of its date when it has no time of day, at every entry point', function (): void {
+        $timeline = TimelineDefinition::fromArray(['start' => '2026-11-09', 'timezone' => 'Europe/London', 'round_interval' => 'P7D']);
+        $grid = SessionGrid::fromArray(['sessions' => ['2026-11-09', '2026-11-16'], 'timezone' => 'Europe/London', 'slot_interval' => 'PT25M']);
+        $blackout = BlackoutRule::fromArray(['windows' => [
+            ['from' => '2026-11-09', 'to' => '2026-11-17', 'timezone' => 'Europe/London', 'label' => 'break'],
+        ]]);
+        [$data, $participants] = scheduledEventDataWithKickoff('2026-11-09');
+
+        expect($timeline->getStart()->format(DATE_ATOM))->toBe('2026-11-09T00:00:00+00:00')
+            ->and($grid->getSessionStart(0)->format(DATE_ATOM))->toBe('2026-11-09T00:00:00+00:00')
+            ->and($grid->getSessionStart(1)->format(DATE_ATOM))->toBe('2026-11-16T00:00:00+00:00')
+            ->and($blackout->toArray()['windows'][0]['from'])->toBe('2026-11-09 00:00:00')
+            ->and($blackout->toArray()['windows'][0]['to'])->toBe('2026-11-17 00:00:00')
+            ->and(ScheduledEvent::fromArray($data, $participants)->getKickoff()->format(DATE_ATOM))->toBe('2026-11-09T00:00:00+00:00');
+    });
 
     it('is still rejected when it carries a zone that contradicts the timezone field', function (string $value): void {
         $thrown = null;
@@ -324,7 +432,10 @@ describe('an absolute datetime string', function (): void {
         'a zone, normalized to UTC' => ['2026-08-01 19:00:00 Europe/London', '2026-08-01T18:00:00.000000Z'],
         'fractional seconds' => ['2026-08-01T19:00:00.250Z', '2026-08-01T19:00:00.250000Z'],
         'RFC 2822' => ['Sat, 01 Aug 2026 19:00:00 +0000', '2026-08-01T19:00:00.000000Z'],
+        'an email date, which names its zone twice' => ['Sat, 01 Aug 2026 19:00:00 +0000 (UTC)', '2026-08-01T19:00:00.000000Z'],
         'a Unix timestamp' => ['@1785610800', '2026-08-01T19:00:00.000000Z'],
+        'a date without a time of day, which is midnight UTC' => ['2026-08-01', '2026-08-01T00:00:00.000000Z'],
+        'an offset from a stated date' => ['2026-08-01T19:00:00Z +1 week', '2026-08-08T19:00:00.000000Z'],
     ]);
 
     it('round-trips a kickoff through its array form', function (): void {
@@ -339,8 +450,13 @@ describe('the current time', function (): void {
     // that have no clock changes: there the wall-clock time parsed is the
     // wall-clock time written, for every string.
     it('gives no field of an accepted datetime', function (string $timezone): void {
-        $corpus = DatetimeCorpus::absolute();
-        expect(count($corpus))->toBeGreaterThan(4000);
+        $corpus = [...DatetimeCorpus::absolute(), ...DatetimeCorpus::offsetFromAStatedDate()];
+        expect(count(DatetimeCorpus::absolute()))->toBeGreaterThan(4000)
+            ->and(count(DatetimeCorpus::offsetFromAStatedDate()))->toBeGreaterThan(100);
+
+        // A date without a time of day is in the corpus, with midnight as
+        // the time it must be read to
+        expect(array_column($corpus, 'fields', 'value')['2026-08-01'] ?? null)->toBe('2026-08-01 00:00:00');
 
         $wrong = [];
         foreach ($corpus as ['value' => $value, 'layout' => $layout, 'fields' => $fields]) {
@@ -360,7 +476,7 @@ describe('the current time', function (): void {
         $timezone = new DateTimeZone('Europe/London');
 
         $different = [];
-        foreach (DatetimeCorpus::absolute() as ['value' => $value]) {
+        foreach ([...DatetimeCorpus::absolute(), ...DatetimeCorpus::offsetFromAStatedDate()] as ['value' => $value]) {
             $library = ZonedTime::parse($value, 'Europe/London', 'start')->format('Y-m-d\TH:i:s.uP e');
             if ($library !== (new DateTimeImmutable($value, $timezone))->format('Y-m-d\TH:i:s.uP e')) {
                 $different[] = $value;
@@ -372,11 +488,17 @@ describe('the current time', function (): void {
 
     // Part 2
     it('is never read for a relative or partial datetime: each one is rejected', function (): void {
-        $corpus = DatetimeCorpus::relativeAndPartial();
-        expect(count($corpus))->toBeGreaterThan(150);
+        $corpus = DatetimeCorpus::clockDependent();
+        expect(count($corpus))->toBeGreaterThan(130);
+
+        // Not one of them is even handed to PHP for an error: each is a
+        // string PHP accepts, and would answer from the clock
+        foreach ($corpus as $value) {
+            expect(DateTimeString::isMalformed($value))->toBeFalse();
+        }
 
         $accepted = [];
-        foreach ($corpus as $value) {
+        foreach ([...$corpus, ...DatetimeCorpus::notTheInstantWritten()] as $value) {
             try {
                 $accepted[] = var_export($value, true) . ' => ' . ZonedTime::parse($value, 'UTC', 'start')->format(DATE_ATOM);
             } catch (InvalidConfigurationException $exception) {
@@ -406,7 +528,9 @@ describe('the current time', function (): void {
 
         // And the verdicts are the two the corpora are named for
         $rejected = array_filter($here, fn(string $verdict): bool => $verdict === 'rejected: unparseable_time');
-        expect(count($rejected))->toBe(count(array_unique(DatetimeCorpus::relativeAndPartial())))
-            ->and(count($here) - count($rejected))->toBe(count(array_unique(array_column(DatetimeCorpus::absolute(), 'value'))));
+        $toReject = array_unique([...DatetimeCorpus::clockDependent(), ...DatetimeCorpus::notTheInstantWritten()]);
+        $toAccept = array_unique(array_column([...DatetimeCorpus::absolute(), ...DatetimeCorpus::offsetFromAStatedDate()], 'value'));
+        expect(count($rejected))->toBe(count($toReject))
+            ->and(count($here) - count($rejected))->toBe(count($toAccept));
     });
 });

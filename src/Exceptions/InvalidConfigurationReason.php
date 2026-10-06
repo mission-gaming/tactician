@@ -200,11 +200,12 @@ enum InvalidConfigurationReason: string
 
     /**
      * A datetime, its timezone or an ISO 8601 duration cannot be parsed, or
-     * the datetime does not state a complete, absolute date and time (it is
-     * relative to the current time, leaves the date or the time of day out,
-     * or names a date that does not exist). The previous exception is the
-     * one PHP raised, where PHP raised one: it accepts a relative or partial
-     * datetime, so that error has none.
+     * the datetime does not state an instant by itself: it is relative to
+     * the current time or leaves the date or its year out, or it does not
+     * mean what it writes (a date or a time that does not exist, a weekday
+     * name that is not the weekday of the date, a second timezone that is
+     * not the first). The previous exception is the one PHP raised, where
+     * PHP raised one: it accepts all of those, so that error has none.
      */
     case UnparseableTime = 'unparseable_time';
 

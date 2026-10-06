@@ -70,13 +70,14 @@ final readonly class BlackoutRule implements TimelineRule
      *
      * Each window declares its timezone explicitly; an embedded zone that
      * contradicts it is rejected (see ZonedTime). `from` and `to` each
-     * state a complete, absolute date and time: a relative string
-     * (`tomorrow`, `+1 week`), an empty one or a date without a time of day
-     * (`2026-11-09`; write `2026-11-09 00:00`) is rejected.
+     * state their date in full: a relative string (`tomorrow`, `+1 week`),
+     * an empty one, a time of day without a date or a date that does not
+     * exist is rejected. A date without a time of day (`2026-11-09`) is
+     * midnight at the start of that day.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the windows are malformed, or a bound is not a
-     *                                       complete, absolute date and time
+     * @throws InvalidConfigurationException When the windows are malformed, or a bound does not
+     *                                       state an instant by itself
      */
     public static function fromArray(array $config): self
     {
