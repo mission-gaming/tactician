@@ -142,8 +142,6 @@ class Schedule implements Iterator, Countable, JsonSerializable
      * Move to the next event during iteration.
      *
      * Implementation of Iterator interface.
-     *
-     * @return void
      */
     #[Override]
     public function next(): void
@@ -155,8 +153,6 @@ class Schedule implements Iterator, Countable, JsonSerializable
      * Reset iteration to the first event.
      *
      * Implementation of Iterator interface.
-     *
-     * @return void
      */
     #[Override]
     public function rewind(): void

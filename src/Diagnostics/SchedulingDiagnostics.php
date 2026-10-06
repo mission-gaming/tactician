@@ -47,7 +47,7 @@ class SchedulingDiagnostics
         $missingPairings = $this->identifyMissingPairings($participants, $partialEvents, $plan);
         $attribution = $this->attributeMissingPairings($participants, $constraints, $partialEvents, $plan);
         $suggestions = [
-            ...$this->generateSuggestions($participants, $constraints, $partialEvents, $plan, $context),
+            ...$this->generateSuggestions($participants, $partialEvents, $plan),
             ...$attribution['structural'],
         ];
 
@@ -198,15 +198,12 @@ class SchedulingDiagnostics
      *
      * @param array<Participant> $participants
      * @param array<Event> $partialEvents
-     * @param array<string, mixed> $context
      * @return array<string>
      */
     private function generateSuggestions(
         array $participants,
-        ConstraintSet $constraints,
         array $partialEvents,
-        StagePlan $plan,
-        array $context
+        StagePlan $plan
     ): array {
         $suggestions = [];
 
