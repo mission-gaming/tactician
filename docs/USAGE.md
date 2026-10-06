@@ -45,6 +45,7 @@ anything else that competes.
 | **Result** | The recorded outcome of a played event: a winner or a draw, with optional per-participant scores. |
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
+| **Tied set** | Two or more adjacent entries of a standings table that are **level**: equal on the ranking value, on every configured tiebreaker, on score difference and on scores-for, so that only the final fallback (seed, then label, then ID) orders them. `Standings::getTiedSets()` reports each one (`TiedSet`) with the positions it spans. |
 | **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
 | **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out, a `StageOutcome` when play completes. Stages compose via pools and progression selectors. |
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
@@ -559,6 +560,79 @@ construction via `WinDrawLossRanking::fromArray(['win' => 3, 'draw' => 1,
 also available. Ties beyond the configured tiebreakers fall back to score
 difference, score for, seed, and natural-order label comparison. Each event
 may have at most one result; recording two results for the same event throws.
+
+### Tied sets
+
+A standings table gives every entry a position of its own, also when no
+result separates two entries: the calculator then orders them by seed, by
+label and finally by ID, so that the same results always give the same table.
+That order says nothing about how the participants performed. An application
+that advances, relegates or seeds by position needs to know where it applies,
+and `Standings::getTiedSets()` reports it:
+
+```php
+// Before any result exists nothing separates the four participants
+$unplayed = $calculator->calculate($participants, []);
+
+$advancing = 2;
+foreach ($unplayed->getTiedSets() as $tiedSet) {
+    $labels = array_map(
+        fn(Participant $participant): string => $participant->getLabel(),
+        $tiedSet->getParticipants()
+    );
+    echo "Positions {$tiedSet->getFirstPosition()} to {$tiedSet->getLastPosition()}: "
+        . implode(', ', $labels) . "\n";
+
+    // A set that starts at or above the cut and ends below it
+    if ($tiedSet->getFirstPosition() <= $advancing && $tiedSet->getLastPosition() > $advancing) {
+        echo "The results do not decide who takes the top {$advancing} positions\n";
+    }
+}
+
+// In the table of the three results above, results decide every position
+echo count($standings->getTiedSets()) . " tied sets\n";
+```
+
+That prints:
+
+```
+Positions 1 to 4: Alice, Bob, Carol, Dave
+The results do not decide who takes the top 2 positions
+0 tied sets
+```
+
+Two entries are **level** when every figure the calculator compares before
+the fallback is equal: the ranking value, the value of each configured
+tiebreaker, the score difference and scores-for
+(`StandingEntry::isLevelWith()` is that comparison). A **tied set**
+(`TiedSet`) is a group of two or more level entries, as large as it can be.
+In a table the calculator built, level entries are always next to each other
+(a `Standings` constructed by hand is read in the order it was given, and
+only adjacent level entries form a set), so a set spans the
+consecutive positions from `getFirstPosition()` to `getLastPosition()`, and
+`getEntries()` and `getParticipants()` list its members in table order. The
+sets are returned in table order; a table with two separate ties returns two
+sets, each with its own positions, and a table in which results decide every
+position returns an empty list. An entry is never in two sets.
+
+A tie that a configured tiebreaker breaks is not reported: add a tiebreaker
+to the calculator and the entries it separates leave the set. The record
+(played, wins, draws, losses) is not compared unless a tiebreaker compares
+it, because the table is not ordered by it.
+
+"Equal" means the same number, with no tolerance, because that is the
+comparison that orders the table: two entries are reported as tied exactly
+when the calculator found nothing to order them by. The built-in rankings
+(3/1/0 and 1/½/0) and tiebreakers add whole numbers and halves, which are
+exact. A custom ranking value such as 0.1 is not: three wins at 0.1 add up to
+slightly more than one draw at 0.3, so the table places the first entry above
+the second and does not report them as tied. Use values with an exact binary
+form (whole numbers, halves, quarters) where ties must be recognised.
+
+Reading the tied sets changes nothing in the table: the entries, their order
+and `getPosition()` are what they were. Deciding a tie (a play-off, a drawing
+of lots, a shared rank) is the application's rule; apply it to the entrant
+list passed to the next stage, where position is authoritative.
 
 ## Swiss Tournaments
 

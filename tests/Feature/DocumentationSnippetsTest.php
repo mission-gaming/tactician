@@ -312,6 +312,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["1. Carol: 4 pts (1W 1D 0L)\n2. Alice: 4 pts (1W 1D 0L)\n3. Bob: 0 pts (0W 0D 1L)\n4. Dave: 0 pts (0W 0D 1L)\n"],
             [],
         ],
+        'tied sets' => [
+            'docs/USAGE.md',
+            '$unplayed->getTiedSets()',
+            ["Positions 1 to 4: Alice, Bob, Carol, Dave\nThe results do not decide who takes the top 2 positions\n0 tied sets\n"],
+            [],
+        ],
         'elimination round labels' => ['docs/USAGE.md', 'echo "{$pairing->getLabel()}\n";', ["quarterfinal\nsemifinal\nfinal\n"], []],
         // The restrictive constraint is there to show the failure branch
         'validation failure branch' => [
