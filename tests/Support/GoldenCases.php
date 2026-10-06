@@ -17,6 +17,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Exceptions\RepackViolationsException;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
@@ -29,6 +30,8 @@ use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
+use MissionGaming\Tactician\Scheduling\PotDrawOptions;
+use MissionGaming\Tactician\Scheduling\PotDrawScheduler;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
@@ -73,6 +76,9 @@ final class GoldenCases
 
     private const array ELIMINATION_SIZES = [5, 8, 12];
 
+    /** Entrants, pots and opponents per pot of the pot draw's worked cases. */
+    private const array POT_DRAW_CASES = [[6, 3, 1], [20, 5, 1], [36, 4, 2]];
+
     private const array REPACK_SIZES = [12, 16, 24];
 
     /** Upper bound on driver-loop rounds, so a broken engine fails instead of hanging. */
@@ -100,6 +106,7 @@ final class GoldenCases
 
         $cases['round-robin/constrained.txt'] = self::constrainedRoundRobin(...);
         $cases['swiss.txt'] = self::swiss(...);
+        $cases['pot-draw.txt'] = self::potDraw(...);
         $cases['single-elimination.txt'] = self::singleElimination(...);
         $cases['double-elimination.txt'] = self::doubleElimination(...);
         $cases['repack/scenario.txt'] = self::repackScenario(...);
@@ -284,6 +291,39 @@ final class GoldenCases
             'metadata; `R<round>: a-b c-d` lists the round\'s events in generated',
             'order, first-named participant first; `byes:` names who sits out each',
             'round of an odd field.',
+            ...self::EXPLANATION,
+        ], $sections);
+    }
+
+    /**
+     * The three worked cases of the pot draw, one section per case and seed.
+     *
+     * @throws IncompleteScheduleException
+     * @throws InvalidConfigurationException
+     * @throws InvalidInputException
+     * @throws JsonException
+     */
+    private static function potDraw(): string
+    {
+        $sections = [];
+        foreach (self::POT_DRAW_CASES as [$size, $pots, $opponentsPerPot]) {
+            foreach (self::SEEDS as $seed) {
+                $schedule = (new PotDrawScheduler())->schedule(
+                    self::field($size),
+                    new PotDrawOptions($pots, $opponentsPerPot, $seed)
+                );
+                $sections["n={$size} pots={$pots} opponents_per_pot={$opponentsPerPot} seed {$seed}"]
+                    = GoldenText::schedule($schedule);
+            }
+        }
+
+        return GoldenText::document([
+            'Pot draw (PotDrawScheduler): every round drawn up front from pots.',
+            'Participants are "1".."n" in list order, cut into pots of equal size in',
+            'that order: with 4 pots of 9, pot 1 is 1-9, pot 2 is 10-18, and so on.',
+            'The seed is the `seed` option. `meta:` is the schedule metadata;',
+            '`R<round>: a-b c-d` lists the round\'s events in generated order,',
+            'first-named participant first.',
             ...self::EXPLANATION,
         ], $sections);
     }

@@ -10,6 +10,7 @@ use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Examples\Measured;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\ViolationKind;
@@ -786,6 +787,97 @@ $demonstrations = [
             ->and($ajax->getTiebreakers()['sonneborn-berger'])->toBeGreaterThan($boca->getTiebreakers()['sonneborn-berger'])
             ->and(array_keys($ajax->getTiebreakers()))->toBe(['wins', 'buchholz', 'sonneborn-berger'])
             ->and($plain->getEntries()[0]->getTiebreakers())->toBe([]);
+    },
+
+    '22-pot-draw' => function (array $results): void {
+        $schedule = exampleResult($results, 'The draw', Schedule::class);
+        $refused = exampleResult($results, 'Twenty clubs in four pots of five, one opponent per pot', InvalidConfigurationException::class);
+
+        // The plan stated the shape before the draw
+        expect(exampleArray($results, 'Plan, before the draw'))->toBe([
+            'Algorithm' => 'pot-draw',
+            'Pots' => 4,
+            'Clubs per pot' => 9,
+            'Rounds' => 8,
+            'Events per round' => 18,
+            'Events' => 144,
+        ]);
+
+        // Counted in the events: the pots are the list in blocks of nine,
+        // and the ids club01..club36 are in list order
+        $pot = static fn(Participant $participant): int => intdiv((int) substr($participant->getId(), 4) - 1, 9) + 1;
+        $perRound = [];
+        $opponents = [];
+        $first = [];
+        $second = [];
+        $met = [];
+        foreach ($schedule as $event) {
+            [$a, $b] = $event->getParticipants();
+            $round = $event->getRound()?->getNumber();
+            foreach ([$a, $b] as $participant) {
+                $perRound[$round][$participant->getId()] = ($perRound[$round][$participant->getId()] ?? 0) + 1;
+            }
+            $opponents[$a->getId()][$pot($b)] = ($opponents[$a->getId()][$pot($b)] ?? 0) + 1;
+            $opponents[$b->getId()][$pot($a)] = ($opponents[$b->getId()][$pot($a)] ?? 0) + 1;
+            $first[$a->getId()][$pot($b)] = ($first[$a->getId()][$pot($b)] ?? 0) + 1;
+            $second[$b->getId()][$pot($a)] = ($second[$b->getId()][$pot($a)] ?? 0) + 1;
+            $met[] = examplePair($event);
+        }
+
+        expect($schedule->count())->toBe(144)
+            ->and(array_keys($perRound))->toBe([1, 2, 3, 4, 5, 6, 7, 8])
+            // No rematch
+            ->and(array_unique($met))->toHaveCount(144)
+            ->and($opponents)->toHaveCount(36);
+
+        foreach ($perRound as $round => $appearances) {
+            // Every club once in every round
+            expect($appearances)->toHaveCount(36, "round {$round}")
+                ->and(array_unique(array_values($appearances)))->toBe([1], "round {$round}");
+        }
+
+        foreach ($opponents as $id => $byPot) {
+            ksort($byPot);
+            ksort($first[$id]);
+            ksort($second[$id]);
+            // Two opponents from every pot, one in each role
+            expect($byPot)->toBe([1 => 2, 2 => 2, 3 => 2, 4 => 2], $id)
+                ->and($first[$id])->toBe([1 => 1, 2 => 1, 3 => 1, 4 => 1], $id)
+                ->and($second[$id])->toBe([1 => 1, 2 => 1, 3 => 1, 4 => 1], $id);
+        }
+
+        // The top seed's opponents, as the example lists them, are the ones in the events
+        $listed = exampleArray($results, 'Opponents of the top seed');
+        expect(array_keys($listed))->toBe(['Pot 1', 'Pot 2', 'Pot 3', 'Pot 4']);
+        $labels = [];
+        foreach ($schedule as $event) {
+            [$a, $b] = $event->getParticipants();
+            if ($a->getId() === 'club01') {
+                $labels[] = 'Pot ' . $pot($b) . ': first role against ' . $b->getLabel();
+            } elseif ($b->getId() === 'club01') {
+                $labels[] = 'Pot ' . $pot($a) . ': second role against ' . $a->getLabel();
+            }
+        }
+        $fromListing = [];
+        foreach ($listed as $potName => $meetings) {
+            assert(is_string($meetings));
+            foreach (explode(', ', $meetings) as $meeting) {
+                $fromListing[] = "{$potName}: {$meeting}";
+            }
+        }
+        sort($labels);
+        sort($fromListing);
+        expect($fromListing)->toBe($labels)
+            ->and($labels)->toHaveCount(8);
+
+        expect(exampleArray($results, 'Seeds'))->toBe([
+            'Seed 2026 drawn again gives the same schedule' => true,
+            'Seed 2027 gives another schedule' => true,
+        ]);
+
+        expect($refused->getReason())->toBe(InvalidConfigurationReason::OddPotWithOddOpponents)
+            ->and($refused->getContext())->toBe(['pot_size' => 5, 'opponents_per_pot' => 1, 'participant_slots_inside_one_pot' => 5])
+            ->and($results['Its reason'])->toBe('odd_pot_with_odd_opponents');
     },
 ];
 
