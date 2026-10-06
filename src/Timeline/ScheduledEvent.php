@@ -84,7 +84,12 @@ final readonly class ScheduledEvent
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
-     * @throws InvalidInputException When fields are malformed or a participant ID is unknown
+     * @throws InvalidInputException When fields are malformed or a participant ID is unknown, or
+     *                               the kickoff does not state an instant by itself (the form
+     *                               `toArray()` writes does; `now`, `tomorrow`, an empty
+     *                               string, a time of day without a date or a date that does
+     *                               not exist does not). A kickoff without a zone is read as
+     *                               UTC, and one without a time of day as midnight
      */
     public static function fromArray(array $data, array $participantsById): self
     {
@@ -100,10 +105,23 @@ final readonly class ScheduledEvent
             throw new InvalidInputException('Scheduled event data requires a kickoff string');
         }
 
-        try {
-            $kickoff = new DateTimeImmutable($kickoffValue, new DateTimeZone('UTC'));
-        } catch (Exception $exception) {
-            throw new InvalidInputException('Scheduled event kickoff is not parseable', 0, $exception);
+        // A kickoff is an instant. A string that is relative to the current
+        // time, or leaves a part of the date out, is never handed to PHP,
+        // which would answer from the clock. A string PHP cannot parse is
+        // handed over, for PHP's error.
+        $statesInstant = DateTimeString::statesAnInstant($kickoffValue);
+        $kickoff = null;
+        $previous = null;
+        if ($statesInstant || DateTimeString::isMalformed($kickoffValue)) {
+            try {
+                $kickoff = new DateTimeImmutable($kickoffValue, new DateTimeZone('UTC'));
+            } catch (Exception $exception) {
+                $previous = $exception;
+            }
+        }
+
+        if (!$statesInstant || $kickoff === null) {
+            throw new InvalidInputException('Scheduled event kickoff is not parseable', 0, $previous);
         }
 
         $resource = $data['resource'] ?? null;

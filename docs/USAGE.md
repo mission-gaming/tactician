@@ -1732,6 +1732,59 @@ $timeline = TimelineDefinition::fromArray([
 ]);
 ```
 
+**A datetime in plain data states its date in full**: the year, the month
+and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
+day is optional and defaults to midnight (`2026-11-09` is
+`2026-11-09 00:00:00`); so do the seconds and a fraction of a second. The
+zone comes from the `timezone` field, and a zone or offset written into the
+string must not contradict it. This holds wherever a datetime is read from
+plain data: the `start` of a timeline, the `from` and `to` of a blackout
+window, the `sessions` of a session grid and the `kickoff` of a serialized
+scheduled event (which is UTC unless the string carries a zone).
+
+Two kinds of string are rejected, with the reason `UnparseableTime` (the
+kickoff with an `InvalidInputException`):
+
+- A string whose answer would come from the clock. It is relative to the
+  current time (`now`, `tomorrow`, `+1 week`, `next monday 20:00`, the
+  empty string), or it has no date (`20:00`), or its date has no year
+  (`August 1 20:00`).
+- A string that does not mean what it writes. It names a date or a time
+  that does not exist (`2026-02-30 20:00`, `2026-08-01 24:00`,
+  `2026-08-01 23:59:60`), a weekday that is not the weekday of its date
+  (`Mon, 01 Aug 2026 19:00:00`: 1 August 2026 is a Saturday), or a second
+  timezone that is not the first (`2026-08-01 19:00 +01:00 +05:00`).
+
+PHP's date parser accepts all of these. It resolves the first kind against
+the clock, so the same configuration would give a different timeline each
+time it is loaded, and the library never asks for the current time. It
+reads the second kind to another instant than the one written: 30 February
+as 2 March, `24:00` as the next day, the Saturday as the Monday after it,
+and the first of two timezones.
+
+<!-- snippet: throws="MissionGaming\Tactician\Exceptions\InvalidConfigurationException" -->
+```php
+// "tomorrow" is a different day each time the configuration is loaded
+TimelineDefinition::fromArray([
+    'start' => 'tomorrow 18:00',
+    'timezone' => 'Europe/London',
+    'round_interval' => 'P7D',
+]);
+```
+
+Every other string PHP reads is accepted, and read as PHP reads it: a month
+name (`1 August 2026 19:00`), RFC 2822 with the right weekday, an ISO 8601
+week date (`2026-W31-6T19:00`) or ordinal date (`2026-213T19:00`), a Unix
+timestamp (`@1785610800`), a timezone written twice (`+0000 (UTC)`). That
+includes an offset from a date the string states, which is counted from that
+date and not from today: `2026-08-01 20:00 +1 week` is 8 August at 20:00,
+and `first monday of August 2026 19:00` is 3 August. A relative date with no
+date to count from is for the application to compute and pass on.
+
+One local time is still read to another: a time that a clock change skips
+in the declared timezone (`2026-03-29 01:30` in `Europe/London`) is moved
+forward by the hour that was skipped.
+
 ### Time-Aware Rules
 
 Assignment is deterministic slot arithmetic, so a violated time rule
@@ -2942,7 +2995,9 @@ Issue: start or its timezone is not parseable
 
 A timezone string that PHP cannot use at all (one that holds a NUL byte, as
 JSON-decoded configuration can) is reported the same way, with the reason
-`UnparseableTime`.
+`UnparseableTime`. So is a datetime that does not state an instant by
+itself, such as `tomorrow`, `20:00` or `2026-02-30 20:00` (see
+[Timeline Assignment](#timeline-assignment) for the form a datetime takes).
 
 The report writes a list value out in full, in its own order, with strings in
 double quotes (`event_ids: ["e1", "e2"]`) and with keys where the array is not
@@ -2998,6 +3053,13 @@ identifier for logs and stored data):
 | `UndecidedTie` | `undecided_tie` | A tie that must produce a winner has none |
 | `IncompatibleOutcome` | `incompatible_outcome` | A progression selector was given an outcome of a shape it cannot read |
 | `RankUnavailable` | `rank_unavailable` | A progression selector asked for a rank the standings do not have |
+| `RoundOutOfSequence` | `round_out_of_sequence` | A round was recorded out of play order: its number is not above the last recorded one |
+| `EventNotInRound` | `event_not_in_round` | An event, or the event of a result, does not belong to the round it was recorded with (one with no round number at all is `EventWithoutRoundNumber`) |
+| `NoRoundRecorded` | `no_round_recorded` | Results were added or replaced in a stage with no recorded round |
+| `ResultNotRecorded` | `result_not_recorded` | A result was to be replaced for an event that has no recorded result |
+| `RoundSuperseded` | `round_superseded` | A result was to be replaced in a round that a later round was paired from |
+| `EmptyEngineFingerprint` | `empty_engine_fingerprint` | A stage state was to be stamped with an empty engine fingerprint |
+| `EngineFingerprintMismatch` | `engine_fingerprint_mismatch` | A stage state carries the fingerprint of another engine or configuration than the one reading it |
 | `EmptyEventId` | `empty_event_id` | A movable or pinned event has an empty ID |
 | `IdenticalParticipants` | `identical_participants` | An event names the same participant on both sides |
 | `DuplicateEventId` | `duplicate_event_id` | Two events of one repack request share an ID |
@@ -3005,7 +3067,7 @@ identifier for logs and stored data):
 | `PinCapacityExceeded` | `pin_capacity_exceeded` | More events are pinned at one position than a slot can hold |
 | `PinConflict` | `pin_conflict` | One participant is pinned in two events at one position (`PinConflictException`) |
 | `PositionOutOfRange` | `position_out_of_range` | A session, slot, round or resource index is outside the grid or timeline |
-| `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed |
+| `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed, or the datetime is relative to the current time, has no date or no year, or does not mean what it writes |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
@@ -3015,13 +3077,9 @@ identifier for logs and stored data):
 
 A case says what kind of mistake was made, not which component found it:
 `TooFewParticipants` comes from the round-robin scheduler, the Swiss engine
-and the elimination engines alike. One group of errors has no reason yet:
-those `StageState` raises (`withRoundPlayed()`, `withAdditionalResults()`,
-`withResultReplaced()`, the engine fingerprint, and a duplicate ID given to
-`start()`). Their `getReason()` returns null. The report of the first two
-and of `start()` also still ends with the round-robin "REQUIREMENTS" block,
-which does not describe them, because they state neither a reason nor
-requirements. Both are known gaps.
+and the elimination engines alike. Every configuration error the library
+raises states one; `getReason()` returns null only for an exception that
+code outside the library builds without a reason.
 
 ### Catching Every Library Exception
 
