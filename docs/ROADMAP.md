@@ -61,6 +61,7 @@ Added after the five phases and released in 0.2.0.
 - **Greedy generation is the default.** A constraint set that every rotated ordering fails throws `IncompleteScheduleException` even when a schedule exists, unless `RoundRobinOptions(backtracking: true)` is set.
 - **Backtracking searches the first leg only.** Later legs derive from it through the leg strategy; a later leg the constraints reject fails the attempt, because the search does not cross leg boundaries ([design note](design/backtracking-generation.md)).
 - **`RoleBalanceConstraint` has a floor with the built-in generator.** `RoundRobinScheduler` bounds the running home/away imbalance at 3 for even field sizes and 4 for odd ones, so only limits at or above those values are always satisfiable.
+- **The last fallback of the standings order compares ids as numbers.** After ranking value, tiebreakers, score difference, score for, seed and label, `StandingsCalculator` orders two entries with PHP's string comparison of their ids: `'9'` before `'10'`, and two ids that are equal as numbers (`'01'` and `'1'`) in input order. Every other use of an id compares it as an exact string. Changing this fallback reorders tables that are correct today, so it waits for a minor release.
 - **`ScheduleOptimizer` samples; it does not search.** It keeps the best of N seeded candidates and works with whole-schedule generators only ([design note](design/schedule-quality.md)).
 
 ## Deferred work
