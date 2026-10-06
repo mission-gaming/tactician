@@ -115,10 +115,18 @@ use Random\Randomizer;
  * members inside each pot (which decides who meets whom), the order of the
  * pots in the pot-level matchings, the matchings and shifts used, which
  * side is first, and the order of the rounds. The draw is not uniform over
- * every schedule the format allows. The same entrants, options and seed
- * give the same schedule on every call: each call builds its own
- * `Random\Randomizer` on the `Xoshiro256StarStar` engine from the seed and
- * keeps no state between calls.
+ * every schedule the format allows. Between two given pots, or inside one,
+ * every pairing is as likely as any other, because the members of each pot
+ * are shuffled first. The shape of a round is the construction's and no
+ * seed changes it: in a round the members of a pot all meet members of one
+ * other pot, or of their own (with an odd pot size, three rounds mix the
+ * two and hold every event inside a pot), and with an even k one of two
+ * pots is in the first role in every event between them in a round.
+ *
+ * The same entrants, options and seed give the same schedule on every
+ * call: each call builds its own `Random\Randomizer` on the
+ * `Xoshiro256StarStar` engine from the seed and keeps no state between
+ * calls.
  *
  * ## Cost
  *

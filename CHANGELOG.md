@@ -228,7 +228,10 @@ heading **Output change (fix)**.
     role exactly half the time against every pot.
   - The schedule is built directly, with no search, for any even pot size,
     and for an odd pot size with two opponents per pot. Generation time is
-    proportional to the number of events.
+    proportional to the number of events. Who meets whom is drawn evenly;
+    the shape of a round is not drawn: in a round the members of a pot all
+    meet members of one other pot, or of their own, whatever the seed (see
+    "The seed and determinism" in the usage guide for the exact statement).
   - A configuration that cannot exist is refused before anything is drawn,
     with a reason of its own: `OddParticipantCount` (no bye is issued),
     `UnequalPots`, `TooManyOpponentsPerPot` and `OddPotWithOddOpponents`. A
@@ -246,12 +249,12 @@ heading **Output change (fix)**.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
-  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 38 more; the
+  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and others; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). 141 of the 152 sites that build the exception set one. The
-  eleven that do not are in `Stage\StageState` (recording a round or its
-  results, replacing a result, the engine fingerprint, and a duplicate ID
-  given to `start()`): `getReason()` returns null
+  identifiers). Every site that builds the exception sets one, except eleven
+  in `Stage\StageState` (recording a round or its results, replacing a
+  result, the engine fingerprint, and a duplicate ID given to `start()`):
+  `getReason()` returns null
   for those, and for an exception that code outside the library builds
   without a reason. A `match` over the reason needs a `default` arm, because
   a release may add a case.

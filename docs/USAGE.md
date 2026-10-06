@@ -861,6 +861,26 @@ draw is not uniform over every schedule the format allows. The engine behind
 it (`Random\Engine\Xoshiro256StarStar`) is part of the output, and the golden
 fixtures pin one draw of each worked case.
 
+Who meets whom is drawn evenly: between two given pots, or inside one, every
+pairing is as likely as any other. The shape of a round is not drawn at all,
+and no seed changes it:
+
+- A round is made of whole pots. With an even pot size, all the members of a
+  pot meet members of one other pot in a round, or all of them play inside
+  their own pot. If the number of pots is even as well, every event inside a
+  pot is in one of a few rounds in which every pot plays inside itself: as
+  many rounds as there are opponents per pot.
+- With an odd pot size, every event inside a pot is in one of three rounds,
+  which the pots share with a partner pot. In every other round each pot
+  meets one other pot as a whole.
+- With an even number of opponents per pot, one of the two pots is in the
+  first role in every event between them in a round, and the other pot in
+  another round.
+
+So a round does not mix the pots the way a draw made one event at a time
+does. If the order of play matters to you beyond who meets whom and in which
+role, read the rounds as a valid order and not as a drawn one.
+
 ### Feasible, supported and refused configurations
 
 A configuration can exist only if all four hold:
