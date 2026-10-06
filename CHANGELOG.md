@@ -628,9 +628,10 @@ heading **Output change (fix)**.
     was available, and a `NoValidPairingException` only when no complete
     pairing exists. Fields of up to 16 are driven to their last round, and
     the number of stages that cannot pair it is recorded.
-- Tests for 39 of the 54 lines of `src/` that no test executed, each through
-  the behaviour that reaches it, among them the single-move relocation of
-  the repack load planner (`tests/Feature/RepackRelocationTest.php`,
+- Tests for 33 of the 48 lines of `src/` that no test executed in the
+  coverage report of the continuous integration, each through the behaviour
+  that reaches it, among them the single-move relocation of the repack load
+  planner (`tests/Feature/RepackRelocationTest.php`,
   `tests/Feature/UncoveredPathsTest.php`). The 15 lines that remain are
   guards for states the surrounding code rules out; the second file lists
   them with the reason for each.
@@ -639,9 +640,13 @@ heading **Output change (fix)**.
   Pest, over the tests named in `phpunit.mutation.xml`. The weekly scheduled
   workflow runs it in one `Mutation testing` job per directory (a maintainer
   can also start it by hand), which enforces no minimum and publishes the
-  score, the counts and the first untested changes in the job summary. It
-  does not run for a pull request, because a run takes hours of a runner,
-  and it is not part of `composer ci`. Infection was tried first and is not used: it has no
+  score, the counts and the first untested changes in the job summary. The
+  runner's score counts a change whose tests ran into the time limit as
+  noticed, so the summary also gives the share that a failing test noticed;
+  for a run that is stopped at the job's time limit it gives no score and
+  says how many changes the run got through. It does not run for a pull
+  request, because a run takes hours of a runner, and it is not part of
+  `composer ci`. Infection was tried first and is not used: it has no
   adapter for Pest, and through its PHPUnit adapter it counts every change
   as noticed, because it does not recognise the result line Pest prints.
 
@@ -773,7 +778,9 @@ usage guide lists the same methods under "Deprecations".
     with mirrored legs. That test also drew its roles from an unseeded
     randomizer. It is now a seeded test of the loud failure, a test that
     shows the satisfying schedule, and a test of the wanted behaviour marked
-    as not yet met.
+    as not yet met. A test with that mark is not run and does not fail a
+    run, so `tests/Feature/GateConfigurationTest.php` names the tests that
+    may carry it: this one, and no other until it is listed there.
   - Three tests of `ScheduleValidator` whose only assertion was
     `expect(true)->toBeTrue()` now assert that the valid schedule is
     accepted and that the nearest invalid one is refused. The test titled
