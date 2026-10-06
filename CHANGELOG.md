@@ -33,13 +33,24 @@ heading **Output change (fix)**.
   violations, and it appears in the diagnostic report and the suggestions of
   an `IncompleteScheduleException`. Code that matches the name of this
   constraint must change the string it matches: multiply the number in it by
-  100. The percentage is rounded to at most two decimal places, a half going
+  100 and round it to two decimal places. The percentage is rounded to at most two decimal places, a half going
   up, and is written with `.` as the decimal separator and without trailing
   zeros, whatever the `precision` and `serialize_precision` settings and the
   locale: 0.125 gives `12.5%`, 1/3 gives `33.33%`, 2/3 gives `66.67%` and
   0.1 + 0.2 gives `30%`. The name therefore does not identify the period
   exactly: two periods closer than 0.0001 can share a name, as 1/3 and 0.3333
   do. No other constraint's name changes, and no schedule changes.
+
+### Fixed
+
+- `IncompleteScheduleException::getDiagnosticReport()` writes the share of
+  missing events with `.` as the decimal separator whatever the locale:
+  `Missing Events: 6 (100.0%)`. Under a locale that writes a decimal comma it
+  wrote `Missing Events: 6 (100,0%)`, so the same failure produced two
+  different reports on two machines. Some PHP builds take the locale from the
+  environment (`LC_ALL`, `LANG`) at startup, so this needed no `setlocale()`
+  call in the application. Under the default `C` locale the report is
+  unchanged.
 
 ## [0.2.1] - 2026-10-06
 
