@@ -6,6 +6,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Tests\Support\CiEnvironment;
 use MissionGaming\Tactician\Tests\Support\GoldenCases;
 use MissionGaming\Tactician\Tests\Support\GoldenText;
 use PHPUnit\Framework\Assert;
@@ -46,7 +47,7 @@ function goldenUpdateRequested(): bool
         return false;
     }
 
-    if (goldenRunsOnCi(getenv('CI'))) {
+    if (CiEnvironment::isCi(getenv('CI'))) {
         Assert::fail(
             'UPDATE_GOLDEN=1 is set on CI. A regenerating run compares each golden file with itself and '
             . 'cannot fail: regenerate locally with `composer golden-update` and commit the reviewed diff.'
@@ -54,14 +55,6 @@ function goldenUpdateRequested(): bool
     }
 
     return true;
-}
-
-/**
- * @param string|false $ci The CI environment variable, false when unset
- */
-function goldenRunsOnCi(string|false $ci): bool
-{
-    return $ci !== false && !in_array(strtolower($ci), ['', '0', 'false'], true);
 }
 
 /**
@@ -442,7 +435,7 @@ describe('Golden harness', function (): void {
     });
 
     it('treats any truthy CI variable as CI', function (string|false $ci, bool $expected): void {
-        expect(goldenRunsOnCi($ci))->toBe($expected);
+        expect(CiEnvironment::isCi($ci))->toBe($expected);
     })->with([
         'unset' => [false, false],
         'empty' => ['', false],
