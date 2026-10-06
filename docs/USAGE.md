@@ -633,9 +633,8 @@ $schedule = (new SwissScheduler(null, new Randomizer()))
 ### Correcting a Recorded Result
 
 `withResultReplaced()` replaces the result of one event of the **last
-recorded round**: a result entered wrongly, or one the format cannot use
-(a drawn knockout match, which the state accepts and the elimination
-engines then reject on every call). The event is found by its round
+recorded round**, for a result that was entered wrongly. It corrects the
+record; it does not decide an event. The event is found by its round
 number, its participants in either order and its tie leg, so the state may
 have come back from storage. The replacement takes the place of the old
 result; nothing else in the state changes.
@@ -713,11 +712,9 @@ serializes without the `engine_fingerprint` key, and data stored before the
 stamp existed loads as an unstamped state. A stamped state keeps its stamp
 through every verb.
 
-A fingerprint is the format and the options that shape its rounds:
-`swiss:planned-rounds=5` (`none` for an open-ended stage),
-`single-elimination:legs-per-tie=1,reseed-each-round=no`,
-`double-elimination:legs-per-tie=1,grand-final-reset=yes`. Compare it; do
-not parse it. Constraints, the standings calculator and the randomizer are
+A fingerprint names the format and the options that shape its rounds, for
+example `swiss:planned-rounds=5`. It is an opaque string: compare it with
+the one an engine gives, and do not parse it or write one by hand. Constraints, the standings calculator and the randomizer are
 objects the engine cannot name, so they are not part of it. All four
 engine methods (`getPlan()`, `pairNextRound()`, `isComplete()`,
 `getOutcome()`) refuse a state stamped with another fingerprint, with an
@@ -793,8 +790,8 @@ Conflicting, duplicate, or round-less results are rejected with clear
 errors; partially recorded rounds are completed with
 `$state->withAdditionalResults([...])`. The state itself accepts a drawn
 single-leg result, because it does not know the format, and the engine
-then rejects the state on every call: replace the result with
-`$state->withResultReplaced(...)` (see
+then rejects the state on every call. If the draw was entered by mistake,
+correct it with `$state->withResultReplaced(...)` (see
 [Correcting a Recorded Result](#correcting-a-recorded-result)).
 
 ## Pools, Progression, and Multi-Stage Tournaments

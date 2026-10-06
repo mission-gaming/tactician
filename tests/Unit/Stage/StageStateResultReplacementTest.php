@@ -16,8 +16,8 @@ use MissionGaming\Tactician\Stage\StageState;
 
 // StageState::withResultReplaced() corrects the recorded result of an event
 // of the last recorded round. Before it existed a wrong result could only be
-// corrected by rebuilding the state, and a result an engine cannot accept
-// (a drawn knockout match) left a state that every engine call rejected.
+// corrected by rebuilding the state, and a knockout result entered as a draw
+// by mistake left a state that every engine call rejected.
 
 describe('StageState::withResultReplaced()', function (): void {
     beforeEach(function (): void {
@@ -232,7 +232,7 @@ describe('StageState::withResultReplaced()', function (): void {
     });
 });
 
-describe('correcting a result an engine cannot use', function (): void {
+describe('correcting a result that was entered wrongly', function (): void {
     beforeEach(function (): void {
         $this->participants = [
             new Participant('p1', 'Alice', 1),
@@ -242,7 +242,7 @@ describe('correcting a result an engine cannot use', function (): void {
         ];
     });
 
-    it('lets a bracket go on after a drawn knockout match is corrected', function (): void {
+    it('lets a bracket go on after a knockout result entered as a draw is corrected', function (): void {
         $engine = new SingleEliminationEngine();
         $state = StageState::start($this->participants);
 

@@ -191,8 +191,10 @@ final readonly class StageState
 
     /**
      * Replace the recorded result of one event of the most recently
-     * recorded round: the correction of a result entered wrongly, or of
-     * one the format cannot use (a drawn knockout match).
+     * recorded round: the correction of a result that was entered
+     * wrongly. It changes what is recorded and decides nothing: an event
+     * that really finished level is not resolved by recording a winner
+     * it did not have.
      *
      * The result to replace is found by the replacement's event: the same
      * round number, the same participants in either order, and the same
