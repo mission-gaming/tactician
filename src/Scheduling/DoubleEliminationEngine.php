@@ -50,7 +50,7 @@ use Override;
  * round. Rank 1 of the outcome's standings is not that derivation: the
  * standings are a win/draw/loss table over every result of both brackets,
  * in the order of the standings calculator, and the longer route through
- * the losers bracket collects more wins. With 8 entrants and default
+ * the losers bracket can collect more wins. With 8 entrants and default
  * options, a participant who loses in round 1, wins the losers bracket and
  * the first grand final, and loses the reset has 5 wins and is first in
  * the table; the champion has 4 and is second.

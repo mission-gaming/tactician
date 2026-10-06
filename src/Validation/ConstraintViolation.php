@@ -23,9 +23,9 @@ readonly class ConstraintViolation
      * @param Event $rejectedEvent The candidate event it rejected
      * @param string $reason What happened, as text for a report
      * @param array<Participant> $affectedParticipants The participants the rejection concerns; the
-     *                                                 schedulers pass those of the rejected event
+     *                                                 round-robin scheduler passes those of the rejected event
      * @param int|null $roundNumber The 1-based round the event was a candidate for. Null and 0
-     *                              both mean no round: the schedulers record 0 for an event
+     *                              both mean no round: the round-robin scheduler records 0 for an event
      *                              without one
      */
     public function __construct(

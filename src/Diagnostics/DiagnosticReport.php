@@ -64,8 +64,9 @@ readonly class DiagnosticReport
     }
 
     /**
-     * The number of events generated before the failure, in the ordering
-     * the report is about (the last one tried).
+     * The number of events generated before the failure, in the generation
+     * the report is about: the last ordering tried, or the backtracking
+     * search when that failed too (0 when it found no first leg).
      */
     public function getGeneratedEvents(): int
     {
@@ -83,7 +84,8 @@ readonly class DiagnosticReport
     /**
      * The pairings without a meeting, one line per pairing and leg, by
      * participant label: `A vs B (Leg 2)`. In the order of the participant
-     * list, then by leg. Empty for a plan that does not state how often
+     * list the report was built from, then by leg; after retries that list
+     * is the last rotated ordering tried, so a pairing can read `D vs A`. Empty for a plan that does not state how often
      * each pair meets (Swiss, elimination).
      *
      * @return array<string>
@@ -113,7 +115,8 @@ readonly class DiagnosticReport
     /**
      * The missing pairings that the constraints reject in every round and
      * both role orders, one line each, naming the constraints that reject
-     * them everywhere. "Impossible" means that the pairing cannot join the
+     * them everywhere, or a combination of constraints when no single one
+     * does. "Impossible" means that the pairing cannot join the
      * schedule that was generated, not that no schedule holds it.
      *
      * @return array<string>
@@ -192,7 +195,8 @@ readonly class DiagnosticReport
     /**
      * One line of text: the completion percentage, rounded down, and the
      * numbers of missing events, attributed constraints and impossible
-     * pairings that are not zero.
+     * pairings that are not zero. For a report that isSuccessful(), one
+     * fixed sentence that says so.
      */
     public function getSummary(): string
     {

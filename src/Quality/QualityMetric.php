@@ -30,8 +30,9 @@ interface QualityMetric
     /**
      * Measure the schedule's defect on this dimension.
      *
-     * The same schedule must always measure the same: the scorer measures a
-     * schedule once for its score and again for its report.
+     * The same schedule must always measure the same: ScheduleScorer's
+     * score() and report() each measure the schedule, and the optimizer
+     * calls both for the schedule it returns.
      *
      * @return float Non-negative and finite; zero is ideal. ScheduleScorer
      *               refuses a measurement of NAN or INF

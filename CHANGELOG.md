@@ -928,7 +928,7 @@ usage guide lists the same methods under "Deprecations".
     placement with joint ranks. The table is a win/draw/loss record in the
     standings calculator's order, with no joint ranks. In double elimination
     a participant who wins the losers bracket and the first grand final and
-    loses the reset ranks above the title holder; a two-legged final that a
+    loses the reset can rank above the title holder; a two-legged final that a
     tie decision settles leaves the finalists level; a finalist who had a
     bye has a win fewer. Read who won a bracket from its final round, with
     `MatchOutcomeSelector::winners()`.
@@ -946,8 +946,10 @@ usage guide lists the same methods under "Deprecations".
   - `TimelineDefinition` and `SessionGrid` said interval arithmetic is
     wall-clock and that a weekly kickoff keeps its local time across a
     daylight-saving change. That is true of the date part of an interval
-    (`P1D`, `P7D`). The time part is elapsed time: `PT24H` and `PT168H` move
-    the local time by an hour across the change.
+    (`P1D`, `P7D`), except for a local time the clocks skip, which is moved
+    on by the skipped hour for that round or slot and every later one. The
+    time part is elapsed time: `PT24H` and `PT168H` move the local time by
+    an hour across the change.
   - `TimelineDefinition::fromArray()`, `BlackoutRule::fromArray()` and
     `SessionGrid::fromArray()` referred to `ZonedTime`, which is internal,
     for the datetime form they accept. They state the form.
@@ -1004,9 +1006,17 @@ usage guide lists the same methods under "Deprecations".
   own may rely on: it should answer from the event and the context alone;
   it is asked more often than the schedule has events, about events that
   are never scheduled, and in an order that is not part of the contract;
-  one that keeps state or throws is supported and is asked every question
-  it was asked before this release's two shortcuts existed. This describes
-  what the library already does.
+  one that keeps state or throws is not refused, no shortcut is taken for
+  it, and it is asked every question it was asked before this release's
+  two shortcuts existed. This describes what the library already does.
+
+  No tag changes what static analysis infers, but for these: the
+  array shapes named above, `@return $this` on the three chaining methods
+  of `ConstraintSetBuilder`, and `@throws InvalidInputException` (a
+  `\LogicException`) on `ConsecutiveRoleConstraint::homeAway()` and
+  `position()` and on `RoleBalanceConstraint::homeAway()`, whose
+  constructors already declared it. No method declares a new checked
+  exception.
 - Tooling only; the library is unchanged. The Rector step of `composer ci`
   no longer fails now and then with `Child process error` and a syntax error
   that names `bc7465525847387785d7c`, on a change that Rector does not read.

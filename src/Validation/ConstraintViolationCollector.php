@@ -10,10 +10,10 @@ use MissionGaming\Tactician\DTO\Participant;
  * Collects and organizes constraint violations during scheduling.
  *
  * The round-robin scheduler records one violation for each constraint that
- * rejects a candidate event, and empties its collector before each
- * ordering it tries: after a failure the collector holds the rejections of
- * the last ordering tried, not of every one, and after a schedule was
- * returned it is empty.
+ * rejects a candidate event, and starts a new collector for each ordering
+ * it tries: after a failure the exception's collector holds the rejections
+ * of the last ordering tried, not of every one, and the collector the
+ * scheduler holds after it returned a schedule is empty.
  *
  * @experimental
  */
@@ -116,7 +116,7 @@ class ConstraintViolationCollector
     /**
      * The 1-based numbers of the rounds a violation was recorded for, each
      * once, in the order first recorded and not sorted. Violations without a
-     * round (null or 0) contribute nothing. The keys are not consecutive.
+     * round (null or 0) contribute nothing. The keys need not be consecutive.
      *
      * @return array<int>
      */

@@ -285,7 +285,8 @@ final readonly class PotDrawPlan implements StagePlan
      * at most one, and with an even number of opponents per pot they are
      * equal against every pot.
      *
-     * @return array<string> Event violations in schedule order, with events numbered from 1,
+     * @return array<string> Violations found event by event in schedule order (one about a single
+     *                       event numbers it from 1),
      *                       then rounds, then entrants in seeding order
      */
     #[Override]

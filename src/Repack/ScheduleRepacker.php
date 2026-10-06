@@ -68,8 +68,10 @@ final readonly class ScheduleRepacker
      * between calls.
      *
      * An event the planner gave to one session can end in another: what
-     * the session's packing leaves over is put at the first position, in
-     * grid order, that has room and both participants free.
+     * a session's packing leaves over, and what the planner could give to
+     * no session, is put at the first position, in grid order, that has
+     * room and both participants free, and is unplaced with the reason
+     * NoSlotAvailable when there is none.
      *
      * @throws RepackViolationsException Only when the options opted into
      *                                   throwOnViolations and the outcome

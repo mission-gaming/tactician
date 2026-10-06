@@ -12,7 +12,8 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * budget-bounded depth-first search with fail-first vertex selection
  * either packs the session with every participant on its target, or
  * finds no such packing: every placement of the runs was tried and
- * failed, or the budget ran out first. A packing it finds gives an
+ * failed, the budget ran out first, or the session has more than 20
+ * slots, in which case no placement is tried. A packing it finds gives an
  * unpinned participant one run with no gap, and among the run placements
  * it is the first that packs when they are tried in order of total late
  * start, all runs from the top first. A pinned participant's target can

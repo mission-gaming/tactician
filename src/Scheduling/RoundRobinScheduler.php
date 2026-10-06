@@ -40,7 +40,9 @@ use Random\Randomizer;
  *
  * Without a Randomizer the output is a function of the input: the same
  * participants in the same order, options and constraints give the same
- * schedule. With one, the participant list is shuffled before the first
+ * schedule, as long as the leg strategy draws nothing (a ShuffledLegStrategy
+ * has a randomizer of its own) and the constraints answer from the event
+ * and the context alone. With one, the participant list is shuffled before the first
  * leg is laid out (and before a backtracking search), so:
  *
  * - the schedule is repeatable only from a randomizer seeded the same; the
@@ -123,7 +125,9 @@ class RoundRobinScheduler implements SchedulerInterface
      *                                     every layout tried and, with backtracking on, the
      *                                     search finds no first leg, or the constraints reject
      *                                     the roles the role assignment gives that leg or an
-     *                                     event of a later leg derived from it
+     *                                     event of a later leg derived from it; when the leg
+     *                                     strategy returns no event for a pairing; or when the
+     *                                     finished schedule fails the plan's integrity checks
      */
     #[Override]
     public function schedule(

@@ -107,7 +107,7 @@ final readonly class SwissPlan implements StagePlan
     /**
      * Events per round × rounds, for the plan's whole field in every
      * round; null for an open-ended stage. A stage that loses
-     * participants on the way plays fewer events than this.
+     * participants on the way can play fewer events than this.
      */
     #[Override]
     public function getExpectedEventCount(): ?int

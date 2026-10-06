@@ -53,6 +53,8 @@ final readonly class RepackRequest
      * @param array<PinnedEvent> $pinnedEvents The events that must not move; order carries no meaning
      *
      * @throws PinConflictException When one participant is pinned in two events at one position
+     *                              and the position's capacity admits both (otherwise the
+     *                              capacity is what is reported)
      * @throws InvalidConfigurationException When an entry is not of its list's class, an event
      *                                       id is used twice across the two lists, a pin is
      *                                       not on the grid, the pins at one position exceed

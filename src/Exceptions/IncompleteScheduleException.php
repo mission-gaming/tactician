@@ -11,9 +11,10 @@ use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 
 /**
  * Thrown when a scheduler cannot return a schedule that matches its stage
- * plan: constraints rejected events the plan needs, a Swiss round had no
- * valid pairing, or the generated schedule failed the plan's integrity
- * checks. No partial schedule is returned.
+ * plan: constraints rejected events the plan needs, a leg strategy gave no
+ * event for a pairing, a Swiss round had no valid pairing, or the generated
+ * schedule failed the plan's integrity checks. No partial schedule is
+ * returned.
  *
  * It carries the stage plan that was being generated, the constraint
  * rejections recorded on the way and, when the scheduler built one, an
@@ -34,7 +35,7 @@ class IncompleteScheduleException extends SchedulingException
      * @param ConstraintViolationCollector $violationCollector The rejections recorded on the way
      * @param StagePlan $plan The plan the schedule was to match
      * @param Participant[] $participants The participants the scheduler was given
-     * @param string $message The exception message; empty for one built from the two counts
+     * @param string $message The exception message; empty for one built from the counts
      * @param DiagnosticReport|null $analysis The failure analysis, when one was built
      */
     public function __construct(
@@ -97,10 +98,13 @@ class IncompleteScheduleException extends SchedulingException
     }
 
     /**
-     * The constraint rejections recorded during the generation that
-     * failed: for a round robin those of the last ordering tried. Empty
-     * when no constraint rejected an event, as for a schedule that failed
-     * an integrity check or a Swiss round with no valid pairing.
+     * The constraint rejections the round-robin scheduler recorded during
+     * the generation that failed: after retries those of the last ordering
+     * tried, and when the roles of a role assignment are rejected after a
+     * backtracking search, that one event. Empty when nothing was recorded:
+     * no constraint rejected an event, the schedule failed an integrity
+     * check, or the exception comes from the Swiss scheduler, which does
+     * not record the rejections of its constraints.
      */
     public function getViolationCollector(): ConstraintViolationCollector
     {
@@ -131,8 +135,8 @@ class IncompleteScheduleException extends SchedulingException
 
     /**
      * The algorithm, the participant, round, leg and event counts, the
-     * recorded rejections grouped by constraint with the participants and
-     * rounds most affected, the blocked pairings and the attribution of the
+     * recorded rejections grouped by constraint with the participants most
+     * affected and every round affected, the blocked pairings and the attribution of the
      * analysis when there is one, and suggestions.
      */
     #[\Override]

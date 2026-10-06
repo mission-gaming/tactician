@@ -36,8 +36,10 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * - by the shuffled leg strategy, which draws the roles of later legs;
  * - by a multi-leg schedule from a scheduler that was given a randomizer.
  *
- * `BalancedRoleAssignment` ends every leg with each participant at most 1
- * out of balance, and is the option to reach for when balance matters.
+ * `BalancedRoleAssignment` gives each participant role counts at most 1
+ * apart within every leg, and is the option to reach for when balance
+ * matters. This constraint counts over all legs, and under the repeated
+ * leg strategy the differences of the legs add up.
  *
  * @experimental
  */

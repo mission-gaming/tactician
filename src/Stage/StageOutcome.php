@@ -23,8 +23,8 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  * who won. For an elimination stage it is not: the table counts wins and
  * losses, and the participant who took the title can rank below one it
  * beat (in double elimination, a participant who wins the losers bracket
- * and the first grand final and loses the reset has more wins than the
- * title holder; a two-legged final that a tie decision settles adds the
+ * and the first grand final and loses the reset can have more wins than
+ * the title holder; a two-legged final that a tie decision settles adds the
  * same to both finalists' records, so the table does not say which of
  * them it sent on; a bye is not a win, so a participant who had one and
  * won the final can be level with the one it beat). Read who won a bracket from its final round, with
@@ -68,7 +68,9 @@ final readonly class StageOutcome
      *
      * The combined table is calculated afresh from all the results by the
      * given calculator; the pools keep their own tables. A participant is
-     * part of it when it has an entry in a pool's standings.
+     * part of it when it has an entry in a pool's standings. The calculator
+     * refuses, with an InvalidInputException, a result that names a
+     * participant with no such entry and two results for one event object.
      *
      * @param array<string, StageOutcome> $pools Per-pool outcomes keyed by pool label
      * @param StandingsCalculator $calculator Orders the combined table
@@ -147,7 +149,9 @@ final readonly class StageOutcome
      * playing any round (or is a pooled combination).
      *
      * For a bracket this is the round that decided the title: the final,
-     * or in double elimination the grand final or its reset.
+     * or in double elimination the grand final or its reset. It is the
+     * last round recorded on the state, so a round recorded after the
+     * final takes its place.
      */
     public function getFinalRound(): ?RoundPairing
     {

@@ -621,7 +621,8 @@ final readonly class StageState
      * The shape is checked, and that every ID resolves in the
      * `participants` registry. The history is not checked as
      * withRoundPlayed() checks it (round order, results that belong to
-     * their round): the data is trusted to be what toArray() wrote.
+     * their round), and an ID listed twice in `active` is not refused: the
+     * data is trusted to be what toArray() wrote.
      *
      * @param array<string, mixed> $data
      * @throws InvalidInputException When the data is malformed

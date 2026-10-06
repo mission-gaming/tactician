@@ -295,8 +295,8 @@ class Schedule implements Iterator, Countable, JsonSerializable
      * Metadata comes back as JSON carries it: a float with no fractional
      * part (2.0) returns as an integer, and an object returns as an array.
      *
-     * @throws JsonConversionException When the metadata holds a value JSON cannot represent
-     *                                 (INF, NAN, malformed UTF-8)
+     * @throws JsonConversionException When an ID, a label or a metadata value cannot be
+     *                                 represented in JSON (INF, NAN, malformed UTF-8)
      */
     public function toJson(): string
     {

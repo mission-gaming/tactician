@@ -59,7 +59,9 @@ interface LegStrategyInterface
      *                                         when the backtracking search found the first leg
      * @param int $leg Current leg being generated (1-based)
      * @param int $round Current round being generated (1-based, continuous across legs)
-     * @param SchedulingContext $context The events generated before this one, with this leg as its current leg
+     * @param SchedulingContext $context The events of the earlier rounds, of every leg so far, with this
+     *                                   leg as its current leg. After a backtracking search it also
+     *                                   holds the events of this round that were made before this one
      */
     public function generateEventForLeg(
         array $participants,

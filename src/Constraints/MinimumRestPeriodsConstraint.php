@@ -28,8 +28,9 @@ readonly class MinimumRestPeriodsConstraint implements ConstraintInterface
 {
     /**
      * @param int $minRounds The smallest difference allowed between the round numbers of two
-     *                       meetings of one pair. 1 allows consecutive rounds and forbids only a
-     *                       second meeting in the same round
+     *                       meetings of one pair. 1 allows consecutive rounds and forbids a
+     *                       second meeting in the same round. A candidate in a round before
+     *                       the pair's last meeting is rejected whatever the minimum
      *
      * @throws InvalidInputException When the minimum is below 1
      */
