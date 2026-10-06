@@ -32,8 +32,12 @@ return RectorConfig::configure()
         ClassPropertyAssignToConstructorPromotionRector::class,
         // These hold public constants. A type on a public constant changes
         // its declaration, so it waits for a release that may change one.
-        // The four below are dead code rules that remove what is written
-        // on purpose.
+        AddTypeToConstRector::class => [
+            __DIR__ . '/src/Repack/Internal/IntervalPlacement.php',
+            __DIR__ . '/src/Scheduling/BacktrackingRoundRobinGenerator.php',
+            __DIR__ . '/src/Stage/TieDecision.php',
+        ],
+        // The dead code rules below remove what is written on purpose.
         // Trusts a declared return type and drops the cast that PHPStan
         // asks for, on `(string) ini_get(...)` for example.
         RecastingRemovalRector::class,
@@ -44,9 +48,4 @@ return RectorConfig::configure()
         // above all.
         RemoveNullArgOnNullDefaultParamRector::class,
         RemoveNullNamedArgOnNullDefaultParamRector::class,
-        AddTypeToConstRector::class => [
-            __DIR__ . '/src/Repack/Internal/IntervalPlacement.php',
-            __DIR__ . '/src/Scheduling/BacktrackingRoundRobinGenerator.php',
-            __DIR__ . '/src/Stage/TieDecision.php',
-        ],
     ]);

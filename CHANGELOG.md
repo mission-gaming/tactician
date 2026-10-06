@@ -13,8 +13,10 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
-No library behavior changes: nothing under `src/` has changed since 0.2.0, and
-generated output for a fixed input and seed is identical.
+No library behavior changes: under `src/`, only the formatting and a number
+of expressions rewritten to an equivalent form have changed since 0.2.0. No
+public signature has changed, and generated output for a fixed input and seed
+is identical.
 
 ### Added
 
@@ -69,6 +71,21 @@ generated output for a fixed input and seed is identical.
 
 ### Changed
 
+- The static analysis gates now check something. None of this changes what
+  the library does: under `src/` it is a reformat and rewrites with the same
+  result.
+  - PHPStan analyses `src/` at level 9 (the tests stay at level 8), with
+    `phpstan-strict-rules` and `phpstan-deprecation-rules`. What the strict
+    rules found in existing code and was not fixed is recorded in two baseline
+    files.
+  - Rector enabled no rule set, so it checked nothing. It now applies the PHP
+    sets up to 8.3, the dead code set and the early return set. Rules that
+    would change a public signature are skipped.
+  - The code style is PER Coding Style (`@PER-CS`) and the PHP 8.3 migration
+    set, in place of PSR-12 and a hand-written rule list.
+  - `phpunit.xml` uses the schema of the installed PHPUnit. A test run fails
+    on a warning, a notice, a deprecation or a risky test, and tests run in
+    random order.
 - The CI workflow cancels a superseded run for a pull request (never a run on
   `main`), loads a coverage driver in the
   coverage job only, requests only the PHP extensions the tools need, caches

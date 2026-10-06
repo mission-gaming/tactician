@@ -14,7 +14,7 @@ are in the [changelog](../CHANGELOG.md). For what comes next, see
 - Retry-capable generation: alternative participant orderings are tried automatically when constraints reject a schedule
 - Multi-leg tournament support with strategy patterns (mirrored, repeated, shuffled) and first-class byes
 - Exception handling with diagnostic capabilities
-- PHPStan level 8 compliance with zero errors
+- PHPStan level 9 compliance with zero errors
 - Full test suite covering edge cases and mathematical correctness
 
 ## Phase 2: Additional Algorithms ✅
