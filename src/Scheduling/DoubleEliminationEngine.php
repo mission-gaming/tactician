@@ -10,6 +10,8 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\Stage\EliminationPlan;
+use MissionGaming\Tactician\Stage\EngineFingerprint;
+use MissionGaming\Tactician\Stage\FingerprintedEngine;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -36,12 +38,16 @@ use Override;
  *
  * Stages are strictly sequenced and each playable stage takes the next
  * round number. Ties are played over one event or two mirrored legs
- * (legsPerTie); re-seeding is a single-elimination preset parameter and
- * is rejected here. There is deliberately no champion accessor - rank 1
- * of the outcome's standings, or MatchOutcomeSelector::winners() over the
- * final round, is the consumer's derivation.
+ * (legsPerTie); one that finishes level, in either bracket, the grand
+ * final or its reset, is decided by the tie decision recorded on its
+ * result (see TieDecision), and not advancing from it is the loss that
+ * drops or eliminates the other participant. Re-seeding is a
+ * single-elimination preset parameter and is rejected here. There is
+ * deliberately no champion accessor - rank 1 of the outcome's standings,
+ * or MatchOutcomeSelector::winners() over the final round, is the
+ * consumer's derivation.
  */
-final readonly class DoubleEliminationEngine implements StageEngineInterface
+final readonly class DoubleEliminationEngine implements StageEngineInterface, FingerprintedEngine
 {
     use EliminationBracketSupport;
 
@@ -63,17 +69,22 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
 
     /**
      * What this engine stamps a stage state with, and requires of a state
-     * that carries a stamp: the format and the two options that shape its
-     * rounds, as `double-elimination:legs-per-tie=1,grand-final-reset=yes`.
+     * that carries a stamp (see FingerprintedEngine for the contract).
      *
-     * Compare the string; do not parse it. The standings calculator is an
-     * object the engine cannot name and is not part of it. See
-     * StageState::withEngineFingerprint().
+     * With default options it names the format and nothing else. Part of
+     * it when not at the default: legsPerTie (default 1) and
+     * grandFinalReset (default true).
+     *
+     * Not part of it: reseedEachRound, which this engine rejects, and the
+     * standings calculator, which orders the outcome and pairs nothing.
      */
+    #[Override]
     public function getFingerprint(): string
     {
-        return 'double-elimination:legs-per-tie=' . $this->options->legsPerTie
-            . ',grand-final-reset=' . ($this->options->grandFinalReset ? 'yes' : 'no');
+        return EngineFingerprint::of('double-elimination')
+            ->with('legs-per-tie', $this->options->legsPerTie, 1)
+            ->with('grand-final-reset', $this->options->grandFinalReset, true)
+            ->toString();
     }
 
     /**
@@ -129,18 +140,23 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
     /**
      * The uniform completion product; null while the bracket is unfinished.
      *
+     * In the standings, a single-leg event that finished level and was
+     * decided by its tie decision counts as a win for the participant who
+     * advanced; the outcome's results are the results as recorded.
+     *
      * @throws InvalidConfigurationException When the recorded state is malformed
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
     {
-        if (!$this->isComplete($state)) {
+        $resolution = $this->resolveState($state);
+        if ($resolution['pending'] !== null) {
             return null;
         }
 
         $standings = $this->standingsCalculator->calculate(
             $state->getAllSeenParticipants(),
-            $state->getResults()
+            $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers'])
         );
 
         return new StageOutcome(
@@ -154,7 +170,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
     /**
      * Walk the fixed stage sequence, advancing through fully resolved stages.
      *
-     * @return array{pending: RoundPairing|null}
+     * @return array{pending: RoundPairing|null, levelAdvancers: array<string, Participant>}
      *
      * @throws InvalidConfigurationException
      */
@@ -169,11 +185,12 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
         $winnersRounds = (int) log(count($slots), 2);
         $resultIndex = $this->indexResults($state->getResults());
         $roundNumber = 0;
+        $levelAdvancers = [];
 
         // Winners round 1
-        $stage = $this->resolveStage($slots, $this->winnersStageName(1, $winnersRounds), $roundNumber, $resultIndex);
+        $stage = $this->resolveStage($slots, $this->winnersStageName(1, $winnersRounds), $roundNumber, $resultIndex, $levelAdvancers);
         if ($stage['pending'] !== null) {
-            return ['pending' => $stage['pending']];
+            return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
         }
         $winnersSlots = $stage['winners'];
 
@@ -186,10 +203,11 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
                 $stage['losers'],
                 $this->losersStageName($losersStructuralRound, $winnersRounds),
                 $roundNumber,
-                $resultIndex
+                $resultIndex,
+                $levelAdvancers
             );
             if ($stage['pending'] !== null) {
-                return ['pending' => $stage['pending']];
+                return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
             }
             $losersSurvivors = $stage['winners'];
             $losersChampion = null;
@@ -199,10 +217,11 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
                     $winnersSlots,
                     $this->winnersStageName($winnersRound, $winnersRounds),
                     $roundNumber,
-                    $resultIndex
+                    $resultIndex,
+                    $levelAdvancers
                 );
                 if ($stage['pending'] !== null) {
-                    return ['pending' => $stage['pending']];
+                    return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
                 }
                 $winnersSlots = $stage['winners'];
                 $droppers = $stage['losers'];
@@ -223,10 +242,11 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
                     $majorSlots,
                     $this->losersStageName($losersStructuralRound, $winnersRounds),
                     $roundNumber,
-                    $resultIndex
+                    $resultIndex,
+                    $levelAdvancers
                 );
                 if ($stage['pending'] !== null) {
-                    return ['pending' => $stage['pending']];
+                    return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
                 }
 
                 if ($winnersRound < $winnersRounds) {
@@ -236,10 +256,11 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
                         $stage['winners'],
                         $this->losersStageName($losersStructuralRound, $winnersRounds),
                         $roundNumber,
-                        $resultIndex
+                        $resultIndex,
+                        $levelAdvancers
                     );
                     if ($stage['pending'] !== null) {
-                        return ['pending' => $stage['pending']];
+                        return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
                     }
                     $losersSurvivors = $stage['winners'];
                 } else {
@@ -258,10 +279,11 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
             [$winnersChampion, $losersChampion],
             'grand final',
             $roundNumber,
-            $resultIndex
+            $resultIndex,
+            $levelAdvancers
         );
         if ($stage['pending'] !== null) {
-            return ['pending' => $stage['pending']];
+            return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
         }
         $grandFinalWinner = $stage['winners'][0];
 
@@ -270,7 +292,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
         }
 
         if (!$this->options->grandFinalReset || $grandFinalWinner->getId() === $winnersChampion->getId()) {
-            return ['pending' => null];
+            return ['pending' => null, 'levelAdvancers' => $levelAdvancers];
         }
 
         // The losers champion won: both finalists now have one loss, so a
@@ -279,10 +301,11 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
             [$winnersChampion, $losersChampion],
             'grand final reset',
             $roundNumber,
-            $resultIndex
+            $resultIndex,
+            $levelAdvancers
         );
 
-        return ['pending' => $stage['pending']];
+        return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
     }
 
     /**
@@ -293,6 +316,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
      *
      * @param array<Participant|null> $slots
      * @param array<string, \MissionGaming\Tactician\DTO\Result> $resultIndex
+     * @param array<string, Participant> $levelAdvancers Collects who advanced from each level
+     *                                                   single-leg event (see resultsForStandings())
      * @return array{pending: RoundPairing|null, winners: array<Participant|null>, losers: array<Participant|null>}
      *
      * @throws InvalidConfigurationException When the stage is partially resolved or a tie is broken
@@ -301,7 +326,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
         array $slots,
         string $stageName,
         int &$roundNumber,
-        array $resultIndex
+        array $resultIndex,
+        array &$levelAdvancers
     ): array {
         $pairs = array_chunk($slots, 2);
 
@@ -346,6 +372,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
             [$first, $second] = [$pair[0], $pair[1] ?? null];
             if ($first !== null && $second !== null) {
                 $advancer = $this->lookupAdvancer($resultIndex, $roundNumber, $first, $second, $this->options->legsPerTie);
+                $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $roundNumber, $first, $second, $this->options->legsPerTie, $advancer);
                 $winners[] = $advancer;
                 $losers[] = $advancer?->getId() === $first->getId() ? $second : $first;
             } else {

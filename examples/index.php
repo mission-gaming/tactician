@@ -17,6 +17,9 @@ $examples = [
         '09-multi-leg-home-away.php' => 'Two legs with the mirrored, repeated and shuffled leg strategies',
         '12-performance-patterns.php' => 'How a round robin grows with the field, and measured generation times',
     ],
+    'Pot draw' => [
+        '22-pot-draw.php' => 'A league phase drawn up front from seeded pots, with balanced roles',
+    ],
     'Constraints' => [
         '04-basic-constraints.php' => 'Building a constraint set; a custom rule that moves one pairing',
         '05-seed-protection.php' => 'Keeping the top seeds apart for a fraction of the rounds',

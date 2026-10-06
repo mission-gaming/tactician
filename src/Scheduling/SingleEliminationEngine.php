@@ -9,6 +9,8 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\EliminationPlan;
+use MissionGaming\Tactician\Stage\EngineFingerprint;
+use MissionGaming\Tactician\Stage\FingerprintedEngine;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -34,15 +36,17 @@ use Override;
  *   after every round and re-folded, so the strongest remaining records
  *   meet as late as possible.
  *
- * Ties are played over one event or two mirrored legs (legsPerTie); the
- * aggregate of a level two-legged tie is the application's to decide and
- * is recorded as a tie decision (see TieDecision).
+ * Ties are played over one event or two mirrored legs (legsPerTie). A tie
+ * that finishes level - a drawn single event, or two legs that do not
+ * decide - is the application's to decide and is recorded as a tie
+ * decision on the result (see TieDecision); a level tie without one is
+ * refused by every call.
  *
  * There is deliberately no champion accessor: rank 1 of the outcome's
  * standings, or MatchOutcomeSelector::winners() over the final round, is
  * the consumer's derivation.
  */
-final readonly class SingleEliminationEngine implements StageEngineInterface
+final readonly class SingleEliminationEngine implements StageEngineInterface, FingerprintedEngine
 {
     use EliminationBracketSupport;
 
@@ -53,17 +57,36 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
 
     /**
      * What this engine stamps a stage state with, and requires of a state
-     * that carries a stamp: the format and the two options that shape its
-     * rounds, as `single-elimination:legs-per-tie=1,reseed-each-round=no`.
+     * that carries a stamp (see FingerprintedEngine for the contract).
      *
-     * Compare the string; do not parse it. The standings calculator is an
-     * object the engine cannot name and is not part of it. See
-     * StageState::withEngineFingerprint().
+     * With default options it names the format and nothing else. Part of
+     * it when not at the default: legsPerTie (default 1) and
+     * reseedEachRound (default false). A re-seeded bracket is paired from
+     * the table after every round, so there the rules of the standings
+     * calculator are part of it as well, when they are not the default:
+     * the ranking scale (the three values of a WinDrawLossRanking, default
+     * 3/1/0; any other RankingStrategy is stated as custom and not told
+     * apart from another of your own) and the tiebreakers by name and in
+     * order, or, in their place, that the calculator is a subclass of
+     * StandingsCalculator (stated as custom; nothing is read from it, and
+     * two subclasses are not told apart).
+     *
+     * Not part of it: grandFinalReset, which this engine does not read,
+     * and the standings calculator of a bracket on a fixed path, which
+     * orders the outcome and pairs nothing.
      */
+    #[Override]
     public function getFingerprint(): string
     {
-        return 'single-elimination:legs-per-tie=' . $this->options->legsPerTie
-            . ',reseed-each-round=' . ($this->options->reseedEachRound ? 'yes' : 'no');
+        $fingerprint = EngineFingerprint::of('single-elimination')
+            ->with('legs-per-tie', $this->options->legsPerTie, 1)
+            ->with('reseed-each-round', $this->options->reseedEachRound, false);
+
+        if ($this->options->reseedEachRound) {
+            $fingerprint = $fingerprint->withStandingsRules($this->standingsCalculator);
+        }
+
+        return $fingerprint->toString();
     }
 
     /**
@@ -123,20 +146,24 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
      * no special cases: in an 8-entrant knockout where favourites hold,
      * the final's winner finishes 3-0, its loser 2-1, the semifinal losers
      * 1-1, and the quarter-final losers 0-1 - 1st, 2nd, joint 3rd, joint
-     * 5th, including the genuine ties.
+     * 5th, including the genuine ties. A single-leg event that finished
+     * level and was decided by its tie decision counts there as a win for
+     * the participant who advanced, so the placement holds; the outcome's
+     * results are the results as recorded, the draw included.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
     {
-        if (!$this->isComplete($state)) {
+        $resolution = $this->resolveBracket($state);
+        if ($resolution['pending'] !== null) {
             return null;
         }
 
         $standings = $this->standingsCalculator->calculate(
             $state->getAllSeenParticipants(),
-            $state->getResults()
+            $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers'])
         );
 
         return new StageOutcome(
@@ -150,7 +177,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
     /**
      * Replay the bracket from the entry fold through the recorded results.
      *
-     * @return array{pending: RoundPairing|null}
+     * @return array{pending: RoundPairing|null, levelAdvancers: array<string, Participant>}
      *
      * @throws InvalidConfigurationException When a round is partially resolved, a tie is broken, or
      *                                       the state is stamped with another engine's fingerprint
@@ -166,6 +193,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
         $totalRounds = (int) log($this->bracketSize(count($participants)), 2);
 
         $slots = $this->buildInitialSlots($participants);
+        $levelAdvancers = [];
 
         for ($round = 1; $round <= $totalRounds; ++$round) {
             // Re-seeded path: after the entry round, survivors are
@@ -175,7 +203,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
             // round's own results are recorded.
             if ($this->options->reseedEachRound && $round > 1) {
                 $survivors = array_values(array_filter($slots, fn(?Participant $slot) => $slot !== null));
-                $slots = $this->buildInitialSlots($this->rankByStandings($survivors, $state, $round));
+                $slots = $this->buildInitialSlots($this->rankByStandings($survivors, $state, $round, $levelAdvancers));
             }
 
             $pairs = array_chunk($slots, 2);
@@ -201,13 +229,15 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
                     );
                 }
 
-                return ['pending' => $this->buildRoundPairing($round, $totalRounds, $pairs)];
+                return ['pending' => $this->buildRoundPairing($round, $totalRounds, $pairs), 'levelAdvancers' => $levelAdvancers];
             }
 
             $nextSlots = [];
             foreach ($pairs as $pair) {
                 if ($pair[0] !== null && ($pair[1] ?? null) !== null) {
-                    $nextSlots[] = $this->lookupAdvancer($resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie);
+                    $advancer = $this->lookupAdvancer($resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie);
+                    $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie, $advancer);
+                    $nextSlots[] = $advancer;
                 } else {
                     $nextSlots[] = $pair[0] ?? $pair[1] ?? null;
                 }
@@ -216,7 +246,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
             $slots = $nextSlots;
         }
 
-        return ['pending' => null];
+        return ['pending' => null, 'levelAdvancers' => $levelAdvancers];
     }
 
     /**
@@ -250,12 +280,15 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
     /**
      * Order survivors by their standings rank as of the given round:
      * only results from earlier rounds count, so the ranking is stable
-     * across replays regardless of what has been recorded since.
+     * across replays regardless of what has been recorded since. A level
+     * event of an earlier round counts as a win for whoever advanced from
+     * it (see resultsForStandings()).
      *
      * @param array<Participant> $survivors
+     * @param array<string, Participant> $levelAdvancers
      * @return array<Participant>
      */
-    private function rankByStandings(array $survivors, StageState $state, int $beforeRound): array
+    private function rankByStandings(array $survivors, StageState $state, int $beforeRound, array $levelAdvancers): array
     {
         $priorResults = array_values(array_filter(
             $state->getResults(),
@@ -264,7 +297,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
 
         $standings = $this->standingsCalculator->calculate(
             $state->getAllSeenParticipants(),
-            $priorResults
+            $this->resultsForStandings($priorResults, $levelAdvancers)
         );
 
         $survivorIds = [];

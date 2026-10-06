@@ -23,6 +23,10 @@ use Override;
  * byes appended — a bye is a survivor who did not play), which is what
  * preserves a fixed bracket's path when the next round pairs adjacently.
  * Losers come from played events only.
+ *
+ * A tie that finished level (one event drawn, or two legs that do not
+ * decide) is read through its recorded tie decision: the participant it
+ * names is the winner and the other one the loser (see TieDecision).
  */
 final readonly class MatchOutcomeSelector implements ProgressionSelector
 {
@@ -106,9 +110,9 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
                 }
             }
 
-            // TieDecision handles both single events (a draw is an error)
-            // and two-legged ties (level aggregates need a recorded
-            // tie_winner decision); null means legs are missing results.
+            // TieDecision handles both single events and two-legged ties:
+            // a level one needs a recorded tie_winner decision, and null
+            // means legs are missing results.
             $advancer = TieDecision::advancer($legResults, $first, $second, count($tieEvents));
             if ($advancer === null) {
                 throw new InvalidConfigurationException(

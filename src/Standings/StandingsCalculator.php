@@ -34,6 +34,16 @@ readonly class StandingsCalculator
     }
 
     /**
+     * The tiebreakers, in the order they are applied.
+     *
+     * @return array<TiebreakerInterface>
+     */
+    public function getTiebreakers(): array
+    {
+        return $this->tiebreakers;
+    }
+
+    /**
      * Calculate standings for the given participants from recorded results.
      *
      * Participants without any results appear at the bottom of the table with
