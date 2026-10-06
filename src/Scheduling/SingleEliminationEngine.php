@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Scheduling;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
@@ -79,7 +80,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
         if ($resolution['pending'] === null) {
             throw new InvalidConfigurationException(
                 'Bracket is complete; no further rounds exist',
-                []
+                [],
+                reason: InvalidConfigurationReason::BracketComplete
             );
         }
 
@@ -173,7 +175,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
                     throw new InvalidConfigurationException(
                         "Round {$round} is partially resolved: {$resolved} of " . count($playable)
                             . ' ties have complete results. Record the remaining results before pairing the next round.',
-                        ['round' => $round, 'resolved' => $resolved, 'playable' => count($playable)]
+                        ['round' => $round, 'resolved' => $resolved, 'playable' => count($playable)],
+                        reason: InvalidConfigurationReason::RoundPartiallyResolved
                     );
                 }
 

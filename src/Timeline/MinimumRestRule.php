@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Timeline;
 use DateInterval;
 use DateTimeImmutable;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Override;
 
 /**
@@ -34,7 +35,8 @@ final readonly class MinimumRestRule implements TimelineRule
         if ($reference->add($minimumRest) <= $reference) {
             throw new InvalidConfigurationException(
                 'The minimum rest duration must move time forward',
-                []
+                [],
+                reason: InvalidConfigurationReason::NonAdvancingTime
             );
         }
     }

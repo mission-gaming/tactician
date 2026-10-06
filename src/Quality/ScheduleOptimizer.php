@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Quality;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -56,7 +57,8 @@ final readonly class ScheduleOptimizer
         if ($samples < 1) {
             throw new InvalidConfigurationException(
                 'Optimization needs at least one sample',
-                ['samples' => $samples]
+                ['samples' => $samples],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
 

@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Exception;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * Parses configuration times against an authoritative declared timezone.
@@ -31,7 +32,8 @@ final readonly class ZonedTime
         if (!is_string($value) || !is_string($timezoneValue)) {
             throw new InvalidConfigurationException(
                 "{$field} requires a datetime string and a timezone string",
-                [$field => $value, 'timezone' => $timezoneValue]
+                [$field => $value, 'timezone' => $timezoneValue],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -44,7 +46,8 @@ final readonly class ZonedTime
                 [$field => $value, 'timezone' => $timezoneValue],
                 '',
                 0,
-                $exception
+                $exception,
+                reason: InvalidConfigurationReason::UnparseableTime
             );
         }
 
@@ -57,7 +60,8 @@ final readonly class ZonedTime
                     $field => $value,
                     'timezone' => $timezoneValue,
                     'embedded_timezone' => $time->getTimezone()->getName(),
-                ]
+                ],
+                reason: InvalidConfigurationReason::TimezoneMismatch
             );
         }
 

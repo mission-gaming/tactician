@@ -9,6 +9,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use Exception;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * The declarative slot model a stage's rounds map onto.
@@ -52,28 +53,32 @@ final readonly class TimelineDefinition
         if ($slotsPerRound < 1) {
             throw new InvalidConfigurationException(
                 'A round needs at least 1 slot',
-                ['slots_per_round' => $slotsPerRound]
+                ['slots_per_round' => $slotsPerRound],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
 
         if ($slotsPerRound > 1 && $slotInterval === null) {
             throw new InvalidConfigurationException(
                 'Staggered slots need a slot interval',
-                ['slots_per_round' => $slotsPerRound]
+                ['slots_per_round' => $slotsPerRound],
+                reason: InvalidConfigurationReason::IncompatibleOptions
             );
         }
 
         if ($start->add($roundInterval) <= $start) {
             throw new InvalidConfigurationException(
                 'The round interval must move time forward',
-                ['round_interval' => self::formatInterval($roundInterval)]
+                ['round_interval' => self::formatInterval($roundInterval)],
+                reason: InvalidConfigurationReason::NonAdvancingTime
             );
         }
 
         if ($slotInterval !== null && $start->add($slotInterval) <= $start) {
             throw new InvalidConfigurationException(
                 'The slot interval must move time forward',
-                ['slot_interval' => self::formatInterval($slotInterval)]
+                ['slot_interval' => self::formatInterval($slotInterval)],
+                reason: InvalidConfigurationReason::NonAdvancingTime
             );
         }
 
@@ -81,7 +86,8 @@ final readonly class TimelineDefinition
             if (!is_string($resource) || $resource === '') {
                 throw new InvalidConfigurationException(
                     'Resources must be non-empty strings',
-                    ['resources' => $resources]
+                    ['resources' => $resources],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
         }
@@ -89,7 +95,8 @@ final readonly class TimelineDefinition
         if (count($resources) !== count(array_unique($resources))) {
             throw new InvalidConfigurationException(
                 'Resources must be unique',
-                ['resources' => $resources]
+                ['resources' => $resources],
+                reason: InvalidConfigurationReason::DuplicateName
             );
         }
 
@@ -117,7 +124,8 @@ final readonly class TimelineDefinition
         if (!is_int($slotsPerRound)) {
             throw new InvalidConfigurationException(
                 'slots_per_round must be an integer',
-                ['slots_per_round' => $slotsPerRound]
+                ['slots_per_round' => $slotsPerRound],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -125,7 +133,8 @@ final readonly class TimelineDefinition
         if (!is_array($resources)) {
             throw new InvalidConfigurationException(
                 'resources must be a list of names',
-                ['resources' => $resources]
+                ['resources' => $resources],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -221,7 +230,8 @@ final readonly class TimelineDefinition
         if ($index < 0 || $index >= $this->getCapacityPerSlot()) {
             throw new InvalidConfigurationException(
                 'Resource index is out of range for this timeline',
-                ['index' => $index, 'capacity_per_slot' => $this->getCapacityPerSlot()]
+                ['index' => $index, 'capacity_per_slot' => $this->getCapacityPerSlot()],
+                reason: InvalidConfigurationReason::PositionOutOfRange
             );
         }
 
@@ -247,14 +257,16 @@ final readonly class TimelineDefinition
         if ($round < 1) {
             throw new InvalidConfigurationException(
                 'Round numbers are 1-based',
-                ['round' => $round]
+                ['round' => $round],
+                reason: InvalidConfigurationReason::PositionOutOfRange
             );
         }
 
         if ($slot < 0 || $slot >= $this->slotsPerRound) {
             throw new InvalidConfigurationException(
                 'Slot index is out of range for this timeline',
-                ['slot' => $slot, 'slots_per_round' => $this->slotsPerRound]
+                ['slot' => $slot, 'slots_per_round' => $this->slotsPerRound],
+                reason: InvalidConfigurationReason::PositionOutOfRange
             );
         }
 
@@ -282,7 +294,8 @@ final readonly class TimelineDefinition
         if (!is_string($value)) {
             throw new InvalidConfigurationException(
                 "{$key} must be an ISO 8601 duration string (e.g. 'P7D', 'PT1H')",
-                [$key => $value]
+                [$key => $value],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -294,7 +307,8 @@ final readonly class TimelineDefinition
                 [$key => $value],
                 '',
                 0,
-                $exception
+                $exception,
+                reason: InvalidConfigurationReason::UnparseableTime
             );
         }
     }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * Options for schedule repacking.
@@ -45,14 +46,16 @@ final readonly class RepackOptions
         if ($consolidationWeight < 0 || $earlyFillWeight < 0) {
             throw new InvalidConfigurationException(
                 'Objective weights must be zero or positive',
-                ['consolidation_weight' => $consolidationWeight, 'early_fill_weight' => $earlyFillWeight]
+                ['consolidation_weight' => $consolidationWeight, 'early_fill_weight' => $earlyFillWeight],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
 
         if ($stepBudget < 1) {
             throw new InvalidConfigurationException(
                 'The step budget must be a positive integer',
-                ['step_budget' => $stepBudget]
+                ['step_budget' => $stepBudget],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
     }
@@ -80,14 +83,16 @@ final readonly class RepackOptions
                     'consolidation_weight' => $consolidationWeight,
                     'early_fill_weight' => $earlyFillWeight,
                     'step_budget' => $stepBudget,
-                ]
+                ],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
         if (!is_bool($throwOnViolations)) {
             throw new InvalidConfigurationException(
                 'throw_on_violations must be a boolean',
-                ['throw_on_violations' => $throwOnViolations]
+                ['throw_on_violations' => $throwOnViolations],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
