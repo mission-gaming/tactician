@@ -9,7 +9,7 @@
 
 A PHP library that generates tournament schedules: who meets whom, in which
 round, and, when you ask for it, at what time. It covers round robin, Swiss,
-single and double elimination and group stages, and it repairs a schedule that
+pot draws, single and double elimination and group stages, and it repairs a schedule that
 has fallen behind. It has no production dependencies.
 
 ## Features
@@ -30,6 +30,11 @@ the last one, which is about the library as a whole.
 - **Swiss**: each round is paired from the standings so far (Monrad pairing),
   avoiding repeat pairings, rotating byes, balancing roles, and allowing
   withdrawals. [Swiss tournaments](docs/USAGE.md#swiss-tournaments)
+- **Pot draw**: the entrants are cut into pots of equal size in seeding order,
+  and every entrant meets a fixed number of opponents from every pot, its own
+  included, with no rematch and balanced roles. Every round is drawn up front
+  from a seed. This is the league-phase format that is often called "Swiss";
+  nothing in it is paired from results. [Pot draws](docs/USAGE.md#pot-draws)
 - **Single and double elimination**: fold seeding by list position, byes, round
   labels, one- or two-legged ties; re-seeding each round for single
   elimination, and an optional grand-final reset for double elimination.
@@ -75,7 +80,8 @@ the last one, which is about the library as a whole.
 - **Deterministic**: the library never reads the clock and uses no global
   random function. Randomness comes from a `Random\Randomizer` you pass in, and
   a seeded one gives the same output for the same input (`ShuffledLegStrategy`
-  creates an unseeded one when you give it none).
+  creates an unseeded one when you give it none). A pot draw takes an integer
+  seed in its options and builds its own seeded one.
   [Deterministic randomization](docs/USAGE.md#deterministic-randomization)
 - **Serialization**: `Schedule`, `StageState` and `ScheduledSchedule`
   round-trip JSON, and the value objects convert to and from arrays.
@@ -236,6 +242,8 @@ before `1.0.0`):
   `Scheduling\SwissScheduler`, `Scheduling\SwissOptions`,
   `Scheduling\SingleEliminationEngine`, `Scheduling\DoubleEliminationEngine`,
   and `Scheduling\EliminationOptions`
+- The pot draw: `Scheduling\PotDrawScheduler`, `Scheduling\PotDrawOptions`,
+  and `Stage\PotDrawPlan`
 - `Stage`
 - `Standings`
 - `Timeline`

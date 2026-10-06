@@ -18,6 +18,8 @@ use MissionGaming\Tactician\Repack\SessionGrid;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
+use MissionGaming\Tactician\Scheduling\PotDrawOptions;
+use MissionGaming\Tactician\Scheduling\PotDrawScheduler;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
@@ -25,6 +27,7 @@ use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
 use MissionGaming\Tactician\Stage\PoolDistributor;
+use MissionGaming\Tactician\Stage\PotDrawPlan;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StageState;
@@ -249,6 +252,12 @@ describe('the reason of a configuration error', function (): void {
             'NotSerializable' => 'not_serializable',
             'UnsatisfiableLegStrategy' => 'unsatisfiable_leg_strategy',
             'InvalidRoleAssignment' => 'invalid_role_assignment',
+            'UnknownOptionKey' => 'unknown_option_key',
+            'OddParticipantCount' => 'odd_participant_count',
+            'UnequalPots' => 'unequal_pots',
+            'TooManyOpponentsPerPot' => 'too_many_opponents_per_pot',
+            'OddPotWithOddOpponents' => 'odd_pot_with_odd_opponents',
+            'ConfigurationNotYetSupported' => 'configuration_not_yet_supported',
             'BracketComplete' => 'bracket_complete',
             'RoundPartiallyResolved' => 'round_partially_resolved',
             'EventWithoutRoundNumber' => 'event_without_round_number',
@@ -353,6 +362,53 @@ describe('the reason of a configuration error', function (): void {
         'zero Swiss rounds' => [
             fn() => new SwissOptions(rounds: 0),
             InvalidConfigurationReason::InvalidRoundCount,
+        ],
+        'a pot draw option nobody knows' => [
+            fn() => PotDrawOptions::fromArray(['pots' => 4, 'rounds' => 8]),
+            InvalidConfigurationReason::UnknownOptionKey,
+        ],
+        'zero pots' => [
+            fn() => new PotDrawOptions(pots: 0),
+            InvalidConfigurationReason::ValueOutOfRange,
+        ],
+        'pots given as a string' => [
+            fn() => PotDrawOptions::fromArray(['pots' => '4']),
+            InvalidConfigurationReason::WrongValueType,
+        ],
+        'Swiss options given to the pot draw scheduler' => [
+            fn() => (new PotDrawScheduler())->schedule(
+                [new Participant('a', 'A'), new Participant('b', 'B')],
+                new SwissOptions(rounds: 1)
+            ),
+            InvalidConfigurationReason::UnsupportedOptions,
+        ],
+        'a pot draw of an odd field' => [
+            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(19), new PotDrawOptions(pots: 1, opponentsPerPot: 2)),
+            InvalidConfigurationReason::OddParticipantCount,
+        ],
+        'a pot draw whose pots cannot be of equal size' => [
+            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(20), new PotDrawOptions(pots: 3)),
+            InvalidConfigurationReason::UnequalPots,
+        ],
+        'more opponents per pot than a pot has other members' => [
+            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(20), new PotDrawOptions(pots: 5, opponentsPerPot: 4)),
+            InvalidConfigurationReason::TooManyOpponentsPerPot,
+        ],
+        'pots of odd size with an odd number of opponents per pot' => [
+            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(20), new PotDrawOptions(pots: 4, opponentsPerPot: 1)),
+            InvalidConfigurationReason::OddPotWithOddOpponents,
+        ],
+        'a pot draw the library cannot construct yet' => [
+            fn() => (new PotDrawScheduler())->schedule(configurationErrorField(36), new PotDrawOptions(pots: 4, opponentsPerPot: 4)),
+            InvalidConfigurationReason::ConfigurationNotYetSupported,
+        ],
+        'a pot draw plan with one participant' => [
+            fn() => new PotDrawPlan(configurationErrorField(1), 1, 1),
+            InvalidConfigurationReason::TooFewParticipants,
+        ],
+        'a pot draw plan with two participants of one ID' => [
+            fn() => new PotDrawPlan([new Participant('a', 'A'), new Participant('a', 'B')], 1, 1),
+            InvalidConfigurationReason::DuplicateParticipantIds,
         ],
         'an unknown timezone' => [
             fn() => TimelineDefinition::fromArray([
@@ -776,6 +832,10 @@ describe('the requirements of a configuration error', function (): void {
             configurationErrorGrid(2)
         )],
         'one participant in a Swiss stage' => [fn() => new SwissPlan([new Participant('a', 'A')], 1)],
+        'a pot draw of an odd field' => [fn() => (new PotDrawScheduler())->schedule(
+            configurationErrorField(19),
+            new PotDrawOptions(pots: 1, opponentsPerPot: 2)
+        )],
         // The errors StageState gained after the block was scoped. They
         // state no reason, and still do not carry the round-robin block.
         'a result replaced before any round is recorded' => [function (): void {

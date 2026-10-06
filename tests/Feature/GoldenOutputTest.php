@@ -206,6 +206,7 @@ describe('Golden output', function (): void {
             'round-robin/balanced-repeated-unseeded.txt',
             'round-robin/balanced-constrained.txt',
             'swiss.txt',
+            'pot-draw.txt',
             'single-elimination.txt',
             'double-elimination.txt',
             'repack/scenario.txt',
@@ -233,6 +234,7 @@ describe('Golden output', function (): void {
             'examples/19-repacking-a-season.txt',
             'examples/20-double-elimination.txt',
             'examples/21-standings-and-tiebreakers.txt',
+            'examples/22-pot-draw.txt',
         ]);
     });
 
@@ -406,6 +408,43 @@ describe('Golden baseline', function (): void {
 
         expect(array_unique($bySeed))->toHaveCount(4);
     })->with(['n=8 rounds=3', 'n=9 rounds=4']);
+
+    // Read from the stored file alone: the sections are there, each has the
+    // rounds and events its numbers call for, and the seed changed the draw
+    it('stores every worked pot draw with its rounds, for every seed', function (int $size, int $pots, int $opponentsPerPot): void {
+        $sections = goldenSections('pot-draw.txt');
+        $rounds = $pots * $opponentsPerPot;
+
+        $bySeed = [];
+        foreach ([1, 42, 1337] as $seed) {
+            $title = "n={$size} pots={$pots} opponents_per_pot={$opponentsPerPot} seed {$seed}";
+            expect($sections)->toHaveKey($title);
+            $lines = $sections[$title];
+
+            expect($lines[0])->toBe(
+                "meta: algorithm=pot-draw participant_count={$size} pots={$pots} pot_size=" . intdiv($size, $pots)
+                . " opponents_per_pot={$opponentsPerPot} seed={$seed} total_rounds={$rounds} expected_event_count=" . intdiv($size * $rounds, 2)
+            )->and($lines)->toHaveCount($rounds + 1, $title);
+
+            foreach (array_slice($lines, 1) as $index => $line) {
+                [$label, $events] = explode(': ', $line, 2);
+                expect($label)->toBe('R' . ($index + 1), $title)
+                    ->and(explode(' ', $events))->toHaveCount(intdiv($size, 2), $title . ' ' . $label);
+            }
+
+            $bySeed[$seed] = implode("\n", array_slice($lines, 1));
+        }
+
+        expect(array_unique($bySeed))->toHaveCount(3);
+    })->with([
+        '6 entrants' => [6, 3, 1],
+        '20 entrants' => [20, 5, 1],
+        '36 entrants' => [36, 4, 2],
+    ]);
+
+    it('stores nothing but the worked pot draws', function (): void {
+        expect(goldenSections('pot-draw.txt'))->toHaveCount(9);
+    });
 
     it('stores first-round and full-bracket pairings at every size', function (string $file): void {
         $sections = goldenSections($file);

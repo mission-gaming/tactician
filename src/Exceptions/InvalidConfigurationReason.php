@@ -91,6 +91,45 @@ enum InvalidConfigurationReason: string
      */
     case InvalidRoleAssignment = 'invalid_role_assignment';
 
+    /**
+     * Plain-data configuration holds a key the options do not have. The
+     * context lists the unknown keys and the known ones.
+     */
+    case UnknownOptionKey = 'unknown_option_key';
+
+    // Pot draws
+
+    /**
+     * The format has every participant in every round and issues no bye,
+     * and the number of participants is odd.
+     */
+    case OddParticipantCount = 'odd_participant_count';
+
+    /**
+     * The participants do not divide into the number of pots asked for, so
+     * the pots cannot be of equal size.
+     */
+    case UnequalPots = 'unequal_pots';
+
+    /**
+     * A participant is asked to meet more opponents from one pot than its
+     * own pot has other members.
+     */
+    case TooManyOpponentsPerPot = 'too_many_opponents_per_pot';
+
+    /**
+     * A pot of odd size cannot hold an odd number of events per member
+     * inside itself: the events inside a pot number pot size times
+     * opponents per pot, divided by two.
+     */
+    case OddPotWithOddOpponents = 'odd_pot_with_odd_opponents';
+
+    /**
+     * The configuration is feasible and the library has no construction
+     * for it yet. The context carries the numbers and what is supported.
+     */
+    case ConfigurationNotYetSupported = 'configuration_not_yet_supported';
+
     // Results-driven stages
 
     /** A further round was asked of a bracket that has already finished. */

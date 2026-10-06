@@ -282,6 +282,69 @@ heading **Output change (fix)**.
   roles of today after that release, name the current default now:
   `new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())`,
   or `'role_assignment' => 'round_parity'`.
+- A single-leg elimination event that finishes level can be recorded and
+  decided. Record it as the draw it was, with the ID of the participant who
+  advances as `TieDecision::TIE_WINNER_KEY` (`'tie_winner'`) metadata on
+  its result: the key a level two-legged tie already uses, read the same
+  way. That participant advances in `SingleEliminationEngine` (fixed path
+  and re-seeded) and in `DoubleEliminationEngine` (both brackets, the grand
+  final and its reset, where the other participant takes the loss), and
+  `MatchOutcomeSelector` selects them as the winner. Before,
+  `StageState::withRoundPlayed()` accepted the draw and every later call of
+  the engine threw, so the only way on was to replace the result with a win
+  that did not happen. The recorded result stays a draw; in the standings
+  the engines compute, a level event decided this way counts as a win for
+  the participant who advanced, so the table places the bracket as it does
+  when every event has a winner. A table computed from the recorded
+  results, the combined table of `StageOutcome::combining()` included,
+  counts it as the draw it was. A decision that names a participant
+  outside the event is refused as it is for two legs
+  (`InvalidConfigurationReason::InvalidResult`). No input that worked
+  before gives another output: the decision is read only when the result is
+  level, never on a result that has a winner, for one leg as for two. See
+  "Recording a Level Event" in the usage guide.
+- Pot draws: `Scheduling\PotDrawScheduler`, a whole-schedule generator for
+  the format in which the entrants are cut into pots of equal size in seeding
+  order and every entrant meets a fixed number of opponents from every pot,
+  its own included, with no rematch. Every round is drawn before any event is
+  played. The format is often called "Swiss"; it is not Swiss pairing, because
+  nothing is paired from results. The classes are experimental.
+  - `Scheduling\PotDrawOptions` holds `pots`, `opponentsPerPot` and `seed`
+    (plain data: `pots`, `opponents_per_pot`, `seed`). `fromArray()` throws on
+    a key it does not know. The same participants, options and seed give the
+    same schedule on every call; the scheduler takes no `Random\Randomizer`
+    and builds a seeded one for each call.
+  - `Stage\PotDrawPlan` (algorithm identifier `pot-draw`) states the rounds
+    (pots × opponents per pot) and the events before anything is drawn, and
+    its `validateIntegrity()` checks the format: every entrant once in every
+    round, the exact number of opponents from every pot, no rematch, and the
+    role balance. The scheduler validates every schedule it returns with it.
+  - List position is the seeding: the first block of the list is pot 1. No
+    seed attribute is read.
+  - Roles are balanced. The two role counts of an entrant differ by at most
+    one, and with an even number of opponents per pot an entrant is in each
+    role exactly half the time against every pot.
+  - The schedule is built directly, with no search, for any even pot size,
+    and for an odd pot size with two opponents per pot. Generation time is
+    proportional to the number of events. Who meets whom is drawn evenly,
+    and the events are then mixed across the rounds, so that a round does
+    not set one whole pot against another; no event changes in the mixing.
+    The draw is not uniform over every schedule the format allows ("The
+    seed and determinism" in the usage guide says what remains regular).
+  - A configuration that cannot exist is refused before anything is drawn,
+    with a reason of its own: `OddParticipantCount` (no bye is issued),
+    `UnequalPots`, `TooManyOpponentsPerPot` and `OddPotWithOddOpponents`. A
+    configuration that can exist and has no direct construction yet (an odd
+    pot size with four or more opponents per pot) is refused with
+    `ConfigurationNotYetSupported`. The context of each carries the numbers.
+  - Not in this release: pairs of entrants that must not meet, pots given
+    explicitly instead of cut from list order, and the configurations that
+    need a search.
+- Six cases of `Exceptions\InvalidConfigurationReason`: the five above and
+  `UnknownOptionKey`, for a plain-data key the options do not have.
+- A property suite (`tests/Feature/PotDrawInvariantsTest.php`) that draws
+  every supported pot draw configuration with up to 60 entrants over several
+  seeds and checks the rules of the format by counting in the events.
 - `Standings::getTiedSets()` reports where the order of a standings table
   comes from the final fallback and not from a result. It returns a list of
   the new `Standings\TiedSet`, in table order: each one holds two or more
@@ -357,16 +420,39 @@ heading **Output change (fix)**.
   `withEngineFingerprint()`, `getEngineFingerprint()` and
   `requireEngineFingerprint()`, and `getFingerprint()` on
   `SwissPairingEngine`, `SingleEliminationEngine` and
-  `DoubleEliminationEngine`. A state did not say which engine paired its
-  rounds, so a state restored into another engine, or into the same engine
-  built from other options, was replayed as that engine's own history. A
-  state stamped with a fingerprint is refused by `getPlan()`,
+  `DoubleEliminationEngine`, which implement the new interface
+  `Stage\FingerprintedEngine` (`StageEngineInterface` is unchanged; test for
+  the new interface where you hold the old one). A state did not say which
+  engine paired its rounds, so a state restored into another engine, or into
+  the same engine built from other options, was replayed as that engine's
+  own history. A state stamped with a fingerprint is refused by `getPlan()`,
   `pairNextRound()`, `isComplete()` and `getOutcome()` of every engine whose
-  fingerprint differs, with an `InvalidConfigurationException`. The stamp is
+  fingerprint differs, with an `InvalidConfigurationException` whose message
+  and context (`differences`) say where the two differ. The stamp is
   opt-in. An unstamped state is accepted by every engine as before and
   serializes exactly as before; a stamped one adds an `engine_fingerprint`
   key to `toArray()` and `toJson()`, and `fromArray()` loads data without
   the key as an unstamped state.
+
+  A fingerprint is an opaque string, compared for equality. It stands for
+  the format and for the options that shape which rounds the format has or
+  how they are paired, and an option at its default is left out: an engine
+  that gains an option in a later release keeps the fingerprint of every
+  configuration that does not use it, so states stamped by this release are
+  still accepted. For one configuration the string does not change in later
+  releases. Part of it when not at the default: for the elimination
+  engines `legsPerTie`, and `reseedEachRound` (single) or `grandFinalReset`
+  (double); for Swiss, and for a re-seeded bracket, the standings rules a
+  round is paired from (the `WinDrawLossRanking` scale, the tiebreakers in
+  order). Not part of it: the planned rounds of a Swiss stage, which may be
+  extended without a new stamp, and the constraints and the randomizer,
+  which the engine cannot describe. A `RankingStrategy` of your own and a
+  subclass of `StandingsCalculator` or of `SwissPairingEngine` are stated as
+  such without being named, so each differs from the library's own and not
+  from another of yours. Fingerprints that begin with `tactician:` are the
+  library's; give an engine of your own a string that does not.
+- `StandingsCalculator::getTiebreakers()`, the tiebreakers in the order they
+  are applied, beside `getRankingStrategy()`.
 - Property tests over awkward participant ids: numerically equal strings,
   leading zeros, exponent forms, ids that contain `|`, `:` or `\`,
   empty-looking ids, Unicode and control characters, across round robin
@@ -455,6 +541,17 @@ heading **Output change (fix)**.
 
 ### Changed
 
+- The refusal of a drawn single-leg elimination event that names nobody
+  now says how to record the decision. Its message begins with the words it
+  had and goes on, so code that matches the beginning still matches and
+  code that compares the whole message must change; the exception class,
+  `getReason()` (`UndecidedTie`) and `getContext()` are unchanged. Before
+  and after, for Alice against Dave:
+
+  ```
+  Invalid scheduler configuration: Elimination events cannot end in a draw (Alice vs Dave)
+  Invalid scheduler configuration: Elimination events cannot end in a draw (Alice vs Dave): the event is level, so record who advances as 'tie_winner' metadata on its result
+  ```
 - The constructor of `Repack\SessionGrid` accepts more than it did, and
   everything it accepted before means what it meant: `$sessionStarts` may be
   a session count and `$slotInterval` null (the shape-only form, which

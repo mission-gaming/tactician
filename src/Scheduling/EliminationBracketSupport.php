@@ -167,8 +167,8 @@ trait EliminationBracketSupport
      *
      * @param array<string, Result> $resultIndex
      *
-     * @throws InvalidConfigurationException When a single-leg tie is drawn or a completed
-     *                                       two-legged tie is undecided
+     * @throws InvalidConfigurationException When a completed tie is level and carries no
+     *                                       usable tie decision (see TieDecision)
      */
     private function lookupAdvancer(
         array $resultIndex,
@@ -186,6 +186,72 @@ trait EliminationBracketSupport
         }
 
         return TieDecision::advancer($legResults, $first, $second, $legsPerTie);
+    }
+
+    /**
+     * The results a single-leg bracket's standings are computed from: a
+     * level event the bracket resolved through its tie decision counts as
+     * a win for the participant who advanced, so the table places the
+     * bracket as it does when every event has a winner (the participant
+     * who went on from the final is not level with the one who did not).
+     *
+     * Only the standings read these. The recorded results are not changed,
+     * and a result the bracket did not resolve, or one of a two-legged tie
+     * (whose legs are ordinary results), is passed through as recorded.
+     *
+     * @param array<Result> $results
+     * @param array<string, Participant> $levelAdvancers Who advanced from each level single-leg
+     *                                                   event, by leg key
+     * @return array<Result>
+     */
+    private function resultsForStandings(array $results, array $levelAdvancers): array
+    {
+        if ($levelAdvancers === []) {
+            return $results;
+        }
+
+        $decided = [];
+        foreach ($results as $result) {
+            $event = $result->getEvent();
+            $eventParticipants = $event->getParticipants();
+            $round = $event->getRound()?->getNumber();
+
+            $advancer = $round === null || count($eventParticipants) !== 2 || $result->getWinner() !== null
+                ? null
+                : $levelAdvancers[$this->legKey($round, $eventParticipants[0], $eventParticipants[1], $event->getMetadataValue('tie_leg'))] ?? null;
+
+            $decided[] = $advancer === null
+                ? $result
+                : new Result($event, $advancer, $result->getScores(), $result->getMetadata());
+        }
+
+        return $decided;
+    }
+
+    /**
+     * Note who advanced from a single-leg event that finished level, for
+     * resultsForStandings().
+     *
+     * @param array<string, Participant> $levelAdvancers
+     * @param array<string, Result> $resultIndex
+     */
+    private function noteLevelAdvancer(
+        array &$levelAdvancers,
+        array $resultIndex,
+        int $round,
+        Participant $first,
+        Participant $second,
+        int $legsPerTie,
+        ?Participant $advancer
+    ): void {
+        if ($legsPerTie !== 1 || $advancer === null) {
+            return;
+        }
+
+        $key = $this->legKey($round, $first, $second, null);
+        if (isset($resultIndex[$key]) && $resultIndex[$key]->getWinner() === null) {
+            $levelAdvancers[$key] = $advancer;
+        }
     }
 
     private function legKey(int $round, Participant $first, Participant $second, mixed $tieLeg): string
