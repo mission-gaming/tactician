@@ -637,18 +637,25 @@ heading **Output change (fix)**.
   them with the reason for each.
 - A `composer mutation` script: mutation testing of `src/Scheduling` and
   `src/Repack/Internal` with Pest's mutation runner, which is installed with
-  Pest, over the tests named in `phpunit.mutation.xml`. The weekly scheduled
-  workflow runs it in one `Mutation testing` job per directory (a maintainer
-  can also start it by hand), which enforces no minimum and publishes the
-  score, the counts and the first untested changes in the job summary. The
-  runner's score counts a change whose tests ran into the time limit as
-  noticed, so the summary also gives the share that a failing test noticed;
-  for a run that is stopped at the job's time limit it gives no score and
-  says how many changes the run got through. It does not run for a pull
-  request, because a run takes hours of a runner, and it is not part of
-  `composer ci`. Infection was tried first and is not used: it has no
-  adapter for Pest, and through its PHPUnit adapter it counts every change
-  as noticed, because it does not recognise the result line Pest prints.
+  Pest, over the tests named in `phpunit.mutation.xml`. A workflow of its
+  own, `.github/workflows/mutation.yml`, runs it once a week (a maintainer
+  can also start it by hand), apart from the scheduled workflow so that a
+  slow or stopped run cannot hide what that one found. The source is
+  mutated in six shards, one `Mutation testing, <shard>` job each, sized to
+  end well inside a three-hour limit on a standard runner; a test fails
+  when a PHP file of the two directories is in no shard or in two. Each
+  job enforces no minimum and publishes its shard's score, the counts and
+  the first untested changes in the job summary. The runner's score counts
+  a change whose tests ran into the time limit as noticed, so the summary
+  also gives the share that a failing test noticed; a job that is stopped
+  at its time limit is red, gives no score and says how many changes the
+  run got through. It does not run for a pull request, because a run takes
+  hours of a runner, and it is not part of `composer ci`. The scores are
+  not confirmed in CI yet: the workflow runs on the default branch only, so
+  its first run is started by hand after this is merged. Infection was
+  tried first and is not used: it has no adapter for Pest, and through its
+  PHPUnit adapter it counts every change as noticed, because it does not
+  recognise the result line Pest prints.
 
 ### Changed
 

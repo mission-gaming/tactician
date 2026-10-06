@@ -130,15 +130,28 @@ test process of its own, and a change that makes a search run for ever is
 only stopped by a timeout; `src/Repack/Internal` alone takes a few minutes
 on a fast machine. Some changes cannot be noticed at all, because they
 change nothing a caller can see (the order in which two equal candidates
-are tried, a guard that cannot be reached). In CI the weekly scheduled
-workflow runs it, one `Mutation testing` job per directory, and a
-maintainer can start that workflow by hand. It does not run for a pull
-request. It publishes the score, the counts and the first untested
-changes in its job summary; a job that is stopped at its time limit has no
-score, and its summary says how many changes it got through and what it
-found in them. Read the summary when you change generation or
-repack logic: an untested change in the lines you touched is a test to
-write.
+are tried, a guard that cannot be reached).
+
+In CI it has a workflow of its own, `.github/workflows/mutation.yml`, which
+runs once a week and which a maintainer can start by hand. It does not run
+for a pull request, and it is apart from the scheduled workflow above so
+that a slow run cannot hide what that one found. The source is mutated in
+shards, one `Mutation testing, <shard>` job each, so that every job ends
+well inside its limit on a standard runner. A shard is a list of files, and
+every PHP file of the two directories is in exactly one:
+`tests/Feature/CiConfigurationTest.php` fails when a file is in none or in
+two, so when you add a file to either directory, add it to a shard of that
+workflow. Each job publishes its shard's score, the counts and the first
+untested changes in its job summary. A job that is stopped at its time
+limit is red and has no score; its summary says how many changes it got
+through and what it found in them, and the shard is then to be split. Read
+the summaries when you change generation or repack logic: an untested
+change in the lines you touched is a test to write.
+
+The scores have not been confirmed in CI yet. The workflow runs on the
+default branch only, so its first run is started by hand there after the
+change that adds it is merged; the size of the shards rests on one local
+measurement until then.
 
 The run does not use the whole suite. Every change starts a test process
 of its own, so the tests are the ones named in `phpunit.mutation.xml`: the
