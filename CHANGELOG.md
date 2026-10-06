@@ -71,6 +71,8 @@ is identical.
 
 ### Changed
 
+- The workflows use the current major versions of the checkout, cache and
+  coverage-upload actions.
 - The static analysis gates now check something. None of this changes what
   the library does: under `src/` it is a reformat and rewrites with the same
   result.
