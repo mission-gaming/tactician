@@ -24,7 +24,10 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * daylight-saving change depends on how the interval is written. Its date
  * part (years, months, weeks, days: `P7D`, `P1D`, `P1M`) is calendar
  * arithmetic and keeps the local time of day: a weekly 19:00 kickoff
- * written as `P7D` stays 19:00. Its time part (hours, minutes, seconds:
+ * written as `P7D` stays 19:00. The exception is a local time the clocks
+ * skip (01:30 on the night they go forward): it is moved on by the skipped
+ * hour and, because the intervals are added one at a time, every later
+ * round keeps the moved time. An interval's time part (hours, minutes, seconds:
  * `PT168H`, `PT24H`) is elapsed time: a weekly kickoff written as `PT168H`
  * is 168 hours later, which is 20:00 local after the clocks go forward and
  * 18:00 after they go back. A start in a fixed-offset timezone (`+01:00`)
@@ -45,7 +48,7 @@ final readonly class TimelineDefinition
     /**
      * Nothing bounds the number of rounds: a definition answers for any
      * round number from 1 up. A slot interval given with one slot per round
-     * is kept and never used. Nothing checks that a round's last slot is
+     * is checked, kept and written by toArray(), and no slot time uses it. Nothing checks that a round's last slot is
      * before the next round's first.
      *
      * @param DateTimeImmutable $start The first round's first slot, in the stage's timezone;
@@ -139,8 +142,9 @@ final readonly class TimelineDefinition
      * date is rejected, because PHP would resolve it against the clock, and
      * so is a date or a time that does not exist (`2026-02-30`, `24:00`). A
      * timezone or offset written in the start itself is rejected unless it
-     * is the declared one. "Timeline Assignment" in the usage guide has the
-     * full rule.
+     * names the declared timezone as it was declared: with `UTC` declared,
+     * `Z` and `+00:00` are rejected. "Timeline Assignment" in the usage
+     * guide describes the rule.
      *
      * `round_interval` is required; `slots_per_round` (default 1),
      * `slot_interval` and `resources` are optional. The intervals are ISO
@@ -388,8 +392,10 @@ final readonly class TimelineDefinition
      * (`PT90M` stays `PT90M`); weeks are written as days (`P1W` is `P7D`),
      * which is how PHP holds them. Not written: the sign of an inverted
      * interval, a fraction of a second, and the total number of days of an
-     * interval that `DateTimeImmutable::diff()` returned. An interval with
-     * any of those does not come back as it was.
+     * interval that `DateTimeImmutable::diff()` returned, and the relative
+     * part of one made by `DateInterval::createFromDateString()` (`next
+     * weekday` is written `PT0S`). An interval with any of those does not
+     * come back as it was.
      */
     public static function formatInterval(DateInterval $interval): string
     {

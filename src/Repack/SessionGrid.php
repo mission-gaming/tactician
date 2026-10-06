@@ -32,7 +32,12 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
  * slots of a session that runs across a daylight-saving change stay that
  * far apart, and their local times move by the hour the clocks moved. A
  * slot interval written in days or longer (`P1D`) keeps the local time of
- * day instead.
+ * day instead, except that a slot in the hour the clocks skip is moved an
+ * hour later, and so is every slot after it in the session. All of this is
+ * said of an interval built from an ISO 8601 duration
+ * (`new DateInterval('PT1H')`, or `slot_interval` in plain data): PHP adds
+ * an interval made by `DateInterval::createFromDateString()` or by `diff()`
+ * as local time, whatever its parts.
  *
  * A grid comes in two forms. An instant-based grid (the constructor given
  * session starts, or fromArray() given `sessions`) knows when every
@@ -110,9 +115,10 @@ final readonly class SessionGrid
      *                                       DateTimeImmutable, is in another timezone than
      *                                       the first or is not after the one before it,
      *                                       the slot interval is missing or does not move
-     *                                       time forward, a slot count or the capacity is
-     *                                       below 1, or an override names a session the
-     *                                       grid does not have
+     *                                       time forward, a session count is given with a
+     *                                       slot interval, a slot count is not an integer
+     *                                       of 1 or more, the capacity is below 1, or an
+     *                                       override names a session the grid does not have
      */
     public function __construct(
         array|int $sessionStarts,
@@ -287,12 +293,13 @@ final readonly class SessionGrid
      *
      * The timezone is required and authoritative for every session start,
      * same convention as the timeline family. Each session start states its
-     * date in full (year, month and day), as the start of a timeline does:
+     * date in full, as the start of a timeline does:
      * a relative string (`tomorrow`, `+1 week`), an empty one, a time of
      * day without a date or a date that does not exist is rejected, and a
      * date without a time of day is midnight. A timezone or offset written
-     * in a session start is rejected unless it is the declared one.
-     * "Timeline Assignment" in the usage guide has the full rule.
+     * in a session start is rejected unless it names the declared timezone
+     * as it was declared (with `UTC` declared, `Z` and `+00:00` are
+     * rejected). "Timeline Assignment" in the usage guide describes the rule.
      *
      * A shape-only grid is the same data with `session_count` in place of
      * `sessions`, `timezone` and `slot_interval`:
