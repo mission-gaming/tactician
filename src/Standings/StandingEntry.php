@@ -112,21 +112,28 @@ readonly class StandingEntry
      * entry carries and the other does not is read as 0.0, as the calculator
      * reads it. Entries of one table carry the same tiebreakers; comparing
      * entries of tables built with different tiebreakers has no meaning.
+     *
+     * A figure that is not a number (NAN) is level with nothing, itself
+     * included: the calculator's comparison does not return "equal" for it
+     * either, and a table that holds one has no defined order. A ranking
+     * strategy or a tiebreaker must not return NAN.
      */
     public function isLevelWith(self $other): bool
     {
-        if (($this->rankingValue <=> $other->rankingValue) !== 0) {
+        // Each step reads the two entries as the calculator's comparison
+        // reads them, through the same accessors, so the two cannot disagree
+        if (($this->getRankingValue() <=> $other->getRankingValue()) !== 0) {
             return false;
         }
 
-        foreach (array_keys($this->tiebreakers + $other->tiebreakers) as $name) {
-            if ((($this->tiebreakers[$name] ?? 0.0) <=> ($other->tiebreakers[$name] ?? 0.0)) !== 0) {
+        foreach (array_keys($this->getTiebreakers() + $other->getTiebreakers()) as $name) {
+            if ((($this->getTiebreakerValue($name) ?? 0.0) <=> ($other->getTiebreakerValue($name) ?? 0.0)) !== 0) {
                 return false;
             }
         }
 
         return ($this->getScoreDifference() <=> $other->getScoreDifference()) === 0
-            && ($this->scoreFor <=> $other->scoreFor) === 0;
+            && ($this->getScoreFor() <=> $other->getScoreFor()) === 0;
     }
 
     /**

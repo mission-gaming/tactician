@@ -425,6 +425,36 @@ describe('StandingEntry::isLevelWith()', function (): void {
     it('treats positive and negative zero as level', function () use ($entry): void {
         expect($entry('a', 0.0)->isLevelWith($entry('b', -0.0)))->toBeTrue();
     });
+
+    it('treats equal infinities as level and opposite ones as not', function () use ($entry): void {
+        expect($entry('a', INF)->isLevelWith($entry('b', INF)))->toBeTrue()
+            ->and($entry('a', -INF)->isLevelWith($entry('b', -INF)))->toBeTrue()
+            ->and($entry('a', INF)->isLevelWith($entry('b', -INF)))->toBeFalse()
+            ->and($entry('a', INF)->isLevelWith($entry('b', PHP_FLOAT_MAX)))->toBeFalse();
+    });
+
+    it('treats a figure that is not a number as level with nothing, itself included', function (StandingEntry $notANumber) use ($entry): void {
+        // The calculator's comparison does not return "equal" for NAN either
+        expect($notANumber->isLevelWith($notANumber))->toBeFalse()
+            ->and($notANumber->isLevelWith($entry('b', 1.0)))->toBeFalse()
+            ->and($entry('b', 1.0)->isLevelWith($notANumber))->toBeFalse();
+    })->with([
+        'ranking value' => [fn() => $entry('a', NAN)],
+        'tiebreaker value' => [fn() => $entry('a', 1.0, tiebreakers: ['wins' => NAN])],
+        'scores-for' => [fn() => $entry('a', 1.0, NAN)],
+        // Infinity for and against: the difference is not a number
+        'score difference' => [fn() => $entry('a', 1.0, INF, INF)],
+    ]);
+
+    it('is level by the next neighbouring float and not by a rounded text form', function () use ($entry): void {
+        $one = $entry('a', 1.0, tiebreakers: ['buchholz' => 0.3]);
+
+        expect($one->isLevelWith($entry('b', 1.0, tiebreakers: ['buchholz' => 0.1 + 0.2])))->toBeFalse()
+            ->and($one->isLevelWith($entry('b', 1.0 + PHP_FLOAT_EPSILON, tiebreakers: ['buchholz' => 0.3])))->toBeFalse()
+            // 0.3 - 0.1 is not 0.2 - 0.0, and 0.1 + 0.2 is not 0.3
+            ->and($entry('a', 0.0, 0.3, 0.1)->isLevelWith($entry('b', 0.0, 0.2, 0.0)))->toBeFalse()
+            ->and($entry('a', 0.0, 0.1 + 0.2, 0.1 + 0.2)->isLevelWith($entry('b', 0.0, 0.3, 0.3)))->toBeFalse();
+    });
 });
 
 describe('a table built by hand', function (): void {
