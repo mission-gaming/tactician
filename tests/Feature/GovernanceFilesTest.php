@@ -219,8 +219,10 @@ describe('issue forms', function () use ($root, $topLevelKeys, $forms, $formData
         $contents = (string) file_get_contents($form);
 
         if (preg_match('/^labels:(.*)$/m', $contents, $labels) !== 1) {
-            // Labels are optional.
-            expect(true)->toBeTrue();
+            // Labels are optional. A form without them must not hold the
+            // key in a spelling GitHub would read as something else: indented
+            // under another key, or in another case.
+            expect($contents)->not->toMatch('/^\s*labels\s*:/mi');
 
             return;
         }

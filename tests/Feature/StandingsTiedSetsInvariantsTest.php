@@ -15,7 +15,6 @@ use MissionGaming\Tactician\Standings\TiebreakerInterface;
 use MissionGaming\Tactician\Standings\TiedSet;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use MissionGaming\Tactician\Standings\WinsTiebreaker;
-use Override;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
