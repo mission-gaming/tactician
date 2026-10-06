@@ -1915,11 +1915,14 @@ $runExamples = function (array $scripts, bool $createDirectory = true): array {
         fclose($pipes[2]);
         $exitCode = proc_close($process);
 
-        $ran = is_file($directory . '/ran.log')
-            ? file($directory . '/ran.log', FILE_IGNORE_NEW_LINES) ?: []
-            : [];
+        $ran = [];
+        if (is_file($directory . '/ran.log')) {
+            $lines = file($directory . '/ran.log', FILE_IGNORE_NEW_LINES);
+            $ran = $lines === false ? [] : $lines;
+        }
     } finally {
-        foreach (glob($directory . '/*') ?: [] as $file) {
+        $files = glob($directory . '/*');
+        foreach ($files === false ? [] : $files as $file) {
             unlink($file);
         }
         if (is_dir($directory)) {
