@@ -683,7 +683,9 @@ heading **Output change (fix)**.
     move onto a shape-only grid with unbounded capacity around one pinned
     fixture. The violations are read through the typed accessors, and a
     previewed plan is applied only when computing it again gives the same
-    `fingerprint()`.
+    `fingerprint()` on the same nights: a shape-only grid holds no times, so
+    the fingerprint is the same when a kickoff is moved, and the example
+    compares the nights itself.
   - `examples/24-recording-bracket-results.php`: a bracket kept as JSON
     between requests and stamped with the engine fingerprint. A level event
     is recorded with `tie_winner`, a wrong result is corrected with
@@ -695,7 +697,10 @@ heading **Output change (fix)**.
     line, every block must parse and import only library classes that exist,
     every class, method, constructor argument and enum case the prose names
     in backticks must exist, and every link must lead to a file and a heading
-    that exist.
+    that exist. In a schematic block, every static member of an imported
+    library class and every method called on an object must exist in the
+    library, unless the method is in the test's list of framework and
+    application methods. `AGENTS.md` says how the guides are checked.
 
 ### Changed
 
@@ -872,9 +877,12 @@ heading **Output change (fix)**.
     `examples/18-stateless-web-flow.php` no longer says the opposite in a
     comment.
   - `examples/10-complex-tournament.php` held four constraints of which two
-    rejected nothing (`noRepeatPairings()`, and a minimum gap the two legs
-    already give). It holds the two that do. Its results no longer report a
-    gap between repeat meetings, and the count of constraints is 2.
+    changed nothing (`noRepeatPairings()`, and a minimum gap the two legs
+    already give): the season is the same with them and without. It holds
+    the other two. Its results no longer report a gap between repeat
+    meetings, and the count of constraints is 2.
+  - `examples/14-groups-to-knockout.php` says in a comment what its check of
+    unplayed pairings does not see in a pool of several legs.
   - `examples/11-error-handling.php` caught `SchedulingException` as the
     catch-all, which lets an `InvalidInputException` through. It catches
     `TacticianException`, shows a scheduling failure and a rejected argument
