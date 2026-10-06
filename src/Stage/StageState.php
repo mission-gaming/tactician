@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Stage;
 
-use InvalidArgumentException;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Exceptions\JsonConversionException;
 
 /**
  * The full state of a results-driven stage between rounds.
@@ -387,25 +388,25 @@ final readonly class StageState
      * Recreate a state from its array representation.
      *
      * @param array<string, mixed> $data
-     * @throws InvalidArgumentException When the data is malformed
+     * @throws InvalidInputException When the data is malformed
      */
     public static function fromArray(array $data): self
     {
         $participantsData = $data['participants'] ?? [];
         if (!is_array($participantsData)) {
-            throw new InvalidArgumentException('Stage state participants must be an array');
+            throw new InvalidInputException('Stage state participants must be an array');
         }
 
         /** @var array<string, Participant> $registry */
         $registry = [];
         foreach ($participantsData as $participantData) {
             if (!is_array($participantData)) {
-                throw new InvalidArgumentException('Each stage state participant must be an array');
+                throw new InvalidInputException('Each stage state participant must be an array');
             }
             /** @var array<string, mixed> $participantData */
             $participant = Participant::fromArray($participantData);
             if (isset($registry[$participant->getId()])) {
-                throw new InvalidArgumentException(
+                throw new InvalidInputException(
                     "Stage state registry contains participant {$participant->getId()} twice"
                 );
             }
@@ -414,12 +415,12 @@ final readonly class StageState
 
         $activeIds = $data['active'] ?? [];
         if (!is_array($activeIds)) {
-            throw new InvalidArgumentException('Stage state active list must be an array');
+            throw new InvalidInputException('Stage state active list must be an array');
         }
         $active = [];
         foreach ($activeIds as $activeId) {
             if (!is_string($activeId) || !isset($registry[$activeId])) {
-                throw new InvalidArgumentException(
+                throw new InvalidInputException(
                     'Stage state references unknown active participant ' . var_export($activeId, true)
                 );
             }
@@ -428,12 +429,12 @@ final readonly class StageState
 
         $roundsData = $data['rounds'] ?? [];
         if (!is_array($roundsData)) {
-            throw new InvalidArgumentException('Stage state rounds must be an array');
+            throw new InvalidInputException('Stage state rounds must be an array');
         }
         $rounds = [];
         foreach ($roundsData as $roundData) {
             if (!is_array($roundData)) {
-                throw new InvalidArgumentException('Each stage state round must be an array');
+                throw new InvalidInputException('Each stage state round must be an array');
             }
             /** @var array<string, mixed> $roundData */
             $rounds[] = RoundPairing::fromArray($roundData, $registry);
@@ -441,12 +442,12 @@ final readonly class StageState
 
         $resultsData = $data['results'] ?? [];
         if (!is_array($resultsData)) {
-            throw new InvalidArgumentException('Stage state results must be an array');
+            throw new InvalidInputException('Stage state results must be an array');
         }
         $results = [];
         foreach ($resultsData as $resultData) {
             if (!is_array($resultData)) {
-                throw new InvalidArgumentException('Each stage state result must be an array');
+                throw new InvalidInputException('Each stage state result must be an array');
             }
             /** @var array<string, mixed> $resultData */
             $results[] = Result::fromArray($resultData, $registry);
@@ -458,24 +459,32 @@ final readonly class StageState
     /**
      * Serialize this state to a JSON string.
      *
-     * @throws \JsonException When the state contains values JSON cannot represent
+     * @throws JsonConversionException When the state contains values JSON cannot represent
      */
     public function toJson(): string
     {
-        return json_encode($this->toArray(), JSON_THROW_ON_ERROR);
+        try {
+            return json_encode($this->toArray(), JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw JsonConversionException::from($exception);
+        }
     }
 
     /**
      * Recreate a state from its JSON representation.
      *
-     * @throws \JsonException When the JSON is malformed
-     * @throws InvalidArgumentException When the decoded data is malformed
+     * @throws JsonConversionException When the JSON is malformed
+     * @throws InvalidInputException When the decoded data is malformed
      */
     public static function fromJson(string $json): self
     {
-        $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        try {
+            $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw JsonConversionException::from($exception);
+        }
         if (!is_array($data)) {
-            throw new InvalidArgumentException('Stage state JSON must decode to an array');
+            throw new InvalidInputException('Stage state JSON must decode to an array');
         }
 
         /** @var array<string, mixed> $data */

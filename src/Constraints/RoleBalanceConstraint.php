@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Constraints;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 /**
@@ -23,12 +24,15 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  */
 readonly class RoleBalanceConstraint implements ConstraintInterface
 {
+    /**
+     * @throws InvalidInputException When the allowed imbalance is below 1
+     */
     public function __construct(
         private int $maxImbalance,
         private string $name = 'Role Balance Constraint'
     ) {
         if ($maxImbalance < 1) {
-            throw new \InvalidArgumentException('Max imbalance must be at least 1');
+            throw new InvalidInputException('Max imbalance must be at least 1');
         }
     }
 

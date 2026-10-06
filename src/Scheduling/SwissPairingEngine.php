@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
@@ -59,6 +60,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
      * @param Randomizer|null $randomizer Shuffles pairing order within equal-ranking groups;
      *                                    with no recorded rounds the whole field ties at zero,
      *                                    so the entire pairing order is shuffled
+     * @throws InvalidInputException When the planned rounds are below 1
      */
     public function __construct(
         private ?ConstraintSet $constraints = null,
@@ -67,7 +69,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
         private ?Randomizer $randomizer = null
     ) {
         if ($plannedRounds !== null && $plannedRounds < 1) {
-            throw new \InvalidArgumentException('Planned rounds must be at least 1');
+            throw new InvalidInputException('Planned rounds must be at least 1');
         }
     }
 

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\DTO;
 
-use InvalidArgumentException;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
  * Represents a single round in a tournament schedule.
@@ -21,14 +21,14 @@ readonly class Round implements \Stringable
      * @param int $number The round number (must be positive)
      * @param array<string, mixed> $metadata Additional custom data for this round
      *
-     * @throws InvalidArgumentException When round number is not positive
+     * @throws InvalidInputException When round number is not positive
      */
     public function __construct(
         private int $number,
         private array $metadata = []
     ) {
         if ($number <= 0) {
-            throw new InvalidArgumentException('Round number must be positive');
+            throw new InvalidInputException('Round number must be positive');
         }
     }
 
@@ -137,18 +137,18 @@ readonly class Round implements \Stringable
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidArgumentException When the round number is missing or malformed
+     * @throws InvalidInputException When the round number is missing or malformed
      */
     public static function fromArray(array $data): self
     {
         $number = $data['number'] ?? null;
         if (!is_int($number)) {
-            throw new InvalidArgumentException('Round data requires an integer number');
+            throw new InvalidInputException('Round data requires an integer number');
         }
 
         $rawMetadata = $data['metadata'] ?? [];
         if (!is_array($rawMetadata)) {
-            throw new InvalidArgumentException('Round metadata must be an array');
+            throw new InvalidInputException('Round metadata must be an array');
         }
         $metadata = [];
         foreach ($rawMetadata as $key => $value) {

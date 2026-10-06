@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\DTO;
 
-use InvalidArgumentException;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
  * Represents the outcome of a played event.
@@ -25,7 +25,7 @@ readonly class Result
      * @param array<string, mixed> $metadata Additional result annotations (e.g. a two-legged
      *                                       tie decision the aggregate rules produced app-side)
      *
-     * @throws InvalidArgumentException When the winner or a score references a participant not in the event
+     * @throws InvalidInputException When the winner or a score references a participant not in the event
      */
     public function __construct(
         private Event $event,
@@ -34,7 +34,7 @@ readonly class Result
         private array $metadata = []
     ) {
         if ($winner !== null && !$event->hasParticipant($winner)) {
-            throw new InvalidArgumentException('Winner must be a participant in the event');
+            throw new InvalidInputException('Winner must be a participant in the event');
         }
 
         $participantIds = array_map(
@@ -45,7 +45,7 @@ readonly class Result
             // PHP canonicalizes numeric-string array keys to ints, so cast
             // back before comparing against the (string) participant IDs
             if (!in_array((string) $participantId, $participantIds, true)) {
-                throw new InvalidArgumentException(
+                throw new InvalidInputException(
                     "Score references participant {$participantId} who is not in the event"
                 );
             }
@@ -144,44 +144,44 @@ readonly class Result
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
-     * @throws InvalidArgumentException When fields are malformed or a participant ID is unknown
+     * @throws InvalidInputException When fields are malformed or a participant ID is unknown
      */
     public static function fromArray(array $data, array $participantsById): self
     {
         $eventData = $data['event'] ?? null;
         if (!is_array($eventData)) {
-            throw new InvalidArgumentException('Result data requires an event array');
+            throw new InvalidInputException('Result data requires an event array');
         }
         /** @var array<string, mixed> $eventData */
         $event = Event::fromArray($eventData, $participantsById);
 
         $winnerId = $data['winner'] ?? null;
         if ($winnerId !== null && !is_string($winnerId)) {
-            throw new InvalidArgumentException('Result winner must be a participant ID or null');
+            throw new InvalidInputException('Result winner must be a participant ID or null');
         }
         $winner = null;
         if ($winnerId !== null) {
             if (!isset($participantsById[$winnerId])) {
-                throw new InvalidArgumentException("Result references unknown winner {$winnerId}");
+                throw new InvalidInputException("Result references unknown winner {$winnerId}");
             }
             $winner = $participantsById[$winnerId];
         }
 
         $rawScores = $data['scores'] ?? [];
         if (!is_array($rawScores)) {
-            throw new InvalidArgumentException('Result scores must be an array');
+            throw new InvalidInputException('Result scores must be an array');
         }
         $scores = [];
         foreach ($rawScores as $participantId => $score) {
             if (!is_int($score) && !is_float($score)) {
-                throw new InvalidArgumentException('Result scores must be numeric');
+                throw new InvalidInputException('Result scores must be numeric');
             }
             $scores[$participantId] = $score;
         }
 
         $rawMetadata = $data['metadata'] ?? [];
         if (!is_array($rawMetadata)) {
-            throw new InvalidArgumentException('Result metadata must be an array');
+            throw new InvalidInputException('Result metadata must be an array');
         }
         $metadata = [];
         foreach ($rawMetadata as $key => $value) {

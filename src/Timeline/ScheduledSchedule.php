@@ -6,11 +6,12 @@ namespace MissionGaming\Tactician\Timeline;
 
 use ArrayIterator;
 use Countable;
-use InvalidArgumentException;
 use Iterator;
 use IteratorAggregate;
 use JsonSerializable;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Exceptions\JsonConversionException;
 use Override;
 
 /**
@@ -113,31 +114,35 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     /**
      * Serialize to a JSON string.
      *
-     * @throws \JsonException When the schedule contains values JSON cannot represent
+     * @throws JsonConversionException When the schedule contains values JSON cannot represent
      */
     public function toJson(): string
     {
-        return json_encode($this, JSON_THROW_ON_ERROR);
+        try {
+            return json_encode($this, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw JsonConversionException::from($exception);
+        }
     }
 
     /**
      * Recreate a scheduled schedule from its array representation.
      *
      * @param array<string, mixed> $data
-     * @throws InvalidArgumentException When the data is malformed
+     * @throws InvalidInputException When the data is malformed
      */
     public static function fromArray(array $data): self
     {
         $participantsData = $data['participants'] ?? [];
         if (!is_array($participantsData)) {
-            throw new InvalidArgumentException('Scheduled schedule participants must be an array');
+            throw new InvalidInputException('Scheduled schedule participants must be an array');
         }
 
         /** @var array<string, Participant> $participantsById */
         $participantsById = [];
         foreach ($participantsData as $participantData) {
             if (!is_array($participantData)) {
-                throw new InvalidArgumentException('Each scheduled schedule participant must be an array');
+                throw new InvalidInputException('Each scheduled schedule participant must be an array');
             }
             /** @var array<string, mixed> $participantData */
             $participant = Participant::fromArray($participantData);
@@ -146,13 +151,13 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
 
         $eventsData = $data['events'] ?? [];
         if (!is_array($eventsData)) {
-            throw new InvalidArgumentException('Scheduled schedule events must be an array');
+            throw new InvalidInputException('Scheduled schedule events must be an array');
         }
 
         $scheduledEvents = [];
         foreach ($eventsData as $eventData) {
             if (!is_array($eventData)) {
-                throw new InvalidArgumentException('Each scheduled schedule event must be an array');
+                throw new InvalidInputException('Each scheduled schedule event must be an array');
             }
             /** @var array<string, mixed> $eventData */
             $scheduledEvents[] = ScheduledEvent::fromArray($eventData, $participantsById);
@@ -164,14 +169,18 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     /**
      * Recreate a scheduled schedule from its JSON representation.
      *
-     * @throws \JsonException When the JSON is malformed
-     * @throws InvalidArgumentException When the decoded data is malformed
+     * @throws JsonConversionException When the JSON is malformed
+     * @throws InvalidInputException When the decoded data is malformed
      */
     public static function fromJson(string $json): self
     {
-        $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        try {
+            $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw JsonConversionException::from($exception);
+        }
         if (!is_array($data)) {
-            throw new InvalidArgumentException('Scheduled schedule JSON must decode to an array');
+            throw new InvalidInputException('Scheduled schedule JSON must decode to an array');
         }
 
         /** @var array<string, mixed> $data */

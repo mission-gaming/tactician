@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Constraints;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 /**
@@ -13,16 +14,19 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  */
 readonly class ConsecutiveRoleConstraint implements ConstraintInterface
 {
+    /**
+     * @throws InvalidInputException When the limit is below 1 or the role extractor is not callable
+     */
     public function __construct(
         private int $maxConsecutive,
         private mixed $roleExtractor,
         private string $name = 'Consecutive Role Constraint'
     ) {
         if ($maxConsecutive < 1) {
-            throw new \InvalidArgumentException('Max consecutive must be at least 1');
+            throw new InvalidInputException('Max consecutive must be at least 1');
         }
         if (!is_callable($roleExtractor)) {
-            throw new \InvalidArgumentException('Role extractor must be callable');
+            throw new InvalidInputException('Role extractor must be callable');
         }
     }
 

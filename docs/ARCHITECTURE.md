@@ -105,10 +105,21 @@ hard filters; metrics measure what remains:
 - **SchedulingDiagnostics**: Failure analysis with constraint attribution by probing — each missing pairing is tested against each constraint across candidate rounds and both orientations, against the actually-generated events. Yields blocked pairings (culprits named), per-constraint rejection counts, and structural-fullness notes; attached to generation failures via `IncompleteScheduleException::getAnalysis()`.
 
 ### Exception Hierarchy
-- **SchedulingException**: Base class for all scheduling exceptions
-- **InvalidConfigurationException**: Invalid scheduler configuration
-- **IncompleteScheduleException**: Schedule incomplete due to constraint conflicts
-- **NoValidPairingException**: No complete Swiss pairing exists for a round
+- **TacticianException**: Marker interface (extends `\Throwable`, adds no method) implemented by every exception the library throws on purpose, so one catch clause covers the library. `tests/Feature/ExceptionMarkerTest.php` fails for a `throw` in `src/` of anything else
+- **SchedulingException**: Abstract base class of the scheduling failures (extends `\Exception`); each carries a diagnostic report
+  - **InvalidConfigurationException**: Invalid scheduler configuration
+  - **IncompleteScheduleException**: Schedule incomplete due to constraint conflicts
+  - **NoValidPairingException**: No complete Swiss pairing exists for a round
+  - **RepackViolationsException**: A repack outcome with violations, raised only when the caller asks for an exception
+- **InvalidInputException** (extends `\InvalidArgumentException`): A rejected argument, or malformed data given to `fromArray()`/`fromJson()`
+- **JsonConversionException** (extends `\JsonException`): JSON that cannot be read or written; wraps the PHP exception, keeping its message and code
+- **InvariantViolationException** (extends `\LogicException`): A state the library's own logic rules out — a defect, not a caller mistake
+
+Each class keeps the PHP parent type its throw sites had before the marker
+existed, so a catch clause written against that type still matches. What the
+marker does not cover (exceptions from caller-supplied code, the random
+source, PHP's `\Error` family) is listed in
+[`USAGE.md`](USAGE.md#what-the-marker-does-not-cover).
 
 ## Integrated Multi-Leg Tournament Architecture
 
@@ -263,7 +274,7 @@ Tactician includes a sophisticated validation system ensuring tournament complet
 
 #### SchedulingException (Abstract Base)
 ```php
-abstract class SchedulingException extends Exception
+abstract class SchedulingException extends Exception implements TacticianException
 {
     abstract public function getDiagnosticReport(): string;
 }

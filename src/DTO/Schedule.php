@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use Countable;
-use InvalidArgumentException;
 use Iterator;
 use JsonSerializable;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Exceptions\JsonConversionException;
 use Override;
 
 /**
@@ -292,11 +293,15 @@ class Schedule implements Iterator, Countable, JsonSerializable
     /**
      * Serialize this schedule to a JSON string.
      *
-     * @throws \JsonException When the schedule contains values JSON cannot represent
+     * @throws JsonConversionException When the schedule contains values JSON cannot represent
      */
     public function toJson(): string
     {
-        return json_encode($this, JSON_THROW_ON_ERROR);
+        try {
+            return json_encode($this, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw JsonConversionException::from($exception);
+        }
     }
 
     /**
@@ -304,20 +309,20 @@ class Schedule implements Iterator, Countable, JsonSerializable
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidArgumentException When the data is malformed
+     * @throws InvalidInputException When the data is malformed
      */
     public static function fromArray(array $data): self
     {
         $participantsData = $data['participants'] ?? [];
         if (!is_array($participantsData)) {
-            throw new InvalidArgumentException('Schedule participants must be an array');
+            throw new InvalidInputException('Schedule participants must be an array');
         }
 
         /** @var array<string, Participant> $participantsById */
         $participantsById = [];
         foreach ($participantsData as $participantData) {
             if (!is_array($participantData)) {
-                throw new InvalidArgumentException('Each schedule participant must be an array');
+                throw new InvalidInputException('Each schedule participant must be an array');
             }
             /** @var array<string, mixed> $participantData */
             $participant = Participant::fromArray($participantData);
@@ -326,13 +331,13 @@ class Schedule implements Iterator, Countable, JsonSerializable
 
         $eventsData = $data['events'] ?? [];
         if (!is_array($eventsData)) {
-            throw new InvalidArgumentException('Schedule events must be an array');
+            throw new InvalidInputException('Schedule events must be an array');
         }
 
         $events = [];
         foreach ($eventsData as $eventData) {
             if (!is_array($eventData)) {
-                throw new InvalidArgumentException('Each schedule event must be an array');
+                throw new InvalidInputException('Each schedule event must be an array');
             }
             /** @var array<string, mixed> $eventData */
             $events[] = Event::fromArray($eventData, $participantsById);
@@ -340,7 +345,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
 
         $rawMetadata = $data['metadata'] ?? [];
         if (!is_array($rawMetadata)) {
-            throw new InvalidArgumentException('Schedule metadata must be an array');
+            throw new InvalidInputException('Schedule metadata must be an array');
         }
         $metadata = [];
         foreach ($rawMetadata as $key => $value) {
@@ -353,14 +358,18 @@ class Schedule implements Iterator, Countable, JsonSerializable
     /**
      * Recreate a schedule from a JSON string produced by toJson().
      *
-     * @throws \JsonException When the JSON is invalid
-     * @throws InvalidArgumentException When the decoded data is malformed
+     * @throws JsonConversionException When the JSON is invalid
+     * @throws InvalidInputException When the decoded data is malformed
      */
     public static function fromJson(string $json): self
     {
-        $decoded = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        try {
+            $decoded = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $exception) {
+            throw JsonConversionException::from($exception);
+        }
         if (!is_array($decoded)) {
-            throw new InvalidArgumentException('Schedule JSON must decode to an object');
+            throw new InvalidInputException('Schedule JSON must decode to an object');
         }
 
         /** @var array<string, mixed> $decoded */
