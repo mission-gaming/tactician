@@ -9,6 +9,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use MissionGaming\Tactician\Timeline\ZonedTime;
 
@@ -26,6 +27,25 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
  * declared in an explicit timezone, slot arithmetic is wall-clock in that
  * zone, and emitted kickoffs are UTC.
  *
+ * A grid comes in two forms. An instant-based grid (the constructor given
+ * session starts, or fromArray() given `sessions`) knows when every
+ * position is. A shape-only grid ({@see self::shapeOnly()}, or fromArray()
+ * given `session_count`) knows only which positions exist: how many
+ * sessions, how many slots each, and the capacity. It is for a caller that
+ * keeps its own times (local wall-clock times, say) and needs the repack
+ * for positions alone. Everything about positions works the same on both
+ * forms. The accessors that return a time (getSessionStart(),
+ * getSlotInterval(), getSlotTime(), and positionOf() given an instant)
+ * throw an UnavailableValueException on a shape-only grid: a shape-only
+ * grid never invents an instant. hasInstants() says which form a grid is,
+ * and code that may be given either asks it first.
+ *
+ * The capacity of a slot is a positive integer or null. Null is unbounded:
+ * a slot hosts any number of concurrent events, and the only limit left is
+ * that no participant is in two of them. The default is 1. Null is the way
+ * to say "no limit": a very large integer is not, because the planner
+ * multiplies the capacity by the number of slots.
+ *
  * The grid owns the mechanism only: which positions exist. Which events
  * are movable, and policy about times, stay application-side. Events that
  * fall outside the grid entirely cannot collide with it and are the
@@ -34,37 +54,96 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
  */
 final readonly class SessionGrid
 {
-    /** @var array<int, DateTimeImmutable> Re-indexed 0..N-1 */
+    /**
+     * What plain data carries as `capacity_per_slot` for an unbounded
+     * capacity. It is a string, and not null, because fromArray() has always
+     * read a null there as "not given" and applied the default of 1.
+     */
+    public const string UNBOUNDED = 'unbounded';
+
+    /** @var array<int, DateTimeImmutable> Re-indexed 0..N-1; empty on a shape-only grid */
     private array $sessionStarts;
+
+    /** Null on a shape-only grid */
+    private ?DateInterval $slotInterval;
 
     /** @var array<int, int> Slot count per session index, overrides applied */
     private array $slotCounts;
 
     /**
-     * @param array<DateTimeImmutable> $sessionStarts Ordered session start instants,
-     *                                                all in the same declared timezone
-     * @param DateInterval $slotInterval Time between consecutive slots within a session
+     * Build an instant-based grid from its session starts.
+     *
+     * Call this with session starts and a slot interval, and nothing else
+     * in their place. The types of the first two parameters are wider than
+     * that only because a readonly class has one constructor:
+     * {@see self::shapeOnly()} reaches the shape-only form through it, by
+     * passing a session count and a null interval. Do not pass those
+     * directly; call shapeOnly(). A count with an interval, or session
+     * starts without one, is rejected.
+     *
+     * @param array<DateTimeImmutable>|int $sessionStarts Ordered session start instants,
+     *                                                    all in the same declared timezone;
+     *                                                    or, for a shape-only grid, the
+     *                                                    number of sessions
+     * @param DateInterval|null $slotInterval Time between consecutive slots within a
+     *                                        session; null for a shape-only grid, and
+     *                                        only for one
      * @param int $slotsPerSession Default slot count for every session
      * @param array<int, int> $slotsPerSessionOverrides Session index => slot count, for
      *                                                  sessions deeper or shallower than
      *                                                  the default
-     * @param int $capacityPerSlot How many events may share one slot
+     * @param int|null $capacityPerSlot How many events may share one slot; null for
+     *                                  unbounded
      *
      * @throws InvalidConfigurationException When the grid configuration is invalid
      */
     public function __construct(
-        array $sessionStarts,
-        private DateInterval $slotInterval,
+        array|int $sessionStarts,
+        ?DateInterval $slotInterval,
         private int $slotsPerSession = 1,
         array $slotsPerSessionOverrides = [],
-        private int $capacityPerSlot = 1
+        private ?int $capacityPerSlot = 1
     ) {
-        if ($sessionStarts === []) {
-            throw new InvalidConfigurationException(
-                'A session grid needs at least 1 session',
-                ['session_starts' => []],
-                reason: InvalidConfigurationReason::EmptyList
-            );
+        if (is_int($sessionStarts)) {
+            if ($sessionStarts < 1) {
+                throw new InvalidConfigurationException(
+                    'A session grid needs at least 1 session',
+                    ['session_count' => $sessionStarts],
+                    reason: InvalidConfigurationReason::ValueOutOfRange
+                );
+            }
+
+            if ($slotInterval instanceof DateInterval) {
+                throw new InvalidConfigurationException(
+                    'A shape-only grid has no slot interval',
+                    [
+                        'session_count' => $sessionStarts,
+                        'slot_interval' => TimelineDefinition::formatInterval($slotInterval),
+                    ],
+                    reason: InvalidConfigurationReason::IncompatibleOptions
+                );
+            }
+
+            $sessionCount = $sessionStarts;
+            $sessionStarts = [];
+        } else {
+            if ($sessionStarts === []) {
+                throw new InvalidConfigurationException(
+                    'A session grid needs at least 1 session',
+                    ['session_starts' => []],
+                    reason: InvalidConfigurationReason::EmptyList
+                );
+            }
+
+            if (!$slotInterval instanceof DateInterval) {
+                throw new InvalidConfigurationException(
+                    'A grid with session starts needs a slot interval',
+                    ['slot_interval' => null],
+                    reason: InvalidConfigurationReason::IncompatibleOptions
+                );
+            }
+
+            $sessionCount = count($sessionStarts);
         }
 
         $starts = [];
@@ -112,7 +191,7 @@ final readonly class SessionGrid
             );
         }
 
-        if ($starts[0]->add($slotInterval) <= $starts[0]) {
+        if ($slotInterval instanceof DateInterval && $starts[0]->add($slotInterval) <= $starts[0]) {
             throw new InvalidConfigurationException(
                 'The slot interval must move time forward',
                 ['slot_interval' => TimelineDefinition::formatInterval($slotInterval)],
@@ -120,7 +199,7 @@ final readonly class SessionGrid
             );
         }
 
-        if ($capacityPerSlot < 1) {
+        if ($capacityPerSlot !== null && $capacityPerSlot < 1) {
             throw new InvalidConfigurationException(
                 'A slot needs capacity for at least 1 event',
                 ['capacity_per_slot' => $capacityPerSlot],
@@ -128,12 +207,12 @@ final readonly class SessionGrid
             );
         }
 
-        $slotCounts = array_fill(0, count($starts), $slotsPerSession);
+        $slotCounts = array_fill(0, $sessionCount, $slotsPerSession);
         foreach ($slotsPerSessionOverrides as $session => $slots) {
-            if (!is_int($session) || !isset($starts[$session])) {
+            if (!is_int($session) || !isset($slotCounts[$session])) {
                 throw new InvalidConfigurationException(
                     'Slot count overrides must target existing session indexes',
-                    ['session' => $session, 'sessions' => count($starts)],
+                    ['session' => $session, 'sessions' => $sessionCount],
                     reason: InvalidConfigurationReason::PositionOutOfRange
                 );
             }
@@ -150,7 +229,36 @@ final readonly class SessionGrid
         }
 
         $this->sessionStarts = $starts;
+        $this->slotInterval = $slotInterval;
         $this->slotCounts = $slotCounts;
+    }
+
+    /**
+     * Build a shape-only grid: the positions and nothing about when they
+     * are.
+     *
+     * For a caller that has no UTC instants to give, because it keeps its
+     * times in another form, and needs positions back. The repacker treats
+     * the grid exactly as it treats an instant-based grid of the same
+     * shape, so the same request gets the same (session, slot) for every
+     * event; the assignments carry no kickoff
+     * ({@see SlotAssignment::hasKickoff()}).
+     *
+     * @param int $sessions How many sessions the grid has
+     * @param int $slotsPerSession Default slot count for every session
+     * @param array<int, int> $slotsPerSessionOverrides Session index => slot count
+     * @param int|null $capacityPerSlot How many events may share one slot; null for
+     *                                  unbounded
+     *
+     * @throws InvalidConfigurationException When the shape is invalid
+     */
+    public static function shapeOnly(
+        int $sessions,
+        int $slotsPerSession = 1,
+        array $slotsPerSessionOverrides = [],
+        ?int $capacityPerSlot = 1
+    ): self {
+        return new self($sessions, null, $slotsPerSession, $slotsPerSessionOverrides, $capacityPerSlot);
     }
 
     /**
@@ -163,12 +271,48 @@ final readonly class SessionGrid
      * The timezone is required and authoritative for every session start,
      * same convention as the timeline family.
      *
+     * A shape-only grid is the same data with `session_count` in place of
+     * `sessions`, `timezone` and `slot_interval`:
+     * ['session_count' => 2, 'slots_per_session' => 4]. It is read that way
+     * only when there is no `sessions` key at all; with `sessions` present
+     * the grid is instant-based and `session_count` is not read. A
+     * shape-only grid that also gives `timezone` or `slot_interval` is
+     * rejected.
+     *
+     * `capacity_per_slot` is a positive integer or the string
+     * {@see self::UNBOUNDED}; left out, or null, it is 1.
+     *
      * @param array<string, mixed> $config
      *
      * @throws InvalidConfigurationException When a value is missing or malformed
      */
     public static function fromArray(array $config): self
     {
+        if (!array_key_exists('sessions', $config) && array_key_exists('session_count', $config)) {
+            $sessionCount = $config['session_count'];
+            if (!is_int($sessionCount)) {
+                throw new InvalidConfigurationException(
+                    'session_count must be an integer',
+                    ['session_count' => $sessionCount],
+                    reason: InvalidConfigurationReason::WrongValueType
+                );
+            }
+
+            foreach (['timezone', 'slot_interval'] as $key) {
+                if (array_key_exists($key, $config)) {
+                    throw new InvalidConfigurationException(
+                        'A shape-only grid declares no timezone and no slot interval',
+                        ['key' => $key, 'session_count' => $sessionCount],
+                        reason: InvalidConfigurationReason::IncompatibleOptions
+                    );
+                }
+            }
+
+            [$slotsPerSession, $overrides, $capacityPerSlot] = self::shapeFromArray($config);
+
+            return new self($sessionCount, null, $slotsPerSession, $overrides, $capacityPerSlot);
+        }
+
         $sessions = $config['sessions'] ?? null;
         if (!is_array($sessions) || $sessions === []) {
             throw new InvalidConfigurationException(
@@ -183,6 +327,28 @@ final readonly class SessionGrid
             $starts[] = ZonedTime::parse($session, $config['timezone'] ?? null, "sessions[{$index}]");
         }
 
+        [$slotsPerSession, $overrides, $capacityPerSlot] = self::shapeFromArray($config);
+
+        return new self(
+            $starts,
+            TimelineDefinition::parseInterval($config['slot_interval'] ?? null, 'slot_interval'),
+            $slotsPerSession,
+            $overrides,
+            $capacityPerSlot
+        );
+    }
+
+    /**
+     * The values both forms of plain data share.
+     *
+     * @param array<string, mixed> $config
+     *
+     * @return array{int, array<int, int>, int|null} Slots per session, overrides, capacity per slot
+     *
+     * @throws InvalidConfigurationException When a value is malformed
+     */
+    private static function shapeFromArray(array $config): array
+    {
         $slotsPerSession = $config['slots_per_session'] ?? 1;
         if (!is_int($slotsPerSession)) {
             throw new InvalidConfigurationException(
@@ -202,7 +368,9 @@ final readonly class SessionGrid
         }
 
         $capacityPerSlot = $config['capacity_per_slot'] ?? 1;
-        if (!is_int($capacityPerSlot)) {
+        if ($capacityPerSlot === self::UNBOUNDED) {
+            $capacityPerSlot = null;
+        } elseif (!is_int($capacityPerSlot)) {
             throw new InvalidConfigurationException(
                 'capacity_per_slot must be an integer',
                 ['capacity_per_slot' => $capacityPerSlot],
@@ -211,19 +379,18 @@ final readonly class SessionGrid
         }
 
         /** @var array<int, int> $overrides Key and value types are validated by the constructor */
-        return new self(
-            $starts,
-            TimelineDefinition::parseInterval($config['slot_interval'] ?? null, 'slot_interval'),
-            $slotsPerSession,
-            $overrides,
-            $capacityPerSlot
-        );
+        return [$slotsPerSession, $overrides, $capacityPerSlot];
     }
 
     /**
      * Serialize back to the plain-data form fromArray() accepts.
      *
-     * @return array{sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int}
+     * An instant-based grid with a finite capacity serializes exactly as
+     * it always has. A shape-only grid has `session_count` and none of
+     * `sessions`, `timezone` and `slot_interval`. An unbounded capacity is
+     * the string {@see self::UNBOUNDED}.
+     *
+     * @return array{sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}|array{session_count: int, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}
      */
     public function toArray(): array
     {
@@ -234,16 +401,24 @@ final readonly class SessionGrid
             }
         }
 
-        $data = [
-            'sessions' => array_map(
-                static fn(DateTimeImmutable $start): string => $start->format('Y-m-d H:i:s'),
-                $this->sessionStarts
-            ),
-            'timezone' => $this->sessionStarts[0]->getTimezone()->getName(),
-            'slot_interval' => TimelineDefinition::formatInterval($this->slotInterval),
-            'slots_per_session' => $this->slotsPerSession,
-            'capacity_per_slot' => $this->capacityPerSlot,
-        ];
+        if ($this->slotInterval instanceof DateInterval) {
+            $data = [
+                'sessions' => array_map(
+                    static fn(DateTimeImmutable $start): string => $start->format('Y-m-d H:i:s'),
+                    $this->sessionStarts
+                ),
+                'timezone' => $this->sessionStarts[0]->getTimezone()->getName(),
+                'slot_interval' => TimelineDefinition::formatInterval($this->slotInterval),
+                'slots_per_session' => $this->slotsPerSession,
+                'capacity_per_slot' => $this->capacityPerSlot ?? self::UNBOUNDED,
+            ];
+        } else {
+            $data = [
+                'session_count' => count($this->slotCounts),
+                'slots_per_session' => $this->slotsPerSession,
+                'capacity_per_slot' => $this->capacityPerSlot ?? self::UNBOUNDED,
+            ];
+        }
 
         if ($overrides !== []) {
             $data['slots_per_session_overrides'] = $overrides;
@@ -254,16 +429,29 @@ final readonly class SessionGrid
 
     public function getSessionCount(): int
     {
-        return count($this->sessionStarts);
+        return count($this->slotCounts);
+    }
+
+    /**
+     * Whether the grid knows when its positions are. False for a
+     * shape-only grid, on which every accessor that returns a time throws.
+     */
+    public function hasInstants(): bool
+    {
+        return $this->slotInterval instanceof DateInterval;
     }
 
     /**
      * @param int $session 0-based session index
      *
      * @throws InvalidConfigurationException When the session is out of range
+     * @throws UnavailableValueException When the grid is shape-only (unchecked: ask
+     *                                   hasInstants() first)
      */
     public function getSessionStart(int $session): DateTimeImmutable
     {
+        $this->requireInstants('a session start');
+
         if (!isset($this->sessionStarts[$session])) {
             throw new InvalidConfigurationException(
                 'Session index is out of range for this grid',
@@ -295,17 +483,55 @@ final readonly class SessionGrid
         return $this->slotCounts[$session];
     }
 
+    /**
+     * The time between consecutive slots within a session.
+     *
+     * @throws UnavailableValueException When the grid is shape-only (unchecked: ask
+     *                                   hasInstants() first)
+     */
     public function getSlotInterval(): DateInterval
     {
-        return $this->slotInterval;
+        return $this->requireInstants('a slot interval');
     }
 
     /**
-     * How many events may share one slot.
+     * How many events may share one slot, as a number.
+     *
+     * A grid of unbounded capacity has no such number, and this throws
+     * rather than return a stand-in that arithmetic would then use. Code
+     * that may be given either kind of grid reads
+     * {@see self::getCapacityLimit()}, or asks hasUnboundedCapacity()
+     * first.
+     *
+     * @throws UnavailableValueException When the capacity is unbounded (unchecked)
      */
     public function getCapacityPerSlot(): int
     {
+        if ($this->capacityPerSlot === null) {
+            throw new UnavailableValueException(
+                'The capacity of this grid is unbounded, so it has no capacity per slot as a number. '
+                . 'Check hasUnboundedCapacity() first, or read getCapacityLimit(), which returns null for it.'
+            );
+        }
+
         return $this->capacityPerSlot;
+    }
+
+    /**
+     * How many events may share one slot, or null when the capacity is
+     * unbounded.
+     */
+    public function getCapacityLimit(): ?int
+    {
+        return $this->capacityPerSlot;
+    }
+
+    /**
+     * Whether a slot hosts any number of concurrent events.
+     */
+    public function hasUnboundedCapacity(): bool
+    {
+        return $this->capacityPerSlot === null;
     }
 
     /**
@@ -325,6 +551,83 @@ final readonly class SessionGrid
     }
 
     /**
+     * The ordinal of a position: its 0-based index when the positions are
+     * counted in grid order, session by session and slot by slot within a
+     * session. Session 0 slot 0 is 0; the last position is
+     * getPositionCount() - 1.
+     *
+     * @param int $session 0-based session index
+     * @param int $slot 0-based slot index within the session
+     *
+     * @throws InvalidConfigurationException When the position is not on the grid
+     */
+    public function ordinalOf(int $session, int $slot): int
+    {
+        if (!$this->hasPosition($session, $slot)) {
+            throw self::positionNotOnGrid($session, $slot, $this->slotCounts);
+        }
+
+        $ordinal = $slot;
+        for ($earlier = 0; $earlier < $session; ++$earlier) {
+            $ordinal += $this->slotCounts[$earlier];
+        }
+
+        return $ordinal;
+    }
+
+    /**
+     * The position at an ordinal or at an instant: the reverse of
+     * ordinalOf() and of getSlotTime().
+     *
+     * Given an integer, it is the position with that ordinal. Given an
+     * instant, it is the position whose slot time is that instant; the
+     * comparison is of the instants, so the timezone the argument is
+     * written in does not matter. Where one session runs on past the start
+     * of the next, two positions can share an instant, and the first in
+     * grid order is returned.
+     *
+     * @param DateTimeImmutable|int $at A position's ordinal, or a slot's instant
+     *
+     * @return array{session: int, slot: int}|null Null when no position has that
+     *                                             ordinal or that instant
+     *
+     * @throws UnavailableValueException When given an instant and the grid is
+     *                                   shape-only (unchecked: ask hasInstants()
+     *                                   first)
+     */
+    public function positionOf(DateTimeImmutable|int $at): ?array
+    {
+        if (is_int($at)) {
+            if ($at < 0) {
+                return null;
+            }
+
+            foreach ($this->slotCounts as $session => $slots) {
+                if ($at < $slots) {
+                    return ['session' => $session, 'slot' => $at];
+                }
+                $at -= $slots;
+            }
+
+            return null;
+        }
+
+        $interval = $this->requireInstants('the position of an instant');
+
+        foreach ($this->slotCounts as $session => $slots) {
+            $time = $this->sessionStarts[$session];
+            for ($slot = 0; $slot < $slots; ++$slot) {
+                if (($time <=> $at) === 0) {
+                    return ['session' => $session, 'slot' => $slot];
+                }
+                $time = $time->add($interval);
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The kickoff time of one slot, in UTC.
      *
      * Arithmetic is wall-clock in the grid's declared timezone (a 20:15
@@ -335,27 +638,58 @@ final readonly class SessionGrid
      * @param int $slot 0-based slot index within the session
      *
      * @throws InvalidConfigurationException When the position is not on the grid
+     * @throws UnavailableValueException When the grid is shape-only (unchecked: ask
+     *                                   hasInstants() first)
      */
     public function getSlotTime(int $session, int $slot): DateTimeImmutable
     {
+        $interval = $this->requireInstants('a slot time');
+
         if (!$this->hasPosition($session, $slot)) {
-            throw new InvalidConfigurationException(
-                'The position is not on this grid',
-                [
-                    'session' => $session,
-                    'slot' => $slot,
-                    'sessions' => $this->getSessionCount(),
-                    'slots_in_session' => $this->slotCounts[$session] ?? null,
-                ],
-                reason: InvalidConfigurationReason::PositionOutOfRange
-            );
+            throw self::positionNotOnGrid($session, $slot, $this->slotCounts);
         }
 
         $time = $this->sessionStarts[$session];
         for ($i = 0; $i < $slot; ++$i) {
-            $time = $time->add($this->slotInterval);
+            $time = $time->add($interval);
         }
 
         return $time->setTimezone(new DateTimeZone('UTC'));
+    }
+
+    /**
+     * The slot interval, which every time the grid can state is built
+     * from.
+     *
+     * @param string $asked What the caller asked for, for the message
+     *
+     * @throws UnavailableValueException When the grid is shape-only
+     */
+    private function requireInstants(string $asked): DateInterval
+    {
+        if (!$this->slotInterval instanceof DateInterval) {
+            throw new UnavailableValueException(
+                "A shape-only grid has no instants, so it cannot give {$asked}. Check hasInstants() before asking for a time."
+            );
+        }
+
+        return $this->slotInterval;
+    }
+
+    /**
+     * @param array<int, int> $slotCounts Slot count per session index
+     */
+    private static function positionNotOnGrid(int $session, int $slot, array $slotCounts): InvalidConfigurationException
+    {
+        return new InvalidConfigurationException(
+            'The position is not on this grid',
+            [
+                'session' => $session,
+                'slot' => $slot,
+                'sessions' => count($slotCounts),
+                'slots_in_session' => $slotCounts[$session] ?? null,
+            ],
+            reason: InvalidConfigurationReason::PositionOutOfRange
+        );
     }
 }
