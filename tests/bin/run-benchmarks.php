@@ -23,7 +23,12 @@ if (!is_file($runner)) {
     exit(2);
 }
 
-$options = array_slice($argv, 1);
+$options = [];
+foreach (array_slice((array) $_SERVER['argv'], 1) as $option) {
+    if (is_string($option)) {
+        $options[] = $option;
+    }
+}
 if ($options === []) {
     $options = ['--report=aggregate'];
 }

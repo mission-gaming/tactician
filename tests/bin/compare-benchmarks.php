@@ -39,19 +39,12 @@ use MissionGaming\Tactician\Tests\Support\BenchmarkComparison;
 
 $root = dirname(__DIR__, 2);
 
-// The runner is installed apart from the library's development dependencies
-// (tools/phpbench/README.md says why), so it may not be there.
-$runner = $root . '/tools/phpbench/vendor/bin/phpbench';
-if (!is_file($runner)) {
-    fwrite(STDERR, "The benchmark runner is not installed. Run `composer bench-install` first.\n");
-    exit(2);
-}
-
 require $root . '/vendor/autoload.php';
 
-$baseSource = $argv[1] ?? '';
-$margin = (float) ($argv[2] ?? '1.5');
-$rounds = (int) ($argv[3] ?? '3');
+$arguments = $_SERVER['argv'];
+$baseSource = $arguments[1] ?? '';
+$margin = (float) ($arguments[2] ?? '1.5');
+$rounds = (int) ($arguments[3] ?? '3');
 
 if ($baseSource === '' || !is_dir($baseSource) || $margin <= 1.0 || $rounds < 1) {
     fwrite(STDERR, "Usage: php tests/bin/compare-benchmarks.php <base src directory> [margin > 1] [rounds >= 1]\n");
@@ -64,6 +57,16 @@ if (!is_file($baseSource . '/DTO/Participant.php')) {
     exit(2);
 }
 $baseSource = (string) realpath($baseSource);
+
+// The arguments are checked first, so that a wrong call is told what is
+// wrong with it whether or not the runner is there. The runner is installed
+// apart from the library's development dependencies
+// (tools/phpbench/README.md says why), so it may not be.
+$runner = $root . '/tools/phpbench/vendor/bin/phpbench';
+if (!is_file($runner)) {
+    fwrite(STDERR, "The benchmark runner is not installed. Run `composer bench-install` first.\n");
+    exit(2);
+}
 
 $output = $root . '/build/phpbench';
 if (!is_dir($output) && !mkdir($output, 0o777, true) && !is_dir($output)) {
