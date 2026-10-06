@@ -36,10 +36,11 @@ $isMismatch = static function (Event $event): bool {
 };
 
 // Two legs of 7 rounds: 14 rounds in all. Both rules below reject events of
-// the season the scheduler would otherwise produce. A rule that rejects
-// nothing has no place in the set: noRepeatPairings() is one in any round
-// robin (example 04), and so is a minimum gap between repeat meetings that
-// the legs already give (example 06).
+// the season the scheduler would otherwise produce. A rule the finished
+// season cannot break has no place in the set: noRepeatPairings() is one in
+// a round robin (example 04), and so is a minimum gap between repeat
+// meetings that the legs already give (example 06). With both of them
+// added, this season comes out the same.
 $constraints = ConstraintSet::create()
     // The top 2 seeds do not meet in the first 20% of the rounds (rounds 1 and 2)
     ->add(new SeedProtectionConstraint(2, 0.2))

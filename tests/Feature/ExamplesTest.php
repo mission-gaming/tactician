@@ -440,7 +440,7 @@ $demonstrations = [
 
         // Neither rule is inert: the season generated without them has the top two seeds meeting inside the
         // protected window (rounds 1 and 2) and an S-tier against B-tier event in round 1, so each rule
-        // rejects events of it. The set holds those two rules and nothing that rejects nothing.
+        // rejects events of it. The set holds those two rules and none that leaves the season as it was.
         $without = exampleArray($results, 'Without constraints');
         expect($without['Rounds in which seeds 1 and 2 meet'])->toBe('2 and 9')
             ->and($without['Earliest round with S-tier against B-tier'])->toBe(1)
@@ -905,7 +905,7 @@ $demonstrations = [
 
     // Application rows in, fixture rows out with rounds, roles and byes kept; the repack moves only what may
     // move, its violations are read by kind, and a plan is applied only when recomputing it gives the
-    // fingerprint that was previewed
+    // fingerprint that was previewed, on the nights that were previewed
     '23-application-adapter-and-repack' => function (array $results): void {
         $participants = exampleArray($results, 'Participants, in the order of the ranking');
         $copied = exampleArray($results, 'Fixture rows copied from the schedule');
@@ -980,10 +980,15 @@ $demonstrations = [
             'Fingerprint' => $preview->fingerprint(),
         ])->and($preview->fingerprint())->toStartWith(RepackOutcome::FINGERPRINT_SCHEME . ':');
 
-        // A plan that differs from the previewed one is refused; the previewed one is applied
+        // A plan that differs from the previewed one is refused. So is the same plan on nights that are not
+        // the ones previewed: a shape-only grid holds no times, so the fingerprint is the same there, and it
+        // is the application that has to compare the nights. The previewed plan on the previewed nights is
+        // applied.
         expect($results['Confirming'])->toBe([
             'Applied after another fixture was locked' => false,
-            'Applied with the rows as previewed' => true,
+            'Same fingerprint after a kickoff was moved' => true,
+            'Applied after a kickoff was moved' => false,
+            'Applied with the rows and nights as previewed' => true,
         ]);
 
         // Applied: each movable fixture sits where the preview put it, with the application's own time

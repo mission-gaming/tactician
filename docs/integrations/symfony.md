@@ -304,12 +304,28 @@ There are two ways, and both give the engine the same thing.
   `StageState::start($participants)`, then `withRoundPlayed()` once for
   every round you hold, each with a `RoundPairing` you construct
   (`new RoundPairing($roundNumber, $label, $events, $byes)`) and the
-  results recorded so far. For that your rows must keep, for every round,
-  its number and label, the two participants of every event in their
-  order, the event's metadata (a two-legged tie carries its leg number
-  there as `tie_leg`, and the engine reads it) and the participants who
-  had a bye. A state rebuilt this way pairs the same next round as the
-  stored one.
+  results recorded so far. A state rebuilt this way pairs the same next
+  round as the stored one when your rows give back all of this:
+  - **The entrants as the stage was opened with them, in that order.** A
+    bracket is replayed from the list on every call. Passed only the
+    entrants still in it, the engine sees a smaller bracket and offers
+    its first round again; passed the same entrants in another order, it
+    looks for results of ties that were never played and reports the
+    round as still in play (`RoundPartiallyResolved`).
+  - **Their seeds and labels as they were.** Wherever a table leaves
+    entrants level, seed and label order them, so a club renamed in
+    mid-stage can change the next Swiss round of a rebuilt state. The
+    stored JSON does not have that problem, and for the same reason it
+    does not show the new name: it keeps each participant as it was
+    when the stage opened.
+  - **For every round**, its number and label, the two participants of
+    every event in their order, the event's metadata (a two-legged tie
+    carries its leg number there as `tie_leg`, and the engine reads it)
+    and the participants who had a bye.
+  - **Every result whole**: its event, its winner or none, its scores
+    and its metadata, which is where a level event names who advanced.
+  - **Withdrawals.** Call `withoutParticipant()` for each entrant who
+    has left a Swiss stage, as the stored state had it.
 
 `RoundPairing::getByes()` returns the participants who sit a round out.
 They are not events.
@@ -381,6 +397,17 @@ have (none is allowed), and add the others with
   `Randomizer`, pairing the same state again gives another round, so
   record the pairing before you show it.
 
+**One result for each event is yours to guarantee.**
+`withAdditionalResults()` adds what it is given and does not look for a
+result the event already has. A request that is sent twice therefore
+records the result twice. A bracket engine then refuses the state on
+every call (reason `DuplicateResult`) until `withResultReplaced()` has
+put one result in the place of the two. A Swiss engine reading a state
+that came back from JSON does not notice, and counts the event twice in
+its table. Before adding a result, look in `getResults()` for one on the
+same round and participants (and the same `tie_leg`), and use
+`withResultReplaced()` when there is one.
+
 Two requests that pair the same round at the same time are a race the
 library cannot see. Take a lock on the stage for the read, the step and
 the write.
@@ -432,6 +459,10 @@ $state = $state->withRoundPlayed($semifinals, [
 $database['bracket'] = $state->toJson();
 ```
 
+- The value is the participant's ID as the string `getId()` returns. An
+  integer primary key that was not cast names nobody: `7` is not `'7'`,
+  and the engine refuses it as it refuses a participant from outside the
+  event.
 - The result stays a draw: `isDraw()` is true and `getWinner()` is null.
   `TieDecision::advancer()` reads who went on.
 - The engine's own table counts the event as a win for the participant
@@ -572,7 +603,11 @@ $buildRequest = static function (array $fixtureRows, array $nightRows) use ($par
 - So an event that must stay and is **not on the grid** is left out by
   the adapter. It cannot collide with anything on the grid, because a
   collision is two events of one participant at the same session and
-  slot, and nothing else. The library does not compare times.
+  slot, and nothing else. The library does not compare times. If an
+  event off the grid is near enough in time to one of its sessions to
+  matter (the same evening, an hour before the first slot), nothing in
+  the outcome says so: check it in the adapter, or, where the grid can
+  hold that time as a slot, pin the event there.
 - One ID may appear once in the request, movable or pinned (reason
   `DuplicateEventId`).
 
@@ -679,9 +714,28 @@ the confirmation the fixtures can change: a result comes in, somebody
 locks another fixture. Do not store the previewed plan and apply it
 later. Keep its **fingerprint**, and when the operator confirms, build
 the request again from the rows as they are now, repack again, and
-compare:
+compare.
+
+On a shape-only grid, keep one more thing: what the positions stood for.
+Such a grid is a number of sessions and slots and nothing else, so the
+fingerprint covers which fixture is at which session and slot, and not
+which night that session is or when that slot kicks off. A night that is
+swapped for another, or a kickoff that is moved, leaves the shape and so
+the fingerprint as they were.
 
 *From `examples/23-application-adapter-and-repack.php`:*
+
+<!-- excerpt: examples/23-application-adapter-and-repack.php -->
+```php
+// What is kept of the preview: the fingerprint of the plan, and the nights
+// the operator saw it on. A shape-only grid is a number of sessions and
+// slots. It does not know which night a session is or when a slot kicks off,
+// so the same fixtures on two calendars of the same shape give the same
+// fingerprint.
+$previewed = ['fingerprint' => $preview->fingerprint(), 'nights' => $nightsWithTwoKickoffs];
+```
+
+When the operator confirms:
 
 <!-- excerpt: examples/23-application-adapter-and-repack.php -->
 ```php
@@ -691,13 +745,17 @@ compare:
 // repacked again: the repacker is deterministic, so the same rows give the
 // same plan and the same fingerprint. A different fingerprint means the rows
 // changed after the preview, and nothing is written.
-$confirm = static function (array $fixtureRows, array $nightRows, string $previewed) use ($buildRequest, $repacker): array {
+$confirm = static function (array $fixtureRows, array $nightRows, array $previewed) use ($buildRequest, $repacker): array {
     [$request] = $buildRequest($fixtureRows, $nightRows);
     $plan = $repacker->repack($request);
 
     // Fingerprints of different schemes are not comparable
-    $sameScheme = str_starts_with($previewed, RepackOutcome::FINGERPRINT_SCHEME . ':');
-    if (!$sameScheme || $plan->fingerprint() !== $previewed) {
+    $sameScheme = str_starts_with($previewed['fingerprint'], RepackOutcome::FINGERPRINT_SCHEME . ':');
+    $samePlan = $sameScheme && $plan->fingerprint() === $previewed['fingerprint'];
+
+    // The positions must also mean what they meant when the plan was shown:
+    // the same nights in the same order, with the same kickoffs
+    if (!$samePlan || $nightRows !== $previewed['nights']) {
         return [false, $fixtureRows];
     }
 
@@ -723,14 +781,25 @@ same outcome on every machine, whatever the order of the two lists.
 `fingerprint()` is equal for two outcomes with the same assignments,
 unplaced events and violations, and different when any of them differs.
 
+- It covers the movable events: the position of each one that was
+  placed (with its UTC kickoff on an instant-based grid), each one that
+  was not, and the violations. A pinned event is not in the outcome, so
+  a pin is covered only through what it does to the others.
 - It covers a participant by its ID only. A renamed club does not change
   it.
 - It begins with a scheme (`v1:`,
   `RepackOutcome::FINGERPRINT_SCHEME`). Compare two fingerprints only
   when their schemes are equal.
 - A different fingerprint means "show the operator the new plan". The
-  rows changed, the grid changed, or the library was upgraded to a
-  version that packs this request differently.
+  rows changed, the shape of the grid changed, or the library was
+  upgraded to a version that packs this request differently.
+- An equal fingerprint means the same plan, and says nothing about the
+  rest of what the operator was shown. Compare that yourself, as the
+  example compares its nights.
+- The check and the write belong in one transaction that locks the
+  fixtures it reads. Otherwise a fixture can still change between the
+  comparison and the write, which is the change the comparison was there
+  to catch.
 
 ### The step budget, time and memory
 
@@ -923,9 +992,10 @@ the `from` and `to` of a blackout window):
 
 - It states its date in full, year, month and day: `2026-08-01 18:00`.
   The time of day is optional and defaults to midnight.
-- The zone comes from the `timezone` field. An offset written into the
-  string that contradicts the field is rejected (reason
-  `TimezoneMismatch`).
+- The zone comes from the `timezone` field. Write no offset and no zone
+  into the string. One that is not the field's own name is rejected
+  (reason `TimezoneMismatch`), even when it is the right offset for that
+  date: `+01:00` under `Europe/London` in summer.
 - A string that depends on the clock is rejected (reason
   `UnparseableTime`): `tomorrow 19:00`, `+1 week`, a time with no date.
   So is a date that does not exist, such as `2026-02-30`. Compute a
@@ -969,7 +1039,7 @@ Two things to know if you register one as a shared service anyway:
   the engine's events; a level bracket event names who advances.
 - A repack is told what may move. Read its violations by kind, preview
   it, and apply it only if computing it again gives the same
-  fingerprint.
+  fingerprint and the sessions still stand for what was shown.
 - Catch `TacticianException`, branch on the reason, log the report
   whole.
 - UTC instants or positions out; local time is converted in the adapter.

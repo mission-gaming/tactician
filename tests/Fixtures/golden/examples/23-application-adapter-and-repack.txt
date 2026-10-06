@@ -192,7 +192,9 @@ Fingerprint: v1:e5ac5af94403680733df2a39105df0eecff4ea8126b3405c1814792753bc6370
 
 == Confirming ==
 Applied after another fixture was locked: false
-Applied with the rows as previewed: true
+Same fingerprint after a kickoff was moved: true
+Applied after a kickoff was moved: false
+Applied with the rows and nights as previewed: true
 
 == Fixture rows after the plan was applied ==
 -

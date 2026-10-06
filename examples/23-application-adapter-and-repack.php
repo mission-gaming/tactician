@@ -193,7 +193,7 @@ foreach ($tooFewSlots->getEventUnplacedViolations() as $violation) {
 
 // --- Second preview: a second kickoff on each night ----------------------
 // The operator answers the shortfall by adding a kickoff to both nights. This
-// is the plan the operator is shown, and its fingerprint is kept with it.
+// is the plan the operator is shown.
 $nightsWithTwoKickoffs = [
     ['id' => 'night-4', 'kickoffs' => ['2026-09-24 19:00', '2026-09-24 20:30']],
     ['id' => 'night-5', 'kickoffs' => ['2026-10-01 19:00', '2026-10-01 20:30']],
@@ -201,7 +201,13 @@ $nightsWithTwoKickoffs = [
 
 [$request] = $buildRequest($fixtureRows, $nightsWithTwoKickoffs);
 $preview = $repacker->repack($request);
-$previewedFingerprint = $preview->fingerprint();
+
+// What is kept of the preview: the fingerprint of the plan, and the nights
+// the operator saw it on. A shape-only grid is a number of sessions and
+// slots. It does not know which night a session is or when a slot kicks off,
+// so the same fixtures on two calendars of the same shape give the same
+// fingerprint.
+$previewed = ['fingerprint' => $preview->fingerprint(), 'nights' => $nightsWithTwoKickoffs];
 
 $lateStarts = [];
 foreach ($preview->getLateStartViolations() as $violation) {
@@ -218,13 +224,17 @@ foreach ($preview->getLateStartViolations() as $violation) {
 // repacked again: the repacker is deterministic, so the same rows give the
 // same plan and the same fingerprint. A different fingerprint means the rows
 // changed after the preview, and nothing is written.
-$confirm = static function (array $fixtureRows, array $nightRows, string $previewed) use ($buildRequest, $repacker): array {
+$confirm = static function (array $fixtureRows, array $nightRows, array $previewed) use ($buildRequest, $repacker): array {
     [$request] = $buildRequest($fixtureRows, $nightRows);
     $plan = $repacker->repack($request);
 
     // Fingerprints of different schemes are not comparable
-    $sameScheme = str_starts_with($previewed, RepackOutcome::FINGERPRINT_SCHEME . ':');
-    if (!$sameScheme || $plan->fingerprint() !== $previewed) {
+    $sameScheme = str_starts_with($previewed['fingerprint'], RepackOutcome::FINGERPRINT_SCHEME . ':');
+    $samePlan = $sameScheme && $plan->fingerprint() === $previewed['fingerprint'];
+
+    // The positions must also mean what they meant when the plan was shown:
+    // the same nights in the same order, with the same kickoffs
+    if (!$samePlan || $nightRows !== $previewed['nights']) {
         return [false, $fixtureRows];
     }
 
@@ -248,12 +258,23 @@ $confirm = static function (array $fixtureRows, array $nightRows, string $previe
 // fixture where it sits. The plan computed now is not the plan that was
 // shown, so the confirmation is refused.
 $rowsAfterAnotherLock = $lock($fixtureRows, 'fx10');
-[$appliedAfterChange] = $confirm($rowsAfterAnotherLock, $nightsWithTwoKickoffs, $previewedFingerprint);
+[$appliedAfterChange] = $confirm($rowsAfterAnotherLock, $nightsWithTwoKickoffs, $previewed);
 
-// With the rows as they were previewed, the confirmation applies the plan
-[$applied, $fixtureRows] = $confirm($fixtureRows, $nightsWithTwoKickoffs, $previewedFingerprint);
+// Or the late kickoff of the last night is moved by half an hour. The grid
+// has the shape it had, so the plan and its fingerprint are the ones that
+// were shown; the times the operator saw are not, and that is why the nights
+// are compared as well.
+$nightsWithAMovedKickoff = $nightsWithTwoKickoffs;
+$nightsWithAMovedKickoff[1]['kickoffs'][1] = '2026-10-01 21:00';
+[$requestOnMovedNight] = $buildRequest($fixtureRows, $nightsWithAMovedKickoff);
+$sameFingerprintOnMovedNight = $repacker->repack($requestOnMovedNight)->fingerprint() === $previewed['fingerprint'];
+[$appliedAfterMovedKickoff] = $confirm($fixtureRows, $nightsWithAMovedKickoff, $previewed);
 
-return Example::present(__FILE__, 'An application adapter, and a repack', 'Application records go in as participants, the schedule is copied into fixture rows, and a repack moves the fixtures that may move onto the nights that are left. The plan is previewed, and applied only if computing it again gives the same fingerprint.', [
+// With the rows and the nights as they were previewed, the confirmation
+// applies the plan
+[$applied, $fixtureRows] = $confirm($fixtureRows, $nightsWithTwoKickoffs, $previewed);
+
+return Example::present(__FILE__, 'An application adapter, and a repack', 'Application records go in as participants, the schedule is copied into fixture rows, and a repack moves the fixtures that may move onto the nights that are left. The plan is previewed, and applied only if computing it again gives the same fingerprint on the same nights.', [
     'Participants, in the order of the ranking' => $participants,
     'Fixture rows copied from the schedule' => $fixturesAsCopied,
     'Bye rows, from the schedule metadata' => $byeRows,
@@ -267,11 +288,13 @@ return Example::present(__FILE__, 'An application adapter, and a repack', 'Appli
         'Clean' => $preview->isClean(),
         'Everything placed' => $preview->getUnplaced() === [],
         'Step budget ran out' => $preview->isBudgetExhausted(),
-        'Fingerprint' => $previewedFingerprint,
+        'Fingerprint' => $previewed['fingerprint'],
     ],
     'Confirming' => [
         'Applied after another fixture was locked' => $appliedAfterChange,
-        'Applied with the rows as previewed' => $applied,
+        'Same fingerprint after a kickoff was moved' => $sameFingerprintOnMovedNight,
+        'Applied after a kickoff was moved' => $appliedAfterMovedKickoff,
+        'Applied with the rows and nights as previewed' => $applied,
     ],
     'Fixture rows after the plan was applied' => $fixtureRows,
 ]);
