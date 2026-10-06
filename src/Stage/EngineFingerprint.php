@@ -256,9 +256,16 @@ final readonly class EngineFingerprint
     }
 
     /**
-     * The shortest decimal that reads back as the same float, whatever the
-     * `precision` and `serialize_precision` settings and the locale are:
-     * `3`, `0.5`, `0.1`. Both zeros are `0`.
+     * A float as a decimal that reads back as the same float, laid out by
+     * this method alone, so that the string depends on no setting
+     * (`precision`, `serialize_precision`, the locale) and on no PHP
+     * version's way of printing a float.
+     *
+     * The digits are those of the shortest correctly rounded decimal that
+     * reads back as the value. They are laid out as ECMAScript lays out a
+     * number: plainly from 0.000001 up to 21 digits before the point (`3`,
+     * `0.5`, `100`, `0.1`), and beyond that as `1e+21` and `1e-7`. Both
+     * zeros are `0`.
      */
     private static function encodeFloat(float $value): string
     {
@@ -270,14 +277,33 @@ final readonly class EngineFingerprint
             return is_nan($value) ? 'nan' : ($value > 0 ? 'inf' : '-inf');
         }
 
-        $text = '';
-        for ($digits = 1; $digits <= 17; ++$digits) {
-            $text = sprintf('%.' . $digits . 'H', $value);
-            if ((float) $text === $value) {
+        $magnitude = abs($value);
+        $digits = '';
+        $exponent = 0;
+        for ($precision = 0; $precision <= 16; ++$precision) {
+            // One digit, a decimal point however it is spelled, $precision
+            // more digits, `E` and the power of ten.
+            [$mantissa, $power] = explode('E', sprintf('%.' . $precision . 'E', $magnitude));
+            $digits = (string) preg_replace('/\D/', '', $mantissa);
+            $exponent = (int) $power;
+            if ((float) ($digits . 'E' . ($exponent - $precision)) === $magnitude) {
                 break;
             }
         }
 
-        return $text;
+        $digits = rtrim($digits, '0');
+        $count = strlen($digits);
+        // The decimal point stands after this many of the digits.
+        $point = $exponent + 1;
+
+        $text = match (true) {
+            $point >= $count && $point <= 21 => $digits . str_repeat('0', $point - $count),
+            $point > 0 && $point <= 21 => substr($digits, 0, $point) . '.' . substr($digits, $point),
+            $point > -6 && $point <= 0 => '0.' . str_repeat('0', -$point) . $digits,
+            default => $digits[0] . ($count > 1 ? '.' . substr($digits, 1) : '')
+                . 'e' . ($exponent < 0 ? '-' : '+') . abs($exponent),
+        };
+
+        return ($value < 0 ? '-' : '') . $text;
     }
 }

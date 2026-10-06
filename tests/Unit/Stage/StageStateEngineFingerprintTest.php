@@ -830,7 +830,25 @@ describe('the fingerprint builder', function (): void {
         'an integer' => [-12, '-12'],
         'a whole float' => [3.0, '3'],
         'a fraction' => [0.5, '0.5'],
-        'a large float' => [1.0e15, '1.0E+15'],
+        'ten' => [10.0, '10'],
+        'a hundred' => [100.0, '100'],
+        'a negative fraction' => [-1.5, '-1.5'],
+        'negative zero' => [-0.0, '0'],
+        'a third' => [1 / 3, '0.3333333333333333'],
+        'a sum that is not three tenths' => [0.1 + 0.2, '0.30000000000000004'],
+        'a millionth' => [0.000001, '0.000001'],
+        'a ten-millionth' => [1.0e-7, '1e-7'],
+        'a small float with digits' => [1.5e-10, '1.5e-10'],
+        'a large float' => [1.0e15, '1000000000000000'],
+        'a float past the whole numbers a float holds' => [123456789012345678.0, '123456789012345680'],
+        'the last float written plainly' => [1.0e20, '100000000000000000000'],
+        'the first float written with a power' => [1.0e21, '1e+21'],
+        'a float written with a power and digits' => [-2.5e30, '-2.5e+30'],
+        'the largest float' => [PHP_FLOAT_MAX, '1.7976931348623157e+308'],
+        'the smallest float' => [5.0e-324, '5e-324'],
+        'infinity' => [INF, 'inf'],
+        'negative infinity' => [-INF, '-inf'],
+        'not a number' => [NAN, 'nan'],
         'a word' => ['custom', 'custom'],
         'the empty string' => ['', "''"],
         'two quotes' => ["''", '%27%27'],
@@ -899,3 +917,32 @@ describe('the fingerprint builder', function (): void {
         'two stamps of the application' => ['my-swiss', 'my-ladder', ["the stamp is not this engine's"]],
     ]);
 });
+    it('writes every float so that it reads back as the same float, with no character of the structure', function (): void {
+        $randomizer = new Random\Randomizer(new Random\Engine\Mt19937(20260203));
+        $written = [];
+        $floats = [];
+
+        for ($sample = 0; $sample < 5000; ++$sample) {
+            // Any eight bytes are a float; one in two thousand is not finite.
+            $unpacked = unpack('e', $randomizer->getBytes(8));
+            $float = is_array($unpacked) ? $unpacked[1] : null;
+            assert(is_float($float));
+            if (!is_finite($float)) {
+                continue;
+            }
+
+            $text = substr(
+                EngineFingerprint::of('ladder')->with('option', $float, 'the default')->toString(),
+                strlen('tactician:v1:ladder;option=')
+            );
+
+            expect($text)->toMatch('/^-?(0|[1-9]\d*)(\.\d*[1-9])?(e[+-][1-9]\d*)?$/')
+                ->and((float) $text)->toBe($float);
+            $written[$text] = true;
+            $floats[pack('e', $float)] = true;
+        }
+
+        // No two floats share a string.
+        expect(count($written))->toBe(count($floats));
+    });
+
