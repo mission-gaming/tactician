@@ -3,9 +3,7 @@ name: Scheduled
 # Early warning, not a gate. Once a week the suite runs against dependencies
 # resolved afresh (`composer update`, ignoring the lock file) and against the
 # next PHP version, so that breakage from a new tool release or a new PHP
-# shows up here before it reaches a contributor or a consumer. The same
-# schedule carries the mutation testing job, which is too slow for a pull
-# request.
+# shows up here before it reaches a contributor or a consumer.
 #
 # This workflow has no pull request trigger and none of its checks may be made
 # a required check: it runs on the default branch only, so a required check
@@ -91,65 +89,3 @@ jobs:
 
     - name: Example smoke-run
       run: composer examples
-
-  # Mutation testing of src/Scheduling and src/Repack/Internal: one change at
-  # a time is made to the source, and the tests that cover the line are run
-  # to see whether any of them notices. The share that is noticed is the
-  # mutation score. It runs here, once a week and on demand, and not on pull
-  # requests: every change starts a test process of its own, and the 3,400
-  # changes of the two directories take hours of a runner. One job per
-  # directory, so that each has a runner and a score of its own. A job
-  # reports the score in its summary and does not fail on it (the script
-  # sets no minimum). It fails when the suite itself does not pass, and when
-  # the run is stopped at its time limit, just under five hours: a stopped
-  # run has no score, and its summary says how many changes it got through
-  # and what it found in them. A job that is stopped every week needs fewer
-  # changes per job (a narrower path) and not a longer limit: GitHub allows
-  # a job six hours.
-  mutation:
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        directory: ['src/Scheduling', 'src/Repack/Internal']
-      fail-fast: false
-
-    name: Mutation testing, ${{ matrix.directory }}
-    timeout-minutes: 300
-
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-    - name: Setup PHP
-      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
-      with:
-        php-version: '8.4'
-        extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
-        # Only the lines a test executes are mutated, so the run needs a
-        # coverage driver.
-        coverage: xdebug
-
-    # From the lock file, unlike the other jobs of this workflow: the score
-    # is of the tests, and must not move with a tool release.
-    - name: Install dependencies
-      run: composer install --prefer-dist --no-progress
-
-    # As in ci.yml: the locale tests must run here too.
-    - name: Generate a locale with a decimal comma
-      run: sudo locale-gen de_DE.UTF-8
-
-    # The path given here replaces the two of the script: this job mutates
-    # its own directory. `pipefail` (set by naming the shell) keeps the exit status of the run
-    # when its output goes through `tee`. The step has a limit of its own,
-    # below the job's, so that a run that is stopped still gets its summary.
-    - name: Run mutation testing
-      shell: bash
-      timeout-minutes: 290
-      run: |
-        mkdir -p build
-        composer mutation -- --path=${{ matrix.directory }} 2>&1 | tee build/mutation.log
-
-    # Also after a run that failed or was stopped, with whatever it printed.
-    - name: Report the mutation score in the job summary
-      if: ${{ !cancelled() }}
-      run: php tests/bin/mutation-summary.php build/mutation.log >> "$GITHUB_STEP_SUMMARY"

@@ -143,10 +143,16 @@ final readonly class MutationReport
      * the unnoticed mutations are, and the first of them with their change.
      *
      * @param int $limit How many unnoticed mutations to show in full
+     * @param string|null $shard The name of the part of the source this run mutated, when it was one of several
+     * @param list<string> $paths The files or directories of that part
      */
-    public function toMarkdown(int $limit = 25): string
+    public function toMarkdown(int $limit = 25, ?string $shard = null, array $paths = []): string
     {
-        $markdown = ["## Mutation testing\n"];
+        $markdown = [($shard === null ? '## Mutation testing' : "## Mutation testing: {$shard}") . "\n"];
+
+        if ($paths !== []) {
+            $markdown[] = 'Mutated: ' . implode(', ', array_map(static fn(string $path): string => "`{$path}`", $paths)) . ".\n";
+        }
 
         if ($this->score === null) {
             $markdown[] = "The run printed no score: it did not finish. See the log of the step above.\n";
@@ -176,11 +182,14 @@ final readonly class MutationReport
         $markdown[] = 'Mutations: ' . implode(', ', $counts) . ".\n";
         $markdown[] = "A tested mutation is a change to the source that made a test fail. An untested one is a change that no test noticed. The score is reported, not enforced: this job does not fail on it.\n";
 
-        $timeouts = $this->counts['timeout'] ?? 0;
+        // The second figure, always: without a timeout it is the score
         $all = array_sum($this->counts);
-        if ($timeouts > 0) {
+        if ($all > 0) {
             $markdown[] = sprintf(
-                "The score counts a mutation whose tests ran into the time limit as tested: no test failed on it, the tests were cut off. A failing test noticed %d of %d mutations, which is %s%%.\n",
+                "%sA failing test noticed %d of %d mutations, which is %s%%.\n",
+                ($this->counts['timeout'] ?? 0) > 0
+                    ? 'The score counts a mutation whose tests ran into the time limit as tested: no test failed on it, the tests were cut off. '
+                    : '',
                 $this->counts['tested'] ?? 0,
                 $all,
                 number_format(($this->counts['tested'] ?? 0) / $all * 100, 2)

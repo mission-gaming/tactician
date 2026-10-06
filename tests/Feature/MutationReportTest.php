@@ -154,12 +154,29 @@ describe('the mutation report', function (): void {
             ->toContain('The score counts a mutation whose tests ran into the time limit as tested')
             ->toContain('A failing test noticed 4 of 7 mutations, which is 57.14%.');
 
-        // Without a timeout the printed score is that share, and nothing is added
+        // Without a timeout the second figure is the score, and it is still
+        // given: a reader does not have to know which case this is
         $none = MutationReport::fromOutput("  Mutations: 1 untested, 3 tested\n  Score:     75.00%\n")->toMarkdown();
 
         expect($none)->toContain('**Score: 75.00%**')
+            ->toContain('A failing test noticed 3 of 4 mutations, which is 75.00%.')
             ->and($none)->not->toContain('time limit');
     });
+
+    // The workflow mutates the source in shards, one job each. A summary
+    // says which shard it is and which files that means, whether the run
+    // finished or was stopped.
+    it('heads the summary with the shard and the paths it mutated', function (string $output, string $expected): void {
+        $markdown = MutationReport::fromOutput($output)->toMarkdown(25, 'elimination', ['src/A.php', 'src/B.php']);
+
+        expect($markdown)
+            ->toStartWith("## Mutation testing: elimination\n\nMutated: `src/A.php`, `src/B.php`.\n")
+            ->toContain($expected);
+    })->with([
+        'a finished run' => [mutationRunOutput(), '**Score: 71.43%**'],
+        'a stopped run' => ["  120 Mutations for 3 Files created\n\n  ..x.t", 'It was stopped after 5 of 120 mutations: 3 tested, 1 untested, 1 timeout.'],
+        'a run that printed nothing' => ['', 'The run printed no score'],
+    ]);
 
     // The CI job stops a run at its time limit. The totals and the untested
     // changes are printed at the end, so a stopped run has neither; it has
@@ -241,7 +258,24 @@ describe('the mutation summary script', function (): void {
 
         expect($status)->toBe(0)
             ->and($errors)->toBe('')
+            ->and($output)->toStartWith("## Mutation testing\n")
             ->and($output)->toContain('**Score: 71.43%**');
+    });
+
+    it('heads the summary with the shard and the paths it is given', function () use ($run): void {
+        $log = tempnam(sys_get_temp_dir(), 'mutation-log-');
+        Assert::assertIsString($log);
+        file_put_contents($log, mutationRunOutput());
+
+        try {
+            [$status, $output, $errors] = $run($log, 'Swiss and backtracking', 'src/A.php,src/B.php');
+        } finally {
+            unlink($log);
+        }
+
+        expect($status)->toBe(0)
+            ->and($errors)->toBe('')
+            ->and($output)->toStartWith("## Mutation testing: Swiss and backtracking\n\nMutated: `src/A.php`, `src/B.php`.\n");
     });
 
     it('exits 1 with its usage when the log cannot be read', function (array $arguments) use ($run): void {

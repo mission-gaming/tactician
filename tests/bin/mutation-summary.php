@@ -8,7 +8,13 @@ declare(strict_types=1);
  *     composer mutation 2>&1 | tee build/mutation.log
  *     php tests/bin/mutation-summary.php build/mutation.log
  *
- * The CI job `Mutation testing` appends what this prints to its job summary.
+ * The CI jobs `Mutation testing, <shard>` append what this prints to their
+ * job summaries. Each mutates a part of the source, and gives the name of
+ * its shard and the comma-separated paths it mutated as the second and
+ * third argument, which head the summary:
+ *
+ *     php tests/bin/mutation-summary.php build/mutation.log "elimination" "src/A.php,src/B.php"
+ *
  * It exits 0 whatever the score is: the score is reported, not enforced. It
  * exits 1 only when the log it is given cannot be read.
  */
@@ -26,4 +32,7 @@ if ($output === false) {
     exit(1);
 }
 
-echo MutationReport::fromOutput($output)->toMarkdown(), "\n";
+$shard = trim((string) ($_SERVER['argv'][2] ?? ''));
+$paths = array_values(array_filter(array_map(trim(...), explode(',', (string) ($_SERVER['argv'][3] ?? ''))), static fn(string $path): bool => $path !== ''));
+
+echo MutationReport::fromOutput($output)->toMarkdown(25, $shard === '' ? null : $shard, $paths), "\n";
