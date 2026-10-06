@@ -212,7 +212,9 @@ release is recorded in the [changelog](CHANGELOG.md).
   case with the heading "Output change (fix)".
 - **Minor releases (0.x)** may contain breaking changes. The changelog lists
   each one with a migration note.
-- **Deprecations precede removals.**
+- **Deprecations precede removals.** A deprecated method keeps working until
+  `1.0.0`. The usage guide lists each one with what to use instead, under
+  [Deprecations](docs/USAGE.md#deprecations).
 - **Generated output is pinned.** Golden fixtures in
   [`tests/Fixtures/golden/`](tests/Fixtures/golden/) pin generated schedules,
   bracket pairings, repack assignments, and the JSON wire shapes for a set of
@@ -256,7 +258,23 @@ before `1.0.0`):
 Anything not listed as stable is experimental, including the rest of
 `Scheduling`. `Repack\Internal` is internal: it is not public API and carries
 no compatibility guarantee. Neither does a class in any other namespace whose
-docblock is marked `@internal` (`Stage\PairKey`, `Timeline\DateTimeString`).
+docblock is marked `@internal` (`Stage\PairKey` and `Timeline\DateTimeString`,
+for example).
+
+Every class, interface, trait and enum in the library states its own status in
+its docblock, with exactly one of three annotations:
+
+- `@api`: stable surface. It is in a namespace of the stable list.
+- `@experimental`: public, and expected to change in a minor release before
+  `1.0.0`. It is in a namespace of the experimental list.
+- `@internal`: not public API. Do not call it, extend it or type against it;
+  it can change or disappear in any release.
+
+An architecture test (`tests/Feature/StabilityAnnotationsTest.php`) holds the
+annotations to the two lists above. It fails when a type has no annotation or
+more than one, when a type under a stable entry is `@experimental` or a type
+under an experimental entry is `@api`, and when a namespace is in neither
+list.
 
 Some stable signatures carry experimental types. For example,
 `RoundRobinScheduler` accepts a `Constraints\ConstraintSet` and returns a

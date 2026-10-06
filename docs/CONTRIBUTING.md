@@ -174,6 +174,21 @@ both, even when the answer is no.
 
 - Every PHP file declares `strict_types=1`.
 - DTOs are readonly.
+- Every class, interface, trait and enum in `src/` carries exactly one
+  stability annotation in its docblock: `@api`, `@experimental` or
+  `@internal`. The README's
+  [Versioning and stability](../README.md#versioning-and-stability) section
+  says what each means and which namespaces are stable;
+  `tests/Feature/StabilityAnnotationsTest.php` fails for a type without one
+  and for a new namespace the README does not classify.
+- A deprecated method carries the `@deprecated` docblock tag
+  (`@deprecated since <version>, removed in 1.0.0.`, then why and what to use
+  instead) and the `#[\Deprecated]` attribute, and gets a row under
+  "Deprecations" in [`USAGE.md`](USAGE.md) and an entry under `Deprecated` in
+  the changelog. `tests/Feature/DeprecationsTest.php` pins the set. Nothing in
+  `src/`, the examples or the documentation may call it. A test that still
+  covers it calls it through `Tests\Support\DeprecatedCall`, which expects
+  the notice PHP 8.4 and later emit for the call.
 - PHPStan reports zero errors: `src/` at level 9 (`phpstan.neon`), `tests/`
   and `examples/support/` at level 8 (`phpstan-tests.neon`), both with the
   strict rules and the deprecation rules (`phpstan/common.neon`). The two

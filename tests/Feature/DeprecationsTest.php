@@ -13,7 +13,7 @@ use PHPUnit\Framework\AssertionFailedError;
 
 // The deprecated symbols of the library are a pinned set: deprecating one
 // more, or removing one, changes the list below on purpose and in the same
-// change as the documentation that lists them.
+// change as the "Deprecations" section of docs/USAGE.md and the changelog.
 //
 // Each deprecated method says so twice. The `@deprecated` docblock tag is
 // what an IDE and PHPStan read, on every PHP version. The native
@@ -288,6 +288,53 @@ describe('a deprecated method is called by nothing that ships or is documented',
             ->and($callsIn('<?php class C { public function getTotalLegs(): int { return 1; } }', $methods))->toBe([])
             ->and($callsIn('<?php // $context->getTotalLegs()' . "\n" . '$text = "$context->getTotalLegs()";', $methods))->toBe([])
             ->and($callsIn('<?php $legs = $context->getPlan()->getLegs();', $methods))->toBe([]);
+    });
+});
+
+describe('the deprecations are documented', function () use ($root): void {
+    it('lists every deprecated method, since when and until when, in the usage guide', function () use ($root): void {
+        $guide = (string) file_get_contents($root . '/docs/USAGE.md');
+
+        if (preg_match('/^## Deprecations\n(.*?)(?=^## |\z)/ms', $guide, $matches) !== 1) {
+            Assert::fail('docs/USAGE.md has no "Deprecations" section.');
+        }
+
+        $section = $matches[1];
+
+        expect($section)->toContain('deprecated since `' . DEPRECATED_SINCE . '`')
+            ->and($section)->toContain('removed in `1.0.0`');
+
+        // One row of the table for each, and no row for anything else
+        preg_match_all('/^\| `([^`]+)` \|/m', $section, $rows);
+        $listed = array_map(static fn(string $name): string => 'MissionGaming\\Tactician\\' . $name, $rows[1]);
+        sort($listed);
+
+        expect($listed)->toBe(DEPRECATED_SYMBOLS);
+    });
+
+    it('names every deprecated method under Deprecated in the changelog of the release', function () use ($root): void {
+        $changelog = (string) file_get_contents($root . '/CHANGELOG.md');
+
+        // Until the release is cut, the entries are under Unreleased
+        $section = null;
+        foreach ([DEPRECATED_SINCE, 'Unreleased'] as $version) {
+            if (preg_match('/^## \[' . preg_quote($version, '/') . '\][^\n]*\n(.*?)(?=^## \[)/ms', $changelog, $matches) === 1) {
+                $section = $matches[1];
+
+                break;
+            }
+        }
+
+        if ($section === null || preg_match('/^### Deprecated\n(.*?)(?=^### |\z)/ms', $section, $matches) !== 1) {
+            Assert::fail('CHANGELOG.md has no "Deprecated" category for ' . DEPRECATED_SINCE . '.');
+        }
+
+        foreach (DEPRECATED_SYMBOLS as $symbol) {
+            $method = substr($symbol, (int) strrpos($symbol, ':') + 1);
+
+            // Written as `Class::method()` or as `method()`
+            expect($matches[1])->toMatch('/[`:]' . preg_quote($method, '/') . '`/', "CHANGELOG.md does not name {$method} under Deprecated.");
+        }
     });
 });
 
