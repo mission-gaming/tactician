@@ -2,23 +2,33 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\PinConflictException;
 use MissionGaming\Tactician\Repack\MovableEvent;
 use MissionGaming\Tactician\Repack\PinnedEvent;
+use MissionGaming\Tactician\Repack\RepackOptions;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
+use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
+use MissionGaming\Tactician\Stage\PoolDistributor;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
+use MissionGaming\Tactician\Timeline\BlackoutRule;
+use MissionGaming\Tactician\Timeline\MinimumRestRule;
+use MissionGaming\Tactician\Timeline\TimelineAssigner;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
@@ -409,14 +419,230 @@ describe('the reason of a configuration error', function (): void {
                 $pairing = $engine->pairNextRound($state);
                 $final = $pairing->getEvents()[0];
                 $state = $state->withRoundPlayed($pairing, [
-                    new MissionGaming\Tactician\DTO\Result($final, $alice),
+                    new Result($final, $alice),
                 ]);
                 $engine->pairNextRound($state);
             },
             InvalidConfigurationReason::BracketComplete,
         ],
+        'a bracket tie that ended level' => [
+            function (): void {
+                $engine = new SingleEliminationEngine();
+                $state = StageState::start([
+                    new Participant('a', 'Alice'),
+                    new Participant('b', 'Bob'),
+                    new Participant('c', 'Carol'),
+                    new Participant('d', 'Dan'),
+                ]);
+                $pairing = $engine->pairNextRound($state);
+                $state = $state->withRoundPlayed($pairing, array_map(
+                    fn(Event $event) => new Result($event),
+                    $pairing->getEvents()
+                ));
+                $engine->pairNextRound($state);
+            },
+            InvalidConfigurationReason::UndecidedTie,
+        ],
+        'the next round asked for with one semi-final unplayed' => [
+            function (): void {
+                $engine = new SingleEliminationEngine();
+                $alice = new Participant('a', 'Alice');
+                $state = StageState::start([
+                    $alice,
+                    new Participant('b', 'Bob'),
+                    new Participant('c', 'Carol'),
+                    new Participant('d', 'Dan'),
+                ]);
+                $pairing = $engine->pairNextRound($state);
+                foreach ($pairing->getEvents() as $event) {
+                    if ($event->hasParticipant($alice)) {
+                        $state = $state->withRoundPlayed($pairing, [new Result($event, $alice)]);
+                    }
+                }
+                $engine->pairNextRound($state);
+            },
+            InvalidConfigurationReason::RoundPartiallyResolved,
+        ],
+        'two results recorded for one bracket match' => [
+            function (): void {
+                $engine = new SingleEliminationEngine();
+                $alice = new Participant('a', 'Alice');
+                $bob = new Participant('b', 'Bob');
+                $state = StageState::start([$alice, $bob]);
+                $pairing = $engine->pairNextRound($state);
+                $final = $pairing->getEvents()[0];
+                $state = $state->withRoundPlayed($pairing, [new Result($final, $alice), new Result($final, $bob)]);
+                $engine->pairNextRound($state);
+            },
+            InvalidConfigurationReason::DuplicateResult,
+        ],
+        'a result between two pools' => [
+            function (): void {
+                $pools = PoolDistributor::serpentine(configurationErrorField(4), 2);
+                PoolDistributor::splitResults($pools, [new Result(new Event([$pools['A'][0], $pools['B'][0]]))]);
+            },
+            InvalidConfigurationReason::InvalidResult,
+        ],
+        'a result of participants who are in no pool' => [
+            function (): void {
+                $pools = PoolDistributor::serpentine(configurationErrorField(4), 2);
+                PoolDistributor::splitResults($pools, [
+                    new Result(new Event([new Participant('x', 'X'), new Participant('y', 'Y')])),
+                ]);
+            },
+            InvalidConfigurationReason::InvalidResult,
+        ],
+        'two events a round on a timeline of one slot' => [
+            fn() => (new TimelineAssigner())->assign(
+                (new RoundRobinScheduler())->schedule(configurationErrorField(4)),
+                new TimelineDefinition(
+                    new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
+                    new DateInterval('P7D')
+                )
+            ),
+            InvalidConfigurationReason::TimelineCapacityExceeded,
+        ],
+        'daily rounds under a rule of two days of rest' => [
+            fn() => (new TimelineAssigner([new MinimumRestRule(new DateInterval('PT48H'))]))->assign(
+                (new RoundRobinScheduler())->schedule(configurationErrorField(4)),
+                new TimelineDefinition(
+                    new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
+                    new DateInterval('P1D'),
+                    2,
+                    new DateInterval('PT2H')
+                )
+            ),
+            InvalidConfigurationReason::TimeRuleViolation,
+        ],
+        'an event with no round number given a kickoff' => [
+            fn() => (new TimelineAssigner())->assign(
+                new Schedule([new Event([new Participant('a', 'A'), new Participant('b', 'B')])]),
+                new TimelineDefinition(
+                    new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
+                    new DateInterval('P7D')
+                )
+            ),
+            InvalidConfigurationReason::EventWithoutRoundNumber,
+        ],
+        // The two sites that choose between two reasons when they throw
+        'a blackout rule with an empty window list' => [
+            fn() => BlackoutRule::fromArray(['windows' => []]),
+            InvalidConfigurationReason::EmptyList,
+        ],
+        'a blackout rule whose windows are not a list' => [
+            fn() => BlackoutRule::fromArray(['windows' => 'weekends']),
+            InvalidConfigurationReason::WrongValueType,
+        ],
+        // A key left out is read as null, which is not of the type needed
+        'a blackout rule with no windows key' => [
+            fn() => BlackoutRule::fromArray([]),
+            InvalidConfigurationReason::WrongValueType,
+        ],
+        'a grid with no sessions key' => [
+            fn() => SessionGrid::fromArray(['timezone' => 'UTC', 'slot_interval' => 'PT25M']),
+            InvalidConfigurationReason::WrongValueType,
+        ],
+        'a timeline with no timezone' => [
+            fn() => TimelineDefinition::fromArray(['start' => '2026-08-01 19:00:00', 'round_interval' => 'P7D']),
+            InvalidConfigurationReason::WrongValueType,
+        ],
+        'a timeline with no round interval' => [
+            fn() => TimelineDefinition::fromArray(['start' => '2026-08-01 19:00:00', 'timezone' => 'UTC']),
+            InvalidConfigurationReason::WrongValueType,
+        ],
+        'two slots a round and no slot interval' => [
+            fn() => new TimelineDefinition(
+                new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
+                new DateInterval('P7D'),
+                2
+            ),
+            InvalidConfigurationReason::IncompatibleOptions,
+        ],
+        'one resource named twice' => [
+            fn() => new TimelineDefinition(
+                new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
+                new DateInterval('P7D'),
+                1,
+                null,
+                ['Pitch 1', 'Pitch 1']
+            ),
+            InvalidConfigurationReason::DuplicateName,
+        ],
+        'a round interval of zero' => [
+            fn() => new TimelineDefinition(
+                new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC')),
+                new DateInterval('PT0S')
+            ),
+            InvalidConfigurationReason::NonAdvancingTime,
+        ],
+        'a blackout window that ends before it starts' => [
+            fn() => BlackoutRule::fromArray(['windows' => [
+                ['from' => '2026-08-02 00:00', 'to' => '2026-08-01 00:00', 'timezone' => 'UTC'],
+            ]]),
+            InvalidConfigurationReason::NonAdvancingTime,
+        ],
+        'a session index past the end of the grid' => [
+            fn() => configurationErrorGrid()->getSessionStart(1),
+            InvalidConfigurationReason::PositionOutOfRange,
+        ],
+        'a negative objective weight' => [
+            fn() => new RepackOptions(consolidationWeight: -1),
+            InvalidConfigurationReason::ValueOutOfRange,
+        ],
+        'a step budget given as a string' => [
+            fn() => RepackOptions::fromArray(['step_budget' => '200']),
+            InvalidConfigurationReason::WrongValueType,
+        ],
+        'three legs in an elimination tie' => [
+            fn() => new EliminationOptions(legsPerTie: 3),
+            InvalidConfigurationReason::InvalidLegCount,
+        ],
+        're-seeding asked of a double elimination' => [
+            fn() => new DoubleEliminationEngine(new EliminationOptions(reseedEachRound: true)),
+            InvalidConfigurationReason::IncompatibleOptions,
+        ],
+        'no pools' => [
+            fn() => PoolDistributor::serpentine([new Participant('a', 'A'), new Participant('b', 'B')], 0),
+            InvalidConfigurationReason::ValueOutOfRange,
+        ],
+        'two pools for three participants' => [
+            fn() => PoolDistributor::serpentine(
+                [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C')],
+                2
+            ),
+            InvalidConfigurationReason::TooFewParticipants,
+        ],
+        'more Swiss rounds than there are opponents' => [
+            fn() => (new SwissScheduler())->schedule(
+                [new Participant('a', 'A'), new Participant('b', 'B')],
+                new SwissOptions(rounds: 2)
+            ),
+            InvalidConfigurationReason::InvalidRoundCount,
+        ],
+        'round-robin options given to the Swiss scheduler' => [
+            fn() => (new SwissScheduler())->schedule(
+                [new Participant('a', 'A'), new Participant('b', 'B')],
+                new RoundRobinOptions()
+            ),
+            InvalidConfigurationReason::UnsupportedOptions,
+        ],
     ]);
 });
+
+/**
+ * Participants p1, p2, ... in that order.
+ *
+ * @return list<Participant>
+ */
+function configurationErrorField(int $count): array
+{
+    $field = [];
+    for ($i = 1; $i <= $count; ++$i) {
+        $field[] = new Participant("p{$i}", "Participant {$i}");
+    }
+
+    return $field;
+}
 
 /**
  * One session of four slots.
@@ -585,6 +811,88 @@ describe('a pin conflict', function (): void {
         );
     });
 
+    it('names the first and the colliding event when others are pinned between them', function (): void {
+        // Given: e1 and e3 share participant "a" at 0:3; e2 sits there too with others
+        $exception = configurationErrorFrom(fn() => new RepackRequest(
+            [],
+            [
+                new PinnedEvent('e1', new Participant('a', 'A'), new Participant('b', 'B'), 0, 3),
+                new PinnedEvent('e2', new Participant('c', 'C'), new Participant('d', 'D'), 0, 3),
+                new PinnedEvent('e3', new Participant('e', 'E'), new Participant('a', 'A'), 0, 3),
+            ],
+            configurationErrorGrid(3)
+        ));
+
+        assert($exception instanceof PinConflictException);
+        expect($exception->getEventIds())->toBe(['e1', 'e3'])
+            ->and($exception->getParticipantId())->toBe('a');
+    });
+
+    it('reports one participant when two events share both', function (): void {
+        // Given: The same two participants pinned twice at 0:3, sides swapped
+        $exception = configurationErrorFrom(fn() => new RepackRequest(
+            [],
+            [
+                new PinnedEvent('e1', new Participant('a', 'A'), new Participant('b', 'B'), 0, 3),
+                new PinnedEvent('e2', new Participant('b', 'B'), new Participant('a', 'A'), 0, 3),
+            ],
+            configurationErrorGrid(2)
+        ));
+
+        // Then: Both events are named; the participant is one of the two shared
+        assert($exception instanceof PinConflictException);
+        expect($exception->getEventIds())->toBe(['e1', 'e2'])
+            ->and(['a', 'b'])->toContain($exception->getParticipantId());
+    });
+
+    it('is not raised for one participant pinned at two different positions', function (): void {
+        $request = new RepackRequest(
+            [],
+            [
+                new PinnedEvent('e1', new Participant('a', 'A'), new Participant('b', 'B'), 0, 2),
+                new PinnedEvent('e2', new Participant('a', 'A'), new Participant('c', 'C'), 0, 3),
+            ],
+            configurationErrorGrid(2)
+        );
+
+        expect($request->getPinnedEvents())->toHaveCount(2);
+    });
+
+    // A position is the session, the slot and the participant together. An
+    // ID that holds the separator the request uses must not make two
+    // different participants look like one.
+    it('is not raised for two participants whose IDs differ only around a colon', function (): void {
+        $request = new RepackRequest(
+            [],
+            [
+                new PinnedEvent('e1', new Participant('1:a', 'A'), new Participant('b', 'B'), 0, 3),
+                new PinnedEvent('e2', new Participant('a', 'A2'), new Participant('c', 'C'), 0, 3),
+            ],
+            configurationErrorGrid(2)
+        );
+
+        expect($request->getPinnedEvents())->toHaveCount(2);
+    });
+
+    // The request checks the capacity of a slot before the participants in
+    // it. On a grid whose slots hold one event, two pins at one position are
+    // an overflow whoever plays in them, and that error carries no event ID.
+    it('gives way to the capacity error where the slot holds one event', function (): void {
+        $exception = configurationErrorFrom(fn() => new RepackRequest(
+            [],
+            [
+                new PinnedEvent('e1', new Participant('a', 'A'), new Participant('b', 'B'), 0, 3),
+                new PinnedEvent('e2', new Participant('c', 'C'), new Participant('a', 'A'), 0, 3),
+            ],
+            configurationErrorGrid(1)
+        ));
+
+        expect($exception)->not->toBeInstanceOf(PinConflictException::class)
+            ->and($exception->getReason())->toBe(InvalidConfigurationReason::PinCapacityExceeded)
+            ->and($exception->getMessage())->toBe("Invalid scheduler configuration: Pinned events overflow a slot's declared capacity")
+            ->and($exception->getContext())->toBe(['session' => 0, 'slot' => 3, 'capacity_per_slot' => 1]);
+    });
+
     // The message, the context and the class a catch clause matches are
     // what they were before the typed exception existed.
     it('keeps the message and the context, and is still an InvalidConfigurationException', function (): void {
@@ -636,6 +944,13 @@ describe('a timezone that holds a NUL byte', function (): void {
                 'slot_interval' => 'PT25M',
             ]),
             'sessions[0] or its timezone is not parseable',
+        ],
+        // The bad zone is on `from`, which is parsed first
+        'in a blackout rule' => [
+            fn() => BlackoutRule::fromArray(['windows' => [
+                ['from' => '2026-08-01 00:00', 'to' => '2026-08-02 00:00', 'timezone' => "Europe/Lon\0don"],
+            ]]),
+            'from or its timezone is not parseable',
         ],
         'in JSON-decoded configuration' => [
             fn() => TimelineDefinition::fromArray((array) json_decode(
