@@ -187,10 +187,10 @@ heading **Output change (fix)**.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
-  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 33 more; the
+  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and the others; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). 127 of the 133 sites that build the exception set one. The
-  six that do not are in `Stage\StageState` (recording a round or its
+  identifiers). Every site that builds the exception sets one, except six.
+  Those six are in `Stage\StageState` (recording a round or its
   results, and a duplicate ID given to `start()`): `getReason()` returns null
   for those, and for an exception that code outside the library builds
   without a reason. A `match` over the reason needs a `default` arm, because
