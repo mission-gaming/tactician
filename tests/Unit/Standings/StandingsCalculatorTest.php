@@ -69,6 +69,15 @@ describe('Result', function (): void {
 });
 
 describe('StandingsCalculator', function (): void {
+    it('gives its tiebreakers in the order they are applied, and none by default', function (): void {
+        $buchholz = new BuchholzTiebreaker();
+        $wins = new WinsTiebreaker();
+
+        expect((new StandingsCalculator())->getTiebreakers())->toBe([])
+            ->and((new StandingsCalculator(tiebreakers: [$buchholz, $wins]))->getTiebreakers())->toBe([$buchholz, $wins])
+            ->and((new StandingsCalculator(tiebreakers: [$wins, $buchholz]))->getTiebreakers())->toBe([$wins, $buchholz]);
+    });
+
     beforeEach(function (): void {
         $this->alice = new Participant('p1', 'Alice');
         $this->bob = new Participant('p2', 'Bob');

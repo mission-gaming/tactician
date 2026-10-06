@@ -22,8 +22,8 @@ readonly class Result
      * @param Participant|null $winner The winning participant, or null for a draw
      * @param array<int|string, int|float> $scores Optional numeric scores keyed by participant ID
      *                                             (numeric-string IDs become int keys in PHP)
-     * @param array<string, mixed> $metadata Additional result annotations (e.g. a two-legged
-     *                                       tie decision the aggregate rules produced app-side)
+     * @param array<string, mixed> $metadata Additional result annotations (e.g. who advances from an
+     *                                       elimination tie that finished level, decided app-side)
      *
      * @throws InvalidInputException When the winner or a score references a participant not in the event
      */
