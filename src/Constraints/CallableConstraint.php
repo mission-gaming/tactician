@@ -15,19 +15,31 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
 class CallableConstraint implements ConstraintInterface
 {
     /**
-     * @param callable(Event, SchedulingContext): bool $predicate
+     * @param callable(Event, SchedulingContext): bool $predicate Returns true to accept the candidate
+     *                                                            event. It is held to the contract of
+     *                                                            {@see ConstraintInterface}: it may be
+     *                                                            called more than once for an event, and
+     *                                                            for events that are never scheduled
+     * @param string $name The name the constraint is reported under
      */
     public function __construct(
         private $predicate,
         private readonly string $name
     ) {}
 
+    /**
+     * The predicate's answer for the event and the context, cast to bool.
+     * What the predicate throws is not caught.
+     */
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
         return (bool) ($this->predicate)($event, $context);
     }
 
+    /**
+     * The name given to the constructor.
+     */
     #[\Override]
     public function getName(): string
     {

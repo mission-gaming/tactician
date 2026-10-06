@@ -5,17 +5,25 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Diagnostics;
 
 /**
- * Comprehensive report on scheduling failure analysis.
+ * The analysis of a schedule that could not be completed: how far
+ * generation got, which pairings are missing, which constraints reject
+ * them, and suggestions.
  *
- * This value object contains detailed diagnostic information about
- * why a tournament schedule could not be generated, along with
- * actionable suggestions for resolving the issues.
+ * The round-robin scheduler builds one when generation fails under
+ * constraints; `IncompleteScheduleException::getAnalysis()` returns it. The
+ * analysis asks whether each missing pairing could join the schedule that
+ * was generated. It does not prove that no schedule exists.
+ *
+ * The lists hold lines of text for people. Their wording is not stable.
  *
  * @experimental
  */
 readonly class DiagnosticReport
 {
     /**
+     * Nothing is validated, and the counts are not checked against each
+     * other or against the lists.
+     *
      * @param int $participantCount Number of participants in the tournament
      * @param int $expectedEvents Expected total number of events
      * @param int $generatedEvents Actual number of events generated before failure
@@ -39,7 +47,7 @@ readonly class DiagnosticReport
     ) {}
 
     /**
-     * Get the number of participants in the tournament.
+     * The number of participants the scheduler was given.
      */
     public function getParticipantCount(): int
     {
@@ -47,7 +55,8 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get the expected total number of events.
+     * The number of events the stage plan expects, over all legs. 0 when
+     * the plan cannot know its event count up front.
      */
     public function getExpectedEvents(): int
     {
@@ -55,7 +64,8 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get the actual number of events generated before failure.
+     * The number of events generated before the failure, in the ordering
+     * the report is about (the last one tried).
      */
     public function getGeneratedEvents(): int
     {
@@ -63,7 +73,7 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get the number of events that could not be generated.
+     * The expected events minus the generated ones, never below 0.
      */
     public function getMissingEvents(): int
     {
@@ -71,7 +81,11 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get specific pairings that are missing.
+     * The pairings without a meeting, one line per pairing and leg, by
+     * participant label: `A vs B (Leg 2)`. In the order of the participant
+     * list, then by leg. Empty for a plan that does not state how often
+     * each pair meets (Swiss, elimination).
+     *
      * @return array<string>
      */
     public function getMissingPairings(): array
@@ -80,7 +94,15 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get constraint violations found during analysis.
+     * What each constraint rejects, one line per constraint name:
+     * `<name> rejects A vs B in 3 of 10 rounds; A vs C in ...`. A round is
+     * counted for a constraint when it rejects the missing pairing there in
+     * both role orders.
+     *
+     * These are findings of the analysis, not the rejections recorded
+     * during generation: those are `ConstraintViolation` objects in the
+     * exception's violation collector.
+     *
      * @return array<string>
      */
     public function getConstraintViolations(): array
@@ -89,7 +111,11 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get pairings that cannot be satisfied with current constraints.
+     * The missing pairings that the constraints reject in every round and
+     * both role orders, one line each, naming the constraints that reject
+     * them everywhere. "Impossible" means that the pairing cannot join the
+     * schedule that was generated, not that no schedule holds it.
+     *
      * @return array<string>
      */
     public function getImpossiblePairings(): array
@@ -98,7 +124,9 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get actionable suggestions for resolving the scheduling issues.
+     * Suggestions for the caller, one line each, among them every pairing
+     * that the constraints allow only in rounds that are already full.
+     *
      * @return array<string>
      */
     public function getSuggestions(): array
@@ -107,7 +135,10 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get additional analysis context.
+     * Further values the builder of the report attached, keyed by name.
+     * The library attaches none, so a report from a scheduler has an empty
+     * context.
+     *
      * @return array<string, mixed>
      */
     public function getAnalysisContext(): array
@@ -116,7 +147,8 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get a specific piece of analysis context.
+     * One value of the analysis context, or the default when the key is
+     * missing or holds null.
      */
     public function getContextValue(string $key, mixed $default = null): mixed
     {
@@ -124,7 +156,8 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get the completion percentage of the schedule.
+     * The generated events as a percentage of the expected ones, from 0.0
+     * to 100.0 for consistent counts. 0.0 when no events are expected.
      */
     public function getCompletionPercentage(): float
     {
@@ -136,7 +169,9 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Check if the scheduling was successful.
+     * True when no event is missing and the analysis attributes nothing to
+     * a constraint. It reads the count and the list as the report was
+     * given them.
      */
     public function isSuccessful(): bool
     {
@@ -144,7 +179,8 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Check if there are critical issues that prevent scheduling.
+     * True when a pairing is impossible, a constraint is charged with a
+     * rejection, or more than half of the expected events are missing.
      */
     public function hasCriticalIssues(): bool
     {
@@ -154,7 +190,9 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get a summary of the diagnostic analysis.
+     * One line of text: the completion percentage, rounded down, and the
+     * numbers of missing events, attributed constraints and impossible
+     * pairings that are not zero.
      */
     public function getSummary(): string
     {
@@ -183,7 +221,9 @@ readonly class DiagnosticReport
     }
 
     /**
-     * Get the diagnostic report as a formatted string.
+     * The whole report as text, lines separated by "\n": the counts, then
+     * each list that is not empty. Only the first 10 missing pairings are
+     * written out, followed by how many more there are.
      */
     public function toString(): string
     {

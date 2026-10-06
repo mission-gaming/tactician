@@ -22,8 +22,22 @@ use Override;
  */
 readonly class NoRepeatPairings implements ConstraintInterface
 {
+    /**
+     * @param bool $acrossLegs False (the default) forbids a pairing twice within one leg; true
+     *                         forbids it twice anywhere in the context
+     */
     public function __construct(private bool $acrossLegs = false) {}
 
+    /**
+     * False when two participants of the event already share an event of
+     * the context: one of the current leg by default, any one with
+     * acrossLegs. Participants are matched by ID, and the roles of the two
+     * do not matter.
+     *
+     * A stage whose plan has no legs (Swiss) is one leg, so all its events
+     * are read either way. An event of more than two participants is
+     * rejected when any pair of them has met.
+     */
     #[Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
@@ -98,6 +112,9 @@ readonly class NoRepeatPairings implements ConstraintInterface
         return false;
     }
 
+    /**
+     * `No Repeat Pairings`, whatever the acrossLegs setting.
+     */
     #[Override]
     public function getName(): string
     {

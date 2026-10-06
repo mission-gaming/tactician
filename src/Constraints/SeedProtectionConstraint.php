@@ -18,11 +18,25 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * the constraint is satisfied — protection is effectively off for such
  * stages rather than guessed from a fabricated round count.
  *
+ * The top seeds are the context's participants with the lowest seed
+ * numbers; participants without a seed are never among them, and of two
+ * with the same seed the one earlier in the context's list comes first.
+ * They are recognised in an event as the same objects, not by ID, which is
+ * what the schedulers pass: an event built from copies of the participants
+ * (rebuilt with `Participant::fromArray()`, for example) holds no top seed
+ * and is always accepted.
+ *
  * @experimental
  */
 readonly class SeedProtectionConstraint implements ConstraintInterface
 {
     /**
+     * @param int $topSeedsToProtect How many of the best-seeded participants are kept apart
+     * @param float $protectionPeriod The share of the stage's rounds the protection lasts, from
+     *                                0.0 to 1.0. The protected rounds are 1 up to the total rounds
+     *                                times the period, rounded down: 0.25 of 10 rounds protects
+     *                                rounds 1 and 2
+     *
      * @throws InvalidInputException When no seed is protected or the period is outside 0.0 to 1.0
      */
     public function __construct(
@@ -37,6 +51,14 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
         }
     }
 
+    /**
+     * False when the event falls in a protected round and holds two or more
+     * of the top seeds.
+     *
+     * An event without a round counts as round 0, which is inside every
+     * window, a period of 0.0 included. A plan without a total number of
+     * rounds accepts every event.
+     */
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {

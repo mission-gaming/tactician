@@ -238,8 +238,9 @@ class SchedulingDiagnostics
 
     /**
      * Attribute missing pairings to the constraints that block them, by
-     * probing rather than guessing: constraints are pure predicates over
-     * an event and a context, so each missing pairing is tested against
+     * probing rather than guessing: a constraint is expected to answer from
+     * the event and the context alone (the contract on ConstraintInterface;
+     * nothing enforces it), so each missing pairing is tested against
      * each constraint in every candidate round and both orientations,
      * against the schedule that was actually generated.
      *
