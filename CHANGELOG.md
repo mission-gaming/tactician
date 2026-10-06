@@ -674,6 +674,29 @@ heading **Output change (fix)**.
   is not a development dependency of the library: it requires an abandoned
   package, which must not enter the library's `composer.lock`.
 
+- Two examples, and a check that keeps the integration guides honest.
+  Documentation and examples only; the library is unchanged.
+  - `examples/23-application-adapter-and-repack.php`: the adapter an
+    application writes. Its own records go in as participants with the
+    primary key as the ID, the schedule is copied into fixture rows with the
+    round, both roles and the byes, and a repack moves the fixtures that may
+    move onto a shape-only grid with unbounded capacity around one pinned
+    fixture. The violations are read through the typed accessors, and a
+    previewed plan is applied only when computing it again gives the same
+    `fingerprint()`.
+  - `examples/24-recording-bracket-results.php`: a bracket kept as JSON
+    between requests and stamped with the engine fingerprint. A level event
+    is recorded with `tie_winner`, a wrong result is corrected with
+    `withResultReplaced()`, and three refusals are told apart by their
+    reason (`EngineFingerprintMismatch`, `UndecidedTie`, `RoundSuperseded`).
+  - `tests/Feature/IntegrationGuidesTest.php`: every `php` block of a guide
+    in `docs/integrations/` is marked as an excerpt of a runnable example or
+    as schematic framework code. An excerpt must match its example line for
+    line, every block must parse and import only library classes that exist,
+    every class, method, constructor argument and enum case the prose names
+    in backticks must exist, and every link must lead to a file and a heading
+    that exist.
+
 ### Changed
 
 - Several operations cost less. **No output changes for any input**: every
@@ -826,6 +849,47 @@ heading **Output change (fix)**.
   reported with `Exceptions\PinConflictException`, a subclass of the
   `InvalidConfigurationException` thrown before. Code that compares the
   exception's class by name sees the new class.
+
+- The integration guides are rewritten, and three examples present other
+  results. Documentation and examples only; the library is unchanged.
+  - `docs/integrations/symfony.md` described service registration, options
+    read from container parameters, a schedule stored as JSON and a console
+    command, said that its snippets were executed (they were not), and did
+    not mention repacking. It now describes the adapter an application owns:
+    participants in and what makes a good ID, the output copied into the
+    application's own records and when storing the library's JSON is right,
+    results-driven stages (the engine fingerprint, a round in play, a level
+    event, a corrected result), repacking (what may move, the two forms of
+    grid, reading the outcome, preview and confirmation by fingerprint, the
+    step budget), errors (one catch, the reason, who fixes what) and time.
+    Its library usage is quoted from the examples and checked against them.
+    `docs/integrations/laravel.md` is now the three places where the
+    framework shows, and refers to the Symfony guide for the rest.
+  - Both guides said that list position decides how every stage is seeded.
+    That is not so for a Swiss stage: before a result exists the engine
+    pairs in the order of the standings, which is the `seed` attribute, then
+    the label, then the ID. The guide says so, and
+    `examples/18-stateless-web-flow.php` no longer says the opposite in a
+    comment.
+  - `examples/10-complex-tournament.php` held four constraints of which two
+    rejected nothing (`noRepeatPairings()`, and a minimum gap the two legs
+    already give). It holds the two that do. Its results no longer report a
+    gap between repeat meetings, and the count of constraints is 2.
+  - `examples/11-error-handling.php` caught `SchedulingException` as the
+    catch-all, which lets an `InvalidInputException` through. It catches
+    `TacticianException`, shows a scheduling failure and a rejected argument
+    caught by it, and reports the reason of the configuration error.
+  - `examples/19-repacking-a-season.php` declared a deeper final session
+    that no event used. The sessions now have two slots and the final one
+    four, the plan uses them, and the example reports how many events find
+    no position without the deeper session.
+  - `examples/20-double-elimination.php` said in a comment that rank 1 of
+    the standings is the title holder. In double elimination the entrant who
+    lost the grand final can be level with the one who won it. The comment
+    says to read the winner of the final round.
+  - The fixtures of examples 10, 11 and 19 in
+    `tests/Fixtures/golden/examples/` changed with them. No fixture outside
+    `examples/` changed.
 
 ### Deprecated
 
