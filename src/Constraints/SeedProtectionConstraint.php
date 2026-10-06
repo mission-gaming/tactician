@@ -21,10 +21,11 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * The top seeds are the context's participants with the lowest seed
  * numbers; participants without a seed are never among them, and of two
  * with the same seed the one earlier in the context's list comes first.
- * They are recognised in an event as the same objects, not by ID, which is
- * what the schedulers pass: an event built from copies of the participants
- * (rebuilt with `Participant::fromArray()`, for example) holds no top seed
- * and is always accepted.
+ * Known limitation: they are recognised in an event as the same objects,
+ * not by ID. The schedulers pass the same objects, so generation is not
+ * affected, but an event built from copies of the participants (rebuilt
+ * with `Participant::fromArray()`, for example) holds no top seed and is
+ * always accepted.
  *
  * @experimental
  */
@@ -55,9 +56,9 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
      * False when the event falls in a protected round and holds two or more
      * of the top seeds.
      *
-     * An event without a round counts as round 0, which is inside every
-     * window, a period of 0.0 included. A plan without a total number of
-     * rounds accepts every event.
+     * A plan without a total number of rounds accepts every event. Known
+     * limitation: an event without a round counts as round 0, which is
+     * inside every window, a period of 0.0 included.
      */
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool

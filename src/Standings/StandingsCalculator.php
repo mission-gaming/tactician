@@ -20,11 +20,16 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * Standings::getTiedSets() names the entries only the fallback separates.
  *
  * The fallback is there so that no two entries compare equal and the order
- * the participants are given in does not show in the table. One case is
- * left: IDs are compared as PHP's `<=>` compares strings, which reads two
- * numeric strings as numbers, so IDs such as '1' and '01' compare equal,
- * and two such participants that are level on everything before the ID,
- * label included, keep the order they were given in.
+ * the participants are given in does not show in the table.
+ *
+ * Known limitation, not a rule to rely on: the ID step does not achieve
+ * that for every set of IDs. IDs are compared as PHP's `<=>` compares
+ * strings, which reads two numeric strings as numbers. IDs such as '1' and
+ * '01' therefore compare equal, and the comparison is not transitive where
+ * numeric and other IDs are mixed ('2' is below '10', '10' below '1a' and
+ * '1a' below '2'). Participants that have such IDs and are level on
+ * everything before the ID, label included, can stand in an order that
+ * depends on the order they were given in.
  *
  * @experimental
  */

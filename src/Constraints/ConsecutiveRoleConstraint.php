@@ -138,10 +138,11 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
      * A limit on consecutive events as the first-named participant (home)
      * or as any other (away), named `Home/Away consecutive limit (N)`.
      *
-     * The participant is looked up in each event as the same object, not by
-     * ID, which is what the schedulers pass. A copy of a participant (one
-     * rebuilt with `Participant::fromArray()`, for example) is not found in
-     * the events of the original and counts as away in all of them.
+     * Known limitation: the participant is looked up in each event as the
+     * same object, not by ID. The schedulers pass the same objects, so
+     * generation is not affected, but a copy of a participant (one rebuilt
+     * with `Participant::fromArray()`, for example) is not found in the
+     * events of the original and counts as away in all of them.
      *
      * @throws InvalidInputException When the limit is below 1
      */

@@ -91,7 +91,10 @@ final readonly class SlotAssignment
 
     /**
      * Serialize to plain data; the kickoff as an ISO 8601 UTC string to the
-     * second (`2026-08-12T19:15:00Z`), or null when there is none.
+     * second (`2026-08-12T19:15:00Z`), or null when there is none. Known
+     * limitation: the kickoff is written as it is held and is not
+     * converted, so the string is UTC only when the kickoff given was, as
+     * the repacker's always is.
      *
      * @return array{event_id: string, session: int, slot: int, kickoff: string|null}
      */

@@ -158,9 +158,10 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * one of them, but for the one who has the bye in a field of odd size.
      * No two participants are paired who are paired in a round recorded on
      * the state. The call does not record anything and does not check the
-     * planned rounds: it pairs a round beyond them when asked, so ask
-     * isComplete() first, and pass the pairing and its results to
-     * StageState::withRoundPlayed().
+     * planned rounds, so ask isComplete() first, and pass the pairing and
+     * its results to StageState::withRoundPlayed(). (Known limitation, not
+     * behaviour to rely on: asked about a stage that has played its planned
+     * rounds, it pairs a round beyond them.)
      *
      * The search is exhaustive: the exception means that no complete
      * pairing exists, not that the search gave up. In a field of odd size

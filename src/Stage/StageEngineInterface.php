@@ -42,9 +42,11 @@ interface StageEngineInterface
      * draws nothing; an engine that was given a randomizer draws from it
      * on every call.
      *
-     * Ask isComplete() first. What an engine does with a complete stage
-     * is its own: a bracket engine refuses it, and the Swiss engine pairs
-     * a round beyond its planned ones.
+     * Ask isComplete() first. What an engine does when it is asked to
+     * pair a complete stage is not part of this contract: today a bracket
+     * engine refuses it, and the Swiss engine pairs a round beyond its
+     * planned ones, or refuses a stage that has fewer than 2 active
+     * participants.
      *
      * @throws \MissionGaming\Tactician\Exceptions\NoValidPairingException When no complete pairing exists for the round
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the state cannot be paired (too few
