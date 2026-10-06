@@ -359,6 +359,36 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Round number must be positive\nSyntax error\n"],
             [],
         ],
+        'pot draw plan and event count' => [
+            'docs/USAGE.md',
+            '$plan = $scheduler->getPlan($entrants, $drawOptions);',
+            ["pot-draw\n9\n8\n18\n144\n144\n"],
+            [],
+        ],
+        'pot draw roles of the top seed' => [
+            'docs/USAGE.md',
+            'echo "Pot {$pot}: "',
+            ["Pot 1: first, second\nPot 2: first, second\nPot 3: first, second\nPot 4: first, second\n"],
+            ['Pot 5'],
+        ],
+        'pot draw seeds' => [
+            'docs/USAGE.md',
+            'var_dump($events($again) === $events($schedule));',
+            ["bool(true)\nbool(false)\n"],
+            [],
+        ],
+        'pot draw refusals' => [
+            'docs/USAGE.md',
+            "'19 entrants, 1 pot, 2 per pot' => [19, 1, 2],",
+            [
+                "19 entrants, 1 pot, 2 per pot: odd_participant_count {\"participant_count\":19}\n"
+                . "20 entrants, 3 pots, 1 per pot: unequal_pots {\"participant_count\":20,\"pots\":3,\"remainder\":2}\n"
+                . "20 entrants, 5 pots of 4, 4 per pot: too_many_opponents_per_pot {\"opponents_per_pot\":4,\"pot_size\":4,\"maximum_opponents_per_pot\":3}\n"
+                . "20 entrants, 4 pots of 5, 1 per pot: odd_pot_with_odd_opponents {\"pot_size\":5,\"opponents_per_pot\":1,\"participant_slots_inside_one_pot\":5}\n"
+                . "36 entrants, 4 pots of 9, 4 per pot: configuration_not_yet_supported {\"participant_count\":36,\"pots\":4,\"pot_size\":9,\"opponents_per_pot\":4,\"supported_opponents_per_pot_for_odd_pot_size\":[2]}\n",
+            ],
+            [],
+        ],
         'premier league season' => ['docs/USAGE.md', 'echo "Premier League season: "', ["Premier League season: 380 matches\n"], []],
         'skill brackets on Swiss' => ['docs/USAGE.md', 'echo count($tournament) . " matches\n";', ["12 matches\n"], []],
         'spaced return fixtures succeed' => [
@@ -414,6 +444,36 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 PHP,
         ],
         'swiss preset' => ['docs/USAGE.md', 'new SwissScheduler(null, new Randomizer())', 'assert(count($schedule) === 12);'],
+        // What the pot draw section states in prose and in comments
+        'pot draw options, pots and role counts' => [
+            'docs/USAGE.md',
+            '$stored = $drawOptions->toArray();',
+            <<<'PHP'
+                assert($stored === ['pots' => 4, 'opponents_per_pot' => 2, 'seed' => 2026]);
+                assert(PotDrawOptions::fromArray([])->toArray() === ['pots' => 1, 'opponents_per_pot' => 1, 'seed' => 0]);
+                assert($plan->getPotOf($entrants[0]) === 1 && $plan->getPotOf($entrants[8]) === 1 && $plan->getPotOf($entrants[9]) === 2);
+                assert($plan->getPotMembers(1) === array_slice($entrants, 0, 9));
+                // Every entrant has four events in each role
+                $first = [];
+                $second = [];
+                foreach ($schedule as $event) {
+                    [$a, $b] = $event->getParticipants();
+                    $first[$a->getId()] = ($first[$a->getId()] ?? 0) + 1;
+                    $second[$b->getId()] = ($second[$b->getId()] ?? 0) + 1;
+                }
+                assert(count($first) === 36 && array_unique(array_values($first)) === [4]);
+                assert(count($second) === 36 && array_unique(array_values($second)) === [4]);
+                try {
+                    PotDrawOptions::fromArray(['pots' => 4, 'opponents_per_pots' => 2]);
+                    $reason = null;
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    $reason = $e->getReason();
+                }
+                assert($reason === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::UnknownOptionKey);
+                // One pot: a draw of non-repeat pairings over the whole field
+                assert(count((new PotDrawScheduler())->schedule(array_slice($entrants, 0, 8), new PotDrawOptions(pots: 1, opponentsPerPot: 3))) === 12);
+                PHP,
+        ],
         'bracket placement' => [
             'docs/USAGE.md',
             '$titleHolder = ',
