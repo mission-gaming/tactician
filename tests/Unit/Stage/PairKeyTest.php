@@ -21,11 +21,12 @@ function legacyPairKey(array $ids): string
 /**
  * Every order of a list.
  *
- * @param list<string> $items
+ * @param array<string> $items
  * @return list<list<string>>
  */
 function permutationsOf(array $items): array
 {
+    $items = array_values($items);
     if (count($items) < 2) {
         return [$items];
     }

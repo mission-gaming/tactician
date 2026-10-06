@@ -136,7 +136,7 @@ describe('ScheduleScorer', function (): void {
             expect($exception->getContext())->toBe(['metric' => 'Broken', 'value' => $name])
                 ->and($exception->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange)
                 ->and($exception->getDiagnosticReport())->toContain("• value: {$name}")
-                ->not->toContain('REQUIREMENTS');
+                ->and($exception->getRequirements())->toBe([]);
 
             return;
         }
@@ -155,7 +155,7 @@ describe('ScheduleScorer', function (): void {
             expect($exception->getContext())->toBe(['index' => 0, 'metric' => 'Role Balance', 'weight' => $name])
                 ->and($exception->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange)
                 ->and($exception->getDiagnosticReport())->toContain("• weight: {$name}")
-                ->not->toContain('REQUIREMENTS');
+                ->and($exception->getRequirements())->toBe([]);
 
             return;
         }
