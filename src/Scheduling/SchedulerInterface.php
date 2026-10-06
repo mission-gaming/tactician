@@ -21,9 +21,13 @@ use MissionGaming\Tactician\Stage\StagePlan;
 interface SchedulerInterface
 {
     /**
-     * Generate a schedule for the given participants.
+     * Generate the complete schedule for the given participants.
      *
-     * @param array<Participant> $participants Tournament participants
+     * All or nothing: the schedule returned has every event the plan
+     * expects, and a schedule that cannot be completed is an exception,
+     * never a shorter schedule. Round numbers are 1-based.
+     *
+     * @param array<Participant> $participants Tournament participants, with unique IDs
      * @param SchedulerOptions|null $options This scheduler's options type, or null for its defaults
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the configuration (or options type) is invalid

@@ -51,7 +51,8 @@ final readonly class RankRangeSelector implements ProgressionSelector
     }
 
     /**
-     * The top N of each pool, pool winners first: today's "qualifiers".
+     * The top N of each pool, every pool's rank 1 first: the usual
+     * "qualifiers" selection. The same as perGroup(1, $count).
      *
      * @throws InvalidConfigurationException When count is below 1
      */
@@ -84,10 +85,15 @@ final readonly class RankRangeSelector implements ProgressionSelector
 
     /**
      * Build from plain configuration data:
-     * ['mode' => 'per-group', 'from' => 1, 'to' => 2].
+     * ['mode' => 'per-group', 'from' => 1, 'to' => 2], the form toArray()
+     * gives. The mode is 'overall' or 'per-group'; `from` defaults to 1
+     * and `to` is required. Other keys are ignored.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the mode or range is invalid
+     * @throws InvalidConfigurationException When the mode is missing or unknown (reason
+     *                                       `UnknownIdentifier`), a bound is not an integer
+     *                                       (`WrongValueType`), or the range is not
+     *                                       1 <= from <= to (`ValueOutOfRange`)
      */
     public static function fromArray(array $config): self
     {
@@ -114,6 +120,10 @@ final readonly class RankRangeSelector implements ProgressionSelector
     }
 
     /**
+     * The plain-data form fromArray() accepts: the mode ('overall' or
+     * 'per-group') and the two 1-based, inclusive bounds. topPerGroup(n)
+     * is written as per-group 1..n.
+     *
      * @return array{mode: string, from: int, to: int}
      */
     public function toArray(): array
@@ -121,6 +131,26 @@ final readonly class RankRangeSelector implements ProgressionSelector
         return ['mode' => $this->mode, 'from' => $this->from, 'to' => $this->to];
     }
 
+    /**
+     * The participants at the selected ranks of the outcome's standings.
+     *
+     * Ranks are 1-based positions in a table, which is a total order, so
+     * a rank holds exactly one participant; two participants level on
+     * every criterion are still at two ranks, and a range that ends
+     * between them takes one of them.
+     *
+     * Overall mode reads the outcome's own table and returns ranks
+     * from..to in rank order; pools, if the outcome has them, play no
+     * part. Per-group mode reads each pool's table and returns rank by
+     * rank, each rank in pool order: with pools A and B and ranks 1..2
+     * that is A1, B1, A2, B2.
+     *
+     * @return array<Participant>
+     * @throws InvalidConfigurationException When per-group mode is given an outcome without pools
+     *                                       (reason `IncompatibleOutcome`), or the table, or one of
+     *                                       the pools, has fewer entries than the last rank
+     *                                       (`RankUnavailable`)
+     */
     #[Override]
     public function select(StageOutcome $outcome): array
     {
@@ -156,6 +186,11 @@ final readonly class RankRangeSelector implements ProgressionSelector
         return $selected;
     }
 
+    /**
+     * to - from + 1 in overall mode. Null in per-group mode, where the
+     * count is that number times the number of pools, which only the
+     * outcome says.
+     */
     #[Override]
     public function getSelectionSize(): ?int
     {

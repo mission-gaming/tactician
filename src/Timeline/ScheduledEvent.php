@@ -43,6 +43,9 @@ final readonly class ScheduledEvent
         $this->kickoff = $kickoff->setTimezone(new DateTimeZone('UTC'));
     }
 
+    /**
+     * The wrapped event, as it was given.
+     */
     public function getEvent(): Event
     {
         return $this->event;
@@ -67,7 +70,9 @@ final readonly class ScheduledEvent
 
     /**
      * Convert to a serializable array; the kickoff is an ISO 8601 UTC
-     * string, the event in its own array form (participants by ID).
+     * string to the second (`2026-08-01T18:00:00Z`; a fraction of a second
+     * is not written), the event in its own array form (participants by
+     * ID).
      *
      * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}
      */
@@ -81,7 +86,9 @@ final readonly class ScheduledEvent
     }
 
     /**
-     * Recreate a scheduled event from its array representation.
+     * Recreate a scheduled event from its array representation
+     * (toArray()). The participants are not in that form, only their IDs,
+     * so the caller supplies them.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs

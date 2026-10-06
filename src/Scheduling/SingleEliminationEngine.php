@@ -42,9 +42,14 @@ use Override;
  * decision on the result (see TieDecision); a level tie without one is
  * refused by every call.
  *
- * There is deliberately no champion accessor: rank 1 of the outcome's
- * standings, or MatchOutcomeSelector::winners() over the final round, is
- * the consumer's derivation.
+ * There is deliberately no champion accessor. The champion is the
+ * participant who advances from the final:
+ * MatchOutcomeSelector::winners() over the outcome's final round. Rank 1
+ * of the outcome's standings is not that derivation. The standings are a
+ * win/draw/loss table over the bracket's results, in the order of the
+ * standings calculator, and the participant who lost the final can be
+ * first in it: after a bye, and after a two-legged final that its tie
+ * decision settled (see getOutcome()).
  *
  * @experimental
  */
@@ -52,6 +57,14 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 {
     use EliminationBracketSupport;
 
+    /**
+     * Every option is accepted; grandFinalReset is not read.
+     *
+     * @param StandingsCalculator $standingsCalculator Orders the outcome's standings and, in a
+     *                                                 re-seeded bracket, the survivors before every
+     *                                                 round after the first. On a fixed path it
+     *                                                 pairs nothing
+     */
     public function __construct(
         private EliminationOptions $options = new EliminationOptions(),
         private StandingsCalculator $standingsCalculator = new StandingsCalculator()
@@ -92,6 +105,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
+     * The shape of the bracket for every participant the state has seen:
+     * the bracket size, the number of rounds and the events to expect.
+     *
      * @throws InvalidConfigurationException When fewer than 2 participants have been seen, or
      *                                       the state is stamped with another engine's fingerprint
      */
@@ -110,10 +126,27 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     /**
      * Pair the next unresolved round of the bracket.
      *
-     * @throws InvalidConfigurationException When inputs are malformed, a round is partially
+     * The bracket is replayed from the state's participant list and its
+     * results on every call, so the same state gives the same pairing, and
+     * a state that has the round's pairing recorded but none of its results
+     * gives that round again. The call does not record anything: pass the
+     * pairing and its results to StageState::withRoundPlayed().
+     *
+     * Round numbers are 1-based, and the round carries its label ('round
+     * of 16', 'quarterfinal', 'semifinal', 'final'). The events are in
+     * bracket order, top of the bracket first; a two-legged tie is two
+     * consecutive events with the roles reversed, marked 'tie_leg' 1 and 2
+     * in their metadata. The byes are the participants who advance without
+     * playing, which happens in the first round only.
+     *
+     * @throws InvalidConfigurationException When the state has fewer than 2 participants or is
+     *                                       stamped with another engine's fingerprint, a result
+     *                                       has no round number, is not of a two-participant
+     *                                       event or is recorded twice, a round is partially
      *                                       resolved (record the missing results via
-     *                                       StageState::withAdditionalResults()), a tie is
-     *                                       undecided, or the bracket is complete
+     *                                       StageState::withAdditionalResults()), a completed tie
+     *                                       is level without a usable tie decision, or the
+     *                                       bracket is complete
      */
     #[Override]
     public function pairNextRound(StageState $state): RoundPairing
@@ -132,8 +165,11 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
-     * @throws InvalidConfigurationException When the recorded state is malformed
-     *                                       (partially resolved rounds, undecided ties)
+     * Whether the final has been decided: every round of the bracket has a
+     * result for each of its ties.
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed: every case
+     *                                       pairNextRound() names but the complete bracket
      */
     #[Override]
     public function isComplete(StageState $state): bool
@@ -144,16 +180,30 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     /**
      * The uniform completion product; null while the bracket is unfinished.
      *
-     * The win/loss standings reproduce conventional bracket placement with
-     * no special cases: in an 8-entrant knockout where favourites hold,
-     * the final's winner finishes 3-0, its loser 2-1, the semifinal losers
-     * 1-1, and the quarter-final losers 0-1 - 1st, 2nd, joint 3rd, joint
-     * 5th, including the genuine ties. A single-leg event that finished
-     * level and was decided by its tie decision counts there as a win for
-     * the participant who advanced, so the placement holds; the outcome's
-     * results are the results as recorded, the draw included.
+     * The standings are a win/draw/loss table over the bracket's results,
+     * in the order of the standings calculator. In a single-leg bracket
+     * with no byes the records follow conventional bracket placement: in
+     * an 8-entrant knockout the final's winner finishes 3-0, its loser 2-1,
+     * the semifinal losers 1-1, and the quarter-final losers 0-1. The
+     * table still lists the participants one after another: those with the
+     * same record (the two semifinal losers) are separated by the
+     * calculator's tiebreakers and then by its final ordering, not by the
+     * bracket. A single-leg event that finished level and was decided by
+     * its tie decision counts in the table as a win for the participant
+     * who advanced, so those records hold; the outcome's results are the
+     * results as recorded, the draw included.
      *
-     * @throws InvalidConfigurationException When the recorded state is malformed
+     * The table is not a placement in two cases. A participant with a bye
+     * has played one event fewer, so the winner of a final can have the
+     * same points as its loser (one win against one win and one loss). And
+     * the legs of a two-legged tie are counted as recorded, whoever
+     * advanced: a final level over two legs leaves the finalists level in
+     * the table. In both cases the calculator's later criteria (score
+     * difference, the seed attribute, the label) decide which finalist is
+     * first. For the champion use MatchOutcomeSelector::winners() over the
+     * outcome's final round.
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome

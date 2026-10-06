@@ -92,6 +92,10 @@ class InvalidConfigurationException extends SchedulingException
         parent::__construct($message, $code, $previous);
     }
 
+    /**
+     * What is wrong, in one sentence, as given to the constructor. It is
+     * text for people; branch on getReason(), not on this.
+     */
     public function getConfigurationIssue(): string
     {
         return $this->configurationIssue;
@@ -110,6 +114,9 @@ class InvalidConfigurationException extends SchedulingException
     }
 
     /**
+     * The values involved in the mistake, keyed by name, as given to the
+     * constructor; empty when the throw site gave none.
+     *
      * @return array<string, mixed>
      */
     public function getContext(): array

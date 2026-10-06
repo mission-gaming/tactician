@@ -28,22 +28,36 @@ final readonly class UnplacedEvent
         private ?Participant $participant = null
     ) {}
 
+    /**
+     * The caller-supplied id of the movable event that has no position.
+     */
     public function getEventId(): string
     {
         return $this->eventId;
     }
 
+    /**
+     * Why the event has no position.
+     */
     public function getReason(): UnplacedReason
     {
         return $this->reason;
     }
 
+    /**
+     * The participant with more events than free positions, when the
+     * reason is ParticipantOverCapacity; null for the repacker's other
+     * reason.
+     */
     public function getParticipant(): ?Participant
     {
         return $this->participant;
     }
 
     /**
+     * Serialize to plain data; the reason as its backing string, the
+     * participant by its ID or null.
+     *
      * @return array{event_id: string, reason: string, participant: string|null}
      */
     public function toArray(): array

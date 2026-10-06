@@ -7,23 +7,23 @@ namespace MissionGaming\Tactician\DTO;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
- * Represents a single round in a tournament schedule.
+ * A round: a set of events played concurrently, identified by its number.
  *
- * A Round encapsulates the logical concept of a tournament round with
- * custom metadata. Rounds are immutable value objects that can be
- * compared and provide utility methods for schedule management.
+ * Round numbers are 1-based and, in a schedule of several legs, continue
+ * across the legs. Two rounds are the same round when their numbers are
+ * equal; metadata plays no part in the comparison. Rounds are immutable.
  *
  * @api
  */
 readonly class Round implements \Stringable
 {
     /**
-     * Create a new Round with the specified parameters.
+     * @param int $number The round number, 1 or higher
+     * @param array<string, mixed> $metadata Free-form data. The library reads none of it; the
+     *                                       elimination engines set 'label' to the name of the
+     *                                       bracket stage
      *
-     * @param int $number The round number (must be positive)
-     * @param array<string, mixed> $metadata Additional custom data for this round
-     *
-     * @throws InvalidInputException When round number is not positive
+     * @throws InvalidInputException When the round number is below 1
      */
     public function __construct(
         private int $number,
@@ -35,9 +35,9 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Get the round number.
+     * The 1-based round number.
      *
-     * @return int The round number (always positive)
+     * @return int Always 1 or higher
      */
     public function getNumber(): int
     {
@@ -45,9 +45,9 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Get all metadata associated with this round.
+     * The metadata as given to the constructor.
      *
-     * @return array<string, mixed> All metadata key-value pairs
+     * @return array<string, mixed>
      */
     public function getMetadata(): array
     {
@@ -55,10 +55,7 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Check if a specific metadata key exists for this round.
-     *
-     * @param string $key The metadata key to check for
-     * @return bool True if the key exists, false otherwise
+     * Whether the metadata has the key, including a key whose value is null.
      */
     public function hasMetadata(string $key): bool
     {
@@ -66,11 +63,11 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Get the value for a specific metadata key.
+     * The metadata value under the key, or the default when the key is
+     * absent.
      *
-     * @param string $key The metadata key to retrieve
-     * @param mixed $default The default value to return if the key doesn't exist
-     * @return mixed The metadata value or the default if key not found
+     * A key that exists with the value null returns null, not the default.
+     * (Event, Participant, Result and Schedule return the default there.)
      */
     public function getMetadataValue(string $key, mixed $default = null): mixed
     {
@@ -78,10 +75,7 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Check if this round is equal to another round (based on round number).
-     *
-     * @param Round $other The round to compare with
-     * @return bool True if the round numbers match, false otherwise
+     * Whether the two rounds have the same number. Metadata is not compared.
      */
     public function equals(Round $other): bool
     {
@@ -89,10 +83,7 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Check if this round comes before another round.
-     *
-     * @param Round $other The round to compare with
-     * @return bool True if this round's number is less than the other's
+     * Whether this round's number is lower than the other's.
      */
     public function isBefore(Round $other): bool
     {
@@ -100,10 +91,7 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Check if this round comes after another round.
-     *
-     * @param Round $other The round to compare with
-     * @return bool True if this round's number is greater than the other's
+     * Whether this round's number is higher than the other's.
      */
     public function isAfter(Round $other): bool
     {
@@ -111,9 +99,8 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Get a string representation of this round.
-     *
-     * @return string Human-readable representation of the round
+     * "Round" and the number, for example "Round 3". The metadata, a label
+     * included, is not part of it.
      */
     #[\Override]
     public function __toString(): string
@@ -122,7 +109,7 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Convert this round to a serializable array.
+     * The plain-data form fromArray() accepts.
      *
      * @return array{number: int, metadata: array<string, mixed>}
      */
@@ -135,11 +122,14 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * Recreate a round from its array representation.
+     * Recreate a round from the array form toArray() produces.
+     *
+     * 'number' is required; a missing 'metadata' is empty.
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When the round number is missing or malformed
+     * @throws InvalidInputException When the number is missing, not an integer or below 1,
+     *                               or the metadata is not an array
      */
     public static function fromArray(array $data): self
     {

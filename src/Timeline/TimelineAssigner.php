@@ -18,18 +18,26 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  * mechanism, no parallel scheduler for staggered kickoffs.
  *
  * Filling is deterministic with declared ordering: a round's events fill
- * its slots in schedule order against slot time order, so the same
- * schedule and timeline always produce the same kickoffs. Validation is
- * loud: rounds with more events than slots, and schedules carrying
- * round-less events (which the round-grouped view would silently drop),
- * fail with diagnostics.
+ * its slots in schedule order against slot time order, and within a slot
+ * the timeline's resources in declared order, so the same schedule and
+ * timeline always produce the same kickoffs. A slot is filled to its
+ * capacity before the next one is used. Validation is loud: rounds with
+ * more events than the timeline can hold (slots per round times capacity
+ * per slot), and schedules carrying round-less events (which the
+ * round-grouped view would silently drop), fail with diagnostics.
+ *
+ * Not checked unless a rule checks it: that a participant is in one event
+ * of a slot only, and that the slots of one round end before the next
+ * round starts. MinimumRestRule reports the first.
  *
  * @experimental
  */
 final readonly class TimelineAssigner
 {
     /**
-     * @param array<TimelineRule> $rules Time-aware rules every assignment must satisfy
+     * @param array<TimelineRule> $rules Time-aware rules every whole-schedule assignment
+     *                                   (assign()) must satisfy; assignRound() does not
+     *                                   consult them. Violations are reported in this order
      *
      * @throws InvalidConfigurationException When an entry is not a TimelineRule
      */
@@ -50,10 +58,18 @@ final readonly class TimelineAssigner
     /**
      * Assign kickoff times to every event of a complete schedule.
      *
+     * The result holds one scheduled event for each event of the schedule,
+     * rounds ascending and each round's events in schedule order. The round
+     * number of an event decides its round's time
+     * (TimelineDefinition::getSlotTime()), so a schedule that starts at
+     * round 5 starts four round intervals after the timeline's start.
+     *
      * When the assigner carries time-aware rules, the assigned timeline is
      * validated against every rule and assignment fails loudly with all
      * violations — a deterministic mapping cannot route around a broken
-     * rule, only report it.
+     * rule, only report it. The exception's context has every violation
+     * under `violations`, each prefixed with its rule's name; the message
+     * quotes the first three.
      *
      * @throws InvalidConfigurationException When the schedule carries round-less events,
      *                                       a round has more events than the timeline has
@@ -107,9 +123,12 @@ final readonly class TimelineAssigner
      *
      * The engine bridge: pair the round, assign its times, play it,
      * record it — the timeline definition stays the same object across
-     * the stage's rounds.
+     * the stage's rounds. The round's time comes from the pairing's round
+     * number. Byes get no entry. The assigner's rules are not applied
+     * here, because a rule judges a whole timeline: collect the rounds into
+     * a ScheduledSchedule and call each rule's validate() on it.
      *
-     * @return array<ScheduledEvent> In slot order
+     * @return array<ScheduledEvent> In slot order, the pairing's events in their order
      *
      * @throws InvalidConfigurationException When the round has more events than the timeline has slots
      */

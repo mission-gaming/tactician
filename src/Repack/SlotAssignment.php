@@ -34,16 +34,26 @@ final readonly class SlotAssignment
         private ?DateTimeImmutable $kickoff
     ) {}
 
+    /**
+     * The caller-supplied id of the movable event.
+     */
     public function getEventId(): string
     {
         return $this->eventId;
     }
 
+    /**
+     * The 0-based index of the session the event was assigned to.
+     */
     public function getSession(): int
     {
         return $this->session;
     }
 
+    /**
+     * The 0-based index of the slot the event was assigned to, within its
+     * session.
+     */
     public function getSlot(): int
     {
         return $this->slot;
@@ -80,6 +90,12 @@ final readonly class SlotAssignment
     }
 
     /**
+     * Serialize to plain data; the kickoff as an ISO 8601 UTC string to the
+     * second (`2026-08-12T19:15:00Z`), or null when there is none. Known
+     * limitation: the kickoff is written as it is held and is not
+     * converted, so the string is UTC only when the kickoff given was, as
+     * the repacker's always is.
+     *
      * @return array{event_id: string, session: int, slot: int, kickoff: string|null}
      */
     public function toArray(): array

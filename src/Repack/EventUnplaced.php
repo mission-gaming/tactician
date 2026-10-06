@@ -18,6 +18,8 @@ use Override;
 final readonly class EventUnplaced implements RepackViolation
 {
     /**
+     * @param string $eventId The movable event's caller-supplied id
+     * @param UnplacedReason $reason Why no position was assigned
      * @param Participant|null $participant The over-capacity participant, when the
      *                                      reason is ParticipantOverCapacity
      */
@@ -27,28 +29,45 @@ final readonly class EventUnplaced implements RepackViolation
         private ?Participant $participant = null
     ) {}
 
+    /**
+     * Always ViolationKind::EventUnplaced.
+     */
     #[Override]
     public function getKind(): ViolationKind
     {
         return ViolationKind::EventUnplaced;
     }
 
+    /**
+     * The caller-supplied id of the movable event that has no position.
+     */
     public function getEventId(): string
     {
         return $this->eventId;
     }
 
+    /**
+     * Why the event has no position.
+     */
     public function getReason(): UnplacedReason
     {
         return $this->reason;
     }
 
+    /**
+     * The participant with more events than free positions, when the
+     * reason is ParticipantOverCapacity; null for the repacker's other
+     * reason.
+     */
     public function getParticipant(): ?Participant
     {
         return $this->participant;
     }
 
     /**
+     * Serialize to plain data; the reason as its backing string, the
+     * participant by its ID or null.
+     *
      * @return array{kind: string, event_id: string, reason: string, participant: string|null}
      */
     #[Override]

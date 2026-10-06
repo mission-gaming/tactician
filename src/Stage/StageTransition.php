@@ -17,6 +17,10 @@ namespace MissionGaming\Tactician\Stage;
 final readonly class StageTransition
 {
     /**
+     * Nothing is checked here: CompositionValidator::validateChain()
+     * reports an entrant count below 2 and a selector whose yield does
+     * not match.
+     *
      * @param string $label Destination stage name, used in violation messages
      * @param int $expectedEntrants The entrant count the destination stage declares
      * @param ProgressionSelector|null $selector How entrants derive from the previous stage;

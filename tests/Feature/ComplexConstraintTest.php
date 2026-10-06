@@ -300,7 +300,7 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
     // What is wanted. The shuffled strategy draws each role of the second
     // leg once and does not draw again when the constraints reject it, so
     // generation fails although roles that satisfy the constraints exist
-    // (the test above). A greedy false negative: reported with issue #42.
+    // (the test above). A greedy false negative: reported as issue #117.
     it('schedules the two legs with roles the constraints accept', function (): void {
         $schedule = (new RoundRobinScheduler($this->constraints))->schedule(
             $this->field,

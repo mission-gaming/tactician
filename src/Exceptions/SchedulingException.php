@@ -21,12 +21,21 @@ use Exception;
 abstract class SchedulingException extends Exception implements TacticianException
 {
     /**
-     * Get a diagnostic report with detailed information about the scheduling issue.
-     * This should provide actionable information to help resolve the problem.
+     * The failure as several lines of text for an operator or a log: what
+     * was asked for, what went wrong and, where the exception can tell,
+     * what to change. The lines are separated by "\n".
+     *
+     * The text is for people. Its wording and layout are not stable, so
+     * code should branch on the exception's class and accessors, not on
+     * the report.
      */
     abstract public function getDiagnosticReport(): string;
 
     /**
+     * An `InvalidConfigurationException` whose message states the count
+     * and that at least 2 participants are required, whatever the count
+     * is. It is returned, not thrown.
+     *
      * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
      *             it. Construct an `InvalidConfigurationException` with
      *             `InvalidConfigurationReason::TooFewParticipants` instead.
@@ -46,6 +55,9 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
     }
 
     /**
+     * An `InvalidConfigurationException` that names a violated constraint.
+     * It is returned, not thrown.
+     *
      * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
      *             it. Construct an `InvalidConfigurationException` with
      *             `InvalidConfigurationReason::ConstraintViolation` instead.
@@ -65,6 +77,9 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
     }
 
     /**
+     * An `InvalidConfigurationException` for a schedule that is not valid,
+     * with the reason as text. It is returned, not thrown.
+     *
      * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
      *             it. Construct an `InvalidConfigurationException` with
      *             `InvalidConfigurationReason::InvalidSchedule` instead.

@@ -22,7 +22,9 @@ use Override;
 final readonly class LateStart implements RepackViolation
 {
     /**
+     * @param int $session 0-based session index
      * @param int $firstSlot The first slot the participant occupies in the session
+     *                       (0-based, pins included)
      */
     public function __construct(
         private Participant $participant,
@@ -30,28 +32,44 @@ final readonly class LateStart implements RepackViolation
         private int $firstSlot
     ) {}
 
+    /**
+     * Always ViolationKind::LateStart.
+     */
     #[Override]
     public function getKind(): ViolationKind
     {
         return ViolationKind::LateStart;
     }
 
+    /**
+     * The participant that starts late.
+     */
     public function getParticipant(): Participant
     {
         return $this->participant;
     }
 
+    /**
+     * The 0-based index of the session it starts late in.
+     */
     public function getSession(): int
     {
         return $this->session;
     }
 
+    /**
+     * The 0-based first slot the participant occupies in the session, pins
+     * included; at least 1 in a violation the repacker reports, and also
+     * the number of slots it sits out before its first event.
+     */
     public function getFirstSlot(): int
     {
         return $this->firstSlot;
     }
 
     /**
+     * Serialize to plain data; the participant by its ID.
+     *
      * @return array{kind: string, participant: string, session: int, first_slot: int}
      */
     #[Override]

@@ -16,7 +16,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * prefers landing events in the earliest sessions so the season ends as
  * soon as the event list allows. The two pull against each other — a
  * higher consolidation weight accepts a later finish to give participants
- * fuller nights, and consolidation deliberately dominates by default.
+ * fuller sessions, and consolidation deliberately dominates by default.
  *
  * The step budget bounds every search the repacker runs (session-load
  * improvement, per-session packing, repair swaps) in elementary search
@@ -98,9 +98,14 @@ final readonly class RepackOptions
      * ['consolidation_weight' => 3, 'early_fill_weight' => 1,
      *  'step_budget' => 200000, 'throw_on_violations' => false].
      *
+     * Every key is optional and defaults to the value shown, which is the
+     * constructor's default; a key given as null is read as not given. A
+     * key the method does not know is ignored.
+     *
      * @param array<string, mixed> $config
      *
-     * @throws InvalidConfigurationException When a value is malformed
+     * @throws InvalidConfigurationException When a value is of the wrong type, or is one
+     *                                       the constructor rejects
      */
     public static function fromArray(array $config): self
     {
@@ -133,7 +138,8 @@ final readonly class RepackOptions
     }
 
     /**
-     * Serialize back to plain configuration data.
+     * Serialize back to the plain configuration data fromArray() accepts,
+     * all four keys always present.
      *
      * @return array{consolidation_weight: int, early_fill_weight: int, step_budget: int, throw_on_violations: bool}
      */

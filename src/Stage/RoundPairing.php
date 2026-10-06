@@ -21,6 +21,10 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 final readonly class RoundPairing
 {
     /**
+     * Nothing is checked here. StageState::withRoundPlayed() checks, when
+     * the pairing is recorded, that every event carries this round
+     * number.
+     *
      * @param int $roundNumber 1-based round number
      * @param string|null $label Human-readable round label ('semifinal', 'losers round 2'); null for Swiss
      * @param array<Event> $events The paired events for this round
@@ -33,6 +37,10 @@ final readonly class RoundPairing
         private array $byes = []
     ) {}
 
+    /**
+     * The 1-based number of the round, which each of its events carries
+     * too.
+     */
     public function getRoundNumber(): int
     {
         return $this->roundNumber;
@@ -48,6 +56,10 @@ final readonly class RoundPairing
     }
 
     /**
+     * The events to play, in the engine's order: bracket order for a
+     * bracket, where that order is the path through it. A two-legged tie
+     * is two events here, with the two participants in opposite roles.
+     *
      * @return array<Event>
      */
     public function getEvents(): array
@@ -56,6 +68,10 @@ final readonly class RoundPairing
     }
 
     /**
+     * The participants who are in the round and play no event in it: in
+     * a bracket they go on to the next round, in a Swiss round the one
+     * participant sits out. Empty when there are none.
+     *
      * @return array<Participant>
      */
     public function getByes(): array
@@ -63,6 +79,9 @@ final readonly class RoundPairing
         return $this->byes;
     }
 
+    /**
+     * Whether any participant has a bye in this round.
+     */
     public function hasByes(): bool
     {
         return $this->byes !== [];
@@ -87,7 +106,9 @@ final readonly class RoundPairing
     }
 
     /**
-     * Recreate a pairing from its array representation.
+     * Recreate a pairing from its array representation, as toArray()
+     * gives it. `round` is required; `label`, `events` and `byes` may be
+     * left out.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs

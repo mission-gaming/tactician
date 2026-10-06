@@ -17,7 +17,10 @@ use MissionGaming\Tactician\DTO\Participant;
 class NoValidPairingException extends SchedulingException
 {
     /**
-     * @param array<Participant> $participants
+     * @param int $roundNumber The 1-based round that could not be paired
+     * @param array<Participant> $participants The participants that were to be paired
+     * @param string $message The exception message; empty for one built from the round and the
+     *                        number of participants
      */
     public function __construct(
         private readonly int $roundNumber,
@@ -35,12 +38,18 @@ class NoValidPairingException extends SchedulingException
         parent::__construct($message);
     }
 
+    /**
+     * The 1-based number of the round that could not be paired.
+     */
     public function getRoundNumber(): int
     {
         return $this->roundNumber;
     }
 
     /**
+     * The participants that were to be paired: from the Swiss engine, the
+     * active participants of the stage state, in the state's order.
+     *
      * @return array<Participant>
      */
     public function getParticipants(): array
@@ -48,6 +57,10 @@ class NoValidPairingException extends SchedulingException
         return $this->participants;
     }
 
+    /**
+     * The round, the number of participants and general suggestions. It
+     * does not say which pairings or constraints are in the way.
+     */
     #[\Override]
     public function getDiagnosticReport(): string
     {

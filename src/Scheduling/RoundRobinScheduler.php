@@ -27,6 +27,33 @@ use Random\Randomizer;
  * Generates a complete round-robin schedule up front: every participant
  * meets every other participant once per leg, under the given constraints.
  *
+ * The first leg is laid out with the circle method from the order of the
+ * participant list, and each later leg is the same layout with its events
+ * derived by the leg strategy. Constraints are hard filters on that
+ * layout: an event one of them rejects is left out, no other pairing is
+ * tried in its place, and a leg that is short of an event is a failure.
+ * With constraints, a failed layout is tried again from the participant
+ * list rotated one place further each time, up to as many layouts as
+ * there are participants and never more than 25. RoundRobinOptions(backtracking:
+ * true) then searches the round decompositions that no rotation reaches,
+ * within a fixed number of pairing attempts.
+ *
+ * Without a Randomizer the output is a function of the input: the same
+ * participants in the same order, options and constraints give the same
+ * schedule, as long as the leg strategy draws nothing (a ShuffledLegStrategy
+ * has a randomizer of its own) and the constraints answer from the event
+ * and the context alone. With one, the participant list is shuffled before the first
+ * leg is laid out (and before a backtracking search), so:
+ *
+ * - the schedule is repeatable only from a randomizer seeded the same; the
+ *   scheduler draws from it on every call, so one scheduler asked twice
+ *   gives two different schedules;
+ * - only the first leg is shuffled. The later legs are laid out from the
+ *   participant list as given, so they are not the first leg mirrored or
+ *   repeated pairing by pairing: a pairing can fall in another round of
+ *   its leg, and under MirroredLegStrategy it can have the same roles in
+ *   two legs. Every pair still meets once in every leg.
+ *
  * @api
  */
 class RoundRobinScheduler implements SchedulerInterface
@@ -50,6 +77,15 @@ class RoundRobinScheduler implements SchedulerInterface
      */
     private bool $failureWillBeDiscarded = false;
 
+    /**
+     * @param ConstraintSet|null $constraints Asked about every event before it is added, with a
+     *                                        context of the events generated so far; null for
+     *                                        no constraints, which cannot fail on a pairing
+     * @param Randomizer|null $randomizer Shuffles the participant list before the first leg is
+     *                                    laid out (see the class docblock for what that does to
+     *                                    later legs); null for the list order as given. A leg
+     *                                    strategy that draws has a randomizer of its own
+     */
     public function __construct(
         private ?ConstraintSet $constraints = null,
         private ?Randomizer $randomizer = null
@@ -58,13 +94,40 @@ class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
-     * Generate a round-robin schedule for the given participants with integrated multi-leg support.
+     * Generate the round-robin schedule: every pair of participants meets
+     * exactly once in every leg, and no participant has two events in a
+     * round.
      *
-     * @param array<Participant> $participants Tournament participants
+     * The events are in round order. Round numbers are 1-based and
+     * continuous across legs: with n participants a leg has n - 1 rounds
+     * (n when n is odd), and leg 2 starts at the round after leg 1's last.
+     * In a field of odd size one participant sits out each round; the
+     * schedule's 'byes' metadata maps the round number to that
+     * participant's ID. The other metadata keys are 'algorithm',
+     * 'participant_count', 'legs', 'rounds_per_leg', 'total_rounds' and
+     * 'expected_event_count'.
+     *
+     * All or nothing: the schedule is checked against the plan before it is
+     * returned, and a failure never returns the events that were generated.
+     * After a failure, the exception carries the diagnostics of the last
+     * layout tried.
+     *
+     * @param array<Participant> $participants At least 2, with unique IDs. Their order decides the
+     *                                         layout: position, not the seed attribute
      * @param SchedulerOptions|null $options RoundRobinOptions, or null for a single mirrored leg
      *
-     * @throws InvalidConfigurationException When configuration is invalid
-     * @throws IncompleteScheduleException When constraints prevent complete schedule generation
+     * @throws InvalidConfigurationException When the options are not RoundRobinOptions, there are
+     *                                       fewer than 2 participants, two share an ID, the leg
+     *                                       strategy reports the configuration unsatisfiable, or
+     *                                       the role assignment returns anything but the seatings
+     *                                       it was given with roles changed
+     * @throws IncompleteScheduleException When the constraints leave a leg short of an event in
+     *                                     every layout tried and, with backtracking on, the
+     *                                     search finds no first leg, or the constraints reject
+     *                                     the roles the role assignment gives that leg or an
+     *                                     event of a later leg derived from it; when the leg
+     *                                     strategy returns no event for a pairing; or when the
+     *                                     finished schedule fails the plan's integrity checks
      */
     #[Override]
     public function schedule(
@@ -116,11 +179,15 @@ class RoundRobinScheduler implements SchedulerInterface
 
     /**
      * Build the round-robin stage plan for the given configuration,
-     * including the configured strategy's contribution facts.
+     * including the configured strategy's contribution facts: the rounds,
+     * legs and events schedule() would produce, with nothing generated and
+     * no constraint asked about an event.
      *
      * @param array<Participant> $participants
      * @param SchedulerOptions|null $options RoundRobinOptions, or null for a single mirrored leg
-     * @throws InvalidConfigurationException When the configuration is unsatisfiable
+     * @throws InvalidConfigurationException When the options are not RoundRobinOptions, there are
+     *                                       fewer than 2 participants, two share an ID, or the
+     *                                       leg strategy reports the configuration unsatisfiable
      */
     #[Override]
     public function getPlan(
@@ -287,6 +354,8 @@ class RoundRobinScheduler implements SchedulerInterface
             }
         }
 
+        // Not reached: there is at least one attempt, and the last one
+        // returns or rethrows
         throw new InvariantViolationException('Schedule generation loop must return or throw');
     }
 
@@ -570,9 +639,11 @@ class RoundRobinScheduler implements SchedulerInterface
      * The roles proposed alternate with the (leg-local) round parity. Without
      * that the circle method keeps the fixed seat first-named all leg and
      * gives rotating participants same-role streaks of half the field size;
-     * with it the running imbalance of a participant is bounded at 3 (4 in a
-     * field of odd size). The role assignment decides whether the proposal
-     * stands.
+     * with it the running imbalance of a participant within the leg is
+     * bounded at 3 (4 in a field of odd size). That is a bound for one leg:
+     * over several legs the imbalances can add up, as they do under the
+     * repeated leg strategy. The role assignment decides whether the
+     * proposal stands.
      *
      * @param array<int, Participant|null> $participantList Participants in circle order, including any "bye" (null)
      * @return list<list<array{0: Participant|null, 1: Participant|null}>> Rounds of seatings, the bye seating included
@@ -868,6 +939,8 @@ class RoundRobinScheduler implements SchedulerInterface
     private function recordConstraintViolation(Event $event, SchedulingContext $context): void
     {
         if ($this->constraints === null) {
+            // Not reached: this is only called after a constraint has
+            // rejected an event
             return;
         }
 

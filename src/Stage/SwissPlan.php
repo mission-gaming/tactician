@@ -29,9 +29,11 @@ final readonly class SwissPlan implements StagePlan
     private array $participants;
 
     /**
-     * @param array<Participant> $participants
+     * @param array<Participant> $participants The field; IDs are not checked for uniqueness here
      * @param int|null $rounds Configured Swiss rounds, or null when the stage length is not fixed up front
-     * @throws InvalidConfigurationException When the configuration cannot form a Swiss stage
+     * @throws InvalidConfigurationException When rounds is below 1 (reason `InvalidRoundCount`) or
+     *                                       there are fewer than 2 participants
+     *                                       (`TooFewParticipants`)
      */
     public function __construct(
         array $participants,
@@ -56,12 +58,19 @@ final readonly class SwissPlan implements StagePlan
         $this->participants = array_values($participants);
     }
 
+    /**
+     * Always 'swiss'.
+     */
     #[Override]
     public function getAlgorithm(): string
     {
         return 'swiss';
     }
 
+    /**
+     * The configured number of rounds; null for an open-ended stage,
+     * whose length is not known up front.
+     */
     #[Override]
     public function getTotalRounds(): ?int
     {
@@ -95,6 +104,11 @@ final readonly class SwissPlan implements StagePlan
         return intdiv(count($this->participants), 2);
     }
 
+    /**
+     * Events per round × rounds, for the plan's whole field in every
+     * round; null for an open-ended stage. A stage that loses
+     * participants on the way can play fewer events than this.
+     */
     #[Override]
     public function getExpectedEventCount(): ?int
     {
@@ -106,6 +120,8 @@ final readonly class SwissPlan implements StagePlan
     }
 
     /**
+     * The field as a list, in the order given.
+     *
      * @return array<Participant>
      */
     public function getParticipants(): array
@@ -113,6 +129,21 @@ final readonly class SwissPlan implements StagePlan
         return $this->participants;
     }
 
+    /**
+     * Checks that every event has exactly 2 different participants of
+     * the field and a round number from 1 up (and no higher than the
+     * configured rounds, when there are any); that no participant is in
+     * two events of one round; and that no pairing repeats. With
+     * configured rounds it also checks that every round has all of the
+     * field in events, less the one bye of a field of odd size.
+     *
+     * It does not check that the pairings follow the standings: results
+     * are not part of a schedule. For an open-ended stage nothing says
+     * how many rounds there should be, so a missing round is not
+     * reported.
+     *
+     * @return array<string>
+     */
     #[Override]
     public function validateIntegrity(Schedule $schedule): array
     {

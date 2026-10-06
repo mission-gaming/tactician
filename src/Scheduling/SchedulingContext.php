@@ -14,7 +14,9 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * This class provides generated tournament state plus the stage plan —
  * the algorithm's declaration of the stage's shape. Constraints and
  * schedulers reason about rounds, legs, and expected size by reading the
- * plan; the context never infers shape facts itself.
+ * plan. The context adds one reading of its own: a plan without legs (a
+ * Swiss stage, a bracket) is treated as a single leg that holds every
+ * event.
  *
  * The lookups by participant, by pairing, by round and by leg read an index
  * of the event list, built on first use, so each costs the events it
@@ -34,11 +36,16 @@ readonly class SchedulingContext
     private EventIndex $index;
 
     /**
+     * Nothing is validated: the context holds what it is given. The events
+     * are not checked against the participants or the plan, and the current
+     * leg is not checked against the plan's legs.
+     *
      * @param array<Participant> $allParticipants All participants in the tournament
      * @param StagePlan $plan The shape declaration for the stage being generated
      * @param array<Event> $allEvents Events generated so far
      * @param int $currentLeg The current leg being generated (1-based), for algorithms with legs
-     * @param int $participantsPerEvent Number of participants per event (usually 2)
+     * @param int $participantsPerEvent Number of participants per event (usually 2); of the
+     *                                  lookups here, only hasEventBetween() reads it
      */
     public function __construct(
         private array $allParticipants,
@@ -60,6 +67,9 @@ readonly class SchedulingContext
     }
 
     /**
+     * Every participant of the stage, as given to the constructor: the
+     * whole field, not only those who have an event so far.
+     *
      * @return array<Participant>
      */
     public function getParticipants(): array
@@ -68,6 +78,9 @@ readonly class SchedulingContext
     }
 
     /**
+     * The events generated so far, in the order they were generated. The
+     * candidate event a constraint is being asked about is not among them.
+     *
      * @return array<Event>
      */
     public function getExistingEvents(): array
@@ -76,7 +89,8 @@ readonly class SchedulingContext
     }
 
     /**
-     * Get the current leg being generated (1-based).
+     * Get the current leg being generated (1-based). It is 1 throughout for
+     * a format without legs.
      */
     public function getCurrentLeg(): int
     {
@@ -101,7 +115,9 @@ readonly class SchedulingContext
     }
 
     /**
-     * Get the number of participants per event.
+     * Get the number of participants per event the context was built for
+     * (2 unless the constructor was told otherwise). It is not derived from
+     * the events.
      */
     public function getParticipantsPerEvent(): int
     {
@@ -109,7 +125,8 @@ readonly class SchedulingContext
     }
 
     /**
-     * Check if this is a multi-leg tournament.
+     * Whether the plan has more than one leg. False for a format without
+     * legs (Swiss, elimination), whose plan reports null.
      */
     public function isMultiLeg(): bool
     {
@@ -117,9 +134,14 @@ readonly class SchedulingContext
     }
 
     /**
-     * Get events from a specific leg.
+     * Get the events of one leg (1-based), under the keys they have in
+     * getExistingEvents() and in that order.
      *
-     * Algorithms without legs use the default single leg and return all events for leg 1.
+     * With more than one leg, an event belongs to the leg its round number
+     * falls in (leg 1 is rounds 1 to the plan's rounds per leg, and so on),
+     * and an event without a round belongs to none. A plan with one leg, or
+     * a format without legs, returns every event for leg 1, whatever its
+     * round. A leg the plan does not have returns an empty array.
      *
      * @return array<Event>
      */
@@ -147,7 +169,10 @@ readonly class SchedulingContext
     }
 
     /**
-     * Get events from all legs for a specific participant.
+     * Get the events the participant takes part in, across all legs, under
+     * the keys they have in getExistingEvents() and in that order. The
+     * participant is matched by ID.
+     *
      * @return array<Event>
      */
     public function getEventsForParticipant(Participant $participant): array
@@ -176,7 +201,11 @@ readonly class SchedulingContext
     }
 
     /**
-     * Get events in a specific round across all legs.
+     * Get the events whose round has this number, under the keys they have
+     * in getExistingEvents() and in that order. Round numbers are 1-based
+     * and continuous across legs, so a round belongs to one leg; an event
+     * without a round is in no round.
+     *
      * @return array<Event>
      */
     public function getEventsInRound(int $round): array
@@ -185,7 +214,9 @@ readonly class SchedulingContext
     }
 
     /**
-     * Check if two participants have already played against each other.
+     * Whether an event among those generated so far holds both
+     * participants, matched by ID, in either order and in any leg. False
+     * for a participant and itself.
      */
     public function haveParticipantsPlayed(Participant $participant1, Participant $participant2): bool
     {
@@ -198,7 +229,14 @@ readonly class SchedulingContext
     }
 
     /**
-     * Check if there is an event between the specified participants.
+     * Whether an event among those generated so far holds every one of the
+     * given participants, matched by ID, in any order.
+     *
+     * False when the number of participants given is not the context's
+     * participants per event, whatever the events hold. The same
+     * participant given twice counts as given: with two per event, a
+     * participant and itself is true as soon as it has an event, where
+     * haveParticipantsPlayed() says false.
      *
      * @param array<Participant> $participants
      */
@@ -244,7 +282,7 @@ readonly class SchedulingContext
     }
 
     /**
-     * Get the current number of events.
+     * How many events have been generated so far, in all legs.
      */
     public function getEventCount(): int
     {
@@ -252,7 +290,10 @@ readonly class SchedulingContext
     }
 
     /**
-     * Create a new context with additional events.
+     * A new context whose events are this one's followed by the given
+     * ones, with the same participants, plan and current leg. This context
+     * is not changed.
+     *
      * @param array<Event> $newEvents
      */
     public function withEvents(array $newEvents): self
@@ -272,7 +313,10 @@ readonly class SchedulingContext
     }
 
     /**
-     * Create a new context for the next leg.
+     * A new context with the same participants, plan and events and the
+     * current leg one higher. This context is not changed. The leg is not
+     * checked against the plan: the result can name a leg the plan does not
+     * have.
      */
     public function withNextLeg(): self
     {

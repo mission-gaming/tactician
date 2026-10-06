@@ -7,22 +7,28 @@ namespace MissionGaming\Tactician\DTO;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
- * Represents a single event/match in a tournament schedule.
+ * One meeting of two or more participants, with the round it belongs to and
+ * free-form metadata.
  *
- * An Event contains a group of participants who will compete against each other,
- * along with optional round information and custom metadata. Events are immutable
- * and must contain at least 2 participants.
+ * The order of the participants is part of the event: it is the role each
+ * one has (index 0 is first-named, index 1 second-named). An event is
+ * immutable and has no identifier of its own: a result is recorded against
+ * the event object a scheduler or an engine produced.
  *
  * @api
  */
 readonly class Event
 {
     /**
-     * Create a new Event with the specified participants.
+     * The participants are kept as given: the same order, the same keys, and
+     * no check that they differ from each other. Pass a list (keys 0, 1, ...):
+     * the library reads roles by index.
      *
-     * @param array<Participant> $participants The participants competing in this event (minimum 2)
-     * @param Round|null $round The round this event belongs to (optional)
-     * @param array<string, mixed> $metadata Additional custom data for this event
+     * @param array<Participant> $participants At least 2, first-named participant first
+     * @param Round|null $round The round the event is played in; null for an event not yet in a round
+     * @param array<string, mixed> $metadata Free-form data. The library reads one key, 'tie_leg',
+     *                                       which the elimination engines set on the two events
+     *                                       of a two-legged tie
      *
      * @throws InvalidInputException When fewer than 2 participants are provided
      */
@@ -37,9 +43,10 @@ readonly class Event
     }
 
     /**
-     * Get all participants in this event.
+     * The participants in role order, as given to the constructor: the
+     * first-named participant first.
      *
-     * @return array<Participant> The participants competing in this event
+     * @return array<Participant>
      */
     public function getParticipants(): array
     {
@@ -47,10 +54,10 @@ readonly class Event
     }
 
     /**
-     * Check if a specific participant is competing in this event.
+     * Whether a participant with the same ID is in this event.
      *
-     * @param Participant $participant The participant to check for
-     * @return bool True if the participant is in this event, false otherwise
+     * Participants are compared by ID alone, so a copy with another seed,
+     * label or metadata still matches.
      */
     public function hasParticipant(Participant $participant): bool
     {
@@ -64,9 +71,7 @@ readonly class Event
     }
 
     /**
-     * Get the round this event belongs to.
-     *
-     * @return Round|null The round, or null if not assigned to a round
+     * The round the event is played in, or null when it has none.
      */
     public function getRound(): ?Round
     {
@@ -74,9 +79,9 @@ readonly class Event
     }
 
     /**
-     * Get all metadata associated with this event.
+     * The metadata as given to the constructor.
      *
-     * @return array<string, mixed> All metadata key-value pairs
+     * @return array<string, mixed>
      */
     public function getMetadata(): array
     {
@@ -84,10 +89,7 @@ readonly class Event
     }
 
     /**
-     * Check if a specific metadata key exists for this event.
-     *
-     * @param string $key The metadata key to check for
-     * @return bool True if the key exists, false otherwise
+     * Whether the metadata has the key, including a key whose value is null.
      */
     public function hasMetadata(string $key): bool
     {
@@ -95,11 +97,10 @@ readonly class Event
     }
 
     /**
-     * Get the value for a specific metadata key.
+     * The metadata value under the key, or the default.
      *
-     * @param string $key The metadata key to retrieve
-     * @param mixed $default The default value to return if the key doesn't exist
-     * @return mixed The metadata value or the default if key not found
+     * The default is also returned for a key that exists with the value
+     * null; use hasMetadata() to tell the two apart.
      */
     public function getMetadataValue(string $key, mixed $default = null): mixed
     {
@@ -107,9 +108,7 @@ readonly class Event
     }
 
     /**
-     * Get the number of participants in this event.
-     *
-     * @return int The total number of participants
+     * The number of participants, always 2 or more.
      */
     public function getParticipantCount(): int
     {
@@ -137,12 +136,19 @@ readonly class Event
     }
 
     /**
-     * Recreate an event from its array representation.
+     * Recreate an event from the array form toArray() produces.
+     *
+     * The participants are taken from the registry in the order the data
+     * lists their IDs, so roles survive. A missing 'round' gives an event
+     * without a round and a missing 'metadata' gives none; other keys are
+     * ignored.
      *
      * @param array<string, mixed> $data
-     * @param array<string, Participant> $participantsById Registry resolving participant IDs
+     * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
      *
-     * @throws InvalidInputException When fields are malformed or a participant ID is unknown
+     * @throws InvalidInputException When a field has the wrong type, a participant ID is
+     *                               not in the registry, fewer than 2 participants are
+     *                               listed, or the round number is not a positive integer
      */
     public static function fromArray(array $data, array $participantsById): self
     {

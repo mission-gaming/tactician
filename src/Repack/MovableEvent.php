@@ -22,9 +22,14 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 final readonly class MovableEvent
 {
     /**
-     * @param string $id Caller-supplied stable identifier, unique across the request
+     * Which participant is A and which is B is kept and changes nothing in
+     * the repack.
      *
-     * @throws InvalidConfigurationException When the id is empty or the participants are not distinct
+     * @param string $id Caller-supplied stable identifier, unique across the request
+     *                   (the request checks that, not this constructor)
+     *
+     * @throws InvalidConfigurationException When the id is empty or the two participants have
+     *                                       the same ID
      */
     public function __construct(
         private string $id,
@@ -48,22 +53,33 @@ final readonly class MovableEvent
         }
     }
 
+    /**
+     * The caller-supplied id, as given.
+     */
     public function getId(): string
     {
         return $this->id;
     }
 
+    /**
+     * The participant given first.
+     */
     public function getParticipantA(): Participant
     {
         return $this->participantA;
     }
 
+    /**
+     * The participant given second.
+     */
     public function getParticipantB(): Participant
     {
         return $this->participantB;
     }
 
     /**
+     * Both participants: A, then B.
+     *
      * @return array{Participant, Participant}
      */
     public function getParticipants(): array

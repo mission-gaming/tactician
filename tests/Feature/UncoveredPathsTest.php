@@ -28,8 +28,8 @@ use MissionGaming\Tactician\Stage\PairwisePlan;
 
 // Tests for the lines of src/ that the coverage report showed no test
 // executing, each through the behaviour that reaches it. The end of the
-// file lists the lines that stay unexecuted because nothing can reach them,
-// with the reason for each.
+// file says where the lines that stay unexecuted, because nothing can reach
+// them, carry their reasons.
 
 /**
  * The reason of the configuration error a call ends in, or null when it
@@ -391,45 +391,8 @@ describe('diagnostics for a plan that reports no rounds per leg', function (): v
     });
 });
 
-// The lines that stay unexecuted, and why. Each is a guard for a state that
-// the code around it rules out, so no input reaches it; a test could only
-// reach one by breaking the invariant it guards with reflection, which
-// would test the test. They are listed here, beside the tests that closed
-// the rest of the report, because this change does not touch src/. The one
-// guard that carries its reason in the source uses a `// Not reached:`
-// comment (Timeline\DateTimeString); the others can take the same comment.
-//
-// - Constraints\ConsecutiveRoleConstraint::hasConsecutiveRoles(), the early
-//   return for an empty list of roles: the list always holds the role of
-//   the event being checked.
-// - RoleAssignment\BalancedRoleAssignment, the InvariantViolationException
-//   "A participant out of balance has no chain...": the differences of a
-//   leg sum to zero, so a participant first-named too often is connected to
-//   one second-named too often.
-// - Scheduling\DoubleEliminationEngine, the two InvariantViolationExceptions
-//   ("Bracket resolution lost track of a finalist", "Grand final resolved
-//   without a winner"): both brackets always produce a champion once every
-//   earlier stage is resolved, and a resolved stage has a winner.
-// - Scheduling\RoundRobinScheduler::generateScheduleWithRetries(), the
-//   InvariantViolationException after the loop: the last attempt returns or
-//   rethrows.
-// - Scheduling\RoundRobinScheduler::recordConstraintViolation(), the early
-//   return without constraints: it is only called after a constraint has
-//   rejected an event.
-// - Repack\Internal\SessionPacker::exactSearch(), the return for a target
-//   shorter than the load: the load planner never gives a participant more
-//   events in a session than it has free slots there (none of 18,000 random
-//   instances reached it).
-// - Repack\Internal\SessionPacker::improvementTargets(), the return for no
-//   occupied slot, and patternScore(), the two `continue`s: they are asked
-//   only about participants that have a movable event in the session.
-// - Repack\Internal\SessionPacker::tryMoveIntoHole() and movableEventAt(),
-//   the returns for "no movable event at that slot": the slot comes from
-//   the participant's own movable slots.
-// - Repack\Internal\SessionPacker::tryChainSwap(), the `continue` for a
-//   participant seen before and the return for an empty chain: the chain
-//   starts at a participant that has an event in one of the two slots and
-//   none in the other, so it is a path that begins there, never a cycle and
-//   never empty.
-// - Timeline\DateTimeString, "Not reached: the parser reported no error for
-//   the string" (already annotated in the source).
+// The lines that stay unexecuted are guards for a state that the code
+// around them rules out, so no input reaches them; a test could only reach
+// one by breaking the invariant it guards with reflection, which would test
+// the test. Each carries its reason in the source, in a comment that starts
+// `// Not reached:` (fifteen of them: `grep -rn "Not reached:" src/`).

@@ -312,7 +312,9 @@ both, even when the answer is no.
 ## Code rules
 
 - Every PHP file declares `strict_types=1`.
-- DTOs are readonly.
+- Value objects are immutable: a change returns a new instance. The DTOs
+  are `readonly` classes, except `Schedule`, which keeps an iteration cursor
+  and whose events are readonly.
 - Every class, interface, trait and enum in `src/` carries exactly one
   stability annotation in its docblock: `@api`, `@experimental` or
   `@internal`. The README's

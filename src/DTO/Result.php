@@ -7,25 +7,31 @@ namespace MissionGaming\Tactician\DTO;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
- * Represents the outcome of a played event.
+ * The outcome of a played event: who won, or that nobody did, and
+ * optionally a score per participant.
  *
- * A Result records which participant won (or that the event was drawn) and
- * optionally the numeric scores per participant. Events without a Result are
- * simply not played yet.
+ * The winner is what the library counts. Scores are recorded beside it and
+ * are never used to work out who won: a result without a winner is a draw
+ * whatever its scores say. An event with no Result has not been played;
+ * there is no "unplayed" result. Results are immutable.
  *
  * @api
  */
 readonly class Result
 {
     /**
-     * Create a new Result for a played event.
+     * The winner and the scores are not checked against each other, and
+     * scores need not cover every participant of the event.
      *
-     * @param Event $event The event this result belongs to
+     * @param Event $event The event that was played. Pass the object the scheduler or engine
+     *                     produced: the standings calculator tells events apart by object
      * @param Participant|null $winner The winning participant, or null for a draw
      * @param array<int|string, int|float> $scores Optional numeric scores keyed by participant ID
      *                                             (numeric-string IDs become int keys in PHP)
-     * @param array<string, mixed> $metadata Additional result annotations (e.g. who advances from an
-     *                                       elimination tie that finished level, decided app-side)
+     * @param array<string, mixed> $metadata Free-form annotations. The library reads one key,
+     *                                       'tie_winner': the ID of the participant who advances
+     *                                       from an elimination tie that finished level (see
+     *                                       Stage\TieDecision)
      *
      * @throws InvalidInputException When the winner or a score references a participant not in the event
      */
@@ -55,7 +61,7 @@ readonly class Result
     }
 
     /**
-     * Get the event this result belongs to.
+     * The event that was played, the same object the constructor was given.
      */
     public function getEvent(): Event
     {
@@ -63,7 +69,7 @@ readonly class Result
     }
 
     /**
-     * Get the winning participant, or null if the event was drawn.
+     * The winning participant, or null when the event was drawn.
      */
     public function getWinner(): ?Participant
     {
@@ -71,7 +77,7 @@ readonly class Result
     }
 
     /**
-     * Check if the event was drawn.
+     * Whether the result has no winner. The scores are not consulted.
      */
     public function isDraw(): bool
     {
@@ -79,7 +85,8 @@ readonly class Result
     }
 
     /**
-     * Check if the given participant won this event.
+     * Whether the participant with this ID is the winner. False for a draw
+     * and for a participant who is not in the event.
      */
     public function isWinFor(Participant $participant): bool
     {
@@ -87,7 +94,8 @@ readonly class Result
     }
 
     /**
-     * Get all recorded scores keyed by participant ID.
+     * The recorded scores keyed by participant ID, as given: empty when none
+     * were recorded, and an ID that is a numeric string is an int key.
      *
      * @return array<int|string, int|float>
      */
@@ -97,7 +105,8 @@ readonly class Result
     }
 
     /**
-     * Get the recorded score for a participant, or null if none was recorded.
+     * The recorded score of the participant with this ID, or null when none
+     * was recorded for it (including a participant who is not in the event).
      */
     public function getScoreFor(Participant $participant): int|float|null
     {
@@ -105,6 +114,8 @@ readonly class Result
     }
 
     /**
+     * The metadata as given to the constructor.
+     *
      * @return array<string, mixed>
      */
     public function getMetadata(): array
@@ -112,11 +123,20 @@ readonly class Result
         return $this->metadata;
     }
 
+    /**
+     * Whether the metadata has the key, including a key whose value is null.
+     */
     public function hasMetadata(string $key): bool
     {
         return array_key_exists($key, $this->metadata);
     }
 
+    /**
+     * The metadata value under the key, or the default.
+     *
+     * The default is also returned for a key that exists with the value
+     * null; use hasMetadata() to tell the two apart.
+     */
     public function getMetadataValue(string $key, mixed $default = null): mixed
     {
         return $this->metadata[$key] ?? $default;
@@ -141,12 +161,19 @@ readonly class Result
     }
 
     /**
-     * Recreate a result from its array representation.
+     * Recreate a result from the array form toArray() produces.
+     *
+     * The event is rebuilt from the data, so the result holds a new Event
+     * object that is equal to the original and is not the same object. A
+     * missing 'winner' is a draw; missing 'scores' and 'metadata' are empty.
      *
      * @param array<string, mixed> $data
-     * @param array<string, Participant> $participantsById Registry resolving participant IDs
+     * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
      *
-     * @throws InvalidInputException When fields are malformed or a participant ID is unknown
+     * @throws InvalidInputException When a field has the wrong type, a score is not an int
+     *                               or a float, a participant ID is not in the registry,
+     *                               or the winner or a score names a participant who is
+     *                               not in the event
      */
     public static function fromArray(array $data, array $participantsById): self
     {

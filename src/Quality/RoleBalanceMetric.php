@@ -19,12 +19,26 @@ use Override;
  */
 final readonly class RoleBalanceMetric implements QualityMetric
 {
+    /**
+     * Always 'Role Balance': the key of this metric's measurement in a
+     * scorer's report.
+     */
     #[Override]
     public function getName(): string
     {
         return 'Role Balance';
     }
 
+    /**
+     * The mean, over every participant in an event of two, of the absolute
+     * difference between its first-named and second-named appearances, in
+     * events. Events without a round are counted too. 0.0 for a schedule
+     * with no event of two.
+     *
+     * This iterates the schedule itself, which moves its iteration
+     * position: do not call it from inside a `foreach` over the same
+     * Schedule object.
+     */
     #[Override]
     public function measure(Schedule $schedule): float
     {

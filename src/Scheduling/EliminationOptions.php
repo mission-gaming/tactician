@@ -26,6 +26,10 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 final readonly class EliminationOptions
 {
     /**
+     * The options are not checked against an engine here: the double
+     * elimination engine refuses reseedEachRound when it is constructed,
+     * and the single elimination engine does not read grandFinalReset.
+     *
      * @throws InvalidConfigurationException When legsPerTie is not 1 or 2
      */
     public function __construct(
@@ -46,8 +50,12 @@ final readonly class EliminationOptions
      * Build from plain configuration data:
      * ['legs_per_tie' => 2, 'reseed_each_round' => false, 'grand_final_reset' => true].
      *
+     * Every key is optional and takes the constructor's default when it is
+     * left out. A key this class does not have is ignored.
+     *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value has the wrong type
+     * @throws InvalidConfigurationException When a value has the wrong type, or legs_per_tie is
+     *                                       not 1 or 2
      */
     public static function fromArray(array $config): self
     {
@@ -74,6 +82,8 @@ final readonly class EliminationOptions
     }
 
     /**
+     * The plain-data form fromArray() accepts: all three keys, always.
+     *
      * @return array{legs_per_tie: int, reseed_each_round: bool, grand_final_reset: bool}
      */
     public function toArray(): array

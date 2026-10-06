@@ -28,13 +28,21 @@ use Override;
 final readonly class ScheduledSchedule implements Countable, IteratorAggregate, JsonSerializable
 {
     /**
-     * @param array<ScheduledEvent> $scheduledEvents In kickoff order
+     * The list is kept as given: it is not sorted, and its entries are not
+     * checked. The assigner gives it rounds ascending and, within a round,
+     * in slot order, which is kickoff order as long as one round's slots
+     * end before the next round starts.
+     *
+     * @param array<ScheduledEvent> $scheduledEvents
      */
     public function __construct(
         private array $scheduledEvents
     ) {}
 
     /**
+     * Every scheduled event, in the order the schedule was built with (see
+     * the constructor); not sorted by kickoff.
+     *
      * @return array<ScheduledEvent>
      */
     public function getScheduledEvents(): array
@@ -43,9 +51,10 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     }
 
     /**
-     * Scheduled events grouped by round number, ascending.
+     * Scheduled events grouped by round number, ascending; within a round
+     * in the schedule's order. An event without a round is in no group.
      *
-     * @return array<int, array<ScheduledEvent>>
+     * @return array<int, array<ScheduledEvent>> Keyed by 1-based round number
      */
     public function getEventsByRound(): array
     {
@@ -61,6 +70,9 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
         return $grouped;
     }
 
+    /**
+     * The number of scheduled events.
+     */
     #[Override]
     public function count(): int
     {
@@ -68,6 +80,8 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     }
 
     /**
+     * Iterates the scheduled events in the order of getScheduledEvents().
+     *
      * @return Iterator<int, ScheduledEvent>
      */
     #[Override]
@@ -77,10 +91,12 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     }
 
     /**
-     * Convert to a serializable array: participants listed once and
-     * referenced by ID, kickoffs as ISO 8601 UTC strings.
+     * Convert to a serializable array: participants listed once, in the
+     * order they first appear, and referenced by ID; kickoffs as ISO 8601
+     * UTC strings to the second (`2026-08-01T18:00:00Z`); each event's
+     * resource, or null.
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string}>}
+     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}>}
      */
     public function toArray(): array
     {
@@ -105,7 +121,9 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     }
 
     /**
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string}>}
+     * What `json_encode()` writes for the schedule: the array of toArray().
+     *
+     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}>}
      */
     #[Override]
     public function jsonSerialize(): array
@@ -114,9 +132,11 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     }
 
     /**
-     * Serialize to a JSON string.
+     * Serialize to a JSON string that fromJson() reads back.
      *
      * @throws JsonConversionException When the schedule contains values JSON cannot represent
+     *                                 (a string that is not valid UTF-8, a metadata value
+     *                                 such as NAN)
      */
     public function toJson(): string
     {
@@ -128,10 +148,15 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     }
 
     /**
-     * Recreate a scheduled schedule from its array representation.
+     * Recreate a scheduled schedule from its array representation
+     * (toArray()), events in the order of the data. Every participant an
+     * event names by ID must be in `participants`. A kickoff states its
+     * date in full, as ScheduledEvent::fromArray() requires.
      *
      * @param array<string, mixed> $data
-     * @throws InvalidInputException When the data is malformed
+     * @throws InvalidInputException When the data is malformed, an event names a participant
+     *                               the data does not list, or a kickoff does not state an
+     *                               instant by itself
      */
     public static function fromArray(array $data): self
     {
@@ -169,7 +194,7 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     }
 
     /**
-     * Recreate a scheduled schedule from its JSON representation.
+     * Recreate a scheduled schedule from its JSON representation (toJson()).
      *
      * @throws JsonConversionException When the JSON is malformed
      * @throws InvalidInputException When the decoded data is malformed

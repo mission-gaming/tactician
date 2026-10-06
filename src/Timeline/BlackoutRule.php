@@ -27,9 +27,15 @@ final readonly class BlackoutRule implements TimelineRule
     private array $windows;
 
     /**
+     * The bounds may be in any timezone; they are compared as instants.
+     * Pass a list (keys 0, 1, ...): a window without a label is labelled
+     * `blackout N`, N being its key plus one. Windows may overlap; a kickoff inside two of them
+     * is reported once for each.
+     *
      * @param array<array{from: DateTimeImmutable, to: DateTimeImmutable, label?: string}> $windows
      *
-     * @throws InvalidConfigurationException When a window is empty or inverted
+     * @throws InvalidConfigurationException When there is no window, or a window does not end
+     *                                       after it starts
      */
     public function __construct(array $windows)
     {
@@ -70,12 +76,15 @@ final readonly class BlackoutRule implements TimelineRule
      * ['windows' => [['from' => '2026-11-09 00:00', 'to' => '2026-11-17 00:00',
      *                 'timezone' => 'Europe/London', 'label' => 'international break']]].
      *
-     * Each window declares its timezone explicitly; an embedded zone that
-     * contradicts it is rejected (see ZonedTime). `from` and `to` each
-     * state their date in full: a relative string (`tomorrow`, `+1 week`),
-     * an empty one, a time of day without a date or a date that does not
-     * exist is rejected. A date without a time of day (`2026-11-09`) is
-     * midnight at the start of that day.
+     * Each window declares its timezone explicitly; a timezone or offset
+     * written in `from` or `to` is rejected unless it names the declared
+     * timezone as it was declared (with `UTC` declared, `Z` and `+00:00` are
+     * rejected). `from` and `to` each state their date in full:
+     * a relative string (`tomorrow`, `+1 week`), an empty one, a time of
+     * day without a date or a date that does not exist is rejected. A date
+     * without a time of day (`2026-11-09`) is midnight at the start of that
+     * day. "Timeline Assignment" in the usage guide describes the rule.
+     * `label` is optional.
      *
      * @param array<string, mixed> $config
      * @throws InvalidConfigurationException When the windows are malformed, or a bound does not
@@ -127,7 +136,13 @@ final readonly class BlackoutRule implements TimelineRule
     }
 
     /**
-     * Serialize back to plain configuration data, windows in UTC.
+     * Serialize back to plain configuration data that fromArray() reads,
+     * windows in their given order. Every bound is written in UTC, to the
+     * second, with `timezone` set to `UTC`: the instants are kept, the
+     * timezone they were declared in is not. Every window has a label, the
+     * default one where none was given. A fraction of a second is not
+     * written, so a window that starts and ends within one second does not
+     * read back.
      *
      * @return array{windows: array<int, array{from: string, to: string, timezone: string, label: string}>}
      */
@@ -143,12 +158,21 @@ final readonly class BlackoutRule implements TimelineRule
         ];
     }
 
+    /**
+     * `Blackout Windows (N)`, N being the number of windows.
+     */
     #[Override]
     public function getName(): string
     {
         return 'Blackout Windows (' . count($this->windows) . ')';
     }
 
+    /**
+     * One description for each kickoff inside a window, in the order of the
+     * scheduled events and, for one event, of the windows. A kickoff at a
+     * window's start is inside it; one at its end is not. Times in the
+     * descriptions are UTC.
+     */
     #[Override]
     public function validate(ScheduledSchedule $scheduled): array
     {

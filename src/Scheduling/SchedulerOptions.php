@@ -24,8 +24,11 @@ interface SchedulerOptions
     /**
      * Build options from plain configuration data.
      *
-     * Unknown or invalid values fail loudly; omitted keys use the
-     * algorithm's documented defaults.
+     * A value of the wrong type or out of range, and an identifier the
+     * options do not know, fail loudly; omitted keys use the algorithm's
+     * documented defaults. What happens to a key the options do not have is
+     * the implementation's to say: PotDrawOptions refuses one, and
+     * RoundRobinOptions and SwissOptions ignore it.
      *
      * @param array<string, mixed> $config
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException
@@ -33,7 +36,13 @@ interface SchedulerOptions
     public static function fromArray(array $config): static;
 
     /**
-     * Serialize back to the plain-data form fromArray() accepts.
+     * Serialize back to the plain-data form fromArray() accepts: scalar
+     * values under string keys, so the array can be stored as JSON.
+     *
+     * An implementation whose options can hold something that has no
+     * plain-data form says so on its own toArray(): RoundRobinOptions
+     * refuses a leg strategy or a role assignment that is not one of the
+     * built-ins.
      *
      * @return array<string, mixed>
      */

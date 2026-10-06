@@ -24,8 +24,20 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
  * slot hosts up to capacityPerSlot concurrent events.
  *
  * Time convention matches the timeline family: session starts are
- * declared in an explicit timezone, slot arithmetic is wall-clock in that
- * zone, and emitted kickoffs are UTC.
+ * declared in an explicit timezone, the slot interval is added in that
+ * zone, and emitted kickoffs are UTC. Every session start is an instant
+ * the caller states, so a 20:15 session is at 20:15 whatever daylight
+ * saving does between sessions. Within a session, a slot interval written
+ * in hours, minutes or seconds (`PT25M`, `PT1H`) is elapsed time: the
+ * slots of a session that runs across a daylight-saving change stay that
+ * far apart, and their local times move by the hour the clocks moved. A
+ * slot interval written in days or longer (`P1D`) keeps the local time of
+ * day instead, except that a slot in the hour the clocks skip is moved an
+ * hour later, and so is every slot after it in the session. All of this is
+ * said of an interval built from an ISO 8601 duration
+ * (`new DateInterval('PT1H')`, or `slot_interval` in plain data): PHP adds
+ * an interval made by `DateInterval::createFromDateString()` or by `diff()`
+ * as local time, whatever its parts.
  *
  * A grid comes in two forms. An instant-based grid (the constructor given
  * session starts, or fromArray() given `sessions`) knows when every
@@ -83,21 +95,30 @@ final readonly class SessionGrid
      * directly; call shapeOnly(). A count with an interval, or session
      * starts without one, is rejected.
      *
-     * @param array<DateTimeImmutable>|int $sessionStarts Ordered session start instants,
-     *                                                    all in the same declared timezone;
-     *                                                    or, for a shape-only grid, the
-     *                                                    number of sessions
+     * @param array<DateTimeImmutable>|int $sessionStarts Session start instants, strictly
+     *                                                    ascending and all in the same
+     *                                                    declared timezone; the first is
+     *                                                    session 0, whatever the array's
+     *                                                    keys. Or, for a shape-only grid,
+     *                                                    the number of sessions
      * @param DateInterval|null $slotInterval Time between consecutive slots within a
      *                                        session; null for a shape-only grid, and
      *                                        only for one
      * @param int $slotsPerSession Default slot count for every session
-     * @param array<int, int> $slotsPerSessionOverrides Session index => slot count, for
-     *                                                  sessions deeper or shallower than
-     *                                                  the default
+     * @param array<int, int> $slotsPerSessionOverrides 0-based session index => slot count,
+     *                                                  for sessions deeper or shallower
+     *                                                  than the default
      * @param int|null $capacityPerSlot How many events may share one slot; null for
      *                                  unbounded
      *
-     * @throws InvalidConfigurationException When the grid configuration is invalid
+     * @throws InvalidConfigurationException When there is no session, a start is not a
+     *                                       DateTimeImmutable, is in another timezone than
+     *                                       the first or is not after the one before it,
+     *                                       the slot interval is missing or does not move
+     *                                       time forward, a session count is given with a
+     *                                       slot interval, a slot count is not an integer
+     *                                       of 1 or more, the capacity is below 1, or an
+     *                                       override names a session the grid does not have
      */
     public function __construct(
         array|int $sessionStarts,
@@ -272,10 +293,13 @@ final readonly class SessionGrid
      *
      * The timezone is required and authoritative for every session start,
      * same convention as the timeline family. Each session start states its
-     * date in full, as the start of a timeline does: a relative string
-     * (`tomorrow`, `+1 week`), an empty one, a time of day without a date
-     * or a date that does not exist is rejected, and a date without a time
-     * of day is midnight (see ZonedTime).
+     * date in full, as the start of a timeline does:
+     * a relative string (`tomorrow`, `+1 week`), an empty one, a time of
+     * day without a date or a date that does not exist is rejected, and a
+     * date without a time of day is midnight. A timezone or offset written
+     * in a session start is rejected unless it names the declared timezone
+     * as it was declared (with `UTC` declared, `Z` and `+00:00` are
+     * rejected). "Timeline Assignment" in the usage guide describes the rule.
      *
      * A shape-only grid is the same data with `session_count` in place of
      * `sessions`, `timezone` and `slot_interval`:
@@ -393,9 +417,13 @@ final readonly class SessionGrid
      * Serialize back to the plain-data form fromArray() accepts.
      *
      * An instant-based grid with a finite capacity serializes exactly as
-     * it always has. A shape-only grid has `session_count` and none of
-     * `sessions`, `timezone` and `slot_interval`. An unbounded capacity is
-     * the string {@see self::UNBOUNDED}.
+     * it always has: its session starts as local times in the declared
+     * timezone, to the second, with the timezone's name beside them. A
+     * shape-only grid has `session_count` and none of `sessions`,
+     * `timezone` and `slot_interval`. An unbounded capacity is the string
+     * {@see self::UNBOUNDED}. `slots_per_session_overrides` lists the
+     * sessions whose slot count is not the default, and is left out when
+     * there is none.
      *
      * @return array{sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}|array{session_count: int, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}
      */
@@ -434,6 +462,10 @@ final readonly class SessionGrid
         return $data;
     }
 
+    /**
+     * How many sessions the grid has; at least 1. Sessions are numbered
+     * from 0 to this minus 1.
+     */
     public function getSessionCount(): int
     {
         return count($this->slotCounts);
@@ -449,6 +481,10 @@ final readonly class SessionGrid
     }
 
     /**
+     * The start of a session, which is the time of its slot 0, in the
+     * timezone it was declared in (not normalized to UTC; getSlotTime()
+     * is).
+     *
      * @param int $session 0-based session index
      *
      * @throws InvalidConfigurationException When the session is out of range
@@ -491,7 +527,8 @@ final readonly class SessionGrid
     }
 
     /**
-     * The time between consecutive slots within a session.
+     * The time between consecutive slots within a session, as given; the
+     * same for every session.
      *
      * @throws UnavailableValueException When the grid is shape-only (unchecked: ask
      *                                   hasInstants() first)
@@ -542,7 +579,9 @@ final readonly class SessionGrid
     }
 
     /**
-     * Total assignable (session, slot) positions across the grid.
+     * Total assignable (session, slot) positions across the grid: the sum
+     * of the sessions' slot counts. The capacity per slot is not part of
+     * it; a position holds up to that many events.
      */
     public function getPositionCount(): int
     {
@@ -551,6 +590,8 @@ final readonly class SessionGrid
 
     /**
      * Whether a (session, slot) pair addresses a position on this grid.
+     * Both indexes are 0-based; an index out of range is false, never an
+     * exception.
      */
     public function hasPosition(int $session, int $slot): bool
     {
@@ -637,9 +678,13 @@ final readonly class SessionGrid
     /**
      * The kickoff time of one slot, in UTC.
      *
-     * Arithmetic is wall-clock in the grid's declared timezone (a 20:15
-     * session start stays 20:15 across DST); the result is normalized to
-     * UTC, matching the timeline family's convention.
+     * The session's start plus the slot interval once for each slot before
+     * this one, added in the grid's declared timezone; the result is
+     * normalized to UTC, matching the timeline family's convention. An
+     * interval of hours, minutes or seconds is elapsed time, so the slots
+     * of a session that runs across a daylight-saving change stay that far
+     * apart; one of days or longer keeps the local time of day (see the
+     * class description).
      *
      * @param int $session 0-based session index
      * @param int $slot 0-based slot index within the session

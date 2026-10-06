@@ -21,12 +21,24 @@ use Override;
  */
 final readonly class RoleStreakMetric implements QualityMetric
 {
+    /**
+     * Always 'Role Streaks': the key of this metric's measurement in a
+     * scorer's report.
+     */
     #[Override]
     public function getName(): string
     {
         return 'Role Streaks';
     }
 
+    /**
+     * The mean, over every participant in an event of two that has a round,
+     * of its longest run of consecutive appearances in one role, minus one.
+     *
+     * A participant has one role per round: of two of its events in the
+     * same round, the later in schedule order is the one read. 0.0 for a
+     * schedule with no such event.
+     */
     #[Override]
     public function measure(Schedule $schedule): float
     {
