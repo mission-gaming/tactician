@@ -40,7 +40,10 @@ final readonly class RepackOptions
     /**
      * The largest consolidation weight: half of PHP_INT_MAX, rounded down.
      * The objective counts the weight twice (once for each participant of
-     * an event), and twice anything larger is not an integer.
+     * an event), and twice anything larger is not an integer. The value
+     * assumes two participants to an event, which is all the repacker
+     * takes today; it will be revisited when events with more participants
+     * arrive (ADR 0003).
      */
     public const int MAX_CONSOLIDATION_WEIGHT = PHP_INT_MAX >> 1;
 
