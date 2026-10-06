@@ -64,8 +64,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * calculator are part of it as well, when they are not the default:
      * the ranking scale (the three values of a WinDrawLossRanking, default
      * 3/1/0; any other RankingStrategy is stated as custom and not told
-     * apart from another of your own), the tiebreakers by name and in
-     * order, and a subclass of StandingsCalculator, stated as custom.
+     * apart from another of your own) and the tiebreakers by name and in
+     * order, or, in their place, that the calculator is a subclass of
+     * StandingsCalculator (stated as custom; nothing is read from it, and
+     * two subclasses are not told apart).
      *
      * Not part of it: grandFinalReset, which this engine does not read,
      * and the standings calculator of a bracket on a fixed path, which

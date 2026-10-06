@@ -765,8 +765,12 @@ describe, and these limits follow from that:
   Restore them with the state, as you do today.
 - A `RankingStrategy` of your own is stated as "custom". The engine tells it
   from every `WinDrawLossRanking` scale and not from another strategy of
-  your own. The same holds for a subclass of `StandingsCalculator`. A
-  tiebreaker is stated by its `getName()`.
+  your own. A subclass of `StandingsCalculator` is stated as "custom" too,
+  whatever ranking strategy and tiebreakers it was built with: it may order
+  the table by rules of its own, so it differs from the library's
+  calculator and not from another subclass. A tiebreaker is stated by its
+  `getName()`, so one that orders differently needs a name of its own,
+  including a subclass of one of the library's.
 - A subclass of `SwissPairingEngine` (the class is not final) does not have
   the fingerprint of the engine it extends, because it may pair differently.
   Two subclasses have the same one unless they override `getFingerprint()`.

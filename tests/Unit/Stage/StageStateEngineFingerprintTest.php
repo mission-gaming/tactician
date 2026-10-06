@@ -22,6 +22,7 @@ use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
 use MissionGaming\Tactician\Standings\RankingStrategy;
 use MissionGaming\Tactician\Standings\SonnebornBergerTiebreaker;
+use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\TiebreakerInterface;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
@@ -317,6 +318,10 @@ describe('engine fingerprints', function (): void {
         ],
         'double elimination' => [fn() => new DoubleEliminationEngine(), 'tactician:v1:double-elimination'],
         'double elimination without a reset' => [
+        'Swiss with a calculator of the application, built with rules' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new readonly class (WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()]) extends StandingsCalculator {}),
+            'tactician:v1:swiss;standings=custom',
+        ],
             fn() => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2, grandFinalReset: false)),
             'tactician:v1:double-elimination;grand-final-reset=no;legs-per-tie=2',
         ],
@@ -895,6 +900,49 @@ describe('the fingerprint builder', function (): void {
             'tactician:v1:ladder;a=yes;c=3',
             [
                 'a: recorded the default, this engine yes',
+    it('reads nothing from a calculator of the application', function (): void {
+        // A subclass whose constructor does not call the one it inherits
+        // has no ranking strategy and no tiebreakers to read: reading them
+        // is an Error. Such a calculator ordered a re-seeded bracket before
+        // the fingerprint existed, and still does, stamped or not. The
+        // object is built without its constructor here to be in that state.
+        $subclass = new readonly class extends StandingsCalculator {
+            #[Override]
+            public function calculate(array $participants, array $results): Standings
+            {
+                return (new StandingsCalculator())->calculate($participants, $results);
+            }
+        };
+        $calculator = (new ReflectionClass($subclass))->newInstanceWithoutConstructor();
+        expect(fn() => $calculator->getTiebreakers())->toThrow(Error::class);
+
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator);
+
+        $state = StageState::start($this->participants);
+        $pairing = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($pairing, array_map(
+            fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+            $pairing->getEvents()
+        ));
+
+        expect($engine->getFingerprint())->toBe('tactician:v1:single-elimination;reseed-each-round=yes;standings=custom')
+            ->and($engine->pairNextRound($state)->getRoundNumber())->toBe(2)
+            ->and($engine->pairNextRound($state->withEngineFingerprint($engine->getFingerprint()))->getRoundNumber())->toBe(2);
+    });
+
+    it('does not tell two calculators of the application apart, whatever they were built with', function (): void {
+        // The same limit as for a ranking strategy of the application: the
+        // library cannot know which of the rules a subclass still applies.
+        $build = fn(StandingsCalculator $calculator): string => (new SwissPairingEngine(standingsCalculator: $calculator))
+            ->getFingerprint();
+
+        $onTheChessScale = $build(new readonly class (WinDrawLossRanking::oneHalfZero()) extends StandingsCalculator {});
+        $withATiebreaker = $build(new readonly class (tiebreakers: [new BuchholzTiebreaker()]) extends StandingsCalculator {});
+
+        expect($onTheChessScale)->toBe($withATiebreaker)
+            ->and($onTheChessScale)->not->toBe($build(new StandingsCalculator()));
+    });
+
                 'b: recorded 1, this engine the default',
                 'c: recorded 2, this engine 3',
             ],

@@ -90,7 +90,9 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *   so it differs from every win/draw/loss scale; two strategies of
      *   your own are not told apart;
      * - the tiebreakers, by name and in order (default: none);
-     * - a subclass of StandingsCalculator, stated as custom.
+     * - a subclass of StandingsCalculator, stated as custom in place of the
+     *   two above: it may order the table by rules of its own, so nothing
+     *   is read from it, and two subclasses are not told apart.
      *
      * Not part of it:
      *

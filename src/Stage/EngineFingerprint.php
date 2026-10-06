@@ -93,7 +93,7 @@ final readonly class EngineFingerprint
 
     /**
      * State the rules a table is ordered by, for an engine that pairs from
-     * the table: the ranking scale, the tiebreakers in order, and whether
+     * the table: the ranking scale and the tiebreakers in order, or that
      * the calculator is a class of the application's.
      *
      * A WinDrawLossRanking is described by its three values, and the 3/1/0
@@ -101,12 +101,26 @@ final readonly class EngineFingerprint
      * RankingStrategy has no description the library could write, so it is
      * stated as `custom`: told apart from every win/draw/loss scale, and
      * not from another strategy of the application's. A tiebreaker is
-     * stated by the name it gives itself. A subclass of StandingsCalculator
-     * may order the table by rules of its own and is stated as `custom`
-     * as well.
+     * stated by the name it gives itself, so two tiebreakers with one name
+     * are one tiebreaker here. The rule for an engine's options holds for
+     * these too: a tiebreaker or a ranking strategy of the library that
+     * gains an option states it here only when it is not at its default,
+     * so that what is written today for one without options stays as it
+     * is.
+     *
+     * A subclass of StandingsCalculator may order the table by rules of
+     * its own, so it is stated as `custom` and nothing is read from it: it
+     * need not use the ranking strategy and the tiebreakers it was built
+     * with, and one with a constructor of its own need not have any. It is
+     * told apart from the library's calculator and not from another
+     * subclass.
      */
     public function withStandingsRules(StandingsCalculator $calculator): self
     {
+        if ($calculator::class !== StandingsCalculator::class) {
+            return $this->with('standings', 'custom', 'library');
+        }
+
         $ranking = $calculator->getRankingStrategy();
 
         return $this
@@ -124,8 +138,7 @@ final readonly class EngineFingerprint
                     array_values($calculator->getTiebreakers())
                 ),
                 []
-            )
-            ->with('standings', $calculator::class === StandingsCalculator::class ? 'library' : 'custom', 'library');
+            );
     }
 
     /**
