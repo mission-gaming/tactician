@@ -15,6 +15,19 @@ return RectorConfig::configure()
         __DIR__ . '/src',
         __DIR__ . '/tests',
     ])
+    // One process, no parallel workers. Rector before 2.7.0 writes a cache
+    // entry in place, not through a temporary file and a rename, and every
+    // process loads and rewrites the entry for this configuration as it
+    // starts. A worker that loads it while another is part way through
+    // writing it reads half a PHP file and dies with a syntax error, which
+    // the run reports as "Child process error": CI failed that way now and
+    // then, on commits that changed nothing Rector reads. One process cannot
+    // race with itself, and it checks the same files with the same rules; it
+    // takes about twice as long. Rector 2.7.0 writes the entry atomically:
+    // when the locked version reaches it, this line goes (a test in
+    // tests/Feature/GateConfigurationTest.php requires the line until then
+    // and fails on it from then on).
+    ->withoutParallel()
     // Every PHP set up to 8.3, the Composer floor. Named, not read from the
     // running PHP, so that the gate proposes the same changes on 8.3, 8.4
     // and 8.5 and never syntax from a later version.

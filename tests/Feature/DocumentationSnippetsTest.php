@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippet;
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippets;
@@ -214,6 +215,8 @@ describe('Documentation snippets', function () use ($extracted, $blocks, $skippe
 
     it('expects only the blocks listed here to throw', function () use ($extracted): void {
         expect(snippetsMarked($extracted, DocumentationSnippet::THROWS))->toBe([
+            // A timeline that starts "tomorrow", which is read from the clock
+            'docs/USAGE.md / Timeline Assignment: ' . InvalidConfigurationException::class,
             // Asking a shape-only session grid for a slot time
             'docs/USAGE.md / Schedule Repacking: ' . UnavailableValueException::class,
             'docs/USAGE.md / Real-World Examples: ' . IncompleteScheduleException::class,
@@ -320,6 +323,19 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'echo "Total legs: "',
             ["Total legs: 2\nRounds per leg: 3\nTotal rounds: 6\n", "Leg 1, Round 3:\n", "Leg 2, Round 4:\n", "Leg 2, Round 6:\n"],
             ['Leg 3', 'Round 7'],
+        ],
+        'balanced roles of four participants' => [
+            'docs/USAGE.md',
+            'foreach ($balanced as $event) {',
+            [
+                "Round 1: Red Star FC v Celtic\n"
+                . "Round 1: Athletic Bilbao v AS Livorno\n"
+                . "Round 2: Celtic v Athletic Bilbao\n"
+                . "Round 2: AS Livorno v Red Star FC\n"
+                . "Round 3: AS Livorno v Celtic\n"
+                . "Round 3: Red Star FC v Athletic Bilbao\n",
+            ],
+            [],
         ],
         'standings table' => [
             'docs/USAGE.md',
@@ -540,6 +556,28 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$options->toArray();',
             "assert(\$options->toArray() === ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]);",
+        ],
+        'role balance of the two role assignments' => [
+            'docs/USAGE.md',
+            '(new RoleBalanceMetric())->measure($balanced);',
+            "assert((new RoleBalanceMetric())->measure(\$parity) === 1.5);\nassert((new RoleBalanceMetric())->measure(\$balanced) === 1.0);",
+        ],
+        'balanced options round trip' => [
+            'docs/USAGE.md',
+            '$balancedOptions->toArray();',
+            "assert(\$balancedOptions->toArray() === ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);",
+        ],
+        // The custom role assignment of the document is honoured in every event
+        'a custom role assignment names the better seed first' => [
+            'docs/USAGE.md',
+            'new RoundRobinOptions(roleAssignment: new BetterSeedFirst())',
+            <<<'PHP'
+                assert(count($seedFirst) === 3);
+                foreach ($seedFirst as $event) {
+                    [$first, $second] = $event->getParticipants();
+                    assert($first->getSeed() < $second->getSeed());
+                }
+                PHP,
         ],
         // The prose says every rotation the greedy generator tries violates the policy
         'backtracking is needed for the placement policy' => [

@@ -9,8 +9,7 @@ namespace MissionGaming\Tactician\Exceptions;
  *
  * {@see InvalidConfigurationException::getReason()} returns one of these for
  * a configuration error the library raises, so a caller does not have to
- * match the message text. The errors of `Stage\StageState` are the exception:
- * they state no reason yet, and `getReason()` returns null for them. A case says what kind of mistake was made, not
+ * match the message text. A case says what kind of mistake was made, not
  * which component found it: `TooFewParticipants` comes from the round-robin
  * scheduler, the Swiss engine and the elimination engines alike. The
  * exception's context (`getContext()`) carries the values involved.
@@ -84,6 +83,12 @@ enum InvalidConfigurationReason: string
 
     /** The leg strategy cannot produce the legs the configuration asks for. */
     case UnsatisfiableLegStrategy = 'unsatisfiable_leg_strategy';
+
+    /**
+     * A role assignment returned something other than the seatings it was
+     * given, each one unchanged or reversed. It may decide roles only.
+     */
+    case InvalidRoleAssignment = 'invalid_role_assignment';
 
     /**
      * Plain-data configuration holds a key the options do not have. The
@@ -166,6 +171,46 @@ enum InvalidConfigurationReason: string
     /** A progression selector asked for a rank the standings do not have. */
     case RankUnavailable = 'rank_unavailable';
 
+    // Recording a results-driven stage
+
+    /**
+     * A round was recorded out of play order: its number is not above the
+     * number of the last round recorded.
+     */
+    case RoundOutOfSequence = 'round_out_of_sequence';
+
+    /**
+     * An event, or the event of a result, does not belong to the round it
+     * was recorded with: it carries another round number, or the round's
+     * pairing does not hold it. An event that carries no round number at
+     * all is {@see self::EventWithoutRoundNumber}.
+     */
+    case EventNotInRound = 'event_not_in_round';
+
+    /**
+     * Results were added or replaced in a stage that has no recorded round
+     * to hold them.
+     */
+    case NoRoundRecorded = 'no_round_recorded';
+
+    /** A result was to be replaced for an event that has no recorded result. */
+    case ResultNotRecorded = 'result_not_recorded';
+
+    /**
+     * A result was to be replaced in a round that a later recorded round
+     * was paired from. Only the last recorded round can be corrected.
+     */
+    case RoundSuperseded = 'round_superseded';
+
+    /** A stage state was to be stamped with an empty engine fingerprint. */
+    case EmptyEngineFingerprint = 'empty_engine_fingerprint';
+
+    /**
+     * A stage state carries the fingerprint of another engine, or of the
+     * same engine under another configuration, than the one reading it.
+     */
+    case EngineFingerprintMismatch = 'engine_fingerprint_mismatch';
+
     // Repack requests
 
     /** A movable or pinned event has an empty ID. */
@@ -199,8 +244,13 @@ enum InvalidConfigurationReason: string
     case PositionOutOfRange = 'position_out_of_range';
 
     /**
-     * A datetime, its timezone or an ISO 8601 duration cannot be parsed.
-     * The previous exception is the one PHP raised.
+     * A datetime, its timezone or an ISO 8601 duration cannot be parsed, or
+     * the datetime does not state an instant by itself: it is relative to
+     * the current time or leaves the date or its year out, or it does not
+     * mean what it writes (a date or a time that does not exist, a weekday
+     * name that is not the weekday of the date, a second timezone that is
+     * not the first). The previous exception is the one PHP raised, where
+     * PHP raised one: it accepts all of those, so that error has none.
      */
     case UnparseableTime = 'unparseable_time';
 

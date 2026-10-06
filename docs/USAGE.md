@@ -39,7 +39,9 @@ anything else that competes.
 | **Pairing** | The unordered combination of participants in an event — "Alice vs Bob" regardless of who is home. |
 | **Round** | A set of events played at the same stage of the tournament. Round numbers are 1-based and continuous across legs (a two-leg, 4-participant round robin has rounds 1–6). |
 | **Leg** | One complete cycle of pairings. The leg count is *the number of times each participant meets each other participant*: a home-and-away league is 2 legs. Swiss and elimination formats have no legs concept. |
-| **Home/Away roles** | The participant order within an event: the first participant is home, the second away. The round-robin generator alternates roles with round parity, which bounds how far a participant's home and away counts can drift apart; it does not make them equal. |
+| **Home/Away roles** | The participant order within an event: the first participant is home, the second away. The round-robin generator alternates roles with round parity, which bounds how far a participant's home and away counts can drift apart; it does not make them equal. The balanced **role assignment** does, as far as the number of events allows. |
+| **Role** | The position of a participant in an event: first-named (index 0 of `getParticipants()`) or second-named (index 1). The neutral name for what a sport calls home and away, white and black, or server and receiver. |
+| **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `RoundParityRoleAssignment` (the default) alternates with round parity; `BalancedRoleAssignment` ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size. See [Role Assignment](#role-assignment). |
 | **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events — round robin records them in the `byes` schedule metadata, and the Swiss/elimination engines report them on the round pairing. |
 | **Seed** | A participant's ranking, used for bracket placement, serpentine group distribution, and seed-protection constraints. Lower numbers are better; 1 is the top seed. |
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
@@ -418,7 +420,8 @@ $shuffledSchedule = $scheduler->schedule(
 ```
 
 Options are plain-data constructible for config-driven platforms, with the
-stable strategy identifiers `mirrored`, `repeated`, and `shuffled`:
+stable strategy identifiers `mirrored`, `repeated`, and `shuffled` (and
+`round_parity` and `balanced` for the [role assignment](#role-assignment)):
 
 ```php
 $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'mirrored']);
@@ -515,6 +518,199 @@ $schedule = $scheduler->schedule(
     new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
 );
 ```
+
+### Role Assignment
+
+The **role** of a participant in an event is its position: first-named or
+second-named (home and away in a football league, white and black on a chess
+board). A **role assignment** decides the roles of a round robin, one leg at
+a time. It never changes who meets whom, or in which round.
+
+`RoundRobinOptions` takes one as `roleAssignment`:
+
+| Role assignment | Roles of a single leg | Identifier |
+|-----------------|-----------------------|------------|
+| `RoundParityRoleAssignment` (the default) | Alternate with round parity. A participant ends up to 3 apart in a field of even size and up to 4 apart in a field of odd size. Of four participants, one is second-named in all three of its events. | `round_parity` |
+| `BalancedRoleAssignment` | As even as the leg allows. A participant ends at most 1 apart in a field of even size, where it plays an odd number of events, and exactly 0 apart in a field of odd size. | `balanced` |
+
+"Apart" is the difference between the number of events a participant plays
+first-named and the number it plays second-named.
+
+```php
+use MissionGaming\Tactician\Quality\RoleBalanceMetric;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+
+$parity = (new RoundRobinScheduler())->schedule($participants);
+$balanced = (new RoundRobinScheduler())->schedule(
+    $participants,
+    new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())
+);
+
+foreach ($balanced as $event) {
+    [$first, $second] = $event->getParticipants();
+    echo "Round {$event->getRound()?->getNumber()}: {$first->getLabel()} v {$second->getLabel()}\n";
+}
+
+// The mean distance between a participant's two role counts
+(new RoleBalanceMetric())->measure($parity);   // 1.5
+(new RoleBalanceMetric())->measure($balanced); // 1.0
+```
+
+The block prints:
+
+```
+Round 1: Red Star FC v Celtic
+Round 1: Athletic Bilbao v AS Livorno
+Round 2: Celtic v Athletic Bilbao
+Round 2: AS Livorno v Red Star FC
+Round 3: AS Livorno v Celtic
+Round 3: Red Star FC v Athletic Bilbao
+```
+
+The pairings, their rounds, their order and the byes are the ones the default
+produces: only the roles differ. For a single leg of 2 to 30 participants the
+balanced roles also keep these two limits, which the test suite checks:
+
+- No participant plays in the same role more than twice in a row. The default
+  reaches four in a row.
+- While the leg is played, no participant is more than 1 apart in a field of
+  even size, or more than 2 apart in a field of odd size.
+
+The option is plain data too. `toArray()` writes the `role_assignment` key
+only when a role assignment was named, so options that do not name one
+serialize as before, and options that name one keep it through a round trip,
+the default included:
+
+```php
+$balancedOptions = RoundRobinOptions::fromArray(['legs' => 2, 'role_assignment' => 'balanced']);
+$balancedOptions->toArray();
+// ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']
+```
+
+`BalancedRoleAssignment` becomes the default in 0.3. To keep the roles of
+today after that release, name the current default now:
+`new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())`, or
+`'role_assignment' => 'round_parity'` in plain data. Options that name it
+serialize with the key, so a stored configuration stays on these roles;
+options that name no role assignment serialize without it and follow the
+default of the release that reads them.
+
+#### Legs after the first
+
+The role assignment decides the roles of every leg as the generator lays it
+out. The leg strategy then does to those roles what it does to any roles, so
+no leg strategy changes its meaning. With `BalancedRoleAssignment`, for 1 to
+6 legs:
+
+| Leg strategy | Each leg on its own | Whole schedule, even field | Whole schedule, odd field | Each pairing |
+|--------------|---------------------|----------------------------|---------------------------|--------------|
+| `MirroredLegStrategy` | Every leg is within the limit of a single leg | 1, 0, 1, 2, 3 and 4 apart for 1 to 6 legs: leg 1 is played one way and every later leg the other way | 0 apart | One meeting one way and the others the other way: an even split for 2 legs, one apart for 3 legs |
+| `RepeatedLegStrategy` | Every leg is within the limit of a single leg | As many apart as there are legs: every leg has the roles of leg 1 | 0 apart | Every meeting the same way |
+| `ShuffledLegStrategy` | Leg 1 is within the limit of a single leg | No limit: the roles of the later legs are random | No limit | Random after leg 1 |
+
+Two things the table does not promise:
+
+- **A schedule from a scheduler that has a `Randomizer`.** The scheduler
+  shuffles the participant order for the first leg only. It lays the later
+  legs out from the order as given, so they are not the first leg mirrored or
+  repeated pairing by pairing. Each leg is still within the limit of a single
+  leg: the whole schedule is 0 apart in a field of odd size, and at most as
+  many apart as there are legs in a field of even size. The columns "Whole
+  schedule, even field" and "Each pairing" are for a scheduler without a
+  `Randomizer`.
+- **Streaks across two legs.** The limit of two in a row holds inside a leg.
+  Where one leg ends and the next begins, a role can repeat more often. Two
+  mirrored legs end balanced under either role assignment; the balanced one
+  also balances the halfway point, and across the middle of the schedule it
+  can put a participant in the same role three times in a row in a field of
+  even size and four times in a field of odd size. That is one more than the
+  default in most fields: measured for 6 to 30 participants, the default
+  repeats a role at most twice there in a field of even size, and three
+  times in a field of odd size from 9 participants up. Add a
+  `ConsecutiveRoleConstraint` if a schedule of several legs must not do
+  that; it then fails loudly where the roles break it.
+
+#### Role assignments and constraints
+
+Constraints stay hard filters. A constraint sees every event with the roles
+the role assignment gave it, and the scheduler never falls back to other
+roles to satisfy one:
+
+- **Role constraints the balanced roles satisfy.** For a single leg of 2 to 30
+  participants, `ConsecutiveRoleConstraint` with a limit of 2 holds, and so
+  does `RoleBalanceConstraint` with a limit of 1 in a field of even size (2 in
+  a field of odd size). The default roles break both for four participants.
+- **Role constraints the balanced roles break.** Generation fails with an
+  `IncompleteScheduleException` that names the constraint, as it does when
+  the default roles break one. A limit of one same-role event in a row is an
+  example: no round robin of an even number of participants, four or more,
+  has it.
+- **The failure is about these roles, not about every balanced schedule.**
+  A role assignment does not know the constraints. A rule that fixes the
+  role of one participant or of one pairing ("the first participant is
+  first-named against the second") can reject the roles
+  `BalancedRoleAssignment` chooses although other balanced roles would
+  satisfy it, and although the default roles do. The scheduler does not
+  search for them, with or without `backtracking`. If such a rule matters
+  more than the balance, keep `RoundParityRoleAssignment` for that schedule,
+  or write a role assignment that honours the rule.
+- **Rotated retries.** Every retry lays the legs out again and asks the role
+  assignment again, so a schedule that needed a retry keeps the limits above.
+- **Backtracking.** The search chooses the roles of the first leg itself,
+  while it satisfies the constraints. The role assignment is then asked about
+  the leg the search found. `BalancedRoleAssignment` leaves a balanced leg
+  alone and otherwise reverses chains of pairings until every participant is
+  within the limit of a single leg (it promises nothing about streaks there).
+  Roles that changed are checked against the constraints again, and a
+  rejection fails with an `IncompleteScheduleException`: the scheduler does
+  not keep the roles of the search, because that would silently drop the
+  balance that was asked for. Constraints that do not read roles are never
+  affected.
+
+#### Writing a role assignment
+
+Implement `RoleAssignmentInterface`. `assignRoles()` receives one leg as a
+list of rounds; a round is a list of seatings, and a seating is two seats in
+the roles the generator proposes, the first-named participant at index 0. In
+a field of odd size the seating of the bye has `null` in one seat. Return the
+same rounds with each seating unchanged or reversed:
+
+```php
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+
+// The participant with the better seed is first-named in every event
+final class BetterSeedFirst implements RoleAssignmentInterface
+{
+    public function assignRoles(array $rounds): array
+    {
+        foreach ($rounds as $round => $seatings) {
+            foreach ($seatings as $position => [$first, $second]) {
+                if ($first !== null && $second !== null && $second->getSeed() < $first->getSeed()) {
+                    $rounds[$round][$position] = [$second, $first];
+                }
+            }
+        }
+
+        return $rounds;
+    }
+}
+
+$seededClubs = [
+    new Participant('celtic', 'Celtic', 1),
+    new Participant('athletic', 'Athletic Bilbao', 2),
+    new Participant('livorno', 'AS Livorno', 3),
+];
+
+$seedFirst = (new RoundRobinScheduler())->schedule(
+    $seededClubs,
+    new RoundRobinOptions(roleAssignment: new BetterSeedFirst())
+);
+```
+
+An answer that drops, adds, moves or re-pairs a seating is refused with an
+`InvalidConfigurationException` whose reason is `InvalidRoleAssignment`. A
+custom role assignment has no plain-data identifier, so `toArray()` refuses
+options that carry one, as it does for a custom leg strategy.
 
 ## Results and Standings
 
@@ -1547,6 +1743,59 @@ $timeline = TimelineDefinition::fromArray([
     'slot_interval' => 'PT1H',
 ]);
 ```
+
+**A datetime in plain data states its date in full**: the year, the month
+and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
+day is optional and defaults to midnight (`2026-11-09` is
+`2026-11-09 00:00:00`); so do the seconds and a fraction of a second. The
+zone comes from the `timezone` field, and a zone or offset written into the
+string must not contradict it. This holds wherever a datetime is read from
+plain data: the `start` of a timeline, the `from` and `to` of a blackout
+window, the `sessions` of a session grid and the `kickoff` of a serialized
+scheduled event (which is UTC unless the string carries a zone).
+
+Two kinds of string are rejected, with the reason `UnparseableTime` (the
+kickoff with an `InvalidInputException`):
+
+- A string whose answer would come from the clock. It is relative to the
+  current time (`now`, `tomorrow`, `+1 week`, `next monday 20:00`, the
+  empty string), or it has no date (`20:00`), or its date has no year
+  (`August 1 20:00`).
+- A string that does not mean what it writes. It names a date or a time
+  that does not exist (`2026-02-30 20:00`, `2026-08-01 24:00`,
+  `2026-08-01 23:59:60`), a weekday that is not the weekday of its date
+  (`Mon, 01 Aug 2026 19:00:00`: 1 August 2026 is a Saturday), or a second
+  timezone that is not the first (`2026-08-01 19:00 +01:00 +05:00`).
+
+PHP's date parser accepts all of these. It resolves the first kind against
+the clock, so the same configuration would give a different timeline each
+time it is loaded, and the library never asks for the current time. It
+reads the second kind to another instant than the one written: 30 February
+as 2 March, `24:00` as the next day, the Saturday as the Monday after it,
+and the first of two timezones.
+
+<!-- snippet: throws="MissionGaming\Tactician\Exceptions\InvalidConfigurationException" -->
+```php
+// "tomorrow" is a different day each time the configuration is loaded
+TimelineDefinition::fromArray([
+    'start' => 'tomorrow 18:00',
+    'timezone' => 'Europe/London',
+    'round_interval' => 'P7D',
+]);
+```
+
+Every other string PHP reads is accepted, and read as PHP reads it: a month
+name (`1 August 2026 19:00`), RFC 2822 with the right weekday, an ISO 8601
+week date (`2026-W31-6T19:00`) or ordinal date (`2026-213T19:00`), a Unix
+timestamp (`@1785610800`), a timezone written twice (`+0000 (UTC)`). That
+includes an offset from a date the string states, which is counted from that
+date and not from today: `2026-08-01 20:00 +1 week` is 8 August at 20:00,
+and `first monday of August 2026 19:00` is 3 August. A relative date with no
+date to count from is for the application to compute and pass on.
+
+One local time is still read to another: a time that a clock change skips
+in the declared timezone (`2026-03-29 01:30` in `Europe/London`) is moved
+forward by the hour that was skipped.
 
 ### Time-Aware Rules
 
@@ -2777,7 +3026,9 @@ Issue: start or its timezone is not parseable
 
 A timezone string that PHP cannot use at all (one that holds a NUL byte, as
 JSON-decoded configuration can) is reported the same way, with the reason
-`UnparseableTime`.
+`UnparseableTime`. So is a datetime that does not state an instant by
+itself, such as `tomorrow`, `20:00` or `2026-02-30 20:00` (see
+[Timeline Assignment](#timeline-assignment) for the form a datetime takes).
 
 The report writes a list value out in full, in its own order, with strings in
 double quotes (`event_ids: ["e1", "e2"]`) and with keys where the array is not
@@ -2818,6 +3069,7 @@ identifier for logs and stored data):
 | `DuplicateName` | `duplicate_name` | Two entries of one list carry the same name |
 | `NotSerializable` | `not_serializable` | The configuration has no plain-data form to serialize to |
 | `UnsatisfiableLegStrategy` | `unsatisfiable_leg_strategy` | The leg strategy cannot produce the legs asked for |
+| `InvalidRoleAssignment` | `invalid_role_assignment` | A role assignment returned something other than the seatings it was given, unchanged or reversed |
 | `UnknownOptionKey` | `unknown_option_key` | Plain-data configuration holds a key the options do not have |
 | `OddParticipantCount` | `odd_participant_count` | The format has every participant in every round, issues no bye, and was given an odd number of participants |
 | `UnequalPots` | `unequal_pots` | The participants do not divide into the number of pots asked for |
@@ -2832,6 +3084,13 @@ identifier for logs and stored data):
 | `UndecidedTie` | `undecided_tie` | A tie that must produce a winner has none |
 | `IncompatibleOutcome` | `incompatible_outcome` | A progression selector was given an outcome of a shape it cannot read |
 | `RankUnavailable` | `rank_unavailable` | A progression selector asked for a rank the standings do not have |
+| `RoundOutOfSequence` | `round_out_of_sequence` | A round was recorded out of play order: its number is not above the last recorded one |
+| `EventNotInRound` | `event_not_in_round` | An event, or the event of a result, does not belong to the round it was recorded with (one with no round number at all is `EventWithoutRoundNumber`) |
+| `NoRoundRecorded` | `no_round_recorded` | Results were added or replaced in a stage with no recorded round |
+| `ResultNotRecorded` | `result_not_recorded` | A result was to be replaced for an event that has no recorded result |
+| `RoundSuperseded` | `round_superseded` | A result was to be replaced in a round that a later round was paired from |
+| `EmptyEngineFingerprint` | `empty_engine_fingerprint` | A stage state was to be stamped with an empty engine fingerprint |
+| `EngineFingerprintMismatch` | `engine_fingerprint_mismatch` | A stage state carries the fingerprint of another engine or configuration than the one reading it |
 | `EmptyEventId` | `empty_event_id` | A movable or pinned event has an empty ID |
 | `IdenticalParticipants` | `identical_participants` | An event names the same participant on both sides |
 | `DuplicateEventId` | `duplicate_event_id` | Two events of one repack request share an ID |
@@ -2839,7 +3098,7 @@ identifier for logs and stored data):
 | `PinCapacityExceeded` | `pin_capacity_exceeded` | More events are pinned at one position than a slot can hold |
 | `PinConflict` | `pin_conflict` | One participant is pinned in two events at one position (`PinConflictException`) |
 | `PositionOutOfRange` | `position_out_of_range` | A session, slot, round or resource index is outside the grid or timeline |
-| `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed |
+| `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed, or the datetime is relative to the current time, has no date or no year, or does not mean what it writes |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
@@ -2849,13 +3108,9 @@ identifier for logs and stored data):
 
 A case says what kind of mistake was made, not which component found it:
 `TooFewParticipants` comes from the round-robin scheduler, the Swiss engine
-and the elimination engines alike. One group of errors has no reason yet:
-those `StageState` raises (`withRoundPlayed()`, `withAdditionalResults()`,
-`withResultReplaced()`, the engine fingerprint, and a duplicate ID given to
-`start()`). Their `getReason()` returns null. The report of the first two
-and of `start()` also still ends with the round-robin "REQUIREMENTS" block,
-which does not describe them, because they state neither a reason nor
-requirements. Both are known gaps.
+and the elimination engines alike. Every configuration error the library
+raises states one; `getReason()` returns null only for an exception that
+code outside the library builds without a reason.
 
 ### Catching Every Library Exception
 

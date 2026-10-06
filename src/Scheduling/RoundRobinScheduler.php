@@ -16,6 +16,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ValidatesScheduleCompleteness;
@@ -68,6 +69,7 @@ class RoundRobinScheduler implements SchedulerInterface
         $this->validateInputs($participants);
 
         $strategy = $options->strategy;
+        $roleAssignment = $options->roleAssignment;
 
         // Build the plan first: the strategy contributes its facts, an
         // unsatisfiable configuration fails here with diagnostics, and
@@ -81,12 +83,12 @@ class RoundRobinScheduler implements SchedulerInterface
         // exhausted and backtracking is enabled, search the decompositions the
         // circle method cannot reach before failing loudly.
         try {
-            $allEvents = $this->generateScheduleWithRetries($participants, $strategy, $plan);
+            $allEvents = $this->generateScheduleWithRetries($participants, $strategy, $plan, $roleAssignment);
         } catch (IncompleteScheduleException $greedyFailure) {
             if (!$options->backtracking) {
                 throw $greedyFailure;
             }
-            $allEvents = $this->generateWithBacktracking($participants, $strategy, $plan, $greedyFailure);
+            $allEvents = $this->generateWithBacktracking($participants, $strategy, $plan, $greedyFailure, $roleAssignment);
         }
         ksort($this->roundByes);
 
@@ -243,11 +245,13 @@ class RoundRobinScheduler implements SchedulerInterface
      * @param array<Participant> $participants
      * @return array<Event>
      * @throws IncompleteScheduleException When no ordering produces a complete schedule
+     * @throws InvalidConfigurationException When the role assignment changes more than roles
      */
     private function generateScheduleWithRetries(
         array $participants,
         LegStrategyInterface $strategy,
-        RoundRobinPlan $plan
+        RoundRobinPlan $plan,
+        RoleAssignmentInterface $roleAssignment
     ): array {
         $participants = array_values($participants);
         $maxAttempts = $this->constraints === null
@@ -267,7 +271,7 @@ class RoundRobinScheduler implements SchedulerInterface
             $this->failureWillBeDiscarded = $discardedFailuresNeedNoAnalysis && $attempt < $maxAttempts - 1;
 
             try {
-                return $this->generateIntegratedSchedule($ordered, $strategy, $plan);
+                return $this->generateIntegratedSchedule($ordered, $strategy, $plan, $roleAssignment);
             } catch (IncompleteScheduleException $exception) {
                 if ($attempt === $maxAttempts - 1) {
                     throw $exception;
@@ -287,15 +291,21 @@ class RoundRobinScheduler implements SchedulerInterface
      * cross leg boundaries (docs/design/backtracking-generation.md), so a
      * later leg rejected by constraints fails loudly.
      *
+     * The search chooses the roles of leg 1 itself, to satisfy the
+     * constraints. The role assignment is asked about the leg it found, and
+     * roles it changes are checked against the constraints again.
+     *
      * @param array<Participant> $participants
      * @return array<Event>
      * @throws IncompleteScheduleException
+     * @throws InvalidConfigurationException When the role assignment changes more than roles
      */
     private function generateWithBacktracking(
         array $participants,
         LegStrategyInterface $strategy,
         RoundRobinPlan $plan,
-        IncompleteScheduleException $greedyFailure
+        IncompleteScheduleException $greedyFailure,
+        RoleAssignmentInterface $roleAssignment
     ): array {
         // The greedy final attempt's violations stay in the collector: if
         // the search also fails, callers still get constraint-level
@@ -326,6 +336,8 @@ class RoundRobinScheduler implements SchedulerInterface
                 $this->analyzeFailure($participants, $plan, [])
             );
         }
+
+        $legOneEvents = $this->reviseSearchedRoles($legOneEvents, $roleAssignment, $field, $plan, $participants, $greedyFailure);
 
         $this->roundByes = $generator->getRoundByes();
         $allEvents = $legOneEvents;
@@ -415,11 +427,13 @@ class RoundRobinScheduler implements SchedulerInterface
      * @param array<Participant> $participants
      * @return array<Event>
      * @throws IncompleteScheduleException
+     * @throws InvalidConfigurationException When the role assignment changes more than roles
      */
     private function generateIntegratedSchedule(
         array $participants,
         LegStrategyInterface $strategy,
-        RoundRobinPlan $plan
+        RoundRobinPlan $plan,
+        RoleAssignmentInterface $roleAssignment
     ): array {
         $allEvents = [];
         $this->roundByes = [];
@@ -429,7 +443,7 @@ class RoundRobinScheduler implements SchedulerInterface
         $expectedEventsPerLeg = $plan->getEventsPerLeg();
 
         for ($leg = 1; $leg <= $legs; ++$leg) {
-            $legEvents = $this->generateLegWithFullContext($participants, $leg, $strategy, $plan, $context);
+            $legEvents = $this->generateLegWithFullContext($participants, $leg, $strategy, $plan, $context, $roleAssignment);
 
             // Check if we generated the expected number of events for this leg
             if (count($legEvents) < $expectedEventsPerLeg) {
@@ -459,17 +473,19 @@ class RoundRobinScheduler implements SchedulerInterface
      * @param array<Participant> $participants
      * @return array<Event>
      * @throws IncompleteScheduleException
+     * @throws InvalidConfigurationException When the role assignment changes more than roles
      */
     private function generateLegWithFullContext(
         array $participants,
         int $leg,
         LegStrategyInterface $strategy,
         RoundRobinPlan $plan,
-        SchedulingContext $context
+        SchedulingContext $context,
+        RoleAssignmentInterface $roleAssignment
     ): array {
         if ($leg === 1) {
             // For the first leg, use traditional round-robin generation but validate completeness
-            $legEvents = $this->generateRoundRobinEvents($participants, $context);
+            $legEvents = $this->generateRoundRobinEvents($participants, $context, $roleAssignment);
 
             // Validate that we got the expected number of events for the first leg
             $expectedEventsPerLeg = $plan->getEventsPerLeg();
@@ -492,27 +508,32 @@ class RoundRobinScheduler implements SchedulerInterface
 
         // For subsequent legs, use the strategy to generate events
         $legEvents = [];
-        $roundsPerLeg = $plan->getRoundsPerLeg();
-        $roundOffset = ($leg - 1) * $roundsPerLeg;
+        $roundOffset = ($leg - 1) * $plan->getRoundsPerLeg();
 
-        // Maintain the circle-method ordering across rounds so each round only
-        // needs a single rotation instead of re-rotating from scratch.
         $participantList = array_values($participants);
         if (count($participantList) % 2 !== 0) {
             $participantList[] = null; // null represents "bye"
         }
 
-        for ($round = 1; $round <= $roundsPerLeg; ++$round) {
-            $globalRound = $round + $roundOffset;
+        // The role assignment decides the leg's roles as it does for the
+        // first leg; the leg strategy then derives this leg's roles from them.
+        $rounds = $this->assignedRoles($roleAssignment, $this->circleLayout($participantList));
 
-            $this->recordByeForRound($participantList, $globalRound);
-
-            // Get all participants that need to play in this round
-            $participantPairs = $this->getPairsFromParticipantList($participantList, $round);
+        foreach ($rounds as $index => $seatings) {
+            $globalRound = $index + 1 + $roundOffset;
 
             $roundEvents = [];
-            foreach ($participantPairs as $pair) {
-                $event = $strategy->generateEventForLeg($pair, $leg, $globalRound, $context);
+            foreach ($seatings as [$participant1, $participant2]) {
+                // A seating with a "bye" (null) produces no event: record who sits out
+                if ($participant1 === null || $participant2 === null) {
+                    $sittingOut = $participant1 ?? $participant2;
+                    if ($sittingOut !== null) {
+                        $this->roundByes[$globalRound] = $sittingOut->getId();
+                    }
+                    continue;
+                }
+
+                $event = $strategy->generateEventForLeg([$participant1, $participant2], $leg, $globalRound, $context);
 
                 if ($event !== null) {
                     // Check constraints with full tournament context (all previous events)
@@ -531,63 +552,204 @@ class RoundRobinScheduler implements SchedulerInterface
             if ($roundEvents !== []) {
                 $context = $context->withEvents($roundEvents);
             }
-
-            // Rotate participants for next round (keep first participant fixed)
-            $this->rotateParticipants($participantList);
         }
 
         return $legEvents;
     }
 
     /**
-     * Record which participant sits out the given round, if the circle
-     * ordering contains a "bye" (null) slot.
+     * Lay one leg out with the circle method: seat i meets seat
+     * (count - 1 - i), and after every round all seats but the first rotate.
      *
-     * @param array<Participant|null> $participantList Participants in circle order
+     * The roles proposed alternate with the (leg-local) round parity. Without
+     * that the circle method keeps the fixed seat first-named all leg and
+     * gives rotating participants same-role streaks of half the field size;
+     * with it the running imbalance of a participant is bounded at 3 (4 in a
+     * field of odd size). The role assignment decides whether the proposal
+     * stands.
+     *
+     * @param array<int, Participant|null> $participantList Participants in circle order, including any "bye" (null)
+     * @return list<list<array{0: Participant|null, 1: Participant|null}>> Rounds of seatings, the bye seating included
      */
-    private function recordByeForRound(array $participantList, int $round): void
+    private function circleLayout(array $participantList): array
     {
-        $byeIndex = array_search(null, $participantList, true);
-        if ($byeIndex === false) {
-            return;
-        }
+        $participantList = array_values($participantList);
+        $seatCount = count($participantList);
+        $pairingsPerRound = intdiv($seatCount, 2);
+        $rounds = [];
 
-        // Circle pairing matches seat i with seat (count - 1 - i)
-        $sittingOut = $participantList[count($participantList) - 1 - (int) $byeIndex];
-        if ($sittingOut !== null) {
-            $this->roundByes[$round] = $sittingOut->getId();
-        }
-    }
+        for ($round = 1; $round < $seatCount; ++$round) {
+            $seatings = [];
+            for ($pair = 0; $pair < $pairingsPerRound; ++$pair) {
+                $participant1 = $participantList[$pair];
+                $participant2 = $participantList[$seatCount - 1 - $pair];
 
-    /**
-     * Get participant pairs from the current circle-method ordering.
-     *
-     * Roles alternate with the (leg-local) round parity, matching first-leg
-     * generation so leg strategies mirror true roles.
-     *
-     * @param array<Participant|null> $participantList Participants in circle order, including any "bye" (null)
-     * @param int $round Leg-local round number, used for role alternation
-     * @return array<array<Participant>>
-     */
-    private function getPairsFromParticipantList(array $participantList, int $round): array
-    {
-        $participantCount = count($participantList);
-        $pairingsPerRound = intdiv($participantCount, 2);
-        $pairs = [];
-
-        for ($pair = 0; $pair < $pairingsPerRound; ++$pair) {
-            $participant1 = $participantList[$pair];
-            $participant2 = $participantList[$participantCount - 1 - $pair];
-
-            // Skip if one participant is "bye" (null)
-            if ($participant1 !== null && $participant2 !== null) {
-                $pairs[] = $round % 2 === 0
+                $seatings[] = $round % 2 === 0
                     ? [$participant2, $participant1]
                     : [$participant1, $participant2];
             }
+            $rounds[] = $seatings;
+
+            // Rotate participants for next round (keep first participant fixed)
+            $this->rotateParticipants($participantList);
         }
 
-        return $pairs;
+        return $rounds;
+    }
+
+    /**
+     * Ask the role assignment for the roles of one leg and check that it
+     * changed nothing else: the same rounds, the same seatings in the same
+     * order, each one as given or reversed.
+     *
+     * @param list<list<array{0: Participant|null, 1: Participant|null}>> $rounds
+     * @return list<list<array{0: Participant|null, 1: Participant|null}>>
+     * @throws InvalidConfigurationException When the answer differs in more than roles
+     */
+    private function assignedRoles(RoleAssignmentInterface $roleAssignment, array $rounds): array
+    {
+        $assigned = $roleAssignment->assignRoles($rounds);
+
+        if (!$this->differsInRolesOnly($assigned, $rounds)) {
+            throw new InvalidConfigurationException(
+                'Role assignment must return the seatings it was given, each one unchanged or reversed',
+                ['role_assignment' => $roleAssignment::class],
+                reason: InvalidConfigurationReason::InvalidRoleAssignment,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
+            );
+        }
+
+        return $assigned;
+    }
+
+    /**
+     * Whether an answer is the rounds that were handed over with nothing but
+     * roles changed. The answer comes from code outside the library, so
+     * nothing about its shape is taken on trust: a round or a seating that
+     * is not an array is a wrong answer, not a type error.
+     *
+     * @param list<list<array{0: Participant|null, 1: Participant|null}>> $rounds
+     */
+    private function differsInRolesOnly(mixed $answer, array $rounds): bool
+    {
+        if (!is_array($answer) || array_keys($answer) !== array_keys($rounds)) {
+            return false;
+        }
+
+        foreach ($rounds as $index => $seatings) {
+            $answeredSeatings = $answer[$index];
+            if (!is_array($answeredSeatings) || array_keys($answeredSeatings) !== array_keys($seatings)) {
+                return false;
+            }
+
+            foreach ($seatings as $position => $seating) {
+                $answered = $answeredSeatings[$position];
+                if ($answered !== $seating && $answered !== [$seating[1], $seating[0]]) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Ask the role assignment about a first leg the backtracking search
+     * found, and check the roles it changes against the constraints.
+     *
+     * The search chose its roles to satisfy the constraints, so a leg the
+     * role assignment leaves alone needs no second check. A leg it changes
+     * is replayed event by event; a rejected event fails loudly, because
+     * keeping the search's roles instead would silently drop what the role
+     * assignment promises.
+     *
+     * @param array<Event> $legOneEvents The leg's events in round order
+     * @param array<Participant> $field The field in the order that seeded the search
+     * @param array<Participant> $participants
+     * @return array<Event>
+     * @throws IncompleteScheduleException When the constraints reject a role the assignment changed
+     * @throws InvalidConfigurationException When the role assignment changes more than roles
+     */
+    private function reviseSearchedRoles(
+        array $legOneEvents,
+        RoleAssignmentInterface $roleAssignment,
+        array $field,
+        RoundRobinPlan $plan,
+        array $participants,
+        IncompleteScheduleException $greedyFailure
+    ): array {
+        $eventsByRound = [];
+        foreach ($legOneEvents as $event) {
+            $eventsByRound[$event->getRound()?->getNumber() ?? 0][] = $event;
+        }
+        $eventsByRound = array_values($eventsByRound);
+
+        $rounds = [];
+        foreach ($eventsByRound as $roundEvents) {
+            $seatings = [];
+            foreach ($roundEvents as $event) {
+                $pair = $event->getParticipants();
+                $seatings[] = [$pair[0], $pair[1]];
+            }
+            $rounds[] = $seatings;
+        }
+
+        $assigned = $this->assignedRoles($roleAssignment, $rounds);
+
+        $revised = [];
+        $changed = false;
+        foreach ($eventsByRound as $index => $roundEvents) {
+            foreach ($roundEvents as $position => $event) {
+                $pair = $event->getParticipants();
+                if ($assigned[$index][$position][0] === $pair[0]) {
+                    $revised[] = $event;
+                    continue;
+                }
+
+                $revised[] = new Event([$pair[1], $pair[0]], $event->getRound(), $event->getMetadata());
+                $changed = true;
+            }
+        }
+
+        if (!$changed) {
+            return $legOneEvents;
+        }
+
+        $accepted = [];
+        foreach ($revised as $event) {
+            $context = new SchedulingContext($field, $plan, $accepted, 1);
+
+            if (!$this->shouldAddEventWithFullConstraints($event, $context)) {
+                // The greedy attempt's violations are stale here: the search
+                // succeeded, and this failure is about one event.
+                $this->clearViolations();
+                $this->recordConstraintViolation($event, $context);
+
+                $pair = $event->getParticipants();
+
+                throw new IncompleteScheduleException(
+                    $plan->getExpectedEventCount(),
+                    count($accepted),
+                    $this->violationCollector,
+                    $plan,
+                    $participants,
+                    sprintf(
+                        'Backtracking found a first leg, but the constraints reject the roles that %s gives it: %s vs %s in round %d. The search chooses roles that satisfy the constraints and the role assignment changes them afterwards. Relax the role constraints or use the round-parity role assignment.',
+                        $roleAssignment::class,
+                        $pair[0]->getId(),
+                        $pair[1]->getId(),
+                        $event->getRound()?->getNumber() ?? 0
+                    ),
+                    0,
+                    $greedyFailure,
+                    $this->analyzeFailure($participants, $plan, $accepted)
+                );
+            }
+
+            $accepted[] = $event;
+        }
+
+        return $revised;
     }
 
     /**
@@ -595,30 +757,32 @@ class RoundRobinScheduler implements SchedulerInterface
      *
      * @param array<Participant> $participants
      * @return array<Event>
+     * @throws InvalidConfigurationException When the role assignment changes more than roles
      */
-    private function generateRoundRobinEvents(array $participants, SchedulingContext $baseContext): array
-    {
+    private function generateRoundRobinEvents(
+        array $participants,
+        SchedulingContext $baseContext,
+        RoleAssignmentInterface $roleAssignment
+    ): array {
         $participantList = array_values($participants);
-        $participantCount = count($participantList);
         $events = [];
 
         // Handle odd number of participants by adding a "bye"
-        $hasBye = $participantCount % 2 !== 0;
-        if ($hasBye) {
+        if (count($participantList) % 2 !== 0) {
             $participantList[] = null; // null represents "bye"
-            ++$participantCount;
         }
-
-        $rounds = $participantCount - 1;
-        $pairingsPerRound = $participantCount / 2;
 
         // Randomize initial order if randomizer is provided
         if ($this->randomizer !== null) {
             $participantList = $this->shuffleParticipants($participantList);
         }
 
-        // Generate pairings for each round using circle method
-        for ($round = 1; $round <= $rounds; ++$round) {
+        // Lay the leg out with the circle method and let the role assignment
+        // decide the roles before any constraint sees an event
+        $rounds = $this->assignedRoles($roleAssignment, $this->circleLayout($participantList));
+
+        foreach ($rounds as $index => $seatings) {
+            $round = $index + 1;
             $context = new SchedulingContext(
                 $participants,
                 $baseContext->getPlan(),
@@ -627,10 +791,7 @@ class RoundRobinScheduler implements SchedulerInterface
                 $baseContext->getParticipantsPerEvent()
             );
 
-            for ($pair = 0; $pair < $pairingsPerRound; ++$pair) {
-                $participant1 = $participantList[$pair];
-                $participant2 = $participantList[$participantCount - 1 - $pair];
-
+            foreach ($seatings as [$participant1, $participant2]) {
                 // Skip if one participant is "bye" (null), recording who sits out
                 if ($participant1 === null || $participant2 === null) {
                     $sittingOut = $participant1 ?? $participant2;
@@ -638,14 +799,6 @@ class RoundRobinScheduler implements SchedulerInterface
                         $this->roundByes[$round] = $sittingOut->getId();
                     }
                     continue;
-                }
-
-                // Alternate every pairing's roles with the round parity;
-                // without this the circle method keeps the fixed seat at home
-                // all leg and gives rotating players home/away streaks of
-                // half the field size (this bounds running imbalance at 3)
-                if ($round % 2 === 0) {
-                    [$participant1, $participant2] = [$participant2, $participant1];
                 }
 
                 $roundObject = new Round($round);
@@ -678,9 +831,6 @@ class RoundRobinScheduler implements SchedulerInterface
                     }
                 }
             }
-
-            // Rotate participants for next round (keep first participant fixed)
-            $this->rotateParticipants($participantList);
         }
 
         return $events;

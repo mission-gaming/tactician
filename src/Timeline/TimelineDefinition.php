@@ -111,10 +111,15 @@ final readonly class TimelineDefinition
      *  'round_interval' => 'P7D', 'slots_per_round' => 3, 'slot_interval' => 'PT1H'].
      *
      * The timezone is required — policy about times is only expressible
-     * against an explicit zone.
+     * against an explicit zone. The start states its date in full (year,
+     * month and day; the time of day is optional and defaults to midnight):
+     * `tomorrow`, `+1 week`, an empty string or a time of day without a
+     * date is rejected, because PHP would resolve it against the clock, and
+     * so is a date or a time that does not exist (see ZonedTime).
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value is missing or malformed
+     * @throws InvalidConfigurationException When a value is missing or malformed, or the start
+     *                                       does not state an instant by itself
      */
     public static function fromArray(array $config): self
     {

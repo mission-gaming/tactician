@@ -201,6 +201,10 @@ describe('Golden output', function (): void {
             'round-robin/repeated-seed-42.txt',
             'round-robin/repeated-seed-1337.txt',
             'round-robin/constrained.txt',
+            'round-robin/balanced-mirrored-unseeded.txt',
+            'round-robin/balanced-mirrored-seed-42.txt',
+            'round-robin/balanced-repeated-unseeded.txt',
+            'round-robin/balanced-constrained.txt',
             'swiss.txt',
             'pot-draw.txt',
             'single-elimination.txt',
@@ -299,7 +303,70 @@ describe('Golden baseline', function (): void {
         'round-robin/repeated-seed-1.txt',
         'round-robin/repeated-seed-42.txt',
         'round-robin/repeated-seed-1337.txt',
+        'round-robin/balanced-mirrored-unseeded.txt',
+        'round-robin/balanced-mirrored-seed-42.txt',
+        'round-robin/balanced-repeated-unseeded.txt',
     ]);
+
+    // If the role assignment were not wired through, a balanced file would
+    // equal the default one. It must differ from it in roles and in nothing
+    // else, and its single legs must be balanced: counted here in the stored
+    // text, whatever the library does.
+    it('stores balanced roles that differ from the default in nothing but roles', function (string $suffix): void {
+        $default = goldenSections("round-robin/{$suffix}.txt");
+        $balanced = goldenSections("round-robin/balanced-{$suffix}.txt");
+
+        expect(array_keys($balanced))->toBe(array_keys($default));
+
+        /** @param list<string> $lines */
+        $unordered = (static fn(array $lines): array => array_map(static function (string $line): string {
+            $events = array_map(static function (string $event): string {
+                $ids = explode('-', $event);
+                sort($ids);
+
+                return implode('-', $ids);
+            }, explode(' ', (string) preg_replace('/^R\d+: /', '', $line)));
+
+            return str_starts_with($line, 'R') ? implode(' ', $events) : $line;
+        }, $lines));
+
+        foreach ($balanced as $title => $lines) {
+            sscanf($title, 'n=%d legs=%d', $size, $legs);
+            assert(is_int($size) && is_int($legs));
+
+            expect($unordered($lines))->toBe($unordered($default[$title]), $title);
+            // Two participants have one event per leg, which is balanced as
+            // the default lists it: every other field has its roles changed
+            expect($lines !== $default[$title])->toBe($size !== 2, $title);
+
+            if ($legs !== 1) {
+                continue;
+            }
+
+            $differences = [];
+            foreach ($lines as $line) {
+                if (!str_starts_with($line, 'R')) {
+                    continue;
+                }
+                foreach (explode(' ', explode(': ', $line, 2)[1]) as $event) {
+                    [$first, $second] = explode('-', $event);
+                    $differences[$first] = ($differences[$first] ?? 0) + 1;
+                    $differences[$second] = ($differences[$second] ?? 0) - 1;
+                }
+            }
+
+            expect(array_values(array_unique(array_map(abs(...), $differences))))->toBe([$size % 2 === 0 ? 1 : 0], $title);
+        }
+    })->with(['mirrored-unseeded', 'mirrored-seed-42', 'repeated-unseeded']);
+
+    it('stores a rotation-retry and two backtracking schedules with balanced roles', function (): void {
+        $titles = array_keys(goldenSections('round-robin/balanced-constrained.txt'));
+
+        expect($titles)->toHaveCount(3)
+            ->and($titles[0])->toStartWith('rotation retry: ')
+            ->and($titles[1])->toStartWith('backtracking: n=4 ')
+            ->and($titles[2])->toStartWith('backtracking: n=5 ');
+    });
 
     // If the randomizer were not wired through, every seed file would
     // equal the unseeded one and the seed dimension would pin nothing

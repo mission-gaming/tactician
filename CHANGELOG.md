@@ -175,11 +175,12 @@ heading **Output change (fix)**.
   also unchanged for the three factories on `SchedulingException` and for an
   `InvalidConfigurationException` that code outside the library builds the
   way it did before, because the library cannot tell what those describe.
-  Six of the errors `Stage\StageState` raises (see "Added" below) are built
-  that way too, so their report still ends with the round-robin block, which
-  does not describe them: a known gap. Every other configuration error the library
-  raises now has no "REQUIREMENTS" block, and its report ends with the
-  configuration details.
+  Every other configuration error the library raises now has no
+  "REQUIREMENTS" block, and its report ends with the configuration details.
+  That includes the errors of `Stage\StageState` (a duplicate ID given to
+  `start()`, a round recorded out of order, an event or a result that does
+  not belong to the round recorded), which are not about a round robin
+  either.
 - The suggestion `IncompleteScheduleException::getDiagnosticReport()` gives
   for a consecutive role constraint pointed the wrong way. The limit of a
   `ConsecutiveRoleConstraint` is the most events in a row a participant may
@@ -202,6 +203,49 @@ heading **Output change (fix)**.
   previous exception. Code that caught `\ValueError` or `\Error` around these
   calls for this case no longer sees it there: catch
   `InvalidConfigurationException`.
+- A datetime in plain-data configuration that PHP would resolve against the
+  clock, or read to another instant than the one written, is rejected.
+  **Configuration that writes the date of each datetime in full
+  (`2026-08-01 19:00`, `2026-08-01T19:00:00`, `2026-11-09`) is unaffected:
+  every such string parses to the instant it did before, and a date without
+  a time of day is still midnight.** The string went straight to PHP's date
+  parser, which also accepts `now`, `tomorrow`, `+1 week`,
+  `next monday 20:00` and the empty string and resolves them against the
+  clock, so the same configuration gave a different timeline or session grid
+  each time it was loaded. That contradicts the rule that the library never
+  asks for the current time. These are now rejected with an
+  `InvalidConfigurationException` (reason `UnparseableTime`, the message an
+  unparseable string gives: `start or its timezone is not parseable`) by
+  `TimelineDefinition::fromArray()` (`start`), `SessionGrid::fromArray()`
+  (`sessions`) and `BlackoutRule::fromArray()` (`from`, `to`), and with an
+  `InvalidInputException` (`Scheduled event kickoff is not parseable`) by
+  `ScheduledEvent::fromArray()` and `ScheduledSchedule::fromArray()`/
+  `fromJson()` (`kickoff`):
+  - a string whose answer came from the clock: one relative to the current
+    time, the empty string, a time of day without a date (`20:00`), and a
+    date without its year (`August 1 20:00`);
+  - a date or a time that does not exist, which PHP rolled over into the
+    next one: `2026-02-30 20:00` (read as 2 March), `2026-08-01 24:00`,
+    `2026-08-01 23:59:60`, the 366th day of a year that has 365;
+  - a weekday name that is not the weekday of the date
+    (`Mon, 01 Aug 2026 19:00:00 +0000`, a Saturday, which PHP moved to the
+    Monday after);
+  - a second timezone that is not the first
+    (`2026-08-01 19:00 +01:00 +05:00`, of which PHP read the first and
+    ignored the second).
+
+  What to check: configuration or stored data that holds one of these.
+  Everything else PHP reads is accepted as before and parses to the same
+  instant: a date without a time of day, a month name
+  (`1 August 2026 19:00`), RFC 2822 with the right weekday, an ISO 8601 week
+  date (`2026-W31-6T19:00`) or ordinal date (`2026-213T19:00`), a Unix
+  timestamp (`@1785610800`), a timezone written twice (`+0000 (UTC)`), and
+  an offset from a date the string states (`2026-08-01 20:00 +1 week`,
+  `first monday of August 2026 19:00`), which PHP counts from that date and
+  not from the clock. A zone or offset in the string is still checked
+  against the `timezone` field, and a string that has both faults is still
+  reported for its timezone (`TimezoneMismatch`). A relative date with no
+  date to count from is for the application to compute and pass on.
 - A repack request whose objective weights are too large to keep the
   objective an integer is rejected with an `InvalidConfigurationException`.
   It returned an outcome before. The repacker scores a move as at most
@@ -242,6 +286,46 @@ heading **Output change (fix)**.
 
 ### Added
 
+- Balanced role assignment for round robin, opt-in:
+  `new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())`, or
+  `'role_assignment' => 'balanced'` in plain data. The role of a participant
+  in an event is its position, first-named or second-named. With the default
+  roles a single leg ends up to 3 apart between the two for one participant in
+  a field of even size and up to 4 apart in a field of odd size; of four
+  participants, one is second-named in all three of its events. With the
+  balanced roles every participant ends a leg at most 1 apart in a field of
+  even size, which is the least possible because it plays an odd number of
+  events, and exactly 0 apart in a field of odd size. The pairings, their
+  rounds, their order and the byes do not change: only who is first-named
+  does. In a single leg of 2 to 30 participants no participant plays more
+  than two events in a row in the same role (the default reaches four), and
+  while the leg is played no participant is more than 1 apart in a field of
+  even size or 2 apart in a field of odd size.
+
+  The new namespace `RoleAssignment` holds `RoleAssignmentInterface` and its
+  two implementations: `RoundParityRoleAssignment`, which is the default and
+  keeps the roles the library has always produced, and
+  `BalancedRoleAssignment`. `RoundRobinOptions` gains a fourth constructor
+  parameter, `roleAssignment`, and a public property of the same name;
+  `fromArray()` reads the optional key `role_assignment` (`round_parity` or
+  `balanced`), and `toArray()` writes that key only when a role assignment
+  was named, so options that do not name one serialize to the three keys
+  they always have and options that name one, the default included, keep it
+  through a round trip. `InvalidConfigurationReason::InvalidRoleAssignment`
+  is the reason when a custom role assignment returns anything but the
+  seatings it was given, each unchanged or reversed.
+
+  No output changes for options that do not set the role assignment, and the
+  existing golden fixtures are unchanged. What the balanced roles add up to over
+  several legs depends on the leg strategy, which keeps its meaning, and a
+  role constraint that the balanced roles break fails generation loudly: the
+  section "Role Assignment" of the usage guide has the table per leg strategy
+  and the rules for constraints and backtracking.
+
+  **The balanced role assignment becomes the default in 0.3.** To keep the
+  roles of today after that release, name the current default now:
+  `new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())`,
+  or `'role_assignment' => 'round_parity'`.
 - A single-leg elimination event that finishes level can be recorded and
   decided. Record it as the draw it was, with the ID of the participant who
   advances as `TieDecision::TIE_WINNER_KEY` (`'tie_winner'`) metadata on
@@ -323,13 +407,16 @@ heading **Output change (fix)**.
   of the new backed enum `Exceptions\InvalidConfigurationReason`
   (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and others; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). Every site that builds the exception sets one, except eleven
-  in `Stage\StageState` (recording a round or its results, replacing a
-  result, the engine fingerprint, and a duplicate ID given to `start()`):
-  `getReason()` returns null
-  for those, and for an exception that code outside the library builds
-  without a reason. A `match` over the reason needs a `default` arm, because
-  a release may add a case.
+  identifiers). Every site in the library that builds the exception sets
+  one, those of `Stage\StageState` included (`RoundOutOfSequence`,
+  `EventNotInRound`, `NoRoundRecorded`, `ResultNotRecorded`,
+  `RoundSuperseded`, `EmptyEngineFingerprint` and
+  `EngineFingerprintMismatch` for recording a round or its results,
+  replacing a result and the engine fingerprint; an event with no round
+  number at all is `EventWithoutRoundNumber` there too). `getReason()`
+  returns null only for an exception that code outside the library builds
+  without a reason. A `match` over the reason needs a `default` arm, because a release
+  may add a case.
 - `Exceptions\PinConflictException`, thrown by `RepackRequest` when one
   participant is pinned in two events at the same session and slot.
   `getEventIds()` returns the IDs of the two events, and `getParticipantId()`,
@@ -671,6 +758,18 @@ heading **Output change (fix)**.
   `throw null` with assertions off. The scorer now refuses such a
   measurement (see "Output change (fix)"), and the optimizer takes its first
   candidate as the best so far whatever it scores.
+- Tooling only; the library is unchanged. The Rector step of `composer ci`
+  no longer fails now and then with `Child process error` and a syntax error
+  that names `bc7465525847387785d7c`, on a change that Rector does not read.
+  Rector 2.6.7 writes a cache entry in place, and each of its parallel
+  workers loads and rewrites the entry for the configuration when it starts,
+  so a worker could load an entry that another had half written. `rector.php`
+  now runs Rector as one process, which checks the same paths with the same
+  rules and takes about twice as long (some 25 seconds more for each CI
+  job). Rector 2.7.0 writes the entry atomically; a test
+  (`tests/Feature/GateConfigurationTest.php`) requires the one-process
+  setting until that is the locked version, and from then on fails until the
+  setting is removed.
 
 ## [0.2.1] - 2026-10-06
 
