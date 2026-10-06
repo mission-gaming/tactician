@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 describe('InvalidConfigurationException', function (): void {
     beforeEach(function (): void {
@@ -29,23 +30,89 @@ describe('InvalidConfigurationException', function (): void {
         expect($exception->getContext())->toBe($context);
     });
 
-    // Tests that exception formats array values showing item counts
-    it('formats array values showing item counts', function (): void {
-        // Given: Exception with array context values
+    // Tests that a list in the context reaches the reader entry by entry:
+    // a count alone ("[2 items]") tells an operator nothing to act on
+    it('writes out the entries of a list value', function (): void {
+        // Given: Exception with list context values
         $context = [
+            'event_ids' => ['e1', 'e2'],
+            'rounds' => [3, 1, 2],
             'participants' => [$this->participant1, $this->participant2],
             'empty_array' => [],
-            'large_array' => range(1, 100),
         ];
         $exception = new InvalidConfigurationException('Test issue', $context);
 
         // When: Getting diagnostic report
         $report = $exception->getDiagnosticReport();
 
-        // Then: Should format arrays with item counts
-        expect($report)->toContain('participants: [2 items]');
-        expect($report)->toContain('empty_array: [0 items]');
-        expect($report)->toContain('large_array: [100 items]');
+        // Then: Every entry is there, in the order given, strings quoted
+        expect($report)->toContain("• event_ids: [\"e1\", \"e2\"]\n");
+        expect($report)->toContain("• rounds: [3, 1, 2]\n");
+        expect($report)->toContain(
+            '• participants: [MissionGaming\Tactician\DTO\Participant, MissionGaming\Tactician\DTO\Participant]'
+        );
+        expect($report)->toContain("• empty_array: [0 items]\n");
+        expect($report)->not->toContain('[2 items]');
+    });
+
+    // Tests the bound on a long list: the first REPORT_LIST_LIMIT entries,
+    // then how many were left out and of how many
+    it('cuts a long list at the limit and says how many entries it left out', function (): void {
+        // Given: A list exactly at the limit and lists beyond it
+        $limit = InvalidConfigurationException::REPORT_LIST_LIMIT;
+        $exception = new InvalidConfigurationException('Test issue', [
+            'at_limit' => range(1, $limit),
+            'one_over' => range(1, $limit + 1),
+            'large_array' => range(1, 100),
+        ]);
+
+        // When: Getting diagnostic report
+        $report = $exception->getDiagnosticReport();
+
+        // Then: The limit is 20, a list at it is whole, a longer one is cut
+        expect($limit)->toBe(20);
+        expect($report)->toContain('• at_limit: [' . implode(', ', range(1, 20)) . "]\n");
+        expect($report)->toContain('• one_over: [' . implode(', ', range(1, 20)) . ", ... 1 more of 21]\n");
+        expect($report)->toContain('• large_array: [' . implode(', ', range(1, 20)) . ", ... 80 more of 100]\n");
+    });
+
+    // Tests the bound on nesting: REPORT_NESTING_LIMIT levels are written
+    // out, and a list below them is reported by its size
+    it('writes nested lists out to the nesting limit and counts what is deeper', function (): void {
+        // Given: Lists nested three and four levels deep
+        $exception = new InvalidConfigurationException('Test issue', [
+            'three_levels' => [[[1, 2]]],
+            'four_levels' => [[[[1, 2], [3]]]],
+        ]);
+
+        // When: Getting diagnostic report
+        $report = $exception->getDiagnosticReport();
+
+        // Then: The third level is written, the fourth is a count
+        expect(InvalidConfigurationException::REPORT_NESTING_LIMIT)->toBe(3);
+        expect($report)->toContain("• three_levels: [[[1, 2]]]\n");
+        expect($report)->toContain("• four_levels: [[[[2 items], [1 items]]]]\n");
+    });
+
+    // Tests that the same context gives the same report text every time,
+    // and that keys are written where the array is not a list
+    it('writes keyed values with their keys, in the order given', function (): void {
+        // Given: A keyed array, and a list of keyed arrays as fromArray() data has them
+        $context = [
+            'window' => ['to' => '2026-01-02', 'from' => '2026-01-01'],
+            'windows' => [['from' => 'a', 'label' => null], ['from' => 'b', 'closed' => true]],
+            'sparse' => [2 => 'x', 5 => ''],
+        ];
+
+        // When: Getting the report twice
+        $first = (new InvalidConfigurationException('Test issue', $context))->getDiagnosticReport();
+        $second = (new InvalidConfigurationException('Test issue', $context))->getDiagnosticReport();
+
+        // Then: Keys are kept, order is the array's own, and the text repeats
+        expect($first)->toContain("• window: [to: \"2026-01-02\", from: \"2026-01-01\"]\n");
+        expect($first)->toContain("• windows: [[from: \"a\", label: null], [from: \"b\", closed: true]]\n");
+        expect($first)->toContain("• sparse: [2: \"x\", 5: \"\"]\n");
+        expect($second)->toBe($first);
     });
 
     // Tests that exception formats object values showing class names
@@ -91,8 +158,8 @@ describe('InvalidConfigurationException', function (): void {
     });
 
     // Tests the text of each kind of value at the edges: what the string
-    // cast gives for a scalar, a count for an array whatever it holds, and
-    // the class name for an object even when the object can be a string
+    // cast gives for a scalar, the entries of a list, a count for an empty
+    // one, and the class name for an object even when the object can be a string
     it('formats a context value by its type', function (mixed $value, string $expected): void {
         $exception = new InvalidConfigurationException('Test issue', ['value' => $value]);
 
@@ -109,7 +176,8 @@ describe('InvalidConfigurationException', function (): void {
         'the string zero' => ['0', '0'],
         'a string of digits' => ['007', '007'],
         'an empty array' => [[], '[0 items]'],
-        'a nested array' => [[[1, 2], [3]], '[2 items]'],
+        'a nested array' => [[[1, 2], [3]], '[[1, 2], [3]]'],
+        'a list of strings' => [['a', '', 'b, c'], '["a", "", "b, c"]'],
         // Pest calls a closure it finds in a dataset, so this one returns the value.
         'a closure' => [fn(): Closure => fn(): int => 1, Closure::class],
         'an object that can be a string' => [new MissionGaming\Tactician\DTO\Round(2), MissionGaming\Tactician\DTO\Round::class],
@@ -246,8 +314,8 @@ describe('InvalidConfigurationException', function (): void {
         $report = $exception->getDiagnosticReport();
 
         // Then: Should handle all complex types appropriately
-        expect($report)->toContain('config: [1 items]'); // Nested array shown as item count
-        expect($report)->toContain('participants: [2 items]');
+        expect($report)->toContain('config: [nested: [deep: "value"]]'); // Nested array written out with its keys
+        expect($report)->toContain('participants: [MissionGaming\Tactician\DTO\Participant, MissionGaming\Tactician\DTO\Participant]');
         expect($report)->toContain('settings: stdClass'); // Object shown as class name
     });
 
@@ -273,7 +341,7 @@ describe('InvalidConfigurationException', function (): void {
         expect($report)->toContain('participant_count: 1');
         expect($report)->toContain('minimum_required: 2');
         expect($report)->toContain('algorithm: Round Robin');
-        expect($report)->toContain('provided_participants: [1 items]');
+        expect($report)->toContain('provided_participants: [MissionGaming\Tactician\DTO\Participant]');
         expect($report)->toContain('Participants array must contain at least 2 participants');
     });
 
@@ -306,5 +374,107 @@ describe('InvalidConfigurationException', function (): void {
         // Then: Should preserve code and previous exception
         expect($exception->getCode())->toBe($errorCode);
         expect($exception->getPrevious())->toBe($previousException);
+    });
+
+    // Tests that the reason is a typed value a caller can branch on, so
+    // that nobody has to match the message text
+    it('carries the reason it was given', function (): void {
+        // Given: An exception built with a reason, by name after the issue and context
+        $exception = new InvalidConfigurationException(
+            'Timezone is not parseable',
+            ['timezone' => 'Nowhere'],
+            reason: InvalidConfigurationReason::UnparseableTime
+        );
+
+        // Then: The accessor returns the case, and the message is the default one
+        expect($exception->getReason())->toBe(InvalidConfigurationReason::UnparseableTime);
+        expect($exception->getMessage())->toBe('Invalid scheduler configuration: Timezone is not parseable');
+    });
+
+    // Tests the compatibility of the constructor: every call written before
+    // the reason existed still works and behaves as it did
+    it('is built without a reason by every call written before reasons existed', function (): void {
+        // Given: The four shapes of call the old constructor allowed
+        $previous = new RuntimeException('cause');
+        $calls = [
+            new InvalidConfigurationException('Issue'),
+            new InvalidConfigurationException('Issue', ['key' => 1]),
+            new InvalidConfigurationException('Issue', ['key' => 1], 'Message'),
+            new InvalidConfigurationException('Issue', ['key' => 1], 'Message', 7, $previous),
+        ];
+
+        foreach ($calls as $exception) {
+            // Then: No reason, and the requirements block it always carried
+            expect($exception->getReason())->toBeNull();
+            expect($exception->getRequirements())->toBe(InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS);
+            expect($exception->getDiagnosticReport())->toEndWith(
+                "\n\n=== REQUIREMENTS ===\n"
+                . "• Participants array must contain at least 2 participants\n"
+                . "• Legs must be a positive integer (≥ 1)\n"
+                . "• All participants must have unique IDs\n"
+                . "• Constraint set must be valid\n"
+                . '• Scheduler must support the requested configuration'
+            );
+        }
+
+        expect($calls[3]->getCode())->toBe(7);
+        expect($calls[3]->getPrevious())->toBe($previous);
+        expect($calls[3]->getMessage())->toBe('Message');
+    });
+
+    // Tests that the requirements block belongs to the failing component:
+    // an error with a reason lists what it was given, and nothing when it
+    // was given nothing. The round-robin list is not a default for it.
+    it('lists no requirements for an error that has a reason and states none', function (): void {
+        // Given: A timezone error, which has nothing to do with a round robin
+        $exception = new InvalidConfigurationException(
+            'start or its timezone is not parseable',
+            ['start' => '2026-08-01 19:00:00', 'timezone' => 'Neverland/Nowhere'],
+            reason: InvalidConfigurationReason::UnparseableTime
+        );
+
+        // When: Getting diagnostic report
+        $report = $exception->getDiagnosticReport();
+
+        // Then: The report ends with the details and has no requirements block
+        expect($exception->getRequirements())->toBe([]);
+        expect($report)->toBe(
+            "=== INVALID CONFIGURATION DIAGNOSTIC REPORT ===\n"
+            . "\n"
+            . "Issue: start or its timezone is not parseable\n"
+            . "\n"
+            . "=== CONFIGURATION DETAILS ===\n"
+            . "• start: 2026-08-01 19:00:00\n"
+            . '• timezone: Neverland/Nowhere'
+        );
+    });
+
+    it('lists the requirements it was given, one bullet each', function (): void {
+        // Given: An exception with requirements of its own, with and without a reason
+        $requirements = ['A grid needs at least 1 session', 'Session starts must ascend'];
+        $withReason = new InvalidConfigurationException(
+            'Issue',
+            reason: InvalidConfigurationReason::EmptyList,
+            requirements: $requirements
+        );
+        $withoutReason = new InvalidConfigurationException('Issue', requirements: $requirements);
+        $none = new InvalidConfigurationException('Issue', requirements: []);
+
+        // Then: The block holds exactly those, and an empty list means no block
+        foreach ([$withReason, $withoutReason] as $exception) {
+            expect($exception->getRequirements())->toBe($requirements);
+            expect($exception->getDiagnosticReport())->toBe(
+                "=== INVALID CONFIGURATION DIAGNOSTIC REPORT ===\n"
+                . "\n"
+                . "Issue: Issue\n"
+                . "\n"
+                . "=== REQUIREMENTS ===\n"
+                . "• A grid needs at least 1 session\n"
+                . '• Session starts must ascend'
+            );
+        }
+
+        expect($none->getRequirements())->toBe([]);
+        expect($none->getDiagnosticReport())->not->toContain('REQUIREMENTS');
     });
 });
