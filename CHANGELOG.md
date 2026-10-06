@@ -163,10 +163,8 @@ heading **Output change (fix)**.
   previous exception as before, so existing catch clauses and message checks
   still match.
 - `InvalidConfigurationException::getRequirements()`, the statements the
-  report prints under "REQUIREMENTS", as a list; the constant
-  `ROUND_ROBIN_REQUIREMENTS` that holds the round-robin ones; and the
-  constants `REPORT_LIST_LIMIT` (20) and `REPORT_NESTING_LIMIT` (3), the two
-  bounds of the report.
+  report prints under "REQUIREMENTS", as a list; and the constant
+  `ROUND_ROBIN_REQUIREMENTS` that holds the round-robin ones.
 - Two optional parameters at the end of the constructor of
   `InvalidConfigurationException`: `reason` and `requirements`. A call written
   against the five parameters it had before behaves as it did.

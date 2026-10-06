@@ -39,13 +39,13 @@ class InvalidConfigurationException extends SchedulingException
      * longer list is cut after this many, and the report says how many
      * entries it left out.
      */
-    public const int REPORT_LIST_LIMIT = 20;
+    private const int REPORT_LIST_LIMIT = 20;
 
     /**
      * How many levels of nested lists the diagnostic report writes out.
      * A list below that depth is reported by its size only.
      */
-    public const int REPORT_NESTING_LIMIT = 3;
+    private const int REPORT_NESTING_LIMIT = 3;
 
     /** @var list<string> */
     private readonly array $requirements;

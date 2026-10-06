@@ -55,14 +55,13 @@ describe('InvalidConfigurationException', function (): void {
         expect($report)->not->toContain('[2 items]');
     });
 
-    // Tests the bound on a long list: the first REPORT_LIST_LIMIT entries,
+    // Tests the bound on a long list: the first 20 entries,
     // then how many were left out and of how many
     it('cuts a long list at the limit and says how many entries it left out', function (): void {
         // Given: A list exactly at the limit and lists beyond it
-        $limit = InvalidConfigurationException::REPORT_LIST_LIMIT;
         $exception = new InvalidConfigurationException('Test issue', [
-            'at_limit' => range(1, $limit),
-            'one_over' => range(1, $limit + 1),
+            'at_limit' => range(1, 20),
+            'one_over' => range(1, 21),
             'large_array' => range(1, 100),
         ]);
 
@@ -70,13 +69,12 @@ describe('InvalidConfigurationException', function (): void {
         $report = $exception->getDiagnosticReport();
 
         // Then: The limit is 20, a list at it is whole, a longer one is cut
-        expect($limit)->toBe(20);
         expect($report)->toContain('• at_limit: [' . implode(', ', range(1, 20)) . "]\n");
         expect($report)->toContain('• one_over: [' . implode(', ', range(1, 20)) . ", ... 1 more of 21]\n");
         expect($report)->toContain('• large_array: [' . implode(', ', range(1, 20)) . ", ... 80 more of 100]\n");
     });
 
-    // Tests the bound on nesting: REPORT_NESTING_LIMIT levels are written
+    // Tests the bound on nesting: three levels are written
     // out, and a list below them is reported by its size
     it('writes nested lists out to the nesting limit and counts what is deeper', function (): void {
         // Given: Lists nested three and four levels deep
@@ -89,7 +87,6 @@ describe('InvalidConfigurationException', function (): void {
         $report = $exception->getDiagnosticReport();
 
         // Then: The third level is written, the fourth is a count
-        expect(InvalidConfigurationException::REPORT_NESTING_LIMIT)->toBe(3);
         expect($report)->toContain("• three_levels: [[[1, 2]]]\n");
         expect($report)->toContain("• four_levels: [[[[2 items], [1 items]]]]\n");
     });
