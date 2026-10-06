@@ -115,6 +115,15 @@ counts the change as tested when a test fails and as untested when they all
 still pass. The score is the share that was tested. The run prints every
 untested change with its diff.
 
+Read the score with two things in mind. The runner counts a change whose
+tests ran into its time limit as tested, although no test failed on it: a
+change that makes a search run for ever is "noticed" only in that sense.
+The summary script therefore also gives the share that a failing test
+noticed. And leave the number of processes to `--parallel`, which the
+script passes: with `--processes` added, the test process of every change
+fails to start, and the run reports every change as tested, a score of
+100% that means nothing.
+
 It is not part of the gate and it enforces no minimum. A run over both
 directories takes hours, because every one of some 3,400 changes starts a
 test process of its own, and a change that makes a search run for ever is
@@ -125,7 +134,9 @@ are tried, a guard that cannot be reached). In CI the weekly scheduled
 workflow runs it, one `Mutation testing` job per directory, and a
 maintainer can start that workflow by hand. It does not run for a pull
 request. It publishes the score, the counts and the first untested
-changes in its job summary. Read the summary when you change generation or
+changes in its job summary; a job that is stopped at its time limit has no
+score, and its summary says how many changes it got through and what it
+found in them. Read the summary when you change generation or
 repack logic: an untested change in the lines you touched is a test to
 write.
 

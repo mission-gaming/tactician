@@ -144,6 +144,60 @@ describe('the mutation report', function (): void {
         'stopped while mutating' => ["  Mutating application files...\n  7 Mutations for 2 Files created\n\n  ...x"],
     ]);
 
+    // The runner's score is (tested + timeout) / all: here 5 of 7, 71.43%.
+    // No test failed on the mutation that timed out, so the summary says
+    // what the score counts and gives the share a failing test noticed.
+    it('says that the score counts a timeout as tested, and gives the share that a failing test noticed', function (): void {
+        $markdown = MutationReport::fromOutput(mutationRunOutput())->toMarkdown();
+
+        expect($markdown)
+            ->toContain('The score counts a mutation whose tests ran into the time limit as tested')
+            ->toContain('A failing test noticed 4 of 7 mutations, which is 57.14%.');
+
+        // Without a timeout the printed score is that share, and nothing is added
+        $none = MutationReport::fromOutput("  Mutations: 1 untested, 3 tested\n  Score:     75.00%\n")->toMarkdown();
+
+        expect($none)->toContain('**Score: 75.00%**')
+            ->and($none)->not->toContain('time limit');
+    });
+
+    // The CI job stops a run at its time limit. The totals and the untested
+    // changes are printed at the end, so a stopped run has neither; it has
+    // one character per finished mutation, and the summary counts them.
+    it('says how far a stopped run got and what it had found, without a score', function (): void {
+        $stopped = "  Tests:    12 passed (40 assertions)\n  ....\n\n  Mutating application files...\n"
+            . "  \e[90m120 Mutations for 3 Files created\e[39m\n\n  ..\e[31;1mx\e[39;22m..t.\e[31;1mx\e[39;22m.";
+
+        $report = MutationReport::fromOutput($stopped);
+
+        expect($report->score)->toBeNull()
+            ->and($report->created)->toBe(120)
+            // The four dots of the test suite, printed before, are not counted
+            ->and($report->progress)->toBe(['tested' => 6, 'untested' => 2, 'timeout' => 1, 'uncovered' => 0])
+            ->and($report->toMarkdown())
+            ->toContain('The run printed no score')
+            ->toContain('It was stopped after 9 of 120 mutations: 6 tested, 2 untested, 1 timeout.')
+            ->toContain('That is not a score');
+    });
+
+    it('counts the progress of a finished run as its totals do, and not the rule under it', function (): void {
+        $report = MutationReport::fromOutput(mutationRunOutput());
+
+        expect($report->created)->toBe(7)
+            ->and($report->progress)->toBe(['tested' => 4, 'untested' => 2, 'timeout' => 1, 'uncovered' => 0]);
+    });
+
+    it('says nothing about progress for a run that created no mutation', function (string $output): void {
+        $report = MutationReport::fromOutput($output);
+
+        expect($report->created)->toBeNull()
+            ->and(array_sum($report->progress))->toBe(0)
+            ->and($report->toMarkdown())->not->toContain('It was stopped after');
+    })->with([
+        'nothing printed' => [''],
+        'the suite failed before any mutation' => ["  ..x.\n  Tests:    1 failed, 11 passed (40 assertions)\n  Duration: 0.43s\n"],
+    ]);
+
     it('lists no changes for a run in which every change was noticed', function (): void {
         $report = MutationReport::fromOutput("  Mutations: 7 tested\n  Score:     100.00%\n  Duration:  1.20s\n");
 

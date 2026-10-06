@@ -100,8 +100,12 @@ jobs:
   # changes of the two directories take hours of a runner. One job per
   # directory, so that each has a runner and a score of its own. A job
   # reports the score in its summary and does not fail on it (the script
-  # sets no minimum). It fails only when the suite itself does not pass, and
-  # it is stopped after five hours.
+  # sets no minimum). It fails when the suite itself does not pass, and when
+  # the run is stopped at its time limit, just under five hours: a stopped
+  # run has no score, and its summary says how many changes it got through
+  # and what it found in them. A job that is stopped every week needs fewer
+  # changes per job (a narrower path) and not a longer limit: GitHub allows
+  # a job six hours.
   mutation:
     runs-on: ubuntu-latest
 
