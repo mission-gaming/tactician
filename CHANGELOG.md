@@ -48,42 +48,28 @@ heading **Output change (fix)**.
   environment (`LC_ALL`, `LANG`) at startup, so this needed no `setlocale()`
   call in the application. Under the default `C` locale the report is
   unchanged.
-- Participant ids that are equal as numbers, or that contain `|`, no longer
-  share or split a pairing. Every map of pairings was keyed by
-  `sort($ids)` and `implode('|', $ids)`. PHP's `sort()` compares numeric
-  strings as numbers, so two different ids of the same value (`'01'` and
-  `'1'`, `'1e3'` and `'1000'`, `'0'` and `'0.0'`) tied and the key depended
-  on which was named first; and an id that contains `|` gave two different
-  pairings one key (`a` v `b|c`, and `a|b` v `c`). For a field that holds
-  such ids, and for no other field, these outputs change:
-  - `SwissPairingEngine::pairNextRound()` paired two participants who had
-    already met when their ids were equal as numbers, and passed over two
-    who had not met when a played pairing joined to the same text. It now
-    pairs as its contract says: never a repeat, and the highest-placed
-    opponent not yet met. With ids `0e1`, `0e2`, `01`, `1` and every result
-    drawn, round 2 was round 1 again:
-
-    ```
-    round 1: 0e2 v 0e1, 1 v 01    round 2: 0e1 v 0e2, 01 v 1     before
-    round 1: 0e2 v 0e1, 1 v 01    round 2: 01 v 0e1, 1 v 0e2     after
-    ```
+- Participant ids that are equal as numbers (`'01'` and `'1'`, `'1e3'` and
+  `'1000'`), or that contain `|`, are told apart. **A field with no such ids
+  is unaffected**: every key, message and schedule is byte for byte what it
+  was, including the order of plain decimal ids (`9` before `10`). No action
+  is needed either way. Every map of pairings was keyed by `sort($ids)` and
+  `implode('|', $ids)`; `sort()` compares numeric strings as numbers, so two
+  such ids tied and the key depended on which was named first, and an id
+  with `|` gave two pairings one key (`a` v `b|c`, and `a|b` v `c`). For a
+  field that holds such ids:
+  - `SwissPairingEngine::pairNextRound()` repeated a pairing, or passed over
+    one that had not been played. With ids `0e1`, `0e2`, `01`, `1` and every
+    result drawn, round 2 was round 1 again; it is now `01 v 0e1, 1 v 0e2`.
   - `RoundRobinPlan::validateIntegrity()` and `findUnplayedPairings()`, and
     `SwissPlan::validateIntegrity()`, counted one pairing as two or two as
-    one. For ids equal as numbers, a complete round robin was reported as
-    missing a pairing, and a repeated Swiss pairing went unreported, when
-    an event named the two the other way round from the list. For an id
-    with `|`, a missing round-robin pairing went unreported when another
-    pairing joined to the same text, the violation for a complete one read
-    `Pairing A vs  appears 2 time(s), expected 1.` after a PHP warning, and
-    the Swiss violation read `Pairing a vs b vs c`. Each violation now
-    counts and names one pairing: `Pairing a vs b|c appears 2 time(s);
-    Swiss pairings may not repeat.`
-  - The missing pairings and the constraint attribution of a
-    `DiagnosticReport`, and so the report of an
-    `IncompleteScheduleException`, listed pairings that had been scheduled.
+    one, and named a pairing with `|` in an id wrongly (`Pairing a vs b vs
+    c`). Each violation now counts and names one pairing: `Pairing a vs b|c
+    appears 2 time(s); Swiss pairings may not repeat.`
+  - A `DiagnosticReport`, and so the report of an
+    `IncompleteScheduleException`, listed scheduled pairings as missing.
   - `PairingSpacingMetric` measured the two meetings of such a pair as two
-    pairs that meet once, so a schedule scored better than it was and
-    `ScheduleOptimizer` could keep a different candidate.
+    pairs that meet once, so `ScheduleOptimizer` could keep a different
+    candidate.
   - `MatchOutcomeSelector` treated the two legs of a tie as two ties, or two
     ties of a round as one.
   - `StageState::withRoundPlayed()` and `withAdditionalResults()` accepted a
@@ -92,39 +78,29 @@ heading **Output change (fix)**.
     `InvalidConfigurationException` their contract states. The `event`
     entry in that exception's context writes a `|` inside an id as `\|` and
     a `\` as `\\`.
-
-  Nothing changes for a field with no such ids: a key, a message and a
-  schedule are byte for byte what they were, which includes the order of
-  plain decimal ids (`9` before `10`).
-
-  One more case, for an event of three or more participants, which no
-  generator or engine produces: `StageState` found the event of a result by
-  a key that depended on the order the participants were named in, when PHP
-  does not order their ids consistently (`2` is below `10` as a number, `10`
-  below `1a` and `1a` below `2` as text). `withRoundPlayed()` and
-  `withAdditionalResults()` rejected a result that named the participants of
-  its event in another order. The key is now the same in every order.
+  - For an event of three or more participants, which no generator or engine
+    produces, `StageState` rejected a result that named the participants in
+    another order when PHP does not order their ids consistently (`2` is
+    below `10` as a number, `10` below `1a` and `1a` below `2` as text). The
+    event is now found in every order.
 - `SwissPairingEngine` treats two participants as level when their ranking
-  values differ only by the rounding of a float sum. With a scale floats
-  cannot hold exactly, the same results added in another order give
-  different sums: at 1 for a win and 0.1 for a draw, win-draw-draw is
-  1.2000000000000002 and draw-draw-win is 1.2. The engine compared the two
-  exactly, so level participants fell into different score groups: a
-  randomizer never shuffled them together, and a bye credited as a win
-  ranked above or below the win it stands for. Two values are now level when
-  they differ by no more than a billionth of the larger one, or by a
-  billionth when both are below 1; within a group the standings order
-  decides, and a randomizer shuffles the group. For such a scale the
-  pairings of a seeded stage can therefore differ from 0.2.1. Two whole
-  numbers are level only when they are equal, however large they are, and so
-  is a value of `INF` or `-INF` with any other: floats hold whole numbers
-  exactly, so two different ones are two different scores. Nothing changes
-  for 3/1/0, 1/0.5/0 or any other scale in whole or half points, nor for a
-  ranking that packs points and a tiebreak into one whole number. A custom
-  `RankingStrategy` whose values are not whole numbers, and that separates
-  participants by less than a billionth of the larger value (0.001 at a
-  million), is now read as level by the Swiss engine; the standings table
-  itself is unchanged.
+  values differ only by the rounding of a float sum. **Nothing changes for
+  3/1/0, 1/0.5/0 or any scale in whole or half points, nor for any ranking
+  whose values are whole numbers.** With a scale floats cannot hold exactly,
+  the same results added in another order give different sums: at 1 for a
+  win and 0.1 for a draw, win-draw-draw is 1.2000000000000002 and
+  draw-draw-win is 1.2. The engine compared the two exactly, so level
+  participants fell into different score groups: a randomizer never shuffled
+  them together, and a bye credited as a win ranked above or below the win
+  it stands for. Two values are now level when they differ by no more than a
+  billionth of the larger one (a billionth when both are below 1); within a
+  group the standings order decides, and a randomizer shuffles the group.
+  Two whole numbers, and a value of `INF` or `-INF` with any other, are
+  level only when equal. What to check: a seeded stage on such a scale can
+  pair differently from 0.2.1, and a custom `RankingStrategy` whose values
+  are not whole numbers and that separates participants by less than a
+  billionth of the larger value (0.001 at a million) is now read as level by
+  the Swiss engine. The standings table itself is unchanged.
 - `ScheduleScorer` refuses numbers that cannot be compared. Its constructor
   accepted a weight of `NAN` or `INF`, because `NAN` fails no comparison and
   `INF` is positive, and `score()` and `report()` returned whatever a metric
@@ -279,11 +255,9 @@ heading **Output change (fix)**.
 - `StageState::withResultReplaced()`: replaces the recorded result of one
   event of the last recorded round and returns a new state. `StageState` had
   no verb to change a result, so a result entered wrongly meant rebuilding
-  the state, and a result the format cannot use left a state that every
-  engine call rejected: `withRoundPlayed()` accepts a drawn knockout match,
-  after which `isComplete()`, `pairNextRound()` and `getOutcome()` of an
-  elimination engine all throw. The event is found by round number,
-  participants in either order and tie leg. The method throws
+  the state. It is a correction of what was recorded, not a way to decide
+  an event. The event is found by round number, participants in either order
+  and tie leg. The method throws
   `InvalidConfigurationException` when no round is recorded, when the event
   has no recorded result, and when its round is not the last recorded one:
   the rounds after it were paired from its results, so the state is rebuilt
@@ -340,22 +314,19 @@ heading **Output change (fix)**.
   warns when `NAN` is cast to a string, and the report cast it. The text is
   unchanged: `NAN`.
 - Round-robin generation, the backtracking search and both elimination
-  engines accept every participant id. They share the pairing keys described
-  under "Output change (fix)" above, and for a field with two ids that are
-  equal as numbers, or an id that contains `|`, they failed outright:
-  `RoundRobinScheduler::schedule()` threw `IncompleteScheduleException`
-  (`Pairing ... appears 0 time(s), expected 1`) for the ids `01`, `1`, `2`,
-  `3`, because its own integrity check rejected the complete schedule it had
-  built; a two-legged elimination tie between two such ids never resolved,
-  because the second leg names the pair the other way round, and the engine
-  reported its round as partially resolved or paired it again; two ties of
-  one round were rejected as `Two results
-  reference the same elimination match`; and `StageState` rejected the
-  result of an event it had just recorded when the result named the two
-  participants in the other order. The backtracking search also marked the
-  bye seat with the id `"\0bye"`, so it found no schedule for an odd field
-  that holds a participant of that id. All of these now produce the
-  schedule or bracket that any other ids give.
+  engines accept every participant id. For a field with two ids that are
+  equal as numbers, or an id that contains `|` (see "Output change (fix)"
+  above), they failed outright: `RoundRobinScheduler::schedule()` threw
+  `IncompleteScheduleException` for the ids `01`, `1`, `2`, `3`, because its
+  own integrity check rejected the complete schedule it had built; a
+  two-legged elimination tie between two such ids never resolved; two ties
+  of one round were rejected as `Two results reference the same elimination
+  match`; and `StageState` rejected the result of an event it had just
+  recorded when the result named the two participants in the other order.
+  The backtracking search also found no schedule for an odd field that
+  holds a participant with the id `"\0bye"`, which it used to mark the bye
+  seat. All of these now produce the schedule or bracket that any other ids
+  give.
 - `ScheduleOptimizer::optimize()` no longer ends without a winner. A metric
   that measured `NAN` or `INF` left no candidate that scored below the
   starting best of `INF`, so the run ended in an `AssertionError`, or in
