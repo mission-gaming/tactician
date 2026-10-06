@@ -230,7 +230,7 @@ final class Example
             // schedule holding only those is not an empty one
             $unassigned = array_values(array_filter(
                 $value->getEvents(),
-                static fn (Event $event): bool => $event->getRound() === null
+                static fn(Event $event): bool => $event->getRound() === null
             ));
             if ($unassigned !== []) {
                 $parts['No round'] = ['list', array_map(self::eventText(...), $unassigned)];
@@ -327,7 +327,7 @@ final class Example
             $headers = array_map(strval(...), array_keys($value[0]));
 
             return ['table', $headers, array_map(
-                static fn (array $row): array => array_map(self::scalar(...), array_values($row)),
+                static fn(array $row): array => array_map(self::scalar(...), array_values($row)),
                 $value
             )];
         }
@@ -422,7 +422,7 @@ final class Example
     private static function eventText(Event $event): string
     {
         return implode(' v ', array_map(
-            static fn (Participant $participant): string => $participant->getLabel(),
+            static fn(Participant $participant): string => $participant->getLabel(),
             $event->getParticipants()
         ));
     }
@@ -469,11 +469,11 @@ final class Example
     private static function textLines(array $shape, string $indent): array
     {
         if ($shape[0] === 'text') {
-            return array_map(static fn (string $line): string => rtrim($indent . $line), explode("\n", self::stringOf($shape[1])));
+            return array_map(static fn(string $line): string => rtrim($indent . $line), explode("\n", self::stringOf($shape[1])));
         }
 
         if ($shape[0] === 'list') {
-            return array_map(static fn (string $item): string => $indent . '- ' . $item, self::stringsOf($shape[1]));
+            return array_map(static fn(string $item): string => $indent . '- ' . $item, self::stringsOf($shape[1]));
         }
 
         if ($shape[0] === 'table') {
@@ -517,19 +517,19 @@ final class Example
 
         if ($shape[0] === 'list') {
             return '<ul>' . implode('', array_map(
-                static fn (string $item): string => '<li>' . self::escape($item) . '</li>',
+                static fn(string $item): string => '<li>' . self::escape($item) . '</li>',
                 self::stringsOf($shape[1])
             )) . '</ul>';
         }
 
         if ($shape[0] === 'table') {
             $html = '<table><thead><tr>' . implode('', array_map(
-                static fn (string $header): string => '<th>' . self::escape($header) . '</th>',
+                static fn(string $header): string => '<th>' . self::escape($header) . '</th>',
                 self::stringsOf($shape[1])
             )) . '</tr></thead><tbody>';
             foreach (is_array($shape[2] ?? null) ? $shape[2] : [] as $row) {
                 $html .= '<tr>' . implode('', array_map(
-                    static fn (string $cell): string => '<td>' . self::escape($cell) . '</td>',
+                    static fn(string $cell): string => '<td>' . self::escape($cell) . '</td>',
                     self::stringsOf($row)
                 )) . '</tr>';
             }

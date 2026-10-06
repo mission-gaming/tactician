@@ -28,7 +28,7 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('adds constraints via add method', function (): void {
-        $constraint = $this->createMock(ConstraintInterface::class);
+        $constraint = $this->createStub(ConstraintInterface::class);
 
         $constraintSet = $this->builder
             ->add($constraint)
@@ -39,8 +39,8 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('maintains builder chain immutability', function (): void {
-        $constraint1 = $this->createMock(ConstraintInterface::class);
-        $constraint2 = $this->createMock(ConstraintInterface::class);
+        $constraint1 = $this->createStub(ConstraintInterface::class);
+        $constraint2 = $this->createStub(ConstraintInterface::class);
 
         $builder1 = $this->builder->add($constraint1);
         $builder2 = $builder1->add($constraint2);
@@ -59,7 +59,7 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('adds custom constraint with default name', function (): void {
-        $predicate = fn ($event, $context) => true;
+        $predicate = fn($event, $context) => true;
 
         $constraintSet = $this->builder
             ->custom($predicate)
@@ -72,7 +72,7 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('adds custom constraint with specified name', function (): void {
-        $predicate = fn ($event, $context) => true;
+        $predicate = fn($event, $context) => true;
         $customName = 'My Special Constraint';
 
         $constraintSet = $this->builder
@@ -88,7 +88,7 @@ describe('ConstraintSetBuilder', function (): void {
     it('chains multiple different constraint methods', function (): void {
         $constraintSet = $this->builder
             ->noRepeatPairings()
-            ->custom(fn ($event, $context) => true, 'Test Constraint')
+            ->custom(fn($event, $context) => true, 'Test Constraint')
             ->build();
 
         expect($constraintSet->count())->toBe(2);
@@ -97,9 +97,9 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('chains multiple add method calls', function (): void {
-        $constraint1 = $this->createMock(ConstraintInterface::class);
-        $constraint2 = $this->createMock(ConstraintInterface::class);
-        $constraint3 = $this->createMock(ConstraintInterface::class);
+        $constraint1 = $this->createStub(ConstraintInterface::class);
+        $constraint2 = $this->createStub(ConstraintInterface::class);
+        $constraint3 = $this->createStub(ConstraintInterface::class);
 
         $constraintSet = $this->builder
             ->add($constraint1)
@@ -112,13 +112,13 @@ describe('ConstraintSetBuilder', function (): void {
     });
 
     it('chains mixed method types in any order', function (): void {
-        $customConstraint = $this->createMock(ConstraintInterface::class);
+        $customConstraint = $this->createStub(ConstraintInterface::class);
 
         $constraintSet = $this->builder
-            ->custom(fn ($event, $context) => false, 'First Custom')
+            ->custom(fn($event, $context) => false, 'First Custom')
             ->add($customConstraint)
             ->noRepeatPairings()
-            ->custom(fn ($event, $context) => true, 'Second Custom')
+            ->custom(fn($event, $context) => true, 'Second Custom')
             ->build();
 
         expect($constraintSet->count())->toBe(4);
@@ -130,8 +130,8 @@ describe('ConstraintSetBuilder', function (): void {
 
     it('builds functional constraint set that validates correctly', function (): void {
         $constraintSet = $this->builder
-            ->custom(fn ($event, $context) => true, 'Always True')
-            ->custom(fn ($event, $context) => count($event->getParticipants()) >= 2, 'Min Participants')
+            ->custom(fn($event, $context) => true, 'Always True')
+            ->custom(fn($event, $context) => count($event->getParticipants()) >= 2, 'Min Participants')
             ->build();
 
         expect($constraintSet->isSatisfied($this->event, $this->context))->toBeTrue();
@@ -139,8 +139,8 @@ describe('ConstraintSetBuilder', function (): void {
 
     it('builds constraint set that properly fails validation', function (): void {
         $constraintSet = $this->builder
-            ->custom(fn ($event, $context) => true, 'Always True')
-            ->custom(fn ($event, $context) => false, 'Always False')
+            ->custom(fn($event, $context) => true, 'Always True')
+            ->custom(fn($event, $context) => false, 'Always False')
             ->build();
 
         expect($constraintSet->isSatisfied($this->event, $this->context))->toBeFalse();
@@ -161,7 +161,7 @@ describe('ConstraintSetBuilder', function (): void {
         $this->builder->noRepeatPairings();
         $constraintSet1 = $this->builder->build();
 
-        $this->builder->custom(fn ($event, $context) => true);
+        $this->builder->custom(fn($event, $context) => true);
         $constraintSet2 = $this->builder->build();
 
         expect($constraintSet1->count())->toBe(1);

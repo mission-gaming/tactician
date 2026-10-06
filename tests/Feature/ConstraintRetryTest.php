@@ -37,7 +37,7 @@ it('satisfies seed protection by retrying alternative participant orderings', fu
     expect(count($schedule))->toBe(30);
 
     foreach ($schedule as $event) {
-        $seeds = array_map(fn (Participant $p) => $p->getSeed(), $event->getParticipants());
+        $seeds = array_map(fn(Participant $p) => $p->getSeed(), $event->getParticipants());
         sort($seeds);
         if ($seeds === [1, 2]) {
             expect($event->getRound()?->getNumber())->toBeGreaterThan(2);
@@ -54,7 +54,7 @@ it('still rejects configurations no participant ordering can satisfy', function 
 
     $scheduler = new RoundRobinScheduler($constraints);
 
-    expect(fn () => $scheduler->schedule(retryParticipants(4), new RoundRobinOptions(legs: 2)))
+    expect(fn() => $scheduler->schedule(retryParticipants(4), new RoundRobinOptions(legs: 2)))
         ->toThrow(IncompleteScheduleException::class);
 });
 
@@ -66,7 +66,7 @@ it('produces identical unconstrained schedules with retries available', function
     $pairings = [];
     foreach ($schedule as $event) {
         $round = $event->getRound()?->getNumber();
-        $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+        $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
         $pairings[] = $round . ':' . implode('-', $ids);
     }
 

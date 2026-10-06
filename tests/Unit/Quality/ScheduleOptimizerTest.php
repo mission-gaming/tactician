@@ -58,19 +58,19 @@ describe('ScheduleScorer', function (): void {
         $wordWeight = unserialize(serialize([['metric' => new RoleBalanceMetric(), 'weight' => 'heavy']]));
         $notAnArray = unserialize(serialize(['just a metric name']));
 
-        expect(fn () => new ScheduleScorer([]))
+        expect(fn() => new ScheduleScorer([]))
             ->toThrow(InvalidConfigurationException::class, 'at least one metric');
-        expect(fn () => new ScheduleScorer($notAnArray))
+        expect(fn() => new ScheduleScorer($notAnArray))
             ->toThrow(InvalidConfigurationException::class, 'must be an array');
-        expect(fn () => new ScheduleScorer([
+        expect(fn() => new ScheduleScorer([
             ['metric' => new RoleBalanceMetric(), 'weight' => 1.0],
             ['metric' => new RoleBalanceMetric(), 'weight' => 2.0],
         ]))->toThrow(InvalidConfigurationException::class, 'unique');
-        expect(fn () => new ScheduleScorer($missingMetric))
+        expect(fn() => new ScheduleScorer($missingMetric))
             ->toThrow(InvalidConfigurationException::class, 'implementing QualityMetric');
-        expect(fn () => new ScheduleScorer($wordWeight))
+        expect(fn() => new ScheduleScorer($wordWeight))
             ->toThrow(InvalidConfigurationException::class, 'numeric weight');
-        expect(fn () => new ScheduleScorer([['metric' => new RoleBalanceMetric(), 'weight' => 0]]))
+        expect(fn() => new ScheduleScorer([['metric' => new RoleBalanceMetric(), 'weight' => 0]]))
             ->toThrow(InvalidConfigurationException::class, 'positive');
     });
 });
@@ -94,7 +94,7 @@ describe('ScheduleOptimizer', function (): void {
             new Randomizer(new Mt19937(42))
         );
         $result = $optimizer->optimize(
-            fn (Randomizer $r) => $r->getInt(0, 1) === 0 ? $lopsided : $balanced,
+            fn(Randomizer $r) => $r->getInt(0, 1) === 0 ? $lopsided : $balanced,
             8
         );
 
@@ -119,7 +119,7 @@ describe('ScheduleOptimizer', function (): void {
             // Every randomness source in the pipeline must use the child
             // randomizer - the shuffled strategy included
             $result = $optimizer->optimize(
-                fn (Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
+                fn(Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
                     $participants,
                     new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy($r))
                 ),
@@ -138,7 +138,7 @@ describe('ScheduleOptimizer', function (): void {
             $participants[] = new Participant("q{$i}", "Player {$i}", $i);
         }
         $scorer = ScheduleScorer::of(new PairingSpacingMetric());
-        $generate = fn (Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
+        $generate = fn(Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
             $participants,
             new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy($r))
         );
@@ -188,7 +188,7 @@ describe('ScheduleOptimizer', function (): void {
             new Randomizer(new Mt19937(1))
         );
 
-        expect(fn () => $optimizer->optimize(function (Randomizer $randomizer) use ($plan, $a, $b): Schedule {
+        expect(fn() => $optimizer->optimize(function (Randomizer $randomizer) use ($plan, $a, $b): Schedule {
             throw new IncompleteScheduleException(1, 0, new ConstraintViolationCollector(), $plan, [$a, $b], 'nothing works');
         }, 3))->toThrow(IncompleteScheduleException::class, 'nothing works');
     });
@@ -199,7 +199,7 @@ describe('ScheduleOptimizer', function (): void {
             new Randomizer(new Mt19937(1))
         );
 
-        expect(fn () => $optimizer->optimize(fn (Randomizer $randomizer) => new Schedule([]), 0))
+        expect(fn() => $optimizer->optimize(fn(Randomizer $randomizer) => new Schedule([]), 0))
             ->toThrow(InvalidConfigurationException::class, 'at least one sample');
     });
 });

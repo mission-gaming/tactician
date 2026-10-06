@@ -114,7 +114,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
         );
         $activeEntries = array_values(array_filter(
             $standings->getEntries(),
-            fn ($entry) => isset($activeIds[$entry->getParticipant()->getId()])
+            fn($entry) => isset($activeIds[$entry->getParticipant()->getId()])
         ));
         $orderedParticipants = $this->orderForPairing($activeEntries, $state->getByeIds());
 
@@ -146,7 +146,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
         foreach ($this->orderByeCandidates($orderedParticipants, $state->getByeIds()) as $byeCandidate) {
             $remaining = array_values(array_filter(
                 $orderedParticipants,
-                fn (Participant $participant) => $participant->getId() !== $byeCandidate->getId()
+                fn(Participant $participant) => $participant->getId() !== $byeCandidate->getId()
             ));
 
             $events = $this->pairOrderedParticipants(
@@ -309,7 +309,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
 
         usort(
             $indexed,
-            fn (array $first, array $second): int => ($second['ranking_value'] <=> $first['ranking_value'])
+            fn(array $first, array $second): int => ($second['ranking_value'] <=> $first['ranking_value'])
                 ?: ($first['index'] <=> $second['index'])
         );
 
@@ -317,7 +317,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
             $indexed = $this->shuffleWithinEqualRankings($indexed);
         }
 
-        return array_map(fn (array $entry) => $entry['participant'], $indexed);
+        return array_map(fn(array $entry) => $entry['participant'], $indexed);
     }
 
     /**
@@ -372,7 +372,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
 
         usort(
             $candidates,
-            fn (Participant $first, Participant $second): int => (($byeCounts[$first->getId()] ?? 0) <=> ($byeCounts[$second->getId()] ?? 0))
+            fn(Participant $first, Participant $second): int => (($byeCounts[$first->getId()] ?? 0) <=> ($byeCounts[$second->getId()] ?? 0))
                 ?: ($positions[$first->getId()] <=> $positions[$second->getId()])
         );
 

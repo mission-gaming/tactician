@@ -28,8 +28,7 @@ final readonly class ContiguityBroken implements RepackViolation
         private int $session,
         private int $gapSlots,
         private array $occupiedSlots
-    ) {
-    }
+    ) {}
 
     #[Override]
     public function getKind(): ViolationKind

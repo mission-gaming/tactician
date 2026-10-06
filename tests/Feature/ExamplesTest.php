@@ -96,7 +96,7 @@ function exampleArray(array $results, string $name): array
  */
 function examplePair(Event $event): string
 {
-    $ids = array_map(static fn (Participant $participant): string => $participant->getId(), $event->getParticipants());
+    $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
     sort($ids);
 
     return implode('|', $ids);
@@ -175,7 +175,7 @@ $demonstrations = [
         $participants = exampleArray($results, 'Participants');
 
         expect($participants)->toHaveCount(6)
-            ->and(array_map(static fn (Participant $participant): ?int => $participant->getSeed(), $participants))->toBe([1, 2, 3, 4, 5, 6]);
+            ->and(array_map(static fn(Participant $participant): ?int => $participant->getSeed(), $participants))->toBe([1, 2, 3, 4, 5, 6]);
 
         // A schedule without events would pass the loop below untested
         assertExampleRoundRobin($schedule, 6);
@@ -349,7 +349,7 @@ $demonstrations = [
             }
             ksort($firstNamed);
 
-            return array_map(static fn (array $homes): bool => $homes[0] !== $homes[1], $firstNamed);
+            return array_map(static fn(array $homes): bool => $homes[0] !== $homes[1], $firstNamed);
         };
 
         // How often each participant is first-named, by label, as the example reports it
@@ -401,7 +401,7 @@ $demonstrations = [
             if ($event->getRound()?->getNumber() > 2) {
                 continue;
             }
-            $tiers = array_map(static fn (Participant $participant): string => $tier[$participant->getId()], $event->getParticipants());
+            $tiers = array_map(static fn(Participant $participant): string => $tier[$participant->getId()], $event->getParticipants());
             sort($tiers);
 
             expect(examplePair($event))->not->toBe('fnatic|tsm')
@@ -524,7 +524,7 @@ $demonstrations = [
         }
         expect(array_unique($met))->toHaveCount(12);
 
-        $values = array_map(static fn ($entry): float => $entry->getRankingValue(), $standings->getEntries());
+        $values = array_map(static fn($entry): float => $entry->getRankingValue(), $standings->getEntries());
         $sorted = $values;
         rsort($sorted);
         expect($values)->toBe($sorted)
@@ -544,7 +544,7 @@ $demonstrations = [
         foreach ($tables as $pool => $table) {
             assert($table instanceof Standings);
             expect($table->getEntries())->toHaveCount(4);
-            $ranked[$pool] = array_map(static fn ($entry): Participant => $entry->getParticipant(), $table->getEntries());
+            $ranked[$pool] = array_map(static fn($entry): Participant => $entry->getParticipant(), $table->getEntries());
         }
 
         expect($qualifiers)->toBe([$ranked['Pool A'][0], $ranked['Pool B'][0], $ranked['Pool A'][1], $ranked['Pool B'][1]])
@@ -552,12 +552,12 @@ $demonstrations = [
             ->and($knockout['Semifinal'])->toHaveCount(2)
             ->and($knockout['Final'])->toHaveCount(1);
 
-        $semifinalWinners = array_map(static fn (Result $result): ?Participant => $result->getWinner(), $knockout['Semifinal']);
+        $semifinalWinners = array_map(static fn(Result $result): ?Participant => $result->getWinner(), $knockout['Semifinal']);
         $final = $knockout['Final'][0];
         assert($final instanceof Result);
 
         $ids = static function (array $participants): array {
-            $ids = array_map(static fn (?Participant $participant): ?string => $participant?->getId(), $participants);
+            $ids = array_map(static fn(?Participant $participant): ?string => $participant?->getId(), $participants);
             sort($ids);
 
             return $ids;
@@ -672,8 +672,8 @@ $demonstrations = [
 
         // Three rounds of three events: 9 results, each one a win and a loss
         expect($standings->getEntries())->toHaveCount(6)
-            ->and(array_sum(array_map(static fn ($entry): int => $entry->getWins(), $standings->getEntries())))->toBe(9)
-            ->and(array_map(static fn ($entry): int => $entry->getPlayed(), $standings->getEntries()))->toBe([3, 3, 3, 3, 3, 3])
+            ->and(array_sum(array_map(static fn($entry): int => $entry->getWins(), $standings->getEntries())))->toBe(9)
+            ->and(array_map(static fn($entry): int => $entry->getPlayed(), $standings->getEntries()))->toBe([3, 3, 3, 3, 3, 3])
             ->and($standings->getEntries()[0]->getParticipant()->getId())->toBe('ana');
     },
 
@@ -684,7 +684,7 @@ $demonstrations = [
 
         expect($fixtures)->toHaveCount(12)
             ->and($outcome->getUnplaced())->toBe([])
-            ->and(array_map(static fn ($assignment): string => $assignment->getEventId(), $outcome->getAssignments()))
+            ->and(array_map(static fn($assignment): string => $assignment->getEventId(), $outcome->getAssignments()))
             ->toBe(['e03', 'e04', 'e05', 'e06', 'e07', 'e08', 'e09', 'e10', 'e11', 'e12']);
 
         // The two pins sit at session 0, slot 0
@@ -766,8 +766,8 @@ $demonstrations = [
     '21-standings-and-tiebreakers' => function (array $results): void {
         $plain = exampleResult($results, 'Table without tiebreakers', Standings::class);
         $chain = exampleResult($results, 'Table with the tiebreaker chain', Standings::class);
-        $ids = static fn (Standings $standings): array => array_map(
-            static fn ($entry): string => $entry->getParticipant()->getId(),
+        $ids = static fn(Standings $standings): array => array_map(
+            static fn($entry): string => $entry->getParticipant()->getId(),
             $standings->getEntries()
         );
 
@@ -854,8 +854,8 @@ it('runs cleanly under full error reporting', function (string $script): void {
         );
     }
 })->with(array_combine(
-    array_map(fn (string $script) => basename($script), $exampleScripts),
-    array_map(fn (string $script) => [$script], $exampleScripts)
+    array_map(basename(...), $exampleScripts),
+    array_map(fn(string $script) => [$script], $exampleScripts)
 ));
 
 // A new example must say what it demonstrates before it can ship, and a
@@ -933,7 +933,7 @@ it('prints the same text whatever the timezone, locale, precision and working di
 
     if (ExampleResults::containsMeasured(ExampleResults::of($example))) {
         // The measured figures differ by design; everything around them must not
-        $withoutFigures = static fn (string $text): string => (string) preg_replace('/[\d.]+ (\w+) \(measured on this run\)/', '$1 (measured)', $text);
+        $withoutFigures = static fn(string $text): string => (string) preg_replace('/[\d.]+ (\w+) \(measured on this run\)/', '$1 (measured)', $text);
 
         expect($withoutFigures($other))->toBe($withoutFigures($plain))
             ->and($withoutFigures($plain))->not->toBe($plain);
@@ -981,7 +981,7 @@ it('displays its results however the script is named on the command line', funct
  */
 function withoutWarnings(Closure $attempt): mixed
 {
-    set_error_handler(static fn (): bool => true, E_WARNING);
+    set_error_handler(static fn(): bool => true, E_WARNING);
     try {
         return $attempt();
     } finally {
@@ -994,7 +994,7 @@ it('displays its results when the script is reached through a symbolic link', fu
     $link = sys_get_temp_dir() . '/tactician-examples-' . bin2hex(random_bytes(6));
 
     // The harness limitation: a platform or account that may not create links (Windows without the privilege)
-    if (!withoutWarnings(static fn (): bool => symlink($linked === 'the project' ? $root : "{$root}/examples", $link))) {
+    if (!withoutWarnings(static fn(): bool => symlink($linked === 'the project' ? $root : "{$root}/examples", $link))) {
         Assert::markTestSkipped('Symbolic links cannot be created here.');
     }
 
@@ -1061,7 +1061,7 @@ function exampleServerUnavailable(string $reason, string|false $ci): never
  */
 function exampleServerFreeAddress(): ?string
 {
-    $probe = withoutWarnings(static fn () => stream_socket_server('tcp://127.0.0.1:0'));
+    $probe = withoutWarnings(static fn() => stream_socket_server('tcp://127.0.0.1:0'));
     if ($probe === false) {
         return null;
     }
@@ -1077,7 +1077,7 @@ function exampleServerFreeAddress(): ?string
  */
 function exampleServerLogTail(string $log): string
 {
-    $logged = array_slice(withoutWarnings(static fn () => file($log, FILE_IGNORE_NEW_LINES)) ?: [], -15);
+    $logged = array_slice(withoutWarnings(static fn() => file($log, FILE_IGNORE_NEW_LINES)) ?: [], -15);
 
     return '    ' . implode("\n    ", $logged === [] ? ['(empty)'] : $logged);
 }
@@ -1432,23 +1432,23 @@ it('fails on a page that is blank, cut short, erroring, incomplete or missing, w
         ->toContain("GET http://127.0.0.1:1/{$example}.php")
         ->toContain('the last line');
 })->with([
-    'no response at all' => [null, static fn (string $page): string => '', 'did not answer the request for 01-basic-round-robin.php with a page'],
-    'an error status' => ['HTTP/1.1 500 Internal Server Error', static fn (string $page): string => $page, 'did not answer the request for 01-basic-round-robin.php with a page'],
-    'a page that is not found' => ['HTTP/1.1 404 Not Found', static fn (string $page): string => $page, 'did not answer the request for 01-basic-round-robin.php with a page'],
-    'a blank page' => ['HTTP/1.1 200 OK', static fn (string $page): string => '', 'is blank or does not start as a document'],
-    'a page of white space' => ['HTTP/1.1 200 OK', static fn (string $page): string => "\n", 'is blank or does not start as a document'],
-    'a warning before the page' => ['HTTP/1.1 200 OK', static fn (string $page): string => "<br />\n<b>Warning</b>:  Undefined variable\n" . $page, 'is blank or does not start as a document'],
-    'a page cut short' => ['HTTP/1.1 200 OK', static fn (string $page): string => substr($page, 0, intdiv(strlen($page), 2)), 'is cut short'],
-    'a page without its last line' => ['HTTP/1.1 200 OK', static fn (string $page): string => substr($page, 0, -8), 'is cut short'],
-    'a page without its final newline' => ['HTTP/1.1 200 OK', static fn (string $page): string => substr($page, 0, -1), 'is cut short'],
-    'output after the page' => ['HTTP/1.1 200 OK', static fn (string $page): string => $page . 'more', 'is cut short'],
-    'a warning in the page' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('</body>', "<br />\n<b>Warning</b>:  Undefined variable\n</body>", $page), 'shows a PHP error (Warning)'],
-    'a deprecation in the page' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('</body>', "<br />\n<b>Deprecated</b>:  Something\n</body>", $page), 'shows a PHP error (Deprecated)'],
-    'a fatal error in a page that still ends' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('</body>', "<br />\n<b>Fatal error</b>:  Uncaught Exception\n</body>", $page), 'shows a PHP error (Fatal error)'],
-    'no link back to the list' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('<a href="index.php">All examples</a>', '', $page), 'has no link back to the list'],
-    'the page of another example' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('<code>php examples/01-basic-round-robin.php</code>', '<code>php examples/02-participants-and-metadata.php</code>', $page), 'does not say how to run 01-basic-round-robin.php'],
-    'no source listing' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('<h2>The code that produced this page</h2>', '', $page), 'does not list its source'],
-    'a result that is not shown' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('<h2>Schedule</h2>', '', $page), 'does not show the result "Schedule"'],
+    'no response at all' => [null, static fn(string $page): string => '', 'did not answer the request for 01-basic-round-robin.php with a page'],
+    'an error status' => ['HTTP/1.1 500 Internal Server Error', static fn(string $page): string => $page, 'did not answer the request for 01-basic-round-robin.php with a page'],
+    'a page that is not found' => ['HTTP/1.1 404 Not Found', static fn(string $page): string => $page, 'did not answer the request for 01-basic-round-robin.php with a page'],
+    'a blank page' => ['HTTP/1.1 200 OK', static fn(string $page): string => '', 'is blank or does not start as a document'],
+    'a page of white space' => ['HTTP/1.1 200 OK', static fn(string $page): string => "\n", 'is blank or does not start as a document'],
+    'a warning before the page' => ['HTTP/1.1 200 OK', static fn(string $page): string => "<br />\n<b>Warning</b>:  Undefined variable\n" . $page, 'is blank or does not start as a document'],
+    'a page cut short' => ['HTTP/1.1 200 OK', static fn(string $page): string => substr($page, 0, intdiv(strlen($page), 2)), 'is cut short'],
+    'a page without its last line' => ['HTTP/1.1 200 OK', static fn(string $page): string => substr($page, 0, -8), 'is cut short'],
+    'a page without its final newline' => ['HTTP/1.1 200 OK', static fn(string $page): string => substr($page, 0, -1), 'is cut short'],
+    'output after the page' => ['HTTP/1.1 200 OK', static fn(string $page): string => $page . 'more', 'is cut short'],
+    'a warning in the page' => ['HTTP/1.1 200 OK', static fn(string $page): string => str_replace('</body>', "<br />\n<b>Warning</b>:  Undefined variable\n</body>", $page), 'shows a PHP error (Warning)'],
+    'a deprecation in the page' => ['HTTP/1.1 200 OK', static fn(string $page): string => str_replace('</body>', "<br />\n<b>Deprecated</b>:  Something\n</body>", $page), 'shows a PHP error (Deprecated)'],
+    'a fatal error in a page that still ends' => ['HTTP/1.1 200 OK', static fn(string $page): string => str_replace('</body>', "<br />\n<b>Fatal error</b>:  Uncaught Exception\n</body>", $page), 'shows a PHP error (Fatal error)'],
+    'no link back to the list' => ['HTTP/1.1 200 OK', static fn(string $page): string => str_replace('<a href="index.php">All examples</a>', '', $page), 'has no link back to the list'],
+    'the page of another example' => ['HTTP/1.1 200 OK', static fn(string $page): string => str_replace('<code>php examples/01-basic-round-robin.php</code>', '<code>php examples/02-participants-and-metadata.php</code>', $page), 'does not say how to run 01-basic-round-robin.php'],
+    'no source listing' => ['HTTP/1.1 200 OK', static fn(string $page): string => str_replace('<h2>The code that produced this page</h2>', '', $page), 'does not list its source'],
+    'a result that is not shown' => ['HTTP/1.1 200 OK', static fn(string $page): string => str_replace('<h2>Schedule</h2>', '', $page), 'does not show the result "Schedule"'],
 ]);
 
 // The same, end to end: what a real server answers goes through the request
@@ -1629,7 +1629,7 @@ it('fails on CI and skips elsewhere when no server can be started, with the reas
  */
 function withTakenAddress(Closure $whileTaken): void
 {
-    $holder = withoutWarnings(static fn () => stream_socket_server('tcp://127.0.0.1:0'));
+    $holder = withoutWarnings(static fn() => stream_socket_server('tcp://127.0.0.1:0'));
     if ($holder === false) {
         exampleServerUnavailable('No local port can be opened here.', getenv('CI'));
     }
@@ -1840,7 +1840,7 @@ it('does not claim that reading a schedule saves memory', function (string $file
     'docs/ARCHITECTURE.md',
     'examples/README.md',
     'examples/support/Example.php',
-    ...array_map(fn (string $script) => 'examples/' . basename($script), $exampleScripts),
+    ...array_map(fn(string $script) => 'examples/' . basename($script), $exampleScripts),
 ]);
 
 // The library says participant. Sample data may be teams, clubs or players,
@@ -1864,12 +1864,12 @@ it('says participant, not team, in the prose of the examples', function (string 
 })->with([
     'examples/README.md',
     'examples/support/Example.php',
-    ...array_map(fn (string $script) => 'examples/' . basename($script), $exampleScripts),
+    ...array_map(fn(string $script) => 'examples/' . basename($script), $exampleScripts),
 ]);
 
 it('holds every event in memory, so iterating, counting and listing agree and repeat', function (): void {
     $schedule = (new RoundRobinScheduler())->schedule(array_map(
-        fn (int $number) => new Participant("p{$number}", "Participant {$number}"),
+        fn(int $number) => new Participant("p{$number}", "Participant {$number}"),
         range(1, 6)
     ));
 
@@ -1915,11 +1915,14 @@ $runExamples = function (array $scripts, bool $createDirectory = true): array {
         fclose($pipes[2]);
         $exitCode = proc_close($process);
 
-        $ran = is_file($directory . '/ran.log')
-            ? file($directory . '/ran.log', FILE_IGNORE_NEW_LINES) ?: []
-            : [];
+        $ran = [];
+        if (is_file($directory . '/ran.log')) {
+            $lines = file($directory . '/ran.log', FILE_IGNORE_NEW_LINES);
+            $ran = $lines === false ? [] : $lines;
+        }
     } finally {
-        foreach (glob($directory . '/*') ?: [] as $file) {
+        $files = glob($directory . '/*');
+        foreach ($files === false ? [] : $files as $file) {
             unlink($file);
         }
         if (is_dir($directory)) {
@@ -1932,7 +1935,7 @@ $runExamples = function (array $scripts, bool $createDirectory = true): array {
 
 // Each throwaway script records that it ran, prints to standard output, and
 // exits with the given code
-$exampleSource = fn (string $label, int $exitCode = 0): string => sprintf(
+$exampleSource = fn(string $label, int $exitCode = 0): string => sprintf(
     "<?php\nfile_put_contents(__DIR__ . '/ran.log', %s . \"\\n\", FILE_APPEND);\necho %s;\nexit(%d);\n",
     var_export($label, true),
     var_export("output of {$label}\n", true),

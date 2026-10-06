@@ -28,8 +28,7 @@ readonly class Participant
         private string $label,
         private ?int $seed = null,
         private array $metadata = []
-    ) {
-    }
+    ) {}
 
     /**
      * Get the unique identifier for this participant.

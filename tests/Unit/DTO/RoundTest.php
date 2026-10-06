@@ -121,9 +121,9 @@ describe('Round DTO', function (): void {
     });
 
     it('rejects malformed serialized data', function (): void {
-        expect(fn () => Round::fromArray(['number' => 'one']))
+        expect(fn() => Round::fromArray(['number' => 'one']))
             ->toThrow(InvalidArgumentException::class, 'integer number');
-        expect(fn () => Round::fromArray(['number' => 1, 'metadata' => 'nope']))
+        expect(fn() => Round::fromArray(['number' => 1, 'metadata' => 'nope']))
             ->toThrow(InvalidArgumentException::class, 'metadata');
     });
 });

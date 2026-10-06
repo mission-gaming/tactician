@@ -49,7 +49,7 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
         }
 
         $topSeeds = $this->getTopSeeds($context->getParticipants());
-        $eventTopSeeds = array_filter($participants, fn ($p) => in_array($p, $topSeeds, true));
+        $eventTopSeeds = array_filter($participants, fn($p) => in_array($p, $topSeeds, true));
 
         return count($eventTopSeeds) <= 1; // Max 1 top seed per event during protection
     }
@@ -69,8 +69,8 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
     private function getTopSeeds(array $participants): array
     {
         // Sort by seed (lower number = better seed)
-        $seededParticipants = array_filter($participants, fn ($p) => $p->getSeed() !== null);
-        usort($seededParticipants, fn ($a, $b) => $a->getSeed() <=> $b->getSeed());
+        $seededParticipants = array_filter($participants, fn($p) => $p->getSeed() !== null);
+        usort($seededParticipants, fn($a, $b) => $a->getSeed() <=> $b->getSeed());
 
         return array_slice($seededParticipants, 0, $this->topSeedsToProtect);
     }

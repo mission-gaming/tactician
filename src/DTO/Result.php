@@ -38,7 +38,7 @@ readonly class Result
         }
 
         $participantIds = array_map(
-            fn (Participant $participant) => $participant->getId(),
+            fn(Participant $participant) => $participant->getId(),
             $event->getParticipants()
         );
         foreach (array_keys($scores) as $participantId) {

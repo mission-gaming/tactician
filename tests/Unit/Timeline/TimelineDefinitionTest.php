@@ -56,13 +56,13 @@ describe('TimelineDefinition', function (): void {
         $start = new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC'));
         $week = new DateInterval('P7D');
 
-        expect(fn () => new TimelineDefinition($start, $week, slotsPerRound: 0))
+        expect(fn() => new TimelineDefinition($start, $week, slotsPerRound: 0))
             ->toThrow(InvalidConfigurationException::class, 'at least 1 slot');
-        expect(fn () => new TimelineDefinition($start, $week, slotsPerRound: 3))
+        expect(fn() => new TimelineDefinition($start, $week, slotsPerRound: 3))
             ->toThrow(InvalidConfigurationException::class, 'slot interval');
-        expect(fn () => new TimelineDefinition($start, new DateInterval('PT0S')))
+        expect(fn() => new TimelineDefinition($start, new DateInterval('PT0S')))
             ->toThrow(InvalidConfigurationException::class, 'move time forward');
-        expect(fn () => new TimelineDefinition($start, $week, 2, new DateInterval('PT0S')))
+        expect(fn() => new TimelineDefinition($start, $week, 2, new DateInterval('PT0S')))
             ->toThrow(InvalidConfigurationException::class, 'move time forward');
     });
 
@@ -74,11 +74,11 @@ describe('TimelineDefinition', function (): void {
             slotInterval: new DateInterval('PT1H')
         );
 
-        expect(fn () => $timeline->getSlotTime(0))
+        expect(fn() => $timeline->getSlotTime(0))
             ->toThrow(InvalidConfigurationException::class, '1-based');
-        expect(fn () => $timeline->getSlotTime(1, 2))
+        expect(fn() => $timeline->getSlotTime(1, 2))
             ->toThrow(InvalidConfigurationException::class, 'out of range');
-        expect(fn () => $timeline->getSlotTime(1, -1))
+        expect(fn() => $timeline->getSlotTime(1, -1))
             ->toThrow(InvalidConfigurationException::class, 'out of range');
     });
 
@@ -143,15 +143,15 @@ describe('TimelineDefinition', function (): void {
             'round_interval' => 'P7D',
         ];
 
-        expect(fn () => TimelineDefinition::fromArray(['round_interval' => 'P7D']))
+        expect(fn() => TimelineDefinition::fromArray(['round_interval' => 'P7D']))
             ->toThrow(InvalidConfigurationException::class, 'timezone');
-        expect(fn () => TimelineDefinition::fromArray([...$valid, 'timezone' => 'Neverland/Nowhere']))
+        expect(fn() => TimelineDefinition::fromArray([...$valid, 'timezone' => 'Neverland/Nowhere']))
             ->toThrow(InvalidConfigurationException::class, 'not parseable');
-        expect(fn () => TimelineDefinition::fromArray([...$valid, 'round_interval' => 'a week']))
+        expect(fn() => TimelineDefinition::fromArray([...$valid, 'round_interval' => 'a week']))
             ->toThrow(InvalidConfigurationException::class, 'ISO 8601');
-        expect(fn () => TimelineDefinition::fromArray([...$valid, 'round_interval' => 7]))
+        expect(fn() => TimelineDefinition::fromArray([...$valid, 'round_interval' => 7]))
             ->toThrow(InvalidConfigurationException::class, 'ISO 8601');
-        expect(fn () => TimelineDefinition::fromArray([...$valid, 'slots_per_round' => 'three']))
+        expect(fn() => TimelineDefinition::fromArray([...$valid, 'slots_per_round' => 'three']))
             ->toThrow(InvalidConfigurationException::class, 'integer');
     });
 
@@ -161,11 +161,11 @@ describe('TimelineDefinition', function (): void {
     it('rejects start strings carrying their own timezone', function (): void {
         $base = ['round_interval' => 'P7D', 'timezone' => 'Europe/London'];
 
-        expect(fn () => TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01T19:00:00Z']))
+        expect(fn() => TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01T19:00:00Z']))
             ->toThrow(InvalidConfigurationException::class, 'carries its own timezone');
-        expect(fn () => TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01 19:00:00 +02:00']))
+        expect(fn() => TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01 19:00:00 +02:00']))
             ->toThrow(InvalidConfigurationException::class, 'carries its own timezone');
-        expect(fn () => TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01 19:00:00 America/New_York']))
+        expect(fn() => TimelineDefinition::fromArray([...$base, 'start' => '2026-08-01 19:00:00 America/New_York']))
             ->toThrow(InvalidConfigurationException::class, 'carries its own timezone');
 
         // A redundant-but-consistent embedded zone is fine
@@ -195,7 +195,7 @@ describe('TimelineDefinition', function (): void {
         expect($timeline->getResources())->toBe([]);
         expect($timeline->getCapacityPerSlot())->toBe(1);
         expect($timeline->getResourceAt(0))->toBeNull();
-        expect(fn () => $timeline->getResourceAt(1))
+        expect(fn() => $timeline->getResourceAt(1))
             ->toThrow(InvalidConfigurationException::class, 'out of range');
     });
 
@@ -215,11 +215,11 @@ describe('TimelineDefinition', function (): void {
         $start = new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('UTC'));
         $week = new DateInterval('P7D');
 
-        expect(fn () => new TimelineDefinition($start, $week, resources: ['']))
+        expect(fn() => new TimelineDefinition($start, $week, resources: ['']))
             ->toThrow(InvalidConfigurationException::class, 'non-empty strings');
-        expect(fn () => new TimelineDefinition($start, $week, resources: ['Pitch 1', 'Pitch 1']))
+        expect(fn() => new TimelineDefinition($start, $week, resources: ['Pitch 1', 'Pitch 1']))
             ->toThrow(InvalidConfigurationException::class, 'unique');
-        expect(fn () => TimelineDefinition::fromArray([
+        expect(fn() => TimelineDefinition::fromArray([
             'start' => '2026-08-01 19:00:00',
             'timezone' => 'UTC',
             'round_interval' => 'P7D',

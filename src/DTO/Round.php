@@ -13,7 +13,7 @@ use InvalidArgumentException;
  * custom metadata. Rounds are immutable value objects that can be
  * compared and provide utility methods for schedule management.
  */
-readonly class Round
+readonly class Round implements \Stringable
 {
     /**
      * Create a new Round with the specified parameters.

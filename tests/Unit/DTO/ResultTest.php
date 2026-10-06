@@ -35,9 +35,9 @@ describe('Result', function (): void {
     it('rejects winners and scores outside the event', function (): void {
         $outsider = new Participant('x1', 'Outsider');
 
-        expect(fn () => new Result($this->event, $outsider))
+        expect(fn() => new Result($this->event, $outsider))
             ->toThrow(InvalidArgumentException::class, 'Winner');
-        expect(fn () => new Result($this->event, null, ['x1' => 2]))
+        expect(fn() => new Result($this->event, null, ['x1' => 2]))
             ->toThrow(InvalidArgumentException::class, 'Score references');
     });
 
@@ -58,17 +58,17 @@ describe('Result', function (): void {
     it('rejects malformed serialized data', function (): void {
         $valid = (new Result($this->event, $this->alice))->toArray();
 
-        expect(fn () => Result::fromArray(['winner' => 'p1'], $this->registry))
+        expect(fn() => Result::fromArray(['winner' => 'p1'], $this->registry))
             ->toThrow(InvalidArgumentException::class, 'event');
-        expect(fn () => Result::fromArray([...$valid, 'winner' => 42], $this->registry))
+        expect(fn() => Result::fromArray([...$valid, 'winner' => 42], $this->registry))
             ->toThrow(InvalidArgumentException::class, 'winner');
-        expect(fn () => Result::fromArray([...$valid, 'winner' => 'ghost'], $this->registry))
+        expect(fn() => Result::fromArray([...$valid, 'winner' => 'ghost'], $this->registry))
             ->toThrow(InvalidArgumentException::class, 'unknown winner');
-        expect(fn () => Result::fromArray([...$valid, 'scores' => 'nope'], $this->registry))
+        expect(fn() => Result::fromArray([...$valid, 'scores' => 'nope'], $this->registry))
             ->toThrow(InvalidArgumentException::class, 'scores');
-        expect(fn () => Result::fromArray([...$valid, 'scores' => ['p1' => 'three']], $this->registry))
+        expect(fn() => Result::fromArray([...$valid, 'scores' => ['p1' => 'three']], $this->registry))
             ->toThrow(InvalidArgumentException::class, 'numeric');
-        expect(fn () => Result::fromArray([...$valid, 'metadata' => 'nope'], $this->registry))
+        expect(fn() => Result::fromArray([...$valid, 'metadata' => 'nope'], $this->registry))
             ->toThrow(InvalidArgumentException::class, 'metadata');
     });
 });

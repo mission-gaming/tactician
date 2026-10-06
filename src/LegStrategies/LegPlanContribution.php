@@ -29,6 +29,5 @@ final readonly class LegPlanContribution
         public bool $requiresRandomization,
         public array $unsatisfiableReasons = [],
         public array $warnings = []
-    ) {
-    }
+    ) {}
 }

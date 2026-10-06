@@ -80,7 +80,7 @@ final readonly class MinimumRestRule implements TimelineRule
 
         $violations = [];
         foreach ($byParticipant as $entries) {
-            usort($entries, fn (array $a, array $b): int => $a['kickoff'] <=> $b['kickoff']);
+            usort($entries, fn(array $a, array $b): int => $a['kickoff'] <=> $b['kickoff']);
 
             for ($i = 1; $i < count($entries); ++$i) {
                 $previous = $entries[$i - 1]['kickoff'];

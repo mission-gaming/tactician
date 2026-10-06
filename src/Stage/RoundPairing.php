@@ -29,8 +29,7 @@ final readonly class RoundPairing
         private ?string $label,
         private array $events,
         private array $byes = []
-    ) {
-    }
+    ) {}
 
     public function getRoundNumber(): int
     {
@@ -80,8 +79,8 @@ final readonly class RoundPairing
         return [
             'round' => $this->roundNumber,
             'label' => $this->label,
-            'events' => array_map(fn (Event $event) => $event->toArray(), $this->events),
-            'byes' => array_map(fn (Participant $participant) => $participant->getId(), $this->byes),
+            'events' => array_map(fn(Event $event) => $event->toArray(), $this->events),
+            'byes' => array_map(fn(Participant $participant) => $participant->getId(), $this->byes),
         ];
     }
 

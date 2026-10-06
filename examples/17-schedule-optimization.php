@@ -43,7 +43,7 @@ $scorer = new ScheduleScorer([
 
 // Every randomness source uses the child randomizer, so the whole run
 // reproduces from the single master seed
-$generate = fn (Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
+$generate = fn(Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
     $players,
     new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy($r))
 );

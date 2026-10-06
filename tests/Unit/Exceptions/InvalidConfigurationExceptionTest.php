@@ -90,6 +90,61 @@ describe('InvalidConfigurationException', function (): void {
         expect($report)->toContain('pi: 3.14159');
     });
 
+    // Tests the text of each kind of value at the edges: what the string
+    // cast gives for a scalar, a count for an array whatever it holds, and
+    // the class name for an object even when the object can be a string
+    it('formats a context value by its type', function (mixed $value, string $expected): void {
+        $exception = new InvalidConfigurationException('Test issue', ['value' => $value]);
+
+        expect($exception->getDiagnosticReport())->toContain("• value: {$expected}\n");
+    })->with([
+        'zero' => [0, '0'],
+        'a negative integer' => [-3, '-3'],
+        'a whole float' => [2.0, '2'],
+        'negative zero' => [-0.0, '-0'],
+        'a float beyond the precision' => [0.1 + 0.2, '0.3'],
+        'a large float' => [1e100, '1.0E+100'],
+        'infinity' => [INF, 'INF'],
+        'an empty string' => ['', ''],
+        'the string zero' => ['0', '0'],
+        'a string of digits' => ['007', '007'],
+        'an empty array' => [[], '[0 items]'],
+        'a nested array' => [[[1, 2], [3]], '[2 items]'],
+        // Pest calls a closure it finds in a dataset, so this one returns the value.
+        'a closure' => [fn(): Closure => fn(): int => 1, Closure::class],
+        'an object that can be a string' => [new MissionGaming\Tactician\DTO\Round(2), MissionGaming\Tactician\DTO\Round::class],
+        'an enum case' => [Random\IntervalBoundary::ClosedOpen, Random\IntervalBoundary::class],
+    ]);
+
+    // Tests that a resource in the context is printed as PHP's string cast
+    // prints it, open or closed
+    it('formats a resource value as the string cast does', function (): void {
+        // Given: Context holding an open and a closed resource
+        $open = fopen('php://memory', 'r');
+        $closed = fopen('php://memory', 'r');
+
+        if ($open === false || $closed === false) {
+            throw new RuntimeException('Could not open a memory stream.');
+        }
+
+        fclose($closed);
+
+        try {
+            $exception = new InvalidConfigurationException('Test issue', ['open' => $open, 'closed' => $closed]);
+
+            // When: Getting diagnostic report
+            $report = $exception->getDiagnosticReport();
+
+            // Then: Each is printed as "Resource id #N"
+            expect($report)->toContain('open: ' . (string) $open)
+                ->and($report)->toContain('closed: ' . (string) $closed)
+                ->and((string) $open)->toStartWith('Resource id #')
+                ->and((string) $closed)->toStartWith('Resource id #');
+        } finally {
+            fclose($open);
+        }
+    });
+
     // Tests that exception generates comprehensive requirements list
     it('generates comprehensive requirements list', function (): void {
         // Given: Exception with any configuration issue

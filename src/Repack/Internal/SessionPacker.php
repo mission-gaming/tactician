@@ -56,9 +56,7 @@ final class SessionPacker
     /** @var array<int, bool> */
     private array $usedEvents = [];
 
-    public function __construct(private readonly StepBudget $budget)
-    {
-    }
+    public function __construct(private readonly StepBudget $budget) {}
 
     /**
      * @param array<int, array{int, int}> $edges This session's events, keyed by
@@ -78,7 +76,7 @@ final class SessionPacker
         $this->edges = $edges;
         $this->pinSlots = $pinSlots;
         $this->pinnedSet = array_map(
-            static fn (array $slots): array => array_fill_keys($slots, true),
+            static fn(array $slots): array => array_fill_keys($slots, true),
             $pinSlots
         );
         $this->pinCounts = $pinCounts;

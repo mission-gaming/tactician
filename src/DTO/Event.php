@@ -126,7 +126,7 @@ readonly class Event
     {
         return [
             'participants' => array_map(
-                fn (Participant $participant) => $participant->getId(),
+                fn(Participant $participant) => $participant->getId(),
                 $this->participants
             ),
             'round' => $this->round?->toArray(),

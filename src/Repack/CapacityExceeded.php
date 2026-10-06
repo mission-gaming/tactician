@@ -28,8 +28,7 @@ final readonly class CapacityExceeded implements RepackViolation
         private ?Participant $participant,
         private int $demand,
         private int $capacity
-    ) {
-    }
+    ) {}
 
     #[Override]
     public function getKind(): ViolationKind

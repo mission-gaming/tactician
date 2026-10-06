@@ -92,7 +92,7 @@ class ScheduleValidator
                 }
                 $rounds = array_unique($rounds);
                 sort($rounds);
-                $roundsText = empty($rounds) ? '' : ' in rounds [' . implode(',', $rounds) . ']';
+                $roundsText = $rounds === [] ? '' : ' in rounds [' . implode(',', $rounds) . ']';
 
                 $report .= "  - {$constraintName}: {$count} violations{$roundsText}\n";
             }
@@ -126,11 +126,11 @@ class ScheduleValidator
 
         foreach ($violationCounts as $constraintName => $violationCount) {
             // Generate constraint-specific suggestions
-            if (strpos($constraintName, 'consecutive') !== false) {
+            if (str_contains($constraintName, 'consecutive')) {
                 $suggestions .= "  - Consider increasing the consecutive limit for '{$constraintName}'\n";
-            } elseif (strpos($constraintName, 'rest') !== false) {
+            } elseif (str_contains($constraintName, 'rest')) {
                 $suggestions .= "  - Consider reducing rest period requirements for '{$constraintName}'\n";
-            } elseif (strpos($constraintName, 'seed') !== false) {
+            } elseif (str_contains($constraintName, 'seed')) {
                 $suggestions .= "  - Consider reducing seed protection rounds for '{$constraintName}'\n";
             } else {
                 $suggestions .= "  - Review configuration for '{$constraintName}' ({$violationCount} violations)\n";

@@ -23,8 +23,7 @@ final readonly class EventUnplaced implements RepackViolation
         private string $eventId,
         private UnplacedReason $reason,
         private ?Participant $participant = null
-    ) {
-    }
+    ) {}
 
     #[Override]
     public function getKind(): ViolationKind

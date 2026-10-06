@@ -2,6 +2,15 @@
 
 declare(strict_types=1);
 
+// The style is PER Coding Style (`@PER-CS` follows the current version of the
+// standard) and the PHP 8.3 migration set, with the additions below.
+//
+// The migration set is named, not derived from the running PHP, so the fixer
+// asks for the same code on PHP 8.3, 8.4 and 8.5. On a PHP newer than the
+// Composer floor it prints a notice that says so; the notice does not change
+// the exit status. It does refuse to run on a PHP newer than it supports,
+// which is deliberate: `setUnsupportedPhpVersionAllowed()` is not called.
+
 $finder = PhpCsFixer\Finder::create()
     ->in(__DIR__)
     ->exclude(['vendor'])
@@ -9,44 +18,22 @@ $finder = PhpCsFixer\Finder::create()
     ->notName('*.blade.php');
 
 return (new PhpCsFixer\Config())
+    // For `declare_strict_types`, the one risky rule enabled: it changes how
+    // a file that lacked the declaration converts scalar arguments.
+    ->setRiskyAllowed(true)
     ->setRules([
-        '@PSR12' => true,
-        '@PHP82Migration' => true,
-        'array_syntax' => ['syntax' => 'short'],
+        '@PER-CS' => true,
+        '@PHP8x3Migration' => true,
+        'declare_strict_types' => true,
+
+        // Where the project differs from the preset.
+        // Exactly one space around an operator, where the preset accepts
+        // more. `=>` is left alone, so an aligned array stays as written.
         'binary_operator_spaces' => [
             'default' => 'single_space',
-            'operators' => ['=>' => null]
+            'operators' => ['=>' => null],
         ],
-        'blank_line_after_namespace' => true,
-        'blank_line_after_opening_tag' => true,
-        'blank_line_before_statement' => [
-            'statements' => ['return']
-        ],
-        'cast_spaces' => true,
-        'class_attributes_separation' => [
-            'elements' => [
-                'method' => 'one',
-            ]
-        ],
-        'concat_space' => [
-            'spacing' => 'one'
-        ],
-        'declare_equal_normalize' => true,
-        'function_typehint_space' => true,
-        'include' => true,
-        'increment_style' => true,
-        'lowercase_cast' => true,
-        'magic_constant_casing' => true,
-        'method_argument_space' => [
-            'on_multiline' => 'ensure_fully_multiline'
-        ],
-        'native_function_casing' => true,
-        'new_with_braces' => true,
-        'no_blank_lines_after_class_opening' => true,
-        'no_blank_lines_after_phpdoc' => true,
-        'no_empty_comment' => true,
-        'no_empty_phpdoc' => true,
-        'no_empty_statement' => true,
+        // The preset removes extra blank lines between imports only.
         'no_extra_blank_lines' => [
             'tokens' => [
                 'curly_brace_block',
@@ -54,25 +41,43 @@ return (new PhpCsFixer\Config())
                 'parenthesis_brace_block',
                 'square_brace_block',
                 'throw',
-                'use'
-            ]
+                'use',
+            ],
         ],
-        'no_leading_import_slash' => true,
+        // The preset groups imports by kind and leaves each group in the
+        // order written; here each group is alphabetical as well.
+        'ordered_imports' => [
+            'imports_order' => ['class', 'function', 'const'],
+            'sort_algorithm' => 'alpha',
+        ],
+
+        // What the preset does not cover.
+        'blank_line_before_statement' => [
+            'statements' => ['return'],
+        ],
+        'class_attributes_separation' => [
+            'elements' => [
+                'method' => 'one',
+            ],
+        ],
+        'include' => true,
+        'increment_style' => true,
+        'magic_constant_casing' => true,
+        'native_function_casing' => true,
+        'no_blank_lines_after_phpdoc' => true,
+        'no_empty_comment' => true,
+        'no_empty_phpdoc' => true,
+        'no_empty_statement' => true,
         'no_leading_namespace_whitespace' => true,
         'no_mixed_echo_print' => ['use' => 'echo'],
         'no_multiline_whitespace_around_double_arrow' => true,
         'no_short_bool_cast' => true,
         'no_singleline_whitespace_before_semicolons' => true,
         'no_spaces_around_offset' => true,
-        'no_trailing_comma_in_list_call' => true,
-        'no_trailing_comma_in_singleline_array' => true,
+        'no_trailing_comma_in_singleline' => true,
         'no_unneeded_control_parentheses' => true,
         'no_unused_imports' => true,
-        'no_whitespace_before_comma_in_array' => true,
-        'no_whitespace_in_blank_line' => true,
-        'normalize_index_brace' => true,
         'object_operator_without_whitespace' => true,
-        'ordered_imports' => ['sort_algorithm' => 'alpha'],
         'phpdoc_indent' => true,
         'phpdoc_inline_tag_normalizer' => true,
         'phpdoc_no_access' => true,
@@ -81,24 +86,18 @@ return (new PhpCsFixer\Config())
         'phpdoc_scalar' => true,
         'phpdoc_single_line_var_spacing' => true,
         'phpdoc_summary' => true,
-        'phpdoc_to_comment' => false,
         'phpdoc_trim' => true,
         'phpdoc_types' => true,
         'phpdoc_var_without_name' => true,
-        'return_type_declaration' => true,
         'semicolon_after_instruction' => true,
-        'short_scalar_cast' => true,
-        'single_class_element_per_statement' => true,
         'single_line_comment_style' => [
-            'comment_types' => ['hash']
+            'comment_types' => ['hash'],
         ],
         'single_quote' => true,
         'space_after_semicolon' => true,
         'standardize_not_equals' => true,
-        'ternary_operator_spaces' => true,
-        'trailing_comma_in_multiline' => true,
         'trim_array_spaces' => true,
-        'unary_operator_spaces' => true,
+        'type_declaration_spaces' => true,
         'whitespace_after_comma_in_array' => true,
     ])
     ->setFinder($finder);

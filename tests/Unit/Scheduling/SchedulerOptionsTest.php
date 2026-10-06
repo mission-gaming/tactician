@@ -57,8 +57,7 @@ describe('RoundRobinOptions', function (): void {
     // Custom strategies have no stable identifier, so serializing them
     // would produce config fromArray() could not rebuild
     it('refuses to serialize a custom strategy', function (): void {
-        $custom = new readonly class () extends MirroredLegStrategy {
-        };
+        $custom = new readonly class extends MirroredLegStrategy {};
 
         (new RoundRobinOptions(legs: 2, strategy: $custom))->toArray();
     })->throws(InvalidConfigurationException::class);
@@ -96,12 +95,12 @@ describe('Scheduler options type checks', function (): void {
     });
 
     it('rejects another algorithm options type on the round-robin scheduler', function (): void {
-        expect(fn () => (new RoundRobinScheduler())->schedule($this->participants, new SwissOptions()))
+        expect(fn() => (new RoundRobinScheduler())->schedule($this->participants, new SwissOptions()))
             ->toThrow(InvalidConfigurationException::class, 'RoundRobinOptions');
     });
 
     it('rejects another algorithm options type on the Swiss scheduler', function (): void {
-        expect(fn () => (new SwissScheduler())->schedule($this->participants, new RoundRobinOptions()))
+        expect(fn() => (new SwissScheduler())->schedule($this->participants, new RoundRobinOptions()))
             ->toThrow(InvalidConfigurationException::class, 'SwissOptions');
     });
 

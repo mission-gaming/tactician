@@ -45,7 +45,7 @@ final class ExampleResults
     public static function names(): array
     {
         $names = array_map(
-            static fn (string $script): string => basename($script, '.php'),
+            static fn(string $script): string => basename($script, '.php'),
             glob(self::directory() . '/[0-9][0-9]-*.php') ?: []
         );
         sort($names);
@@ -89,7 +89,7 @@ final class ExampleResults
         }
 
         // A scope of its own, so no variable of one example reaches the next
-        $include = static fn (string $path): mixed => require $path;
+        $include = static fn(string $path): mixed => require $path;
 
         ob_start();
         try {

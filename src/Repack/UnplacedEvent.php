@@ -24,8 +24,7 @@ final readonly class UnplacedEvent
         private string $eventId,
         private UnplacedReason $reason,
         private ?Participant $participant = null
-    ) {
-    }
+    ) {}
 
     public function getEventId(): string
     {

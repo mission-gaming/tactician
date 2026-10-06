@@ -69,7 +69,7 @@ it('runs a full groups-into-knockout tournament from the composition primitives'
     // Stage 1: pools, each playing a round robin
     $pools = PoolDistributor::serpentine($participants, 2);
     expect(array_map(
-        fn (array $pool) => array_map(fn (Participant $p) => $p->getId(), $pool),
+        fn(array $pool) => array_map(fn(Participant $p) => $p->getId(), $pool),
         $pools
     ))->toBe([
         'A' => ['t1', 't4', 't5', 't8'],
@@ -96,7 +96,7 @@ it('runs a full groups-into-knockout tournament from the composition primitives'
     // The hand-off: top 2 per pool over the combined outcome, winners first
     $combined = StageOutcome::combining($poolOutcomes, $calculator);
     $qualifiers = RankRangeSelector::topPerGroup(2)->select($combined);
-    expect(array_map(fn (Participant $p) => $p->getId(), $qualifiers))
+    expect(array_map(fn(Participant $p) => $p->getId(), $qualifiers))
         ->toBe(['t1', 't2', 't4', 't3']);
 
     // Stage 2: knockout preset seeded from list position
@@ -108,7 +108,7 @@ it('runs a full groups-into-knockout tournament from the composition primitives'
 
     // Cross-pool semifinals: each pool winner meets the other pool's runner-up
     foreach ($semifinals->getEvents() as $event) {
-        $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+        $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
         sort($ids);
         expect($ids)->toBeIn([['t1', 't3'], ['t2', 't4']]);
     }
@@ -124,7 +124,7 @@ it('runs a full groups-into-knockout tournament from the composition primitives'
 
     // The consumer's champion: winners of the final round
     $titleHolders = MatchOutcomeSelector::winners()->select($outcome);
-    expect(array_map(fn (Participant $p) => $p->getId(), $titleHolders))->toBe(['t1']);
+    expect(array_map(fn(Participant $p) => $p->getId(), $titleHolders))->toBe(['t1']);
 });
 
 it('feeds a losers route from the same outcome as the winners route', function (): void {
@@ -144,8 +144,8 @@ it('feeds a losers route from the same outcome as the winners route', function (
     $winners = MatchOutcomeSelector::winners()->select($outcome);
     $losers = MatchOutcomeSelector::losers()->select($outcome);
 
-    expect(array_map(fn (Participant $p) => $p->getId(), $winners))->toBe(['t1']);
-    expect(array_map(fn (Participant $p) => $p->getId(), $losers))->toBe(['t2']);
+    expect(array_map(fn(Participant $p) => $p->getId(), $winners))->toBe(['t1']);
+    expect(array_map(fn(Participant $p) => $p->getId(), $losers))->toBe(['t2']);
 });
 
 it('surfaces incomplete pool play before qualification', function (): void {
@@ -161,6 +161,6 @@ it('surfaces incomplete pool play before qualification', function (): void {
 
     // The stage-entry contract still catches structural errors at the
     // destination: a duplicated entrant is rejected loudly
-    expect(fn () => StageState::start([$participants[0], $participants[0]]))
+    expect(fn() => StageState::start([$participants[0], $participants[0]]))
         ->toThrow(InvalidConfigurationException::class, 'unique IDs');
 });

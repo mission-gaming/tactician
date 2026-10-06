@@ -54,7 +54,7 @@ try {
 $closeTimezones = ConstraintSet::create()
     ->add(new MetadataConstraint(
         'utc_offset',
-        static fn (array $offsets): bool => max($offsets) - min($offsets) <= 6,
+        static fn(array $offsets): bool => max($offsets) - min($offsets) <= 6,
         'Within 6 hours'
     ))
     ->build();

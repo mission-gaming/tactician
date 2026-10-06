@@ -77,8 +77,7 @@ final class LoadPlanner
     public function __construct(
         private readonly RepackOptions $options,
         private readonly StepBudget $budget
-    ) {
-    }
+    ) {}
 
     /**
      * @param array<int, array{int, int}> $edges Event index => participant index pair,
@@ -242,7 +241,7 @@ final class LoadPlanner
         }
         usort(
             $candidates,
-            static fn (array $x, array $y): int => $y[1] <=> $x[1] ?: $y[0] <=> $x[0]
+            static fn(array $x, array $y): int => $y[1] <=> $x[1] ?: $y[0] <=> $x[0]
         );
 
         for ($i = 0; $i < $activeCount - $totalCapacity; ++$i) {

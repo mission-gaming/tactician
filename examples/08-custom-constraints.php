@@ -52,14 +52,12 @@ $withVeteransApart = (new RoundRobinScheduler(
 // 2. A class, for a rule with its own configuration that you want to name,
 //    reuse and unit test.
 $budgetSeparation = new class ('high', 'low') implements ConstraintInterface {
-    public function __construct(private readonly string $upper, private readonly string $lower)
-    {
-    }
+    public function __construct(private readonly string $upper, private readonly string $lower) {}
 
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
         $budgets = array_map(
-            static fn (Participant $participant): mixed => $participant->getMetadataValue('budget'),
+            static fn(Participant $participant): mixed => $participant->getMetadataValue('budget'),
             $event->getParticipants()
         );
 

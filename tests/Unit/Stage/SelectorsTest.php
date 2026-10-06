@@ -48,17 +48,17 @@ describe('RankRangeSelector', function (): void {
 
         $selector = RankRangeSelector::overall(1, 2);
         expect($selector->getSelectionSize())->toBe(2);
-        expect(array_map(fn (Participant $p) => $p->getId(), $selector->select($outcome)))
+        expect(array_map(fn(Participant $p) => $p->getId(), $selector->select($outcome)))
             ->toBe(['p1', 'p2']);
 
-        expect(array_map(fn (Participant $p) => $p->getId(), RankRangeSelector::overall(3, 4)->select($outcome)))
+        expect(array_map(fn(Participant $p) => $p->getId(), RankRangeSelector::overall(3, 4)->select($outcome)))
             ->toBe(['p3', 'p4']);
     });
 
     it('rejects an overall range past the table', function (): void {
         $outcome = outcomeWithOrder([$this->alice, $this->bob]);
 
-        expect(fn () => RankRangeSelector::overall(1, 3)->select($outcome))
+        expect(fn() => RankRangeSelector::overall(1, 3)->select($outcome))
             ->toThrow(InvalidConfigurationException::class, 'past');
     });
 
@@ -71,11 +71,11 @@ describe('RankRangeSelector', function (): void {
 
         // Pool winners head the list in pool order, then runners-up: the
         // ordering fold seeding wants for cross-pool knockout pairings
-        expect(array_map(fn (Participant $p) => $p->getId(), $qualifiers))
+        expect(array_map(fn(Participant $p) => $p->getId(), $qualifiers))
             ->toBe(['p1', 'p3', 'p2', 'p4']);
 
         $runnersUp = RankRangeSelector::perGroup(2, 2)->select($combined);
-        expect(array_map(fn (Participant $p) => $p->getId(), $runnersUp))->toBe(['p2', 'p4']);
+        expect(array_map(fn(Participant $p) => $p->getId(), $runnersUp))->toBe(['p2', 'p4']);
     });
 
     it('reports no fixed size for per-group selections', function (): void {
@@ -85,7 +85,7 @@ describe('RankRangeSelector', function (): void {
     it('rejects per-group selection over an unpooled outcome', function (): void {
         $outcome = outcomeWithOrder([$this->alice, $this->bob]);
 
-        expect(fn () => RankRangeSelector::topPerGroup(1)->select($outcome))
+        expect(fn() => RankRangeSelector::topPerGroup(1)->select($outcome))
             ->toThrow(InvalidConfigurationException::class, 'pooled');
     });
 
@@ -94,7 +94,7 @@ describe('RankRangeSelector', function (): void {
             'A' => outcomeWithOrder([$this->alice, $this->bob]),
         ]);
 
-        expect(fn () => RankRangeSelector::perGroup(3, 3)->select($combined))
+        expect(fn() => RankRangeSelector::perGroup(3, 3)->select($combined))
             ->toThrow(InvalidConfigurationException::class, 'no rank 3');
     });
 
@@ -107,11 +107,11 @@ describe('RankRangeSelector', function (): void {
     });
 
     it('rejects invalid configuration', function (): void {
-        expect(fn () => RankRangeSelector::fromArray(['mode' => 'sideways', 'from' => 1, 'to' => 2]))
+        expect(fn() => RankRangeSelector::fromArray(['mode' => 'sideways', 'from' => 1, 'to' => 2]))
             ->toThrow(InvalidConfigurationException::class, 'mode');
-        expect(fn () => RankRangeSelector::fromArray(['mode' => 'overall', 'from' => 'one', 'to' => 2]))
+        expect(fn() => RankRangeSelector::fromArray(['mode' => 'overall', 'from' => 'one', 'to' => 2]))
             ->toThrow(InvalidConfigurationException::class, 'integers');
-        expect(fn () => RankRangeSelector::overall(3, 2))
+        expect(fn() => RankRangeSelector::overall(3, 2))
             ->toThrow(InvalidConfigurationException::class, 'from <= to');
     });
 });
@@ -138,10 +138,10 @@ describe('MatchOutcomeSelector', function (): void {
         $outcome = new StageOutcome($standings, $results, ['p5' => 1], $finalRound);
 
         $winners = MatchOutcomeSelector::winners()->select($outcome);
-        expect(array_map(fn (Participant $p) => $p->getId(), $winners))->toBe(['p1', 'p4', 'p5']);
+        expect(array_map(fn(Participant $p) => $p->getId(), $winners))->toBe(['p1', 'p4', 'p5']);
 
         $losers = MatchOutcomeSelector::losers()->select($outcome);
-        expect(array_map(fn (Participant $p) => $p->getId(), $losers))->toBe(['p2', 'p3']);
+        expect(array_map(fn(Participant $p) => $p->getId(), $losers))->toBe(['p2', 'p3']);
     });
 
     it('resolves two-legged final rounds through the tie decision', function (): void {
@@ -157,16 +157,16 @@ describe('MatchOutcomeSelector', function (): void {
         $outcome = new StageOutcome($standings, $results, [], $finalRound);
 
         $winners = MatchOutcomeSelector::winners()->select($outcome);
-        expect(array_map(fn (Participant $p) => $p->getId(), $winners))->toBe(['p2']);
+        expect(array_map(fn(Participant $p) => $p->getId(), $winners))->toBe(['p2']);
 
         $losers = MatchOutcomeSelector::losers()->select($outcome);
-        expect(array_map(fn (Participant $p) => $p->getId(), $losers))->toBe(['p1']);
+        expect(array_map(fn(Participant $p) => $p->getId(), $losers))->toBe(['p1']);
     });
 
     it('rejects outcomes without a final round', function (): void {
         $outcome = outcomeWithOrder([$this->alice, $this->bob]);
 
-        expect(fn () => MatchOutcomeSelector::winners()->select($outcome))
+        expect(fn() => MatchOutcomeSelector::winners()->select($outcome))
             ->toThrow(InvalidConfigurationException::class, 'final round');
     });
 
@@ -175,7 +175,7 @@ describe('MatchOutcomeSelector', function (): void {
         $standings = (new StandingsCalculator())->calculate([$this->alice, $this->bob], []);
 
         $missing = new StageOutcome($standings, [], [], new RoundPairing(1, 'final', [$event]));
-        expect(fn () => MatchOutcomeSelector::winners()->select($missing))
+        expect(fn() => MatchOutcomeSelector::winners()->select($missing))
             ->toThrow(InvalidConfigurationException::class, 'no complete recorded result');
 
         $drawn = new StageOutcome(
@@ -184,7 +184,7 @@ describe('MatchOutcomeSelector', function (): void {
             [],
             new RoundPairing(1, 'final', [$event])
         );
-        expect(fn () => MatchOutcomeSelector::winners()->select($drawn))
+        expect(fn() => MatchOutcomeSelector::winners()->select($drawn))
             ->toThrow(InvalidConfigurationException::class, 'draw');
     });
 
@@ -198,7 +198,7 @@ describe('MatchOutcomeSelector', function (): void {
             new RoundPairing(1, 'final', [new Event([$this->alice, $this->bob], new Round(1))])
         );
 
-        expect(fn () => MatchOutcomeSelector::winners()->select($outcome))
+        expect(fn() => MatchOutcomeSelector::winners()->select($outcome))
             ->toThrow(InvalidConfigurationException::class, 'round numbers');
     });
 
@@ -206,7 +206,7 @@ describe('MatchOutcomeSelector', function (): void {
         expect(MatchOutcomeSelector::winners()->getSelectionSize())->toBeNull();
         expect(MatchOutcomeSelector::winners()->toArray())->toBe(['mode' => 'winners']);
         expect(MatchOutcomeSelector::fromArray(['mode' => 'losers'])->toArray())->toBe(['mode' => 'losers']);
-        expect(fn () => MatchOutcomeSelector::fromArray(['mode' => 'survivors']))
+        expect(fn() => MatchOutcomeSelector::fromArray(['mode' => 'survivors']))
             ->toThrow(InvalidConfigurationException::class, 'mode');
     });
 });

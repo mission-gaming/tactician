@@ -47,7 +47,7 @@ class SchedulingDiagnostics
         $missingPairings = $this->identifyMissingPairings($participants, $partialEvents, $plan);
         $attribution = $this->attributeMissingPairings($participants, $constraints, $partialEvents, $plan);
         $suggestions = [
-            ...$this->generateSuggestions($participants, $constraints, $partialEvents, $plan, $context),
+            ...$this->generateSuggestions($participants, $partialEvents, $plan),
             ...$attribution['structural'],
         ];
 
@@ -105,11 +105,11 @@ class SchedulingDiagnostics
             $suggestions[] = 'Consider relaxing constraints that may be preventing event generation';
         }
 
-        if (!empty($report->getImpossiblePairings())) {
+        if ($report->getImpossiblePairings() !== []) {
             $suggestions[] = 'Some participant pairings cannot be satisfied with current constraints';
         }
 
-        if (!empty($report->getConstraintViolations())) {
+        if ($report->getConstraintViolations() !== []) {
             $suggestions[] = 'Review constraint configuration for potential conflicts';
         }
 
@@ -198,15 +198,12 @@ class SchedulingDiagnostics
      *
      * @param array<Participant> $participants
      * @param array<Event> $partialEvents
-     * @param array<string, mixed> $context
      * @return array<string>
      */
     private function generateSuggestions(
         array $participants,
-        ConstraintSet $constraints,
         array $partialEvents,
-        StagePlan $plan,
-        array $context
+        StagePlan $plan
     ): array {
         $suggestions = [];
 
@@ -346,7 +343,7 @@ class SchedulingDiagnostics
             if ($allowedRounds === []) {
                 $culprits = array_keys(array_filter(
                     $roundsRejectedBy,
-                    fn (int $rejectedRounds) => $rejectedRounds === $totalRounds
+                    fn(int $rejectedRounds) => $rejectedRounds === $totalRounds
                 ));
                 $blockedBy = $culprits === [] ? 'a combination of constraints' : implode(', ', $culprits);
                 $impossible[] = "{$pairLabel} cannot join the generated schedule in any round (blocked by: {$blockedBy})";
@@ -355,7 +352,7 @@ class SchedulingDiagnostics
 
             $openRounds = array_filter(
                 $allowedRounds,
-                fn (int $round) => ($eventsPerRound[$round] ?? 0) < $roundCapacity
+                fn(int $round) => ($eventsPerRound[$round] ?? 0) < $roundCapacity
             );
             if ($openRounds === []) {
                 $structural[] = "{$pairLabel} is only allowed in rounds already at capacity (rounds "

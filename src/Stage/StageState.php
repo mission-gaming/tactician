@@ -41,8 +41,7 @@ final readonly class StageState
         private array $participants,
         private array $roundsPlayed = [],
         private array $results = []
-    ) {
-    }
+    ) {}
 
     /**
      * Begin a stage with the given active participants.
@@ -56,7 +55,7 @@ final readonly class StageState
     {
         $participants = array_values($participants);
 
-        $ids = array_map(fn (Participant $participant) => $participant->getId(), $participants);
+        $ids = array_map(fn(Participant $participant) => $participant->getId(), $participants);
         if (count($ids) !== count(array_unique($ids))) {
             throw new InvalidConfigurationException(
                 'All participants must have unique IDs',
@@ -149,7 +148,7 @@ final readonly class StageState
      */
     private function eventKey(Event $event): string
     {
-        $ids = array_map(fn (Participant $participant) => $participant->getId(), $event->getParticipants());
+        $ids = array_map(fn(Participant $participant) => $participant->getId(), $event->getParticipants());
         sort($ids);
 
         $leg = $event->getMetadataValue('tie_leg');
@@ -196,7 +195,7 @@ final readonly class StageState
         return new self(
             array_values(array_filter(
                 $this->participants,
-                fn (Participant $active) => $active->getId() !== $participant->getId()
+                fn(Participant $active) => $active->getId() !== $participant->getId()
             )),
             $this->roundsPlayed,
             $this->results
@@ -372,15 +371,15 @@ final readonly class StageState
 
         return [
             'participants' => array_values(array_map(
-                fn (Participant $participant) => $participant->toArray(),
+                fn(Participant $participant) => $participant->toArray(),
                 $registry
             )),
             'active' => array_map(
-                fn (Participant $participant) => $participant->getId(),
+                fn(Participant $participant) => $participant->getId(),
                 $this->participants
             ),
-            'rounds' => array_map(fn (RoundPairing $pairing) => $pairing->toArray(), $this->roundsPlayed),
-            'results' => array_map(fn (Result $result) => $result->toArray(), $this->results),
+            'rounds' => array_map(fn(RoundPairing $pairing) => $pairing->toArray(), $this->roundsPlayed),
+            'results' => array_map(fn(Result $result) => $result->toArray(), $this->results),
         ];
     }
 

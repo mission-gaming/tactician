@@ -23,6 +23,8 @@ tests/Fixtures/golden/** text eol=lf
 /composer.lock         export-ignore
 /docs                  export-ignore
 /examples              export-ignore
+/phpstan               export-ignore
+/phpstan-tests.neon    export-ignore
 /phpstan.neon          export-ignore
 /phpunit.xml           export-ignore
 /rector.php            export-ignore

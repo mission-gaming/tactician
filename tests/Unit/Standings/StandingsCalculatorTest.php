@@ -58,12 +58,12 @@ describe('Result', function (): void {
     });
 
     it('rejects a winner who is not in the event', function (): void {
-        expect(fn () => new Result($this->event, $this->carol))
+        expect(fn() => new Result($this->event, $this->carol))
             ->toThrow(InvalidArgumentException::class);
     });
 
     it('rejects scores for participants not in the event', function (): void {
-        expect(fn () => new Result($this->event, null, ['p3' => 1]))
+        expect(fn() => new Result($this->event, null, ['p3' => 1]))
             ->toThrow(InvalidArgumentException::class);
     });
 });
@@ -152,7 +152,7 @@ describe('StandingsCalculator', function (): void {
 
         $calculator = new StandingsCalculator();
 
-        expect(fn () => $calculator->calculate($this->participants, $results))
+        expect(fn() => $calculator->calculate($this->participants, $results))
             ->toThrow(InvalidArgumentException::class, 'same event');
     });
 
@@ -164,7 +164,7 @@ describe('StandingsCalculator', function (): void {
 
         $calculator = new StandingsCalculator();
 
-        expect(fn () => $calculator->calculate($this->participants, $results))
+        expect(fn() => $calculator->calculate($this->participants, $results))
             ->toThrow(InvalidArgumentException::class);
     });
 
@@ -221,7 +221,7 @@ describe('StandingsCalculator', function (): void {
         $standings = (new StandingsCalculator())->calculate($this->participants, []);
 
         $labels = array_map(
-            fn ($entry) => $entry->getParticipant()->getLabel(),
+            fn($entry) => $entry->getParticipant()->getLabel(),
             $standings->getEntries()
         );
 
@@ -237,7 +237,7 @@ describe('StandingsCalculator', function (): void {
 
         $standings = (new StandingsCalculator())->calculate($participants, []);
 
-        $ids = array_map(fn ($entry) => $entry->getParticipant()->getId(), $standings->getEntries());
+        $ids = array_map(fn($entry) => $entry->getParticipant()->getId(), $standings->getEntries());
         expect($ids)->toBe(['m', 'z', 'a']);
     });
 
@@ -249,7 +249,7 @@ describe('StandingsCalculator', function (): void {
 
         $standings = (new StandingsCalculator())->calculate($participants, []);
 
-        $labels = array_map(fn ($entry) => $entry->getParticipant()->getLabel(), $standings->getEntries());
+        $labels = array_map(fn($entry) => $entry->getParticipant()->getLabel(), $standings->getEntries());
         expect($labels)->toBe(['Player 2', 'Player 10']);
     });
 

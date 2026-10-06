@@ -141,9 +141,7 @@ class IncompleteScheduleException extends SchedulingException
 
             foreach ($violations as $violation) {
                 $constraintName = $violation->constraint->getName();
-                if (!isset($violationsByConstraint[$constraintName])) {
-                    $violationsByConstraint[$constraintName] = [];
-                }
+                $violationsByConstraint[$constraintName] ??= [];
                 $violationsByConstraint[$constraintName][] = $violation;
             }
 
@@ -168,20 +166,20 @@ class IncompleteScheduleException extends SchedulingException
                     }
                 }
 
-                if (!empty($participantCounts)) {
+                if ($participantCounts !== []) {
                     arsort($participantCounts);
                     $topAffected = array_slice($participantCounts, 0, 3, true);
                     $report[] = sprintf(
                         '  Most affected participants: %s',
-                        implode(', ', array_map(fn ($id, $count) => "$id ($count)", array_keys($topAffected), $topAffected))
+                        implode(', ', array_map(fn($id, $count) => "$id ($count)", array_keys($topAffected), $topAffected))
                     );
                 }
 
-                if (!empty($roundCounts)) {
+                if ($roundCounts !== []) {
                     ksort($roundCounts);
                     $report[] = sprintf(
                         '  Affected rounds: %s',
-                        implode(', ', array_map(fn ($round, $count) => "$round ($count)", array_keys($roundCounts), $roundCounts))
+                        implode(', ', array_map(fn($round, $count) => "$round ($count)", array_keys($roundCounts), $roundCounts))
                     );
                 }
 
@@ -266,7 +264,7 @@ class IncompleteScheduleException extends SchedulingException
             }
         }
 
-        if (empty($suggestions)) {
+        if ($suggestions === []) {
             $suggestions[] = '• Try relaxing constraint requirements';
             $suggestions[] = $hasLegs
                 ? '• Increase the number of participants or legs'

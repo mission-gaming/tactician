@@ -41,7 +41,7 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule(
+        expect(fn() => $scheduler->schedule(
             $participants,
             new RoundRobinOptions(legs: 3, strategy: new MirroredLegStrategy())
         ))->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
@@ -68,7 +68,7 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule(
+        expect(fn() => $scheduler->schedule(
             $participants,
             new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
         ))->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
@@ -96,7 +96,7 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule($participants))
+        expect(fn() => $scheduler->schedule($participants))
             ->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 
@@ -152,7 +152,7 @@ describe('Complex Constraint Test Cases', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
 
         // These constraints are too restrictive - should throw IncompleteScheduleException
-        expect(fn () => $scheduler->schedule(
+        expect(fn() => $scheduler->schedule(
             $participants,
             new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy())
         ))->toThrow(\MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);

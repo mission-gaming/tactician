@@ -128,7 +128,7 @@ it('resolves double elimination in 2n-2 or 2n-1 matches with correct loss counts
     $state = StageState::start($participants);
 
     $losses = array_fill_keys(
-        array_map(fn (Participant $p) => $p->getId(), $participants),
+        array_map(fn(Participant $p) => $p->getId(), $participants),
         0
     );
 

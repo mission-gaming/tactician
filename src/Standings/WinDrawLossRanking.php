@@ -22,8 +22,7 @@ final readonly class WinDrawLossRanking implements RankingStrategy
         private float $winValue = 3.0,
         private float $drawValue = 1.0,
         private float $lossValue = 0.0
-    ) {
-    }
+    ) {}
 
     /**
      * The association-football convention: 3 for a win, 1 for a draw.

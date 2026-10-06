@@ -285,7 +285,7 @@ describe('Example renderer', function (): void {
     });
 
     it('refuses a measured value without the reason it is not fixed', function (string $reason): void {
-        expect(fn () => new Measured(1, 'ms', $reason))->toThrow(InvalidArgumentException::class);
+        expect(fn() => new Measured(1, 'ms', $reason))->toThrow(InvalidArgumentException::class);
     })->with(['empty' => [''], 'blank' => ["  \n"]]);
 
     it('writes instants in UTC and numbers with a point, whatever the timezone and locale', function (): void {

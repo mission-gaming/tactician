@@ -276,7 +276,7 @@ describe('Golden baseline', function (): void {
             assert(is_int($size) && is_int($legs));
             $rounds = $legs * ($size % 2 === 0 ? $size - 1 : $size);
 
-            $roundLines = array_values(array_filter($lines, static fn (string $line): bool => str_starts_with($line, 'R')));
+            $roundLines = array_values(array_filter($lines, static fn(string $line): bool => str_starts_with($line, 'R')));
             expect($roundLines)->toHaveCount($rounds, $title);
             foreach ($roundLines as $index => $line) {
                 [$label, $events] = explode(': ', $line, 2);
@@ -391,7 +391,7 @@ describe('Golden baseline', function (): void {
         foreach ([66, 120, 276] as $index => $events) {
             $lines = array_values($sections)[$index];
             $placed = (int) substr($lines[0], strlen('assignments: '));
-            $unplacedLine = array_values(array_filter($lines, static fn (string $line): bool => str_starts_with($line, 'unplaced: ')))[0];
+            $unplacedLine = array_values(array_filter($lines, static fn(string $line): bool => str_starts_with($line, 'unplaced: ')))[0];
 
             expect($placed)->toBeGreaterThan(0)
                 ->and($placed + (int) substr($unplacedLine, strlen('unplaced: ')))->toBe($events);

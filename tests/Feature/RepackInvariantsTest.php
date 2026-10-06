@@ -218,7 +218,7 @@ describe('Repack invariants', function (): void {
 
         // Pins are never re-emitted, so they hold their input position
         $movableIds = array_fill_keys(array_map(
-            static fn (MovableEvent $event): string => $event->getId(),
+            static fn(MovableEvent $event): string => $event->getId(),
             $movable
         ), true);
         foreach ($outcome->getAssignments() as $assignment) {

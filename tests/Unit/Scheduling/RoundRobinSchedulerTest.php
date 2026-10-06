@@ -48,7 +48,7 @@ describe('RoundRobinScheduler', function (): void {
     it('throws exception with less than 2 participants', function (): void {
         $scheduler = new RoundRobinScheduler();
 
-        expect(fn () => $scheduler->schedule([new Participant('p1', 'Alice')]))
+        expect(fn() => $scheduler->schedule([new Participant('p1', 'Alice')]))
             ->toThrow(InvalidConfigurationException::class, 'Invalid scheduler configuration: Round-robin scheduling requires at least 2 participants');
     });
 
@@ -240,7 +240,7 @@ describe('RoundRobinScheduler', function (): void {
         // The bye participant plays no event in that round
         foreach ($schedule as $event) {
             $round = $event->getRound()?->getNumber();
-            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
             expect($ids)->not->toContain($byes[$round] ?? null);
         }
     });
@@ -259,7 +259,7 @@ describe('RoundRobinScheduler', function (): void {
         expect(array_keys($byes))->toBe([1, 2, 3]);
         foreach ($schedule as $event) {
             $round = $event->getRound()?->getNumber();
-            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
             expect($ids)->not->toContain($byes[$round]);
         }
     });
@@ -273,7 +273,7 @@ describe('RoundRobinScheduler', function (): void {
     // Tests that plan construction consults the strategy's contribution and
     // rejects vetoed configurations before generating any events
     it('rejects configurations the leg strategy cannot satisfy', function (): void {
-        $vetoStrategy = new class () implements LegStrategyInterface {
+        $vetoStrategy = new class implements LegStrategyInterface {
             /**
              * @param array<Participant> $participants
              */
@@ -306,7 +306,7 @@ describe('RoundRobinScheduler', function (): void {
 
         $scheduler = new RoundRobinScheduler();
 
-        expect(fn () => $scheduler->schedule($this->participants, new RoundRobinOptions(legs: 2, strategy: $vetoStrategy)))
+        expect(fn() => $scheduler->schedule($this->participants, new RoundRobinOptions(legs: 2, strategy: $vetoStrategy)))
             ->toThrow(InvalidConfigurationException::class, 'Vetoed by test strategy');
     });
 

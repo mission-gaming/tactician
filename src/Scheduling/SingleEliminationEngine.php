@@ -48,8 +48,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
     public function __construct(
         private EliminationOptions $options = new EliminationOptions(),
         private StandingsCalculator $standingsCalculator = new StandingsCalculator()
-    ) {
-    }
+    ) {}
 
     /**
      * @throws InvalidConfigurationException When fewer than 2 participants have been seen
@@ -152,7 +151,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
             // replay must reproduce the same pairing before and after the
             // round's own results are recorded.
             if ($this->options->reseedEachRound && $round > 1) {
-                $survivors = array_values(array_filter($slots, fn (?Participant $slot) => $slot !== null));
+                $survivors = array_values(array_filter($slots, fn(?Participant $slot) => $slot !== null));
                 $slots = $this->buildInitialSlots($this->rankByStandings($survivors, $state, $round));
             }
 
@@ -236,7 +235,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
     {
         $priorResults = array_values(array_filter(
             $state->getResults(),
-            fn ($result) => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $beforeRound
+            fn($result) => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $beforeRound
         ));
 
         $standings = $this->standingsCalculator->calculate(

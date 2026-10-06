@@ -14,9 +14,8 @@ class CallableConstraint implements ConstraintInterface
      */
     public function __construct(
         private $predicate,
-        private string $name
-    ) {
-    }
+        private readonly string $name
+    ) {}
 
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool

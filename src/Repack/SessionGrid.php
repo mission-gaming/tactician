@@ -222,7 +222,7 @@ final readonly class SessionGrid
 
         $data = [
             'sessions' => array_map(
-                static fn (DateTimeImmutable $start): string => $start->format('Y-m-d H:i:s'),
+                static fn(DateTimeImmutable $start): string => $start->format('Y-m-d H:i:s'),
                 $this->sessionStarts
             ),
             'timezone' => $this->sessionStarts[0]->getTimezone()->getName(),

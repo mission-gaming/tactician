@@ -34,8 +34,7 @@ readonly class DiagnosticReport
         private array $impossiblePairings = [],
         private array $suggestions = [],
         private array $analysisContext = []
-    ) {
-    }
+    ) {}
 
     /**
      * Get the number of participants in the tournament.
@@ -139,7 +138,7 @@ readonly class DiagnosticReport
      */
     public function isSuccessful(): bool
     {
-        return $this->missingEvents === 0 && empty($this->constraintViolations);
+        return $this->missingEvents === 0 && $this->constraintViolations === [];
     }
 
     /**
@@ -147,9 +146,9 @@ readonly class DiagnosticReport
      */
     public function hasCriticalIssues(): bool
     {
-        return !empty($this->impossiblePairings) ||
-               !empty($this->constraintViolations) ||
-               $this->missingEvents > ($this->expectedEvents / 2);
+        return $this->impossiblePairings !== []
+               || $this->constraintViolations !== []
+               || $this->missingEvents > ($this->expectedEvents / 2);
     }
 
     /**
@@ -168,12 +167,12 @@ readonly class DiagnosticReport
             $summary .= "{$this->missingEvents} events could not be generated. ";
         }
 
-        if (!empty($this->constraintViolations)) {
+        if ($this->constraintViolations !== []) {
             $violationCount = count($this->constraintViolations);
             $summary .= "{$violationCount} constraint violations detected. ";
         }
 
-        if (!empty($this->impossiblePairings)) {
+        if ($this->impossiblePairings !== []) {
             $impossibleCount = count($this->impossiblePairings);
             $summary .= "{$impossibleCount} impossible pairings identified. ";
         }
@@ -197,7 +196,7 @@ readonly class DiagnosticReport
         $output[] = '  Completion: ' . number_format($this->getCompletionPercentage(), 1) . '%';
         $output[] = '';
 
-        if (!empty($this->missingPairings)) {
+        if ($this->missingPairings !== []) {
             $output[] = 'Missing Pairings:';
             foreach (array_slice($this->missingPairings, 0, 10) as $pairing) {
                 $output[] = "  - {$pairing}";
@@ -209,7 +208,7 @@ readonly class DiagnosticReport
             $output[] = '';
         }
 
-        if (!empty($this->constraintViolations)) {
+        if ($this->constraintViolations !== []) {
             $output[] = 'Constraint Violations:';
             foreach ($this->constraintViolations as $violation) {
                 $output[] = "  - {$violation}";
@@ -217,7 +216,7 @@ readonly class DiagnosticReport
             $output[] = '';
         }
 
-        if (!empty($this->impossiblePairings)) {
+        if ($this->impossiblePairings !== []) {
             $output[] = 'Impossible Pairings:';
             foreach ($this->impossiblePairings as $pairing) {
                 $output[] = "  - {$pairing}";
@@ -225,7 +224,7 @@ readonly class DiagnosticReport
             $output[] = '';
         }
 
-        if (!empty($this->suggestions)) {
+        if ($this->suggestions !== []) {
             $output[] = 'Suggestions:';
             foreach ($this->suggestions as $suggestion) {
                 $output[] = "  - {$suggestion}";

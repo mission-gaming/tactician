@@ -98,12 +98,12 @@ describe('StageState', function (): void {
         $foreignEvent = new Event([$this->carol, $this->dave], new Round(1));
         $pairing = new RoundPairing(1, null, [$pairingEvent]);
 
-        expect(fn () => StageState::start($this->participants)
+        expect(fn() => StageState::start($this->participants)
             ->withRoundPlayed($pairing, [new Result($foreignEvent, $this->carol)]))
             ->toThrow(InvalidConfigurationException::class, 'not part of the pairing');
 
         $state = StageState::start($this->participants)->withRoundPlayed($pairing, []);
-        expect(fn () => $state->withAdditionalResults([new Result($foreignEvent, $this->carol)]))
+        expect(fn() => $state->withAdditionalResults([new Result($foreignEvent, $this->carol)]))
             ->toThrow(InvalidConfigurationException::class, 'not part of the pairing');
     });
 
@@ -115,7 +115,7 @@ describe('StageState', function (): void {
 
         expect($state->getResults())->toHaveCount(1);
 
-        expect(fn () => StageState::start($this->participants)->withAdditionalResults([]))
+        expect(fn() => StageState::start($this->participants)->withAdditionalResults([]))
             ->toThrow(InvalidConfigurationException::class, 'No round');
     });
 
@@ -142,7 +142,7 @@ describe('StageState', function (): void {
             ->withRoundPlayed(new RoundPairing(1, null, [$event]), [$result])
             ->withoutParticipant($this->bob);
 
-        expect(array_map(fn (Participant $p) => $p->getId(), $state->getParticipants()))
+        expect(array_map(fn(Participant $p) => $p->getId(), $state->getParticipants()))
             ->toBe(['p1', 'p3', 'p4']);
         expect($state->getResults())->toBe([$result]);
         expect($state->getPlayedEvents())->toBe([$event]);
@@ -160,7 +160,7 @@ describe('StageState', function (): void {
 
         $rebuilt = StageState::fromArray($state->toArray());
 
-        expect(array_map(fn (Participant $p) => $p->getId(), $rebuilt->getParticipants()))
+        expect(array_map(fn(Participant $p) => $p->getId(), $rebuilt->getParticipants()))
             ->toBe(['p1', 'p2', 'p3']);
         expect($rebuilt->getNextRoundNumber())->toBe(2);
         expect($rebuilt->getLastRound()?->getLabel())->toBe('opening round');
@@ -198,9 +198,9 @@ describe('StageState', function (): void {
     });
 
     it('rejects malformed serialized data', function (): void {
-        expect(fn () => StageState::fromArray(['participants' => 'nope']))
+        expect(fn() => StageState::fromArray(['participants' => 'nope']))
             ->toThrow(InvalidArgumentException::class);
-        expect(fn () => StageState::fromArray(['participants' => ['nope']]))
+        expect(fn() => StageState::fromArray(['participants' => ['nope']]))
             ->toThrow(InvalidArgumentException::class, 'must be an array');
     });
 
@@ -210,15 +210,15 @@ describe('StageState', function (): void {
             'active' => ['p1'],
         ];
 
-        expect(fn () => StageState::fromArray([...$base, 'rounds' => 'nope', 'results' => []]))
+        expect(fn() => StageState::fromArray([...$base, 'rounds' => 'nope', 'results' => []]))
             ->toThrow(InvalidArgumentException::class, 'rounds');
-        expect(fn () => StageState::fromArray([...$base, 'rounds' => ['nope'], 'results' => []]))
+        expect(fn() => StageState::fromArray([...$base, 'rounds' => ['nope'], 'results' => []]))
             ->toThrow(InvalidArgumentException::class, 'round');
-        expect(fn () => StageState::fromArray([...$base, 'rounds' => [], 'results' => 'nope']))
+        expect(fn() => StageState::fromArray([...$base, 'rounds' => [], 'results' => 'nope']))
             ->toThrow(InvalidArgumentException::class, 'results');
-        expect(fn () => StageState::fromArray([...$base, 'rounds' => [], 'results' => ['nope']]))
+        expect(fn() => StageState::fromArray([...$base, 'rounds' => [], 'results' => ['nope']]))
             ->toThrow(InvalidArgumentException::class, 'result');
-        expect(fn () => StageState::fromArray([...$base, 'active' => 'nope', 'rounds' => [], 'results' => []]))
+        expect(fn() => StageState::fromArray([...$base, 'active' => 'nope', 'rounds' => [], 'results' => []]))
             ->toThrow(InvalidArgumentException::class, 'active');
     });
 

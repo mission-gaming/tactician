@@ -20,9 +20,7 @@ readonly class Standings implements IteratorAggregate, Countable
     /**
      * @param array<StandingEntry> $entries Entries ordered best-first
      */
-    public function __construct(private array $entries)
-    {
-    }
+    public function __construct(private array $entries) {}
 
     /**
      * @return array<StandingEntry>

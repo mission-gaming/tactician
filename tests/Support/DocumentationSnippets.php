@@ -75,7 +75,7 @@ final class DocumentationSnippets
      * change set, a documentation-only one included (pinned by
      * tests/Feature/CiConfigurationTest.php).
      */
-    public const DOCUMENTS = ['README.md', 'docs/USAGE.md'];
+    public const array DOCUMENTS = ['README.md', 'docs/USAGE.md'];
 
     /**
      * How long one block (with the earlier blocks of its section) may run,
@@ -84,13 +84,13 @@ final class DocumentationSnippets
      * machine does not trip it, and exists so that a block that never
      * returns fails by name instead of hanging the whole suite.
      */
-    public const TIME_LIMIT = 30.0;
+    public const float TIME_LIMIT = 30.0;
 
     /** What follows the nonce on the line a RUN block prints when it reaches its end. */
-    private const FINISHED = 'finished';
+    private const string FINISHED = 'finished';
 
     /** How often a running block is checked for having finished, in microseconds. */
-    private const POLL_INTERVAL = 5_000;
+    private const int POLL_INTERVAL = 5_000;
 
     /**
      * @return array{snippets: list<DocumentationSnippet>, problems: list<string>}
@@ -326,7 +326,7 @@ final class DocumentationSnippets
         );
 
         // The harness's own lines (each follows a newline it wrote itself) are not the block's output
-        $result = static fn (?string $failure): array => [
+        $result = static fn(?string $failure): array => [
             'failure' => $failure,
             'output' => (string) preg_replace('/\n' . preg_quote($nonce, '/') . '\S*\n/', '', $output),
         ];
@@ -438,7 +438,7 @@ final class DocumentationSnippets
         return self::run(
             $unskipped,
             array_map(
-                static fn (DocumentationSnippet $snippet): DocumentationSnippet => $snippet === $skipped ? $unskipped : $snippet,
+                static fn(DocumentationSnippet $snippet): DocumentationSnippet => $snippet === $skipped ? $unskipped : $snippet,
                 $all
             ),
             $autoload
@@ -536,7 +536,7 @@ final class DocumentationSnippets
             'lines' => $map,
             'earlier' => count(array_filter(
                 $predecessors,
-                static fn (DocumentationSnippet $snippet): bool => $snippet->mode === DocumentationSnippet::RUN
+                static fn(DocumentationSnippet $snippet): bool => $snippet->mode === DocumentationSnippet::RUN
             )),
         ];
     }

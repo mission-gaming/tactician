@@ -31,8 +31,7 @@ readonly class SchedulingContext
         private array $allEvents = [],
         private int $currentLeg = 1,
         private int $participantsPerEvent = 2
-    ) {
-    }
+    ) {}
 
     /**
      * Get the stage plan: the algorithm's declaration of rounds, legs, and
@@ -144,7 +143,7 @@ readonly class SchedulingContext
     {
         return array_filter(
             $this->allEvents,
-            fn (Event $event) => $event->hasParticipant($participant)
+            fn(Event $event) => $event->hasParticipant($participant)
         );
     }
 

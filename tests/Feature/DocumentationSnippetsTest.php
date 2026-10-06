@@ -101,7 +101,7 @@ function snippetSampleFailure(string $markdown, float $timeLimit = Documentation
 
     $executed = array_values(array_filter(
         $extracted['snippets'],
-        static fn (DocumentationSnippet $snippet): bool => $snippet->isExecuted()
+        static fn(DocumentationSnippet $snippet): bool => $snippet->isExecuted()
     ));
     Assert::assertNotEmpty($executed, 'The sample has no executable block.');
 
@@ -129,7 +129,7 @@ function documentedBlock(array $extracted, string $document, string $containing)
 {
     $found = array_values(array_filter(
         $extracted[$document]['snippets'],
-        static fn (DocumentationSnippet $snippet): bool => $snippet->mode !== DocumentationSnippet::SETUP
+        static fn(DocumentationSnippet $snippet): bool => $snippet->mode !== DocumentationSnippet::SETUP
             && str_contains(implode("\n", $snippet->code), $containing)
     ));
     Assert::assertSame(1, count($found), "Expected exactly one block of {$document} to contain `{$containing}`.");
@@ -177,7 +177,7 @@ describe('Documentation snippets', function () use ($extracted, $blocks, $skippe
         $root = dirname(__DIR__, 2);
         $fenced = array_filter(
             $extracted[$document]['snippets'],
-            static fn (DocumentationSnippet $snippet): bool => $snippet->mode !== DocumentationSnippet::SETUP
+            static fn(DocumentationSnippet $snippet): bool => $snippet->mode !== DocumentationSnippet::SETUP
         );
 
         // An empty problem list also means every skip marker gives its reason
@@ -626,9 +626,9 @@ describe('Documentation snippet harness', function (): void {
             MARKDOWN);
 
         expect($extracted['problems'])->toBe([])
-            ->and(array_map(static fn (DocumentationSnippet $snippet): array => $snippet->code, $extracted['snippets']))
+            ->and(array_map(static fn(DocumentationSnippet $snippet): array => $snippet->code, $extracted['snippets']))
             ->toBe([['$inList = true;'], ['$tilde = true;']])
-            ->and(array_map(static fn (DocumentationSnippet $snippet): int => $snippet->line, $extracted['snippets']))
+            ->and(array_map(static fn(DocumentationSnippet $snippet): int => $snippet->line, $extracted['snippets']))
             ->toBe([3, 15]);
     });
 
@@ -858,7 +858,7 @@ describe('Documentation snippet harness', function (): void {
         $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
 
         $failures = array_map(
-            static fn (DocumentationSnippet $snippet): ?string => DocumentationSnippets::run($snippet, $extracted, $autoload),
+            static fn(DocumentationSnippet $snippet): ?string => DocumentationSnippets::run($snippet, $extracted, $autoload),
             $extracted
         );
 
@@ -951,7 +951,7 @@ describe('Documentation snippet harness', function (): void {
 
         $snippets = DocumentationSnippets::extract('sample.md', $markdown)['snippets'];
 
-        expect(array_map(static fn (DocumentationSnippet $snippet): string => $snippet->section, $snippets))
+        expect(array_map(static fn(DocumentationSnippet $snippet): string => $snippet->section, $snippets))
             ->toBe(['First', 'First', 'Second'])
             ->and(DocumentationSnippets::run($snippets[1], $snippets, dirname(__DIR__, 2) . '/vendor/autoload.php'))->toBeNull()
             ->and(snippetSampleFailure($markdown))->toContain('Undefined variable $fromTheFirst in sample.md:22');
@@ -1082,7 +1082,7 @@ describe('Documentation snippet harness', function (): void {
         $autoload = dirname(__DIR__, 2) . '/vendor/autoload.php';
 
         expect(DocumentationSnippets::output($extracted[1], $extracted, $autoload))->toBe("line one\nline two\n")
-            ->and(static fn (): string => DocumentationSnippets::output($extracted[2], $extracted, $autoload))
+            ->and(static fn(): string => DocumentationSnippets::output($extracted[2], $extracted, $autoload))
             ->toThrow(RuntimeException::class, 'Undefined variable $undefined in sample.md:12');
     });
 

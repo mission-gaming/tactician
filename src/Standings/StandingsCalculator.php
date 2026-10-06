@@ -26,8 +26,7 @@ readonly class StandingsCalculator
     public function __construct(
         private RankingStrategy $rankingStrategy = new WinDrawLossRanking(),
         private array $tiebreakers = []
-    ) {
-    }
+    ) {}
 
     public function getRankingStrategy(): RankingStrategy
     {

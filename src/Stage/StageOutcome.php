@@ -36,8 +36,7 @@ final readonly class StageOutcome
         private array $byes = [],
         private ?RoundPairing $finalRound = null,
         private array $pools = []
-    ) {
-    }
+    ) {}
 
     /**
      * Combine per-pool outcomes into one pooled outcome.

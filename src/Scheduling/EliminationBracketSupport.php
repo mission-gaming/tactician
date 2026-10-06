@@ -128,7 +128,7 @@ trait EliminationBracketSupport
             if ($round === null) {
                 throw new InvalidConfigurationException(
                     'Elimination results must reference events with a round number; record results against the events produced by the engine',
-                    ['participants' => array_map(fn (Participant $p) => $p->getId(), $eventParticipants)]
+                    ['participants' => array_map(fn(Participant $p) => $p->getId(), $eventParticipants)]
                 );
             }
 

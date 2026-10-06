@@ -34,7 +34,7 @@ function seededField(int $count): array
 function eventIdPairs(array $events): array
 {
     return array_map(
-        fn (Event $event) => array_map(fn (Participant $p) => $p->getId(), $event->getParticipants()),
+        fn(Event $event) => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants()),
         $events
     );
 }
@@ -89,7 +89,7 @@ describe('SingleEliminationEngine', function (): void {
         $pairing = (new SingleEliminationEngine())->pairNextRound(StageState::start(seededField(6)));
 
         expect($pairing->getLabel())->toBe('quarterfinal');
-        expect(array_map(fn (Participant $p) => $p->getId(), $pairing->getByes()))->toBe(['s1', 's2']);
+        expect(array_map(fn(Participant $p) => $p->getId(), $pairing->getByes()))->toBe(['s1', 's2']);
         expect(eventIdPairs($pairing->getEvents()))->toBe([
             ['s4', 's5'],
             ['s3', 's6'],
@@ -109,7 +109,7 @@ describe('SingleEliminationEngine', function (): void {
         $pairing = (new SingleEliminationEngine())->pairNextRound(StageState::start($participants));
 
         // Bracket of 4 over positions: (first, bye), (second, third)
-        expect(array_map(fn (Participant $p) => $p->getId(), $pairing->getByes()))->toBe(['first']);
+        expect(array_map(fn(Participant $p) => $p->getId(), $pairing->getByes()))->toBe(['first']);
         expect(eventIdPairs($pairing->getEvents()))->toBe([['second', 'third']]);
     });
 
@@ -172,7 +172,7 @@ describe('SingleEliminationEngine', function (): void {
         expect($entries[1]->getParticipant()->getId())->toBe('s2'); // 1-1, better score diff? no: 1 win 1 loss
         expect($outcome->getFinalRound()?->getLabel())->toBe('final');
 
-        expect(fn () => $engine->pairNextRound($state))
+        expect(fn() => $engine->pairNextRound($state))
             ->toThrow(InvalidConfigurationException::class, 'complete');
     });
 
@@ -186,7 +186,7 @@ describe('SingleEliminationEngine', function (): void {
             new Result($round1->getEvents()[1], $round1->getEvents()[1]->getParticipants()[0]),
         ]);
 
-        expect(fn () => $engine->pairNextRound($state))
+        expect(fn() => $engine->pairNextRound($state))
             ->toThrow(InvalidConfigurationException::class, 'draw');
     });
 
@@ -200,7 +200,7 @@ describe('SingleEliminationEngine', function (): void {
             new Result($round1->getEvents()[0], $participants[0]),
         ]);
 
-        expect(fn () => $engine->pairNextRound($state))
+        expect(fn() => $engine->pairNextRound($state))
             ->toThrow(InvalidConfigurationException::class, 'partially resolved');
     });
 
@@ -233,7 +233,7 @@ describe('SingleEliminationEngine', function (): void {
             new Result($round1->getEvents()[1], $participants[1]),
         ]);
 
-        expect(fn () => $engine->pairNextRound($state))
+        expect(fn() => $engine->pairNextRound($state))
             ->toThrow(InvalidConfigurationException::class, 'same elimination match');
     });
 
@@ -257,14 +257,14 @@ describe('SingleEliminationEngine', function (): void {
             'scores' => [],
             'metadata' => [],
         ]]]);
-        expect(fn () => $engine->pairNextRound($roundless))
+        expect(fn() => $engine->pairNextRound($roundless))
             ->toThrow(InvalidConfigurationException::class, 'round number');
     });
 
     it('rejects fewer than two participants', function (): void {
         $engine = new SingleEliminationEngine();
 
-        expect(fn () => $engine->pairNextRound(StageState::start([new Participant('p1', 'Solo')])))
+        expect(fn() => $engine->pairNextRound(StageState::start([new Participant('p1', 'Solo')])))
             ->toThrow(InvalidConfigurationException::class);
     });
 
@@ -282,14 +282,14 @@ describe('SingleEliminationEngine', function (): void {
 
         $finalEvent = $outcome->getFinalRound()?->getEvents()[0];
         assert($finalEvent !== null);
-        $finalIds = array_map(fn (Participant $p) => $p->getId(), $finalEvent->getParticipants());
+        $finalIds = array_map(fn(Participant $p) => $p->getId(), $finalEvent->getParticipants());
         sort($finalIds);
         expect($finalIds)->toBe(['s1', 's2']);
         expect($finalEvent->getRound()?->getMetadataValue('label'))->toBe('final');
 
         // Conventional bracket classification: 3-0, 2-1, joint 1-1, joint 0-1
         $wins = array_map(
-            fn ($entry) => [$entry->getParticipant()->getId(), $entry->getWins(), $entry->getLosses()],
+            fn($entry) => [$entry->getParticipant()->getId(), $entry->getWins(), $entry->getLosses()],
             $outcome->getStandings()->getEntries()
         );
         expect($wins[0])->toBe(['s1', 3, 0]);
@@ -306,9 +306,9 @@ describe('SingleEliminationEngine', function (): void {
         $round1 = $engine->pairNextRound($state);
         // Upset: s8 beats s1; everyone else holds
         $state = $state->withRoundPlayed($round1, array_map(
-            fn (Event $event) => new Result(
+            fn(Event $event) => new Result(
                 $event,
-                in_array('s1', array_map(fn (Participant $p) => $p->getId(), $event->getParticipants()), true)
+                in_array('s1', array_map(fn(Participant $p) => $p->getId(), $event->getParticipants()), true)
                     ? $event->getParticipants()[1]
                     : favouriteWins($event)
             ),
@@ -377,7 +377,7 @@ describe('SingleEliminationEngine', function (): void {
                 new Result($leg2, $participants[1]),
             ]);
 
-            expect(fn () => $engine->isComplete($undecided))
+            expect(fn() => $engine->isComplete($undecided))
                 ->toThrow(InvalidConfigurationException::class, 'tie_winner');
 
             // The decision is recorded as tie_winner metadata on a leg result
@@ -394,7 +394,7 @@ describe('SingleEliminationEngine', function (): void {
             // standings; the advancer is derived from the recorded outcome,
             // which is tie-decision aware
             $winners = \MissionGaming\Tactician\Stage\MatchOutcomeSelector::winners()->select($outcome);
-            expect(array_map(fn (Participant $p) => $p->getId(), $winners))->toBe(['s2']);
+            expect(array_map(fn(Participant $p) => $p->getId(), $winners))->toBe(['s2']);
         });
     });
 
@@ -417,7 +417,7 @@ describe('SingleEliminationEngine', function (): void {
             ]],
         ]);
 
-        expect(fn () => $engine->pairNextRound($state))
+        expect(fn() => $engine->pairNextRound($state))
             ->toThrow(InvalidConfigurationException::class, 'two-participant');
     });
 });

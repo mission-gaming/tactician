@@ -104,7 +104,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
      *
      * Implementation of Countable interface.
      *
-     * @return int The number of events in this schedule
+     * @return int<0, max> The number of events in this schedule
      */
     #[Override]
     public function count(): int
@@ -142,8 +142,6 @@ class Schedule implements Iterator, Countable, JsonSerializable
      * Move to the next event during iteration.
      *
      * Implementation of Iterator interface.
-     *
-     * @return void
      */
     #[Override]
     public function next(): void
@@ -155,8 +153,6 @@ class Schedule implements Iterator, Countable, JsonSerializable
      * Reset iteration to the first event.
      *
      * Implementation of Iterator interface.
-     *
-     * @return void
      */
     #[Override]
     public function rewind(): void
@@ -197,7 +193,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
     {
         return array_values(array_filter(
             $this->events,
-            fn (Event $event) => $event->getRound()?->equals($round) ?? false
+            fn(Event $event) => $event->getRound()?->equals($round) ?? false
         ));
     }
 
@@ -234,24 +230,24 @@ class Schedule implements Iterator, Countable, JsonSerializable
      */
     public function getMaxRound(): ?Round
     {
-        if (empty($this->events)) {
+        if ($this->events === []) {
             return null;
         }
 
         $rounds = array_map(
-            fn (Event $event) => $event->getRound(),
+            fn(Event $event) => $event->getRound(),
             $this->events
         );
 
-        $nonNullRounds = array_filter($rounds, fn ($round) => $round !== null);
+        $nonNullRounds = array_filter($rounds, fn($round) => $round !== null);
 
-        if (empty($nonNullRounds)) {
+        if ($nonNullRounds === []) {
             return null;
         }
 
         return array_reduce(
             $nonNullRounds,
-            fn (?Round $max, Round $current) => $max === null || $current->isAfter($max) ? $current : $max
+            fn(?Round $max, Round $current) => $max === null || $current->isAfter($max) ? $current : $max
         );
     }
 
@@ -276,10 +272,10 @@ class Schedule implements Iterator, Countable, JsonSerializable
 
         return [
             'participants' => array_values(array_map(
-                fn (Participant $participant) => $participant->toArray(),
+                fn(Participant $participant) => $participant->toArray(),
                 $participantsById
             )),
-            'events' => array_map(fn (Event $event) => $event->toArray(), $this->events),
+            'events' => array_map(fn(Event $event) => $event->toArray(), $this->events),
             'metadata' => $this->metadata,
         ];
     }

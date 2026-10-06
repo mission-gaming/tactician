@@ -133,7 +133,7 @@ describe('SchedulingDiagnostics', function (): void {
     // Library plans refuse to construct for fields that cannot play at all,
     // but a custom plan may still declare zero expected events
     it('flags plans declaring zero expected events as insufficient', function (): void {
-        $emptyPlan = new readonly class () implements StagePlan {
+        $emptyPlan = new readonly class implements StagePlan {
             #[Override]
             public function getAlgorithm(): string
             {
@@ -286,7 +286,7 @@ describe('SchedulingDiagnostics', function (): void {
     // A pairwise plan violating the shape contract (legs without rounds
     // or totals) must clamp leg attribution rather than divide by zero
     it('clamps leg attribution for plans without knowable rounds', function (): void {
-        $plan = new readonly class () implements MissionGaming\Tactician\Stage\PairwisePlan {
+        $plan = new readonly class implements MissionGaming\Tactician\Stage\PairwisePlan {
             #[Override]
             public function getAlgorithm(): string
             {
@@ -346,7 +346,7 @@ describe('SchedulingDiagnostics', function (): void {
     describe('constraint attribution', function (): void {
         it('names the constraint blocking a pairing everywhere', function (): void {
             $noDerby = ConstraintSet::create()->custom(static function (Event $event): bool {
-                $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                $ids = array_map(fn($p) => $p->getId(), $event->getParticipants());
                 sort($ids);
 
                 return implode('|', $ids) !== 'p1|p2';
@@ -371,7 +371,7 @@ describe('SchedulingDiagnostics', function (): void {
             // Alice may only host: [bob, alice] orientations are rejected,
             // but every round still allows the pairing the other way round
             $aliceHosts = ConstraintSet::create()->custom(static function (Event $event): bool {
-                $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                $ids = array_map(fn($p) => $p->getId(), $event->getParticipants());
 
                 return !in_array('p1', $ids, true) || $event->getParticipants()[0]->getId() === 'p1';
             }, 'Alice Hosts')->build();
@@ -392,7 +392,7 @@ describe('SchedulingDiagnostics', function (): void {
         it('blames a combination when no single constraint rejects everywhere', function (): void {
             $evenRounds = ConstraintSet::create()
                 ->custom(static function (Event $event): bool {
-                    $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                    $ids = array_map(fn($p) => $p->getId(), $event->getParticipants());
                     sort($ids);
                     if (implode('|', $ids) !== 'p1|p2') {
                         return true;
@@ -401,7 +401,7 @@ describe('SchedulingDiagnostics', function (): void {
                     return $event->getRound()?->getNumber() % 2 === 0;
                 }, 'Even Rounds Only')
                 ->custom(static function (Event $event): bool {
-                    $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                    $ids = array_map(fn($p) => $p->getId(), $event->getParticipants());
                     sort($ids);
                     if (implode('|', $ids) !== 'p1|p2') {
                         return true;
@@ -428,7 +428,7 @@ describe('SchedulingDiagnostics', function (): void {
 
             // Alice vs Bob only in round 1, but round 1 is already full
             $placement = ConstraintSet::create()->custom(static function (Event $event): bool {
-                $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+                $ids = array_map(fn($p) => $p->getId(), $event->getParticipants());
                 sort($ids);
 
                 return implode('|', $ids) !== 'p1|p2' || $event->getRound()?->getNumber() === 1;
@@ -448,7 +448,7 @@ describe('SchedulingDiagnostics', function (): void {
             expect($report->getImpossiblePairings())->toBe([]);
             $structural = array_filter(
                 $report->getSuggestions(),
-                fn (string $s) => str_contains($s, 'structural')
+                fn(string $s) => str_contains($s, 'structural')
             );
             expect(array_values($structural))->toBe([
                 'Alice vs Bob is only allowed in rounds already at capacity (rounds 1) - the conflict is structural, not any single constraint',
@@ -505,7 +505,7 @@ describe('SchedulingDiagnostics', function (): void {
 
     it('yields no attribution when rounds are unknowable or nothing is missing', function (): void {
         $derbyBan = ConstraintSet::create()->custom(static function (Event $event): bool {
-            $ids = array_map(fn ($p) => $p->getId(), $event->getParticipants());
+            $ids = array_map(fn($p) => $p->getId(), $event->getParticipants());
             sort($ids);
 
             return implode('|', $ids) !== 'p1|p2';
@@ -513,7 +513,7 @@ describe('SchedulingDiagnostics', function (): void {
 
         // A pairwise plan without knowable rounds gives the probe no
         // candidate rounds to test
-        $plan = new readonly class () implements MissionGaming\Tactician\Stage\PairwisePlan {
+        $plan = new readonly class implements MissionGaming\Tactician\Stage\PairwisePlan {
             #[Override]
             public function getAlgorithm(): string
             {

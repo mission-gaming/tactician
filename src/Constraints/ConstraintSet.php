@@ -12,9 +12,7 @@ readonly class ConstraintSet
     /**
      * @param array<ConstraintInterface> $constraints
      */
-    public function __construct(private array $constraints = [])
-    {
-    }
+    public function __construct(private array $constraints = []) {}
 
     public static function create(): ConstraintSetBuilder
     {
@@ -45,7 +43,7 @@ readonly class ConstraintSet
 
     public function isEmpty(): bool
     {
-        return empty($this->constraints);
+        return $this->constraints === [];
     }
 
     public function count(): int

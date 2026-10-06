@@ -23,9 +23,9 @@ $root = dirname(__DIR__, 2);
  *
  * @return list<string>
  */
-$contentLines = fn (string $path): array => array_values(array_filter(
+$contentLines = fn(string $path): array => array_values(array_filter(
     array_map(trim(...), file($path, FILE_IGNORE_NEW_LINES) ?: []),
-    static fn (string $line): bool => $line !== '' && !str_starts_with($line, '#')
+    static fn(string $line): bool => $line !== '' && !str_starts_with($line, '#')
 ));
 
 /**
@@ -58,11 +58,11 @@ $branchTypes = function (string $path): array {
 
 $forms = array_values(array_filter(
     glob($root . '/.github/ISSUE_TEMPLATE/*.{yml,yaml}', GLOB_BRACE) ?: [],
-    static fn (string $form): bool => !str_starts_with(basename($form), 'config.')
+    static fn(string $form): bool => !str_starts_with(basename($form), 'config.')
 ));
 $formDataset = array_combine(
-    array_map(fn (string $form) => basename($form), $forms),
-    array_map(fn (string $form) => [$form], $forms)
+    array_map(basename(...), $forms),
+    array_map(fn(string $form) => [$form], $forms)
 );
 
 describe('CODEOWNERS', function () use ($root, $contentLines): void {
@@ -92,7 +92,7 @@ describe('CODEOWNERS', function () use ($root, $contentLines): void {
 
     it('assigns an owner to every path', function () use ($root, $contentLines): void {
         $patterns = array_map(
-            fn (string $rule) => (preg_split('/\s+/', $rule) ?: [''])[0],
+            fn(string $rule) => (preg_split('/\s+/', $rule) ?: [''])[0],
             $contentLines($root . '/.github/CODEOWNERS')
         );
 
@@ -382,7 +382,7 @@ describe('contributor guides and the tooling', function () use ($root): void {
         preg_match_all('/`(src\/[\w\/]+)\/`/', (string) file_get_contents($root . '/AGENTS.md'), $named);
 
         $existing = array_map(
-            static fn (string $directory): string => 'src/' . basename($directory),
+            static fn(string $directory): string => 'src/' . basename($directory),
             glob($root . '/src/*', GLOB_ONLYDIR) ?: []
         );
         $listed = array_values(array_unique($named[1]));
@@ -419,7 +419,7 @@ describe('contributor guides and the tooling', function () use ($root): void {
         $unknown = array_values(array_filter(
             array_unique($names[1]),
             // `Iterator` is PHP's own interface.
-            static fn (string $name): bool => !isset($classes[$name]) && !interface_exists($name, false)
+            static fn(string $name): bool => !isset($classes[$name]) && !interface_exists($name, false)
         ));
 
         expect($unknown)->toBe([]);
@@ -483,7 +483,7 @@ describe('contributor guides and the tooling', function () use ($root): void {
         // lists; it is not the project's code either.
         $files = array_values(array_filter(
             glob($root . '/{,.}*.php', GLOB_BRACE) ?: [],
-            static fn (string $file): bool => basename($file) !== 'index.php'
+            static fn(string $file): bool => basename($file) !== 'index.php'
         ));
 
         foreach (['src', 'tests', 'examples'] as $directory) {
@@ -500,10 +500,10 @@ describe('contributor guides and the tooling', function () use ($root): void {
 
         $missing = array_values(array_filter(
             $files,
-            static fn (string $file): bool => preg_match('/\A<\?php\s+(?:\/\*.*?\*\/\s*|\/\/[^\n]*\s*)*declare\(strict_types=1\);/s', (string) file_get_contents($file)) !== 1
+            static fn(string $file): bool => preg_match('/\A<\?php\s+(?:\/\*.*?\*\/\s*|\/\/[^\n]*\s*)*declare\(strict_types=1\);/s', (string) file_get_contents($file)) !== 1
         ));
 
-        expect(array_map(static fn (string $file): string => substr($file, strlen($root) + 1), $missing))->toBe([]);
+        expect(array_map(static fn(string $file): string => substr($file, strlen($root) + 1), $missing))->toBe([]);
     });
 
     it('lists the checks of the gate in the order the gate runs them', function () use ($root): void {
@@ -516,6 +516,6 @@ describe('contributor guides and the tooling', function () use ($root): void {
 
         preg_match_all('/^composer ([a-z-]+)/m', $block[1], $listed);
 
-        expect($listed[1])->toBe(array_map(fn (string $script) => ltrim($script, '@'), $composer['scripts']['ci']));
+        expect($listed[1])->toBe(array_map(fn(string $script) => ltrim($script, '@'), $composer['scripts']['ci']));
     });
 });

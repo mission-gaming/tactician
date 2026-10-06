@@ -12,6 +12,25 @@ function metadataEvent(Participant ...$participants): Event
     return new Event($participants);
 }
 
+final class MetadataValidatorProbe
+{
+    /**
+     * @param array<mixed> $values
+     */
+    public static function allNorth(array $values): bool
+    {
+        return array_unique($values) === ['north'];
+    }
+
+    /**
+     * @param array<mixed> $values
+     */
+    public function __invoke(array $values): bool
+    {
+        return self::allNorth($values);
+    }
+}
+
 describe('MetadataConstraint', function (): void {
     beforeEach(function (): void {
         $this->north1 = new Participant('n1', 'North One', null, ['region' => 'north', 'tier' => 1]);
@@ -23,7 +42,7 @@ describe('MetadataConstraint', function (): void {
     });
 
     it('rejects a non-callable validator', function (): void {
-        expect(fn () => new MetadataConstraint('region', 'not-callable'))
+        expect(fn() => new MetadataConstraint('region', 'not-callable'))
             ->toThrow(InvalidArgumentException::class);
     });
 
@@ -84,4 +103,46 @@ describe('MetadataConstraint', function (): void {
         expect($captured[3])->toBe($this->context);
         expect($constraint->getName())->toBe('Capture');
     });
+
+    // The constructor takes anything PHP can call, not only a closure, and
+    // the validator is called in that form.
+    it('calls a validator given in any callable form', function (mixed $validator): void {
+        $constraint = new MetadataConstraint('region', $validator);
+
+        expect($constraint->isSatisfied(metadataEvent($this->north1, $this->north2), $this->context))->toBeTrue()
+            ->and($constraint->isSatisfied(metadataEvent($this->north1, $this->south1), $this->context))->toBeFalse()
+            ->and($constraint->getName())->toBe('Metadata Constraint');
+    })->with([
+        // Pest calls a closure it finds in a dataset, so each returns the callable.
+        'a closure' => [fn(): Closure => fn(array $values): bool => array_unique($values) === ['north']],
+        'a first-class callable' => [fn(): Closure => MetadataValidatorProbe::allNorth(...)],
+        'a static method as a string' => [fn(): string => 'MetadataValidatorProbe::allNorth'],
+        // Built from the string: Rector rewrites a literal [class, method]
+        // pair as a first-class callable, which is the form above.
+        'a static method as an array' => [fn(): array => explode('::', 'MetadataValidatorProbe::allNorth')],
+        'an invokable object' => [fn(): MetadataValidatorProbe => new MetadataValidatorProbe()],
+    ]);
+
+    // Numeric strings count as numbers and everything else is left out
+    // before the comparison, as is_numeric() decides it.
+    it('compares only the numeric values in requireAdjacentValues', function (mixed $first, mixed $second, bool $expected): void {
+        $constraint = MetadataConstraint::requireAdjacentValues('tier');
+        $event = metadataEvent(
+            new Participant('a', 'A', null, ['tier' => $first]),
+            new Participant('b', 'B', null, ['tier' => $second])
+        );
+
+        expect($constraint->isSatisfied($event, $this->context))->toBe($expected);
+    })->with([
+        'a numeric string next to an integer' => ['2', 3, true],
+        'a numeric string two away' => ['1', 3, false],
+        'a float within one' => [1.5, 2.5, true],
+        'a float more than one away' => [1, 2.5, false],
+        'zero and one' => [0, 1, true],
+        'one numeric value and a word' => [1, 'high', true],
+        'one numeric value and nothing' => [9, null, true],
+        'two words' => ['low', 'high', true],
+        'a boolean, which is not numeric' => [true, 5, true],
+        'a numeric string with leading space' => [' 4', 6, false],
+    ]);
 });

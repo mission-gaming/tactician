@@ -28,7 +28,7 @@ $clubs = [
 ];
 
 $fixturePolicy = ConstraintSet::create()->custom(static function (Event $event): bool {
-    $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+    $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
     sort($ids);
     $round = $event->getRound()?->getNumber();
     if ($round === null) {
@@ -59,7 +59,7 @@ $schedule = (new RoundRobinScheduler($fixturePolicy))
 
 // Genuinely unsatisfiable configurations still fail loudly - the search
 // proves it by exhausting the space rather than guessing
-$rejectEverything = ConstraintSet::create()->custom(fn () => false, 'Reject Everything')->build();
+$rejectEverything = ConstraintSet::create()->custom(fn() => false, 'Reject Everything')->build();
 
 $unsatisfiable = null;
 $blocked = [];

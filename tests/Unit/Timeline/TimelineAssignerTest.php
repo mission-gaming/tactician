@@ -79,8 +79,8 @@ describe('TimelineAssigner', function (): void {
         $first = (new TimelineAssigner())->assign($schedule, $timeline);
         $second = (new TimelineAssigner())->assign($schedule, $timeline);
 
-        $kickoffs = fn (ScheduledSchedule $s) => array_map(
-            fn (ScheduledEvent $e) => $e->getKickoff()->format(DATE_ATOM),
+        $kickoffs = fn(ScheduledSchedule $s) => array_map(
+            fn(ScheduledEvent $e) => $e->getKickoff()->format(DATE_ATOM),
             $s->getScheduledEvents()
         );
 
@@ -94,7 +94,7 @@ describe('TimelineAssigner', function (): void {
             new DateInterval('P7D')
         );
 
-        expect(fn () => (new TimelineAssigner())->assign($schedule, $timeline))
+        expect(fn() => (new TimelineAssigner())->assign($schedule, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'more events than the timeline can hold');
     });
 
@@ -108,7 +108,7 @@ describe('TimelineAssigner', function (): void {
             new DateInterval('P7D')
         );
 
-        expect(fn () => (new TimelineAssigner())->assign($schedule, $timeline))
+        expect(fn() => (new TimelineAssigner())->assign($schedule, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'round number');
     });
 
@@ -196,37 +196,37 @@ describe('ScheduledSchedule', function (): void {
     });
 
     it('rejects malformed serialized data', function (): void {
-        expect(fn () => ScheduledSchedule::fromArray(['participants' => 'nope']))
+        expect(fn() => ScheduledSchedule::fromArray(['participants' => 'nope']))
             ->toThrow(InvalidArgumentException::class);
-        expect(fn () => ScheduledSchedule::fromArray(['participants' => ['nope'], 'events' => []]))
+        expect(fn() => ScheduledSchedule::fromArray(['participants' => ['nope'], 'events' => []]))
             ->toThrow(InvalidArgumentException::class, 'must be an array');
-        expect(fn () => ScheduledSchedule::fromArray(['participants' => [], 'events' => 'nope']))
+        expect(fn() => ScheduledSchedule::fromArray(['participants' => [], 'events' => 'nope']))
             ->toThrow(InvalidArgumentException::class);
-        expect(fn () => ScheduledSchedule::fromArray(['participants' => [], 'events' => ['nope']]))
+        expect(fn() => ScheduledSchedule::fromArray(['participants' => [], 'events' => ['nope']]))
             ->toThrow(InvalidArgumentException::class);
-        expect(fn () => ScheduledSchedule::fromJson('"nope"'))
+        expect(fn() => ScheduledSchedule::fromJson('"nope"'))
             ->toThrow(InvalidArgumentException::class);
 
         $participant = ['id' => 'p1', 'label' => 'Alice', 'seed' => null, 'metadata' => []];
-        expect(fn () => ScheduledSchedule::fromArray([
+        expect(fn() => ScheduledSchedule::fromArray([
             'participants' => [$participant],
             'events' => [['kickoff' => '2026-08-01T19:00:00Z']], // no event
         ]))->toThrow(InvalidArgumentException::class, 'event');
-        expect(fn () => ScheduledSchedule::fromArray([
+        expect(fn() => ScheduledSchedule::fromArray([
             'participants' => [$participant, ['id' => 'p2', 'label' => 'Bob', 'seed' => null, 'metadata' => []]],
             'events' => [[
                 'event' => ['participants' => ['p1', 'p2'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => []],
                 'kickoff' => 42,
             ]],
         ]))->toThrow(InvalidArgumentException::class, 'kickoff');
-        expect(fn () => ScheduledSchedule::fromArray([
+        expect(fn() => ScheduledSchedule::fromArray([
             'participants' => [$participant, ['id' => 'p2', 'label' => 'Bob', 'seed' => null, 'metadata' => []]],
             'events' => [[
                 'event' => ['participants' => ['p1', 'p2'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => []],
                 'kickoff' => 'half past never',
             ]],
         ]))->toThrow(InvalidArgumentException::class, 'not parseable');
-        expect(fn () => ScheduledSchedule::fromArray([
+        expect(fn() => ScheduledSchedule::fromArray([
             'participants' => [$participant, ['id' => 'p2', 'label' => 'Bob', 'seed' => null, 'metadata' => []]],
             'events' => [[
                 'event' => ['participants' => ['p1', 'p2'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => []],
@@ -236,7 +236,7 @@ describe('ScheduledSchedule', function (): void {
         ]))->toThrow(InvalidArgumentException::class, 'resource');
         // Deserialized data upholds the same invariant the definition
         // enforces: resource names are never empty
-        expect(fn () => ScheduledSchedule::fromArray([
+        expect(fn() => ScheduledSchedule::fromArray([
             'participants' => [$participant, ['id' => 'p2', 'label' => 'Bob', 'seed' => null, 'metadata' => []]],
             'events' => [[
                 'event' => ['participants' => ['p1', 'p2'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => []],
@@ -296,7 +296,7 @@ describe('ScheduledSchedule', function (): void {
         $scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
         $round1 = $scheduled->getEventsByRound()[1];
 
-        expect(array_map(fn (ScheduledEvent $e) => [$e->getKickoff()->format('H:i'), $e->getResource()], $round1))
+        expect(array_map(fn(ScheduledEvent $e) => [$e->getKickoff()->format('H:i'), $e->getResource()], $round1))
             ->toBe([
                 ['18:00', 'Pitch 1'],
                 ['18:00', 'Pitch 2'],
@@ -312,7 +312,7 @@ describe('ScheduledSchedule', function (): void {
             resources: ['Pitch 1', 'Pitch 2']
         ); // 1 slot x 2 resources = capacity 2
 
-        expect(fn () => (new TimelineAssigner())->assign($schedule, $timeline))
+        expect(fn() => (new TimelineAssigner())->assign($schedule, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'more events than the timeline can hold');
     });
 });

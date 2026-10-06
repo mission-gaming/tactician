@@ -137,7 +137,7 @@ describe('Round Robin Integration', function (): void {
         for ($round = 1; $round <= 10; ++$round) {
             $eventsInRound = array_filter(
                 $schedule->getEvents(),
-                fn ($event) => $event->getRound()?->getNumber() === $round
+                fn($event) => $event->getRound()?->getNumber() === $round
             );
             expect(count($eventsInRound))->toBe(2);
         }
@@ -313,13 +313,13 @@ describe('Round Robin Integration', function (): void {
         // And: Top seeds should have some protection early in tournament
         $earlyRounds = array_filter(
             iterator_to_array($schedule),
-            fn ($event) => $event->getRound() && $event->getRound()->getNumber() <= 4
+            fn($event) => $event->getRound() && $event->getRound()->getNumber() <= 4
         );
 
         $topSeedCollisions = 0;
         foreach ($earlyRounds as $event) {
-            $seeds = array_map(fn ($p) => $p->getSeed(), $event->getParticipants());
-            $topSeedsInEvent = count(array_filter($seeds, fn ($s) => $s !== null && $s <= 4));
+            $seeds = array_map(fn($p) => $p->getSeed(), $event->getParticipants());
+            $topSeedsInEvent = count(array_filter($seeds, fn($s) => $s !== null && $s <= 4));
             if ($topSeedsInEvent > 1) {
                 ++$topSeedCollisions;
             }
@@ -466,14 +466,14 @@ describe('Round Robin Integration', function (): void {
         $midTournament = 6; // Approximately half of 11 rounds
         $earlyEvents = array_filter(
             iterator_to_array($schedule),
-            fn ($event) => $event->getRound() && $event->getRound()->getNumber() <= $midTournament
+            fn($event) => $event->getRound() && $event->getRound()->getNumber() <= $midTournament
         );
 
         $topSeedClashes = 0;
         foreach ($earlyEvents as $event) {
             $topSeeds = array_filter(
                 $event->getParticipants(),
-                fn ($p) => $p->getSeed() !== null && $p->getSeed() <= 4
+                fn($p) => $p->getSeed() !== null && $p->getSeed() <= 4
             );
             if (count($topSeeds) > 1) {
                 ++$topSeedClashes;
@@ -507,7 +507,7 @@ describe('Round Robin Integration', function (): void {
 
         // Then: Should throw IncompleteScheduleException because metadata constraint
         // fundamentally reduces possible matches (only cross-division matches allowed)
-        expect(fn () => $scheduler->schedule($participants))
+        expect(fn() => $scheduler->schedule($participants))
             ->toThrow(MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
     });
 
@@ -617,7 +617,7 @@ describe('Round Robin Integration', function (): void {
 
         // Then: Should throw IncompleteScheduleException because the across-legs
         // variant forbids the repeat pairings every later leg consists of
-        expect(fn () => $scheduler->schedule(
+        expect(fn() => $scheduler->schedule(
             $participants,
             new RoundRobinOptions(legs: 2, strategy: new MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy())
         ))->toThrow(MissionGaming\Tactician\Exceptions\IncompleteScheduleException::class);
@@ -629,11 +629,11 @@ describe('Round Robin Integration', function (): void {
         $scheduler = new RoundRobinScheduler();
 
         // Test empty participant list
-        expect(fn () => $scheduler->schedule([]))
+        expect(fn() => $scheduler->schedule([]))
             ->toThrow(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class);
 
         // Test single participant
-        expect(fn () => $scheduler->schedule([new Participant('p1', 'Player 1')]))
+        expect(fn() => $scheduler->schedule([new Participant('p1', 'Player 1')]))
             ->toThrow(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class);
 
         // Test duplicate participant IDs
@@ -642,17 +642,17 @@ describe('Round Robin Integration', function (): void {
             new Participant('same_id', 'Player 2'),
         ];
 
-        expect(fn () => $scheduler->schedule($duplicateParticipants))
+        expect(fn() => $scheduler->schedule($duplicateParticipants))
             ->toThrow(MissionGaming\Tactician\Exceptions\InvalidConfigurationException::class);
 
         // Test invalid constraint parameters
-        expect(fn () => new MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint(0))
+        expect(fn() => new MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint(0))
             ->toThrow(InvalidArgumentException::class);
 
-        expect(fn () => new MissionGaming\Tactician\Constraints\SeedProtectionConstraint(0, 0.5))
+        expect(fn() => new MissionGaming\Tactician\Constraints\SeedProtectionConstraint(0, 0.5))
             ->toThrow(InvalidArgumentException::class);
 
-        expect(fn () => new MissionGaming\Tactician\Constraints\SeedProtectionConstraint(4, 1.5))
+        expect(fn() => new MissionGaming\Tactician\Constraints\SeedProtectionConstraint(4, 1.5))
             ->toThrow(InvalidArgumentException::class);
     });
 });

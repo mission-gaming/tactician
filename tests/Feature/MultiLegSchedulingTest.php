@@ -44,11 +44,11 @@ it('generates multi-leg schedule with mirrored strategy', function (): void {
     // First leg should have rounds 1-3, second leg should have rounds 4-6
     $leg1Events = array_filter(
         iterator_to_array($schedule),
-        fn ($event) => $event->getRound()?->getNumber() <= 3
+        fn($event) => $event->getRound()?->getNumber() <= 3
     );
     $leg2Events = array_filter(
         iterator_to_array($schedule),
-        fn ($event) => $event->getRound()?->getNumber() > 3
+        fn($event) => $event->getRound()?->getNumber() > 3
     );
 
     expect(count($leg1Events))->toBe(6);

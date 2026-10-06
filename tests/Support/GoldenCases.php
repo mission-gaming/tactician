@@ -61,24 +61,24 @@ use Random\Randomizer;
  */
 final class GoldenCases
 {
-    public const WIRE_SCHEDULE = 'wire/schedule.json';
+    public const string WIRE_SCHEDULE = 'wire/schedule.json';
 
-    public const WIRE_STAGE_STATE = 'wire/stage-state.json';
+    public const string WIRE_STAGE_STATE = 'wire/stage-state.json';
 
-    private const SEEDS = [1, 42, 1337];
+    private const array SEEDS = [1, 42, 1337];
 
-    private const ROUND_ROBIN_SIZES = [2, 3, 4, 5, 6, 7, 8, 14, 17, 20];
+    private const array ROUND_ROBIN_SIZES = [2, 3, 4, 5, 6, 7, 8, 14, 17, 20];
 
-    private const ROUND_ROBIN_LEGS = [1, 2, 3, 4];
+    private const array ROUND_ROBIN_LEGS = [1, 2, 3, 4];
 
-    private const ELIMINATION_SIZES = [5, 8, 12];
+    private const array ELIMINATION_SIZES = [5, 8, 12];
 
-    private const REPACK_SIZES = [12, 16, 24];
+    private const array REPACK_SIZES = [12, 16, 24];
 
     /** Upper bound on driver-loop rounds, so a broken engine fails instead of hanging. */
-    private const MAX_ENGINE_ROUNDS = 64;
+    private const int MAX_ENGINE_ROUNDS = 64;
 
-    private const EXPLANATION = [
+    private const array EXPLANATION = [
         '',
         'A difference from this file is a change to generated output. It must be',
         'explained in the changelog; regenerate with `composer golden-update`.',
@@ -94,7 +94,7 @@ final class GoldenCases
         foreach (['mirrored', 'repeated'] as $strategy) {
             foreach ([null, ...self::SEEDS] as $seed) {
                 $cases['round-robin/' . $strategy . '-' . self::seedSlug($seed) . '.txt']
-                    = static fn (): string => self::roundRobin($strategy, $seed);
+                    = static fn(): string => self::roundRobin($strategy, $seed);
             }
         }
 
@@ -104,11 +104,11 @@ final class GoldenCases
         $cases['double-elimination.txt'] = self::doubleElimination(...);
         $cases['repack/scenario.txt'] = self::repackScenario(...);
         $cases['repack/round-robin.txt'] = self::repackRoundRobin(...);
-        $cases[self::WIRE_SCHEDULE] = static fn (): string => self::wireSchedule() . "\n";
-        $cases[self::WIRE_STAGE_STATE] = static fn (): string => self::wireStageState() . "\n";
+        $cases[self::WIRE_SCHEDULE] = static fn(): string => self::wireSchedule() . "\n";
+        $cases[self::WIRE_STAGE_STATE] = static fn(): string => self::wireStageState() . "\n";
 
         foreach (ExampleResults::names() as $example) {
-            $cases[self::exampleFixture($example)] = static fn (): string => ExampleResults::text($example);
+            $cases[self::exampleFixture($example)] = static fn(): string => ExampleResults::text($example);
         }
 
         return $cases;
@@ -249,7 +249,7 @@ final class GoldenCases
     {
         return ConstraintSet::create()->custom(static function (Event $event) use ($roundByPair): bool {
             $ids = array_map(
-                static fn (Participant $participant): string => $participant->getId(),
+                static fn(Participant $participant): string => $participant->getId(),
                 $event->getParticipants()
             );
             sort($ids);

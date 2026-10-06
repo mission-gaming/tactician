@@ -20,9 +20,7 @@ use Override;
  */
 readonly class NoRepeatPairings implements ConstraintInterface
 {
-    public function __construct(private bool $acrossLegs = false)
-    {
-    }
+    public function __construct(private bool $acrossLegs = false) {}
 
     #[Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool

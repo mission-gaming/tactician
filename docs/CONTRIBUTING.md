@@ -31,9 +31,9 @@ composer ci
 
 # The checks it runs, one by one
 composer norm             # composer.json is normalized
-composer phpstan          # Static analysis (level 8, zero errors)
-composer rector           # Modernization check
-composer cs-fixer         # Code style check
+composer phpstan          # Static analysis (src/ at level 9, tests at level 8, zero errors)
+composer rector           # Modernization and dead code check
+composer cs-fixer         # Code style check (PER Coding Style)
 composer test             # Pest suite
 composer examples         # Smoke-run every example script
 
@@ -75,6 +75,16 @@ composer test-coverage
 
 # Run one test file
 vendor/bin/pest tests/Unit/Scheduling/RoundRobinSchedulerTest.php
+```
+
+A run fails on more than a failed assertion: a warning, a notice, a
+deprecation, or a risky test (one that asserts nothing or prints output) fails
+it too. Tests run in random order, so a test must not depend on another one
+having run first. Every run prints its seed; to repeat the order of a run that
+failed:
+
+```bash
+vendor/bin/pest --order-by=random --random-order-seed=<seed>
 ```
 
 Every feature and every path carries automated tests. Where a genuine
@@ -164,9 +174,19 @@ both, even when the answer is no.
 
 - Every PHP file declares `strict_types=1`.
 - DTOs are readonly.
-- PHPStan level 8 reports zero errors.
-- Code style is PSR-12 with the additions in `.php-cs-fixer.dist.php`;
-  `composer cs-fixer-fix` applies it.
+- PHPStan reports zero errors: `src/` at level 9 (`phpstan.neon`), `tests/`
+  and `examples/support/` at level 8 (`phpstan-tests.neon`), both with the
+  strict rules and the deprecation rules (`phpstan/common.neon`). The two
+  baseline files beside it list what the strict rules found in code that
+  existed when they were enabled. Fix a finding in new code; do not add it to a baseline or
+  to `ignoreErrors`.
+- Rector (`rector.php`) applies the PHP sets up to 8.3, the dead code set and
+  the early return set. A rule is skipped there only where it would change a
+  public or protected signature, or remove something written on purpose; the
+  reason is next to each entry.
+- Code style is PER Coding Style (`@PER-CS`) and the PHP 8.3 migration set,
+  with the additions in `.php-cs-fixer.dist.php`; `composer cs-fixer-fix`
+  applies it.
 - A new file or directory at the repository root needs an `export-ignore` rule
   in `.gitattributes`, so that it stays out of the archive consumers install.
   `tests/Feature/DistArchiveTest.php` fails until the rule is committed.

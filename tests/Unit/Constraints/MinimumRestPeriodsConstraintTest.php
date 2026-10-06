@@ -16,7 +16,7 @@ describe('MinimumRestPeriodsConstraint', function (): void {
     });
 
     it('rejects a minimum below 1', function (): void {
-        expect(fn () => new MinimumRestPeriodsConstraint(0))
+        expect(fn() => new MinimumRestPeriodsConstraint(0))
             ->toThrow(InvalidArgumentException::class);
     });
 

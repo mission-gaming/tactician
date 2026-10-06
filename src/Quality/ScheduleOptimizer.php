@@ -40,8 +40,7 @@ final readonly class ScheduleOptimizer
     public function __construct(
         private ScheduleScorer $scorer,
         private Randomizer $randomizer
-    ) {
-    }
+    ) {}
 
     /**
      * Generate N candidates and keep the best-scoring one.

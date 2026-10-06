@@ -20,7 +20,7 @@ use Override;
  */
 final readonly class RoundRobinOptions implements SchedulerOptions
 {
-    private const STRATEGY_IDENTIFIERS = [
+    private const array STRATEGY_IDENTIFIERS = [
         'mirrored' => MirroredLegStrategy::class,
         'repeated' => RepeatedLegStrategy::class,
         'shuffled' => ShuffledLegStrategy::class,

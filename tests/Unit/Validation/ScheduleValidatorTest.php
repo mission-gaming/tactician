@@ -33,8 +33,7 @@ function fixedCountPlan(?int $expectedEventCount, array $integrityViolations = [
         public function __construct(
             private ?int $expectedEventCount,
             private array $integrityViolations = []
-        ) {
-        }
+        ) {}
 
         #[Override]
         public function getAlgorithm(): string
@@ -112,7 +111,7 @@ describe('ScheduleValidator', function (): void {
                 new Event([$participant2, $participant3]),
             ]);
 
-            expect(fn () => $validator->validateScheduleCompleteness($schedule, fixedCountPlan(6), $violations, $participants))
+            expect(fn() => $validator->validateScheduleCompleteness($schedule, fixedCountPlan(6), $violations, $participants))
                 ->toThrow(IncompleteScheduleException::class);
         });
 
@@ -164,7 +163,7 @@ describe('ScheduleValidator', function (): void {
                 new Participant('p3', 'Carol'),
             ];
 
-            expect(fn () => $validator->validateScheduleCompleteness(new Schedule([]), fixedCountPlan(6), $violations, $participants))
+            expect(fn() => $validator->validateScheduleCompleteness(new Schedule([]), fixedCountPlan(6), $violations, $participants))
                 ->toThrow(IncompleteScheduleException::class);
         });
 
@@ -230,7 +229,7 @@ describe('ScheduleValidator', function (): void {
                 new Event([$participant1, $participant2], new Round(3)),
             ]);
 
-            expect(fn () => $validator->validateScheduleCompleteness($schedule, $plan, $violations, $participants))->toThrow(
+            expect(fn() => $validator->validateScheduleCompleteness($schedule, $plan, $violations, $participants))->toThrow(
                 IncompleteScheduleException::class,
                 'Generated schedule failed round-robin integrity validation'
             );
@@ -591,7 +590,7 @@ describe('ScheduleValidator', function (): void {
 
             foreach (['custom rest window', 'custom seed shield'] as $name) {
                 $violations->recordViolation(new ConstraintViolation(
-                    new MissionGaming\Tactician\Constraints\CallableConstraint(fn () => false, $name),
+                    new MissionGaming\Tactician\Constraints\CallableConstraint(fn() => false, $name),
                     $event,
                     'violated',
                     [$participant1]
@@ -604,6 +603,36 @@ describe('ScheduleValidator', function (): void {
             expect($suggestions)->toContain("Consider reducing seed protection rounds for 'custom seed shield'");
         });
 
+        // One suggestion for each constraint name: the keyword is looked for
+        // anywhere in the name, in lowercase only, and the first of
+        // consecutive, rest and seed that is found decides
+        it('chooses the suggestion from the first keyword the name holds', function (string $name, string $expected): void {
+            $validator = new ScheduleValidator();
+            $violations = new ConstraintViolationCollector();
+
+            $participant1 = new Participant('p1', 'Alice');
+            $participant2 = new Participant('p2', 'Bob');
+
+            $violations->recordViolation(new ConstraintViolation(
+                new MissionGaming\Tactician\Constraints\CallableConstraint(fn() => false, $name),
+                new Event([$participant1, $participant2]),
+                'violated',
+                [$participant1]
+            ));
+
+            expect($validator->generateConstraintSuggestions($violations, 4))
+                ->toBe("\nSuggestions:\n  - {$expected}\n");
+        })->with([
+            'the keyword at the start' => ['rest gap', "Consider reducing rest period requirements for 'rest gap'"],
+            'the keyword inside a word' => ['Forest draw', "Consider reducing rest period requirements for 'Forest draw'"],
+            'the keyword alone' => ['seed', "Consider reducing seed protection rounds for 'seed'"],
+            'a capital letter' => ['Rest Period', "Review configuration for 'Rest Period' (1 violations)"],
+            'upper case' => ['CONSECUTIVE', "Review configuration for 'CONSECUTIVE' (1 violations)"],
+            'consecutive before rest' => ['rest after consecutive', "Consider increasing the consecutive limit for 'rest after consecutive'"],
+            'rest before seed' => ['seed rest', "Consider reducing rest period requirements for 'seed rest'"],
+            'an empty name' => ['', "Review configuration for '' (1 violations)"],
+        ]);
+
         // Tests generic suggestions for unknown constraint types
         it('provides generic suggestions for unknown constraints', function (): void {
             // Given: A custom constraint that doesn't match known patterns
@@ -614,7 +643,7 @@ describe('ScheduleValidator', function (): void {
             $participant2 = new Participant('p2', 'Bob');
             $event1 = new Event([$participant1, $participant2]);
 
-            $constraint = new class () implements \MissionGaming\Tactician\Constraints\ConstraintInterface {
+            $constraint = new class implements \MissionGaming\Tactician\Constraints\ConstraintInterface {
                 #[Override]
                 public function getName(): string
                 {
@@ -670,7 +699,7 @@ describe('ScheduleValidator', function (): void {
             try {
                 $validator->generateConstraintSuggestions($violations, 0);
                 expect(false)->toBeTrue('Expected DivisionByZeroError was not thrown');
-            } catch (\DivisionByZeroError $e) {
+            } catch (\DivisionByZeroError) {
                 expect(true)->toBeTrue();
             }
         });
