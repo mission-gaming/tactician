@@ -25,6 +25,5 @@ final readonly class LoadPlan
         public array $sessionByEvent,
         public array $unplaced,
         public array $violations
-    ) {
-    }
+    ) {}
 }

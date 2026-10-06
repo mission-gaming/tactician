@@ -343,7 +343,7 @@ class SchedulingDiagnostics
             if ($allowedRounds === []) {
                 $culprits = array_keys(array_filter(
                     $roundsRejectedBy,
-                    fn (int $rejectedRounds) => $rejectedRounds === $totalRounds
+                    fn(int $rejectedRounds) => $rejectedRounds === $totalRounds
                 ));
                 $blockedBy = $culprits === [] ? 'a combination of constraints' : implode(', ', $culprits);
                 $impossible[] = "{$pairLabel} cannot join the generated schedule in any round (blocked by: {$blockedBy})";
@@ -352,7 +352,7 @@ class SchedulingDiagnostics
 
             $openRounds = array_filter(
                 $allowedRounds,
-                fn (int $round) => ($eventsPerRound[$round] ?? 0) < $roundCapacity
+                fn(int $round) => ($eventsPerRound[$round] ?? 0) < $roundCapacity
             );
             if ($openRounds === []) {
                 $structural[] = "{$pairLabel} is only allowed in rounds already at capacity (rounds "

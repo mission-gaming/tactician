@@ -121,7 +121,7 @@ final readonly class BlackoutRule implements TimelineRule
     public function toArray(): array
     {
         return [
-            'windows' => array_map(fn (array $window) => [
+            'windows' => array_map(fn(array $window) => [
                 'from' => $window['from']->format('Y-m-d H:i:s'),
                 'to' => $window['to']->format('Y-m-d H:i:s'),
                 'timezone' => 'UTC',
@@ -148,7 +148,7 @@ final readonly class BlackoutRule implements TimelineRule
                     // Events carry at least two participants but may carry
                     // more (nothing forecloses N-participant events)
                     $labels = array_map(
-                        fn ($participant) => $participant->getLabel(),
+                        fn($participant) => $participant->getLabel(),
                         $scheduledEvent->getEvent()->getParticipants()
                     );
                     $violations[] = sprintf(

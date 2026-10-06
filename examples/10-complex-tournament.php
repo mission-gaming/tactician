@@ -31,7 +31,7 @@ $entrants = [
 
 // Whether an event pairs an S-tier entrant with a B-tier one
 $isMismatch = static function (Event $event): bool {
-    $tiers = array_map(static fn (Participant $participant): mixed => $participant->getMetadataValue('tier'), $event->getParticipants());
+    $tiers = array_map(static fn(Participant $participant): mixed => $participant->getMetadataValue('tier'), $event->getParticipants());
 
     return in_array('S', $tiers, true) && in_array('B', $tiers, true);
 };
@@ -49,7 +49,7 @@ $constraints = ConstraintSet::create()
     ->add(new MinimumRestPeriodsConstraint(7))
     // No S-tier against B-tier in the opening two rounds
     ->add(new CallableConstraint(
-        static fn (Event $event): bool => $event->getRound()?->getNumber() > 2 || !$isMismatch($event),
+        static fn(Event $event): bool => $event->getRound()?->getNumber() > 2 || !$isMismatch($event),
         'No S-tier against B-tier in rounds 1 and 2'
     ))
     ->build();
@@ -90,7 +90,7 @@ $check = static function (Schedule $schedule) use ($isMismatch): array {
         'Rounds in which seeds 1 and 2 meet' => implode(' and ', $topSeedsMeet),
         'Earliest round with S-tier against B-tier' => min($mismatchRounds),
         'Fewest rounds between the two meetings of a pair' => min(array_map(
-            static fn (array $rounds): int => $rounds[1] - $rounds[0],
+            static fn(array $rounds): int => $rounds[1] - $rounds[0],
             $meetings
         )),
     ];

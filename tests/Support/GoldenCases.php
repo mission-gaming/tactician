@@ -94,7 +94,7 @@ final class GoldenCases
         foreach (['mirrored', 'repeated'] as $strategy) {
             foreach ([null, ...self::SEEDS] as $seed) {
                 $cases['round-robin/' . $strategy . '-' . self::seedSlug($seed) . '.txt']
-                    = static fn (): string => self::roundRobin($strategy, $seed);
+                    = static fn(): string => self::roundRobin($strategy, $seed);
             }
         }
 
@@ -104,11 +104,11 @@ final class GoldenCases
         $cases['double-elimination.txt'] = self::doubleElimination(...);
         $cases['repack/scenario.txt'] = self::repackScenario(...);
         $cases['repack/round-robin.txt'] = self::repackRoundRobin(...);
-        $cases[self::WIRE_SCHEDULE] = static fn (): string => self::wireSchedule() . "\n";
-        $cases[self::WIRE_STAGE_STATE] = static fn (): string => self::wireStageState() . "\n";
+        $cases[self::WIRE_SCHEDULE] = static fn(): string => self::wireSchedule() . "\n";
+        $cases[self::WIRE_STAGE_STATE] = static fn(): string => self::wireStageState() . "\n";
 
         foreach (ExampleResults::names() as $example) {
-            $cases[self::exampleFixture($example)] = static fn (): string => ExampleResults::text($example);
+            $cases[self::exampleFixture($example)] = static fn(): string => ExampleResults::text($example);
         }
 
         return $cases;
@@ -249,7 +249,7 @@ final class GoldenCases
     {
         return ConstraintSet::create()->custom(static function (Event $event) use ($roundByPair): bool {
             $ids = array_map(
-                static fn (Participant $participant): string => $participant->getId(),
+                static fn(Participant $participant): string => $participant->getId(),
                 $event->getParticipants()
             );
             sort($ids);

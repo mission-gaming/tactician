@@ -72,9 +72,9 @@ describe('Participant', function (): void {
     it('rejects malformed serialized seed and metadata', function (): void {
         $valid = ['id' => 'p1', 'label' => 'Alice', 'seed' => null, 'metadata' => []];
 
-        expect(fn () => Participant::fromArray([...$valid, 'seed' => 'first']))
+        expect(fn() => Participant::fromArray([...$valid, 'seed' => 'first']))
             ->toThrow(InvalidArgumentException::class, 'seed');
-        expect(fn () => Participant::fromArray([...$valid, 'metadata' => 'nope']))
+        expect(fn() => Participant::fromArray([...$valid, 'metadata' => 'nope']))
             ->toThrow(InvalidArgumentException::class, 'metadata');
     });
 });

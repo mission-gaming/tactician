@@ -285,7 +285,7 @@ describe('IncompleteScheduleException', function (): void {
             new MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint(3),
             new MissionGaming\Tactician\Constraints\NoRepeatPairings(),
             new MissionGaming\Tactician\Constraints\SeedProtectionConstraint(2, 0.5),
-            new MissionGaming\Tactician\Constraints\CallableConstraint(fn () => false, 'Mystery Rule'),
+            new MissionGaming\Tactician\Constraints\CallableConstraint(fn() => false, 'Mystery Rule'),
         ] as $constraint) {
             $violationCollector->recordViolation(new ConstraintViolation(
                 $constraint,
@@ -370,7 +370,7 @@ describe('IncompleteScheduleException', function (): void {
 
         $noDerby = MissionGaming\Tactician\Constraints\ConstraintSet::create()
             ->custom(static function (Event $event): bool {
-                $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+                $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
                 sort($ids);
 
                 return implode('|', $ids) !== 't1|t2';

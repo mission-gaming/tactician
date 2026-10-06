@@ -88,9 +88,9 @@ describe('MinimumRestRule', function (): void {
         expect($rule->toArray())->toBe(['rest' => 'PT48H']);
         expect($rule->getName())->toBe('Minimum Rest (PT48H)');
 
-        expect(fn () => MinimumRestRule::fromArray(['rest' => 'whenever']))
+        expect(fn() => MinimumRestRule::fromArray(['rest' => 'whenever']))
             ->toThrow(InvalidConfigurationException::class, 'ISO 8601');
-        expect(fn () => new MinimumRestRule(new DateInterval('PT0S')))
+        expect(fn() => new MinimumRestRule(new DateInterval('PT0S')))
             ->toThrow(InvalidConfigurationException::class, 'move time forward');
     });
 });
@@ -148,23 +148,23 @@ describe('BlackoutRule', function (): void {
     });
 
     it('rejects malformed windows', function (): void {
-        expect(fn () => new BlackoutRule([]))
+        expect(fn() => new BlackoutRule([]))
             ->toThrow(InvalidConfigurationException::class, 'at least one window');
-        expect(fn () => new BlackoutRule([[
+        expect(fn() => new BlackoutRule([[
             'from' => utc('2026-11-17 00:00'),
             'to' => utc('2026-11-09 00:00'),
         ]]))->toThrow(InvalidConfigurationException::class, 'end after they start');
 
-        expect(fn () => BlackoutRule::fromArray(['windows' => []]))
+        expect(fn() => BlackoutRule::fromArray(['windows' => []]))
             ->toThrow(InvalidConfigurationException::class, 'non-empty');
-        expect(fn () => BlackoutRule::fromArray(['windows' => ['nope']]))
+        expect(fn() => BlackoutRule::fromArray(['windows' => ['nope']]))
             ->toThrow(InvalidConfigurationException::class, 'must be an array');
-        expect(fn () => BlackoutRule::fromArray(['windows' => [[
+        expect(fn() => BlackoutRule::fromArray(['windows' => [[
             'from' => '2026-11-09 00:00:00Z',
             'to' => '2026-11-17 00:00:00',
             'timezone' => 'Europe/London',
         ]]]))->toThrow(InvalidConfigurationException::class, 'carries its own timezone');
-        expect(fn () => BlackoutRule::fromArray(['windows' => [[
+        expect(fn() => BlackoutRule::fromArray(['windows' => [[
             'from' => '2026-11-09 00:00:00',
             'to' => '2026-11-17 00:00:00',
             'timezone' => 'UTC',
@@ -282,7 +282,7 @@ describe('TimelineAssigner with rules', function (): void {
         $schedule = new MissionGaming\Tactician\DTO\Schedule([new Event([$alice, $bob], new Round(1))]);
         $timeline = new TimelineDefinition(utc('2026-08-01 13:00'), new DateInterval('P7D'));
 
-        $noLunchKickoffs = new readonly class () implements TimelineRule {
+        $noLunchKickoffs = new readonly class implements TimelineRule {
             #[Override]
             public function getName(): string
             {
@@ -303,7 +303,7 @@ describe('TimelineAssigner with rules', function (): void {
             }
         };
 
-        expect(fn () => (new TimelineAssigner([$noLunchKickoffs]))->assign($schedule, $timeline))
+        expect(fn() => (new TimelineAssigner([$noLunchKickoffs]))->assign($schedule, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'No Lunchtime Kickoffs');
     });
 

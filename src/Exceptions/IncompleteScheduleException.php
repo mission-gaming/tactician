@@ -171,7 +171,7 @@ class IncompleteScheduleException extends SchedulingException
                     $topAffected = array_slice($participantCounts, 0, 3, true);
                     $report[] = sprintf(
                         '  Most affected participants: %s',
-                        implode(', ', array_map(fn ($id, $count) => "$id ($count)", array_keys($topAffected), $topAffected))
+                        implode(', ', array_map(fn($id, $count) => "$id ($count)", array_keys($topAffected), $topAffected))
                     );
                 }
 
@@ -179,7 +179,7 @@ class IncompleteScheduleException extends SchedulingException
                     ksort($roundCounts);
                     $report[] = sprintf(
                         '  Affected rounds: %s',
-                        implode(', ', array_map(fn ($round, $count) => "$round ($count)", array_keys($roundCounts), $roundCounts))
+                        implode(', ', array_map(fn($round, $count) => "$round ($count)", array_keys($roundCounts), $roundCounts))
                     );
                 }
 

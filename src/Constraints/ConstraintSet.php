@@ -12,9 +12,7 @@ readonly class ConstraintSet
     /**
      * @param array<ConstraintInterface> $constraints
      */
-    public function __construct(private array $constraints = [])
-    {
-    }
+    public function __construct(private array $constraints = []) {}
 
     public static function create(): ConstraintSetBuilder
     {

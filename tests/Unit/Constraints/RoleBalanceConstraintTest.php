@@ -20,7 +20,7 @@ describe('RoleBalanceConstraint', function (): void {
     });
 
     it('rejects a max imbalance below 1', function (): void {
-        expect(fn () => new RoleBalanceConstraint(0))
+        expect(fn() => new RoleBalanceConstraint(0))
             ->toThrow(InvalidArgumentException::class);
     });
 

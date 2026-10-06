@@ -13,6 +13,4 @@ use RuntimeException;
  *
  * @internal
  */
-final class BudgetExhausted extends RuntimeException
-{
-}
+final class BudgetExhausted extends RuntimeException {}

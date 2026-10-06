@@ -342,7 +342,7 @@ describe('SchedulingContext', function (): void {
     // non-null, but a contract-violating plan must yield nothing rather
     // than fabricate leg boundaries
     it('returns no leg events for a plan without rounds per leg', function (): void {
-        $brokenPlan = new readonly class () implements StagePlan {
+        $brokenPlan = new readonly class implements StagePlan {
             #[Override]
             public function getAlgorithm(): string
             {

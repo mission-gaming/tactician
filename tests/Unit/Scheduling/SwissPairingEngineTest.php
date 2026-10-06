@@ -30,7 +30,7 @@ use Random\Randomizer;
  */
 function withSwissRound(StageState $state, int $round, array $results, array $byes = []): StageState
 {
-    $events = array_map(fn (Result $result) => $result->getEvent(), $results);
+    $events = array_map(fn(Result $result) => $result->getEvent(), $results);
 
     return $state->withRoundPlayed(new RoundPairing($round, null, $events, $byes), $results);
 }
@@ -42,7 +42,7 @@ function withSwissRound(StageState $state, int $round, array $results, array $by
 function swissPairKeys(array $events): array
 {
     $pairKeys = array_map(function (Event $event) {
-        $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+        $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
         sort($ids);
 
         return implode('-', $ids);
@@ -74,7 +74,7 @@ describe('SwissPairingEngine', function (): void {
         expect($pairing->hasByes())->toBeFalse();
 
         $pairs = array_map(
-            fn (Event $event) => array_map(fn (Participant $p) => $p->getId(), $event->getParticipants()),
+            fn(Event $event) => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants()),
             $pairing->getEvents()
         );
 
@@ -142,7 +142,7 @@ describe('SwissPairingEngine', function (): void {
         $pairing = (new SwissPairingEngine())->pairNextRound($state);
 
         foreach ($pairing->getEvents() as $event) {
-            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
             if (in_array('p1', $ids, true)) {
                 // Alice and Carol both had one home game: the lower-placed
                 // participant (Carol) gets home
@@ -177,7 +177,7 @@ describe('SwissPairingEngine', function (): void {
     // Crediting a bye "as a win" is undefined under a non-win/draw/loss
     // ranking scale, so the engine fails loudly instead of guessing
     it('rejects bye crediting under a non-win-draw-loss ranking strategy', function (): void {
-        $customRanking = new readonly class () implements RankingStrategy {
+        $customRanking = new readonly class implements RankingStrategy {
             /**
              * @param array<Result> $results
              */
@@ -198,7 +198,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->carol, $this->dave], new Round(1)), $this->carol),
         ], [$this->eve]);
 
-        expect(fn () => $engine->pairNextRound($state))
+        expect(fn() => $engine->pairNextRound($state))
             ->toThrow(InvalidConfigurationException::class, 'win/draw/loss ranking strategy');
     });
 
@@ -237,7 +237,7 @@ describe('SwissPairingEngine', function (): void {
         expect($pairing->hasByes())->toBeTrue();
 
         // Dave is never paired despite appearing in the results
-        $pairedIds = array_map(fn (Participant $p) => $p->getId(), $pairing->getEvents()[0]->getParticipants());
+        $pairedIds = array_map(fn(Participant $p) => $p->getId(), $pairing->getEvents()[0]->getParticipants());
         expect($pairedIds)->not->toContain('p4');
         expect($pairing->getByes()[0]->getId())->not->toBe('p4');
     });
@@ -269,7 +269,7 @@ describe('SwissPairingEngine', function (): void {
         // and the two 1-0 top seeds would meet in round 2
         $round2 = $engine->pairNextRound($state);
         foreach ($round2->getEvents() as $event) {
-            $seeds = array_map(fn (Participant $p) => $p->getSeed(), $event->getParticipants());
+            $seeds = array_map(fn(Participant $p) => $p->getSeed(), $event->getParticipants());
             sort($seeds);
             expect($seeds)->not->toBe([1, 2]);
         }
@@ -290,7 +290,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->carol, $this->bob], new Round(3)), $this->bob),
         ]);
 
-        expect(fn () => (new SwissPairingEngine())->pairNextRound($state))
+        expect(fn() => (new SwissPairingEngine())->pairNextRound($state))
             ->toThrow(NoValidPairingException::class);
     });
 
@@ -299,7 +299,7 @@ describe('SwissPairingEngine', function (): void {
         $constraints = ConstraintSet::create()
             ->custom(
                 function (Event $event, SchedulingContext $context): bool {
-                    $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+                    $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
                     sort($ids);
 
                     return $ids !== ['p1', 'p2'];
@@ -331,7 +331,7 @@ describe('SwissPairingEngine', function (): void {
     it('rejects fewer than two active participants', function (): void {
         $engine = new SwissPairingEngine();
 
-        expect(fn () => $engine->pairNextRound(StageState::start([$this->alice])))
+        expect(fn() => $engine->pairNextRound(StageState::start([$this->alice])))
             ->toThrow(InvalidConfigurationException::class);
     });
 
@@ -376,7 +376,7 @@ describe('SwissPairingEngine', function (): void {
         // themselves - the shuffle never crosses the ranking boundary
         foreach ($round2->getEvents() as $event) {
             $indexes = array_map(
-                fn (Participant $p) => (int) substr($p->getId(), 1),
+                fn(Participant $p) => (int) substr($p->getId(), 1),
                 $event->getParticipants()
             );
             expect(($indexes[0] <= 4) === ($indexes[1] <= 4))->toBeTrue();
@@ -393,7 +393,7 @@ describe('SwissPairingEngine', function (): void {
         while (!$engine->isComplete($state)) {
             $pairing = $engine->pairNextRound($state);
             $results = array_map(
-                fn (Event $event) => new Result($event, $event->getParticipants()[0]),
+                fn(Event $event) => new Result($event, $event->getParticipants()[0]),
                 $pairing->getEvents()
             );
             $state = $state->withRoundPlayed($pairing, $results);
@@ -493,7 +493,7 @@ describe('SwissPairingEngine', function (): void {
 
             $results = [];
             foreach ($pairing->getEvents() as $event) {
-                $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+                $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
                 sort($ids);
                 $key = implode('-', $ids);
                 expect($seenPairings)->not->toContain($key);
@@ -530,7 +530,7 @@ describe('SwissPairingEngine', function (): void {
             new Result(new Event([$this->bob, $this->carol], new Round(3)), $this->bob),
         ], [$this->alice]);
 
-        expect(fn () => (new SwissPairingEngine())->pairNextRound($state))
+        expect(fn() => (new SwissPairingEngine())->pairNextRound($state))
             ->toThrow(NoValidPairingException::class);
     });
 });

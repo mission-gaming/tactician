@@ -39,7 +39,7 @@ $withNoRepeats = (new RoundRobinScheduler($noRepeats))->schedule($participants);
 // custom() takes any predicate over the event being placed. This one keeps
 // seed 1 and seed 6 apart for the first two rounds.
 $isTopAgainstBottom = static function (Event $event): bool {
-    $seeds = array_map(static fn (Participant $participant): ?int => $participant->getSeed(), $event->getParticipants());
+    $seeds = array_map(static fn(Participant $participant): ?int => $participant->getSeed(), $event->getParticipants());
 
     return in_array(1, $seeds, true) && in_array(6, $seeds, true);
 };
@@ -47,7 +47,7 @@ $isTopAgainstBottom = static function (Event $event): bool {
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
     ->custom(
-        static fn (Event $event): bool => $event->getRound()?->getNumber() > 2 || !$isTopAgainstBottom($event),
+        static fn(Event $event): bool => $event->getRound()?->getNumber() > 2 || !$isTopAgainstBottom($event),
         'Seeds 1 and 6 apart in rounds 1 and 2'
     )
     ->build();
@@ -74,7 +74,7 @@ return Example::present(__FILE__, 'Basic constraints', 'A constraint set is buil
         'With the custom constraint' => $meetingRound($constrained),
     ],
     'Constraints in the set' => array_map(
-        static fn ($constraint): string => $constraint->getName(),
+        static fn($constraint): string => $constraint->getName(),
         $constraints->getConstraints()
     ),
     'Schedule without constraints' => $unconstrained,

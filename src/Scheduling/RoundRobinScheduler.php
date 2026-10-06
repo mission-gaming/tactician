@@ -192,7 +192,7 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         // Check for duplicate participant IDs
-        $ids = array_map(fn (Participant $p) => $p->getId(), $participants);
+        $ids = array_map(fn(Participant $p) => $p->getId(), $participants);
         if (count($ids) !== count(array_unique($ids))) {
             throw new InvalidConfigurationException(
                 'All participants must have unique IDs',

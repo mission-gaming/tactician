@@ -15,9 +15,9 @@ describe('ConsecutiveRoleConstraint', function (): void {
     });
 
     it('rejects invalid construction', function (): void {
-        expect(fn () => ConsecutiveRoleConstraint::homeAway(0))
+        expect(fn() => ConsecutiveRoleConstraint::homeAway(0))
             ->toThrow(InvalidArgumentException::class, 'at least 1');
-        expect(fn () => new ConsecutiveRoleConstraint(2, 'not callable'))
+        expect(fn() => new ConsecutiveRoleConstraint(2, 'not callable'))
             ->toThrow(InvalidArgumentException::class, 'callable');
     });
 
@@ -33,7 +33,7 @@ describe('ConsecutiveRoleConstraint', function (): void {
     // yields the same value (even null) for consecutive events counts as
     // a streak - custom extractors must return distinct role values
     it('treats identical extracted values as a consecutive streak', function (): void {
-        $constraint = new ConsecutiveRoleConstraint(1, fn () => null, 'Constant Role');
+        $constraint = new ConsecutiveRoleConstraint(1, fn() => null, 'Constant Role');
         $context = roundRobinContext($this->participants, [
             new Event([$this->alice, $this->bob], new Round(1)),
         ]);

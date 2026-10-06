@@ -22,8 +22,7 @@ readonly class ConstraintViolation
         public string $reason,
         public array $affectedParticipants,
         public ?int $roundNumber = null
-    ) {
-    }
+    ) {}
 
     public function getConstraintName(): string
     {
@@ -36,7 +35,7 @@ readonly class ConstraintViolation
     public function getDescription(): string
     {
         $round = $this->roundNumber !== null && $this->roundNumber !== 0 ? " in round {$this->roundNumber}" : '';
-        $participantLabels = array_map(fn (Participant $p) => $p->getLabel(), $this->affectedParticipants);
+        $participantLabels = array_map(fn(Participant $p) => $p->getLabel(), $this->affectedParticipants);
         $participantList = implode(', ', $participantLabels);
 
         return "Constraint '{$this->getConstraintName()}' violated{$round}: {$this->reason} (Participants: {$participantList})";

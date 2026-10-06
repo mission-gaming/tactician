@@ -57,12 +57,12 @@ try {
 $roundsBetweenMeetings = static function (Schedule $schedule): array {
     $rounds = [];
     foreach ($schedule as $event) {
-        $ids = array_map(static fn (Participant $participant): string => $participant->getId(), $event->getParticipants());
+        $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
         sort($ids);
         $rounds[implode(' and ', $ids)][] = (int) $event->getRound()?->getNumber();
     }
 
-    return array_map(static fn (array $meetings): int => $meetings[1] - $meetings[0], $rounds);
+    return array_map(static fn(array $meetings): int => $meetings[1] - $meetings[0], $rounds);
 };
 $gaps = $roundsBetweenMeetings($schedule);
 

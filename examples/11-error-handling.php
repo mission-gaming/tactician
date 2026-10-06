@@ -41,7 +41,7 @@ try {
 // 2. IncompleteScheduleException: the request is valid but the constraints
 //    leave no complete schedule. This constraint rejects every event.
 $rejectEverything = ConstraintSet::create()
-    ->custom(static fn (): bool => false, 'Reject everything')
+    ->custom(static fn(): bool => false, 'Reject everything')
     ->build();
 
 $incomplete = null;

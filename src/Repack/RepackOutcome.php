@@ -91,7 +91,7 @@ final readonly class RepackOutcome
     {
         return array_values(array_filter(
             $this->violations,
-            static fn (RepackViolation $violation): bool => $violation->getKind() === $kind
+            static fn(RepackViolation $violation): bool => $violation->getKind() === $kind
         ));
     }
 
@@ -113,15 +113,15 @@ final readonly class RepackOutcome
     {
         return [
             'assignments' => array_map(
-                static fn (SlotAssignment $assignment): array => $assignment->toArray(),
+                static fn(SlotAssignment $assignment): array => $assignment->toArray(),
                 $this->assignments
             ),
             'unplaced' => array_map(
-                static fn (UnplacedEvent $unplaced): array => $unplaced->toArray(),
+                static fn(UnplacedEvent $unplaced): array => $unplaced->toArray(),
                 $this->unplaced
             ),
             'violations' => array_map(
-                static fn (RepackViolation $violation): array => $violation->toArray(),
+                static fn(RepackViolation $violation): array => $violation->toArray(),
                 $this->violations
             ),
         ];

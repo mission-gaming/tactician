@@ -171,7 +171,7 @@ class SwissScheduler implements SchedulerInterface
             );
         }
 
-        $ids = array_map(fn (Participant $participant) => $participant->getId(), $participants);
+        $ids = array_map(fn(Participant $participant) => $participant->getId(), $participants);
         if (count($ids) !== count(array_unique($ids))) {
             throw new InvalidConfigurationException(
                 'All participants must have unique IDs',

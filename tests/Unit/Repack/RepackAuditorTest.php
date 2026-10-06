@@ -33,7 +33,7 @@ describe('RepackAuditor', function (): void {
 
         $doubleBookings = array_values(array_filter(
             $violations,
-            static fn ($violation): bool => $violation->getKind() === ViolationKind::ParticipantDoubleBooked
+            static fn($violation): bool => $violation->getKind() === ViolationKind::ParticipantDoubleBooked
         ));
         expect($doubleBookings)->toHaveCount(1);
         $violation = $doubleBookings[0];
@@ -62,7 +62,7 @@ describe('RepackAuditor', function (): void {
 
         $doubleBookings = array_values(array_filter(
             $violations,
-            static fn ($violation): bool => $violation->getKind() === ViolationKind::ParticipantDoubleBooked
+            static fn($violation): bool => $violation->getKind() === ViolationKind::ParticipantDoubleBooked
         ));
         expect($doubleBookings)->toHaveCount(1);
         $violation = $doubleBookings[0];

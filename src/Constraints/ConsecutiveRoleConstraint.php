@@ -69,7 +69,7 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
         assert(is_callable($roleExtractor));
 
         // Extract roles for this participant
-        $roles = array_map(fn (Event $event) => $roleExtractor($event, $participant), $allEvents);
+        $roles = array_map(fn(Event $event) => $roleExtractor($event, $participant), $allEvents);
 
         return !$this->hasConsecutiveRoles($roles, $this->maxConsecutive);
     }
@@ -110,7 +110,7 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     {
         return new self(
             $maxConsecutive,
-            fn (Event $event, Participant $participant) => array_search($participant, $event->getParticipants(), true) === 0 ? 'home' : 'away',
+            fn(Event $event, Participant $participant) => array_search($participant, $event->getParticipants(), true) === 0 ? 'home' : 'away',
             "Home/Away consecutive limit ({$maxConsecutive})"
         );
     }
@@ -122,7 +122,7 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     {
         return new self(
             $maxConsecutive,
-            fn (Event $event, Participant $participant) => array_search($participant, $event->getParticipants(), true),
+            fn(Event $event, Participant $participant) => array_search($participant, $event->getParticipants(), true),
             "Position consecutive limit ({$maxConsecutive})"
         );
     }

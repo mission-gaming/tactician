@@ -22,8 +22,7 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
 {
     public function __construct(
         private ?Randomizer $randomizer = null
-    ) {
-    }
+    ) {}
 
     #[Override]
     public function planLegs(

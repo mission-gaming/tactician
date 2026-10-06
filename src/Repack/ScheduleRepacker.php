@@ -67,12 +67,12 @@ final readonly class ScheduleRepacker
         $movables = $request->getMovableEvents();
         usort(
             $movables,
-            static fn (MovableEvent $x, MovableEvent $y): int => strcmp($x->getId(), $y->getId())
+            static fn(MovableEvent $x, MovableEvent $y): int => strcmp($x->getId(), $y->getId())
         );
         $pins = $request->getPinnedEvents();
         usort(
             $pins,
-            static fn (PinnedEvent $x, PinnedEvent $y): int => strcmp($x->getId(), $y->getId())
+            static fn(PinnedEvent $x, PinnedEvent $y): int => strcmp($x->getId(), $y->getId())
         );
 
         /** @var array<string, Participant> $participantsById */
@@ -118,8 +118,8 @@ final readonly class ScheduleRepacker
             foreach ($pin->getParticipants() as $participant) {
                 $pinSlots[$pin->getSession()][$participantIndexes[$participant->getId()]][] = $pin->getSlot();
             }
-            $pinCounts[$pin->getSession()][$pin->getSlot()] =
-                ($pinCounts[$pin->getSession()][$pin->getSlot()] ?? 0) + 1;
+            $pinCounts[$pin->getSession()][$pin->getSlot()]
+                = ($pinCounts[$pin->getSession()][$pin->getSlot()] ?? 0) + 1;
         }
         foreach ($pinSlots as &$byParticipant) {
             foreach ($byParticipant as &$slots) {
@@ -204,7 +204,7 @@ final readonly class ScheduleRepacker
 
         usort(
             $unplaced,
-            static fn (UnplacedEvent $x, UnplacedEvent $y): int => strcmp($x->getEventId(), $y->getEventId())
+            static fn(UnplacedEvent $x, UnplacedEvent $y): int => strcmp($x->getEventId(), $y->getEventId())
         );
 
         // The audit reports what is true of the returned schedule
@@ -228,12 +228,12 @@ final readonly class ScheduleRepacker
         }
 
         $kindOrder = array_flip(array_map(
-            static fn (ViolationKind $kind): string => $kind->value,
+            static fn(ViolationKind $kind): string => $kind->value,
             ViolationKind::cases()
         ));
         usort(
             $violations,
-            static fn (RepackViolation $x, RepackViolation $y): int => $kindOrder[$x->getKind()->value] <=> $kindOrder[$y->getKind()->value]
+            static fn(RepackViolation $x, RepackViolation $y): int => $kindOrder[$x->getKind()->value] <=> $kindOrder[$y->getKind()->value]
         );
 
         ksort($positions);

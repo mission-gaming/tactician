@@ -47,8 +47,7 @@ final readonly class DocumentationSnippet
         public ?string $reason = null,
         public ?string $exception = null,
         public int $sectionLine = 0,
-    ) {
-    }
+    ) {}
 
     /**
      * Whether both blocks sit under the same heading of the same document.

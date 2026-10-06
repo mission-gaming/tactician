@@ -34,8 +34,7 @@ readonly class DiagnosticReport
         private array $impossiblePairings = [],
         private array $suggestions = [],
         private array $analysisContext = []
-    ) {
-    }
+    ) {}
 
     /**
      * Get the number of participants in the tournament.
@@ -147,9 +146,9 @@ readonly class DiagnosticReport
      */
     public function hasCriticalIssues(): bool
     {
-        return $this->impossiblePairings !== [] ||
-               $this->constraintViolations !== [] ||
-               $this->missingEvents > ($this->expectedEvents / 2);
+        return $this->impossiblePairings !== []
+               || $this->constraintViolations !== []
+               || $this->missingEvents > ($this->expectedEvents / 2);
     }
 
     /**

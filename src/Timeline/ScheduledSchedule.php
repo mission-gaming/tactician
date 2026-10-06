@@ -29,8 +29,7 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
      */
     public function __construct(
         private array $scheduledEvents
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<ScheduledEvent>
@@ -92,11 +91,11 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
 
         return [
             'participants' => array_values(array_map(
-                fn (Participant $participant) => $participant->toArray(),
+                fn(Participant $participant) => $participant->toArray(),
                 $participantsById
             )),
             'events' => array_map(
-                fn (ScheduledEvent $scheduledEvent) => $scheduledEvent->toArray(),
+                fn(ScheduledEvent $scheduledEvent) => $scheduledEvent->toArray(),
                 $this->scheduledEvents
             ),
         ];

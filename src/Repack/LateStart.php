@@ -26,8 +26,7 @@ final readonly class LateStart implements RepackViolation
         private Participant $participant,
         private int $session,
         private int $firstSlot
-    ) {
-    }
+    ) {}
 
     #[Override]
     public function getKind(): ViolationKind

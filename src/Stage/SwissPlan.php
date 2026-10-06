@@ -113,7 +113,7 @@ final readonly class SwissPlan implements StagePlan
     {
         $violations = [];
         $participantIds = array_fill_keys(
-            array_map(fn (Participant $participant) => $participant->getId(), $this->participants),
+            array_map(fn(Participant $participant) => $participant->getId(), $this->participants),
             true
         );
         $roundParticipantIds = [];

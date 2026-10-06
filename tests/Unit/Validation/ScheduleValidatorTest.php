@@ -33,8 +33,7 @@ function fixedCountPlan(?int $expectedEventCount, array $integrityViolations = [
         public function __construct(
             private ?int $expectedEventCount,
             private array $integrityViolations = []
-        ) {
-        }
+        ) {}
 
         #[Override]
         public function getAlgorithm(): string
@@ -112,7 +111,7 @@ describe('ScheduleValidator', function (): void {
                 new Event([$participant2, $participant3]),
             ]);
 
-            expect(fn () => $validator->validateScheduleCompleteness($schedule, fixedCountPlan(6), $violations, $participants))
+            expect(fn() => $validator->validateScheduleCompleteness($schedule, fixedCountPlan(6), $violations, $participants))
                 ->toThrow(IncompleteScheduleException::class);
         });
 
@@ -164,7 +163,7 @@ describe('ScheduleValidator', function (): void {
                 new Participant('p3', 'Carol'),
             ];
 
-            expect(fn () => $validator->validateScheduleCompleteness(new Schedule([]), fixedCountPlan(6), $violations, $participants))
+            expect(fn() => $validator->validateScheduleCompleteness(new Schedule([]), fixedCountPlan(6), $violations, $participants))
                 ->toThrow(IncompleteScheduleException::class);
         });
 
@@ -230,7 +229,7 @@ describe('ScheduleValidator', function (): void {
                 new Event([$participant1, $participant2], new Round(3)),
             ]);
 
-            expect(fn () => $validator->validateScheduleCompleteness($schedule, $plan, $violations, $participants))->toThrow(
+            expect(fn() => $validator->validateScheduleCompleteness($schedule, $plan, $violations, $participants))->toThrow(
                 IncompleteScheduleException::class,
                 'Generated schedule failed round-robin integrity validation'
             );
@@ -591,7 +590,7 @@ describe('ScheduleValidator', function (): void {
 
             foreach (['custom rest window', 'custom seed shield'] as $name) {
                 $violations->recordViolation(new ConstraintViolation(
-                    new MissionGaming\Tactician\Constraints\CallableConstraint(fn () => false, $name),
+                    new MissionGaming\Tactician\Constraints\CallableConstraint(fn() => false, $name),
                     $event,
                     'violated',
                     [$participant1]
@@ -614,7 +613,7 @@ describe('ScheduleValidator', function (): void {
             $participant2 = new Participant('p2', 'Bob');
             $event1 = new Event([$participant1, $participant2]);
 
-            $constraint = new class () implements \MissionGaming\Tactician\Constraints\ConstraintInterface {
+            $constraint = new class implements \MissionGaming\Tactician\Constraints\ConstraintInterface {
                 #[Override]
                 public function getName(): string
                 {

@@ -17,20 +17,20 @@ describe('CallableConstraint', function (): void {
     });
 
     it('implements ConstraintInterface', function (): void {
-        $constraint = new CallableConstraint(fn ($event, $context) => true, 'Test');
+        $constraint = new CallableConstraint(fn($event, $context) => true, 'Test');
 
         expect($constraint)->toBeInstanceOf(ConstraintInterface::class);
     });
 
     it('provides constraint name', function (): void {
         $name = 'My Custom Constraint';
-        $constraint = new CallableConstraint(fn ($event, $context) => true, $name);
+        $constraint = new CallableConstraint(fn($event, $context) => true, $name);
 
         expect($constraint->getName())->toBe($name);
     });
 
     it('executes predicate and returns true', function (): void {
-        $predicate = fn ($event, $context) => true;
+        $predicate = fn($event, $context) => true;
         $constraint = new CallableConstraint($predicate, 'Always True');
 
         $result = $constraint->isSatisfied($this->event, $this->context);
@@ -39,7 +39,7 @@ describe('CallableConstraint', function (): void {
     });
 
     it('executes predicate and returns false', function (): void {
-        $predicate = fn ($event, $context) => false;
+        $predicate = fn($event, $context) => false;
         $constraint = new CallableConstraint($predicate, 'Always False');
 
         $result = $constraint->isSatisfied($this->event, $this->context);
@@ -66,7 +66,7 @@ describe('CallableConstraint', function (): void {
     });
 
     it('validates minimum participant count', function (): void {
-        $predicate = fn ($event, $context) => count($event->getParticipants()) >= 2;
+        $predicate = fn($event, $context) => count($event->getParticipants()) >= 2;
         $constraint = new CallableConstraint($predicate, 'Min 2 Participants');
 
         // Event with 2 participants should pass
@@ -128,7 +128,7 @@ describe('CallableConstraint', function (): void {
             }
 
             // Don't allow Alice to pair with Bob specifically
-            $names = array_map(fn ($p) => $p->getLabel(), $participants);
+            $names = array_map(fn($p) => $p->getLabel(), $participants);
 
             return !(in_array('Alice', $names) && in_array('Bob', $names));
         };
@@ -144,15 +144,15 @@ describe('CallableConstraint', function (): void {
     });
 
     it('handles predicate that throws exception', function (): void {
-        $predicate = fn ($event, $context) => throw new RuntimeException('Predicate error');
+        $predicate = fn($event, $context) => throw new RuntimeException('Predicate error');
         $constraint = new CallableConstraint($predicate, 'Throwing Predicate');
 
-        expect(fn () => $constraint->isSatisfied($this->event, $this->context))
+        expect(fn() => $constraint->isSatisfied($this->event, $this->context))
             ->toThrow(RuntimeException::class, 'Predicate error');
     });
 
     it('handles complex return values from predicate', function (): void {
-        $predicate = fn (\MissionGaming\Tactician\DTO\Event $event, \MissionGaming\Tactician\Scheduling\SchedulingContext $context): string => 'truthy string'; // Non-boolean truthy value
+        $predicate = fn(\MissionGaming\Tactician\DTO\Event $event, \MissionGaming\Tactician\Scheduling\SchedulingContext $context): string => 'truthy string'; // Non-boolean truthy value
         // @phpstan-ignore argument.type (deliberately violates the bool contract to exercise truthiness coercion)
         $constraint = new CallableConstraint($predicate, 'Non-Boolean Return');
 
@@ -163,7 +163,7 @@ describe('CallableConstraint', function (): void {
 
     it('handles predicate with additional parameters via closure', function (): void {
         $minimumCount = 3;
-        $predicate = fn ($event, $context) => count($event->getParticipants()) >= $minimumCount;
+        $predicate = fn($event, $context) => count($event->getParticipants()) >= $minimumCount;
         $constraint = new CallableConstraint($predicate, 'Closure Capture');
 
         expect($constraint->isSatisfied($this->event, $this->context))->toBeFalse(); // 2 < 3

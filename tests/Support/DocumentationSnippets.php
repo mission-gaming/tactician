@@ -326,7 +326,7 @@ final class DocumentationSnippets
         );
 
         // The harness's own lines (each follows a newline it wrote itself) are not the block's output
-        $result = static fn (?string $failure): array => [
+        $result = static fn(?string $failure): array => [
             'failure' => $failure,
             'output' => (string) preg_replace('/\n' . preg_quote($nonce, '/') . '\S*\n/', '', $output),
         ];
@@ -438,7 +438,7 @@ final class DocumentationSnippets
         return self::run(
             $unskipped,
             array_map(
-                static fn (DocumentationSnippet $snippet): DocumentationSnippet => $snippet === $skipped ? $unskipped : $snippet,
+                static fn(DocumentationSnippet $snippet): DocumentationSnippet => $snippet === $skipped ? $unskipped : $snippet,
                 $all
             ),
             $autoload
@@ -536,7 +536,7 @@ final class DocumentationSnippets
             'lines' => $map,
             'earlier' => count(array_filter(
                 $predecessors,
-                static fn (DocumentationSnippet $snippet): bool => $snippet->mode === DocumentationSnippet::RUN
+                static fn(DocumentationSnippet $snippet): bool => $snippet->mode === DocumentationSnippet::RUN
             )),
         ];
     }

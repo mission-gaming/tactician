@@ -72,7 +72,7 @@ final readonly class ScheduleScorer
             }
         }
 
-        $this->weightedMetrics = array_map(fn (array $entry) => [
+        $this->weightedMetrics = array_map(fn(array $entry) => [
             'metric' => $entry['metric'],
             'weight' => (float) $entry['weight'],
         ], array_values($weightedMetrics));
@@ -86,7 +86,7 @@ final readonly class ScheduleScorer
     public static function of(QualityMetric ...$metrics): self
     {
         return new self(array_map(
-            fn (QualityMetric $metric) => ['metric' => $metric, 'weight' => 1.0],
+            fn(QualityMetric $metric) => ['metric' => $metric, 'weight' => 1.0],
             $metrics
         ));
     }

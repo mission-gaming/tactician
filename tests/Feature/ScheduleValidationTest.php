@@ -30,7 +30,7 @@ describe('Schedule Validation Integration', function (): void {
 
         // When: Attempting to generate schedule
         // Then: Should throw IncompleteScheduleException instead of silently generating partial schedule
-        expect(fn () => $scheduler->schedule(
+        expect(fn() => $scheduler->schedule(
             $this->participants,
             new RoundRobinOptions(legs: 2)
         ))->toThrow(IncompleteScheduleException::class);
@@ -155,7 +155,7 @@ describe('Schedule Validation Integration', function (): void {
         foreach ($this->participants as $participant) {
             $participantEvents = array_filter(
                 $schedule->getEvents(),
-                fn ($event) => in_array($participant, $event->getParticipants())
+                fn($event) => in_array($participant, $event->getParticipants())
             );
             expect(count($participantEvents))->toBe(6); // Each plays 6 games (3 opponents * 2 legs)
         }

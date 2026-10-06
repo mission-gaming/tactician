@@ -24,6 +24,5 @@ final readonly class StageTransition
         public string $label,
         public int $expectedEntrants,
         public ?ProgressionSelector $selector = null
-    ) {
-    }
+    ) {}
 }

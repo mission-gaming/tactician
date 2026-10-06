@@ -21,7 +21,7 @@ $root = dirname(__DIR__, 2);
 $workflows = glob($root . '/.github/workflows/*.{yml,yaml}', GLOB_BRACE) ?: [];
 $workflowDataset = array_combine(
     array_map(basename(...), $workflows),
-    array_map(fn (string $workflow) => [$workflow], $workflows)
+    array_map(fn(string $workflow) => [$workflow], $workflows)
 );
 
 it('discovers workflows to check', function () use ($workflows): void {

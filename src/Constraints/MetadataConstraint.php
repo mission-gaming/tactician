@@ -27,7 +27,7 @@ readonly class MetadataConstraint implements ConstraintInterface
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
         $participants = $event->getParticipants();
-        $metadataValues = array_map(fn ($p) => $p->getMetadataValue($this->metadataKey), $participants);
+        $metadataValues = array_map(fn($p) => $p->getMetadataValue($this->metadataKey), $participants);
 
         // The constructor rejects a validator that is not callable; the
         // property stays `mixed` so that the constructor accepts what it
@@ -51,7 +51,7 @@ readonly class MetadataConstraint implements ConstraintInterface
     {
         return new self(
             $metadataKey,
-            fn (array $values) => count(array_unique(array_filter($values, fn ($v) => $v !== null))) <= 1,
+            fn(array $values) => count(array_unique(array_filter($values, fn($v) => $v !== null))) <= 1,
             $name ?? "Same {$metadataKey}"
         );
     }
@@ -63,7 +63,7 @@ readonly class MetadataConstraint implements ConstraintInterface
     {
         return new self(
             $metadataKey,
-            fn (array $values) => count(array_unique(array_filter($values, fn ($v) => $v !== null))) === count(array_filter($values, fn ($v) => $v !== null)),
+            fn(array $values) => count(array_unique(array_filter($values, fn($v) => $v !== null))) === count(array_filter($values, fn($v) => $v !== null)),
             $name ?? "Different {$metadataKey}"
         );
     }
@@ -75,7 +75,7 @@ readonly class MetadataConstraint implements ConstraintInterface
     {
         return new self(
             $metadataKey,
-            fn (array $values) => count(array_unique(array_filter($values, fn ($v) => $v !== null))) <= $maxUnique,
+            fn(array $values) => count(array_unique(array_filter($values, fn($v) => $v !== null))) <= $maxUnique,
             $name ?? "Max {$maxUnique} {$metadataKey} types"
         );
     }

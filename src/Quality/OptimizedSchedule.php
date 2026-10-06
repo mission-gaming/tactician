@@ -25,8 +25,7 @@ final readonly class OptimizedSchedule
         private array $report,
         private int $samplesGenerated,
         private int $samplesFailed
-    ) {
-    }
+    ) {}
 
     public function getSchedule(): Schedule
     {

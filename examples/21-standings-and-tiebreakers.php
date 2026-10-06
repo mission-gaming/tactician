@@ -74,11 +74,11 @@ return Example::present(__FILE__, 'Standings and tiebreakers', 'One set of resul
     'Table with the tiebreaker chain' => $withChain,
     'Order at the top' => [
         'Without tiebreakers' => implode(', ', array_map(
-            static fn ($entry): string => $entry->getParticipant()->getLabel(),
+            static fn($entry): string => $entry->getParticipant()->getLabel(),
             array_slice($plain->getEntries(), 0, 2)
         )),
         'With the chain' => implode(', ', array_map(
-            static fn ($entry): string => $entry->getParticipant()->getLabel(),
+            static fn($entry): string => $entry->getParticipant()->getLabel(),
             array_slice($withChain->getEntries(), 0, 2)
         )),
     ],

@@ -49,14 +49,14 @@ describe('Event', function (): void {
     // Tests validation that prevents creating invalid events with only 1 participant,
     // since tournament events require at least 2 participants to compete
     it('throws exception with less than 2 participants', function (): void {
-        expect(fn () => new Event([$this->participant1]))
+        expect(fn() => new Event([$this->participant1]))
             ->toThrow(InvalidArgumentException::class, 'An event must have at least 2 participants');
     });
 
     // Tests validation that prevents creating completely empty events with no participants,
     // ensuring events always have at least the minimum required participants
     it('throws exception with no participants', function (): void {
-        expect(fn () => new Event([]))
+        expect(fn() => new Event([]))
             ->toThrow(InvalidArgumentException::class, 'An event must have at least 2 participants');
     });
 
@@ -97,11 +97,11 @@ describe('Event', function (): void {
         $bob = new Participant('p2', 'Bob');
         $registry = ['p1' => $alice, 'p2' => $bob];
 
-        expect(fn () => Event::fromArray(['round' => null, 'metadata' => []], $registry))
+        expect(fn() => Event::fromArray(['round' => null, 'metadata' => []], $registry))
             ->toThrow(InvalidArgumentException::class, 'participants array');
-        expect(fn () => Event::fromArray(['participants' => ['p1', 'p2'], 'round' => 'first'], $registry))
+        expect(fn() => Event::fromArray(['participants' => ['p1', 'p2'], 'round' => 'first'], $registry))
             ->toThrow(InvalidArgumentException::class, 'round');
-        expect(fn () => Event::fromArray(['participants' => ['p1', 'p2'], 'round' => null, 'metadata' => 'nope'], $registry))
+        expect(fn() => Event::fromArray(['participants' => ['p1', 'p2'], 'round' => null, 'metadata' => 'nope'], $registry))
             ->toThrow(InvalidArgumentException::class, 'metadata');
 
         $event = new Event([$alice, $bob], new Round(2), ['pitch' => 'A']);

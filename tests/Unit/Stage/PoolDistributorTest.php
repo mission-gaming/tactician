@@ -28,7 +28,7 @@ describe('PoolDistributor', function (): void {
         $pools = PoolDistributor::serpentine(poolField(8), 2);
 
         $idsByPool = array_map(
-            fn (array $pool) => array_map(fn (Participant $p) => $p->getId(), $pool),
+            fn(array $pool) => array_map(fn(Participant $p) => $p->getId(), $pool),
             $pools
         );
 
@@ -42,7 +42,7 @@ describe('PoolDistributor', function (): void {
         $pools = PoolDistributor::serpentine(poolField(6), 3);
 
         $idsByPool = array_map(
-            fn (array $pool) => array_map(fn (Participant $p) => $p->getId(), $pool),
+            fn(array $pool) => array_map(fn(Participant $p) => $p->getId(), $pool),
             $pools
         );
 
@@ -66,20 +66,20 @@ describe('PoolDistributor', function (): void {
 
         $pools = PoolDistributor::serpentine($participants, 2);
 
-        expect(array_map(fn (Participant $p) => $p->getId(), $pools['A']))->toBe(['first', 'fourth']);
-        expect(array_map(fn (Participant $p) => $p->getId(), $pools['B']))->toBe(['second', 'third']);
+        expect(array_map(fn(Participant $p) => $p->getId(), $pools['A']))->toBe(['first', 'fourth']);
+        expect(array_map(fn(Participant $p) => $p->getId(), $pools['B']))->toBe(['second', 'third']);
     });
 
     it('rejects invalid pool configurations', function (): void {
-        expect(fn () => PoolDistributor::serpentine(poolField(8), 0))
+        expect(fn() => PoolDistributor::serpentine(poolField(8), 0))
             ->toThrow(InvalidConfigurationException::class);
-        expect(fn () => PoolDistributor::serpentine(poolField(8), 27))
+        expect(fn() => PoolDistributor::serpentine(poolField(8), 27))
             ->toThrow(InvalidConfigurationException::class);
-        expect(fn () => PoolDistributor::serpentine(poolField(3), 2))
+        expect(fn() => PoolDistributor::serpentine(poolField(3), 2))
             ->toThrow(InvalidConfigurationException::class);
 
         $duplicates = [new Participant('t1', 'One'), new Participant('t1', 'Clone'), new Participant('t2', 'Two'), new Participant('t3', 'Three')];
-        expect(fn () => PoolDistributor::serpentine($duplicates, 2))
+        expect(fn() => PoolDistributor::serpentine($duplicates, 2))
             ->toThrow(InvalidConfigurationException::class);
     });
 
@@ -94,14 +94,14 @@ describe('PoolDistributor', function (): void {
         expect($split['B'])->toBe([$resultB]);
 
         $crossPool = new Result(new Event([$pools['A'][0], $pools['B'][0]]), $pools['A'][0]);
-        expect(fn () => PoolDistributor::splitResults($pools, [$crossPool]))
+        expect(fn() => PoolDistributor::splitResults($pools, [$crossPool]))
             ->toThrow(InvalidConfigurationException::class, 'spans multiple pools');
 
         $stranger = new Result(
             new Event([new Participant('x1', 'X'), new Participant('x2', 'Y')]),
             null
         );
-        expect(fn () => PoolDistributor::splitResults($pools, [$stranger]))
+        expect(fn() => PoolDistributor::splitResults($pools, [$stranger]))
             ->toThrow(InvalidConfigurationException::class, 'not in any pool');
     });
 });

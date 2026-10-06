@@ -95,11 +95,11 @@ describe('SwissScheduler', function (): void {
             ->schedule($participants, new SwissOptions(rounds: 3));
 
         $firstPairings = array_map(
-            fn ($event) => implode('-', array_map(fn ($participant) => $participant->getId(), $event->getParticipants())),
+            fn($event) => implode('-', array_map(fn($participant) => $participant->getId(), $event->getParticipants())),
             $firstSchedule->getEvents()
         );
         $secondPairings = array_map(
-            fn ($event) => implode('-', array_map(fn ($participant) => $participant->getId(), $event->getParticipants())),
+            fn($event) => implode('-', array_map(fn($participant) => $participant->getId(), $event->getParticipants())),
             $secondSchedule->getEvents()
         );
 
@@ -120,7 +120,7 @@ describe('SwissScheduler', function (): void {
     });
 
     it('rejects fewer than 2 participants', function (): void {
-        expect(fn () => (new SwissScheduler())->schedule([new Participant('p1', 'Player 1')]))
+        expect(fn() => (new SwissScheduler())->schedule([new Participant('p1', 'Player 1')]))
             ->toThrow(InvalidConfigurationException::class, 'at least 2 participants');
     });
 
@@ -132,7 +132,7 @@ describe('SwissScheduler', function (): void {
             new Participant('p3', 'Player 3'),
         ];
 
-        expect(fn () => (new SwissScheduler())->schedule($participants, new SwissOptions(rounds: 2)))
+        expect(fn() => (new SwissScheduler())->schedule($participants, new SwissOptions(rounds: 2)))
             ->toThrow(InvalidConfigurationException::class, 'unique IDs');
     });
 
@@ -144,7 +144,7 @@ describe('SwissScheduler', function (): void {
             new Participant('p4', 'Player 4'),
         ];
 
-        expect(fn () => (new SwissScheduler())->schedule($participants, new SwissOptions(rounds: 4)))
+        expect(fn() => (new SwissScheduler())->schedule($participants, new SwissOptions(rounds: 4)))
             ->toThrow(InvalidConfigurationException::class);
     });
 
@@ -157,7 +157,7 @@ describe('SwissScheduler', function (): void {
         ];
 
         $constraints = ConstraintSet::create()
-            ->custom(fn () => false, 'Reject Everything')
+            ->custom(fn() => false, 'Reject Everything')
             ->build();
 
         try {

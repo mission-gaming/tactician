@@ -97,7 +97,7 @@ final class GoldenText
 
         if ($pairing->hasByes()) {
             $line .= ' | byes: ' . implode(' ', array_map(
-                static fn (Participant $participant): string => $participant->getId(),
+                static fn(Participant $participant): string => $participant->getId(),
                 $pairing->getByes()
             ));
         }
@@ -167,7 +167,7 @@ final class GoldenText
     public static function document(array $header, array $sections): string
     {
         $blocks = [implode("\n", array_map(
-            static fn (string $line): string => rtrim('# ' . $line),
+            static fn(string $line): string => rtrim('# ' . $line),
             $header
         ))];
 
@@ -188,7 +188,7 @@ final class GoldenText
     public static function event(Event $event): string
     {
         $text = implode('-', array_map(
-            static fn (Participant $participant): string => $participant->getId(),
+            static fn(Participant $participant): string => $participant->getId(),
             $event->getParticipants()
         ));
 

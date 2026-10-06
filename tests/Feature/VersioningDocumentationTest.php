@@ -86,7 +86,7 @@ $changelogSections = function () use ($root): array {
     preg_match_all('/^## \[([^\]]+)\](?: - (\S+))?$/m', $changelog, $matches, PREG_SET_ORDER);
 
     return array_map(
-        fn (array $match) => ['version' => $match[1], 'date' => $match[2] ?? null],
+        fn(array $match) => ['version' => $match[1], 'date' => $match[2] ?? null],
         $matches
     );
 };
@@ -94,7 +94,7 @@ $changelogSections = function () use ($root): array {
 describe('stability classification', function () use ($root, $classified, $sourceNamespaces): void {
     it('classifies every source namespace as stable or experimental', function () use ($classified, $sourceNamespaces): void {
         $named = array_map(
-            fn (string $name) => explode('\\', $name)[0],
+            fn(string $name) => explode('\\', $name)[0],
             [...$classified('Stable'), ...$classified('Experimental')]
         );
 
@@ -126,11 +126,11 @@ describe('stability classification', function () use ($root, $classified, $sourc
     });
 
     it('keeps a whole-namespace entry out of the other list', function () use ($classified): void {
-        $whole = fn (array $names): array => array_values(array_filter(
+        $whole = fn(array $names): array => array_values(array_filter(
             $names,
-            fn (string $name) => !str_contains($name, '\\')
+            fn(string $name) => !str_contains($name, '\\')
         ));
-        $roots = fn (array $names): array => array_map(fn (string $name) => explode('\\', $name)[0], $names);
+        $roots = fn(array $names): array => array_map(fn(string $name) => explode('\\', $name)[0], $names);
 
         // `Repack\Internal` is the stable list's own stated exclusion, not a
         // second classification of `Repack`.
@@ -191,7 +191,7 @@ describe('changelog', function () use ($root, $changelogSections): void {
         $releases = array_slice($changelogSections(), 1);
         $versions = array_column($releases, 'version');
         $sorted = $versions;
-        usort($sorted, fn (string $a, string $b) => version_compare($b, $a));
+        usort($sorted, fn(string $a, string $b) => version_compare($b, $a));
 
         expect($versions)->toBe($sorted)
             ->and(array_unique($versions))->toHaveCount(count($versions));
@@ -302,7 +302,7 @@ describe('links', function () use ($root): void {
      * GitHub's heading anchor: lower-cased, punctuation dropped, spaces to
      * hyphens.
      */
-    $anchor = fn (string $heading): string => str_replace(
+    $anchor = fn(string $heading): string => str_replace(
         ' ',
         '-',
         (string) preg_replace('/[^a-z0-9 \-]/', '', strtolower(trim($heading)))
@@ -311,7 +311,7 @@ describe('links', function () use ($root): void {
     it('resolves every relative link and anchor', function (string $document) use ($root, $anchor): void {
         $source = (string) file_get_contents($root . '/' . $document);
         preg_match_all('/\]\(([^)\s]+)\)/', $source, $matches);
-        $relative = array_filter($matches[1], fn (string $target) => preg_match('#^[a-z]+:#i', $target) !== 1);
+        $relative = array_filter($matches[1], fn(string $target) => preg_match('#^[a-z]+:#i', $target) !== 1);
 
         expect($relative)->not->toBeEmpty();
 

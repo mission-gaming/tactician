@@ -33,8 +33,8 @@ describe('Schedule serialization', function (): void {
         foreach ($originalEvents as $index => $original) {
             $restoredEvent = $restoredEvents[$index];
 
-            $originalIds = array_map(fn (Participant $p) => $p->getId(), $original->getParticipants());
-            $restoredIds = array_map(fn (Participant $p) => $p->getId(), $restoredEvent->getParticipants());
+            $originalIds = array_map(fn(Participant $p) => $p->getId(), $original->getParticipants());
+            $restoredIds = array_map(fn(Participant $p) => $p->getId(), $restoredEvent->getParticipants());
             expect($restoredIds)->toBe($originalIds);
 
             expect($restoredEvent->getRound()?->getNumber())->toBe($original->getRound()?->getNumber());
@@ -79,13 +79,13 @@ describe('Schedule serialization', function (): void {
         $originalPairings = [];
         foreach ($schedule as $event) {
             $round = $event->getRound()?->getNumber();
-            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
             $originalPairings[] = $round . ':' . implode('-', $ids);
         }
         $restoredPairings = [];
         foreach ($restored as $event) {
             $round = $event->getRound()?->getNumber();
-            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
             $restoredPairings[] = $round . ':' . implode('-', $ids);
         }
 
@@ -93,7 +93,7 @@ describe('Schedule serialization', function (): void {
     });
 
     it('rejects malformed participant data', function (): void {
-        expect(fn () => Schedule::fromArray(['participants' => [['label' => 'No ID']], 'events' => []]))
+        expect(fn() => Schedule::fromArray(['participants' => [['label' => 'No ID']], 'events' => []]))
             ->toThrow(InvalidArgumentException::class);
     });
 
@@ -104,27 +104,27 @@ describe('Schedule serialization', function (): void {
             'metadata' => [],
         ];
 
-        expect(fn () => Schedule::fromArray($data))
+        expect(fn() => Schedule::fromArray($data))
             ->toThrow(InvalidArgumentException::class, 'unknown participant');
     });
 
     it('rejects invalid JSON', function (): void {
-        expect(fn () => Schedule::fromJson('{not json'))
+        expect(fn() => Schedule::fromJson('{not json'))
             ->toThrow(JsonException::class);
     });
 
     it('rejects malformed serialized data', function (): void {
-        expect(fn () => Schedule::fromArray(['participants' => 'nope']))
+        expect(fn() => Schedule::fromArray(['participants' => 'nope']))
             ->toThrow(InvalidArgumentException::class, 'participants must be an array');
-        expect(fn () => Schedule::fromArray(['participants' => ['nope']]))
+        expect(fn() => Schedule::fromArray(['participants' => ['nope']]))
             ->toThrow(InvalidArgumentException::class, 'participant must be an array');
-        expect(fn () => Schedule::fromArray(['participants' => [], 'events' => 'nope']))
+        expect(fn() => Schedule::fromArray(['participants' => [], 'events' => 'nope']))
             ->toThrow(InvalidArgumentException::class, 'events must be an array');
-        expect(fn () => Schedule::fromArray(['participants' => [], 'events' => ['nope']]))
+        expect(fn() => Schedule::fromArray(['participants' => [], 'events' => ['nope']]))
             ->toThrow(InvalidArgumentException::class, 'event must be an array');
-        expect(fn () => Schedule::fromArray(['participants' => [], 'events' => [], 'metadata' => 'nope']))
+        expect(fn() => Schedule::fromArray(['participants' => [], 'events' => [], 'metadata' => 'nope']))
             ->toThrow(InvalidArgumentException::class, 'metadata must be an array');
-        expect(fn () => Schedule::fromJson('"nope"'))
+        expect(fn() => Schedule::fromJson('"nope"'))
             ->toThrow(InvalidArgumentException::class, 'decode to an object');
     });
 });

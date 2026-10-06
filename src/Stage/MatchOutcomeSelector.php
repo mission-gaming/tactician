@@ -33,8 +33,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      */
     private function __construct(
         private string $mode
-    ) {
-    }
+    ) {}
 
     /**
      * The final round's winners plus its byes, in bracket order.
@@ -151,7 +150,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     {
         $ties = [];
         foreach ($events as $event) {
-            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
             sort($ids);
             $ties[implode('|', $ids)][] = $event;
         }
@@ -185,11 +184,11 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
             // collide with other rounds
             throw new InvalidConfigurationException(
                 'Match outcome selection requires events with round numbers',
-                ['participants' => array_map(fn (Participant $p) => $p->getId(), $event->getParticipants())]
+                ['participants' => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants())]
             );
         }
 
-        $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+        $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
         sort($ids);
 
         $leg = $event->getMetadataValue('tie_leg');

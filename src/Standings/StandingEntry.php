@@ -24,8 +24,7 @@ readonly class StandingEntry
         private float $scoreFor = 0.0,
         private float $scoreAgainst = 0.0,
         private array $tiebreakers = []
-    ) {
-    }
+    ) {}
 
     public function getParticipant(): Participant
     {

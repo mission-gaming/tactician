@@ -149,8 +149,8 @@ describe('SessionGrid', function (): void {
         );
 
         expect($grid->getSessionStart(0)->format('H:i'))->toBe('20:00');
-        expect(static fn () => $grid->getSessionStart(1))->toThrow(InvalidConfigurationException::class);
-        expect(static fn () => $grid->getSlotCount(1))->toThrow(InvalidConfigurationException::class);
+        expect(static fn() => $grid->getSessionStart(1))->toThrow(InvalidConfigurationException::class);
+        expect(static fn() => $grid->getSlotCount(1))->toThrow(InvalidConfigurationException::class);
     });
 
     it('rejects malformed plain-configuration values', function (array $config): void {

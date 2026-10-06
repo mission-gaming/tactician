@@ -23,7 +23,7 @@ describe('MetadataConstraint', function (): void {
     });
 
     it('rejects a non-callable validator', function (): void {
-        expect(fn () => new MetadataConstraint('region', 'not-callable'))
+        expect(fn() => new MetadataConstraint('region', 'not-callable'))
             ->toThrow(InvalidArgumentException::class);
     });
 

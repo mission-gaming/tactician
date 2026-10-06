@@ -95,7 +95,7 @@ function exampleArray(array $results, string $name): array
  */
 function examplePair(Event $event): string
 {
-    $ids = array_map(static fn (Participant $participant): string => $participant->getId(), $event->getParticipants());
+    $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
     sort($ids);
 
     return implode('|', $ids);
@@ -174,7 +174,7 @@ $demonstrations = [
         $participants = exampleArray($results, 'Participants');
 
         expect($participants)->toHaveCount(6)
-            ->and(array_map(static fn (Participant $participant): ?int => $participant->getSeed(), $participants))->toBe([1, 2, 3, 4, 5, 6]);
+            ->and(array_map(static fn(Participant $participant): ?int => $participant->getSeed(), $participants))->toBe([1, 2, 3, 4, 5, 6]);
 
         // A schedule without events would pass the loop below untested
         assertExampleRoundRobin($schedule, 6);
@@ -348,7 +348,7 @@ $demonstrations = [
             }
             ksort($firstNamed);
 
-            return array_map(static fn (array $homes): bool => $homes[0] !== $homes[1], $firstNamed);
+            return array_map(static fn(array $homes): bool => $homes[0] !== $homes[1], $firstNamed);
         };
 
         // How often each participant is first-named, by label, as the example reports it
@@ -400,7 +400,7 @@ $demonstrations = [
             if ($event->getRound()?->getNumber() > 2) {
                 continue;
             }
-            $tiers = array_map(static fn (Participant $participant): string => $tier[$participant->getId()], $event->getParticipants());
+            $tiers = array_map(static fn(Participant $participant): string => $tier[$participant->getId()], $event->getParticipants());
             sort($tiers);
 
             expect(examplePair($event))->not->toBe('fnatic|tsm')
@@ -523,7 +523,7 @@ $demonstrations = [
         }
         expect(array_unique($met))->toHaveCount(12);
 
-        $values = array_map(static fn ($entry): float => $entry->getRankingValue(), $standings->getEntries());
+        $values = array_map(static fn($entry): float => $entry->getRankingValue(), $standings->getEntries());
         $sorted = $values;
         rsort($sorted);
         expect($values)->toBe($sorted)
@@ -543,7 +543,7 @@ $demonstrations = [
         foreach ($tables as $pool => $table) {
             assert($table instanceof Standings);
             expect($table->getEntries())->toHaveCount(4);
-            $ranked[$pool] = array_map(static fn ($entry): Participant => $entry->getParticipant(), $table->getEntries());
+            $ranked[$pool] = array_map(static fn($entry): Participant => $entry->getParticipant(), $table->getEntries());
         }
 
         expect($qualifiers)->toBe([$ranked['Pool A'][0], $ranked['Pool B'][0], $ranked['Pool A'][1], $ranked['Pool B'][1]])
@@ -551,12 +551,12 @@ $demonstrations = [
             ->and($knockout['Semifinal'])->toHaveCount(2)
             ->and($knockout['Final'])->toHaveCount(1);
 
-        $semifinalWinners = array_map(static fn (Result $result): ?Participant => $result->getWinner(), $knockout['Semifinal']);
+        $semifinalWinners = array_map(static fn(Result $result): ?Participant => $result->getWinner(), $knockout['Semifinal']);
         $final = $knockout['Final'][0];
         assert($final instanceof Result);
 
         $ids = static function (array $participants): array {
-            $ids = array_map(static fn (?Participant $participant): ?string => $participant?->getId(), $participants);
+            $ids = array_map(static fn(?Participant $participant): ?string => $participant?->getId(), $participants);
             sort($ids);
 
             return $ids;
@@ -671,8 +671,8 @@ $demonstrations = [
 
         // Three rounds of three events: 9 results, each one a win and a loss
         expect($standings->getEntries())->toHaveCount(6)
-            ->and(array_sum(array_map(static fn ($entry): int => $entry->getWins(), $standings->getEntries())))->toBe(9)
-            ->and(array_map(static fn ($entry): int => $entry->getPlayed(), $standings->getEntries()))->toBe([3, 3, 3, 3, 3, 3])
+            ->and(array_sum(array_map(static fn($entry): int => $entry->getWins(), $standings->getEntries())))->toBe(9)
+            ->and(array_map(static fn($entry): int => $entry->getPlayed(), $standings->getEntries()))->toBe([3, 3, 3, 3, 3, 3])
             ->and($standings->getEntries()[0]->getParticipant()->getId())->toBe('ana');
     },
 
@@ -683,7 +683,7 @@ $demonstrations = [
 
         expect($fixtures)->toHaveCount(12)
             ->and($outcome->getUnplaced())->toBe([])
-            ->and(array_map(static fn ($assignment): string => $assignment->getEventId(), $outcome->getAssignments()))
+            ->and(array_map(static fn($assignment): string => $assignment->getEventId(), $outcome->getAssignments()))
             ->toBe(['e03', 'e04', 'e05', 'e06', 'e07', 'e08', 'e09', 'e10', 'e11', 'e12']);
 
         // The two pins sit at session 0, slot 0
@@ -765,8 +765,8 @@ $demonstrations = [
     '21-standings-and-tiebreakers' => function (array $results): void {
         $plain = exampleResult($results, 'Table without tiebreakers', Standings::class);
         $chain = exampleResult($results, 'Table with the tiebreaker chain', Standings::class);
-        $ids = static fn (Standings $standings): array => array_map(
-            static fn ($entry): string => $entry->getParticipant()->getId(),
+        $ids = static fn(Standings $standings): array => array_map(
+            static fn($entry): string => $entry->getParticipant()->getId(),
             $standings->getEntries()
         );
 
@@ -854,7 +854,7 @@ it('runs cleanly under full error reporting', function (string $script): void {
     }
 })->with(array_combine(
     array_map(basename(...), $exampleScripts),
-    array_map(fn (string $script) => [$script], $exampleScripts)
+    array_map(fn(string $script) => [$script], $exampleScripts)
 ));
 
 // A new example must say what it demonstrates before it can ship, and a
@@ -932,7 +932,7 @@ it('prints the same text whatever the timezone, locale, precision and working di
 
     if (ExampleResults::containsMeasured(ExampleResults::of($example))) {
         // The measured figures differ by design; everything around them must not
-        $withoutFigures = static fn (string $text): string => (string) preg_replace('/[\d.]+ (\w+) \(measured on this run\)/', '$1 (measured)', $text);
+        $withoutFigures = static fn(string $text): string => (string) preg_replace('/[\d.]+ (\w+) \(measured on this run\)/', '$1 (measured)', $text);
 
         expect($withoutFigures($other))->toBe($withoutFigures($plain))
             ->and($withoutFigures($plain))->not->toBe($plain);
@@ -980,7 +980,7 @@ it('displays its results however the script is named on the command line', funct
  */
 function withoutWarnings(Closure $attempt): mixed
 {
-    set_error_handler(static fn (): bool => true, E_WARNING);
+    set_error_handler(static fn(): bool => true, E_WARNING);
     try {
         return $attempt();
     } finally {
@@ -993,7 +993,7 @@ it('displays its results when the script is reached through a symbolic link', fu
     $link = sys_get_temp_dir() . '/tactician-examples-' . bin2hex(random_bytes(6));
 
     // The harness limitation: a platform or account that may not create links (Windows without the privilege)
-    if (!withoutWarnings(static fn (): bool => symlink($linked === 'the project' ? $root : "{$root}/examples", $link))) {
+    if (!withoutWarnings(static fn(): bool => symlink($linked === 'the project' ? $root : "{$root}/examples", $link))) {
         Assert::markTestSkipped('Symbolic links cannot be created here.');
     }
 
@@ -1041,7 +1041,7 @@ it('displays nothing when another script includes the example', function (): voi
 function withExampleServer(string $workingDirectory, string $documentRoot, Closure $requests): void
 {
     // Ask the system for a free port, then release it for the server
-    $probe = withoutWarnings(static fn () => stream_socket_server('tcp://127.0.0.1:0'));
+    $probe = withoutWarnings(static fn() => stream_socket_server('tcp://127.0.0.1:0'));
     if ($probe === false) {
         Assert::markTestSkipped('No local port can be opened here.');
     }
@@ -1064,7 +1064,7 @@ function withExampleServer(string $workingDirectory, string $documentRoot, Closu
         $deadline = microtime(true) + 15.0;
         $port = (int) substr($address, (int) strrpos($address, ':') + 1);
         while (true) {
-            $connection = withoutWarnings(static fn () => fsockopen('127.0.0.1', $port, $code, $message, 0.2));
+            $connection = withoutWarnings(static fn() => fsockopen('127.0.0.1', $port, $code, $message, 0.2));
             if ($connection !== false) {
                 fclose($connection);
 
@@ -1215,7 +1215,7 @@ it('does not claim that reading a schedule saves memory', function (string $file
     'docs/ARCHITECTURE.md',
     'examples/README.md',
     'examples/support/Example.php',
-    ...array_map(fn (string $script) => 'examples/' . basename($script), $exampleScripts),
+    ...array_map(fn(string $script) => 'examples/' . basename($script), $exampleScripts),
 ]);
 
 // The library says participant. Sample data may be teams, clubs or players,
@@ -1239,12 +1239,12 @@ it('says participant, not team, in the prose of the examples', function (string 
 })->with([
     'examples/README.md',
     'examples/support/Example.php',
-    ...array_map(fn (string $script) => 'examples/' . basename($script), $exampleScripts),
+    ...array_map(fn(string $script) => 'examples/' . basename($script), $exampleScripts),
 ]);
 
 it('holds every event in memory, so iterating, counting and listing agree and repeat', function (): void {
     $schedule = (new RoundRobinScheduler())->schedule(array_map(
-        fn (int $number) => new Participant("p{$number}", "Participant {$number}"),
+        fn(int $number) => new Participant("p{$number}", "Participant {$number}"),
         range(1, 6)
     ));
 
@@ -1307,7 +1307,7 @@ $runExamples = function (array $scripts, bool $createDirectory = true): array {
 
 // Each throwaway script records that it ran, prints to standard output, and
 // exits with the given code
-$exampleSource = fn (string $label, int $exitCode = 0): string => sprintf(
+$exampleSource = fn(string $label, int $exitCode = 0): string => sprintf(
     "<?php\nfile_put_contents(__DIR__ . '/ran.log', %s . \"\\n\", FILE_APPEND);\necho %s;\nexit(%d);\n",
     var_export($label, true),
     var_export("output of {$label}\n", true),

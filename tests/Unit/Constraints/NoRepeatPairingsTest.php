@@ -73,7 +73,7 @@ describe('NoRepeatPairings', function (): void {
 
         $pairingCounts = [];
         foreach ($schedule as $event) {
-            $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+            $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
             sort($ids);
             $key = implode('-', $ids);
             $pairingCounts[$key] = ($pairingCounts[$key] ?? 0) + 1;

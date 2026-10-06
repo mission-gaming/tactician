@@ -439,7 +439,7 @@ describe('agent hook, with stand-ins for the tools', function () use ($hook): vo
             if ($call['tool'] === 'phpstan') {
                 $configurations[] = array_values(array_filter(
                     $call['arguments'],
-                    fn (string $argument): bool => str_starts_with($argument, '--configuration=')
+                    fn(string $argument): bool => str_starts_with($argument, '--configuration=')
                 ));
             }
         }
@@ -654,7 +654,7 @@ describe('agent settings', function () use ($root): void {
 
         // The gate and each of its checks, so that the agent is not asked for them.
         expect($allowed)->toContain('Bash(vendor/bin/*:*)')
-            ->and($scripts)->toContain('ci', ...array_map(fn (string $script): string => ltrim($script, '@'), $composer['scripts']['ci']))
+            ->and($scripts)->toContain('ci', ...array_map(fn(string $script): string => ltrim($script, '@'), $composer['scripts']['ci']))
             // Regenerating the golden fixtures changes what the tests
             // compare against; the agent has to ask first.
             ->and($scripts)->not->toContain('golden-update');

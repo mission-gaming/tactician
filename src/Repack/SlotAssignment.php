@@ -23,8 +23,7 @@ final readonly class SlotAssignment
         private int $session,
         private int $slot,
         private DateTimeImmutable $kickoff
-    ) {
-    }
+    ) {}
 
     public function getEventId(): string
     {

@@ -169,7 +169,7 @@ function distArchiveGitOutput(string $root, array $arguments): string
  */
 function distArchiveNames(string $output): array
 {
-    return array_values(array_filter(explode("\0", $output), static fn (string $name): bool => $name !== ''));
+    return array_values(array_filter(explode("\0", $output), static fn(string $name): bool => $name !== ''));
 }
 
 /**
@@ -362,7 +362,7 @@ it('keeps every committed library file in the dist archive', function () use ($r
     // src/. The top-level check cannot see that: src/ is still there.
     $committed = array_values(array_filter(
         distArchiveNames(distArchiveGitOutput($root, ['ls-tree', '-r', '-z', '--name-only', 'HEAD'])),
-        static fn (string $path): bool => in_array(explode('/', $path)[0], DIST_ALLOWED_ENTRIES, true)
+        static fn(string $path): bool => in_array(explode('/', $path)[0], DIST_ALLOWED_ENTRIES, true)
     ));
     sort($committed);
 

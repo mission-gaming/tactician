@@ -104,6 +104,6 @@ class ConstraintViolationCollector
 
         // Round 0 is left out, as it was when array_filter() ran without a
         // callback and dropped every falsy value.
-        return array_unique(array_filter($rounds, static fn (int $round): bool => $round !== 0));
+        return array_unique(array_filter($rounds, static fn(int $round): bool => $round !== 0));
     }
 }

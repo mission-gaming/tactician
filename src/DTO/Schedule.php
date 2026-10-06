@@ -193,7 +193,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
     {
         return array_values(array_filter(
             $this->events,
-            fn (Event $event) => $event->getRound()?->equals($round) ?? false
+            fn(Event $event) => $event->getRound()?->equals($round) ?? false
         ));
     }
 
@@ -235,11 +235,11 @@ class Schedule implements Iterator, Countable, JsonSerializable
         }
 
         $rounds = array_map(
-            fn (Event $event) => $event->getRound(),
+            fn(Event $event) => $event->getRound(),
             $this->events
         );
 
-        $nonNullRounds = array_filter($rounds, fn ($round) => $round !== null);
+        $nonNullRounds = array_filter($rounds, fn($round) => $round !== null);
 
         if ($nonNullRounds === []) {
             return null;
@@ -247,7 +247,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
 
         return array_reduce(
             $nonNullRounds,
-            fn (?Round $max, Round $current) => $max === null || $current->isAfter($max) ? $current : $max
+            fn(?Round $max, Round $current) => $max === null || $current->isAfter($max) ? $current : $max
         );
     }
 
@@ -272,10 +272,10 @@ class Schedule implements Iterator, Countable, JsonSerializable
 
         return [
             'participants' => array_values(array_map(
-                fn (Participant $participant) => $participant->toArray(),
+                fn(Participant $participant) => $participant->toArray(),
                 $participantsById
             )),
-            'events' => array_map(fn (Event $event) => $event->toArray(), $this->events),
+            'events' => array_map(fn(Event $event) => $event->toArray(), $this->events),
             'metadata' => $this->metadata,
         ];
     }

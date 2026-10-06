@@ -59,7 +59,7 @@ describe('Reading an example', function (): void {
     // An example that printed its own output would be back to mixing what it
     // computes with how it is displayed, and the suite would never see it
     it('refuses a script that displays something itself', function (string $source): void {
-        expect(fn () => readAsExample($source))
+        expect(fn() => readAsExample($source))
             ->toThrow(LogicException::class, 'displayed something while it was included');
     })->with([
         'echo before the return' => ["<?php\necho 'Round 1';\nreturn ['Count' => 3];\n"],
@@ -70,7 +70,7 @@ describe('Reading an example', function (): void {
     // "No checked results" must fail loudly: an example that hands over
     // nothing has nothing for a demonstration or a fixture to hold
     it('refuses a script that hands over no named result', function (string $source): void {
-        expect(fn () => readAsExample($source))
+        expect(fn() => readAsExample($source))
             ->toThrow(LogicException::class, 'hand over at least one named result');
     })->with([
         'no return statement' => ["<?php\n\$count = 3;\n"],
@@ -81,7 +81,7 @@ describe('Reading an example', function (): void {
     ]);
 
     it('refuses a script that does not exist', function (): void {
-        expect(fn () => ExampleResults::read(sys_get_temp_dir() . '/no-such-example.php'))
+        expect(fn() => ExampleResults::read(sys_get_temp_dir() . '/no-such-example.php'))
             ->toThrow(LogicException::class, 'no-such-example.php does not exist.');
     });
 
@@ -90,7 +90,7 @@ describe('Reading an example', function (): void {
     it('leaves the output buffering as it found it when the script throws', function (): void {
         $level = ob_get_level();
 
-        expect(fn () => readAsExample("<?php\necho 'partial';\nthrow new RuntimeException('broken example');\n"))
+        expect(fn() => readAsExample("<?php\necho 'partial';\nthrow new RuntimeException('broken example');\n"))
             ->toThrow(RuntimeException::class, 'broken example');
         expect(ob_get_level())->toBe($level);
     });
@@ -113,7 +113,7 @@ describe('Reading an example', function (): void {
         }
 
         // Two examples sharing a number would make "the next number" ambiguous
-        expect(array_unique(array_map(static fn (string $name): string => substr($name, 0, 2), $names)))->toHaveCount(count($names));
+        expect(array_unique(array_map(static fn(string $name): string => substr($name, 0, 2), $names)))->toHaveCount(count($names));
     });
 });
 
@@ -165,7 +165,7 @@ describe('Fixture form of a result', function (): void {
     // A result the writer does not know must stop the run: writing its class
     // name, or nothing, would pin a fixture that cannot notice a change
     it('refuses a result it has no fixture form for', function (mixed $value): void {
-        expect(fn () => ExampleResults::lines($value))->toThrow(LogicException::class, 'has no fixture form');
+        expect(fn() => ExampleResults::lines($value))->toThrow(LogicException::class, 'has no fixture form');
     })->with([
         'an object of another class' => [new stdClass()],
         'an object inside a list' => [[1, new ArrayObject()]],

@@ -23,7 +23,7 @@ describe('TieDecision', function (): void {
         expect(TieDecision::advancer([new Result($event, $this->bob)], $this->alice, $this->bob, 1))
             ->toBe($this->bob);
 
-        expect(fn () => TieDecision::advancer([new Result($event)], $this->alice, $this->bob, 1))
+        expect(fn() => TieDecision::advancer([new Result($event)], $this->alice, $this->bob, 1))
             ->toThrow(InvalidConfigurationException::class, 'draw');
     });
 
@@ -59,7 +59,7 @@ describe('TieDecision', function (): void {
             new Result($this->leg2, $this->bob),
         ];
 
-        expect(fn () => TieDecision::advancer($legs, $this->alice, $this->bob, 2))
+        expect(fn() => TieDecision::advancer($legs, $this->alice, $this->bob, 2))
             ->toThrow(InvalidConfigurationException::class, 'tie_winner');
     });
 
@@ -72,7 +72,7 @@ describe('TieDecision', function (): void {
             new Result($foreignLeg, $carol),
         ];
 
-        expect(fn () => TieDecision::advancer($legs, $this->alice, $this->bob, 2))
+        expect(fn() => TieDecision::advancer($legs, $this->alice, $this->bob, 2))
             ->toThrow(InvalidConfigurationException::class, 'not in the tie');
     });
 
@@ -82,7 +82,7 @@ describe('TieDecision', function (): void {
             new Result($this->leg2, null, [], [TieDecision::TIE_WINNER_KEY => 'ghost']),
         ];
 
-        expect(fn () => TieDecision::advancer($legs, $this->alice, $this->bob, 2))
+        expect(fn() => TieDecision::advancer($legs, $this->alice, $this->bob, 2))
             ->toThrow(InvalidConfigurationException::class, 'not in the tie');
     });
 });

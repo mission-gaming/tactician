@@ -118,7 +118,7 @@ describe('DoubleEliminationEngine', function (): void {
 
         expect($losersRound->getLabel())->toBe('losers round 1');
         $ids = array_map(
-            fn (Participant $p) => $p->getId(),
+            fn(Participant $p) => $p->getId(),
             $losersRound->getEvents()[0]->getParticipants()
         );
         sort($ids);
@@ -184,7 +184,7 @@ describe('DoubleEliminationEngine', function (): void {
         $outcome = $engine->getOutcome($state);
         assert($outcome !== null);
         expect(bracketTitleHolder($outcome))->toBe('s1');
-        expect(fn () => $engine->pairNextRound($state))
+        expect(fn() => $engine->pairNextRound($state))
             ->toThrow(InvalidConfigurationException::class, 'complete');
     });
 
@@ -198,7 +198,7 @@ describe('DoubleEliminationEngine', function (): void {
             $pairing = $engine->pairNextRound($state);
             $stages[$pairing->getRoundNumber()] = $pairing->getLabel();
             $byesByStage[$pairing->getLabel()] = array_map(
-                fn (Participant $p) => $p->getId(),
+                fn(Participant $p) => $p->getId(),
                 $pairing->getByes()
             );
             $state = $state->withRoundPlayed($pairing, doubleElimFavourites($pairing->getEvents()));
@@ -259,7 +259,7 @@ describe('DoubleEliminationEngine', function (): void {
             $pairing = $engine->pairNextRound($state);
             $results = [];
             foreach ($pairing->getEvents() as $event) {
-                $ids = array_map(fn (Participant $p) => $p->getId(), $event->getParticipants());
+                $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
                 sort($ids);
                 // s2 beats s1 in the winners final; s1 wins everything else
                 $winnerId = match (true) {
@@ -308,20 +308,20 @@ describe('DoubleEliminationEngine', function (): void {
             new Result($round1->getEvents()[0]),
             new Result($round1->getEvents()[1], $round1->getEvents()[1]->getParticipants()[0]),
         ]);
-        expect(fn () => $engine->pairNextRound($drawn))
+        expect(fn() => $engine->pairNextRound($drawn))
             ->toThrow(InvalidConfigurationException::class, 'draw');
 
         $partial = $state->withRoundPlayed($round1, [
             new Result($round1->getEvents()[0], $round1->getEvents()[0]->getParticipants()[0]),
         ]);
-        expect(fn () => $engine->pairNextRound($partial))
+        expect(fn() => $engine->pairNextRound($partial))
             ->toThrow(InvalidConfigurationException::class, 'partially resolved');
     });
 
     it('rejects fewer than two participants', function (): void {
         $engine = new DoubleEliminationEngine();
 
-        expect(fn () => $engine->pairNextRound(StageState::start([new Participant('p1', 'Solo')])))
+        expect(fn() => $engine->pairNextRound(StageState::start([new Participant('p1', 'Solo')])))
             ->toThrow(InvalidConfigurationException::class);
     });
 });

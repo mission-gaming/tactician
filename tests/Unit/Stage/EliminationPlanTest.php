@@ -59,9 +59,9 @@ describe('EliminationPlan', function (): void {
     // Invalid identifiers were silently treated as double elimination
     // (null totals); invalid leg counts produced nonsensical event counts
     it('rejects unknown algorithm identifiers and invalid leg counts', function (): void {
-        expect(fn () => new EliminationPlan(eliminationPlanField(4), 'triple-elimination'))
+        expect(fn() => new EliminationPlan(eliminationPlanField(4), 'triple-elimination'))
             ->toThrow(InvalidConfigurationException::class, 'algorithm');
-        expect(fn () => new EliminationPlan(eliminationPlanField(4), 'single-elimination', 3))
+        expect(fn() => new EliminationPlan(eliminationPlanField(4), 'single-elimination', 3))
             ->toThrow(InvalidConfigurationException::class, '1 or 2');
     });
 
@@ -115,11 +115,11 @@ describe('EliminationOptions', function (): void {
     });
 
     it('rejects invalid configuration', function (): void {
-        expect(fn () => new EliminationOptions(legsPerTie: 3))
+        expect(fn() => new EliminationOptions(legsPerTie: 3))
             ->toThrow(InvalidConfigurationException::class, '1 or 2');
-        expect(fn () => EliminationOptions::fromArray(['legs_per_tie' => 'two']))
+        expect(fn() => EliminationOptions::fromArray(['legs_per_tie' => 'two']))
             ->toThrow(InvalidConfigurationException::class, 'integer');
-        expect(fn () => EliminationOptions::fromArray(['reseed_each_round' => 'yes']))
+        expect(fn() => EliminationOptions::fromArray(['reseed_each_round' => 'yes']))
             ->toThrow(InvalidConfigurationException::class, 'boolean');
     });
 });

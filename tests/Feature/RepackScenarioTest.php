@@ -176,7 +176,7 @@ describe('Repack reference scenario', function (): void {
         sort($expectedIds);
         expect($eventIds)->toBe($expectedIds);
         expect(count(array_unique($occupied)))->toBe(count($occupied));
-        expect(array_filter($perPosition, static fn (int $events): bool => $events > 7))->toBe([]);
+        expect(array_filter($perPosition, static fn(int $events): bool => $events > 7))->toBe([]);
 
         // Kickoffs are UTC: August in Europe/London is BST, so the 20:15
         // wall-clock first slot emits as 19:15
@@ -222,7 +222,7 @@ describe('Repack reference scenario', function (): void {
 
         // Pins are never re-emitted or moved
         $pinnedIds = array_fill_keys(array_map(
-            static fn (PinnedEvent $pin): string => $pin->getId(),
+            static fn(PinnedEvent $pin): string => $pin->getId(),
             $pinned
         ), true);
         foreach ($outcome->getAssignments() as $assignment) {
@@ -252,13 +252,13 @@ describe('Repack reference scenario', function (): void {
         // Placed and unplaced partition the movable events, and each
         // dropped event really is one of the over-capacity participant's
         $accounted = array_map(
-            static fn ($assignment): string => $assignment->getEventId(),
+            static fn($assignment): string => $assignment->getEventId(),
             $outcome->getAssignments()
         );
         foreach ($outcome->getUnplaced() as $unplaced) {
             $accounted[] = $unplaced->getEventId();
             $labels = array_map(
-                static fn (Participant $participant): string => $participant->getLabel(),
+                static fn(Participant $participant): string => $participant->getLabel(),
                 $movableById[$unplaced->getEventId()]->getParticipants()
             );
             expect($labels)->toContain('Fallowmead');

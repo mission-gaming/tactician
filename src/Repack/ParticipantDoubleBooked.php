@@ -25,8 +25,7 @@ final readonly class ParticipantDoubleBooked implements RepackViolation
         private int $session,
         private int $slot,
         private array $eventIds
-    ) {
-    }
+    ) {}
 
     #[Override]
     public function getKind(): ViolationKind
