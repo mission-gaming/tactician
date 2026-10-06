@@ -93,8 +93,6 @@ configuration are no longer installed into a consumer's `vendor/` directory.
   `main`), loads a coverage driver in the
   coverage job only, requests only the PHP extensions the tools need, caches
   Composer's downloads instead of `vendor/`, and can be started by hand.
-- A coverage upload that cannot authenticate (a pull request from a fork or
-  from Dependabot) no longer fails the `Coverage` check.
 - `composer test-coverage` sets `XDEBUG_MODE=coverage` itself, and
   `composer examples` runs through a PHP script instead of a POSIX shell loop,
   so both work without a prepared environment. `composer examples` now also
@@ -206,6 +204,8 @@ configuration are no longer installed into a consumer's `vendor/` directory.
   be started, the test now fails on CI instead of being skipped (elsewhere it
   is still skipped, with the reason), and a server that finds its port taken
   is started again on another one, three times at most.
+- CI only. A coverage upload that cannot authenticate (a pull request from a
+  fork or from Dependabot) no longer fails the `Coverage` check.
 
 ## [0.2.0] - 2026-08-11
 
