@@ -1554,6 +1554,32 @@ it('reports a server that died while answering, and how it ended', function (): 
     });
 });
 
+/**
+ * Hand the callback the environment that makes a server read these settings
+ * as the configuration of the machine: an ini file in a directory PHP scans
+ * after its own.
+ *
+ * @param Closure(array<string, string>): void $use
+ *
+ * @throws Random\RandomException When the system has no source of randomness to name the directory with
+ * @throws PHPUnit\Framework\Exception
+ */
+function withMachineConfiguration(string $settings, Closure $use): void
+{
+    $configuration = sys_get_temp_dir() . '/example-server-ini-' . bin2hex(random_bytes(6));
+    Assert::assertTrue(mkdir($configuration), "Could not create {$configuration}");
+
+    try {
+        file_put_contents($configuration . '/machine.ini', $settings);
+
+        // A leading separator keeps the directories PHP scans by default
+        $use(['PHP_INI_SCAN_DIR' => (string) getenv('PHP_INI_SCAN_DIR') . PATH_SEPARATOR . $configuration]);
+    } finally {
+        unlink($configuration . '/machine.ini');
+        rmdir($configuration);
+    }
+}
+
 it('tells a CI run from a local one for the example server', function (string|false $ci, bool $expected): void {
     expect(exampleServerRunsOnCi($ci))->toBe($expected);
 })->with([
@@ -1690,17 +1716,14 @@ it('requests a page once, whatever the server answers', function (): void {
 });
 
 it('runs the example server without the JIT, even where the configuration of the machine turns it on', function (): void {
-    $configuration = sys_get_temp_dir() . '/example-server-ini-' . bin2hex(random_bytes(6));
-    Assert::assertTrue(mkdir($configuration), "Could not create {$configuration}");
-
-    try {
-        // What the PHP setup of the CI jobs configures, in a directory PHP scans after its own
-        file_put_contents($configuration . '/jit.ini', "opcache.enable=1\nopcache.jit=tracing\nopcache.jit_buffer_size=64M\n");
-
+    // What the PHP setup of the CI jobs configures. The size of the buffer is one no configuration
+    // is likely to hold already: it is the witness that the server read these settings (the
+    // setting of the JIT itself cannot be, since the -d option under test replaces it)
+    withMachineConfiguration("opcache.enable=1\nopcache.jit=tracing\nopcache.jit_buffer_size=47M\n", function (array $environment): void {
         withThrowawayServer(
             ['jit.php' => '<?php $status = function_exists("opcache_get_status") ? opcache_get_status(false) : false; echo json_encode(['
                 . '"opcache" => is_array($status), "asked for" => get_cfg_var("opcache.jit_buffer_size"), '
-                . '"on" => is_array($status) && ($status["jit"]["on"] ?? false)]);'],
+                . '"setting" => ini_get("opcache.jit"), "on" => is_array($status) && ($status["jit"]["on"] ?? false)]);'],
             function (Closure $request): void {
                 $answer = $request('/jit.php');
                 expect($answer['status'])->toBe('HTTP/1.1 200 OK', $answer['report']);
@@ -1713,17 +1736,16 @@ it('runs the example server without the JIT, even where the configuration of the
                     Assert::markTestSkipped('OPcache is not loaded in the built-in web server here.');
                 }
 
-                // The server did read the configuration that asks for the JIT, and runs without it all the same
-                expect($jit['asked for'])->toBe('64M')
+                // The server did read the configuration that asks for the JIT, and runs without it all the same.
+                // The setting is checked next to the state: where something else keeps the JIT off (a debugger
+                // extension), the state alone would say "off" with or without the option
+                expect($jit['asked for'])->toBe('47M')
+                    ->and($jit['setting'])->toBe('disable')
                     ->and($jit['on'])->toBeFalse();
             },
-            // A leading separator keeps the directories PHP scans by default
-            ['PHP_INI_SCAN_DIR' => (string) getenv('PHP_INI_SCAN_DIR') . PATH_SEPARATOR . $configuration]
+            $environment
         );
-    } finally {
-        unlink($configuration . '/jit.ini');
-        rmdir($configuration);
-    }
+    });
 });
 
 it('draws every example as a page without losing a result', function (string $example): void {
