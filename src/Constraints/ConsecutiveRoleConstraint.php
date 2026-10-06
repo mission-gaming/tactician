@@ -12,11 +12,23 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
 /**
  * Prevents participants from having too many consecutive events in the same role.
  *
+ * A streak is counted over a participant's own events in round order, the
+ * candidate included, across legs. A round the participant does not play in
+ * (a bye) neither counts towards a streak nor ends one. An event without a
+ * round is ordered as round 0.
+ *
  * @experimental
  */
 readonly class ConsecutiveRoleConstraint implements ConstraintInterface
 {
     /**
+     * @param int $maxConsecutive The longest run of one role a participant may have
+     * @param mixed $roleExtractor A `callable(Event, Participant): mixed` that names the role the
+     *                             participant has in the event. Two roles are the same when they
+     *                             are identical (`===`). It is called for the candidate and for
+     *                             every earlier event of the participant, on every question
+     * @param string $name The name the constraint is reported under
+     *
      * @throws InvalidInputException When the limit is below 1 or the role extractor is not callable
      */
     public function __construct(
@@ -32,6 +44,14 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
         }
     }
 
+    /**
+     * False when, with the candidate added, some participant of it has more
+     * than the allowed number of consecutive events in one role.
+     *
+     * The whole history of each participant is read, not only the events
+     * next to the candidate: a participant whose events in the context
+     * already hold a longer streak has every further event rejected.
+     */
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
     {
@@ -44,6 +64,9 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
         return true;
     }
 
+    /**
+     * The name given to the constructor, or the one a factory method built.
+     */
     #[\Override]
     public function getName(): string
     {
@@ -88,6 +111,8 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     private function hasConsecutiveRoles(array $roles, int $maxConsecutive): bool
     {
         if ($roles === []) {
+            // Not reached: the list always holds the role of the event
+            // being checked
             return false;
         }
 
@@ -110,7 +135,16 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     }
 
     /**
-     * Factory method for home/away role constraint.
+     * A limit on consecutive events as the first-named participant (home)
+     * or as any other (away), named `Home/Away consecutive limit (N)`.
+     *
+     * Known limitation: the participant is looked up in each event as the
+     * same object, not by ID. The schedulers pass the same objects, so
+     * generation is not affected, but a copy of a participant (one rebuilt
+     * with `Participant::fromArray()`, for example) is not found in the
+     * events of the original and counts as away in all of them.
+     *
+     * @throws InvalidInputException When the limit is below 1
      */
     public static function homeAway(int $maxConsecutive): self
     {
@@ -122,7 +156,14 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     }
 
     /**
-     * Factory method for first/second position constraint.
+     * A limit on consecutive events in the same position of the event's
+     * participant list (0 for the first-named), named `Position consecutive
+     * limit (N)`. For events of two participants it is the same rule as
+     * {@see self::homeAway()}; with more, each position is a role of its own.
+     *
+     * The participant is looked up as the same object, as in homeAway().
+     *
+     * @throws InvalidInputException When the limit is below 1
      */
     public static function position(int $maxConsecutive): self
     {

@@ -14,11 +14,15 @@ use Override;
  * Requires an absolute duration between each participant's consecutive
  * kickoffs.
  *
- * This is rest measured in hours rather than rounds — the time-aware
- * counterpart of MinimumRestPeriodsConstraint. It compares UTC instants,
- * so DST transitions cannot shrink or stretch the guaranteed rest. Any
- * positive rest also forbids double-booking (two kickoffs at the same
- * instant violate it by definition).
+ * This is a participant's rest, measured in time from one kickoff to the
+ * next (the rule knows no event duration). It is not the time-aware form
+ * of MinimumRestPeriodsConstraint, which is about something else: the
+ * number of rounds between two meetings of the same pair. The rest is
+ * added to the earlier kickoff in UTC, so DST transitions cannot shrink or
+ * stretch the guaranteed rest: `P1D` and `PT24H` are both 24 hours here. A
+ * rest of months or years still follows the calendar (`P1M` is 28 to 31
+ * days). Any positive rest also forbids double-booking (two kickoffs at
+ * the same instant violate it by definition).
  *
  * @experimental
  */
@@ -44,10 +48,13 @@ final readonly class MinimumRestRule implements TimelineRule
     }
 
     /**
-     * Build from plain configuration data: ['rest' => 'PT48H'].
+     * Build from plain configuration data: ['rest' => 'PT48H']. The rest is
+     * an ISO 8601 duration string, read by
+     * TimelineDefinition::parseInterval().
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the duration is missing or malformed
+     * @throws InvalidConfigurationException When the duration is missing or malformed, or does
+     *                                       not move time forward
      */
     public static function fromArray(array $config): self
     {
@@ -55,6 +62,9 @@ final readonly class MinimumRestRule implements TimelineRule
     }
 
     /**
+     * Serialize back to the plain-data form fromArray() accepts, the rest
+     * written by TimelineDefinition::formatInterval().
+     *
      * @return array{rest: string}
      */
     public function toArray(): array
@@ -62,12 +72,22 @@ final readonly class MinimumRestRule implements TimelineRule
         return ['rest' => TimelineDefinition::formatInterval($this->minimumRest)];
     }
 
+    /**
+     * `Minimum Rest (D)`, D being the rest as an ISO 8601 duration.
+     */
     #[Override]
     public function getName(): string
     {
         return 'Minimum Rest (' . TimelineDefinition::formatInterval($this->minimumRest) . ')';
     }
 
+    /**
+     * One description for each pair of a participant's consecutive
+     * kickoffs that are closer than the rest, participants in the order
+     * they first appear and each one's kickoffs ascending. A kickoff
+     * exactly the rest after the previous one is allowed. Participants are
+     * told apart by ID. Times in the descriptions are UTC.
+     */
     #[Override]
     public function validate(ScheduledSchedule $scheduled): array
     {

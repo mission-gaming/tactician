@@ -9,6 +9,12 @@ use MissionGaming\Tactician\DTO\Participant;
 /**
  * Collects and organizes constraint violations during scheduling.
  *
+ * The round-robin scheduler records one violation for each constraint that
+ * rejects a candidate event, and starts a new collector for each ordering
+ * it tries: after a failure the exception's collector holds the rejections
+ * of the last ordering tried, not of every one, and the collector the
+ * scheduler holds after it returned a schedule is empty.
+ *
  * @experimental
  */
 class ConstraintViolationCollector
@@ -16,12 +22,17 @@ class ConstraintViolationCollector
     /** @var array<ConstraintViolation> */
     private array $violations = [];
 
+    /**
+     * Append a violation. Nothing is deduplicated.
+     */
     public function recordViolation(ConstraintViolation $violation): void
     {
         $this->violations[] = $violation;
     }
 
     /**
+     * Every violation, in the order it was recorded.
+     *
      * @return array<ConstraintViolation>
      */
     public function getViolations(): array
@@ -30,7 +41,8 @@ class ConstraintViolationCollector
     }
 
     /**
-     * Get violations grouped by constraint.
+     * The violations grouped by the name of the constraint, each group in
+     * the order recorded. Constraints that share a name share a group.
      *
      * @return array<string, array<ConstraintViolation>>
      */
@@ -47,7 +59,10 @@ class ConstraintViolationCollector
     }
 
     /**
-     * Get violations grouped by participant.
+     * The violations grouped by the ID of each affected participant, each
+     * group in the order recorded. A violation that affects two
+     * participants is in both groups, so the groups add up to more than
+     * getViolationCount().
      *
      * @return array<string, array<ConstraintViolation>>
      */
@@ -65,18 +80,26 @@ class ConstraintViolationCollector
         return $grouped;
     }
 
+    /**
+     * Whether any violation has been recorded.
+     */
     public function hasViolations(): bool
     {
         return count($this->violations) > 0;
     }
 
+    /**
+     * How many violations have been recorded: rejections, not distinct
+     * events, since an event that two constraints reject is recorded twice.
+     */
     public function getViolationCount(): int
     {
         return count($this->violations);
     }
 
     /**
-     * Get count of violations by constraint.
+     * How many violations each constraint has, keyed by the constraint's
+     * name. A constraint with none has no entry.
      *
      * @return array<string, int>
      */
@@ -91,7 +114,9 @@ class ConstraintViolationCollector
     }
 
     /**
-     * Get the rounds where violations occurred.
+     * The 1-based numbers of the rounds a violation was recorded for, each
+     * once, in the order first recorded and not sorted. Violations without a
+     * round (null or 0) contribute nothing. The keys need not be consecutive.
      *
      * @return array<int>
      */

@@ -54,6 +54,25 @@ use MissionGaming\Tactician\Repack\Internal\StepBudget;
 final readonly class ScheduleRepacker
 {
     /**
+     * Assign every movable event of the request a position, or say why
+     * not.
+     *
+     * Every movable event is in the outcome's assignments or in its
+     * unplaced list, never both and never neither; pinned events are in
+     * neither. No two assigned or pinned events that share a participant
+     * are at one position, and no position holds more events than the
+     * grid's capacity. The assignments and the unplaced list are in
+     * ascending byte order of event id; the violations are ordered by
+     * kind. The same request gives the same outcome, whatever order its
+     * two lists are in. The request is not changed and nothing is kept
+     * between calls.
+     *
+     * An event the planner gave to one session can end in another: what
+     * a session's packing leaves over, and what the planner could give to
+     * no session, is put at the first position, in grid order, that has
+     * room and both participants free, and is unplaced with the reason
+     * NoSlotAvailable when there is none.
+     *
      * @throws RepackViolationsException Only when the options opted into
      *                                   throwOnViolations and the outcome
      *                                   is not clean

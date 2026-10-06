@@ -72,7 +72,10 @@ interface StagePlan
      * Format-specific integrity validation of a complete schedule.
      *
      * Returns human-readable violation descriptions; an empty array means
-     * the schedule matches this plan's declared shape.
+     * the plan found nothing wrong. How much a plan can check depends on
+     * what its format knows up front, and each implementation says what
+     * it checks: an empty array is not a proof of a valid schedule where
+     * the format's shape depends on results.
      *
      * @return array<string>
      */

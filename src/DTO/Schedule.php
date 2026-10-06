@@ -12,12 +12,19 @@ use MissionGaming\Tactician\Exceptions\JsonConversionException;
 use Override;
 
 /**
- * Represents a complete tournament schedule containing multiple events.
+ * An ordered list of events with free-form metadata: what a whole-schedule
+ * generator returns.
  *
- * A Schedule is a collection of events that can be iterated over and counted.
- * It supports organizing events by rounds, adding metadata, and provides
- * utility methods for schedule analysis. The Schedule implements Iterator
- * and Countable for convenient traversal and counting operations.
+ * The events and the metadata never change: addEvent() returns a new
+ * schedule. The object is not readonly, though, because it is its own
+ * iterator and keeps the position of the iteration. One schedule therefore
+ * supports one `foreach` at a time: a second loop over the same object
+ * inside the first (a quality metric measuring it, for instance) moves the
+ * position and ends the outer loop early. Loop over getEvents() where
+ * loops may nest.
+ *
+ * A schedule round-trips through toArray()/fromArray() and
+ * toJson()/fromJson().
  *
  * @implements Iterator<int, Event>
  *
@@ -32,10 +39,12 @@ class Schedule implements Iterator, Countable, JsonSerializable
     private int $position;
 
     /**
-     * Create a new Schedule with the specified events and metadata.
+     * The events are kept in the order given and re-indexed from 0. Nothing
+     * about them is checked: not that an event has a round, nor that a
+     * pairing appears once.
      *
-     * @param array<Event> $events The events to include in this schedule
-     * @param array<string, mixed> $metadata Additional custom data for this schedule
+     * @param array<Event> $events The events, in schedule order
+     * @param array<string, mixed> $metadata Free-form data; the library reads none of it
      */
     public function __construct(array $events = [], private array $metadata = [])
     {
@@ -44,9 +53,9 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Get all events in this schedule.
+     * Every event, in schedule order, as a list indexed from 0.
      *
-     * @return array<Event> All events contained in this schedule
+     * @return array<Event>
      */
     public function getEvents(): array
     {
@@ -54,13 +63,9 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Create a new Schedule with an additional event added.
-     *
-     * Since schedules are immutable, this returns a new Schedule instance
-     * with the original events plus the new event.
-     *
-     * @param Event $event The event to add to the schedule
-     * @return self A new Schedule instance containing the additional event
+     * A new schedule with the event appended after the existing ones and the
+     * same metadata. This schedule is not changed, and the new one starts
+     * its iteration at the first event.
      */
     public function addEvent(Event $event): self
     {
@@ -70,9 +75,9 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Get all metadata associated with this schedule.
+     * The metadata as given to the constructor.
      *
-     * @return array<string, mixed> All metadata key-value pairs
+     * @return array<string, mixed>
      */
     public function getMetadata(): array
     {
@@ -80,10 +85,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Check if a specific metadata key exists for this schedule.
-     *
-     * @param string $key The metadata key to check for
-     * @return bool True if the key exists, false otherwise
+     * Whether the metadata has the key, including a key whose value is null.
      */
     public function hasMetadata(string $key): bool
     {
@@ -91,11 +93,10 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Get the value for a specific metadata key.
+     * The metadata value under the key, or the default.
      *
-     * @param string $key The metadata key to retrieve
-     * @param mixed $default The default value to return if the key doesn't exist
-     * @return mixed The metadata value or the default if key not found
+     * The default is also returned for a key that exists with the value
+     * null; use hasMetadata() to tell the two apart.
      */
     public function getMetadataValue(string $key, mixed $default = null): mixed
     {
@@ -103,11 +104,9 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Get the total number of events in this schedule.
+     * The number of events, with or without a round.
      *
-     * Implementation of Countable interface.
-     *
-     * @return int<0, max> The number of events in this schedule
+     * @return int<0, max>
      */
     #[Override]
     public function count(): int
@@ -116,11 +115,11 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Get the current event during iteration.
+     * The event at the current position of the iteration.
      *
-     * Implementation of Iterator interface.
-     *
-     * @return Event The current event
+     * Call it only while valid() is true: past the last event, and on an
+     * empty schedule, there is no event to return and PHP raises a
+     * TypeError.
      */
     #[Override]
     public function current(): Event
@@ -129,11 +128,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Get the current position/key during iteration.
-     *
-     * Implementation of Iterator interface.
-     *
-     * @return int The current position
+     * The 0-based position of the iteration.
      */
     #[Override]
     public function key(): int
@@ -142,9 +137,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Move to the next event during iteration.
-     *
-     * Implementation of Iterator interface.
+     * Move the iteration to the next event.
      */
     #[Override]
     public function next(): void
@@ -153,9 +146,9 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Reset iteration to the first event.
-     *
-     * Implementation of Iterator interface.
+     * Move the iteration back to the first event. `foreach` calls this when
+     * it starts, which is why a nested loop over the same schedule disturbs
+     * the outer one.
      */
     #[Override]
     public function rewind(): void
@@ -164,11 +157,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Check if the current iteration position is valid.
-     *
-     * Implementation of Iterator interface.
-     *
-     * @return bool True if the current position contains an event, false otherwise
+     * Whether the iteration is at an event, and not past the last one.
      */
     #[Override]
     public function valid(): bool
@@ -177,9 +166,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Check if this schedule contains no events.
-     *
-     * @return bool True if the schedule is empty, false otherwise
+     * Whether the schedule has no events.
      */
     public function isEmpty(): bool
     {
@@ -187,10 +174,11 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Get all events that belong to a specific round.
+     * The events whose round has the same number as the given one, in
+     * schedule order, as a list. Only the number is compared; an event
+     * without a round matches nothing.
      *
-     * @param Round $round The round to filter by
-     * @return array<Event> Events belonging to the specified round
+     * @return array<Event>
      */
     public function getEventsForRound(Round $round): array
     {
@@ -208,7 +196,8 @@ class Schedule implements Iterator, Countable, JsonSerializable
      * so on). Events without an assigned round are excluded; use getEvents()
      * for the full flat list.
      *
-     * @return array<int, array<Event>> Events keyed by round number, ascending
+     * @return array<int, array<Event>> Events keyed by round number, ascending; within a
+     *                                  round, in schedule order
      */
     public function getEventsByRound(): array
     {
@@ -225,11 +214,14 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Get the highest round found in this schedule.
+     * The round with the highest number among the events.
      *
-     * Useful for determining how many rounds the tournament contains.
+     * Its number is the number of rounds only where rounds are numbered
+     * from 1 without a gap, as the generators number them. When several
+     * events are in that round, the Round object is that of the first of
+     * them in schedule order.
      *
-     * @return Round|null The maximum round, or null if no events have rounds assigned
+     * @return Round|null Null when the schedule is empty or no event has a round
      */
     public function getMaxRound(): ?Round
     {
@@ -255,9 +247,11 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Convert this schedule to a serializable array.
+     * The plain-data form fromArray() accepts.
      *
-     * Participants are listed once and referenced by ID from events. Metadata
+     * Participants are listed once, in the order they first appear in the
+     * events, and referenced by ID from the events. Where two participant
+     * objects share an ID, the first one seen is the one listed. Metadata
      * values must be serializable by the consumer (e.g. JSON-safe when using
      * toJson()).
      *
@@ -284,6 +278,8 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
+     * What json_encode() encodes: the array form of toArray().
+     *
      * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
      */
     #[Override]
@@ -293,9 +289,14 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Serialize this schedule to a JSON string.
+     * The schedule as a JSON string that fromJson() reads back.
      *
-     * @throws JsonConversionException When the schedule contains values JSON cannot represent
+     * The events, their order, rounds and participants come back equal.
+     * Metadata comes back as JSON carries it: a float with no fractional
+     * part (2.0) returns as an integer, and an object returns as an array.
+     *
+     * @throws JsonConversionException When an ID, a label or a metadata value cannot be
+     *                                 represented in JSON (INF, NAN, malformed UTF-8)
      */
     public function toJson(): string
     {
@@ -307,11 +308,17 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
-     * Recreate a schedule from its array representation.
+     * Recreate a schedule from the array form toArray() produces.
+     *
+     * Every key is optional: missing 'participants', 'events' or 'metadata'
+     * are empty, and other keys are ignored. Events keep the order of the
+     * data. An event may only reference a participant the data lists.
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When the data is malformed
+     * @throws InvalidInputException When a field has the wrong type, a participant or an
+     *                               event is malformed, or an event references a
+     *                               participant ID that is not listed
      */
     public static function fromArray(array $data): self
     {
@@ -360,8 +367,9 @@ class Schedule implements Iterator, Countable, JsonSerializable
     /**
      * Recreate a schedule from a JSON string produced by toJson().
      *
-     * @throws JsonConversionException When the JSON is invalid
-     * @throws InvalidInputException When the decoded data is malformed
+     * @throws JsonConversionException When the string is not valid JSON
+     * @throws InvalidInputException When the JSON is not an object or an array, or the
+     *                               decoded data is malformed (see fromArray())
      */
     public static function fromJson(string $json): self
     {

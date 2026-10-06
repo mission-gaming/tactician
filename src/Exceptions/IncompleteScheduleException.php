@@ -10,22 +10,33 @@ use MissionGaming\Tactician\Stage\StagePlan;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 
 /**
- * Exception thrown when a scheduler cannot generate a complete schedule due to constraint violations.
+ * Thrown when a scheduler cannot return a schedule that matches its stage
+ * plan: constraints rejected events the plan needs, a leg strategy gave no
+ * event for a pairing, a Swiss round had no valid pairing, or the generated
+ * schedule failed the plan's integrity checks. No partial schedule is
+ * returned.
  *
- * This exception provides detailed diagnostic information about why the schedule is incomplete,
- * including the stage plan that was being generated, violated constraints, affected participants,
- * and suggestions for resolution.
+ * It carries the stage plan that was being generated, the constraint
+ * rejections recorded on the way and, when the scheduler built one, an
+ * analysis of which constraints block which pairings.
  *
  * @api
  */
 class IncompleteScheduleException extends SchedulingException
 {
     /**
+     * Nothing is validated: the exception reports the values it is given.
+     *
      * @param int|null $expectedEventCount Null when the plan cannot know its
      *                                     expected events up front (e.g. an
      *                                     open-ended stage failing integrity
      *                                     validation)
-     * @param Participant[] $participants
+     * @param int $actualEventCount How many events had been generated when generation stopped
+     * @param ConstraintViolationCollector $violationCollector The rejections recorded on the way
+     * @param StagePlan $plan The plan the schedule was to match
+     * @param Participant[] $participants The participants the scheduler was given
+     * @param string $message The exception message; empty for one built from the counts
+     * @param DiagnosticReport|null $analysis The failure analysis, when one was built
      */
     public function __construct(
         private readonly ?int $expectedEventCount,
@@ -63,6 +74,11 @@ class IncompleteScheduleException extends SchedulingException
         return $this->expectedEventCount;
     }
 
+    /**
+     * How many events had been generated when generation stopped. After
+     * retries over rotated orderings it is the count of the last ordering
+     * tried; when the backtracking search finds no first leg it is 0.
+     */
     public function getActualEventCount(): int
     {
         return $this->actualEventCount;
@@ -81,6 +97,15 @@ class IncompleteScheduleException extends SchedulingException
         return max(0, $this->expectedEventCount - $this->actualEventCount);
     }
 
+    /**
+     * The constraint rejections the round-robin scheduler recorded during
+     * the generation that failed: after retries those of the last ordering
+     * tried, and when the roles of a role assignment are rejected after a
+     * backtracking search, that one event. Empty when nothing was recorded:
+     * no constraint rejected an event, the schedule failed an integrity
+     * check, or the exception comes from the Swiss scheduler, which does
+     * not record the rejections of its constraints.
+     */
     public function getViolationCollector(): ConstraintViolationCollector
     {
         return $this->violationCollector;
@@ -95,14 +120,25 @@ class IncompleteScheduleException extends SchedulingException
     }
 
     /**
-     * The deep failure analysis attached at the throw site, when the
-     * scheduler could build one (constraints configured, pairwise plan).
+     * The failure analysis: which pairings are missing and which
+     * constraints block them.
+     *
+     * The round-robin scheduler builds one when it has constraints. Null
+     * otherwise: from a round-robin scheduler without constraints, from the
+     * Swiss scheduler, and when a generated schedule failed the plan's
+     * integrity checks.
      */
     public function getAnalysis(): ?DiagnosticReport
     {
         return $this->analysis;
     }
 
+    /**
+     * The algorithm, the participant, round, leg and event counts, the
+     * recorded rejections grouped by constraint with the participants most
+     * affected and every round affected, the blocked pairings and the attribution of the
+     * analysis when there is one, and suggestions.
+     */
     #[\Override]
     public function getDiagnosticReport(): string
     {

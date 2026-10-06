@@ -184,6 +184,10 @@ class PotDrawScheduler implements SchedulerInterface
      */
     private const int EXCHANGES_PER_ROUND = 8;
 
+    /**
+     * Takes nothing: a pot draw has no constraints, and its randomness
+     * comes from the seed in PotDrawOptions, not from a randomizer here.
+     */
     public function __construct()
     {
         $this->initializeValidation();
@@ -191,6 +195,15 @@ class PotDrawScheduler implements SchedulerInterface
 
     /**
      * Draw the whole schedule.
+     *
+     * Every round has every entrant exactly once, every entrant meets
+     * opponentsPerPot different opponents from every pot, and no two
+     * entrants meet twice. The events are in round order, rounds numbered
+     * from 1. The same entrants in the same order, options and seed give
+     * the same schedule, from this object or another. The schedule's
+     * metadata keys are 'algorithm', 'participant_count', 'pots',
+     * 'pot_size', 'opponents_per_pot', 'seed', 'total_rounds' and
+     * 'expected_event_count'.
      *
      * @param array<Participant> $participants The entrants in seeding order: list position is the
      *                                         seeding, and no seed attribute is read

@@ -633,8 +633,8 @@ heading **Output change (fix)**.
   that reaches it, among them the single-move relocation of the repack load
   planner (`tests/Feature/RepackRelocationTest.php`,
   `tests/Feature/UncoveredPathsTest.php`). The 15 lines that remain are
-  guards for states the surrounding code rules out; the second file lists
-  them with the reason for each.
+  guards for states the surrounding code rules out; each carries its reason
+  in the source, in a comment that starts `// Not reached:`.
 - A `composer mutation` script: mutation testing of `src/Scheduling` and
   `src/Repack/Internal` with Pest's mutation runner, which is installed with
   Pest, over the tests named in `phpunit.mutation.xml`. A workflow of its
@@ -1027,6 +1027,107 @@ usage guide lists the same methods under "Deprecations".
     first two events and one participant.
   - A `use` statement without effect in one test file made PHP print a
     warning at the start of every run; it is removed.
+- Documentation only; the library is unchanged. The docblocks in `src/` no
+  longer say what the code does not do, and every public method and
+  constructor of a type marked `@api` or `@experimental` now states its
+  contract: what it guarantees about its result, what it requires of its
+  arguments, and what it throws and when. The statements that were false:
+  - The class docblocks of `SingleEliminationEngine`,
+    `DoubleEliminationEngine` and `StageOutcome` named rank 1 of an
+    outcome's standings as a way to read the champion, and
+    `getStandings()`/`getOutcome()` said the table reproduces bracket
+    placement with joint ranks. The table is a win/draw/loss record in the
+    standings calculator's order, with no joint ranks. In double elimination
+    a participant who wins the losers bracket and the first grand final and
+    loses the reset can rank above the title holder; a two-legged final that a
+    tie decision settles leaves the finalists level; a finalist who had a
+    bye has a win fewer. Read who won a bracket from its final round, with
+    `MatchOutcomeSelector::winners()`.
+  - `RoleBalanceConstraint` called limits of 3 (a field of even size) and 4
+    (odd) "always satisfiable", and mirrored multi-leg schedules "perfectly
+    balanced". That holds for a single leg and for two or three mirrored
+    legs (only two end balanced). It does not hold for the repeated leg
+    strategy at two or more legs, for four mirrored legs, for the shuffled
+    strategy, or for a multi-leg schedule from a scheduler with a
+    randomizer.
+  - `MinimumRestPeriodsConstraint` now says what it measures: the rounds
+    between two meetings of the same pair, not a participant's rest and not
+    time, so it rejects nothing in a single leg. `Timeline\MinimumRestRule`
+    no longer calls itself its time-aware counterpart.
+  - `TimelineDefinition` and `SessionGrid` said interval arithmetic is
+    wall-clock and that a weekly kickoff keeps its local time across a
+    daylight-saving change. That is true of the date part of an interval
+    (`P1D`, `P7D`), except for a local time the clocks skip, which is moved
+    on by the skipped hour for that round or slot and every later one. The
+    time part is elapsed time: `PT24H` and `PT168H` move the local time by
+    an hour across the change.
+  - `TimelineDefinition::fromArray()`, `BlackoutRule::fromArray()` and
+    `SessionGrid::fromArray()` referred to `ZonedTime`, which is internal,
+    for the datetime form they accept. They state the form.
+  - `StandingsCalculator` said a participant without results is placed at
+    the bottom of the table (it is placed by its zeroed record like any
+    other, above a participant level with it whose score difference is
+    below zero), and described the last
+    steps of the order as "natural-order label and ID comparison" (the
+    label is compared in natural order ignoring case, the ID as PHP
+    compares two strings).
+  - `SwissScheduler` and `SwissPairingEngine` described the results-free
+    preset as random pairing of a field tied at zero. In a field of odd
+    size a recorded bye counts in the pairing order, and without a
+    randomizer nothing is random.
+  - `RepeatedLegStrategy` and `MirroredLegStrategy` said later legs repeat
+    or mirror the first exactly, which holds only for a scheduler without a
+    randomizer; `LegPlanContribution` said its design makes drift between
+    the plan and the generator impossible, although nothing checks a
+    strategy's flags against the events it generates;
+    `LegStrategyInterface::generateEventForLeg()` did not say that it is
+    called for legs 2 and up only.
+  - `RoundRobinPlan` called itself the single home of the round-robin
+    arithmetic that generation reads; the scheduler lays out the rounds of a
+    leg from the size of the field itself, and the validation of the
+    finished schedule is what catches a difference. `SchedulingContext`
+    said it never infers a shape fact; it treats a plan without legs as one
+    leg. `Participant::withSeed()` was described as the way to reseed for a
+    new stage; stages seed from list position, and the copy is not
+    recognised by the two constraints that match a participant as the same
+    object.
+  - `Schedule` called itself immutable and able to add metadata: its events
+    and metadata never change, but it is its own iterator and keeps a
+    cursor, and nothing adds metadata. `Round::getMetadataValue()` returns
+    null, not the default, for a key whose value is null.
+  - `SchedulerOptions::fromArray()` said unknown values fail loudly; only
+    `PotDrawOptions` refuses an unknown key.
+    `ProgressionSelector::select()` said the selection is ordered best
+    first; a match-outcome selection is in bracket order.
+    `ScheduledSchedule` said its events are in kickoff order; they are in
+    the order given. `TimelineAssigner` said a round fails with more events
+    than slots; the limit is slots times capacity.
+    `ViolationKind::CapacityExceeded` named a session scope that is never
+    produced. `IncompleteScheduleException` named constraint violations as
+    its only cause.
+  - Several `@throws` tags named fewer conditions than the code has, among
+    them those of both elimination engines, `ScheduleScorer`,
+    `SwissOptions::fromArray()`, `EliminationOptions::fromArray()`,
+    `BlackoutRule` and `Round::fromArray()`; one named a condition that
+    never throws (`SwissPairingEngine::getOutcome()` with fewer than two
+    participants). The array shapes of `StageState::toArray()` and
+    `ScheduledSchedule::toArray()` lacked a key the arrays have.
+
+  `Constraints\ConstraintInterface` now states what a constraint of your
+  own may rely on: it should answer from the event and the context alone;
+  it is asked more often than the schedule has events, about events that
+  are never scheduled, and in an order that is not part of the contract;
+  one that keeps state or throws is not refused, no shortcut is taken for
+  it, and it is asked every question it was asked before this release's
+  two shortcuts existed. This describes what the library already does.
+
+  No tag changes what static analysis infers, but for these: the
+  array shapes named above, `@return $this` on the three chaining methods
+  of `ConstraintSetBuilder`, and `@throws InvalidInputException` (a
+  `\LogicException`) on `ConsecutiveRoleConstraint::homeAway()` and
+  `position()` and on `RoleBalanceConstraint::homeAway()`, whose
+  constructors already declared it. No method declares a new checked
+  exception.
 - Tooling only; the library is unchanged. The Rector step of `composer ci`
   no longer fails now and then with `Child process error` and a syntax error
   that names `bc7465525847387785d7c`, on a change that Rector does not read.

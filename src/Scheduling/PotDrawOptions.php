@@ -105,6 +105,9 @@ final readonly class PotDrawOptions implements SchedulerOptions
     }
 
     /**
+     * The plain-data form fromArray() accepts: all three keys, always, so
+     * that a stored draw names its seed.
+     *
      * @return array{pots: int, opponents_per_pot: int, seed: int}
      */
     #[Override]

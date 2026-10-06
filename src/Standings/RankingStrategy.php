@@ -30,6 +30,10 @@ interface RankingStrategy
      * Higher is better — strategies for games where lower is better
      * (strokes, elapsed time) invert internally.
      *
+     * The value must be a number: a table that holds a NAN has no defined
+     * order. The standings calculator passes the participant's own results,
+     * and an empty list for a participant that has none.
+     *
      * @param array<Result> $results
      */
     public function rank(Participant $participant, array $results): float;

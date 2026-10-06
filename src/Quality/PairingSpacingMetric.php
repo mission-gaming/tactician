@@ -23,12 +23,23 @@ use Override;
  */
 final readonly class PairingSpacingMetric implements QualityMetric
 {
+    /**
+     * Always 'Pairing Spacing': the key of this metric's measurement in a
+     * scorer's report.
+     */
     #[Override]
     public function getName(): string
     {
         return 'Pairing Spacing';
     }
 
+    /**
+     * The mean, over every gap between two consecutive meetings of a pair,
+     * of how far the gap is from that pair's ideal gap, in rounds.
+     *
+     * The total number of rounds is taken to be the highest round number in
+     * the schedule. 0.0 when no pair meets twice.
+     */
     #[Override]
     public function measure(Schedule $schedule): float
     {

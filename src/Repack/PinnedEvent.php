@@ -26,12 +26,16 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 final readonly class PinnedEvent
 {
     /**
+     * That the position is on the grid is checked by the request, which
+     * has the grid; here an index only has to be 0 or more.
+     *
      * @param string $id Caller-supplied stable identifier, unique across the request
+     *                   (movable events included; the request checks that)
      * @param int $session 0-based session index on the grid
      * @param int $slot 0-based slot index within the session
      *
-     * @throws InvalidConfigurationException When the id is empty, the participants are
-     *                                       not distinct, or an index is negative
+     * @throws InvalidConfigurationException When the id is empty, the two participants have
+     *                                       the same ID, or an index is negative
      */
     public function __construct(
         private string $id,
@@ -65,22 +69,33 @@ final readonly class PinnedEvent
         }
     }
 
+    /**
+     * The caller-supplied id, as given.
+     */
     public function getId(): string
     {
         return $this->id;
     }
 
+    /**
+     * The participant given first.
+     */
     public function getParticipantA(): Participant
     {
         return $this->participantA;
     }
 
+    /**
+     * The participant given second.
+     */
     public function getParticipantB(): Participant
     {
         return $this->participantB;
     }
 
     /**
+     * Both participants: A, then B.
+     *
      * @return array{Participant, Participant}
      */
     public function getParticipants(): array
@@ -88,11 +103,18 @@ final readonly class PinnedEvent
         return [$this->participantA, $this->participantB];
     }
 
+    /**
+     * The 0-based index of the session the event is pinned in.
+     */
     public function getSession(): int
     {
         return $this->session;
     }
 
+    /**
+     * The 0-based index of the slot the event is pinned at, within its
+     * session.
+     */
     public function getSlot(): int
     {
         return $this->slot;

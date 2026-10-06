@@ -55,7 +55,8 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * @param int $legs How many times each participant meets each other participant
      * @param LegStrategyInterface|null $strategy How pairings vary across legs (default: mirrored roles)
      * @param bool $backtracking Search for a schedule when the greedy rotations cannot satisfy
-     *                           the constraints (bounded, deterministic; greedy always runs first)
+     *                           the constraints (bounded by a count of pairing attempts, and
+     *                           deterministic for a given field order; greedy always runs first)
      * @param RoleAssignmentInterface|null $roleAssignment Which participant of each pairing is first-named
      *                                                     (default: round parity, the roles the generator proposes)
      * @throws InvalidConfigurationException When legs is not a positive integer
@@ -83,10 +84,17 @@ final readonly class RoundRobinOptions implements SchedulerOptions
     /**
      * Build from plain configuration data:
      * ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false,
-     * 'role_assignment' => 'balanced']. Every key is optional.
+     * 'role_assignment' => 'balanced']. Every key is optional, and a key
+     * this class does not have is ignored.
+     *
+     * The strategy and the role assignment are built without arguments, so
+     * 'shuffled' gives a ShuffledLegStrategy with a randomizer of its own
+     * that no seed controls: build the options with the constructor to pass
+     * a seeded one.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value is invalid or an identifier is unknown
+     * @throws InvalidConfigurationException When legs is not an integer or is below 1, backtracking
+     *                                       is not a boolean, or an identifier is unknown
      */
     #[Override]
     public static function fromArray(array $config): static
@@ -155,6 +163,10 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * that do not name one serialize to the three keys they always have, and
      * options that name the default keep saying so, which is what holds a
      * stored configuration to its roles when a release changes the default.
+     *
+     * A randomizer given to a ShuffledLegStrategy is not part of the data:
+     * such options serialize to 'shuffled', and fromArray() rebuilds them
+     * with an unseeded strategy.
      *
      * @return array{legs: int, strategy: string, backtracking: bool, role_assignment?: string}
      * @throws InvalidConfigurationException When the strategy or the role assignment is not one of the built-ins

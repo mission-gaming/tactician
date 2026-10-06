@@ -10,8 +10,15 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * Phase B is an exact search against the contiguity targets: slot c must
  * hold a perfect matching on exactly the participants targeting c, so a
  * budget-bounded depth-first search with fail-first vertex selection
- * either packs the session with zero gaps and zero late starts by
- * construction, or proves the targets unreachable within budget.
+ * either packs the session with every participant on its target, or
+ * finds no such packing: every placement of the runs was tried and
+ * failed, the budget ran out first, or the session has more than 20
+ * slots, in which case no placement is tried. A packing it finds gives an
+ * unpinned participant one run with no gap, and among the run placements
+ * it is the first that packs when they are tried in order of total late
+ * start, all runs from the top first. A pinned participant's target can
+ * itself start late or keep a gap its load cannot bridge
+ * (ContiguityTargets).
  *
  * Phase C is the honest fallback: a prioritized greedy packing
  * (participants who must play every remaining slot go first), a direct
@@ -173,6 +180,8 @@ final class SessionPacker
 
             $target = ContiguityTargets::movableTarget($pins, $load, $this->slotCount);
             if (count($target) < $load) {
+                // Not reached: the load planner never gives a participant
+                // more events in a session than it has free slots there
                 return null;
             }
             $fixedTargets[$pid] = $target;
@@ -563,6 +572,8 @@ final class SessionPacker
     private function improvementTargets(array $occupied): array
     {
         if ($occupied === []) {
+            // Not reached: repair() asks only about a participant that has
+            // a movable event in the session
             return [];
         }
 
@@ -586,6 +597,8 @@ final class SessionPacker
     {
         $event = $this->movableEventAt($pid, $from);
         if ($event === null) {
+            // Not reached: the slot is one of the participant's own movable
+            // slots
             return false;
         }
 
@@ -622,6 +635,9 @@ final class SessionPacker
         while ($frontier !== []) {
             $current = array_shift($frontier);
             if (isset($chainPids[$current])) {
+                // Not reached: the start has an event in one of the two
+                // slots and none in the other, so the chain is a path that
+                // begins there, never a cycle
                 continue;
             }
             $chainPids[$current] = true;
@@ -638,6 +654,7 @@ final class SessionPacker
         }
 
         if ($chainEvents === []) {
+            // Not reached: the chain holds at least the start's own event
             return false;
         }
 
@@ -710,10 +727,13 @@ final class SessionPacker
         $late = 0;
         foreach ($pids as $pid) {
             if (!$this->hasMovableAssignment($pid)) {
+                // Not reached: every participant a move affects has a
+                // movable event in the session, before the move and after
                 continue;
             }
             $occupied = $this->occupiedSlots($pid);
             if ($occupied === []) {
+                // Not reached: for the same reason
                 continue;
             }
             $first = $occupied[0];
@@ -788,6 +808,8 @@ final class SessionPacker
             }
         }
 
+        // Not reached: the one caller passes a slot taken from the
+        // participant's own movable slots
         return null;
     }
 

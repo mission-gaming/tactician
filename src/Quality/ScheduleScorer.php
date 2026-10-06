@@ -25,10 +25,15 @@ final readonly class ScheduleScorer
     private array $weightedMetrics;
 
     /**
-     * @param array<array{metric: QualityMetric, weight: float}> $weightedMetrics
+     * @param array<array{metric: QualityMetric, weight: float}> $weightedMetrics One entry per
+     *        metric, in the order the report lists them. A weight is an int or a float above
+     *        zero and multiplies that metric's measurement in the score
      *
-     * @throws InvalidConfigurationException When no metrics are given, or a weight is not
-     *                                       positive or not finite (NAN, INF)
+     * @throws InvalidConfigurationException When no metrics are given, an entry is not an
+     *                                       array with a QualityMetric under 'metric' and a
+     *                                       number under 'weight', two metrics have the
+     *                                       same name, or a weight is not positive or not
+     *                                       finite (NAN, INF)
      */
     public function __construct(array $weightedMetrics)
     {
@@ -97,9 +102,11 @@ final readonly class ScheduleScorer
     }
 
     /**
-     * Equal-weight convenience constructor.
+     * Equal-weight convenience constructor: every metric has weight 1.0, so
+     * the score is the plain sum of the measurements.
      *
-     * @throws InvalidConfigurationException When no metrics are given
+     * @throws InvalidConfigurationException When no metrics are given or two have the
+     *                                       same name
      */
     public static function of(QualityMetric ...$metrics): self
     {
@@ -110,7 +117,8 @@ final readonly class ScheduleScorer
     }
 
     /**
-     * The weighted defect score; lower is better, zero is ideal.
+     * The weighted defect score: the sum of each metric's measurement times
+     * its weight. Lower is better, zero is ideal.
      *
      * Always a finite number: a score that is NAN or INF cannot be compared
      * with another, so it is refused here and not handed on.
@@ -137,7 +145,8 @@ final readonly class ScheduleScorer
     }
 
     /**
-     * Raw per-metric measurements, keyed by metric name.
+     * Raw per-metric measurements, keyed by metric name, before weighting
+     * and in the order the metrics were given.
      *
      * @return array<string, float>
      *

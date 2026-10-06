@@ -18,14 +18,31 @@ use Random\Randomizer;
  * pairing for every leg after the first, creating varied encounters
  * across legs while maintaining the same participant combinations.
  *
+ * Only roles are drawn: who meets whom, and in which round, is the
+ * scheduler's layout and is not shuffled. Each role is drawn once and is
+ * not drawn again when a constraint rejects the event, so a role
+ * constraint can fail a schedule that other draws would have completed.
+ *
  * @api
  */
 readonly class ShuffledLegStrategy implements LegStrategyInterface
 {
+    /**
+     * @param Randomizer|null $randomizer The source of the draws. With a seeded one the same
+     *                                    calls in the same order give the same roles. With
+     *                                    none, every draw uses a new unseeded randomizer and
+     *                                    the schedule is not reproducible: this is the one
+     *                                    place the library does that
+     */
     public function __construct(
         private ?Randomizer $randomizer = null
     ) {}
 
+    /**
+     * States that roles do not mirror across legs and that randomization
+     * is needed. No configuration is unsatisfiable for this strategy, and
+     * it reads none of its arguments.
+     */
     #[Override]
     public function planLegs(
         array $participants,
@@ -38,6 +55,14 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
         );
     }
 
+    /**
+     * The pairing in the given round: in the given order for leg 1, and
+     * for every later leg in the given order or reversed with equal
+     * probability. One integer is drawn from the randomizer for each call
+     * with a later leg, none for leg 1. The context is not read.
+     *
+     * @return Event|null Null when not given exactly two participants
+     */
     #[Override]
     public function generateEventForLeg(
         array $participants,

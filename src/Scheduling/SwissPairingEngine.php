@@ -32,8 +32,9 @@ use Random\Randomizer;
  * Monrad-style pairing - participants ordered by standings and paired
  * adjacently (leader vs runner-up, and so on) - with backtracking to avoid
  * repeat pairings and satisfy constraints. Byes rotate to the lowest-placed
- * participant who has had the fewest, and home/away roles go to whichever
- * participant has had fewer home assignments.
+ * participant who has had the fewest, and the first-named role of a pairing
+ * goes to whichever of the two has been first-named less often (to the
+ * lower-placed one when they are level).
  *
  * Byes recorded on the state are credited as wins when computing the
  * pairing order (the Swiss convention), so a bye recipient is paired among
@@ -45,9 +46,17 @@ use Random\Randomizer;
  * results still count toward the remaining participants' standings.
  *
  * Repeat avoidance reads the pairings recorded on the state, not the
- * results - so driving the engine while recording no results produces
- * random non-repeat pairing (with a Randomizer), which is the
- * whole-schedule Swiss preset SwissScheduler wraps.
+ * results - so driving the engine with a Randomizer while recording no
+ * results produces non-repeat pairing from a shuffled field, which is the
+ * whole-schedule Swiss preset SwissScheduler wraps. In a field of odd size
+ * that pairing is not random throughout: a recorded bye is credited as a
+ * win, so the participants who have had a bye are placed above the rest
+ * and are paired with each other first.
+ *
+ * Without a Randomizer the engine draws nothing: the same state gives the
+ * same pairing. With one, each call to pairNextRound() draws from it, so
+ * pairing the same state twice gives two different rounds unless the
+ * randomizer is seeded the same before each call.
  *
  * Constraints that reason about the tournament length (e.g.
  * SeedProtectionConstraint) need to know the planned number of rounds;
@@ -58,6 +67,10 @@ use Random\Randomizer;
 readonly class SwissPairingEngine implements StageEngineInterface, FingerprintedEngine
 {
     /**
+     * @param ConstraintSet|null $constraints Asked about every candidate pairing, with a context of
+     *                                        the recorded rounds and the pairings made so far in
+     *                                        the round; a pairing one of them rejects is not made
+     * @param StandingsCalculator $standingsCalculator Orders the table each round is paired from
      * @param int|null $plannedRounds Total rounds the tournament will run, exposed to
      *                                constraints via the stage plan on the scheduling context;
      *                                null leaves the stage open-ended (isComplete() only
@@ -139,8 +152,27 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
     /**
      * Pair the next round from the recorded state.
      *
-     * @throws InvalidConfigurationException When fewer than 2 active participants remain, or
-     *                                       the state is stamped with another engine's fingerprint
+     * The pairing carries the state's next round number (1-based) and no
+     * label. Its events are in the order the pairs were made, from the top
+     * of the pairing order down, and every active participant is in exactly
+     * one of them, but for the one who has the bye in a field of odd size.
+     * No two participants are paired who are paired in a round recorded on
+     * the state. The call does not record anything and does not check the
+     * planned rounds, so ask isComplete() first, and pass the pairing and
+     * its results to StageState::withRoundPlayed(). (Known limitation, not
+     * behaviour to rely on: asked about a stage that has played its planned
+     * rounds, it pairs a round beyond them.)
+     *
+     * The search is exhaustive: the exception means that no complete
+     * pairing exists, not that the search gave up. In a field of odd size
+     * every participant is tried as the bye, in the order the class
+     * docblock gives, before it is thrown.
+     *
+     * @throws InvalidConfigurationException When fewer than 2 active participants remain, the
+     *                                       state is stamped with another engine's fingerprint,
+     *                                       or a bye is recorded and the standings calculator's
+     *                                       ranking strategy is not a WinDrawLossRanking (the
+     *                                       win a bye is credited as has no value there)
      * @throws NoValidPairingException When no complete pairing exists for the round
      */
     #[Override]
@@ -239,8 +271,10 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * Standings cover every participant the stage has seen, including
      * withdrawn ones - their played games remain part of the record.
      *
-     * @throws InvalidConfigurationException When fewer than 2 participants have been seen, or
-     *                                       the state is stamped with another engine's fingerprint
+     * Byes are not credited here: the standings count recorded results
+     * only, and the outcome lists the byes beside them.
+     *
+     * @throws InvalidConfigurationException When the state is stamped with another engine's fingerprint
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome

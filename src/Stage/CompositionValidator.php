@@ -26,9 +26,27 @@ final readonly class CompositionValidator
     /**
      * Validate a linear chain of stage transitions.
      *
+     * Two things are checked: that every stage declares at least 2
+     * entrants, and that a transition's selector yields as many
+     * participants as its destination declares. It never throws; what is
+     * wrong is in the returned list.
+     *
+     * How many a selector yields is known ahead of time in two cases
+     * only. A selector that states its size (an overall rank range) is
+     * taken at its word. A match-outcome selector is counted as if the
+     * stage before it were one knockout round of all its entrants: half
+     * of them, rounded up for winners (the bye goes on) and down for
+     * losers. That fits a chain of single-round stages, which is what
+     * this validates. It does not fit a stage that plays a whole bracket,
+     * whose final round holds two participants whatever the size of the
+     * field. A transition with any other selector (a per-group rank
+     * range, a selector of the application's) or with none passes
+     * unchecked, apart from its declared entrant count.
+     *
      * @param int $initialEntrants Entrants of the first stage
      * @param array<StageTransition> $transitions Each subsequent stage, in order
-     * @return array<string> Violations; empty means the chain telescopes correctly
+     * @return array<string> Violations in chain order, as sentences for a person to read;
+     *                       empty means nothing checkable is wrong
      */
     public function validateChain(int $initialEntrants, array $transitions): array
     {

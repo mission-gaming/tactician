@@ -36,16 +36,23 @@ final readonly class TieDecision
     /**
      * Resolve the advancer from a tie's leg results.
      *
+     * The caller passes the results of this tie's events and no others:
+     * they are not matched against the two participants. A single-leg
+     * tie returns the winner its first result records, whoever that is;
+     * only a two-legged tie checks that each leg's winner is one of the
+     * two.
+     *
      * @param array<Result> $legResults The recorded results of the tie's legs, any order
      * @param Participant $first One side of the tie
      * @param Participant $second The other side
      * @param int $legsPerTie How many legs the tie is played over
      *
-     * @return Participant|null The advancer, or null while legs are missing results
+     * @return Participant|null The advancer, or null while there are fewer results than legs
      * @throws InvalidConfigurationException When a completed tie is level and carries no
-     *                                       tie_winner decision, when that decision names a
-     *                                       participant outside the tie, or when a leg's
-     *                                       winner is outside the tie
+     *                                       tie_winner decision (reason `UndecidedTie`), when that
+     *                                       decision names a participant outside the tie, or when
+     *                                       a leg of a two-legged tie has a winner outside the tie
+     *                                       (both `InvalidResult`)
      */
     public static function advancer(
         array $legResults,

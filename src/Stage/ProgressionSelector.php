@@ -27,7 +27,12 @@ interface ProgressionSelector
     /**
      * Select and order the progressing participants from an outcome.
      *
-     * @return array<Participant> Ordered best first; position determines destination seeding
+     * The same outcome always gives the same list. The order is the
+     * selector's own and each implementation states it (by rank for a rank
+     * selection, bracket order for an outcome selection); whatever it is,
+     * the destination stage seeds from it.
+     *
+     * @return array<Participant> A list in the selector's order; position determines destination seeding
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the outcome cannot satisfy this selection
      */
     public function select(StageOutcome $outcome): array;

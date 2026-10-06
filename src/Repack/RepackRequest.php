@@ -45,11 +45,21 @@ final readonly class RepackRequest
     private array $pinnedEvents;
 
     /**
+     * Either list may be empty. Participants are told apart by ID across
+     * both lists. Two events may have the same two participants; only
+     * their ids must differ.
+     *
      * @param array<MovableEvent> $movableEvents The events to place; order carries no meaning
      * @param array<PinnedEvent> $pinnedEvents The events that must not move; order carries no meaning
      *
      * @throws PinConflictException When one participant is pinned in two events at one position
-     * @throws InvalidConfigurationException When the input contradicts itself in any other way
+     *                              and the position's capacity admits both (otherwise the
+     *                              capacity is what is reported)
+     * @throws InvalidConfigurationException When an entry is not of its list's class, an event
+     *                                       id is used twice across the two lists, a pin is
+     *                                       not on the grid, the pins at one position exceed
+     *                                       the grid's capacity, or the objective weights are
+     *                                       too large for the grid's number of sessions
      */
     public function __construct(
         array $movableEvents,
@@ -159,6 +169,8 @@ final readonly class RepackRequest
     }
 
     /**
+     * The movable events, in the order given and keyed 0, 1, 2 and so on.
+     *
      * @return array<MovableEvent>
      */
     public function getMovableEvents(): array
@@ -167,6 +179,8 @@ final readonly class RepackRequest
     }
 
     /**
+     * The pinned events, in the order given and keyed 0, 1, 2 and so on.
+     *
      * @return array<PinnedEvent>
      */
     public function getPinnedEvents(): array
@@ -174,11 +188,17 @@ final readonly class RepackRequest
         return $this->pinnedEvents;
     }
 
+    /**
+     * The grid the events are placed on.
+     */
     public function getGrid(): SessionGrid
     {
         return $this->grid;
     }
 
+    /**
+     * The options of the repack; the defaults when none were given.
+     */
     public function getOptions(): RepackOptions
     {
         return $this->options;

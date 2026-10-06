@@ -43,6 +43,14 @@ use Override;
  */
 final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
 {
+    /**
+     * The leg with every participant's two role counts at most 1 apart, by
+     * the first of the three steps of the class docblock that achieves it.
+     *
+     * The rounds and seatings come back in the order given, each seating
+     * as given or reversed; a bye seating comes back as given. The same
+     * rounds always give the same answer.
+     */
     #[Override]
     public function assignRoles(array $rounds): array
     {
@@ -287,6 +295,9 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
             }
         }
 
+        // Not reached: the differences of a leg sum to zero, so a participant
+        // that has one role too often is connected to one that has the other
+        // role too often (the argument is in the docblock)
         throw new InvariantViolationException('A participant out of balance has no chain to one out of balance the other way');
     }
 

@@ -13,6 +13,10 @@ use Override;
 /**
  * An ordered standings table, best-placed participant first.
  *
+ * The table holds the order it is given; StandingsCalculator is what
+ * computes one. Every entry has a position of its own, also where no result
+ * separates it from its neighbour: see getTiedSets().
+ *
  * @implements IteratorAggregate<int, StandingEntry>
  *
  * @experimental
@@ -20,11 +24,16 @@ use Override;
 readonly class Standings implements IteratorAggregate, Countable
 {
     /**
-     * @param array<StandingEntry> $entries Entries ordered best-first
+     * The entries are kept as given and are not sorted.
+     *
+     * @param array<StandingEntry> $entries Entries ordered best-first. Pass a list (keys 0,
+     *                                      1, ...): getPosition() reads a position from the key
      */
     public function __construct(private array $entries) {}
 
     /**
+     * Every entry in table order, best-placed first.
+     *
      * @return array<StandingEntry>
      */
     public function getEntries(): array
@@ -32,6 +41,10 @@ readonly class Standings implements IteratorAggregate, Countable
         return $this->entries;
     }
 
+    /**
+     * The entry of the participant with this ID, or null when the table has
+     * none.
+     */
     public function getEntryFor(Participant $participant): ?StandingEntry
     {
         foreach ($this->entries as $entry) {
@@ -44,7 +57,11 @@ readonly class Standings implements IteratorAggregate, Countable
     }
 
     /**
-     * Get a participant's 1-based position in the table, or null if absent.
+     * The 1-based position of the participant with this ID, or null when the
+     * table has no entry for it.
+     *
+     * Positions are never shared: two entries that no result separates have
+     * consecutive positions (see getTiedSets()).
      */
     public function getPosition(Participant $participant): ?int
     {
@@ -104,6 +121,9 @@ readonly class Standings implements IteratorAggregate, Countable
     }
 
     /**
+     * The entries in table order, keyed from 0: the key is the position
+     * minus one.
+     *
      * @return ArrayIterator<int, StandingEntry>
      */
     #[Override]
@@ -112,6 +132,9 @@ readonly class Standings implements IteratorAggregate, Countable
         return new ArrayIterator(array_values($this->entries));
     }
 
+    /**
+     * The number of entries.
+     */
     #[Override]
     public function count(): int
     {

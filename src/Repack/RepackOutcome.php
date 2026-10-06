@@ -54,7 +54,15 @@ final readonly class RepackOutcome
     private array $assignmentsById;
 
     /**
-     * @param array<SlotAssignment> $assignments Sorted by event id
+     * The repacker builds outcomes; an application builds one by hand to
+     * test its own handling of an outcome. The lists are kept in the order
+     * given: the orders named below are what the repacker passes, and the
+     * constructor neither sorts nor checks them, nor that the lists agree
+     * with each other.
+     *
+     * @param array<SlotAssignment> $assignments Sorted by event id; when two carry
+     *                                           the same id, getAssignmentFor()
+     *                                           returns the later one
      * @param array<UnplacedEvent> $unplaced Sorted by event id
      * @param array<RepackViolation> $violations Sorted by kind, then scope
      * @param bool $budgetExhausted Whether the step budget stopped a search
@@ -81,7 +89,8 @@ final readonly class RepackOutcome
     }
 
     /**
-     * Every placed movable event's assignment, ordered by event id.
+     * Every placed movable event's assignment, ordered by event id
+     * (ascending byte order, as `strcmp()` compares).
      *
      * Pinned events are not re-emitted — they hold their input positions
      * by contract.
@@ -115,6 +124,13 @@ final readonly class RepackOutcome
 
     /**
      * Every compromise in the returned schedule, itemised.
+     *
+     * Ordered by kind, in the order ViolationKind declares its cases.
+     * Within a kind, as the repacker returns them: double-bookings by
+     * session, slot and participant ID; unplaced events by event id;
+     * interior gaps and late starts by participant ID, then session;
+     * capacity shortfalls with the participants first, the largest
+     * shortfall first, and the grid last.
      *
      * @return array<RepackViolation>
      */
@@ -361,8 +377,10 @@ final readonly class RepackOutcome
     }
 
     /**
-     * Serialize to plain data. Deterministic: the same input request
+     * Serialize to plain data: each list in its order, every entry as its
+     * own toArray() gives it. Deterministic: the same input request
      * always produces the same array, whatever order its lists were in.
+     * isBudgetExhausted() is not part of it.
      *
      * @return array{assignments: array<array{event_id: string, session: int, slot: int, kickoff: string|null}>, unplaced: array<array{event_id: string, reason: string, participant: string|null}>, violations: array<array<string, mixed>>}
      */
