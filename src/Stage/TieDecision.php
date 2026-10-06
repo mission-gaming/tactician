@@ -13,13 +13,19 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * Resolves who advances from an elimination tie, shared by the bracket
  * engines and the match-outcome selector.
  *
- * Single-leg ties advance the event's winner (a draw is an error —
- * elimination events must decide). Two-legged ties advance whoever won
- * more legs; when the legs do not decide (a 1-1 split, or draws), the
- * aggregate is the application's to resolve under its own rules (away
- * goals, extra time, penalties — rules Tactician must never own), and it
- * records the decision as 'tie_winner' metadata (the advancing
- * participant's ID) on either leg's result.
+ * Single-leg ties advance the event's winner. Two-legged ties advance
+ * whoever won more legs. When that does not decide (a single event that
+ * finished level; two legs split 1-1, or drawn), who advances is the
+ * application's to resolve under its own rules, which Tactician never
+ * owns and never asks about: it records the decision as 'tie_winner'
+ * metadata (the advancing participant's ID) on the event's result, or on
+ * either leg's result. A level tie with no recorded decision is an error:
+ * an elimination tie must send one participant on.
+ *
+ * The decision is read only when the results leave the tie level. Where
+ * the event's winner or the leg wins decide, 'tie_winner' is not read at
+ * all: it cannot overturn a decisive result, and a value that names
+ * nobody in the tie goes unnoticed there.
  */
 final readonly class TieDecision
 {
@@ -34,9 +40,10 @@ final readonly class TieDecision
      * @param int $legsPerTie How many legs the tie is played over
      *
      * @return Participant|null The advancer, or null while legs are missing results
-     * @throws InvalidConfigurationException When a single-leg tie is drawn, or a completed
-     *                                       two-legged tie is undecided and carries no
-     *                                       tie_winner decision
+     * @throws InvalidConfigurationException When a completed tie is level and carries no
+     *                                       tie_winner decision, when that decision names a
+     *                                       participant outside the tie, or when a leg's
+     *                                       winner is outside the tie
      */
     public static function advancer(
         array $legResults,
@@ -50,15 +57,22 @@ final readonly class TieDecision
 
         if ($legsPerTie === 1) {
             $winner = $legResults[0]->getWinner();
-            if ($winner === null) {
-                throw new InvalidConfigurationException(
-                    "Elimination events cannot end in a draw ({$first->getLabel()} vs {$second->getLabel()})",
-                    ['participants' => [$first->getId(), $second->getId()]],
-                    reason: InvalidConfigurationReason::UndecidedTie
-                );
+            if ($winner !== null) {
+                return $winner;
             }
 
-            return $winner;
+            // The event finished level: the application resolves it under
+            // its own rules and records the decision.
+            $decided = self::recordedDecision($legResults, $first, $second);
+            if ($decided instanceof Participant) {
+                return $decided;
+            }
+
+            throw new InvalidConfigurationException(
+                "Elimination events cannot end in a draw ({$first->getLabel()} vs {$second->getLabel()}): the event is level, so record who advances as '" . self::TIE_WINNER_KEY . "' metadata on its result",
+                ['participants' => [$first->getId(), $second->getId()]],
+                reason: InvalidConfigurationReason::UndecidedTie
+            );
         }
 
         $legWins = [$first->getId() => 0, $second->getId() => 0];
@@ -85,6 +99,28 @@ final readonly class TieDecision
 
         // The legs did not decide: the application resolves the aggregate
         // under its own rules and records the decision.
+        $decided = self::recordedDecision($legResults, $first, $second);
+        if ($decided instanceof Participant) {
+            return $decided;
+        }
+
+        throw new InvalidConfigurationException(
+            "Two-legged tie between {$first->getLabel()} and {$second->getLabel()} is undecided: the legs are level, so record the aggregate decision as '" . self::TIE_WINNER_KEY . "' metadata on one leg's result",
+            ['participants' => [$first->getId(), $second->getId()]],
+            reason: InvalidConfigurationReason::UndecidedTie
+        );
+    }
+
+    /**
+     * The participant a level tie's results name as advancing: the first
+     * 'tie_winner' decision found on them, or null when none carries one.
+     *
+     * @param array<Result> $legResults
+     *
+     * @throws InvalidConfigurationException When the decision names a participant outside the tie
+     */
+    private static function recordedDecision(array $legResults, Participant $first, Participant $second): ?Participant
+    {
         foreach ($legResults as $result) {
             $decision = $result->getMetadataValue(self::TIE_WINNER_KEY);
             if ($decision !== null) {
@@ -103,10 +139,6 @@ final readonly class TieDecision
             }
         }
 
-        throw new InvalidConfigurationException(
-            "Two-legged tie between {$first->getLabel()} and {$second->getLabel()} is undecided: the legs are level, so record the aggregate decision as '" . self::TIE_WINNER_KEY . "' metadata on one leg's result",
-            ['participants' => [$first->getId(), $second->getId()]],
-            reason: InvalidConfigurationReason::UndecidedTie
-        );
+        return null;
     }
 }

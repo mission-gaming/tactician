@@ -334,6 +334,34 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             [],
         ],
         'elimination round labels' => ['docs/USAGE.md', 'echo "{$pairing->getLabel()}\n";', ["quarterfinal\nsemifinal\nfinal\n"], []],
+        'a level elimination event that names who advances' => [
+            'docs/USAGE.md',
+            '[TieDecision::TIE_WINNER_KEY => $dave->getId()]',
+            ["Dave v Bob\n"],
+            [],
+        ],
+        'who advanced, read from a level result' => [
+            'docs/USAGE.md',
+            'TieDecision::advancer([$recorded]',
+            ["drawn, Dave advances\n"],
+            [],
+        ],
+        // The block is there to show the refusal
+        'a level elimination event that names nobody refused' => [
+            'docs/USAGE.md',
+            '$engine->pairNextRound($undecided);',
+            [
+                'undecided_tie: Invalid scheduler configuration: Elimination events cannot end in a draw (Alice vs Dave)'
+                . ": the event is level, so record who advances as 'tie_winner' metadata on its result\n",
+            ],
+            ['Paired'],
+        ],
+        'a level elimination event given its missing decision' => [
+            'docs/USAGE.md',
+            '$decided = $undecided->withResultReplaced(',
+            ["Alice v Bob\n"],
+            [],
+        ],
         // The restrictive constraint is there to show the failure branch
         'validation failure branch' => [
             'docs/USAGE.md',

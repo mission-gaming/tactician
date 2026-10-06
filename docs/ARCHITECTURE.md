@@ -32,7 +32,7 @@ play completes. The `src/Stage/` family:
 - **PoolDistributor**: Serpentine distribution of participants into pools by list position, plus per-pool result splitting — the generic primitive behind group stages
 - **ProgressionSelector**: The hand-off between stages — `RankRangeSelector` (rank slices: overall or per-pool blocks) and `MatchOutcomeSelector` (final-round winners/losers from recorded results, tie-aware). All config-constructible with stable identifiers. Optional machinery: any ordered list is a valid stage entry.
 - **CompositionValidator / StageTransition**: Ahead-of-time telescoping validation of a declared multi-stage chain, using selector cardinalities and knockout arithmetic
-- **TieDecision**: Shared resolution of elimination ties — more leg wins advances; a level two-legged aggregate is the application's call, recorded as `tie_winner` result metadata
+- **TieDecision**: Shared resolution of elimination ties, the one place the engines and `MatchOutcomeSelector` derive who advances — the event's winner, or more leg wins, advances; a tie that finishes level (a drawn single event, or a level two-legged aggregate) is the application's call, recorded as `tie_winner` result metadata and read only then. The bracket engines count a decided level single-leg event as a win for the advancer in the standings they compute (re-seeding and the outcome's table); the recorded result stays a draw
 
 ### Scheduling System
 - **SchedulerInterface**: Contract for whole-schedule generators — participants and typed options in, a validated schedule out; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
