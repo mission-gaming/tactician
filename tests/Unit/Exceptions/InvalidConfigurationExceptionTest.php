@@ -172,6 +172,8 @@ describe('InvalidConfigurationException', function (): void {
         'a float beyond the precision' => [0.1 + 0.2, '0.3'],
         'a large float' => [1e100, '1.0E+100'],
         'infinity' => [INF, 'INF'],
+        // PHP 8.5 warns when NAN is cast to a string; the report must not
+        'not a number' => [NAN, 'NAN'],
         'an empty string' => ['', ''],
         'the string zero' => ['0', '0'],
         'a string of digits' => ['007', '007'],

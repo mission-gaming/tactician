@@ -208,6 +208,12 @@ class InvalidConfigurationException extends SchedulingException
             return '"' . addcslashes($value, "\0..\37\177\\\"") . '"';
         }
 
+        if (is_float($value) && is_nan($value)) {
+            // PHP 8.5 warns when NAN is cast to a string. The text is the
+            // one the cast gives.
+            return 'NAN';
+        }
+
         if (is_scalar($value)) {
             return (string) $value;
         }

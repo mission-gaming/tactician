@@ -207,6 +207,13 @@ heading **Output change (fix)**.
   `InvalidConfigurationException` thrown before. Code that compares the
   exception's class by name sees the new class.
 
+### Fixed
+
+- `InvalidConfigurationException::getDiagnosticReport()` no longer raises a
+  PHP warning on PHP 8.5 when a context value is the float `NAN`. PHP 8.5
+  warns when `NAN` is cast to a string, and the report cast it. The text is
+  unchanged: `NAN`.
+
 ## [0.2.1] - 2026-10-06
 
 No library behavior changes: under `src/`, only the formatting and a number
