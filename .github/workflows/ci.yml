@@ -184,3 +184,76 @@ jobs:
 
     - name: Audit the locked dependencies for known vulnerabilities
       run: composer security-audit
+
+  # Benchmarks the library on the base of the pull request and on the change,
+  # and fails when a benchmark of the change takes more than one and a half
+  # times what it takes on the base. A job of its own, under a name that is
+  # not a required check: a timing is evidence for a reviewer, not a gate,
+  # and no required job waits for it. It runs for a pull request only,
+  # because only a pull request has a base.
+  #
+  # The runner is shared and its speed varies from run to run and within a
+  # run, so nothing is compared with a figure recorded elsewhere. Both sides
+  # are measured in this job, by turns, and the figure compared is the
+  # fastest revolution of three rounds: what else the runner does can only
+  # slow a revolution down. tests/bin/compare-benchmarks.php states the
+  # method, and tests/Feature/BenchmarkComparisonTest.php covers the
+  # comparison and this job.
+  benchmarks:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    name: Benchmarks
+    timeout-minutes: 30
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+      with:
+        php-version: '8.4'
+        extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
+        coverage: none
+
+    - name: Find the Composer download cache
+      id: composer-cache
+      run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Composer downloads
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.composer-cache.outputs.dir }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('composer.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-composer-
+
+    - name: Install dependencies
+      run: composer install --prefer-dist --no-progress
+
+    # The benchmark runner has a composer.json and a lock file of its own in
+    # tools/phpbench/, apart from the library's development dependencies: it
+    # requires a package that is abandoned with no replacement, and the
+    # weekly workflow fails on an abandoned package in the library's lock
+    # file. This job is the only one that installs it.
+    - name: Install the benchmark runner
+      run: composer bench-install -- --prefer-dist --no-progress
+
+    # The runner's lock file is audited here, where it is used. A security
+    # advisory fails the job. The abandoned package is reported and does not:
+    # it is the reason the runner is kept apart, nothing in this repository
+    # can repair it, and it cannot reach the library's dependency set.
+    - name: Audit the benchmark runner's locked dependencies
+      run: composer audit --working-dir=tools/phpbench --locked --abandoned=report
+
+    # Only src/ of the base: the benchmarks, and the tools that run them, are
+    # the ones of the change, so both sides are measured the same way.
+    - name: Take src/ as it is on the base of the pull request
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        mkdir -p build/base
+        git fetch --no-tags --depth=1 origin "$BASE_SHA"
+        git archive "$BASE_SHA" src | tar -x -C build/base
+
+    - name: Benchmark the base and the change by turns, and compare
+      run: composer bench-compare -- build/base/src

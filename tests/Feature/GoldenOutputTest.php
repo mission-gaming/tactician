@@ -211,6 +211,7 @@ describe('Golden output', function (): void {
             'double-elimination.txt',
             'repack/scenario.txt',
             'repack/round-robin.txt',
+            'repack/budget-stops.txt',
             'wire/schedule.json',
             'wire/stage-state.json',
             'examples/01-basic-round-robin.txt',

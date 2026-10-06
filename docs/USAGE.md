@@ -342,6 +342,18 @@ $advancedConstraint = ConstraintSet::create()
     ->build();
 ```
 
+A constraint of your own may keep a count, or throw for an event it cannot
+judge, and what it is asked then decides what you get back. So there are
+two shortcuts the library takes only for a set made of `NoRepeatPairings`,
+`MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
+`SeedProtectionConstraint`, which cannot tell how they are asked: it
+analyses a round robin that cannot be completed once and not once per
+ordering tried, and it skips the branches of a Swiss round search that
+hold no pairing. A set that holds anything that runs your code (a callable,
+a role extractor or metadata validator, a class or subclass of your own, or
+a subclass of `ConstraintSet`) gets the same results without them, which on
+those two failure paths takes longer.
+
 ### Role-Based Constraints
 
 ```php
@@ -1932,10 +1944,11 @@ operator must add). The shortfall events come back in
 or listed there — the counts reconcile exactly.
 
 The repacker is deterministic (same input, same output, independent of
-input list order), pure (no clock reads, no I/O), and bounded (every
-search spends from `RepackOptions(stepBudget: ...)`, steps not
-wall-clock, so behaviour is reproducible behind an HTTP preview
-request). Events that fall entirely outside the grid cannot collide with
+input list order), pure (no clock reads, no I/O), and bounded in steps
+(every search spends from `RepackOptions(stepBudget: ...)`). The bound
+makes a repack reproducible, which is what a preview that is later
+confirmed needs. It is not a bound on time: see
+[The Step Budget](#the-step-budget) for what a repack takes. Events that fall entirely outside the grid cannot collide with
 it and are the caller's to filter before the request — collision is
 exact position identity, by design; there is no fuzzy time-overlap
 detection.
@@ -2168,6 +2181,24 @@ $starved = (new ScheduleRepacker())->repack(new RepackRequest(
 ));
 var_dump($starved->isBudgetExhausted());   // bool(true)
 ```
+
+How long a repack takes depends on the request and on the machine, and
+the budget does not turn into a number of seconds. Measured with the
+default budget of 200,000 steps (PHP 8.4, no OPcache, one core): a
+complete single round robin of 24 participants took between 0.05 and 1.0
+seconds over sessions of four to six slots, and one of 40 participants
+between 0.1 and 1.3 seconds; the slower figures are requests that use the
+whole budget. A step costs a few microseconds. Sessions of many slots add
+work the budget does not count, because the repacker first works out which
+start slots can give gap-free runs at all, and that grows with two to the
+power of the slot count: about a second at 16 slots per session and
+several seconds at 20, the widest it reasons about (a wider session is
+packed greedily). That work takes memory too: about 100 MB at 18 slots
+per session, 200 MB at 19 and 400 MB at 20, which is past PHP's default
+`memory_limit` of 128 MB, and running out of memory is not an exception a
+caller can catch. Give a wide grid a time limit of your own if the request
+is made while a person waits, and a memory limit that fits it. `composer bench` measures the machine at
+hand.
 
 - **True**: at least one search wanted another step and was refused. A
   larger budget may give a different outcome for the same request. It is
@@ -3255,6 +3286,9 @@ $havePlayed = $context->haveParticipantsPlayed($participants[0], $participants[1
 
 // Get events for a specific participant
 $playerEvents = $context->getEventsForParticipant($participants[0]);
+
+// Get the events two participants both take part in
+$meetings = $context->getEventsBetween($participants[0], $participants[1]);
 
 // Add new events to context (contexts are immutable: this returns a new one)
 $newEvent = new Event([$participants[2], $participants[3]], new Round(1));

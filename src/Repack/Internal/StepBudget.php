@@ -66,6 +66,17 @@ final class StepBudget
     }
 
     /**
+     * Whether a step is left, read without recording anything: for a
+     * caller that wants to know before it does work it may not need, and
+     * that has not yet reached a search the budget could stop. Deciding to
+     * stop a search goes through isExhausted(), which records it.
+     */
+    public function hasStepsLeft(): bool
+    {
+        return $this->remaining > 0;
+    }
+
+    /**
      * Whether the budget has stopped a search at any point: a step was
      * refused, or a search asked whether to go on and was told no. Spending
      * the last step on a search that then finishes without asking for

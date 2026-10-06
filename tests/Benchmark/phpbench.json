@@ -1,0 +1,18 @@
+{
+    "$schema": "../../tools/phpbench/vendor/phpbench/phpbench/phpbench.schema.json",
+    "runner.bootstrap": "bootstrap.php",
+    "runner.path": ".",
+    "runner.file_pattern": "*Bench.php",
+    "runner.attributes": false,
+    "runner.revs": 1,
+    "runner.iterations": 5,
+    "runner.warmup": 1,
+    "runner.timeout": 30,
+    "runner.time_unit": "milliseconds",
+    "runner.php_disable_ini": true,
+    "runner.php_config": {
+        "memory_limit": "512M",
+        "zend.assertions": "-1"
+    },
+    "storage.xml_storage_path": "../../build/phpbench"
+}

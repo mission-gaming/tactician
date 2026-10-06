@@ -641,7 +641,7 @@ heading **Output change (fix)**.
   own, `.github/workflows/mutation.yml`, runs it once a week (a maintainer
   can also start it by hand), apart from the scheduled workflow so that a
   slow or stopped run cannot hide what that one found. The source is
-  mutated in six shards, one `Mutation testing, <shard>` job each, sized to
+  mutated in seven shards, one `Mutation testing, <shard>` job each, sized to
   end well inside a three-hour limit on a standard runner; a test fails
   when a PHP file of the two directories is in no shard or in two. Each
   job enforces no minimum and publishes its shard's score, the counts and
@@ -657,8 +657,120 @@ heading **Output change (fix)**.
   PHPUnit adapter it counts every change as noticed, because it does not
   recognise the result line Pest prints.
 
+- `SchedulingContext::getEventsBetween()` returns the events two
+  participants both take part in, under the keys they have in
+  `getExistingEvents()` and in that order. It is the lookup for a constraint
+  about a pairing's history, and it reads the pair's own events, not the
+  whole schedule.
+- A benchmark suite (`composer bench`, in `tests/Benchmark/`): schedule
+  repack at 24 and 40 participants, round robin with no constraints, with
+  retries and with no solution, and Swiss pairing under a constraint.
+  `composer bench-compare` measures another commit's `src/` and the working
+  tree by turns on one machine and fails when the working tree is more than
+  1.5 times slower; the CI job `Benchmarks` runs it for a pull request
+  against its base. The job is not a required check, and the suite is not
+  part of `composer ci`. The runner (phpbench) is installed by `composer
+  bench-install` from `tools/phpbench/`, with a lock file of its own, and
+  is not a development dependency of the library: it requires an abandoned
+  package, which must not enter the library's `composer.lock`.
+
 ### Changed
 
+- Several operations cost less. **No output changes for any input**: every
+  schedule, pairing, repack outcome (assignments, unplaced events,
+  violations, `isBudgetExhausted()` and `fingerprint()`), exception and
+  diagnostic report is what it was, and a step budget stops every search at
+  the step it stopped at before. The golden fixtures are unchanged. The
+  figures are CPU time on one core, PHP 8.4 without OPcache, before and
+  after; `composer bench` measures your own machine.
+  - **A round robin that cannot be completed.** The scheduler tries up to
+    min(participants, 25) rotated orderings and reports the last. It built
+    a full failure analysis for every one and threw all but the last away;
+    it now builds the one it reports. With `NoRepeatPairings(acrossLegs:
+    true)` over two legs, which no schedule satisfies: 0.71 s to 0.012 s at
+    12 participants, 4.0 s to 0.030 s at 16, 15.5 s to 0.068 s at 20, and
+    45.9 s to 0.13 s at 24. A schedule that succeeds on a later ordering
+    paid for the discarded analyses too: `SeedProtectionConstraint(2,
+    0.25)` at 32 participants over two legs, 0.41 s to 0.013 s.
+    `ScheduleOptimizer` pays it once per sample. This applies to a
+    `ConstraintSet` that holds only `NoRepeatPairings`,
+    `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
+    `SeedProtectionConstraint` objects. An analysis asks the constraints
+    about pairings the ordering never tried, so a constraint that runs
+    code of yours (a callable, a role extractor, a metadata validator, a
+    class or subclass of your own, a subclass of `ConstraintSet`) could
+    keep state or throw, and then answer the next ordering differently.
+    For those every ordering is still analysed and nothing changes,
+    neither the result nor the time.
+  - **Constraints that read the history.** `SchedulingContext` answers its
+    lookups by participant, pairing, round and leg from an index of its
+    events, where every lookup scanned the whole schedule. A check costs
+    the events it concerns, not the length of the schedule.
+    `NoRepeatPairings` over two legs: 0.12 s to 0.009 s at 32 participants
+    and 2.1 s to 0.07 s at 64. `NoRepeatPairings`,
+    `MinimumRestPeriodsConstraint(2)`, `ConsecutiveRoleConstraint::homeAway(3)`
+    and `RoleBalanceConstraint::homeAway(3)` together at 32 participants:
+    0.79 s to 0.063 s. A custom constraint written against the context gets
+    the same lookups, with the same results under the same keys.
+  - **Backtracking round robin** (`RoundRobinOptions(backtracking: true)`).
+    The search changes one path's state in place and extends one context,
+    where every pairing attempt copied the events placed so far. With a
+    constraint that reads the history, spending the whole budget of 200,000
+    attempts went from 18.0 s to 1.8 s (`RoleBalanceConstraint::homeAway(2)`,
+    20 participants). With a constraint that answers in constant time it
+    is unchanged, at 0.5 to 0.8 s: that time is the attempts themselves.
+    The docblock of `BacktrackingRoundRobinGenerator::STEP_BUDGET` said
+    "well under a second" and now states these figures.
+  - **Swiss pairing.** With no constraints, or with a `ConstraintSet` that
+    holds only the four constraint classes named above, the search for a
+    round no longer walks a branch that provably holds no complete pairing:
+    a set of unpaired participants that cannot be split into pairs that
+    have not played and that the constraints accept. It returns the
+    pairing the plain search returns, or fails as it fails, sooner. Under
+    any other constraint the search is the plain one, and asks each
+    constraint exactly what it asked before, in the same order: a branch
+    with no pairing in it may still hold a question your constraint throws
+    on or counts. A state
+    with no pairing left (two halves of 11 that have played every pairing
+    across the halves): 32 s to 0.003 s before `NoValidPairingException`.
+    `SwissScheduler`, 24 participants over all 23 rounds: 1.5 s to 0.018 s.
+    The engine with results recorded, 32 participants over 24 rounds: 4.8 s
+    to 0.05 s; 64 participants over 28 rounds did not finish in two minutes
+    and takes 0.13 s. Without constraints the engine no longer builds a context
+    per candidate, which had cost a copy of every recorded event each time.
+  - **Schedule repack.** The exact packing of a session keeps the number of
+    options of each participant up to date as it matches and releases
+    pairs, where it counted them afresh for every participant at every
+    step, and the load planner works out the parity score of each load
+    shape once. A complete single round robin with the default budget: 24
+    participants, 0.11 s to 0.05 s on eight sessions of four slots and
+    1.1 s to 0.5 s on six sessions of five slots with six pins; 40
+    participants, 1.7 s to 0.6 s on twelve sessions of four slots and 2.1 s
+    to 0.7 s on eight sessions of six slots with ten pins. A request that
+    uses the whole budget still takes half a second to a second or so (the
+    benchmark suite's slowest, 40 participants on sessions of four slots,
+    went from 2.7 s to 1.3 s): the budget counts steps, and each now costs
+    less.
+  - **Repack of sessions with many slots.** The repacker works out which
+    start slots can give gap-free runs with tables that grow with two to
+    the power of the slot count, before it spends a step. With no step
+    left it now decides the one thing it needs (whether any placement
+    exists) without the largest table, and it counts runs of one length
+    where it applied them one by one. Two sessions of 20 slots, 24
+    participants and 100 events with a budget of 1: 28 s and 385 MB to
+    4.2 s and 51 MB. With the default budget a session of 16 slots: 2.7 s
+    to 1.0 s. **Still slow, and left for a release that may change
+    output**: with steps to spend, a session of 17 to 20 slots still builds
+    the full table, in seconds and hundreds of megabytes. Making that work
+    count against the budget would change what a given budget returns, so
+    it is not done here. `IntervalPlacement::MAX_SLOTS` is unchanged.
+- The timing statements in the documentation say what was measured: the
+  cost of the failure analysis (`docs/design/diagnostics-attribution.md`),
+  of the backtracking budget (`docs/design/backtracking-generation.md`), of
+  a repack and of wide sessions (the usage guide, "The Step Budget"), and
+  the performance section of `docs/ARCHITECTURE.md`, which claimed a
+  context cache that did not exist and memory that grows linearly with the
+  number of participants.
 - Six types that were public and unmarked are now `@internal`:
   `Scheduling\BacktrackingRoundRobinGenerator`, the traits
   `Scheduling\EliminationBracketSupport` and

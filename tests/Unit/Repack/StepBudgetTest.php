@@ -37,6 +37,16 @@ describe('StepBudget', function (): void {
         expect($budget->stoppedASearch())->toBeFalse();
     });
 
+    it('says whether a step is left without recording anything', function (): void {
+        $budget = new StepBudget(1);
+        expect($budget->hasStepsLeft())->toBeTrue();
+
+        $budget->consume();
+        expect($budget->hasStepsLeft())->toBeFalse();
+        // Asking this way is not a search being stopped.
+        expect($budget->stoppedASearch())->toBeFalse();
+    });
+
     it('records a refused step', function (): void {
         $budget = new StepBudget(1);
         $budget->consume();

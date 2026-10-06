@@ -27,8 +27,8 @@ constraint-satisfaction problem over perfect matchings:
 
 - **Opt-in, not a silent fallback.** `RoundRobinOptions(backtracking:
   true)` (config key `'backtracking'`). Greedy stays the default: it is
-  fast, its failure latency is predictable, and most configurations never
-  need more. Enabling backtracking changes one thing — configurations the
+  fast, it fails after at most min(participants, 25) orderings and one
+  failure analysis, and most configurations never need more. Enabling backtracking changes one thing — configurations the
   rotations cannot satisfy get an exhaustive (budgeted) search before the
   loud failure.
 - **Greedy first, always.** With backtracking enabled the scheduler still
@@ -39,6 +39,19 @@ constraint-satisfaction problem over perfect matchings:
   budget-exhausted diagnostic, distinct from the search space being
   exhausted (genuinely unsatisfiable). The budget is deliberately not
   configurable in this cut.
+- **The budget counts attempts, not time.** An attempt is one candidate
+  event and one evaluation of the constraints, so what the budget costs
+  depends on the constraints. Measured (PHP 8.4, no OPcache, one core):
+  spending all of it takes 0.5 to 0.8 seconds with a constraint that
+  answers in constant time, at 8 participants and at 24, and 1.8 seconds
+  with `RoleBalanceConstraint::homeAway(2)` at 20 participants. The search
+  keeps one path's state and changes it in place: it does not copy the
+  placed events for every attempt, and a constraint that reads the history
+  reads it through the context's index (see
+  [ARCHITECTURE.md](../ARCHITECTURE.md#performance-considerations)).
+  Before that the same role balance search took 18 seconds. The order of
+  attempts and the count of steps are pinned against the search as first
+  written (`tests/Unit/Scheduling/BacktrackingSearchOrderTest.php`).
 - **Deterministic.** Seat order, opponent order, and orientation order
   are fixed (the optional `Randomizer` shuffles the initial field order,
   matching greedy). The same inputs always produce the same schedule or

@@ -61,6 +61,15 @@
         "sort-packages": true
     },
     "scripts": {
+        "bench": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php tests/bin/run-benchmarks.php"
+        ],
+        "bench-compare": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php tests/bin/compare-benchmarks.php"
+        ],
+        "bench-install": "@composer install --working-dir=tools/phpbench",
         "ci": [
             "@norm",
             "@phpstan",

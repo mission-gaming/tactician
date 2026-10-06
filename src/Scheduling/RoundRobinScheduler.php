@@ -42,6 +42,14 @@ class RoundRobinScheduler implements SchedulerInterface
     /** @var array<int, string> Participant IDs receiving a bye, keyed by round number */
     private array $roundByes = [];
 
+    /**
+     * True while generating a rotation attempt whose failure the retry loop
+     * will discard, under constraints that cannot tell whether they were
+     * asked (ConstraintPurity): such an attempt's exception is never seen by
+     * a caller, so analyzeFailure() does not build the report it would carry.
+     */
+    private bool $failureWillBeDiscarded = false;
+
     public function __construct(
         private ?ConstraintSet $constraints = null,
         private ?Randomizer $randomizer = null
@@ -228,7 +236,17 @@ class RoundRobinScheduler implements SchedulerInterface
      * yields a complete schedule (e.g. seed protection failing only because
      * two seeds happen to meet in an early round). Attempts are deterministic
      * rotations of the input order and bounded, so genuinely unsatisfiable
-     * configurations still fail fast with the diagnostics of the last attempt.
+     * configurations still fail with the diagnostics of the last attempt.
+     * The failure analysis probes every missing pairing in every round and
+     * costs far more than the attempt itself, so it is built once, for the
+     * attempt whose exception is thrown, and not for the ones discarded here.
+     *
+     * That holds for a constraint set ConstraintPurity knows. The analysis
+     * asks the constraints about pairings the attempt never tried, so a
+     * constraint of the caller's that keeps state, or that throws for a
+     * pairing it cannot judge, answers the next attempt differently once it
+     * has been through an analysis. For such a set every attempt is still
+     * analysed, as it always was, and the result is what it always was.
      *
      * @param array<Participant> $participants
      * @return array<Event>
@@ -246,6 +264,8 @@ class RoundRobinScheduler implements SchedulerInterface
             ? 1
             : min(count($participants), self::MAX_GENERATION_ATTEMPTS);
 
+        $discardedFailuresNeedNoAnalysis = ConstraintPurity::isKnown($this->constraints);
+
         for ($attempt = 0; $attempt < $maxAttempts; ++$attempt) {
             $ordered = $attempt === 0
                 ? $participants
@@ -254,6 +274,7 @@ class RoundRobinScheduler implements SchedulerInterface
             // Reset diagnostics so a successful retry does not report stale
             // violations, and a failure reports only the final attempt.
             $this->clearViolations();
+            $this->failureWillBeDiscarded = $discardedFailuresNeedNoAnalysis && $attempt < $maxAttempts - 1;
 
             try {
                 return $this->generateIntegratedSchedule($ordered, $strategy, $plan, $roleAssignment);
@@ -261,6 +282,8 @@ class RoundRobinScheduler implements SchedulerInterface
                 if ($attempt === $maxAttempts - 1) {
                     throw $exception;
                 }
+            } finally {
+                $this->failureWillBeDiscarded = false;
             }
         }
 
@@ -383,12 +406,16 @@ class RoundRobinScheduler implements SchedulerInterface
      * were actually generated. Only meaningful with constraints
      * configured; unconstrained generation cannot fail on pairings.
      *
+     * Null as well for a rotation attempt the retry loop goes on from, when
+     * the constraints cannot tell (see generateScheduleWithRetries()): that
+     * exception is caught and dropped, and nothing reads its report.
+     *
      * @param array<Participant> $participants
      * @param array<Event> $partialEvents
      */
     private function analyzeFailure(array $participants, RoundRobinPlan $plan, array $partialEvents): ?DiagnosticReport
     {
-        if ($this->constraints === null) {
+        if ($this->constraints === null || $this->failureWillBeDiscarded) {
             return null;
         }
 

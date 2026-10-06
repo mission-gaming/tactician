@@ -13,7 +13,10 @@ declare(strict_types=1);
 
 $finder = PhpCsFixer\Finder::create()
     ->in(__DIR__)
-    ->exclude(['vendor'])
+    // `build/` is ignored by Git and holds what the tools write. The
+    // benchmark comparison keeps another commit's `src/` there
+    // (`build/base/src`), which is not this commit's code to check or fix.
+    ->exclude(['vendor', 'build'])
     ->name('*.php')
     ->notName('*.blade.php');
 

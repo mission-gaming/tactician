@@ -53,11 +53,13 @@ jobs:
       matrix:
         include:
           - shard: round robin
-            path: src/Scheduling/RoundRobinScheduler.php,src/Scheduling/RoundRobinOptions.php,src/Scheduling/SchedulerInterface.php,src/Scheduling/SchedulerOptions.php
+            path: src/Scheduling/RoundRobinScheduler.php,src/Scheduling/RoundRobinOptions.php,src/Scheduling/SchedulerInterface.php,src/Scheduling/SchedulerOptions.php,src/Scheduling/ConstraintPurity.php
           - shard: pot draw and context
-            path: src/Scheduling/PotDrawScheduler.php,src/Scheduling/PotDrawOptions.php,src/Scheduling/SchedulingContext.php
+            path: src/Scheduling/PotDrawScheduler.php,src/Scheduling/PotDrawOptions.php,src/Scheduling/SchedulingContext.php,src/Scheduling/EventIndex.php
           - shard: Swiss and backtracking
             path: src/Scheduling/SwissPairingEngine.php,src/Scheduling/SwissScheduler.php,src/Scheduling/SwissOptions.php,src/Scheduling/BacktrackingRoundRobinGenerator.php
+          - shard: Swiss round search
+            path: src/Scheduling/SwissRoundSearch.php,src/Scheduling/PerfectMatching.php
           - shard: elimination
             path: src/Scheduling/DoubleEliminationEngine.php,src/Scheduling/SingleEliminationEngine.php,src/Scheduling/EliminationBracketSupport.php,src/Scheduling/EliminationOptions.php
           - shard: repack load planning

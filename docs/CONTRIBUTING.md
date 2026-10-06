@@ -58,6 +58,66 @@ not a required check: a new advisory against a development tool shows as a
 failed job on every pull request, and does not stop the others from merging
 while the tool is updated.
 
+## Benchmarks
+
+The benchmark suite (`tests/Benchmark/`, run by
+[phpbench](https://phpbench.readthedocs.io/)) times the operations whose
+cost has mattered: schedule repack at 24 and 40 participants, a round robin
+with no constraints, one that needs retries and one that cannot be
+completed, and Swiss pairing under a constraint. A timing depends on the
+machine, so the suite is not part of the gate.
+
+phpbench is not one of the library's development dependencies. It is
+installed from `tools/phpbench/`, which has a `composer.json` and a
+`composer.lock` of its own, because it requires a package that is abandoned
+with no replacement, and the weekly workflow fails when the library's lock
+file holds an abandoned package
+([`tools/phpbench/README.md`](../tools/phpbench/README.md)). `composer
+install` therefore does not install it, and the two benchmark scripts say so
+when it is missing. The benchmark classes name nothing of phpbench: how a
+subject is run (one call at a time, five iterations, a time limit) is in
+`tests/Benchmark/phpbench.json`, so the gate analyses the classes without
+the runner.
+
+```bash
+# Install the benchmark runner (once, and after its lock file changes)
+composer bench-install
+
+# Time every benchmark on this machine
+composer bench
+
+# Compare the working tree with another commit, on this machine
+mkdir -p build/base
+git archive origin/main src | tar -x -C build/base
+composer bench-compare -- build/base/src
+```
+
+`composer bench-compare` runs the benchmarks against the copy of `src/` it
+is given and against the working tree, by turns, three times each. It
+compares the fastest revolution each side managed, and fails when the
+working tree takes more than 1.5 times as long. Both sides are measured on
+one machine minutes apart, and the fastest of many runs is the one least
+disturbed by whatever else the machine was doing. That takes most of the
+noise out, not all of it: on a machine that is busy throughout, two runs of
+the same code have differed by nearly the margin, so run a flagged
+benchmark again before believing it. A margin and a number of rounds may
+follow the directory. A benchmark that throws or times out on the working
+tree fails the comparison, whether or not the other side could run it; one
+that only the other side cannot run is listed as having no baseline.
+
+In CI the same comparison is the `Benchmarks` job: a pull request against
+its base, on one runner. That job is not a required check. If it fails, look
+at the table it prints before anything else: a benchmark that takes longer
+because it now does more is a result to explain in the pull request, not a
+defect.
+
+When a change is about cost, measure it: add a benchmark for the operation
+if there is none, and state the before and after figures in the changelog
+entry. Where a test can count work instead of timing it (the number of
+constraint evaluations, of searches started), prefer that: a count is the
+same on every machine and belongs in the gate
+(`tests/Feature/FailureAnalysisCostTest.php` is an example).
+
 A weekly scheduled workflow (`.github/workflows/scheduled.yml`) runs the gate
 against dependencies resolved afresh, without the lock file, and the test
 suite against the next PHP version. It does not run on pull requests. If it fails,

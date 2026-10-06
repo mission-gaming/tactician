@@ -50,6 +50,9 @@ play completes. The `src/Stage/` family:
 Formats whose later rounds depend on results cannot be generated whole; these
 engines resolve tournament state on every call:
 - **SwissPairingEngine**: A `StageEngineInterface` implementation — standings-aware Monrad pairing from the recorded `StageState`, with repeat avoidance, bye rotation (byes credited as wins), home/away balancing, withdrawal handling, constraint support, and optional randomization within score groups (equal ranking values, and win/draw/loss totals apart only by the rounding of a float sum)
+- **SwissRoundSearch** (internal): the search that pairs one round for the engine. It returns what a plain depth-first search over opponents in pairing order returns. With no constraints, or with a constraint set `ConstraintPurity` knows, it skips the branches that provably hold no complete pairing: a set of unpaired participants with no perfect matching among the pairs still open to it (`PerfectMatching`, Edmonds' algorithm). A round with no dead end is paired without that test; a search that is still running after a fixed number of candidates is started again with it. Under any other constraint set it is the plain search and nothing else. The class comment gives the proof, and `tests/Unit/Scheduling/SwissRoundSearchTest.php` holds it to the unpruned search on histories of four and of six participants
+- **ConstraintPurity** (internal): says whether a constraint set holds only constraints that cannot tell how often, or in which order, they are asked: a `ConstraintSet` itself, holding objects of exactly `NoRepeatPairings`, `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and `SeedProtectionConstraint`. Nothing states that a constraint is a predicate, so a constraint that runs code of the caller's may keep state or throw. The two shortcuts that ask constraints differently (the Swiss search above, and the round-robin retry loop, which builds no failure analysis for an ordering it goes on from) are taken only for a set this class knows
+- **EventIndex** (internal): the lookup maps behind `SchedulingContext`'s queries by participant, pairing, round and leg
 - **SingleEliminationEngine**: `StageEngineInterface` preset — position-folded brackets with byes to top positions, round labels, fixed or re-seeded paths, and one- or two-legged ties (`EliminationOptions`)
 - **DoubleEliminationEngine**: `StageEngineInterface` preset — winners/losers routes with dropper rematch deferral, grand final, and optional bracket reset; the same graph an application could compose by hand
 - All engines emit **RoundPairing** values and finish as a **StageOutcome** (see the stage model); group stages are compositions (PoolDistributor + per-pool stages + selectors), not an engine
@@ -298,9 +301,9 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
 ### Integration Features
 
 #### Automatic Integration
-- All schedulers automatically include validation without performance impact
+- All schedulers validate what they generate: one pass over the events against the plan
 - Validation occurs throughout generation process, not just at the end
-- Fail-fast behavior prevents wasted computation on impossible schedules
+- A constrained round robin that cannot be completed is known to have failed only when the last rotated ordering has been tried; the failure analysis is then built once, for that ordering, when the constraints are ones `ConstraintPurity` knows (for a constraint that runs code of the caller's it is still built for every ordering, because the analysis asks the constraint questions that could change its later answers)
 
 #### Diagnostic Reporting
 - Detailed failure analysis with root cause identification
@@ -364,10 +367,10 @@ well under a second) with several performance features:
 - **Immutable Data Structures**: Readonly value objects prevent unexpected mutations
 
 ### Constraint Optimization
-- **Early Termination**: Constraints fail-fast when violations detected
-- **Context Caching**: SchedulingContext maintains efficient event lookups
+- **Early Termination**: A constraint set stops at the first constraint that rejects an event
+- **Indexed context**: `SchedulingContext` answers "which events hold this participant, this pair, this round, this leg" from an index of its event list (`EventIndex`), built on first use and extended, not rebuilt, by `withEvents()`. A lookup costs the events it returns. Before the index every lookup scanned the whole schedule, so one check cost as much as the schedule was long: `NoRepeatPairings` over two legs took 0.12 s at 32 participants and 2.1 s at 64, and takes 0.009 s and 0.07 s now (PHP 8.4, no OPcache, one core). `tests/Unit/Scheduling/EventIndexTest.php` holds every lookup to a scan
 - **Incremental Validation**: Constraints validated during generation, not post-processing
-- **Minimal Overhead**: Validation integrated without performance impact
+- **Failure analysis once**: a round robin that fails analyses the last ordering it tried, and no other (see [diagnostics-attribution.md](design/diagnostics-attribution.md))
 
 ### Algorithm Efficiency
 - **Circle Method**: Mathematically optimal round-robin generation (O(n²) complexity)
@@ -377,7 +380,8 @@ well under a second) with several performance features:
 
 ### Scalability Characteristics
 - **Target Size**: Tested into the hundreds of participants (tens of thousands of events)
-- **Memory Usage**: Linear memory growth with participant count
+- **Memory Usage**: Grows with the number of events, which is quadratic in the number of participants (a 200-participant, two-leg round robin peaks at about 27 MB)
+- **Measured, not assumed**: `composer bench` runs the benchmark suite (`tests/Benchmark/`) on the machine at hand; the CI job `Benchmarks` compares a pull request with its base
 - **Generation Time**: Sub-second generation for typical tournament sizes
 - **Constraint Complexity**: Performance scales with constraint complexity, not just participant count
 
