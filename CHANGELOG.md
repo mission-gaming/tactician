@@ -118,7 +118,9 @@ The installed package is smaller: it now carries only `src/`, `composer.json`,
   one branch and commit convention.
 - The repack scenario test fixture is now a synthetic instance.
 - The CI workflow runs with least-privilege permissions and pinned actions, and
-  Dependabot keeps the actions up to date.
+  Dependabot keeps the actions and the development dependencies up to date.
+- The development tools locked in `composer.lock` are at newer minor and patch
+  releases. The lock file is not part of the installed package.
 - `AGENTS.md` is now the single guide for contributors and AI coding agents,
   corrected against the code. `docs/ROADMAP.md` marks every phase as shipped,
   lists schedule repacking, and gains sections for known limitations and
@@ -145,9 +147,8 @@ The installed package is smaller: it now carries only `src/`, `composer.json`,
 
 - Three development requirements: `fakerphp/faker`, which nothing used, and
   the direct requirements on `nunomaduro/collision` and `phpunit/phpunit`,
-  which Pest already requires. The installed versions of the last two are
-  unchanged. The library has no production dependencies, so consumers are not
-  affected.
+  which Pest already requires and still installs. The library has no
+  production dependencies, so consumers are not affected.
 - The editor-specific agent rule files and the session-notes directory at the
   repository root. Their decisions that still hold are now in `AGENTS.md`,
   `docs/ROADMAP.md`, and two decision records in the new `docs/adr/`; the
