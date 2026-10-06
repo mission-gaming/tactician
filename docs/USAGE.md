@@ -45,6 +45,7 @@ anything else that competes.
 | **Result** | The recorded outcome of a played event: a winner or a draw, with optional per-participant scores. |
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
+| **Tied set** | Two or more adjacent entries of a standings table that are **level**: equal on the ranking value, on every configured tiebreaker, on score difference and on scores-for, so that only the final fallback (seed, then label, then ID) orders them. `Standings::getTiedSets()` reports each one (`TiedSet`) with the positions it spans. |
 | **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
 | **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out, a `StageOutcome` when play completes. Stages compose via pools and progression selectors. |
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
@@ -66,11 +67,18 @@ anything else that competes.
 | **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach. Greedy always runs first; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
 | **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — minimum rest in hours (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
 | **Session** | One match night (or day) on a repack grid: an ordered position in the grid's explicit session list, holding a fixed number of slots. Deliberately not a "round" — a round is a set of concurrent events, a session is a container of consecutive slots. |
-| **Session grid** | The declarative position model repacking assigns onto (`SessionGrid`): an explicit ordered list of zoned session starts, a slot interval, a per-session slot count (overridable — final sessions often run deeper), and a per-slot concurrency capacity. Irregular by design, unlike `TimelineDefinition`'s cadence. |
+| **Session grid** | The declarative position model repacking assigns onto (`SessionGrid`): an explicit ordered list of zoned session starts, a slot interval, a per-session slot count (overridable — final sessions often run deeper), and a per-slot concurrency capacity. Irregular by design, unlike `TimelineDefinition`'s cadence. A grid built this way is instant-based; see **Shape-only grid** for the other form. |
+| **Position** | One assignable place on a session grid: a 0-based session and a 0-based slot within it. A position hosts as many concurrent events as the grid's capacity allows. |
+| **Position ordinal** | A position's 0-based index when the positions of a grid are counted in grid order, session by session and slot by slot (`SessionGrid::ordinalOf()`, reversed by `positionOf()`). What an application indexes its own slot records by. |
+| **Shape-only grid** | A session grid that knows which positions exist and not when they are (`SessionGrid::shapeOnly()`): a session count, the slot counts and a capacity. For an application that keeps its own times. It is repacked exactly as the instant-based grid of the same shape; its assignments carry no kickoff, and every accessor that would return a time throws an `UnavailableValueException`. |
+| **Unbounded capacity** | A session grid whose slots host any number of concurrent events (`capacityPerSlot: null`; `'unbounded'` in plain data), so that the only limit is that no participant is in two events at once. Not the default, which is 1. |
 | **Repack** | Repairing an existing schedule (`ScheduleRepacker`): assigning every movable event a (session, slot) position so nobody is double-booked and each participant's events within a session run back to back where possible. Returns a `RepackOutcome` carrying the schedule plus itemised violations rather than throwing. |
 | **Movable event** | An existing event the repack may place (`MovableEvent`): an opaque caller-supplied stable id and two participants. The movable set is a multigraph — the same pairing may occur more than once. |
 | **Pinned event** | An event already on the grid that must not move (`PinnedEvent`). It occupies its position for both participants, consumes slot capacity, and may name participants absent from the movable set. Which events are pinned is caller policy about historical provenance. |
 | **Repack violation** | One structured compromise in a repack outcome (`RepackViolation`): double-booking (audited, never produced), unplaced events, interior gaps, late starts, exceeded capacity — data with participant/session/magnitude, never prose. The caller renders its own messages and decides what is fatal. |
+| **Unplaced event** | A movable event the repack gave no position (`UnplacedEvent`), with the reason (`UnplacedReason`). Every movable event is either assigned or unplaced. |
+| **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`), shared by all of its searches. Steps, not time, so the result is the same on every machine. `RepackOutcome::isBudgetExhausted()` says whether the budget stopped a search. |
+| **Outcome fingerprint** | A short string identifying what a repack outcome holds (`RepackOutcome::fingerprint()`): equal for the same assignments, unplaced events and violations, different when any differs, and the same on every PHP version and platform. For detecting that a plan computed again is not the plan that was shown. |
 | **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. Where the two events also exceed the capacity of the slot, the request reports that instead (`PinCapacityExceeded`). |
 | **Configuration error reason** | The kind of mistake behind an `InvalidConfigurationException`, as a case of the `InvalidConfigurationReason` enum (`getReason()`). It says what was wrong, not which component found it, and its backing string is a stable identifier. Code branches on the reason and never on the message text. See [Configuration Errors](#configuration-errors). |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
@@ -552,6 +560,79 @@ construction via `WinDrawLossRanking::fromArray(['win' => 3, 'draw' => 1,
 also available. Ties beyond the configured tiebreakers fall back to score
 difference, score for, seed, and natural-order label comparison. Each event
 may have at most one result; recording two results for the same event throws.
+
+### Tied sets
+
+A standings table gives every entry a position of its own, also when no
+result separates two entries: the calculator then orders them by seed, by
+label and finally by ID, so that the same results always give the same table.
+That order says nothing about how the participants performed. An application
+that advances, relegates or seeds by position needs to know where it applies,
+and `Standings::getTiedSets()` reports it:
+
+```php
+// Before any result exists nothing separates the four participants
+$unplayed = $calculator->calculate($participants, []);
+
+$advancing = 2;
+foreach ($unplayed->getTiedSets() as $tiedSet) {
+    $labels = array_map(
+        fn(Participant $participant): string => $participant->getLabel(),
+        $tiedSet->getParticipants()
+    );
+    echo "Positions {$tiedSet->getFirstPosition()} to {$tiedSet->getLastPosition()}: "
+        . implode(', ', $labels) . "\n";
+
+    // A set that starts at or above the cut and ends below it
+    if ($tiedSet->getFirstPosition() <= $advancing && $tiedSet->getLastPosition() > $advancing) {
+        echo "The results do not decide who takes the top {$advancing} positions\n";
+    }
+}
+
+// In the table of the three results above, results decide every position
+echo count($standings->getTiedSets()) . " tied sets\n";
+```
+
+That prints:
+
+```
+Positions 1 to 4: Alice, Bob, Carol, Dave
+The results do not decide who takes the top 2 positions
+0 tied sets
+```
+
+Two entries are **level** when every figure the calculator compares before
+the fallback is equal: the ranking value, the value of each configured
+tiebreaker, the score difference and scores-for
+(`StandingEntry::isLevelWith()` is that comparison). A **tied set**
+(`TiedSet`) is a group of two or more level entries, as large as it can be.
+In a table the calculator built, level entries are always next to each other
+(a `Standings` constructed by hand is read in the order it was given, and
+only adjacent level entries form a set), so a set spans the
+consecutive positions from `getFirstPosition()` to `getLastPosition()`, and
+`getEntries()` and `getParticipants()` list its members in table order. The
+sets are returned in table order; a table with two separate ties returns two
+sets, each with its own positions, and a table in which results decide every
+position returns an empty list. An entry is never in two sets.
+
+A tie that a configured tiebreaker breaks is not reported: add a tiebreaker
+to the calculator and the entries it separates leave the set. The record
+(played, wins, draws, losses) is not compared unless a tiebreaker compares
+it, because the table is not ordered by it.
+
+"Equal" means the same number, with no tolerance, because that is the
+comparison that orders the table: two entries are reported as tied exactly
+when the calculator found nothing to order them by. The built-in rankings
+(3/1/0 and 1/½/0) and tiebreakers add whole numbers and halves, which are
+exact. A custom ranking value such as 0.1 is not: three wins at 0.1 add up to
+slightly more than one draw at 0.3, so the table places the first entry above
+the second and does not report them as tied. Use values with an exact binary
+form (whole numbers, halves, quarters) where ties must be recognised.
+
+Reading the tied sets changes nothing in the table: the entries, their order
+and `getPosition()` are what they were. Deciding a tie (a play-off, a drawing
+of lots, a shared rank) is the application's rule; apply it to the entrant
+list passed to the next stage, where position is authoritative.
 
 ## Swiss Tournaments
 
@@ -1200,6 +1281,593 @@ it and are the caller's to filter before the request — collision is
 exact position identity, by design; there is no fuzzy time-overlap
 detection.
 
+### Grids Without Instants
+
+`SessionGrid` as built above is **instant-based**: it knows when every
+position is, and each assignment carries a UTC kickoff. An application
+that keeps its times in another form (local wall-clock times, a list of
+its own slot records) has no instants to give and no use for the ones it
+would get back. For that, `SessionGrid::shapeOnly()` builds a
+**shape-only grid**: how many sessions, how many slots each, and the
+capacity.
+
+```php
+$shape = SessionGrid::shapeOnly(
+    sessions: 2,
+    slotsPerSession: 3,
+    slotsPerSessionOverrides: [1 => 4],
+    capacityPerSlot: 3
+);
+
+$shaped = (new ScheduleRepacker())->repack(new RepackRequest(
+    $request->getMovableEvents(),
+    $request->getPinnedEvents(),
+    $shape
+));
+
+foreach ($shaped->getAssignments() as $assignment) {
+    $ordinal = $shape->ordinalOf($assignment->getSession(), $assignment->getSlot());
+    echo "{$assignment->getEventId()}: session {$assignment->getSession()}, "
+        . "slot {$assignment->getSlot()}, ordinal {$ordinal}\n";
+}
+// e03: session 0, slot 1, ordinal 1
+// e04: session 0, slot 2, ordinal 2
+
+echo json_encode($shape->positionOf(5)), "\n";   // {"session":1,"slot":2}
+echo json_encode($shape->positionOf(7)), "\n";   // null: the grid has 7 positions, 0 to 6
+echo json_encode($shape->toArray()), "\n";
+// {"session_count":2,"slots_per_session":3,"capacity_per_slot":3,"slots_per_session_overrides":{"1":4}}
+```
+
+The repacker reads positions and nothing else, so a shape-only grid gets
+every event the same `(session, slot)` as the instant-based grid of the
+same shape. What differs is what the library can say about time:
+
+- `hasInstants()` is false, and `getSessionStart()`, `getSlotInterval()`,
+  `getSlotTime()` and `positionOf()` given an instant throw an
+  `UnavailableValueException`. A shape-only grid never invents an
+  instant.
+- An assignment has no kickoff: `SlotAssignment::hasKickoff()` is false,
+  `getKickoff()` throws the same exception, and `toArray()` carries
+  `'kickoff' => null`.
+- The exception reports a mistake in the calling code, not in its data,
+  and is not one to catch: code that may be given either form of grid
+  asks `hasInstants()` or `hasKickoff()` first. It extends
+  `\LogicException`, so code that reads `getKickoff()` from the
+  assignments of an instant-based grid has nothing new to handle. See
+  [Exception Hierarchy](#exception-hierarchy).
+- As plain data the grid has `session_count` in place of `sessions`,
+  `timezone` and `slot_interval`. `fromArray()` reads the shape-only form
+  only when there is no `sessions` key; a shape-only grid that also gives
+  `timezone` or `slot_interval` is rejected (`IncompatibleOptions`). An
+  instant-based grid serializes exactly as it did before shape-only grids
+  existed.
+
+<!-- snippet: throws="MissionGaming\Tactician\Exceptions\UnavailableValueException" -->
+```php
+$shape->getSlotTime(0, 0);
+// A shape-only grid has no instants, so it cannot give a slot time.
+// Check hasInstants() before asking for a time.
+```
+
+Two lookups turn a position into something an application can index its
+own records by, and back. They work on both forms of grid. A position's
+**ordinal** is its 0-based index in grid order, session by session and
+slot by slot: `ordinalOf($session, $slot)` returns it (and throws
+`PositionOutOfRange` for a position the grid does not have), and
+`positionOf($ordinal)` returns `['session' => ..., 'slot' => ...]`, or
+null when no position has that ordinal. On an instant-based grid
+`positionOf()` also takes an instant and returns the position whose slot
+time it is, or null:
+
+```php
+$halfPastEight = new DateTimeImmutable('2026-08-19 20:30', new DateTimeZone('Europe/London'));
+
+echo json_encode($grid->positionOf($halfPastEight)), "\n";   // {"session":1,"slot":1}
+echo $grid->ordinalOf(1, 1), "\n";                           // 4
+var_dump($grid->hasInstants());                              // bool(true)
+```
+
+The instants are compared, so the timezone the argument is written in
+does not matter. Where one session runs on past the start of the next,
+two positions can share an instant, and the first in grid order is
+returned.
+
+### Unbounded Capacity
+
+`capacityPerSlot` is how many events may share one slot, and its default
+is 1: one event at a time. That default is right for one shared resource
+and wrong for events that need nothing shared, where the only limit is
+that no participant is in two events at once. Pass `null` for
+**unbounded capacity** (`'capacity_per_slot' => SessionGrid::UNBOUNDED`,
+the string `'unbounded'`, in plain data). It is the way to say "no
+limit": do not pass a very large integer for that, because the planner
+multiplies the capacity by the number of slots.
+
+```php
+$events = [
+    new MovableEvent('e03', $celtic, $livorno),
+    new MovableEvent('e04', $celtic, $rayo),
+    new MovableEvent('e05', $celtic, $athletic),
+    new MovableEvent('e06', $livorno, $rayo),
+    new MovableEvent('e07', $athletic, $rayo),
+];
+$pins = [new PinnedEvent('e01', $celtic, new Participant('napoli', 'Napoli'), 0, 1)];
+
+// One session of three slots. With the default capacity of 1 the pin
+// fills a slot, and the grid has two positions for five events
+$crowded = (new ScheduleRepacker())->repack(
+    new RepackRequest($events, $pins, SessionGrid::shapeOnly(sessions: 1, slotsPerSession: 3))
+);
+echo count($crowded->getAssignments()), ' placed, ', count($crowded->getUnplaced()), " unplaced\n";
+// 2 placed, 3 unplaced
+
+$open = SessionGrid::shapeOnly(sessions: 1, slotsPerSession: 3, capacityPerSlot: null);
+$roomy = (new ScheduleRepacker())->repack(new RepackRequest($events, $pins, $open));
+echo count($roomy->getAssignments()), ' placed, ', count($roomy->getUnplaced()), " unplaced\n";
+// 4 placed, 1 unplaced
+
+var_dump($open->hasUnboundedCapacity());   // bool(true)
+var_dump($open->getCapacityLimit());       // NULL
+echo $open->toArray()['capacity_per_slot'], "\n";   // unbounded
+```
+
+Unbounded capacity removes the limit on a slot and nothing else:
+
+- The grid as a whole can no longer be too small, so the outcome never
+  carries a `CapacityExceeded` with a null participant.
+- A participant can still have more events than free positions, which no
+  capacity changes. That is the one event still unplaced above: Celtic
+  has three events and, with the pin, two free slots. It is reported as a
+  `CapacityExceeded` naming the participant.
+- Any number of events may be pinned at one position.
+- `getCapacityPerSlot()` returns an integer, and an unbounded grid has
+  none to return: it throws an `UnavailableValueException`.
+  `getCapacityLimit()` returns the integer or null and never throws; code
+  that may be given either kind of grid reads that, or asks
+  `hasUnboundedCapacity()` first.
+
+A missing or null `capacity_per_slot` in plain data still means 1, as it
+always has. That is why the plain-data form of unbounded is a word.
+
+### Reading the Outcome
+
+`getViolations()` returns every compromise as a `RepackViolation`, each
+with a `getKind()` (a `ViolationKind` case) and a `toArray()`. There are
+five kinds, each a class of its own with getters for what it is about.
+`getViolationsOfKind(ViolationKind $kind)` filters the list and returns
+it typed as the interface. The five accessors named after the kinds
+return the same lists typed as their classes, so the getters can be read
+without an `instanceof` check:
+
+```php
+foreach ($crowded->getCapacityExceededViolations() as $violation) {
+    $who = $violation->getParticipant()?->getLabel() ?? 'the grid';
+    echo "{$who}: {$violation->getDemand()} needed, {$violation->getCapacity()} available, "
+        . "{$violation->getShortfall()} short\n";
+}
+// Celtic: 3 needed, 2 available, 1 short
+// the grid: 4 needed, 2 available, 2 short
+
+foreach ($crowded->getLateStartViolations() as $violation) {
+    echo "{$violation->getParticipant()->getLabel()} starts at slot {$violation->getFirstSlot()} "
+        . "of session {$violation->getSession()}\n";
+}
+// Rayo Vallecano starts at slot 2 of session 0
+
+foreach ($crowded->getUnplaced() as $unplaced) {
+    $because = $unplaced->getParticipant()?->getLabel() ?? 'nobody in particular';
+    echo "{$unplaced->getEventId()}: {$unplaced->getReason()->value} ({$because})\n";
+}
+// e05: participant_over_capacity (Celtic)
+// e06: no_slot_available (nobody in particular)
+// e07: no_slot_available (nobody in particular)
+
+echo count($crowded->getEventUnplacedViolations()), "\n";      // 3
+echo count($crowded->getContiguityBrokenViolations()), "\n";   // 0
+echo count($crowded->getParticipantDoubleBookedViolations()), "\n";   // 0
+```
+
+| Kind (`ViolationKind`) | Class and typed accessor | What it reports |
+|---|---|---|
+| `ParticipantDoubleBooked` (`participant_double_booked`) | `ParticipantDoubleBooked`, `getParticipantDoubleBookedViolations()` | A participant at one position twice. The repacker never produces it; the final audit checks for it so that its absence is a fact. |
+| `EventUnplaced` (`event_unplaced`) | `EventUnplaced`, `getEventUnplacedViolations()` | A movable event that received no position. One for each entry of `getUnplaced()`, so code that reads violations alone misses nothing. |
+| `ContiguityBroken` (`contiguity_broken`) | `ContiguityBroken`, `getContiguityBrokenViolations()` | A participant whose slots in one session have a gap between them. |
+| `LateStart` (`late_start`) | `LateStart`, `getLateStartViolations()` | A participant whose first slot in a session is not the session's first. |
+| `CapacityExceeded` (`capacity_exceeded`) | `CapacityExceeded`, `getCapacityExceededViolations()` | More events than positions: for a participant, or (null participant) for the grid. |
+
+`ContiguityBroken` and `LateStart` are reported for a participant and a
+session only where the participant has a movable event in that session; a
+session holding only that participant's pins is history the repack did
+not arrange. `isClean()` is true when there is no violation of any kind
+and nothing unplaced, late starts included.
+
+An unplaced event (`UnplacedEvent`) has a reason, an `UnplacedReason`
+case: `ParticipantOverCapacity` (`participant_over_capacity`) when one of
+its participants has more events than free positions, and then
+`getParticipant()` is that participant; `NoSlotAvailable`
+(`no_slot_available`) when no position on the whole grid had capacity
+left with both participants free, and then `getParticipant()` is null.
+
+### The Step Budget
+
+Every search the repacker runs spends from one budget,
+`RepackOptions(stepBudget: ...)`, counted in search steps, not in time:
+the same request and budget give the same outcome on every machine. When
+the budget runs out the repacker stops searching and returns what it has
+reached, with everything that is left reported as usual.
+`isBudgetExhausted()` says whether that happened:
+
+```php
+var_dump($outcome->isBudgetExhausted());   // bool(false)
+
+$starved = (new ScheduleRepacker())->repack(new RepackRequest(
+    $request->getMovableEvents(),
+    $request->getPinnedEvents(),
+    $grid,
+    new RepackOptions(stepBudget: 1)
+));
+var_dump($starved->isBudgetExhausted());   // bool(true)
+```
+
+- **True**: at least one search wanted another step and was refused. A
+  larger budget may give a different outcome for the same request. It is
+  not a promise of a better one: the request may have no better packing,
+  and the searches are heuristics.
+- **False**: the budget stopped nothing, so a larger budget gives the
+  same outcome. It does not mean the outcome is the best possible; the
+  searches have limits of their own that the budget does not lift.
+
+The flag says nothing about violations: an outcome can be clean with the
+flag true, and can carry violations with it false. It is not part of
+`toArray()` or of the fingerprint, because it describes how the outcome
+was reached and not the outcome.
+
+### Outcome Fingerprints
+
+`fingerprint()` returns a short string that is equal for two outcomes
+holding the same assignments, unplaced events and violations, and
+different when any of them differs. Its use is detecting that a plan has
+changed: show an operator a preview, keep its fingerprint, and when the
+operator confirms, repack again and compare before writing anything.
+
+```php
+echo $outcome->fingerprint(), "\n";
+// v1:170a5b5c2b8386a00fa959d26afcd76fab43b8521e08106b3bdbbf2334dbc945
+
+$recomputed = (new ScheduleRepacker())->repack($request);
+var_dump($recomputed->fingerprint() === $outcome->fingerprint());   // bool(true)
+
+// The same positions with no kickoffs are not the same plan
+var_dump($shaped->fingerprint() === $outcome->fingerprint());       // bool(false)
+```
+
+The format is a contract. A fingerprint is a scheme, a colon and 64
+lowercase hexadecimal digits: `v1:` (`RepackOutcome::FINGERPRINT_SCHEME`)
+followed by the SHA-256 of the canonical document below. A change to the
+canonical document is a new scheme, so compare two fingerprints only when
+their schemes are equal, and recompute a stored fingerprint of another
+scheme.
+
+The canonical document of scheme `v1` is these bytes:
+
+```
+"tactician.repack.outcome.v1\n" SET(assignments) SET(unplaced) SET(violations)
+
+SET(records)  = "l" COUNT ":" the VALUE of every record, in ascending byte order ";"
+VALUE(null)   = "n;"
+VALUE(bool)   = "b1;" for true, "b0;" for false
+VALUE(int)    = "i" DECIMAL ";"
+VALUE(float)  = "f" the 16 hexadecimal digits of the IEEE 754 double, big-endian ";"
+VALUE(string) = "s" LENGTH-IN-BYTES ":" the bytes ";"
+VALUE(list)   = "l" COUNT ":" the VALUE of every item, in the list's order ";"
+VALUE(map)    = "m" COUNT ":" VALUE(key) VALUE(item) for every entry,
+                the entries in ascending byte order ";"
+```
+
+Each of the three is a set of records, and a record is a map with exactly
+these keys:
+
+| Record | Keys |
+|---|---|
+| An assignment | `event_id`, `session`, `slot`, `kickoff` |
+| An unplaced event | `event_id`, `reason`, `participant` |
+| A `ParticipantDoubleBooked` | `kind`, `participant`, `session`, `slot`, `event_ids` |
+| An `EventUnplaced` | `kind`, `event_id`, `reason`, `participant` |
+| A `ContiguityBroken` | `kind`, `participant`, `session`, `gap_slots`, `occupied_slots` |
+| A `LateStart` | `kind`, `participant`, `session`, `first_slot` |
+| A `CapacityExceeded` | `kind`, `participant`, `demand`, `capacity`, `shortfall` |
+
+Each key holds what `toArray()` of the record holds under it: an event ID
+as a string, a session, a slot and a count as integers, a participant as
+its ID or null, a kind and a reason as their backing strings, the lists
+as lists, and a kickoff as the string `2026-08-12T19:00:00Z` or null. The
+keys are named because they are the scheme: a key that a `toArray()`
+gains in a later version is not part of scheme `v1` and does not change a
+`v1` fingerprint.
+
+`COUNT`, `LENGTH-IN-BYTES` and `DECIMAL` are ASCII decimal digits with no
+leading zeros, `DECIMAL` with a leading `-` when negative. A list is an
+array whose keys are 0, 1, 2 and so on in order; any other array is a
+map. What is put in byte order is the encoded bytes: of each record in a
+set, and of each entry (its key and item together) in a map, so the entry
+of the key `slot` (`s4:slot;...`) comes before that of `kickoff`
+(`s7:kickoff;...`). Byte order compares unsigned bytes, a shorter string
+before a longer one that begins with it. An outcome with nothing in it
+has the document `"tactician.repack.outcome.v1\nl0:;l0:;l0:;"`, and one
+assignment of the event `e1` to session 0, slot 2 with no kickoff is the
+record `m4:s4:slot;i2;s7:kickoff;n;s7:session;i0;s8:event_id;s2:e1;;`.
+
+What follows from that:
+
+- The order of the three lists does not matter, and neither does the
+  order of the keys of a record. The order of a list inside a record does
+  (the occupied slots of a `ContiguityBroken`, the event IDs of a
+  `ParticipantDoubleBooked`); the repacker always writes those ascending.
+- Every field the records have today is covered. A participant is covered
+  by its ID and by nothing else of it, so a changed label or changed
+  metadata leaves the fingerprint as it was. A kickoff is covered to the
+  second and is null for a shape-only grid.
+- `isBudgetExhausted()` is not covered: two outcomes holding the same
+  plan are the same plan, however each search ended.
+- Nothing in it depends on the PHP version, the platform, the locale or
+  an ini setting.
+- A violation of a class of your own is covered through its `toArray()`,
+  the whole of it, so its fingerprint is as stable as that method's
+  result. If that returns something the encoding has no form for (an
+  object, a resource), `fingerprint()` throws an `InvalidInputException`.
+
+### Weight Bounds
+
+The repacker scores a move as an integer of at most
+`earlyFillWeight × (sessions − 1) + 2 × consolidationWeight`. Weights for
+which that is larger than `PHP_INT_MAX` are rejected, because PHP would
+compute the score as a float, in which a large weight swallows a small
+one and the result is no longer the trade the weights state:
+
+- `RepackOptions` rejects a consolidation weight above
+  `RepackOptions::MAX_CONSOLIDATION_WEIGHT` (half of `PHP_INT_MAX`,
+  rounded down) with the reason `ValueOutOfRange`.
+- `RepackRequest`, which has the grid, rejects weights for which the
+  whole expression is too large for that grid's number of sessions, with
+  the reason `IncompatibleOptions`.
+
+Weights of ordinary size are nowhere near either bound: on a 64-bit
+build the defaults would need a grid of more than nine quintillion
+sessions.
+
+### Repack API Reference
+
+Every public class of the `MissionGaming\Tactician\Repack` namespace and
+every public method on it. The classes under `Repack\Internal` are not
+public API.
+
+#### `ScheduleRepacker`
+
+| Method | Returns |
+|---|---|
+| `repack(RepackRequest $request)` | The `RepackOutcome`. Throws a `RepackViolationsException` only when the options ask for it and the outcome is not clean. |
+
+#### `RepackRequest`
+
+`new RepackRequest(array $movableEvents, array $pinnedEvents, SessionGrid $grid, RepackOptions $options = new RepackOptions())`.
+The order of the two lists carries no meaning. Input that contradicts
+itself throws an `InvalidConfigurationException`; see
+[Configuration Errors](#configuration-errors).
+
+| Method | Returns |
+|---|---|
+| `getMovableEvents()` | The movable events, as given |
+| `getPinnedEvents()` | The pinned events, as given |
+| `getGrid()` | The `SessionGrid` |
+| `getOptions()` | The `RepackOptions` |
+
+#### `MovableEvent`
+
+`new MovableEvent(string $id, Participant $participantA, Participant $participantB)`.
+The ID is not empty and the two participants differ.
+
+| Method | Returns |
+|---|---|
+| `getId()` | The caller's ID of the event |
+| `getParticipantA()` | The first participant |
+| `getParticipantB()` | The second participant |
+| `getParticipants()` | Both, as a list of two |
+
+#### `PinnedEvent`
+
+`new PinnedEvent(string $id, Participant $participantA, Participant $participantB, int $session, int $slot)`.
+
+| Method | Returns |
+|---|---|
+| `getId()` | The caller's ID of the event |
+| `getParticipantA()` | The first participant |
+| `getParticipantB()` | The second participant |
+| `getParticipants()` | Both, as a list of two |
+| `getSession()` | The 0-based session the event is pinned in |
+| `getSlot()` | The 0-based slot within that session |
+
+#### `SessionGrid`
+
+`new SessionGrid(array|int $sessionStarts, ?DateInterval $slotInterval, int $slotsPerSession = 1, array $slotsPerSessionOverrides = [], ?int $capacityPerSlot = 1)`
+builds an instant-based grid from a list of session starts and a slot
+interval. The integer and the null in the first two types are how
+`shapeOnly()` reaches the constructor (a session count and no interval);
+do not pass them yourself, call `shapeOnly()`. The constant `SessionGrid::UNBOUNDED` is
+the plain-data word for an unbounded capacity.
+
+| Method | Returns |
+|---|---|
+| `shapeOnly(int $sessions, int $slotsPerSession = 1, array $slotsPerSessionOverrides = [], ?int $capacityPerSlot = 1)` | A shape-only grid (static) |
+| `fromArray(array $config)` | A grid of either form from plain data (static) |
+| `toArray()` | The plain data `fromArray()` accepts |
+| `hasInstants()` | False for a shape-only grid |
+| `getSessionCount()` | How many sessions |
+| `getSlotCount(int $session)` | How many slots that session has, overrides applied |
+| `getPositionCount()` | How many positions the grid has in all |
+| `hasPosition(int $session, int $slot)` | Whether the grid has that position |
+| `ordinalOf(int $session, int $slot)` | The position's 0-based index in grid order |
+| `positionOf(DateTimeImmutable\|int $at)` | `['session' => ..., 'slot' => ...]` for an ordinal or an instant, or null |
+| `getCapacityLimit()` | Events per slot, or null when unbounded |
+| `hasUnboundedCapacity()` | Whether the capacity is unbounded |
+| `getCapacityPerSlot()` | Events per slot as an integer; throws an `UnavailableValueException` when unbounded |
+| `getSessionStart(int $session)` | The session's start as declared; throws an `UnavailableValueException` on a shape-only grid |
+| `getSlotInterval()` | The time between slots; throws an `UnavailableValueException` on a shape-only grid |
+| `getSlotTime(int $session, int $slot)` | The slot's time in UTC; throws an `UnavailableValueException` on a shape-only grid |
+
+#### `RepackOptions`
+
+`new RepackOptions(int $consolidationWeight = 3, int $earlyFillWeight = 1, int $stepBudget = 200_000, bool $throwOnViolations = false)`.
+The four are public read-only properties: `$consolidationWeight`,
+`$earlyFillWeight`, `$stepBudget` and `$throwOnViolations`. The constant
+`RepackOptions::MAX_CONSOLIDATION_WEIGHT` is the largest consolidation
+weight.
+
+| Method | Returns |
+|---|---|
+| `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget` and `throw_on_violations` (static) |
+| `toArray()` | The same plain data |
+
+#### `RepackOutcome`
+
+The constant `RepackOutcome::FINGERPRINT_SCHEME` is the scheme
+`fingerprint()` writes.
+
+| Method | Returns |
+|---|---|
+| `getAssignments()` | A `SlotAssignment` for every placed movable event, ordered by event ID. Pinned events are not in it. |
+| `getAssignmentFor(string $eventId)` | That event's `SlotAssignment`, or null when it is unplaced or unknown |
+| `getUnplaced()` | An `UnplacedEvent` for every movable event with no position, ordered by event ID |
+| `getViolations()` | Every `RepackViolation`, ordered by kind |
+| `getViolationsOfKind(ViolationKind $kind)` | The violations of that kind |
+| `getParticipantDoubleBookedViolations()` | The `ParticipantDoubleBooked` violations |
+| `getEventUnplacedViolations()` | The `EventUnplaced` violations |
+| `getContiguityBrokenViolations()` | The `ContiguityBroken` violations |
+| `getLateStartViolations()` | The `LateStart` violations |
+| `getCapacityExceededViolations()` | The `CapacityExceeded` violations |
+| `isClean()` | Whether nothing is unplaced and there is no violation |
+| `isBudgetExhausted()` | Whether the step budget stopped a search |
+| `fingerprint()` | The outcome's fingerprint |
+| `toArray()` | `['assignments' => ..., 'unplaced' => ..., 'violations' => ...]`, each the `toArray()` of its records |
+
+Building one by hand takes the three lists and, optionally, the budget
+flag: `new RepackOutcome(array $assignments, array $unplaced, array $violations, bool $budgetExhausted = false)`.
+A list that holds anything other than the objects it is for throws an
+`InvalidInputException`.
+
+#### `SlotAssignment`
+
+`new SlotAssignment(string $eventId, int $session, int $slot, ?DateTimeImmutable $kickoff)`.
+The repacker builds these; the constructor is for an outcome built by
+hand, in a test for example.
+
+| Method | Returns |
+|---|---|
+| `getEventId()` | The movable event's ID |
+| `getSession()` | The 0-based session |
+| `getSlot()` | The 0-based slot within the session |
+| `hasKickoff()` | False when the grid is shape-only |
+| `getKickoff()` | The position's time in UTC; throws an `UnavailableValueException` when there is none |
+| `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null |
+
+#### `UnplacedEvent`
+
+`new UnplacedEvent(string $eventId, UnplacedReason $reason, ?Participant $participant = null)`.
+
+| Method | Returns |
+|---|---|
+| `getEventId()` | The movable event's ID |
+| `getReason()` | The `UnplacedReason` |
+| `getParticipant()` | The participant with too many events, or null |
+| `toArray()` | `event_id`, `reason` and `participant` (its ID, or null) |
+
+#### `UnplacedReason`
+
+An enum. Cases: `ParticipantOverCapacity` (`participant_over_capacity`)
+and `NoSlotAvailable` (`no_slot_available`).
+
+#### `ViolationKind`
+
+An enum. Cases: `ParticipantDoubleBooked`, `EventUnplaced`,
+`ContiguityBroken`, `LateStart` and `CapacityExceeded`, with the backing
+strings in the table under [Reading the Outcome](#reading-the-outcome).
+
+#### `RepackViolation`
+
+The interface the five violation classes implement. A class of your own
+may implement it too, in an outcome built by hand; the repacker returns
+the five only. Such a violation is in `getViolations()` and in
+`getViolationsOfKind()` for the kind it states, and in none of the five
+typed accessors, each of which returns objects of its own class.
+
+| Method | Returns |
+|---|---|
+| `getKind()` | The `ViolationKind` |
+| `toArray()` | Plain data, always with a `kind` key holding the kind's backing string |
+
+#### `ParticipantDoubleBooked`
+
+`new ParticipantDoubleBooked(Participant $participant, int $session, int $slot, array $eventIds)`.
+
+| Method | Returns |
+|---|---|
+| `getKind()` | `ViolationKind::ParticipantDoubleBooked` |
+| `getParticipant()` | The participant booked twice |
+| `getSession()` | The session of the position |
+| `getSlot()` | The slot of the position |
+| `getEventIds()` | The IDs of the events that collide, sorted |
+| `toArray()` | `kind`, `participant`, `session`, `slot` and `event_ids` |
+
+#### `EventUnplaced`
+
+`new EventUnplaced(string $eventId, UnplacedReason $reason, ?Participant $participant = null)`.
+
+| Method | Returns |
+|---|---|
+| `getKind()` | `ViolationKind::EventUnplaced` |
+| `getEventId()` | The movable event's ID |
+| `getReason()` | The `UnplacedReason` |
+| `getParticipant()` | The participant with too many events, or null |
+| `toArray()` | `kind`, `event_id`, `reason` and `participant` |
+
+#### `ContiguityBroken`
+
+`new ContiguityBroken(Participant $participant, int $session, int $gapSlots, array $occupiedSlots)`.
+
+| Method | Returns |
+|---|---|
+| `getKind()` | `ViolationKind::ContiguityBroken` |
+| `getParticipant()` | The participant whose slots have a gap |
+| `getSession()` | The session |
+| `getGapSlots()` | How many slots between the participant's first and last are empty |
+| `getOccupiedSlots()` | The slots the participant occupies in the session, pins included, ascending |
+| `toArray()` | `kind`, `participant`, `session`, `gap_slots` and `occupied_slots` |
+
+#### `LateStart`
+
+`new LateStart(Participant $participant, int $session, int $firstSlot)`.
+
+| Method | Returns |
+|---|---|
+| `getKind()` | `ViolationKind::LateStart` |
+| `getParticipant()` | The participant who starts late |
+| `getSession()` | The session |
+| `getFirstSlot()` | The first slot the participant occupies in it |
+| `toArray()` | `kind`, `participant`, `session` and `first_slot` |
+
+#### `CapacityExceeded`
+
+`new CapacityExceeded(?Participant $participant, int $demand, int $capacity)`.
+
+| Method | Returns |
+|---|---|
+| `getKind()` | `ViolationKind::CapacityExceeded` |
+| `getParticipant()` | The participant with more events than free positions, or null when it is the grid that is too small |
+| `getDemand()` | How many positions were needed |
+| `getCapacity()` | How many there are |
+| `getShortfall()` | How many events do not fit: the demand less the capacity, never below zero |
+| `toArray()` | `kind`, `participant`, `demand`, `capacity` and `shortfall` |
+
 See `examples/19-repacking-a-season.php` for a complete runnable
 walkthrough, and `docs/design/schedule-repack.md` for the algorithm and
 its design decisions.
@@ -1505,6 +2173,7 @@ parent type matches too.
 | `InvalidInputException` | `\InvalidArgumentException` | An argument is outside its allowed range, or the data given to a `fromArray()` or `fromJson()` method is malformed: a missing field, a value of the wrong type, an unknown participant ID. |
 | `JsonConversionException` | `\JsonException` | A `fromJson()` method is given text that is not valid JSON, or a `toJson()` method meets a value JSON cannot represent. The message and code are PHP's; the PHP exception is the previous one. |
 | `InvariantViolationException` | `\LogicException` | The library reached a state its own logic rules out. It reports a defect in the library, not a mistake in the input. |
+| `UnavailableValueException` | `\LogicException` | An object was asked for a value it does not hold: a time from a shape-only `SessionGrid`, the kickoff of an assignment made on one, the capacity of an unbounded grid as a number. It reports a mistake in the calling code, which the object's `has...()` method (named in the message) would have prevented. It is not a configuration error and not a library defect. |
 
 `SchedulingException` is the base of the scheduling failures only. A rejected
 argument or malformed data is an `InvalidInputException`, which is not a

@@ -11,6 +11,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Repack\RepackOutcome;
+use MissionGaming\Tactician\Repack\SlotAssignment;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Timeline\ScheduledSchedule;
@@ -297,7 +298,7 @@ final class Example
                     $assignment->getEventId(),
                     (string) $assignment->getSession(),
                     (string) $assignment->getSlot(),
-                    self::instant($assignment->getKickoff()),
+                    self::kickoffText($assignment),
                 ];
             }
 
@@ -453,6 +454,17 @@ final class Example
     private static function instant(DateTimeInterface $instant): string
     {
         return gmdate('D j M Y H:i', $instant->getTimestamp());
+    }
+
+    /**
+     * The kickoff of a repack assignment, or a note where it has none: an
+     * assignment made on a shape-only grid has a position and no time.
+     */
+    private static function kickoffText(SlotAssignment $assignment): string
+    {
+        return $assignment->hasKickoff()
+            ? self::instant($assignment->getKickoff())
+            : '(none: shape-only grid)';
     }
 
     private static function shortName(string $class): string

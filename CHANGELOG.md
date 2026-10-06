@@ -240,13 +240,63 @@ heading **Output change (fix)**.
   timestamp (`@1785610800`); a zone or offset in the string is still checked
   against the `timezone` field afterwards. A relative date is for the
   application to compute and pass on.
+- A repack request whose objective weights are too large to keep the
+  objective an integer is rejected with an `InvalidConfigurationException`.
+  It returned an outcome before. The repacker scores a move as at most
+  `earlyFillWeight × (sessions − 1) + 2 × consolidationWeight`; beyond
+  `PHP_INT_MAX` PHP computed that as a float, in which the smaller weight
+  was lost, so the sessions chosen were not the trade the two weights
+  state. The outcome was still a proper one (no participant double-booked,
+  every event assigned or reported), which is why this is listed as a
+  change and not only as a fix. `RepackOptions` rejects a consolidation
+  weight above `RepackOptions::MAX_CONSOLIDATION_WEIGHT` (half of
+  `PHP_INT_MAX`, reason `ValueOutOfRange`), and `RepackRequest` rejects
+  weights for which the expression is too large for the number of sessions
+  of its grid (reason `IncompatibleOptions`). Before and after, on a grid of
+  four sessions:
+
+  ```
+  new RepackOptions(consolidationWeight: PHP_INT_MAX)    before: accepted, and the request repacked
+                                                         after: InvalidConfigurationException
+  new RepackOptions(earlyFillWeight: PHP_INT_MAX)        before: accepted, and the request repacked
+                                                         after: accepted; RepackRequest throws
+  ```
+
+  Code that passed `PHP_INT_MAX` to make one weight outrank the other must
+  pass a smaller number: a consolidation weight above
+  `earlyFillWeight × (sessions − 1)`, or an early-fill weight above
+  `2 × consolidationWeight`, already outranks the other in every move. No
+  request with weights within the bounds is affected, and its outcome is
+  unchanged.
+- A `RepackOutcome` built with a list that holds something other than the
+  objects it is for (`new RepackOutcome(['x'], [], [])`) is rejected with an
+  `Exceptions\InvalidInputException` that names the list, the key and the
+  type found. A wrong entry among the assignments died with a PHP `Error` (a
+  method call on a string) in the constructor. A wrong entry among the
+  unplaced events or the violations was accepted, returned as it was by
+  `getUnplaced()` and `getViolations()`, and died with a PHP `TypeError` in
+  `toArray()` and `getViolationsOfKind()`; such an outcome can no longer be
+  built.
 
 ### Added
 
+- `Standings::getTiedSets()` reports where the order of a standings table
+  comes from the final fallback and not from a result. It returns a list of
+  the new `Standings\TiedSet`, in table order: each one holds two or more
+  adjacent entries that are level on the ranking value, on every configured
+  tiebreaker, on score difference and on scores-for, with the positions the
+  set spans (`getEntries()`, `getParticipants()`, `getFirstPosition()`,
+  `getLastPosition()`, and it is countable). A table in which results decide
+  every position returns an empty list; a table with no results returns one
+  set of every entry. `StandingEntry::isLevelWith()` is the comparison behind
+  it. Values are level only when they are equal, with no tolerance, which is
+  how the table is ordered. The entries, their order and every existing
+  accessor are unchanged: an application can now see a tie, and the table
+  still gives every entry its own position.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
-  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 39 more; the
+  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and others; the
   usage guide lists them with their backing strings, which are stable
   identifiers). Every site in the library that builds the exception sets
   one, those of `Stage\StageState` included (`RoundOutOfSequence`,
@@ -333,8 +383,90 @@ heading **Output change (fix)**.
   carries the rule, and the roadmap lists the pairwise scope under its known
   limitations. No behavior changes.
 
+- Repack: a session grid without instants. `SessionGrid::shapeOnly(int
+  $sessions, int $slotsPerSession = 1, array $slotsPerSessionOverrides = [],
+  ?int $capacityPerSlot = 1)` builds a grid that has the positions and no
+  times, for an application that keeps its own. It is repacked exactly as
+  the instant-based grid of the same shape is. `hasInstants()` tells the two
+  forms apart. On a shape-only grid `getSessionStart()`, `getSlotInterval()`
+  and `getSlotTime()` throw the new `Exceptions\UnavailableValueException`;
+  its assignments have no kickoff (`SlotAssignment::hasKickoff()` is false,
+  `getKickoff()` throws the same exception, and `toArray()` carries
+  `'kickoff' => null`); and as plain
+  data it has `session_count` in place of `sessions`, `timezone` and
+  `slot_interval`. An instant-based grid, its assignments and its plain data
+  are unchanged.
+- `Exceptions\UnavailableValueException` (final, extends `\LogicException`,
+  implements `TacticianException`): an object was asked for a value it does
+  not hold. It is thrown by `SessionGrid::getSessionStart()`,
+  `getSlotInterval()`, `getSlotTime()` and `positionOf()` given an instant on
+  a shape-only grid, by `SlotAssignment::getKickoff()` on an assignment made
+  on one, and by `SessionGrid::getCapacityPerSlot()` on a grid of unbounded
+  capacity. It reports a mistake in the calling code, which the `has...()`
+  method named in its message would have prevented, so it is distinct from
+  `InvalidConfigurationException` (a configuration that cannot work) and
+  from `InvariantViolationException` (a defect in the library). It is a
+  `\LogicException` so that those methods declare no checked exception:
+  static analysis of code that calls `getKickoff()`, `getSlotInterval()` or
+  `getCapacityPerSlot()` on the grids and assignments it always had reports
+  nothing new.
+- Repack: `SessionGrid::ordinalOf(int $session, int $slot)` returns a
+  position's 0-based index in grid order, and
+  `SessionGrid::positionOf(DateTimeImmutable|int $at)` returns
+  `['session' => ..., 'slot' => ...]` for an ordinal or, on an instant-based
+  grid, for an instant, and null when the grid has no such position.
+- Repack: unbounded slot capacity. `capacityPerSlot` accepts `null` (the
+  string `'unbounded'`, `SessionGrid::UNBOUNDED`, as `capacity_per_slot` in
+  plain data), after which only participants limit what shares a slot: the
+  outcome never reports the grid as too small, and any number of events may
+  be pinned at one position. `getCapacityLimit()` returns the capacity or
+  null and `hasUnboundedCapacity()` says which; `getCapacityPerSlot()`
+  throws an `UnavailableValueException` on such a grid, because it has no
+  integer to return. The default is still 1, and a missing or null
+  `capacity_per_slot` in plain data still means 1. Null is the way to say
+  "no limit"; a very large integer is not.
+- Repack: a typed accessor on `RepackOutcome` for each kind of violation, so
+  that the getters of a kind can be read without `instanceof`:
+  `getParticipantDoubleBookedViolations()`, `getEventUnplacedViolations()`,
+  `getContiguityBrokenViolations()`, `getLateStartViolations()` and
+  `getCapacityExceededViolations()`. Each returns objects of its own class:
+  a violation of a class from outside the library, in an outcome built by
+  hand, is returned by `getViolationsOfKind()` and by none of them.
+- Repack: `RepackOutcome::isBudgetExhausted()` says whether the step budget
+  stopped a search. False means a larger budget gives the same outcome; true
+  means it may give a different one. The flag is the optional fourth
+  constructor parameter of `RepackOutcome` and is not part of `toArray()`.
+- Repack: `RepackOutcome::fingerprint()` returns a stable identifier of the
+  outcome's assignments, unplaced events and violations, for detecting that
+  a plan computed again differs from the plan that was shown. It is `v1:`
+  and the SHA-256 of a canonical encoding that the usage guide and the
+  method's docblock specify as a contract; it does not depend on the order
+  of the lists, the PHP version, the platform, the locale or an ini setting.
+  The scheme names the keys of each record it covers, so a key added to a
+  `toArray()` in a later release does not change a `v1` fingerprint. The
+  budget flag is not part of it.
+- The usage guide documents every public class and method of the Repack
+  namespace, among them `getViolationsOfKind()`, `ViolationKind`,
+  `UnplacedEvent` and the getters of the five violation classes, which were
+  public and undocumented. A test
+  (`tests/Feature/RepackDocumentationCoverageTest.php`) fails when a public
+  type, method, constant, property or enum case of the namespace is missing
+  from that reference, or the reference names one that does not exist.
+
 ### Changed
 
+- The constructor of `Repack\SessionGrid` accepts more than it did, and
+  everything it accepted before means what it meant: `$sessionStarts` may be
+  a session count and `$slotInterval` null (the shape-only form, which
+  `SessionGrid::shapeOnly()` builds and the only caller meant to pass it:
+  call `shapeOnly()`, not the constructor, for a shape-only grid), and
+  `$capacityPerSlot` may be null. The constructor of `Repack\SlotAssignment`
+  accepts a null `$kickoff`. Static analysis of calling code sees two wider
+  types: `SessionGrid::toArray()` may return the shape-only keys and a
+  string capacity, and `SlotAssignment::toArray()` a null `kickoff`. Neither
+  can occur for a grid built the way grids were built before. No existing
+  method declares a new checked exception: see `UnavailableValueException`
+  under "Added".
 - `toJson()` and `fromJson()` of `Schedule`, `StageState` and
   `ScheduledSchedule` now throw `Exceptions\JsonConversionException` where PHP's
   `\JsonException` escaped unwrapped. It is a `\JsonException` with the same
