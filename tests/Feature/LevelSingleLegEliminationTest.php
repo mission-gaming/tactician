@@ -205,6 +205,59 @@ describe('a level single-leg event in single elimination', function (): void {
         expect(TieDecision::advancer([$recorded], $first, $second, 1)?->getId())->toBe('p2');
     });
 
+    it('counts the scores of a decided level event as they were recorded', function (): void {
+        // Who advances changes the win and the loss, never a score figure:
+        // the level semifinal is 1-1 for both sides in the table too.
+        $engine = new SingleEliminationEngine();
+        [$p1, , , $p4] = $field = levelEventField(4);
+        $state = StageState::start($field);
+
+        $state = playLevelRound($engine, $state, 'semifinal', ['p1 v p4' => '=p4', 'p2 v p3' => 'p2']);
+        $state = playLevelRound($engine, $state, 'final', ['p4 v p2' => 'p4']);
+
+        $standings = $engine->getOutcome($state)?->getStandings();
+        $advanced = $standings?->getEntryFor($p4);
+        $out = $standings?->getEntryFor($p1);
+
+        // p4: level at 1-1, then the final won 2-1.
+        expect([$advanced?->getWins(), $advanced?->getDraws(), $advanced?->getLosses()])->toBe([2, 0, 0]);
+        expect([$advanced?->getScoreFor(), $advanced?->getScoreAgainst(), $advanced?->getScoreDifference()])
+            ->toBe([3.0, 2.0, 1.0]);
+
+        // p1: the level semifinal only.
+        expect([$out?->getWins(), $out?->getDraws(), $out?->getLosses()])->toBe([0, 0, 1]);
+        expect([$out?->getScoreFor(), $out?->getScoreAgainst(), $out?->getScoreDifference()])
+            ->toBe([1.0, 1.0, 0.0]);
+    });
+
+    it('leaves a table computed from the recorded results counting the draw', function (): void {
+        // Only the table the engine computes knows who the bracket sent
+        // on. The results it hands out are the results as recorded, so a
+        // table computed from them, which is what combining outcomes does,
+        // counts the level event as the draw it was.
+        $engine = new SingleEliminationEngine();
+        [$p1, $p2, $p3, $p4] = levelEventField(4);
+
+        $first = $engine->getOutcome(
+            playLevelRound($engine, StageState::start([$p1, $p2]), 'final', ['p1 v p2' => '=p2'])
+        );
+        $second = $engine->getOutcome(
+            playLevelRound($engine, StageState::start([$p3, $p4]), 'final', ['p3 v p4' => '=p4'])
+        );
+        assert($first !== null && $second !== null);
+
+        expect(levelEventRecords($first))->toBe(['p2' => [1, 0, 0], 'p1' => [0, 0, 1]]);
+
+        $combined = levelEventRecords(StageOutcome::combining(['a' => $first, 'b' => $second]));
+        ksort($combined);
+        expect($combined)->toBe([
+            'p1' => [0, 1, 0],
+            'p2' => [0, 1, 0],
+            'p3' => [0, 1, 0],
+            'p4' => [0, 1, 0],
+        ]);
+    });
+
     it('re-seeds the survivors of level events as it re-seeds winners', function (): void {
         // The same four quarter-finals twice, with the same scores: once
         // three of them are level and decided, once the participant who
@@ -435,6 +488,77 @@ describe('a level single-leg event with no usable decision', function (): void {
         expect($thrown->getReason())->toBe(InvalidConfigurationReason::InvalidResult);
         expect($thrown->getContext())->toBe(['tie_winner' => 'ghost', 'participants' => ['p1', 'p2']]);
     });
+
+    it('is given its missing decision by replacing the result with the same draw', function (
+        StageEngineInterface $engine,
+        int $roundsBefore
+    ): void {
+        // A state recorded with a level event that names nobody is stuck.
+        // The record lacks the decision, so the repair is the same draw
+        // carrying it: in whichever round the bracket stopped, and on a
+        // state that has been stored in between.
+        $state = StageState::start(levelEventField(8));
+        for ($played = 0; $played < $roundsBefore; ++$played) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, array_map(
+                fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+                $pairing->getEvents()
+            ));
+        }
+
+        $pairing = $engine->pairNextRound($state);
+        $stuck = StageState::fromJson(
+            $state->withRoundPlayed($pairing, array_map(levelResult(...), $pairing->getEvents()))->toJson()
+        );
+        expect(fn() => $engine->isComplete($stuck))->toThrow(InvalidConfigurationException::class, "'tie_winner'");
+
+        // One replacement for each event of the round, read back from the
+        // stored state; the second participant of each event advances.
+        $repaired = $stuck;
+        $advancing = [];
+        foreach ($stuck->getLastRound()?->getEvents() ?? [] as $event) {
+            $advancing[] = $event->getParticipants()[1]->getId();
+            $repaired = $repaired->withResultReplaced(levelResult($event, $event->getParticipants()[1]->getId()));
+        }
+        $repaired = StageState::fromJson($repaired->toJson());
+
+        // Nothing but the decision was added: every result of the round is
+        // still the draw that was recorded.
+        expect($repaired->getResults())->toHaveCount(count($stuck->getResults()));
+        foreach (array_slice($repaired->getResults(), -count($advancing)) as $index => $result) {
+            expect($result->isDraw())->toBeTrue();
+            expect($result->getScores())->toBe($stuck->getResults()[count($stuck->getResults()) - count($advancing) + $index]->getScores());
+            expect($result->getMetadataValue(TieDecision::TIE_WINNER_KEY))->toBe($advancing[$index]);
+        }
+
+        // The bracket goes on, and every participant a decision names
+        // plays (or sits out) in a round after the one that was stuck.
+        expect($engine->isComplete($repaired))->toBeFalse();
+        $seenLater = [];
+        $state = $repaired;
+        while (!$engine->isComplete($state)) {
+            $pairing = $engine->pairNextRound($state);
+            foreach ($pairing->getEvents() as $event) {
+                $seenLater = [...$seenLater, ...$event->getParticipants()];
+            }
+            $seenLater = [...$seenLater, ...$pairing->getByes()];
+            $state = $state->withRoundPlayed($pairing, array_map(
+                fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+                $pairing->getEvents()
+            ));
+        }
+        $seenLater = array_map(fn(Participant $participant): string => $participant->getId(), $seenLater);
+        foreach ($advancing as $id) {
+            expect($seenLater)->toContain($id);
+        }
+    })->with([
+        'single elimination' => [fn() => new SingleEliminationEngine()],
+        're-seeded single elimination' => [fn() => new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true))],
+        'double elimination' => [fn() => new DoubleEliminationEngine()],
+    ])->with([
+        'stuck in the first round' => [0],
+        'stuck in a later round' => [1],
+    ]);
 
     it('treats a null decision as no decision', function (): void {
         $engine = new SingleEliminationEngine();
