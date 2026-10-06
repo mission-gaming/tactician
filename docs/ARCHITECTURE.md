@@ -62,10 +62,10 @@ Repairs an existing schedule onto a declared grid — generation invents
 events, repacking never does; the events are fixed inputs and the only
 free variable is where each lands. See `docs/design/schedule-repack.md`
 for the algorithm and decisions:
-- **SessionGrid**: The declarative position model — an explicit ordered list of zoned session starts (irregular by design, unlike `TimelineDefinition`'s cadence), a slot interval, per-session slot counts (overridable), and per-slot concurrency capacity. Config-constructible; kickoffs emit in UTC.
+- **SessionGrid**: The declarative position model — an explicit ordered list of zoned session starts (irregular by design, unlike `TimelineDefinition`'s cadence), a slot interval, per-session slot counts (overridable), and per-slot concurrency capacity. Config-constructible; kickoffs emit in UTC. Two variations, both opt-in: a shape-only grid (`SessionGrid::shapeOnly()`) has the positions and no instants, for a caller that keeps its own times, and every accessor that would return a time throws on it; a null capacity is unbounded, so that only participants limit what shares a slot. `ordinalOf()` and `positionOf()` convert between a position and its index in grid order (and, on an instant-based grid, from an instant to its position).
 - **MovableEvent / PinnedEvent**: Fixed-identity inputs keyed by opaque caller ids; the movable set is a multigraph. Pins hold their position for both participants, consume capacity, and may name participants absent from the movable set.
 - **ScheduleRepacker**: Three deterministic, step-budgeted phases — per-session loads first (capacity- and pin-aware, weighted consolidation vs early fill, with interval-parity repair), then per-session packing by exact search over gap-free run placements (cheapest late-start first, perfect matching per slot), then bounded greedy fallback with Kempe-chain repair. Properness and pin immobility are never traded; contiguity is satisfied or reported.
-- **RepackOutcome**: The deliberate deviation from the loud-failure rule — infeasibility returns a schedule plus itemised structured violations (`ParticipantDoubleBooked` (audited, unreachable), `EventUnplaced`, `ContiguityBroken`, `LateStart`, `CapacityExceeded`) and an exactly-reconciling unplaced list, because an operator repairing a live season needs the compromises, not an exception. `RepackOptions(throwOnViolations: true)` opts back into throwing (`RepackViolationsException` carries the outcome).
+- **RepackOutcome**: The deliberate deviation from the loud-failure rule — infeasibility returns a schedule plus itemised structured violations (`ParticipantDoubleBooked` (audited, unreachable), `EventUnplaced`, `ContiguityBroken`, `LateStart`, `CapacityExceeded`) and an exactly-reconciling unplaced list, because an operator repairing a live season needs the compromises, not an exception. `RepackOptions(throwOnViolations: true)` opts back into throwing (`RepackViolationsException` carries the outcome). The outcome has one typed accessor per violation kind, says whether the step budget stopped a search (`isBudgetExhausted()`), and has a `fingerprint()`: a versioned SHA-256 over a canonical encoding of its three lists, the same on every PHP version and platform, for detecting that a recomputed plan differs from a previewed one.
 
 ### Quality System
 Graded measurement and selection over valid schedules — constraints stay
@@ -80,6 +80,7 @@ hard filters; metrics measure what remains:
 - **WinDrawLossRanking**: The first implementation; sport conventions as named constructors (`threeOneZero()`, `oneHalfZero()`), config-constructible via `fromArray()`
 - **TiebreakerInterface**: Pluggable tiebreakers — **WinsTiebreaker**, **BuchholzTiebreaker**, **SonnebornBergerTiebreaker**
 - **Standings / StandingEntry**: Immutable table and per-participant line
+- **TiedSet**: A group of adjacent entries that only the final fallback orders, with the positions it spans. `Standings::getTiedSets()` derives the sets from the entries on each call with `StandingEntry::isLevelWith()`, which compares what the calculator compares before the fallback (ranking value, each tiebreaker value, score difference, scores-for) with the same exact comparison, so the sets cannot disagree with the order of the table. Reporting only: the order of the entries is unchanged
 
 ### Multi-Leg Architecture
 - **LegStrategyInterface**: Strategy contract for integrated leg generation
@@ -116,6 +117,7 @@ hard filters; metrics measure what remains:
 - **InvalidInputException** (extends `\InvalidArgumentException`): A rejected argument, or malformed data given to `fromArray()`/`fromJson()`
 - **JsonConversionException** (extends `\JsonException`): JSON that cannot be read or written; wraps the PHP exception, keeping its message and code
 - **InvariantViolationException** (extends `\LogicException`): A state the library's own logic rules out — a defect, not a caller mistake
+- **UnavailableValueException** (extends `\LogicException`): A value asked of an object that does not hold it (a time from a shape-only `SessionGrid`, the kickoff of an assignment made on one, the capacity of an unbounded grid as a number) — a caller mistake that the object's `has...()` method would have prevented; not a configuration error and not a library defect. Unchecked on purpose, so a method that throws it puts no checked exception on callers that never hold such an object
 
 Each class keeps the PHP parent type its throw sites had before the marker
 existed, so a catch clause written against that type still matches. What the

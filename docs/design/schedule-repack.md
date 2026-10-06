@@ -156,6 +156,125 @@ exists as a convenience.
     so this follows the established practice rather than fixing the
     drift mid-feature.
 
+## API additions (0.2.2)
+
+Decisions made when the API was extended for a downstream consumer that
+works in local wall-clock time and has no shared resource limiting a slot.
+No placement, drop rule or reported number changed, and the golden
+fixtures are untouched. Two decisions reject input that was accepted
+before (31 and 32); the changelog lists them as output changes.
+
+20. **A shape-only grid is the same class, not a second one.** The
+    repacker reads slot counts and a capacity and nothing else, so a grid
+    without instants needs no new algorithm, only a grid that can say "I
+    have no instants". `SessionGrid::shapeOnly()` builds one. A second
+    class would have needed an interface over both and a change to the
+    type `RepackRequest` accepts; a flag on the one class changes no
+    signature. The constructor's first two parameters were widened to
+    carry the form (`array|int` session starts, a nullable interval),
+    because a `readonly` class has one constructor and no other way to
+    initialise its properties that static analysis accepts.
+21. **A shape-only grid never invents an instant.** `getSessionStart()`,
+    `getSlotInterval()`, `getSlotTime()` and `positionOf()` given an
+    instant throw, and an assignment made on such a grid has a null
+    kickoff, which `SlotAssignment::getKickoff()` refuses to return.
+    Returning a placeholder time was rejected: the consumer this is for
+    was fabricating instants and ignoring the kickoffs, and a placeholder
+    that looks like a time is how a wrong time reaches a user. What is
+    thrown is an `UnavailableValueException`, a `\LogicException`, here
+    and in decision 25. Asking is the caller's mistake, which
+    `hasInstants()`, `hasKickoff()` or `hasUnboundedCapacity()` would
+    have prevented, not a configuration that cannot work. An
+    `InvalidConfigurationException` was the first choice and was
+    rejected for what it does to code that already exists: it is a
+    checked exception, so `getKickoff()`, `getSlotInterval()` and
+    `getCapacityPerSlot()` would each have declared one, and static
+    analysis would have reported every existing call to them after a
+    patch upgrade, in code that never sees a shape-only grid.
+22. **Wire shapes of existing grids do not change.** A shape-only grid
+    serializes with `session_count` in place of `sessions`, `timezone`
+    and `slot_interval`, and `fromArray()` reads that form only when there
+    is no `sessions` key: that input threw before, so no input that
+    worked reads differently. `session_count` beside `sessions` stays an
+    ignored unknown key, as it was.
+23. **Unbounded capacity is `null` in PHP and the word `unbounded` in
+    plain data.** A null `capacity_per_slot` in plain data has always
+    meant "not given, use 1", so null could not be given a second meaning
+    without changing what existing configuration does; a string there
+    threw before. The default stays 1 in this release.
+24. **Unbounded means the number of events in the request, internally.**
+    No slot can hold more events than the request has (movable and
+    pinned), so that number never binds, and the planner's capacity sums
+    cannot overflow as they would with `PHP_INT_MAX`. The result is the
+    one any larger finite capacity gives (an invariant test holds the
+    repacker to that). `intdiv(participants, 2)`, the value a caller
+    would compute, is also never binding per slot, and was not used
+    because with an odd number of participants it makes the planner
+    report the grid as too small when what stops an event is its
+    participants.
+25. **`getCapacityPerSlot()` throws on an unbounded grid**
+    (an `UnavailableValueException`); `getCapacityLimit()` returns the nullable
+    value. The return type of the existing method is `int`, and any
+    integer it returned for "no limit" would be used in arithmetic.
+26. **`positionOf()` takes an ordinal or an instant.** A caller with its
+    own slot records needs position ⇄ index; a caller with instants needs
+    instant → position. Both are reverse lookups of the same grid, so one
+    method takes either, and `ordinalOf()` is the forward direction of
+    the first. A lookup that finds nothing returns null; only asking a
+    shape-only grid about an instant throws.
+27. **The budget flag is recorded where the budget is asked.** Every
+    search learns that the budget is gone in one of two ways:
+    `StepBudget::consume()` refuses a step, or `isExhausted()` answers
+    true. Both set the record, so no phase has to remember to. The sites,
+    for the record: `LoadPlanner` (`placeWithRelocation()`, `improve()`,
+    `repairParity()` and its three move kinds), `IntervalPlacement`
+    (`enumerate()` and `search()`), and `SessionPacker` (`matchNext()`,
+    which raises the internal `BudgetExhausted`, and `repair()`). Every
+    caller of `isExhausted()` asks only while it has more to search, which
+    is what makes a true answer a search cut short; spending the last
+    step on a search that then finishes is not exhaustion.
+28. **What the flag means.** False: the budget stopped nothing, so the
+    run is the run any larger budget gives (an invariant test checks
+    that). True: a search was cut short and a larger budget may differ.
+    It is not in `toArray()`, because existing wire output may not gain a
+    key in a patch release.
+29. **The fingerprint is over named keys of `toArray()`.** The three
+    lists are what an outcome is, and `toArray()` is already the pinned
+    wire shape, so the values come from there. The keys do not: scheme
+    `v1` lists the keys of each record class, and the fingerprint reads
+    those and no others. Hashing whatever `toArray()` returns was
+    rejected, because a key added to a wire shape in a later release
+    would then change every `v1` fingerprint without a new scheme, and a
+    specification that says "what `toArray()` returns" cannot be
+    implemented from the page. A violation class from outside the
+    library has no such list and is covered by its whole `toArray()`.
+    The encoding is specified on `RepackOutcome::fingerprint()`:
+    length-prefixed strings and counted lists (no value can be mistaken
+    for two), map entries and the three record lists in byte order (so
+    construction order cannot reach the hash), floats as their IEEE 754
+    bytes (so no formatting setting can), SHA-256, and a scheme (`v1`)
+    both in the hashed document and in front of the digest. `serialize()`
+    and `json_encode()` were rejected: the first is a PHP-internal format,
+    and the second writes floats by `serialize_precision`.
+30. **The budget flag is not in the fingerprint.** The fingerprint
+    answers "is this the plan that was shown?". Two outcomes with the
+    same assignments, unplaced events and violations are the same plan,
+    whichever budget produced them. Kickoffs are in it: the same
+    positions at other times are not the same plan.
+31. **Weights are bounded where the objective stops being an integer.**
+    The planner's score is at most
+    `earlyFillWeight × (sessions − 1) + 2 × consolidationWeight` in
+    magnitude. Past `PHP_INT_MAX` PHP computes it as a float, where the
+    smaller weight is lost to rounding. `RepackOptions` rejects a
+    consolidation weight above half of `PHP_INT_MAX`; `RepackRequest`
+    rejects the whole expression for its grid. Both reject on the range
+    the objective can reach, without running it, so a request whose
+    events happen never to reach the largest term is rejected as well.
+32. **A malformed `RepackOutcome` is an `InvalidInputException`.** A list
+    holding something else died with a PHP `Error` on the first method
+    call. It is input to a value object, not a configuration, so it is
+    reported the way the other value objects report theirs.
+
 ## Testing
 
 Per the brief: property tests over seeded random multigraphs (properness,
@@ -164,3 +283,14 @@ determinism under input shuffling, K₈ exactness (must come back with zero
 violations), K₅ honesty (no interval colouring exists; must be reported,
 not mangled), and the reference fixture both ways round (clean; and
 mis-pinned ⇒ `CapacityExceeded` naming Fallowmead, shortfall exactly 3).
+
+The 0.2.2 additions extend the property tests: fingerprints are equal for
+the same request in any input order and for the same records in any order,
+and change under every single-field mutation of every record class; a
+shape-only grid gives every event the position the instant-based grid of
+its shape gives it; unbounded capacity never reports the grid as too small
+and equals every capacity too large to matter; and an outcome whose budget
+flag is false is unchanged by a larger budget. Literal fingerprints for
+fixed outcomes are pinned in `tests/Unit/Repack/RepackOutcomeTest.php`;
+they were computed by an implementation written apart from the library's,
+from the documented scheme.
