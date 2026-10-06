@@ -309,6 +309,22 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Schedule could not be completed:\n", "- Constraint 'Derby Ban' violated", "Completion: 5/6 events\n"],
             [],
         ],
+        'one catch clause for the library' => [
+            'docs/USAGE.md',
+            '} catch (TacticianException $e) {',
+            [
+                "A schedule the constraints rule out: MissionGaming\\Tactician\\Exceptions\\IncompleteScheduleException\n"
+                . "A round numbered zero: MissionGaming\\Tactician\\Exceptions\\InvalidInputException\n"
+                . "JSON that is cut short: MissionGaming\\Tactician\\Exceptions\\JsonConversionException\n",
+            ],
+            [],
+        ],
+        'catch clauses for the PHP parent types' => [
+            'docs/USAGE.md',
+            '} catch (\InvalidArgumentException $e) {',
+            ["Round number must be positive\nSyntax error\n"],
+            [],
+        ],
         'premier league season' => ['docs/USAGE.md', 'echo "Premier League season: "', ["Premier League season: 380 matches\n"], []],
         'skill brackets on Swiss' => ['docs/USAGE.md', 'echo count($tournament) . " matches\n";', ["12 matches\n"], []],
         'spaced return fixtures succeed' => [

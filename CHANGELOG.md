@@ -13,6 +13,36 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Added
+
+- One catchable type for every exception the library throws on purpose: the
+  marker interface `Exceptions\TacticianException`. `catch (TacticianException)`
+  now covers the scheduling failures under `SchedulingException` and the
+  rejected arguments and malformed data that were thrown as a bare
+  `\InvalidArgumentException` before. Three classes carry it to the sites
+  that were outside `SchedulingException`: `Exceptions\InvalidInputException`
+  (extends `\InvalidArgumentException`, 60 sites in the DTOs, the stage and
+  timeline value objects, the constraints, `SwissPairingEngine` and
+  `StandingsCalculator`), `Exceptions\InvariantViolationException` (extends
+  `\LogicException`, three internal guards) and
+  `Exceptions\JsonConversionException` (extends `\JsonException`). Each
+  extends the type its sites threw before, so existing catch clauses still
+  match, and no message, code or previous exception has changed. The usage
+  guide lists the classes and what the marker does not cover.
+- An architecture test (`tests/Feature/ExceptionMarkerTest.php`) that fails
+  when a `throw` in `src/`, an exception built there, or a method's return
+  type names a class outside `TacticianException`.
+
+### Changed
+
+- `toJson()` and `fromJson()` of `Schedule`, `StageState` and
+  `ScheduledSchedule` now throw `Exceptions\JsonConversionException` where PHP's
+  `\JsonException` escaped unwrapped. It is a `\JsonException` with the same
+  message and code, so `catch (\JsonException)` still matches; the PHP
+  exception is available from `getPrevious()`, which returned null before.
+  Code that compares the exception's class by name, not with `instanceof` or
+  a catch clause, sees the new class.
+
 ## [0.2.1] - 2026-10-06
 
 No library behavior changes: under `src/`, only the formatting and a number

@@ -1138,6 +1138,11 @@ $restored = Schedule::fromJson($json);
 `Participant`, `Round`, `Event`, and `Schedule` all expose
 `toArray()`/`fromArray()` for custom persistence.
 
+Text that is not valid JSON is reported by a `JsonConversionException` (a
+`\JsonException`), and valid JSON or an array of the wrong shape by an
+`InvalidInputException` (an `\InvalidArgumentException`). Both are covered by
+`catch (TacticianException)`: see [Error Handling](#exception-hierarchy).
+
 ## Schedule Validation
 
 Tactician includes comprehensive validation to ensure complete tournaments and prevent silent failures.
@@ -1297,6 +1302,28 @@ backtracking search proved it.
 
 ### Exception Hierarchy
 
+Every exception the library throws on purpose implements the marker
+interface `Exceptions\TacticianException`. It adds no method; each class
+below it keeps a PHP parent type, so a catch clause written against that
+parent type matches too.
+
+| Class (in `MissionGaming\Tactician\Exceptions`) | Extends | Thrown when |
+|------|------|------|
+| `SchedulingException` (abstract) | `\Exception` | A scheduling failure. Its subclasses carry a diagnostic report (`getDiagnosticReport()`). |
+| `InvalidConfigurationException` | `SchedulingException` | A scheduler, engine, stage, timeline or grid is configured in a way that cannot work. |
+| `IncompleteScheduleException` | `SchedulingException` | Constraints leave a schedule that cannot be completed. |
+| `NoValidPairingException` | `SchedulingException` | No complete pairing exists for a Swiss round. |
+| `RepackViolationsException` | `SchedulingException` | A repack leaves violations and `RepackOptions(throwOnViolations: true)` asked for an exception instead of the outcome. |
+| `InvalidInputException` | `\InvalidArgumentException` | An argument is outside its allowed range, or the data given to a `fromArray()` or `fromJson()` method is malformed: a missing field, a value of the wrong type, an unknown participant ID. |
+| `JsonConversionException` | `\JsonException` | A `fromJson()` method is given text that is not valid JSON, or a `toJson()` method meets a value JSON cannot represent. The message and code are PHP's; the PHP exception is the previous one. |
+| `InvariantViolationException` | `\LogicException` | The library reached a state its own logic rules out. It reports a defect in the library, not a mistake in the input. |
+
+`SchedulingException` is the base of the scheduling failures only. A rejected
+argument or malformed data is an `InvalidInputException`, which is not a
+`SchedulingException`: catch `TacticianException` for both.
+
+The scheduling failures are told apart by class:
+
 ```php
 use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
@@ -1336,6 +1363,72 @@ function handleIncompleteSchedule(IncompleteScheduleException $e): void
     echo "\nCompletion: {$e->getActualEventCount()}/{$e->getExpectedEventCount()} events\n";
 }
 ```
+
+### Catching Every Library Exception
+
+One clause catches everything in the table above. The three calls below fail
+in three different ways (the scheduler is the one from
+[Constraint Attribution](#constraint-attribution), whose constraint no
+schedule can satisfy):
+
+```php
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Exceptions\TacticianException;
+
+$attempts = [
+    'A schedule the constraints rule out' => fn () => $scheduler->schedule($participants),
+    'A round numbered zero' => fn () => new Round(0),
+    'JSON that is cut short' => fn () => Schedule::fromJson('{"participants": ['),
+];
+
+foreach ($attempts as $what => $attempt) {
+    try {
+        $attempt();
+    } catch (TacticianException $e) {
+        echo $what . ': ' . $e::class . "\n";
+    }
+}
+```
+
+```text
+A schedule the constraints rule out: MissionGaming\Tactician\Exceptions\IncompleteScheduleException
+A round numbered zero: MissionGaming\Tactician\Exceptions\InvalidInputException
+JSON that is cut short: MissionGaming\Tactician\Exceptions\JsonConversionException
+```
+
+A catch clause for the PHP parent type still matches, with the same message.
+Code written before the marker existed needs no change:
+
+```php
+try {
+    new Round(0);
+} catch (\InvalidArgumentException $e) {
+    echo $e->getMessage() . "\n"; // Round number must be positive
+}
+
+try {
+    Schedule::fromJson('{"participants": [');
+} catch (\JsonException $e) {
+    echo $e->getMessage() . "\n"; // Syntax error
+}
+```
+
+#### What the marker does not cover
+
+`TacticianException` marks what the library reports. These reach the caller
+unchanged, because the library does not raise them:
+
+- **An exception from code the caller supplied**: a custom constraint
+  predicate, a role extractor or metadata validator, a `RankingStrategy`,
+  tiebreaker, leg strategy or quality metric of the caller's own, and the
+  `jsonSerialize()` method of an object placed in metadata.
+- **A failure of the random source**: `Random\RandomException` or
+  `Random\BrokenRandomEngineError` from the `Random\Randomizer` passed to a
+  scheduler, engine or optimizer (or from the unseeded one
+  `ShuffledLegStrategy` creates when it is given none).
+- **PHP's `\Error` family**: a `\TypeError` for an argument of the wrong
+  type, for example.
 
 ## Advanced Patterns
 
