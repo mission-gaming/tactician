@@ -115,6 +115,7 @@ hard filters; metrics measure what remains:
 - **InvalidInputException** (extends `\InvalidArgumentException`): A rejected argument, or malformed data given to `fromArray()`/`fromJson()`
 - **JsonConversionException** (extends `\JsonException`): JSON that cannot be read or written; wraps the PHP exception, keeping its message and code
 - **InvariantViolationException** (extends `\LogicException`): A state the library's own logic rules out — a defect, not a caller mistake
+- **UnavailableValueException** (extends `\LogicException`): A value asked of an object that does not hold it (a time from a shape-only `SessionGrid`, the kickoff of an assignment made on one, the capacity of an unbounded grid as a number) — a caller mistake that the object's `has...()` method would have prevented; not a configuration error and not a library defect. Unchecked on purpose, so a method that throws it puts no checked exception on callers that never hold such an object
 
 Each class keeps the PHP parent type its throw sites had before the marker
 existed, so a catch clause written against that type still matches. What the

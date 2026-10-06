@@ -179,18 +179,6 @@ enum InvalidConfigurationReason: string
      */
     case NonAdvancingTime = 'non_advancing_time';
 
-    /**
-     * A time was asked of something that has positions and no instants: a
-     * shape-only session grid, or an assignment a repack made on one.
-     */
-    case GridWithoutInstants = 'grid_without_instants';
-
-    /**
-     * The capacity of a session grid was asked for as a number, and the
-     * grid's capacity is unbounded.
-     */
-    case UnboundedCapacity = 'unbounded_capacity';
-
     /** The assigned timeline breaks one or more of the time rules given. */
     case TimeRuleViolation = 'time_rule_violation';
 

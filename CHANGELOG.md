@@ -184,9 +184,9 @@ heading **Output change (fix)**.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
-  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 34 more; the
+  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 32 more; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). 134 of the 140 sites that build the exception set one. The
+  identifiers). 131 of the 137 sites that build the exception set one. The
   six that do not are in `Stage\StageState` (recording a round or its
   results, and a duplicate ID given to `start()`): `getReason()` returns null
   for those, and for an exception that code outside the library builds
@@ -234,13 +234,27 @@ heading **Output change (fix)**.
   times, for an application that keeps its own. It is repacked exactly as
   the instant-based grid of the same shape is. `hasInstants()` tells the two
   forms apart. On a shape-only grid `getSessionStart()`, `getSlotInterval()`
-  and `getSlotTime()` throw an `InvalidConfigurationException` with the new
-  reason `GridWithoutInstants`; its assignments have no kickoff
-  (`SlotAssignment::hasKickoff()` is false, `getKickoff()` throws with the
-  same reason, and `toArray()` carries `'kickoff' => null`); and as plain
+  and `getSlotTime()` throw the new `Exceptions\UnavailableValueException`;
+  its assignments have no kickoff (`SlotAssignment::hasKickoff()` is false,
+  `getKickoff()` throws the same exception, and `toArray()` carries
+  `'kickoff' => null`); and as plain
   data it has `session_count` in place of `sessions`, `timezone` and
   `slot_interval`. An instant-based grid, its assignments and its plain data
   are unchanged.
+- `Exceptions\UnavailableValueException` (final, extends `\LogicException`,
+  implements `TacticianException`): an object was asked for a value it does
+  not hold. It is thrown by `SessionGrid::getSessionStart()`,
+  `getSlotInterval()`, `getSlotTime()` and `positionOf()` given an instant on
+  a shape-only grid, by `SlotAssignment::getKickoff()` on an assignment made
+  on one, and by `SessionGrid::getCapacityPerSlot()` on a grid of unbounded
+  capacity. It reports a mistake in the calling code, which the `has...()`
+  method named in its message would have prevented, so it is distinct from
+  `InvalidConfigurationException` (a configuration that cannot work) and
+  from `InvariantViolationException` (a defect in the library). It is a
+  `\LogicException` so that those methods declare no checked exception:
+  static analysis of code that calls `getKickoff()`, `getSlotInterval()` or
+  `getCapacityPerSlot()` on the grids and assignments it always had reports
+  nothing new.
 - Repack: `SessionGrid::ordinalOf(int $session, int $slot)` returns a
   position's 0-based index in grid order, and
   `SessionGrid::positionOf(DateTimeImmutable|int $at)` returns
@@ -252,9 +266,10 @@ heading **Output change (fix)**.
   outcome never reports the grid as too small, and any number of events may
   be pinned at one position. `getCapacityLimit()` returns the capacity or
   null and `hasUnboundedCapacity()` says which; `getCapacityPerSlot()`
-  throws with the new reason `UnboundedCapacity` on such a grid, because it
-  has no integer to return. The default is still 1, and a missing or null
-  `capacity_per_slot` in plain data still means 1.
+  throws an `UnavailableValueException` on such a grid, because it has no
+  integer to return. The default is still 1, and a missing or null
+  `capacity_per_slot` in plain data still means 1. Null is the way to say
+  "no limit"; a very large integer is not.
 - Repack: a typed accessor on `RepackOutcome` for each kind of violation, so
   that the getters of a kind can be read without `instanceof`:
   `getParticipantDoubleBookedViolations()`, `getEventUnplacedViolations()`,
@@ -288,15 +303,15 @@ heading **Output change (fix)**.
 - The constructor of `Repack\SessionGrid` accepts more than it did, and
   everything it accepted before means what it meant: `$sessionStarts` may be
   a session count and `$slotInterval` null (the shape-only form, which
-  `SessionGrid::shapeOnly()` builds), and `$capacityPerSlot` may be null. The
-  constructor of `Repack\SlotAssignment` accepts a null `$kickoff`. Static
-  analysis of calling code sees three wider types: `SessionGrid::toArray()`
-  may return the shape-only keys and a string capacity,
-  `SlotAssignment::toArray()` a null `kickoff`, and
-  `SlotAssignment::getKickoff()`, `SessionGrid::getSlotInterval()` and
-  `SessionGrid::getCapacityPerSlot()` declare an
-  `InvalidConfigurationException`. None of them can occur for a grid built
-  the way grids were built before.
+  `SessionGrid::shapeOnly()` builds and the only caller meant to pass it:
+  call `shapeOnly()`, not the constructor, for a shape-only grid), and
+  `$capacityPerSlot` may be null. The constructor of `Repack\SlotAssignment`
+  accepts a null `$kickoff`. Static analysis of calling code sees two wider
+  types: `SessionGrid::toArray()` may return the shape-only keys and a
+  string capacity, and `SlotAssignment::toArray()` a null `kickoff`. Neither
+  can occur for a grid built the way grids were built before. No existing
+  method declares a new checked exception: see `UnavailableValueException`
+  under "Added".
 - `toJson()` and `fromJson()` of `Schedule`, `StageState` and
   `ScheduledSchedule` now throw `Exceptions\JsonConversionException` where PHP's
   `\JsonException` escaped unwrapped. It is a `\JsonException` with the same

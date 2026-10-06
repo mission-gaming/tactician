@@ -10,7 +10,6 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Schedule;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\SlotAssignment;
 use MissionGaming\Tactician\Stage\RoundPairing;
@@ -463,11 +462,9 @@ final class Example
      */
     private static function kickoffText(SlotAssignment $assignment): string
     {
-        try {
-            return self::instant($assignment->getKickoff());
-        } catch (InvalidConfigurationException) {
-            return '(none: shape-only grid)';
-        }
+        return $assignment->hasKickoff()
+            ? self::instant($assignment->getKickoff())
+            : '(none: shape-only grid)';
     }
 
     private static function shortName(string $class): string

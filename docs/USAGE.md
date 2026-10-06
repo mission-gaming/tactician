@@ -67,7 +67,7 @@ anything else that competes.
 | **Session grid** | The declarative position model repacking assigns onto (`SessionGrid`): an explicit ordered list of zoned session starts, a slot interval, a per-session slot count (overridable — final sessions often run deeper), and a per-slot concurrency capacity. Irregular by design, unlike `TimelineDefinition`'s cadence. A grid built this way is instant-based; see **Shape-only grid** for the other form. |
 | **Position** | One assignable place on a session grid: a 0-based session and a 0-based slot within it. A position hosts as many concurrent events as the grid's capacity allows. |
 | **Position ordinal** | A position's 0-based index when the positions of a grid are counted in grid order, session by session and slot by slot (`SessionGrid::ordinalOf()`, reversed by `positionOf()`). What an application indexes its own slot records by. |
-| **Shape-only grid** | A session grid that knows which positions exist and not when they are (`SessionGrid::shapeOnly()`): a session count, the slot counts and a capacity. For an application that keeps its own times. It is repacked exactly as the instant-based grid of the same shape; its assignments carry no kickoff, and every accessor that would return a time throws (`GridWithoutInstants`). |
+| **Shape-only grid** | A session grid that knows which positions exist and not when they are (`SessionGrid::shapeOnly()`): a session count, the slot counts and a capacity. For an application that keeps its own times. It is repacked exactly as the instant-based grid of the same shape; its assignments carry no kickoff, and every accessor that would return a time throws an `UnavailableValueException`. |
 | **Unbounded capacity** | A session grid whose slots host any number of concurrent events (`capacityPerSlot: null`; `'unbounded'` in plain data), so that the only limit is that no participant is in two events at once. Not the default, which is 1. |
 | **Repack** | Repairing an existing schedule (`ScheduleRepacker`): assigning every movable event a (session, slot) position so nobody is double-booked and each participant's events within a session run back to back where possible. Returns a `RepackOutcome` carrying the schedule plus itemised violations rather than throwing. |
 | **Movable event** | An existing event the repack may place (`MovableEvent`): an opaque caller-supplied stable id and two participants. The movable set is a multigraph — the same pairing may occur more than once. |
@@ -1073,11 +1073,17 @@ same shape. What differs is what the library can say about time:
 
 - `hasInstants()` is false, and `getSessionStart()`, `getSlotInterval()`,
   `getSlotTime()` and `positionOf()` given an instant throw an
-  `InvalidConfigurationException` with the reason `GridWithoutInstants`.
-  A shape-only grid never invents an instant.
+  `UnavailableValueException`. A shape-only grid never invents an
+  instant.
 - An assignment has no kickoff: `SlotAssignment::hasKickoff()` is false,
-  `getKickoff()` throws with the same reason, and `toArray()` carries
+  `getKickoff()` throws the same exception, and `toArray()` carries
   `'kickoff' => null`.
+- The exception reports a mistake in the calling code, not in its data,
+  and is not one to catch: code that may be given either form of grid
+  asks `hasInstants()` or `hasKickoff()` first. It extends
+  `\LogicException`, so code that reads `getKickoff()` from the
+  assignments of an instant-based grid has nothing new to handle. See
+  [Exception Hierarchy](#exception-hierarchy).
 - As plain data the grid has `session_count` in place of `sessions`,
   `timezone` and `slot_interval`. `fromArray()` reads the shape-only form
   only when there is no `sessions` key; a shape-only grid that also gives
@@ -1085,9 +1091,11 @@ same shape. What differs is what the library can say about time:
   instant-based grid serializes exactly as it did before shape-only grids
   existed.
 
-<!-- snippet: throws="MissionGaming\Tactician\Exceptions\InvalidConfigurationException" -->
+<!-- snippet: throws="MissionGaming\Tactician\Exceptions\UnavailableValueException" -->
 ```php
-$shape->getSlotTime(0, 0);   // A shape-only grid has no instants
+$shape->getSlotTime(0, 0);
+// A shape-only grid has no instants, so it cannot give a slot time.
+// Check hasInstants() before asking for a time.
 ```
 
 Two lookups turn a position into something an application can index its
@@ -1120,7 +1128,9 @@ is 1: one event at a time. That default is right for one shared resource
 and wrong for events that need nothing shared, where the only limit is
 that no participant is in two events at once. Pass `null` for
 **unbounded capacity** (`'capacity_per_slot' => SessionGrid::UNBOUNDED`,
-the string `'unbounded'`, in plain data):
+the string `'unbounded'`, in plain data). It is the way to say "no
+limit": do not pass a very large integer for that, because the planner
+multiplies the capacity by the number of slots.
 
 ```php
 $events = [
@@ -1160,9 +1170,10 @@ Unbounded capacity removes the limit on a slot and nothing else:
   `CapacityExceeded` naming the participant.
 - Any number of events may be pinned at one position.
 - `getCapacityPerSlot()` returns an integer, and an unbounded grid has
-  none to return: it throws with the reason `UnboundedCapacity`.
+  none to return: it throws an `UnavailableValueException`.
   `getCapacityLimit()` returns the integer or null and never throws; code
-  that may be given either kind of grid reads that.
+  that may be given either kind of grid reads that, or asks
+  `hasUnboundedCapacity()` first.
 
 A missing or null `capacity_per_slot` in plain data still means 1, as it
 always has. That is why the plain-data form of unbounded is a word.
@@ -1426,8 +1437,11 @@ The ID is not empty and the two participants differ.
 
 #### `SessionGrid`
 
-`new SessionGrid(array $sessionStarts, DateInterval $slotInterval, int $slotsPerSession = 1, array $slotsPerSessionOverrides = [], ?int $capacityPerSlot = 1)`
-builds an instant-based grid. The constant `SessionGrid::UNBOUNDED` is
+`new SessionGrid(array|int $sessionStarts, ?DateInterval $slotInterval, int $slotsPerSession = 1, array $slotsPerSessionOverrides = [], ?int $capacityPerSlot = 1)`
+builds an instant-based grid from a list of session starts and a slot
+interval. The integer and the null in the first two types are how
+`shapeOnly()` reaches the constructor (a session count and no interval);
+do not pass them yourself, call `shapeOnly()`. The constant `SessionGrid::UNBOUNDED` is
 the plain-data word for an unbounded capacity.
 
 | Method | Returns |
@@ -1444,10 +1458,10 @@ the plain-data word for an unbounded capacity.
 | `positionOf(DateTimeImmutable\|int $at)` | `['session' => ..., 'slot' => ...]` for an ordinal or an instant, or null |
 | `getCapacityLimit()` | Events per slot, or null when unbounded |
 | `hasUnboundedCapacity()` | Whether the capacity is unbounded |
-| `getCapacityPerSlot()` | Events per slot as an integer; throws when unbounded |
-| `getSessionStart(int $session)` | The session's start as declared; throws on a shape-only grid |
-| `getSlotInterval()` | The time between slots; throws on a shape-only grid |
-| `getSlotTime(int $session, int $slot)` | The slot's time in UTC; throws on a shape-only grid |
+| `getCapacityPerSlot()` | Events per slot as an integer; throws an `UnavailableValueException` when unbounded |
+| `getSessionStart(int $session)` | The session's start as declared; throws an `UnavailableValueException` on a shape-only grid |
+| `getSlotInterval()` | The time between slots; throws an `UnavailableValueException` on a shape-only grid |
+| `getSlotTime(int $session, int $slot)` | The slot's time in UTC; throws an `UnavailableValueException` on a shape-only grid |
 
 #### `RepackOptions`
 
@@ -1501,7 +1515,7 @@ hand, in a test for example.
 | `getSession()` | The 0-based session |
 | `getSlot()` | The 0-based slot within the session |
 | `hasKickoff()` | False when the grid is shape-only |
-| `getKickoff()` | The position's time in UTC; throws when there is none |
+| `getKickoff()` | The position's time in UTC; throws an `UnavailableValueException` when there is none |
 | `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null |
 
 #### `UnplacedEvent`
@@ -1900,6 +1914,7 @@ parent type matches too.
 | `InvalidInputException` | `\InvalidArgumentException` | An argument is outside its allowed range, or the data given to a `fromArray()` or `fromJson()` method is malformed: a missing field, a value of the wrong type, an unknown participant ID. |
 | `JsonConversionException` | `\JsonException` | A `fromJson()` method is given text that is not valid JSON, or a `toJson()` method meets a value JSON cannot represent. The message and code are PHP's; the PHP exception is the previous one. |
 | `InvariantViolationException` | `\LogicException` | The library reached a state its own logic rules out. It reports a defect in the library, not a mistake in the input. |
+| `UnavailableValueException` | `\LogicException` | An object was asked for a value it does not hold: a time from a shape-only `SessionGrid`, the kickoff of an assignment made on one, the capacity of an unbounded grid as a number. It reports a mistake in the calling code, which the object's `has...()` method (named in the message) would have prevented. It is not a configuration error and not a library defect. |
 
 `SchedulingException` is the base of the scheduling failures only. A rejected
 argument or malformed data is an `InvalidInputException`, which is not a
@@ -2122,8 +2137,6 @@ identifier for logs and stored data):
 | `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
-| `GridWithoutInstants` | `grid_without_instants` | A time was asked of a shape-only session grid, or of an assignment made on one |
-| `UnboundedCapacity` | `unbounded_capacity` | The capacity of a session grid was asked for as a number and is unbounded |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
 | `TimelineCapacityExceeded` | `timeline_capacity_exceeded` | A round has more events than the timeline has places for |
 | `ConstraintViolation` | `constraint_violation` | Built by `SchedulingException::constraintViolation()` |

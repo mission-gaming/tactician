@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\TacticianException;
+use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Repack\SessionGrid;
 
 /**
@@ -68,19 +70,50 @@ describe('A shape-only SessionGrid', function (): void {
         expect(instantGrid()->hasInstants())->toBeTrue();
     });
 
-    it('refuses every accessor that returns a time, with a reason of its own', function (Closure $ask): void {
+    // A caller's mistake, not a configuration error: the exception is
+    // unchecked, so a method that throws it puts no checked exception on
+    // callers that only ever hold instant-based grids.
+    it('refuses every accessor that returns a time, naming the method to ask first', function (Closure $ask, string $asked): void {
         $grid = SessionGrid::shapeOnly(2, 3);
 
-        expect(gridErrorReason(fn() => $ask($grid)))->toBe(InvalidConfigurationReason::GridWithoutInstants);
-        expect(fn() => $ask($grid))->toThrow(InvalidConfigurationException::class, 'A shape-only grid has no instants');
+        $thrown = null;
+        try {
+            $ask($grid);
+        } catch (Throwable $e) {
+            $thrown = $e;
+        }
+
+        expect($thrown)->toBeInstanceOf(UnavailableValueException::class);
+        expect($thrown)->toBeInstanceOf(LogicException::class);
+        expect($thrown)->toBeInstanceOf(TacticianException::class);
+        expect($thrown)->not->toBeInstanceOf(InvalidConfigurationException::class);
+        expect($thrown?->getMessage())->toBe(
+            "A shape-only grid has no instants, so it cannot give {$asked}. Check hasInstants() before asking for a time."
+        );
     })->with([
-        'getSessionStart()' => [fn(SessionGrid $grid) => $grid->getSessionStart(0)],
-        'getSlotInterval()' => [fn(SessionGrid $grid) => $grid->getSlotInterval()],
-        'getSlotTime()' => [fn(SessionGrid $grid) => $grid->getSlotTime(0, 0)],
-        'positionOf() given an instant' => [fn(SessionGrid $grid) => $grid->positionOf(new DateTimeImmutable('2026-08-12 19:00', new DateTimeZone('UTC')))],
+        'getSessionStart()' => [fn(SessionGrid $grid) => $grid->getSessionStart(0), 'a session start'],
+        'getSlotInterval()' => [fn(SessionGrid $grid) => $grid->getSlotInterval(), 'a slot interval'],
+        'getSlotTime()' => [fn(SessionGrid $grid) => $grid->getSlotTime(0, 0), 'a slot time'],
+        'positionOf() given an instant' => [
+            fn(SessionGrid $grid) => $grid->positionOf(new DateTimeImmutable('2026-08-12 19:00', new DateTimeZone('UTC'))),
+            'the position of an instant',
+        ],
         // The grid is asked for a time before the position is looked at
-        'getSlotTime() off the grid' => [fn(SessionGrid $grid) => $grid->getSlotTime(9, 9)],
+        'getSessionStart() off the grid' => [fn(SessionGrid $grid) => $grid->getSessionStart(9), 'a session start'],
+        'getSlotTime() off the grid' => [fn(SessionGrid $grid) => $grid->getSlotTime(9, 9), 'a slot time'],
     ]);
+
+    it('still answers every one of them on an instant-based grid, and still reports a position off it as before', function (): void {
+        $grid = instantGrid();
+
+        expect($grid->getSessionStart(0))->toBeInstanceOf(DateTimeImmutable::class);
+        expect($grid->getSlotInterval())->toBeInstanceOf(DateInterval::class);
+        expect($grid->getSlotTime(0, 0))->toBeInstanceOf(DateTimeImmutable::class);
+        expect($grid->positionOf($grid->getSlotTime(0, 0)))->toBe(['session' => 0, 'slot' => 0]);
+
+        expect(gridErrorReason(fn() => $grid->getSessionStart(9)))->toBe(InvalidConfigurationReason::PositionOutOfRange);
+        expect(gridErrorReason(fn() => $grid->getSlotTime(9, 9)))->toBe(InvalidConfigurationReason::PositionOutOfRange);
+    });
 
     it('rejects a shape with no session, no slot or no capacity', function (Closure $build, InvalidConfigurationReason $reason): void {
         expect(gridErrorReason($build))->toBe($reason);
@@ -234,13 +267,16 @@ describe('SessionGrid capacity', function (): void {
     it('takes null as unbounded', function (SessionGrid $grid): void {
         expect($grid->hasUnboundedCapacity())->toBeTrue();
         expect($grid->getCapacityLimit())->toBeNull();
-        expect(gridErrorReason(fn() => $grid->getCapacityPerSlot()))->toBe(InvalidConfigurationReason::UnboundedCapacity);
-        expect(fn() => $grid->getCapacityPerSlot())->toThrow(InvalidConfigurationException::class, 'The capacity of this grid is unbounded');
+        expect(fn() => $grid->getCapacityPerSlot())->toThrow(
+            UnavailableValueException::class,
+            'The capacity of this grid is unbounded, so it has no capacity per slot as a number. '
+            . 'Check hasUnboundedCapacity() first, or read getCapacityLimit(), which returns null for it.'
+        );
     })->with([
-        'instant-based' => [fn() => instantGrid(null)],
-        'shape-only' => [fn() => SessionGrid::shapeOnly(2, 3, [], null)],
-        'from plain data' => [fn() => SessionGrid::fromArray(['session_count' => 2, 'capacity_per_slot' => SessionGrid::UNBOUNDED])],
-    ]);
+            'instant-based' => [fn() => instantGrid(null)],
+            'shape-only' => [fn() => SessionGrid::shapeOnly(2, 3, [], null)],
+            'from plain data' => [fn() => SessionGrid::fromArray(['session_count' => 2, 'capacity_per_slot' => SessionGrid::UNBOUNDED])],
+        ]);
 
     it('writes an unbounded capacity as a word and reads it back', function (): void {
         $grid = instantGrid(null);

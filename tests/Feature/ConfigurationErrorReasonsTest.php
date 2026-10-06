@@ -262,8 +262,6 @@ describe('the reason of a configuration error', function (): void {
             'UnparseableTime' => 'unparseable_time',
             'TimezoneMismatch' => 'timezone_mismatch',
             'NonAdvancingTime' => 'non_advancing_time',
-            'GridWithoutInstants' => 'grid_without_instants',
-            'UnboundedCapacity' => 'unbounded_capacity',
             'TimeRuleViolation' => 'time_rule_violation',
             'TimelineCapacityExceeded' => 'timeline_capacity_exceeded',
             'ConstraintViolation' => 'constraint_violation',

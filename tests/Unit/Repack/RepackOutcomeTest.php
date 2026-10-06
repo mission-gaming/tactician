@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Exceptions\TacticianException;
+use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Repack\CapacityExceeded;
 use MissionGaming\Tactician\Repack\ContiguityBroken;
 use MissionGaming\Tactician\Repack\EventUnplaced;
@@ -169,15 +169,20 @@ describe('SlotAssignment without a kickoff', function (): void {
 
         expect($assignment->hasKickoff())->toBeFalse();
         expect($assignment->toArray())->toBe(['event_id' => 'e1', 'session' => 1, 'slot' => 2, 'kickoff' => null]);
-        expect(fn() => $assignment->getKickoff())
-            ->toThrow(InvalidConfigurationException::class, 'This assignment has no kickoff: its grid is shape-only');
+        // Unchecked, and not a configuration error: see UnavailableValueException
+        expect(fn() => $assignment->getKickoff())->toThrow(
+            UnavailableValueException::class,
+            'The assignment of event "e1" has no kickoff: its grid is shape-only. Check hasKickoff() before asking for one.'
+        );
 
+        $thrown = null;
         try {
             $assignment->getKickoff();
-        } catch (InvalidConfigurationException $e) {
-            expect($e->getReason())->toBe(InvalidConfigurationReason::GridWithoutInstants);
-            expect($e->getContext())->toBe(['event_id' => 'e1', 'session' => 1, 'slot' => 2]);
+        } catch (Throwable $e) {
+            $thrown = $e;
         }
+        expect($thrown)->toBeInstanceOf(LogicException::class);
+        expect($thrown)->toBeInstanceOf(TacticianException::class);
     });
 
     it('is unchanged when it has one', function (): void {

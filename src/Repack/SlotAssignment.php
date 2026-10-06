@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Repack;
 
 use DateTimeImmutable;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
-use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 
 /**
  * One movable event's assigned position: (session, slot) on the grid,
  * decorated with the position's UTC kickoff.
  *
  * An assignment made on a shape-only grid has a position and no kickoff:
- * hasKickoff() is false, getKickoff() throws, and toArray() carries a null
+ * hasKickoff() is false, getKickoff() throws an
+ * UnavailableValueException, and toArray() carries a null
  * `kickoff`. The grid has no instants, so the library states none.
  */
 final readonly class SlotAssignment
@@ -59,18 +59,19 @@ final readonly class SlotAssignment
     /**
      * The position's kickoff time, in UTC.
      *
-     * @throws InvalidConfigurationException When the assignment was made on a
-     *                                       shape-only grid and so has no kickoff;
-     *                                       the reason is GridWithoutInstants
+     * @throws UnavailableValueException When the assignment was made on a
+     *                                   shape-only grid and so has no kickoff.
+     *                                   It is unchecked: ask hasKickoff() first
+     *                                   where an assignment may come from such a
+     *                                   grid
      */
     public function getKickoff(): DateTimeImmutable
     {
         if (!$this->kickoff instanceof DateTimeImmutable) {
-            throw new InvalidConfigurationException(
-                'This assignment has no kickoff: its grid is shape-only',
-                ['event_id' => $this->eventId, 'session' => $this->session, 'slot' => $this->slot],
-                reason: InvalidConfigurationReason::GridWithoutInstants
-            );
+            throw new UnavailableValueException(sprintf(
+                'The assignment of event "%s" has no kickoff: its grid is shape-only. Check hasKickoff() before asking for one.',
+                $this->eventId
+            ));
         }
 
         return $this->kickoff;

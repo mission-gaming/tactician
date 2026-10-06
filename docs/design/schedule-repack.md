@@ -176,12 +176,21 @@ before (31 and 32); the changelog lists them as output changes.
     initialise its properties that static analysis accepts.
 21. **A shape-only grid never invents an instant.** `getSessionStart()`,
     `getSlotInterval()`, `getSlotTime()` and `positionOf()` given an
-    instant throw (`GridWithoutInstants`), and an assignment made on such
-    a grid has a null kickoff, which `SlotAssignment::getKickoff()`
-    refuses to return. Returning a placeholder time was rejected: the
-    consumer this is for was fabricating instants and ignoring the
-    kickoffs, and a placeholder that looks like a time is how a wrong
-    time reaches a user.
+    instant throw, and an assignment made on such a grid has a null
+    kickoff, which `SlotAssignment::getKickoff()` refuses to return.
+    Returning a placeholder time was rejected: the consumer this is for
+    was fabricating instants and ignoring the kickoffs, and a placeholder
+    that looks like a time is how a wrong time reaches a user. What is
+    thrown is an `UnavailableValueException`, a `\LogicException`, here
+    and in decision 25. Asking is the caller's mistake, which
+    `hasInstants()`, `hasKickoff()` or `hasUnboundedCapacity()` would
+    have prevented, not a configuration that cannot work. An
+    `InvalidConfigurationException` was the first choice and was
+    rejected for what it does to code that already exists: it is a
+    checked exception, so `getKickoff()`, `getSlotInterval()` and
+    `getCapacityPerSlot()` would each have declared one, and static
+    analysis would have reported every existing call to them after a
+    patch upgrade, in code that never sees a shape-only grid.
 22. **Wire shapes of existing grids do not change.** A shape-only grid
     serializes with `session_count` in place of `sessions`, `timezone`
     and `slot_interval`, and `fromArray()` reads that form only when there
@@ -204,7 +213,7 @@ before (31 and 32); the changelog lists them as output changes.
     report the grid as too small when what stops an event is its
     participants.
 25. **`getCapacityPerSlot()` throws on an unbounded grid**
-    (`UnboundedCapacity`); `getCapacityLimit()` returns the nullable
+    (an `UnavailableValueException`); `getCapacityLimit()` returns the nullable
     value. The return type of the existing method is `int`, and any
     integer it returned for "no limit" would be used in arithmetic.
 26. **`positionOf()` takes an ordinal or an instant.** A caller with its

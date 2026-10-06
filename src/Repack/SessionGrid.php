@@ -9,6 +9,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use MissionGaming\Tactician\Timeline\ZonedTime;
 
@@ -35,13 +36,15 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
  * for positions alone. Everything about positions works the same on both
  * forms. The accessors that return a time (getSessionStart(),
  * getSlotInterval(), getSlotTime(), and positionOf() given an instant)
- * throw on a shape-only grid, with the reason
- * InvalidConfigurationReason::GridWithoutInstants: a shape-only grid never
- * invents an instant. hasInstants() says which form a grid is.
+ * throw an UnavailableValueException on a shape-only grid: a shape-only
+ * grid never invents an instant. hasInstants() says which form a grid is,
+ * and code that may be given either asks it first.
  *
  * The capacity of a slot is a positive integer or null. Null is unbounded:
  * a slot hosts any number of concurrent events, and the only limit left is
- * that no participant is in two of them. The default is 1.
+ * that no participant is in two of them. The default is 1. Null is the way
+ * to say "no limit": a very large integer is not, because the planner
+ * multiplies the capacity by the number of slots.
  *
  * The grid owns the mechanism only: which positions exist. Which events
  * are movable, and policy about times, stay application-side. Events that
@@ -70,10 +73,13 @@ final readonly class SessionGrid
     /**
      * Build an instant-based grid from its session starts.
      *
-     * The first two parameters also accept the shape-only form (a session
-     * count and a null interval); that is how {@see self::shapeOnly()}
-     * builds its grid, and shapeOnly() is the way to ask for one. A count
-     * with an interval, or session starts without one, is rejected.
+     * Call this with session starts and a slot interval, and nothing else
+     * in their place. The types of the first two parameters are wider than
+     * that only because a readonly class has one constructor:
+     * {@see self::shapeOnly()} reaches the shape-only form through it, by
+     * passing a session count and a null interval. Do not pass those
+     * directly; call shapeOnly(). A count with an interval, or session
+     * starts without one, is rejected.
      *
      * @param array<DateTimeImmutable>|int $sessionStarts Ordered session start instants,
      *                                                    all in the same declared timezone;
@@ -438,8 +444,9 @@ final readonly class SessionGrid
     /**
      * @param int $session 0-based session index
      *
-     * @throws InvalidConfigurationException When the session is out of range, or the
-     *                                       grid is shape-only
+     * @throws InvalidConfigurationException When the session is out of range
+     * @throws UnavailableValueException When the grid is shape-only (unchecked: ask
+     *                                   hasInstants() first)
      */
     public function getSessionStart(int $session): DateTimeImmutable
     {
@@ -477,7 +484,10 @@ final readonly class SessionGrid
     }
 
     /**
-     * @throws InvalidConfigurationException When the grid is shape-only
+     * The time between consecutive slots within a session.
+     *
+     * @throws UnavailableValueException When the grid is shape-only (unchecked: ask
+     *                                   hasInstants() first)
      */
     public function getSlotInterval(): DateInterval
     {
@@ -488,19 +498,19 @@ final readonly class SessionGrid
      * How many events may share one slot, as a number.
      *
      * A grid of unbounded capacity has no such number, and this throws
-     * with the reason InvalidConfigurationReason::UnboundedCapacity rather
-     * than return a stand-in that arithmetic would then use. Code that may
-     * be given either kind of grid reads {@see self::getCapacityLimit()}.
+     * rather than return a stand-in that arithmetic would then use. Code
+     * that may be given either kind of grid reads
+     * {@see self::getCapacityLimit()}, or asks hasUnboundedCapacity()
+     * first.
      *
-     * @throws InvalidConfigurationException When the capacity is unbounded
+     * @throws UnavailableValueException When the capacity is unbounded (unchecked)
      */
     public function getCapacityPerSlot(): int
     {
         if ($this->capacityPerSlot === null) {
-            throw new InvalidConfigurationException(
-                'The capacity of this grid is unbounded',
-                ['capacity_per_slot' => self::UNBOUNDED],
-                reason: InvalidConfigurationReason::UnboundedCapacity
+            throw new UnavailableValueException(
+                'The capacity of this grid is unbounded, so it has no capacity per slot as a number. '
+                . 'Check hasUnboundedCapacity() first, or read getCapacityLimit(), which returns null for it.'
             );
         }
 
@@ -581,8 +591,9 @@ final readonly class SessionGrid
      * @return array{session: int, slot: int}|null Null when no position has that
      *                                             ordinal or that instant
      *
-     * @throws InvalidConfigurationException When given an instant and the grid is
-     *                                       shape-only
+     * @throws UnavailableValueException When given an instant and the grid is
+     *                                   shape-only (unchecked: ask hasInstants()
+     *                                   first)
      */
     public function positionOf(DateTimeImmutable|int $at): ?array
     {
@@ -626,8 +637,9 @@ final readonly class SessionGrid
      * @param int $session 0-based session index
      * @param int $slot 0-based slot index within the session
      *
-     * @throws InvalidConfigurationException When the position is not on the grid, or
-     *                                       the grid is shape-only
+     * @throws InvalidConfigurationException When the position is not on the grid
+     * @throws UnavailableValueException When the grid is shape-only (unchecked: ask
+     *                                   hasInstants() first)
      */
     public function getSlotTime(int $session, int $slot): DateTimeImmutable
     {
@@ -649,17 +661,15 @@ final readonly class SessionGrid
      * The slot interval, which every time the grid can state is built
      * from.
      *
-     * @param string $asked What the caller asked for, for the error context
+     * @param string $asked What the caller asked for, for the message
      *
-     * @throws InvalidConfigurationException When the grid is shape-only
+     * @throws UnavailableValueException When the grid is shape-only
      */
     private function requireInstants(string $asked): DateInterval
     {
         if (!$this->slotInterval instanceof DateInterval) {
-            throw new InvalidConfigurationException(
-                'A shape-only grid has no instants',
-                ['asked_for' => $asked, 'sessions' => $this->getSessionCount()],
-                reason: InvalidConfigurationReason::GridWithoutInstants
+            throw new UnavailableValueException(
+                "A shape-only grid has no instants, so it cannot give {$asked}. Check hasInstants() before asking for a time."
             );
         }
 

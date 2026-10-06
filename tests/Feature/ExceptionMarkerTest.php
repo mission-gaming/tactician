@@ -12,6 +12,7 @@ use MissionGaming\Tactician\Exceptions\PinConflictException;
 use MissionGaming\Tactician\Exceptions\RepackViolationsException;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Exceptions\TacticianException;
+use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Repack\Internal\BudgetExhausted;
 use MissionGaming\Tactician\Tests\Support\ThrowSites;
 use PHPUnit\Framework\Assert;
@@ -161,6 +162,8 @@ describe('everything src/ throws', function () use ($root, $sourceFiles, $source
         $subjects = array_count_values(array_column($sites, 'subject'));
         expect($subjects[InvalidInputException::class] ?? 0)->toBeGreaterThanOrEqual(60);
         expect($subjects[InvariantViolationException::class] ?? 0)->toBeGreaterThanOrEqual(3);
+        // SlotAssignment::getKickoff(), and the instants and the capacity of a SessionGrid.
+        expect($subjects[UnavailableValueException::class] ?? 0)->toBeGreaterThanOrEqual(3);
         expect($subjects[InvalidConfigurationException::class] ?? 0)->toBeGreaterThan(100);
         expect($subjects[IncompleteScheduleException::class] ?? 0)->toBeGreaterThanOrEqual(1);
         expect($subjects[NoValidPairingException::class] ?? 0)->toBeGreaterThanOrEqual(1);
@@ -200,6 +203,7 @@ describe('everything src/ throws', function () use ($root, $sourceFiles, $source
             RepackViolationsException::class,
             SchedulingException::class,
             TacticianException::class,
+            UnavailableValueException::class,
             BudgetExhausted::class,
         ]);
     });
