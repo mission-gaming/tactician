@@ -28,7 +28,7 @@ The work before 0.1.0 was planned in five phases. All five were complete in
 - Multi-leg schedules with leg strategies (mirrored, repeated, shuffled) and first-class byes
 
 ### Phase 2: Additional algorithms (0.1.0)
-- Swiss pairing engine: standings-aware Monrad pairing with repeat avoidance, bye rotation (credited as wins), role balancing, and withdrawals
+- Swiss pairing engine: standings-aware Monrad pairing with repeat avoidance, bye rotation (a bye counts as a win in the pairing order), role balancing, and withdrawals
 - Single and double elimination brackets: fold seeding by list position, byes, round labels, losers bracket, and optional grand-final reset
 - Group stages as a composition: serpentine pools, per-pool standings, and qualification across pools
 - Results, standings, and tiebreakers: a win/draw/loss ranking (3/1/0 and 1/½/0 presets) with wins, Buchholz, and Sonneborn–Berger tiebreakers
@@ -104,6 +104,7 @@ where a link is given.
 
 - **Rank 1 of an elimination outcome is not always the winner.** It differs for double elimination, for two-legged ties decided by `tie_winner`, and where a bye is involved; `MatchOutcomeSelector::winners()` is the winner ([usage guide](USAGE.md#who-won-the-bracket)).
 - **The seed attribute reaches results-driven output through the standings fallback.** Where entries are level, the table orders them by seed, then label, then ID, and the first round of a Swiss stage, a re-seeded elimination round and a rank selector follow the table, not list position. `getTiedSets()` reports where ([ADR 0002](adr/0002-standings-order-is-total.md)).
+- **A bye is a win in the Swiss pairing order and nothing in a table.** The Swiss engine orders a round as if every bye were a win; the outcome's table of a Swiss stage and of a bracket counts no bye. In a bracket re-seeded each round, an entrant who had a bye therefore ranks below the winners of that round, and in a results-free `SwissScheduler` schedule of a field of odd size the participants who have had a bye are ordered first and paired first, so the draw is not uniform ([usage guide](USAGE.md#swiss-tournaments)).
 - **The last fallback of the standings order compares ids as numbers.** After ranking value, tiebreakers, score difference, score for, seed and label, `StandingsCalculator` orders two entries with PHP's string comparison of their ids: `'9'` before `'10'`, and two ids that are equal as numbers (`'01'` and `'1'`) in input order. Every other use of an id compares it as an exact string. Changing this fallback reorders tables that are correct today, so it waits for a minor release.
 - **`StandingsCalculator` recognises an event by the object.** Two `Event` objects for one match are counted as two matches ([usage guide](USAGE.md#results-and-standings)).
 - **Nothing picks a format, a selector or a timeline rule from plain data.** Each class has `fromArray()`; which class to build is the application's to store.
@@ -116,7 +117,7 @@ where a link is given.
 
 **Timeline and quality**
 
-- **An interval in hours is elapsed time.** `PT24H` and `PT168H` shift by an hour across a daylight-saving change; `P1D` and `P7D` keep the time of day ([usage guide](USAGE.md#timeline-assignment)).
+- **An interval in hours is elapsed time.** `PT24H` and `PT168H` shift by an hour across a daylight-saving change; `P1D` and `P7D` keep the time of day, except that a kickoff in the hour the clocks skip is moved and every later round keeps the moved time ([usage guide](USAGE.md#timeline-assignment)).
 - **The assigner does not check who plays.** Without a `MinimumRestRule` it accepts one participant in two events at one time.
 - **`ScheduleOptimizer` samples; it does not search.** It keeps the best of N seeded candidates and works with whole-schedule generators only ([design note](design/schedule-quality.md)).
 

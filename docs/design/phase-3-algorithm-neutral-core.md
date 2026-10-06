@@ -60,6 +60,13 @@ document the shipped shapes.
   ([ADR 0003](../adr/0003-multi-participant-events-are-a-2-0-goal.md)).
 - **Round robin has no stage engine**, so a round-robin stage does not end
   in a `StageOutcome` by itself; the caller builds one.
+- **Results-free Swiss is a uniform draw in a field of even size only.**
+  The table of replaced classes below says the Swiss engine with a
+  `Randomizer` and no results "reproduces random non-repeat pairing". In a
+  field of odd size a bye counts as a win in the pairing order, so the
+  participants who have had one are ordered and paired first. Without a
+  `Randomizer` the order is that of a table with no results: seed, label,
+  ID, and not list position.
 
 ## Why
 
