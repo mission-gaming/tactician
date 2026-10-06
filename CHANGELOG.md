@@ -939,6 +939,27 @@ usage guide lists the same methods under "Deprecations".
     participants in order of first appearance, not in the entrant order;
     `ScheduleOptimizer` skips a sample only for an
     `IncompleteScheduleException`.
+  - **More corrections in the usage guide**: in a results-free Swiss
+    schedule of a field of odd size the participants are not all level,
+    because a bye counts as a win in the pairing order (and as nothing in
+    the outcome's table), and the bound of participants minus one rounds
+    refuses a field of odd size a last round it could play without a repeat; a bracket re-seeded each round ranks an entrant who
+    had a bye below the winners of that round; a constraint asked by the
+    backtracking search or the Swiss round search sees the pairings already
+    made in the candidate's own round; `CompositionValidator` counts a
+    `MatchOutcomeSelector` as the hand-off after one knockout round, which
+    is not what the selector returns from a whole bracket; a zone written
+    into a configured datetime must be the declared `timezone` spelled the
+    same way (`+01:00` is refused under `Europe/London`, a Unix timestamp
+    under `UTC`); a kickoff in the hour the clocks skip moves every later
+    round; malformed or out-of-range configuration is an
+    `InvalidConfigurationException` and not an `InvalidInputException`, and
+    `Schedule::fromArray([])` is an empty schedule and not an error; an odd
+    pot-draw field of one entrant is reported as too few, not as odd; a
+    `SlotAssignment` built by hand writes its kickoff out unconverted.
+  - **`AGENTS.md` and `docs/CONTRIBUTING.md`** no longer say that a stage
+    never reads the seed attribute, that nothing derived from a table
+    depends on input order, or that every DTO is readonly.
   - **`docs/ROADMAP.md`** says in which release each part shipped and what
     is in `main` but not yet released, and its known limitations are the
     ones above. **The design notes** state their status (two still read
