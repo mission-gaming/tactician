@@ -69,10 +69,14 @@ final readonly class BlackoutRule implements TimelineRule
      *                 'timezone' => 'Europe/London', 'label' => 'international break']]].
      *
      * Each window declares its timezone explicitly; an embedded zone that
-     * contradicts it is rejected (see ZonedTime).
+     * contradicts it is rejected (see ZonedTime). `from` and `to` each
+     * state a complete, absolute date and time: a relative string
+     * (`tomorrow`, `+1 week`), an empty one or a date without a time of day
+     * (`2026-11-09`; write `2026-11-09 00:00`) is rejected.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the windows are malformed
+     * @throws InvalidConfigurationException When the windows are malformed, or a bound is not a
+     *                                       complete, absolute date and time
      */
     public static function fromArray(array $config): self
     {

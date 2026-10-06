@@ -161,11 +161,15 @@ final readonly class SessionGrid
      *  'capacity_per_slot' => 7].
      *
      * The timezone is required and authoritative for every session start,
-     * same convention as the timeline family.
+     * same convention as the timeline family. Each session start states a
+     * complete, absolute date and time, as the start of a timeline does:
+     * a relative string (`tomorrow`, `+1 week`), an empty one or a date
+     * without a time of day is rejected (see ZonedTime).
      *
      * @param array<string, mixed> $config
      *
-     * @throws InvalidConfigurationException When a value is missing or malformed
+     * @throws InvalidConfigurationException When a value is missing or malformed, or a session
+     *                                       start is not a complete, absolute date and time
      */
     public static function fromArray(array $config): self
     {

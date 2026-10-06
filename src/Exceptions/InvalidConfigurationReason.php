@@ -160,8 +160,12 @@ enum InvalidConfigurationReason: string
     case PositionOutOfRange = 'position_out_of_range';
 
     /**
-     * A datetime, its timezone or an ISO 8601 duration cannot be parsed.
-     * The previous exception is the one PHP raised.
+     * A datetime, its timezone or an ISO 8601 duration cannot be parsed, or
+     * the datetime does not state a complete, absolute date and time (it is
+     * relative to the current time, leaves the date or the time of day out,
+     * or names a date that does not exist). The previous exception is the
+     * one PHP raised, where PHP raised one: it accepts a relative or partial
+     * datetime, so that error has none.
      */
     case UnparseableTime = 'unparseable_time';
 
