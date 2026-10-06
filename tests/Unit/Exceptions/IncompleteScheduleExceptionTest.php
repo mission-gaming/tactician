@@ -7,6 +7,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
+use MissionGaming\Tactician\Tests\Support\DecimalCommaLocale;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 
@@ -83,6 +84,28 @@ describe('IncompleteScheduleException', function (): void {
         expect($report)->toContain('Legs: 2');
         expect($report)->toContain('Home/Away consecutive limit (2): 1 violations');
     });
+
+    // The report is text an application logs and may match; it must read the
+    // same on every machine. Some PHP builds take the locale from the
+    // environment at startup, so a comma locale needs no setlocale() call.
+    it('states the share of missing events to one decimal place', function (int $expected, int $actual, string $line): void {
+        $exception = new IncompleteScheduleException(
+            expectedEventCount: $expected,
+            actualEventCount: $actual,
+            violationCollector: new ConstraintViolationCollector(),
+            plan: $this->plan,
+            participants: $this->participants
+        );
+
+        expect(explode("\n", $exception->getDiagnosticReport()))->toContain($line);
+        expect(explode("\n", DecimalCommaLocale::during($exception->getDiagnosticReport(...))))->toContain($line);
+    })->with([
+        'all missing' => [12, 0, 'Missing Events: 12 (100.0%)'],
+        'a share that is not whole' => [12, 2, 'Missing Events: 10 (83.3%)'],
+        'a share that rounds up' => [12, 4, 'Missing Events: 8 (66.7%)'],
+        'none missing' => [12, 12, 'Missing Events: 0 (0.0%)'],
+        'nothing expected' => [0, 0, 'Missing Events: 0 (0.0%)'],
+    ]);
 
     // Tests that exception properly calculates event count differences
     it('calculates missing event counts correctly', function (): void {

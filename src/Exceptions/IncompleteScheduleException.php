@@ -126,8 +126,11 @@ class IncompleteScheduleException extends SchedulingException
         } else {
             $report[] = sprintf('Expected Events: %d', $this->expectedEventCount);
             $report[] = sprintf('Generated Events: %d', $this->actualEventCount);
+            // "%F", not "%f": the lower-case form writes the decimal
+            // separator of the locale, and the report must read the same
+            // everywhere.
             $report[] = sprintf(
-                'Missing Events: %d (%.1f%%)',
+                'Missing Events: %d (%.1F%%)',
                 $this->getMissingEventCount(),
                 $this->expectedEventCount === 0 ? 0.0 : ($this->getMissingEventCount() / $this->expectedEventCount) * 100
             );

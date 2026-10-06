@@ -213,7 +213,7 @@ describe('Round Robin Integration', function (): void {
         } catch (IncompleteScheduleException $e) {
             $violationsByConstraint = $e->getViolationCollector()->getViolationsByConstraint();
 
-            expect($violationsByConstraint)->toHaveKey('Seed Protection (top 2, 0.5% period)');
+            expect($violationsByConstraint)->toHaveKey('Seed Protection (top 2, 50% period)');
 
             // The protected window is rounds 1-3 (50% of 6 rounds); whichever
             // participant ordering was attempted last, the rejected top-seed

@@ -904,10 +904,12 @@ it('pins results, not the page or the printed text', function (string $example):
 // said so. Everything else an example computes is the same every time: the
 // script is run twice in surroundings chosen to differ (default timezone,
 // float precision, locale variables in the environment, a working directory
-// outside the repository) and must print the same text both times. PHP does
-// not take its numeric locale from the environment unless a script calls
-// setlocale(), so the locale variables only catch an example that does;
-// the renderer is drawn under a decimal-comma locale in ExampleRendererTest.
+// outside the repository) and must print the same text both times. Whether
+// the locale variables reach PHP's numeric locale without a setlocale() call
+// depends on the PHP build (the one CI installs takes them) and on the locale
+// being installed (the CI workflows generate de_DE.UTF-8). Elsewhere they
+// only catch an example that calls setlocale(); the renderer is drawn under
+// a decimal-comma locale in ExampleRendererTest.
 // Gap left knowingly: one PHP version per run - the CI matrix (8.3, 8.4,
 // 8.5) is what compares versions.
 it('prints the same text whatever the timezone, locale, precision and working directory', function (string $example): void {
