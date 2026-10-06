@@ -1333,17 +1333,18 @@ function assertExamplePage(array $response, string $example): void
     Assert::assertStringStartsWith('<!DOCTYPE html>', $page, "The page of {$example}.php is blank or does not start as a document." . $report);
     Assert::assertStringEndsWith("</html>\n", $page, "The page of {$example}.php is cut short." . $report);
 
-    expect($page)->toContain('<a href="index.php">All examples</a>')
-        ->toContain("<code>php examples/{$example}.php</code>")
-        // The page lists its own source, escaped
-        ->toContain('<h2>The code that produced this page</h2><pre class="source"><code>&lt;?php')
-        ->toContain('return Example::present(__FILE__, ');
-
     foreach (['Warning', 'Notice', 'Deprecated', 'Fatal error'] as $marker) {
-        expect($page)->not->toContain("<b>{$marker}</b>");
+        Assert::assertStringNotContainsString("<b>{$marker}</b>", $page, "The page of {$example}.php shows a PHP error ({$marker})." . $report);
     }
+
+    Assert::assertStringContainsString('<a href="index.php">All examples</a>', $page, "The page of {$example}.php has no link back to the list." . $report);
+    Assert::assertStringContainsString("<code>php examples/{$example}.php</code>", $page, "The page of {$example}.php does not say how to run {$example}.php." . $report);
+    // The page lists its own source, escaped
+    Assert::assertStringContainsString('<h2>The code that produced this page</h2><pre class="source"><code>&lt;?php', $page, "The page of {$example}.php does not list its source." . $report);
+    Assert::assertStringContainsString('return Example::present(__FILE__, ', $page, "The source the page of {$example}.php lists is not that of an example." . $report);
+
     foreach (array_keys(ExampleResults::of($example)) as $name) {
-        expect($page)->toContain('<h2>' . Example::escape($name) . '</h2>');
+        Assert::assertStringContainsString('<h2>' . Example::escape($name) . '</h2>', $page, "The page of {$example}.php does not show the result \"{$name}\"." . $report);
     }
 }
 
@@ -1355,11 +1356,11 @@ it('serves every example as a page under the built-in web server', function (str
     withExampleServer($root . $workingDirectory, $documentRoot === 'absolute' ? "{$root}/examples" : $documentRoot, function (Closure $request): void {
         $index = $request('/');
         expect($index['status'])->toBe('HTTP/1.1 200 OK', $index['report'])
-            ->and($index['body'])->toStartWith('<!DOCTYPE html>', $index['report'])
-            ->toContain('<title>Tactician examples - Tactician examples</title>');
+            ->and($index['body'])->toStartWith('<!DOCTYPE html>', $index['report']);
+        Assert::assertStringContainsString('<title>Tactician examples - Tactician examples</title>', $index['body'], $index['report']);
 
         foreach (ExampleResults::names() as $example) {
-            expect($index['body'])->toContain('<a href="' . $example . '.php">');
+            Assert::assertStringContainsString('<a href="' . $example . '.php">', $index['body'], "The list does not link to {$example}.php.\n" . $index['report']);
 
             assertExamplePage($request("/{$example}.php"), $example);
         }
@@ -1377,30 +1378,59 @@ it('serves every example as a page under the built-in web server', function (str
 
 /*
  * The server test is only worth what its harness is worth, so the harness is
- * tested as well: that a page which is blank, cut short or missing fails,
- * that the failure says what the server did, and that the server runs
- * without the JIT.
+ * tested as well: that a page which is blank, cut short, erroring, incomplete
+ * or missing fails, that the failure says what the server did, that the
+ * server runs without the JIT, and that a server which cannot be started
+ * fails the test on CI instead of skipping it.
  */
+
+/**
+ * The complete page of an example as the server would answer it, built
+ * without a server.
+ */
+function examplePageFixture(string $example): string
+{
+    $script = ExampleResults::directory() . "/{$example}.php";
+
+    return Example::renderHtml('Title', 'Summary', ExampleResults::of($example), "{$example}.php", Example::siblings($script), (string) file_get_contents($script));
+}
+
+/**
+ * The message assertExamplePage() fails with for this response, or null
+ * when it accepts the response.
+ *
+ * @param array{status: ?string, body: string, report: string} $response
+ *
+ * @throws PHPUnit\Framework\Exception
+ */
+function examplePageFailure(array $response, string $example): ?string
+{
+    try {
+        assertExamplePage($response, $example);
+    } catch (PHPUnit\Framework\ExpectationFailedException $caught) {
+        return $caught->getMessage();
+    }
+
+    return null;
+}
+
 it('accepts the complete page of an example', function (): void {
     $example = '01-basic-round-robin';
-    $script = ExampleResults::directory() . "/{$example}.php";
-    $page = Example::renderHtml('Title', 'Summary', ExampleResults::of($example), "{$example}.php", Example::siblings($script), (string) file_get_contents($script));
 
-    assertExamplePage(['status' => 'HTTP/1.1 200 OK', 'body' => $page, 'report' => 'the report'], $example);
+    expect(examplePageFailure(['status' => 'HTTP/1.1 200 OK', 'body' => examplePageFixture($example), 'report' => 'the report'], $example))->toBeNull();
 });
 
-it('fails on a page that is blank, cut short or missing, with the report of the request', function (?string $status, Closure $body, string $expected): void {
+it('fails on a page that is blank, cut short, erroring, incomplete or missing, with the report of the request', function (?string $status, Closure $body, string $expected): void {
     $example = '01-basic-round-robin';
-    $script = ExampleResults::directory() . "/{$example}.php";
-    $page = Example::renderHtml('Title', 'Summary', ExampleResults::of($example), "{$example}.php", Example::siblings($script), (string) file_get_contents($script));
+    $page = examplePageFixture($example);
+    $changed = $body($page);
 
-    $failure = null;
-
-    try {
-        assertExamplePage(['status' => $status, 'body' => $body($page), 'report' => "GET http://127.0.0.1:1/{$example}.php\n  end of the server log:\n    the last line"], $example);
-    } catch (PHPUnit\Framework\ExpectationFailedException $caught) {
-        $failure = $caught->getMessage();
+    // A data set that leaves the page as it is would prove nothing about the status alone
+    if ($status === 'HTTP/1.1 200 OK') {
+        expect($changed)->not->toBe($page);
     }
+
+    $failure = examplePageFailure(['status' => $status, 'body' => $changed, 'report' => "GET http://127.0.0.1:1/{$example}.php\n  end of the server log:\n    the last line"], $example);
 
     expect($failure)->toBeString()
         ->toContain($expected)
@@ -1409,10 +1439,61 @@ it('fails on a page that is blank, cut short or missing, with the report of the 
 })->with([
     'no response at all' => [null, static fn (string $page): string => '', 'did not answer the request for 01-basic-round-robin.php with a page'],
     'an error status' => ['HTTP/1.1 500 Internal Server Error', static fn (string $page): string => $page, 'did not answer the request for 01-basic-round-robin.php with a page'],
+    'a page that is not found' => ['HTTP/1.1 404 Not Found', static fn (string $page): string => $page, 'did not answer the request for 01-basic-round-robin.php with a page'],
     'a blank page' => ['HTTP/1.1 200 OK', static fn (string $page): string => '', 'is blank or does not start as a document'],
+    'a page of white space' => ['HTTP/1.1 200 OK', static fn (string $page): string => "\n", 'is blank or does not start as a document'],
+    'a warning before the page' => ['HTTP/1.1 200 OK', static fn (string $page): string => "<br />\n<b>Warning</b>:  Undefined variable\n" . $page, 'is blank or does not start as a document'],
     'a page cut short' => ['HTTP/1.1 200 OK', static fn (string $page): string => substr($page, 0, intdiv(strlen($page), 2)), 'is cut short'],
     'a page without its last line' => ['HTTP/1.1 200 OK', static fn (string $page): string => substr($page, 0, -8), 'is cut short'],
+    'a page without its final newline' => ['HTTP/1.1 200 OK', static fn (string $page): string => substr($page, 0, -1), 'is cut short'],
+    'output after the page' => ['HTTP/1.1 200 OK', static fn (string $page): string => $page . 'more', 'is cut short'],
+    'a warning in the page' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('</body>', "<br />\n<b>Warning</b>:  Undefined variable\n</body>", $page), 'shows a PHP error (Warning)'],
+    'a deprecation in the page' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('</body>', "<br />\n<b>Deprecated</b>:  Something\n</body>", $page), 'shows a PHP error (Deprecated)'],
+    'a fatal error in a page that still ends' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('</body>', "<br />\n<b>Fatal error</b>:  Uncaught Exception\n</body>", $page), 'shows a PHP error (Fatal error)'],
+    'no link back to the list' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('<a href="index.php">All examples</a>', '', $page), 'has no link back to the list'],
+    'the page of another example' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('<code>php examples/01-basic-round-robin.php</code>', '<code>php examples/02-participants-and-metadata.php</code>', $page), 'does not say how to run 01-basic-round-robin.php'],
+    'no source listing' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('<h2>The code that produced this page</h2>', '', $page), 'does not list its source'],
+    'a result that is not shown' => ['HTTP/1.1 200 OK', static fn (string $page): string => str_replace('<h2>Schedule</h2>', '', $page), 'does not show the result "Schedule"'],
 ]);
+
+// The same, end to end: what a real server answers goes through the request
+// function and the assertion that the page test uses
+it('fails on what a server really answers for a page that is blank, cut short, erroring or missing', function (): void {
+    $example = '01-basic-round-robin';
+    $page = examplePageFixture($example);
+    $half = intdiv(strlen($page), 2);
+
+    withThrowawayServer([
+        'first.html' => substr($page, 0, $half),
+        'second.html' => substr($page, $half),
+        'complete.php' => '<?php readfile(__DIR__ . "/first.html"); readfile(__DIR__ . "/second.html");',
+        'blank.php' => '<?php',
+        'cut.php' => '<?php readfile(__DIR__ . "/first.html");',
+        'warns.php' => '<?php readfile(__DIR__ . "/first.html"); echo $undefined; readfile(__DIR__ . "/second.html");',
+        'throws.php' => '<?php readfile(__DIR__ . "/first.html"); throw new RuntimeException("it broke");',
+        'refuses.php' => '<?php http_response_code(500); readfile(__DIR__ . "/first.html"); readfile(__DIR__ . "/second.html");',
+    ], function (Closure $request) use ($example): void {
+        // The control: the same page, whole, is accepted
+        $complete = $request('/complete.php');
+        expect(examplePageFailure($complete, $example))->toBeNull($complete['report']);
+
+        foreach ([
+            'blank' => 'is blank or does not start as a document',
+            'cut' => 'is cut short',
+            'warns' => 'shows a PHP error (Warning)',
+            'throws' => 'is cut short',
+            'refuses' => 'did not answer the request for 01-basic-round-robin.php with a page',
+            'missing' => 'did not answer the request for 01-basic-round-robin.php with a page',
+        ] as $script => $expected) {
+            $failure = examplePageFailure($request("/{$script}.php"), $example);
+
+            expect($failure)->toBeString("{$script}.php was accepted as a complete page")
+                ->toContain($expected)
+                ->toMatch('~\nGET http://127\.0\.0\.1:\d+/' . $script . '\.php\n~')
+                ->toContain("GET /{$script}.php");
+        }
+    });
+});
 
 it('reports the address, the status line and the server log of every request', function (): void {
     withThrowawayServer([
