@@ -236,6 +236,8 @@ describe('Golden output', function (): void {
             'examples/20-double-elimination.txt',
             'examples/21-standings-and-tiebreakers.txt',
             'examples/22-pot-draw.txt',
+            'examples/23-application-adapter-and-repack.txt',
+            'examples/24-recording-bracket-results.txt',
         ]);
     });
 

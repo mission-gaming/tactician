@@ -16,7 +16,8 @@ use MissionGaming\Tactician\Stage\StageState;
 // request cycles, with StageState serialized between them. Nothing is
 // shared between "requests" here except the persisted JSON string -
 // every cycle constructs a fresh engine and rehydrates the state, exactly
-// as a controller or queued job would.
+// as a controller or queued job would. Example 24 adds what a real stage
+// also needs: the engine stamp, a level event and a corrected result.
 
 /** @var array<string, string> $database A stand-in for your stage table */
 $database = [];
@@ -25,8 +26,11 @@ $database = [];
 $requests = [];
 
 // --- Request 1: the organizer opens the stage -------------------------
-// Stage entry is position-authoritative: list order is the seeding,
-// so no seed attributes are needed
+// A Swiss round is paired in table order. Before any result exists the
+// whole field is level, and the table then orders it by seed, then label,
+// then id - not by position in this list. These entrants carry no seed
+// and are listed in label order, so the first round pairs them as listed.
+// Give every participant a seed when the opening order must be your own.
 $entrants = [
     new Participant('ana', 'Ana'),
     new Participant('bea', 'Bea'),

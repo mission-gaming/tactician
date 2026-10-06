@@ -11,10 +11,14 @@ use MissionGaming\Tactician\Examples\Measured;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
+use MissionGaming\Tactician\Exceptions\TacticianException;
 use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\ViolationKind;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Tests\Support\CiEnvironment;
 use MissionGaming\Tactician\Tests\Support\ExampleResults;
@@ -53,6 +57,11 @@ use PHPUnit\Framework\Assert;
 
 $root = dirname(__DIR__, 2);
 $exampleScripts = glob($root . '/examples/*.php') ?: [];
+
+// The renderer is not autoloaded. A test below that draws a page before any
+// example has been included needs it, whichever test of the file runs first
+// and whether or not another test file has loaded it.
+require_once $root . '/examples/support/Example.php';
 
 /**
  * A named result of an example, checked to be of the expected class.
@@ -391,7 +400,7 @@ $demonstrations = [
             ->and($homeGames($shuffled))->not->toBe($homeGames($repeated));
     },
 
-    // All the constraints hold at once in a complete two-leg season; seed protection and the tier rule moved fixtures
+    // Both rules hold at once in a complete two-leg season, and each one rejects the season generated without them
     '10-complex-tournament' => function (array $results): void {
         $schedule = exampleResult($results, 'Schedule with the constraints', Schedule::class);
 
@@ -408,20 +417,16 @@ $demonstrations = [
             expect(examplePair($event))->not->toBe('fnatic|tsm')
                 ->and($tiers)->not->toBe(['B', 'S']);
         }
-        $gaps = [];
         $mismatchRounds = [];
         foreach (exampleMeetings($schedule) as $pair => $rounds) {
-            expect($rounds[1] - $rounds[0])->toBeGreaterThanOrEqual(7, $pair);
-            $gaps[] = $rounds[1] - $rounds[0];
-
             [$first, $second] = explode('|', $pair);
             if ([$tier[$first], $tier[$second]] === ['S', 'B'] || [$tier[$first], $tier[$second]] === ['B', 'S']) {
                 array_push($mismatchRounds, ...$rounds);
             }
         }
 
-        if ($gaps === [] || $mismatchRounds === []) {
-            Assert::fail('The schedule holds no pairing, or no S-tier against B-tier pairing, to check.');
+        if ($mismatchRounds === []) {
+            Assert::fail('The schedule holds no S-tier against B-tier pairing to check.');
         }
 
         // The summary the example reports for a schedule is the one worked out here from the schedule itself,
@@ -431,30 +436,39 @@ $demonstrations = [
             'Rounds' => 14,
             'Rounds in which seeds 1 and 2 meet' => implode(' and ', exampleMeetings($schedule)['fnatic|tsm']),
             'Earliest round with S-tier against B-tier' => min($mismatchRounds),
-            'Fewest rounds between the two meetings of a pair' => min($gaps),
         ]);
 
-        // Without the constraints seed protection and the tier rule are both broken, so those two are what
-        // moved the fixtures. The gap between meetings is 7 either way: two mirrored legs already give it,
-        // and noRepeatPairings() changes nothing in a round robin (example 04).
+        // Neither rule is inert: the season generated without them has the top two seeds meeting inside the
+        // protected window (rounds 1 and 2) and an S-tier against B-tier event in round 1, so each rule
+        // rejects events of it. The set holds those two rules and none that leaves the season as it was.
         $without = exampleArray($results, 'Without constraints');
         expect($without['Rounds in which seeds 1 and 2 meet'])->toBe('2 and 9')
             ->and($without['Earliest round with S-tier against B-tier'])->toBe(1)
-            ->and($without['Fewest rounds between the two meetings of a pair'])->toBe(7)
-            ->and($results['Constraints in the set'])->toBe(4);
+            ->and($results['Constraints in the set'])->toBe(2);
     },
 
-    // The two exceptions are thrown for the reasons given and carry what the example reads from them
+    // The two exceptions are thrown for the reasons given and carry what the example reads from them, and one
+    // catch of the marker interface takes a scheduling failure and a rejected argument alike
     '11-error-handling' => function (array $results): void {
         $invalid = exampleResult($results, 'Duplicate participant ids', InvalidConfigurationException::class);
         $incomplete = exampleResult($results, 'A constraint that rejects everything', IncompleteScheduleException::class);
 
-        expect($invalid)->toBeInstanceOf(SchedulingException::class)
-            ->and($incomplete)->toBeInstanceOf(SchedulingException::class)
+        expect($invalid)->toBeInstanceOf(TacticianException::class)
+            ->and($incomplete)->toBeInstanceOf(TacticianException::class)
             ->and($results['The issue it names'])->toBe('All participants must have unique IDs')
+            ->and($invalid->getReason())->toBe(InvalidConfigurationReason::DuplicateParticipantIds)
+            ->and($results['Its reason'])->toBe('duplicate_participant_ids')
             ->and($results['How far generation got'])->toBe(['Expected events' => 6, 'Generated events' => 0, 'Missing events' => 6])
             ->and($results['Diagnostic report'])->toBeString()->toContain('Reject everything')
-            ->and($results['Class caught as SchedulingException'])->toBe(IncompleteScheduleException::class);
+            ->and($results['Classes caught as TacticianException'])->toBe([
+                'A schedule the constraints rule out' => IncompleteScheduleException::class,
+                'A round numbered zero' => InvalidInputException::class,
+            ]);
+
+        // The second of the two is what a catch of SchedulingException would have let through
+        $caught = exampleArray($results, 'Classes caught as TacticianException');
+        expect(is_a($caught['A schedule the constraints rule out'], SchedulingException::class, true))->toBeTrue()
+            ->and(is_a($caught['A round numbered zero'], SchedulingException::class, true))->toBeFalse();
 
         assertExampleRoundRobin(exampleResult($results, 'A valid request', Schedule::class), 4);
     },
@@ -678,7 +692,8 @@ $demonstrations = [
             ->and($standings->getEntries()[0]->getParticipant()->getId())->toBe('ana');
     },
 
-    // Every movable event is placed, nobody is double-booked, play is back to back, and only late starts remain
+    // Every movable event is placed, nobody is double-booked, play is back to back, and only late starts remain;
+    // the deeper final session is used, and without it some events find no position
     '19-repacking-a-season' => function (array $results): void {
         $outcome = exampleResult($results, 'Repacked schedule', RepackOutcome::class);
         $fixtures = exampleArray($results, 'Fixtures by event id');
@@ -697,8 +712,8 @@ $demonstrations = [
         $perSlot = [];
         $slotsByParticipant = [];
         foreach ($positions as $eventId => [$session, $slot]) {
-            // Session 0 has 3 slots, session 1 has 4
-            expect($slot)->toBeLessThan($session === 0 ? 3 : 4);
+            // Session 0 has 2 slots, session 1 has 4
+            expect($slot)->toBeLessThan($session === 0 ? 2 : 4);
 
             $perSlot["{$session}/{$slot}"] = ($perSlot["{$session}/{$slot}"] ?? 0) + 1;
             foreach (explode(' v ', (string) $fixtures[$eventId]) as $label) {
@@ -716,9 +731,17 @@ $demonstrations = [
             }
         }
 
-        expect($outcome->getViolations())->toHaveCount(4)
-            ->and($outcome->getViolationsOfKind(ViolationKind::LateStart))->toHaveCount(4)
+        expect($outcome->getViolations())->toHaveCount(3)
+            ->and($outcome->getViolationsOfKind(ViolationKind::LateStart))->toHaveCount(3)
             ->and($results['Clean'])->toBeFalse();
+
+        // The override is not decoration: both slots it adds to the final session hold an event, and the
+        // same request without it leaves events with no position. Every movable event is still accounted for.
+        $without = exampleArray($results, 'Without the deeper final session');
+        expect($perSlot['1/2'] ?? 0)->toBeGreaterThan(0)
+            ->and($perSlot['1/3'] ?? 0)->toBeGreaterThan(0)
+            ->and($without['Unplaced'])->toBeGreaterThan(0)
+            ->and($without['Placed'] + $without['Unplaced'])->toBe(10);
     },
 
     // Out after the second loss: the champion lost once, everybody else twice, and the final was reset
@@ -878,6 +901,187 @@ $demonstrations = [
         expect($refused->getReason())->toBe(InvalidConfigurationReason::OddPotWithOddOpponents)
             ->and($refused->getContext())->toBe(['pot_size' => 5, 'opponents_per_pot' => 1, 'participant_slots_inside_one_pot' => 5])
             ->and($results['Its reason'])->toBe('odd_pot_with_odd_opponents');
+    },
+
+    // Application rows in, fixture rows out with rounds, roles and byes kept; the repack moves only what may
+    // move, its violations are read by kind, and a plan is applied only when recomputing it gives the
+    // fingerprint that was previewed, on the nights that were previewed
+    '23-application-adapter-and-repack' => function (array $results): void {
+        $participants = exampleArray($results, 'Participants, in the order of the ranking');
+        $copied = exampleArray($results, 'Fixture rows copied from the schedule');
+        $byes = exampleArray($results, 'Bye rows, from the schedule metadata');
+        $tooFewSlots = exampleResult($results, 'First preview: one kickoff per night', RepackOutcome::class);
+        $preview = exampleResult($results, 'Second preview: two kickoffs per night', RepackOutcome::class);
+        $applied = exampleArray($results, 'Fixture rows after the plan was applied');
+
+        // The ids are the primary keys as strings, in the order of the application's ranking, with no seed
+        expect(array_map(static fn(Participant $participant): string => $participant->getId(), $participants))->toBe(['7', '18', '31', '44', '52'])
+            ->and(array_map(static fn(Participant $participant): ?int => $participant->getSeed(), $participants))->toBe([null, null, null, null, null]);
+
+        // The copied rows are a complete round robin of the five clubs: every pair once, nobody twice in a
+        // round, and the club with the bye in a round plays no fixture of it
+        expect($copied)->toHaveCount(10)
+            ->and(array_unique(array_column($copied, 'id')))->toHaveCount(10);
+        $pairs = [];
+        $playing = [];
+        foreach ($copied as $row) {
+            $pair = [$row['home_club_id'], $row['away_club_id']];
+            sort($pair);
+            $pairs[] = implode('|', $pair);
+            $playing[$row['round']][] = $row['home_club_id'];
+            $playing[$row['round']][] = $row['away_club_id'];
+        }
+        expect(array_unique($pairs))->toHaveCount(10)
+            ->and(array_keys($playing))->toBe([1, 2, 3, 4, 5]);
+        expect($byes)->toHaveCount(5);
+        foreach ($byes as $bye) {
+            $inRound = $playing[$bye['round']];
+            sort($inRound);
+            $everyoneElse = array_values(array_diff([7, 18, 31, 44, 52], [$bye['club_id']]));
+            expect($inRound)->toBe($everyoneElse, "round {$bye['round']}");
+        }
+
+        // Rounds 1 and 2 are played on nights off the grid, one fixture is locked on it, the rest may move
+        expect($results['What the repack request holds'])->toBe([
+            'Movable' => 5,
+            'Pinned' => 1,
+            'Left out, not on the grid' => 4,
+            'Positions on the grid' => 2,
+        ]);
+
+        // First preview: nothing thrown, every movable fixture either assigned or unplaced, and the tables
+        // the example builds from the typed accessors are the violations the outcome holds
+        expect(count($tooFewSlots->getAssignments()) + count($tooFewSlots->getUnplaced()))->toBe(5)
+            ->and($tooFewSlots->getUnplaced())->not->toBe([])
+            ->and($tooFewSlots->getCapacityExceededViolations())->toBe($tooFewSlots->getViolationsOfKind(ViolationKind::CapacityExceeded))
+            ->and($tooFewSlots->getEventUnplacedViolations())->toBe($tooFewSlots->getViolationsOfKind(ViolationKind::EventUnplaced));
+
+        $overCapacity = exampleArray($results, 'Clubs with more fixtures than free positions');
+        expect($overCapacity)->not->toBe([])
+            ->and($overCapacity)->toHaveCount(count($tooFewSlots->getCapacityExceededViolations()));
+        foreach ($overCapacity as $row) {
+            expect($row['Short by'])->toBe($row['Fixtures to place'] - $row['Free positions'])->toBeGreaterThan(0);
+        }
+        expect(array_column(exampleArray($results, 'Fixtures it could not place'), 'Fixture'))
+            ->toBe(array_map(static fn($unplaced): string => $unplaced->getEventId(), $tooFewSlots->getUnplaced()));
+
+        // Second preview: everything placed, on a shape-only grid, and what is left is late starts
+        expect($preview->getUnplaced())->toBe([])
+            ->and($preview->getAssignments())->toHaveCount(5)
+            ->and($preview->getViolations())->toBe($preview->getLateStartViolations())
+            ->and(exampleArray($results, 'Late starts in the second preview'))->toHaveCount(count($preview->getLateStartViolations()));
+        foreach ($preview->getAssignments() as $assignment) {
+            expect($assignment->hasKickoff())->toBeFalse();
+        }
+        expect($results['Reading the second preview'])->toBe([
+            'Clean' => $preview->isClean(),
+            'Everything placed' => true,
+            'Step budget ran out' => false,
+            'Fingerprint' => $preview->fingerprint(),
+        ])->and($preview->fingerprint())->toStartWith(RepackOutcome::FINGERPRINT_SCHEME . ':');
+
+        // A plan that differs from the previewed one is refused. So is the same plan on nights that are not
+        // the ones previewed: a shape-only grid holds no times, so the fingerprint is the same there, and it
+        // is the application that has to compare the nights. The previewed plan on the previewed nights is
+        // applied.
+        expect($results['Confirming'])->toBe([
+            'Applied after another fixture was locked' => false,
+            'Same fingerprint after a kickoff was moved' => true,
+            'Applied after a kickoff was moved' => false,
+            'Applied with the rows and nights as previewed' => true,
+        ]);
+
+        // Applied: each movable fixture sits where the preview put it, with the application's own time
+        // for that position; the played and locked fixtures are where they were; nobody is in two
+        // fixtures at once
+        $kickoffs = [
+            'night-4' => ['2026-09-24 19:00', '2026-09-24 20:30'],
+            'night-5' => ['2026-10-01 19:00', '2026-10-01 20:30'],
+        ];
+        $nights = array_keys($kickoffs);
+        $taken = [];
+        $moved = 0;
+        foreach ($applied as $index => $row) {
+            expect([$row['id'], $row['round'], $row['home_club_id'], $row['away_club_id']])
+                ->toBe([$copied[$index]['id'], $copied[$index]['round'], $copied[$index]['home_club_id'], $copied[$index]['away_club_id']]);
+
+            $assignment = $preview->getAssignmentFor((string) $row['id']);
+            if ($assignment !== null) {
+                ++$moved;
+                expect($row['state'])->toBe('scheduled')
+                    ->and($row['night'])->toBe($nights[$assignment->getSession()])
+                    ->and($row['slot'])->toBe($assignment->getSlot())
+                    ->and($row['local_kickoff'])->toBe($kickoffs[$nights[$assignment->getSession()]][$assignment->getSlot()]);
+            } else {
+                expect($row['state'])->toBeIn(['played', 'locked'])
+                    ->and($row['slot'])->toBe(0);
+            }
+
+            foreach ([$row['home_club_id'], $row['away_club_id']] as $club) {
+                $taken[] = "{$club} {$row['local_kickoff']}";
+            }
+        }
+        expect($moved)->toBe(5)
+            ->and(array_unique($taken))->toHaveCount(20);
+    },
+
+    // A level event sends on the participant the application named, a wrong result is corrected before the
+    // next round is paired from it, and the stamp makes an engine with another configuration refuse the state
+    '24-recording-bracket-results' => function (array $results): void {
+        $asRecorded = exampleArray($results, 'Semifinals, as first recorded');
+        $stored = exampleArray($results, 'Results in the stored state');
+        $finals = exampleArray($results, 'The final');
+        $standings = exampleResult($results, 'Final standings', Standings::class);
+        $titleHolder = exampleResult($results, 'Title holder', Participant::class);
+
+        expect($asRecorded)->toHaveCount(2)
+            ->and($stored)->toHaveCount(3);
+        [$level, $corrected, $final] = $stored;
+        assert($level instanceof Result && $corrected instanceof Result && $final instanceof Result);
+        $wrong = $asRecorded[1];
+        assert($wrong instanceof Result);
+
+        // The level event stays a draw in the record, and the participant it names is the one in the final
+        expect($level->isDraw())->toBeTrue()
+            ->and($level->getMetadataValue(TieDecision::TIE_WINNER_KEY))->toBe('dia')
+            ->and($results['The level semifinal'])->toBe(['Recorded as a draw' => true, 'Recorded winner' => null, 'Who advanced' => 'Dia'])
+            ->and(examplePair($final->getEvent()))->toContain('dia');
+
+        // The correction replaced the result of the same event and changed who the final holds
+        expect(examplePair($corrected->getEvent()))->toBe(examplePair($wrong->getEvent()))
+            ->and($wrong->getWinner()?->getId())->toBe('cai')
+            ->and($corrected->getWinner()?->getId())->toBe('bea');
+        $asEntered = exampleResult($finals, 'As the wrong result paired it', Event::class);
+        $afterCorrection = exampleResult($finals, 'After the correction', Event::class);
+        expect(examplePair($asEntered))->toBe('cai|dia')
+            ->and(examplePair($afterCorrection))->toBe('bea|dia')
+            ->and(examplePair($final->getEvent()))->toBe('bea|dia');
+
+        // The title holder is the winner of the final; the table counts the decided level event as a win
+        // for the participant who advanced
+        expect($titleHolder->getId())->toBe('bea')
+            ->and($final->getWinner())->toBe($titleHolder);
+        $record = [];
+        foreach ($standings->getEntries() as $entry) {
+            $record[$entry->getParticipant()->getId()] = [$entry->getWins(), $entry->getDraws(), $entry->getLosses()];
+        }
+        expect($record)->toBe(['bea' => [2, 0, 0], 'dia' => [1, 0, 1], 'ana' => [0, 0, 1], 'cai' => [0, 0, 1]]);
+
+        expect($results['The stamp'])->toBe([
+            'Stored with the state' => true,
+            'Same for an engine built again with the same options' => true,
+        ])->and((new SingleEliminationEngine())->getFingerprint())->not->toBe('');
+
+        // Each refusal carries the reason the example reports
+        $wrongEngine = exampleResult($results, 'An engine for two-legged ties', InvalidConfigurationException::class);
+        $undecided = exampleResult($results, 'A level event with nobody named', InvalidConfigurationException::class);
+        $tooLate = exampleResult($results, 'Correcting a semifinal after the final', InvalidConfigurationException::class);
+        expect($wrongEngine->getReason())->toBe(InvalidConfigurationReason::EngineFingerprintMismatch)
+            ->and($results['Its reason'])->toBe('engine_fingerprint_mismatch')
+            ->and($undecided->getReason())->toBe(InvalidConfigurationReason::UndecidedTie)
+            ->and($results['The reason for that'])->toBe('undecided_tie')
+            ->and($tooLate->getReason())->toBe(InvalidConfigurationReason::RoundSuperseded)
+            ->and($results['The reason for that one'])->toBe('round_superseded');
     },
 ];
 

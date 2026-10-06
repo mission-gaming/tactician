@@ -30,16 +30,17 @@ $rayo = new Participant('ray', 'Rayo Vallecano');
 $clapton = new Participant('cla', 'Clapton Community FC');
 
 // The grid is an explicit list of session starts — not a cadence — with
-// staggered slots. The final session runs one slot deeper: overridable
-// per session, because real recovery grids are irregular.
-$grid = SessionGrid::fromArray([
+// staggered slots. A session has two slots, and the final session runs two
+// slots deeper: overridable per session, because real recovery grids are
+// irregular. Here the season does not fit without it.
+$shape = [
     'sessions' => ['2026-08-12 20:00', '2026-08-19 20:00'],
     'timezone' => 'Europe/London',
     'slot_interval' => 'PT30M',
-    'slots_per_session' => 3,
-    'slots_per_session_overrides' => [1 => 4],
+    'slots_per_session' => 2,
     'capacity_per_slot' => 3,
-]);
+];
+$grid = SessionGrid::fromArray($shape + ['slots_per_session_overrides' => [1 => 4]]);
 
 // Two events were genuinely played at grid positions already: historical
 // provenance, never to be moved. Pins block their positions for both
@@ -70,9 +71,16 @@ $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
     $pinned,
     $grid,
     // The explicit trade between "fuller nights per participant" and "end
-    // the season sooner"; consolidation dominates by default.
+    // the season sooner". These are the default weights, written out:
+    // consolidation dominates.
     new RepackOptions(consolidationWeight: 3, earlyFillWeight: 1)
 ));
+
+// The same request on a grid whose final session has two slots like the
+// first: some fixtures find no position, and the outcome says which
+$withoutTheDeeperSession = (new ScheduleRepacker())->repack(
+    new RepackRequest($movable, $pinned, SessionGrid::fromArray($shape))
+);
 
 // The outcome speaks in event ids; the fixture list below maps them back
 $fixtures = [];
@@ -80,8 +88,12 @@ foreach ([...$pinned, ...$movable] as $event) {
     $fixtures[$event->getId()] = $event->getParticipantA()->getLabel() . ' v ' . $event->getParticipantB()->getLabel();
 }
 
-return Example::present(__FILE__, 'Repacking a season', 'Ten outstanding fixtures placed around two already-played ones on a grid of two irregular sessions. Nobody is double-booked and each participant plays back to back within a session; the late starts that could not be avoided come back itemised.', [
+return Example::present(__FILE__, 'Repacking a season', 'Ten outstanding fixtures placed around two already-played ones on a grid of two sessions, the second deeper than the first. Nobody is double-booked and each participant plays back to back within a session; the late starts that could not be avoided come back itemised.', [
     'Fixtures by event id' => $fixtures,
     'Repacked schedule' => $outcome,
     'Clean' => $outcome->isClean(),
+    'Without the deeper final session' => [
+        'Placed' => count($withoutTheDeeperSession->getAssignments()),
+        'Unplaced' => count($withoutTheDeeperSession->getUnplaced()),
+    ],
 ]);

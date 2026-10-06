@@ -26,21 +26,25 @@ $examples = [
         '06-rest-periods.php' => 'A minimum number of rounds between repeat meetings of a pair',
         '07-metadata-constraints.php' => 'Rules over participant metadata, and how an impossible rule fails',
         '08-custom-constraints.php' => 'Your own rule as a closure or as a class',
-        '10-complex-tournament.php' => 'Seed protection, rest and a custom rule in one two-leg season',
-        '11-error-handling.php' => 'The exceptions the scheduler throws and what they carry',
+        '10-complex-tournament.php' => 'Seed protection and a custom rule together in one two-leg season',
+        '11-error-handling.php' => 'The exceptions the library throws, what they carry, and the one catch that covers them all',
         '16-backtracking-generation.php' => 'Constraints the default generator cannot solve, solved by the opt-in search',
     ],
     'Results-driven formats' => [
         '13-swiss-stage-engine.php' => 'A Swiss stage paired round by round from the results',
         '14-groups-to-knockout.php' => 'Pools, qualification and a single-elimination bracket composed together',
-        '18-stateless-web-flow.php' => 'A stage kept as JSON between stateless requests',
         '20-double-elimination.php' => 'A double-elimination bracket with a grand final reset',
         '21-standings-and-tiebreakers.php' => 'A standings table and a chain of tiebreakers',
+        '24-recording-bracket-results.php' => 'A stamped bracket state between requests: a level event decided, a result corrected, a wrong engine refused',
     ],
     'After generation' => [
         '15-timeline-assignment.php' => 'Kickoff times and resources for every event, under time rules',
         '17-schedule-optimization.php' => 'Scoring schedule quality and keeping the best of many samples',
-        '19-repacking-a-season.php' => 'Repacking outstanding events onto an irregular grid of sessions',
+        '19-repacking-a-season.php' => 'Repacking outstanding events around pinned ones onto an irregular grid of sessions',
+    ],
+    'In an application' => [
+        '18-stateless-web-flow.php' => 'A stage kept as JSON between stateless requests',
+        '23-application-adapter-and-repack.php' => 'An application\'s adapter: its records in, fixture rows out, and a previewed repack applied by fingerprint',
     ],
 ];
 

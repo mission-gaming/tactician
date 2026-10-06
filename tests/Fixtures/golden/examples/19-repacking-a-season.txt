@@ -25,22 +25,25 @@ e12: Rayo Vallecano v Celtic
 
 == Repacked schedule ==
 assignments: 10
-  e03 => session 0, slot 2, kickoff 2026-08-12T20:00:00Z
-  e04 => session 1, slot 1, kickoff 2026-08-19T19:30:00Z
-  e05 => session 0, slot 1, kickoff 2026-08-12T19:30:00Z
-  e06 => session 0, slot 1, kickoff 2026-08-12T19:30:00Z
-  e07 => session 0, slot 2, kickoff 2026-08-12T20:00:00Z
-  e08 => session 1, slot 0, kickoff 2026-08-19T19:00:00Z
-  e09 => session 0, slot 1, kickoff 2026-08-12T19:30:00Z
-  e10 => session 1, slot 1, kickoff 2026-08-19T19:30:00Z
-  e11 => session 1, slot 0, kickoff 2026-08-19T19:00:00Z
-  e12 => session 1, slot 2, kickoff 2026-08-19T20:00:00Z
+  e03 => session 0, slot 1, kickoff 2026-08-12T19:30:00Z
+  e04 => session 1, slot 2, kickoff 2026-08-19T20:00:00Z
+  e05 => session 1, slot 1, kickoff 2026-08-19T19:30:00Z
+  e06 => session 1, slot 1, kickoff 2026-08-19T19:30:00Z
+  e07 => session 1, slot 0, kickoff 2026-08-19T19:00:00Z
+  e08 => session 1, slot 2, kickoff 2026-08-19T20:00:00Z
+  e09 => session 1, slot 1, kickoff 2026-08-19T19:30:00Z
+  e10 => session 1, slot 0, kickoff 2026-08-19T19:00:00Z
+  e11 => session 0, slot 1, kickoff 2026-08-12T19:30:00Z
+  e12 => session 1, slot 3, kickoff 2026-08-19T20:30:00Z
 unplaced: 0
-violations: 4
+violations: 3
   late_start participant=cel session=1 first_slot=1
-  late_start participant=cla session=0 first_slot=1
-  late_start participant=liv session=1 first_slot=1
   late_start participant=ray session=0 first_slot=1
+  late_start participant=red session=1 first_slot=1
 
 == Clean ==
 false
+
+== Without the deeper final session ==
+Placed: 7
+Unplaced: 3

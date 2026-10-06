@@ -20,21 +20,19 @@
 - thieves "100 Thieves" seed=8 {"tier":"B","region":"North America"}
 
 == Constraints in the set ==
-4
+2
 
 == Without constraints ==
 Events: 56
 Rounds: 14
 Rounds in which seeds 1 and 2 meet: 2 and 9
 Earliest round with S-tier against B-tier: 1
-Fewest rounds between the two meetings of a pair: 7
 
 == With the constraints ==
 Events: 56
 Rounds: 14
 Rounds in which seeds 1 and 2 meet: 4 and 11
 Earliest round with S-tier against B-tier: 3
-Fewest rounds between the two meetings of a pair: 7
 
 == Schedule with the constraints ==
 meta: algorithm=round-robin participant_count=8 legs=2 rounds_per_leg=7 total_rounds=14 expected_event_count=56 byes=[]

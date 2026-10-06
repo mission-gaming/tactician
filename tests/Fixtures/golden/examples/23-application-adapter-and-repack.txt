@@ -1,0 +1,289 @@
+# The results of examples/23-application-adapter-and-repack.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Participants, in the order of the ranking ==
+- 7 "Northgate Rovers"
+- 18 "Castle Park"
+- 31 "Harbour Athletic"
+- 44 "Eastfield United"
+- 52 "Millbrook Town"
+
+== Fixture rows copied from the schedule ==
+-
+  id: fx01
+  round: 1
+  home_club_id: 18
+  away_club_id: 52
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+-
+  id: fx02
+  round: 1
+  home_club_id: 31
+  away_club_id: 44
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+-
+  id: fx03
+  round: 2
+  home_club_id: 18
+  away_club_id: 7
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+-
+  id: fx04
+  round: 2
+  home_club_id: 52
+  away_club_id: 44
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+-
+  id: fx05
+  round: 3
+  home_club_id: 7
+  away_club_id: 31
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+-
+  id: fx06
+  round: 3
+  home_club_id: 44
+  away_club_id: 18
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+-
+  id: fx07
+  round: 4
+  home_club_id: 44
+  away_club_id: 7
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+-
+  id: fx08
+  round: 4
+  home_club_id: 31
+  away_club_id: 52
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+-
+  id: fx09
+  round: 5
+  home_club_id: 7
+  away_club_id: 52
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+-
+  id: fx10
+  round: 5
+  home_club_id: 18
+  away_club_id: 31
+  night: null
+  slot: null
+  local_kickoff: null
+  state: scheduled
+
+== Bye rows, from the schedule metadata ==
+-
+  round: 1
+  club_id: 7
+-
+  round: 2
+  club_id: 31
+-
+  round: 3
+  club_id: 52
+-
+  round: 4
+  club_id: 18
+-
+  round: 5
+  club_id: 44
+
+== What the repack request holds ==
+Movable: 5
+Pinned: 1
+Left out, not on the grid: 4
+Positions on the grid: 2
+
+== First preview: one kickoff per night ==
+assignments: 3
+  fx05 => session 1, slot 0, kickoff 
+  fx06 => session 1, slot 0, kickoff 
+  fx08 => session 0, slot 0, kickoff 
+unplaced: 2
+  fx09 => reason=participant_over_capacity participant=7
+  fx10 => reason=participant_over_capacity participant=31
+violations: 4
+  event_unplaced event_id=fx09 reason=participant_over_capacity participant=7
+  event_unplaced event_id=fx10 reason=participant_over_capacity participant=31
+  capacity_exceeded participant=31 demand=3 capacity=2 shortfall=1
+  capacity_exceeded participant=7 demand=2 capacity=1 shortfall=1
+
+== Clubs with more fixtures than free positions ==
+-
+  Club: Harbour Athletic
+  Fixtures to place: 3
+  Free positions: 2
+  Short by: 1
+-
+  Club: Northgate Rovers
+  Fixtures to place: 2
+  Free positions: 1
+  Short by: 1
+
+== Fixtures it could not place ==
+-
+  Fixture: fx09
+  Reason: participant_over_capacity
+  Club over capacity: Northgate Rovers
+-
+  Fixture: fx10
+  Reason: participant_over_capacity
+  Club over capacity: Harbour Athletic
+
+== Second preview: two kickoffs per night ==
+assignments: 5
+  fx05 => session 0, slot 1, kickoff 
+  fx06 => session 0, slot 1, kickoff 
+  fx08 => session 1, slot 0, kickoff 
+  fx09 => session 1, slot 1, kickoff 
+  fx10 => session 0, slot 0, kickoff 
+unplaced: 0
+violations: 1
+  late_start participant=7 session=1 first_slot=1
+
+== Late starts in the second preview ==
+-
+  Club: Northgate Rovers
+  Night: night-5
+  First slot: 1
+
+== Reading the second preview ==
+Clean: false
+Everything placed: true
+Step budget ran out: false
+Fingerprint: v1:e5ac5af94403680733df2a39105df0eecff4ea8126b3405c1814792753bc6370
+
+== Confirming ==
+Applied after another fixture was locked: false
+Same fingerprint after a kickoff was moved: true
+Applied after a kickoff was moved: false
+Applied with the rows and nights as previewed: true
+
+== Fixture rows after the plan was applied ==
+-
+  id: fx01
+  round: 1
+  home_club_id: 18
+  away_club_id: 52
+  night: night-1
+  slot: 0
+  local_kickoff: 2026-09-03 19:00
+  state: played
+-
+  id: fx02
+  round: 1
+  home_club_id: 31
+  away_club_id: 44
+  night: night-1
+  slot: 0
+  local_kickoff: 2026-09-03 19:00
+  state: played
+-
+  id: fx03
+  round: 2
+  home_club_id: 18
+  away_club_id: 7
+  night: night-2
+  slot: 0
+  local_kickoff: 2026-09-10 19:00
+  state: played
+-
+  id: fx04
+  round: 2
+  home_club_id: 52
+  away_club_id: 44
+  night: night-2
+  slot: 0
+  local_kickoff: 2026-09-10 19:00
+  state: played
+-
+  id: fx05
+  round: 3
+  home_club_id: 7
+  away_club_id: 31
+  night: night-4
+  slot: 1
+  local_kickoff: 2026-09-24 20:30
+  state: scheduled
+-
+  id: fx06
+  round: 3
+  home_club_id: 44
+  away_club_id: 18
+  night: night-4
+  slot: 1
+  local_kickoff: 2026-09-24 20:30
+  state: scheduled
+-
+  id: fx07
+  round: 4
+  home_club_id: 44
+  away_club_id: 7
+  night: night-4
+  slot: 0
+  local_kickoff: 2026-09-24 19:00
+  state: locked
+-
+  id: fx08
+  round: 4
+  home_club_id: 31
+  away_club_id: 52
+  night: night-5
+  slot: 0
+  local_kickoff: 2026-10-01 19:00
+  state: scheduled
+-
+  id: fx09
+  round: 5
+  home_club_id: 7
+  away_club_id: 52
+  night: night-5
+  slot: 1
+  local_kickoff: 2026-10-01 20:30
+  state: scheduled
+-
+  id: fx10
+  round: 5
+  home_club_id: 18
+  away_club_id: 31
+  night: night-4
+  slot: 0
+  local_kickoff: 2026-09-24 19:00
+  state: scheduled

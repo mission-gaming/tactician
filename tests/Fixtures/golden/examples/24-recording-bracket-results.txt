@@ -1,0 +1,59 @@
+# The results of examples/24-recording-bracket-results.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Semifinals, as first recorded ==
+- R1: ana-dia => draw (1-1)
+- R1: bea-cai => cai (2-0)
+
+== The level semifinal ==
+Recorded as a draw: true
+Recorded winner: null
+Who advanced: Dia
+
+== The final ==
+As the wrong result paired it: R2: dia-cai
+After the correction: R2: dia-bea
+
+== Results in the stored state ==
+- R1: ana-dia => draw (1-1)
+- R1: bea-cai => bea (2-0)
+- R2: dia-bea => bea (0-1)
+
+== Title holder ==
+bea "Bea"
+
+== Final standings ==
+1. bea played=2 wins=2 draws=0 losses=0 value=6 for=3 against=0
+2. dia played=2 wins=1 draws=0 losses=1 value=3 for=1 against=2
+3. ana played=1 wins=0 draws=0 losses=1 value=0 for=1 against=1
+4. cai played=1 wins=0 draws=0 losses=1 value=0 for=0 against=2
+
+== The stamp ==
+Stored with the state: true
+Same for an engine built again with the same options: true
+
+== An engine for two-legged ties ==
+MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid scheduler configuration: The stage state was recorded by a different engine or configuration (legs-per-tie: recorded the default, this engine 2); stamp it again with withEngineFingerprint() if the change is deliberate
+
+== Its reason ==
+engine_fingerprint_mismatch
+
+== A level event with nobody named ==
+MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid scheduler configuration: Elimination events cannot end in a draw (Ana vs Dia): the event is level, so record who advances as 'tie_winner' metadata on its result
+
+== The reason for that ==
+undecided_tie
+
+== Correcting a semifinal after the final ==
+MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid scheduler configuration: A result of round 1 cannot be replaced: round 2 was paired from the results of round 1. Rebuild the state up to round 1 with the corrected result (StageState::start(), then withRoundPlayed() for each round that stands) and pair again.
+
+== The reason for that one ==
+round_superseded

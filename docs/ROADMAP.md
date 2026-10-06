@@ -54,7 +54,7 @@ Design note: [timeline-assignment.md](design/timeline-assignment.md)
 - Quality metrics, a weighted `ScheduleScorer`, and best-of-N `ScheduleOptimizer` ([schedule-quality.md](design/schedule-quality.md))
 - Opt-in backtracking generation for constraint sets the rotations cannot satisfy ([backtracking-generation.md](design/backtracking-generation.md))
 - Constraint attribution on generation failures, by probing ([diagnostics-attribution.md](design/diagnostics-attribution.md))
-- Integration guides for Symfony and Laravel in [`integrations/`](integrations/), and the framework-free request-cycle pattern as a runnable example. The test suite does not execute the guides' framework code
+- Integration guides for Symfony and Laravel in [`integrations/`](integrations/), and the framework-free request-cycle pattern as a runnable example. The test suite does not execute the guides' framework code; their library usage is quoted from runnable examples (11, 15, 19, 23 and 24) and checked by `tests/Feature/IntegrationGuidesTest.php`
 
 ### Schedule repacking (0.2.0)
 - `ScheduleRepacker` assigns existing movable events to `(session, slot)` positions on a declarative `SessionGrid`, around pinned events that may not move, with no participant double-booked and each participant's events within a session back to back where possible
