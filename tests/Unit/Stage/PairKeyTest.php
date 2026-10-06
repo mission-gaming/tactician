@@ -46,8 +46,7 @@ describe('PairKey', function (): void {
 
     it('matches sort() and implode() for every ordinary id list', function (int $seed): void {
         $randomizer = new Randomizer(new Mt19937($seed));
-        $alphabet = 'abcXYZ0123456789-_:. é';
-        $letters = mb_str_split($alphabet);
+        $letters = ['a', 'b', 'c', 'X', 'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '_', ':', '.', ' ', 'é'];
 
         for ($case = 0; $case < 400; ++$case) {
             $ids = [];
