@@ -37,11 +37,13 @@ final readonly class StageState
      * @param array<Participant> $participants Active participants
      * @param array<RoundPairing> $roundsPlayed Pairings recorded so far, in play order
      * @param array<Result> $results Results of every recorded round
+     * @param string|null $engineFingerprint The stamp of the engine that pairs this stage, when one was set
      */
     private function __construct(
         private array $participants,
         private array $roundsPlayed = [],
-        private array $results = []
+        private array $results = [],
+        private ?string $engineFingerprint = null
     ) {}
 
     /**
@@ -107,7 +109,8 @@ final readonly class StageState
         return new self(
             $this->participants,
             [...$this->roundsPlayed, $pairing],
-            [...$this->results, ...array_values($results)]
+            [...$this->results, ...array_values($results)],
+            $this->engineFingerprint
         );
     }
 
@@ -181,7 +184,8 @@ final readonly class StageState
         return new self(
             $this->participants,
             $this->roundsPlayed,
-            [...$this->results, ...array_values($results)]
+            [...$this->results, ...array_values($results)],
+            $this->engineFingerprint
         );
     }
 
@@ -269,7 +273,7 @@ final readonly class StageState
             );
         }
 
-        return new self($this->participants, $this->roundsPlayed, $results);
+        return new self($this->participants, $this->roundsPlayed, $results, $this->engineFingerprint);
     }
 
     /**
@@ -284,8 +288,73 @@ final readonly class StageState
                 fn(Participant $active) => $active->getId() !== $participant->getId()
             )),
             $this->roundsPlayed,
-            $this->results
+            $this->results,
+            $this->engineFingerprint
         );
+    }
+
+    /**
+     * Stamp the state with the fingerprint of the engine that pairs it, or
+     * remove the stamp with null.
+     *
+     * A state does not otherwise say which engine paired its rounds, and
+     * an engine replays whatever it is handed: a Swiss state given to a
+     * bracket engine, or a two-legged bracket given to a one-legged one,
+     * is read as that engine's own history. A stamped state is refused by
+     * every engine whose fingerprint differs (see requireEngineFingerprint()):
+     *
+     *     $state = StageState::start($participants)
+     *         ->withEngineFingerprint($engine->getFingerprint());
+     *
+     * The stamp is optional and opt-in. A state without one is accepted by
+     * every engine, as before the stamp existed, and serializes without
+     * the key. The stamp survives every other verb and toArray()/toJson().
+     * To change the engine's configuration on purpose in mid-stage (a
+     * Swiss stage extended by a round), stamp the state again with the
+     * new engine's fingerprint.
+     *
+     * The library's engines each offer getFingerprint(); any non-empty
+     * string will do for an engine of your own.
+     *
+     * @throws InvalidConfigurationException When the fingerprint is an empty string
+     */
+    public function withEngineFingerprint(?string $fingerprint): self
+    {
+        if ($fingerprint === '') {
+            throw new InvalidConfigurationException('An engine fingerprint cannot be empty', []);
+        }
+
+        return new self($this->participants, $this->roundsPlayed, $this->results, $fingerprint);
+    }
+
+    /**
+     * The fingerprint the state was stamped with, or null when it carries
+     * none.
+     */
+    public function getEngineFingerprint(): ?string
+    {
+        return $this->engineFingerprint;
+    }
+
+    /**
+     * Fail unless this state may be read by the engine with the given
+     * fingerprint: it carries no stamp, or it carries this one.
+     *
+     * The library's engines call this at the start of getPlan(),
+     * pairNextRound(), isComplete() and getOutcome(); an engine of your own
+     * can do the same.
+     *
+     * @throws InvalidConfigurationException When the state is stamped with a different fingerprint
+     */
+    public function requireEngineFingerprint(string $fingerprint): void
+    {
+        if ($this->engineFingerprint !== null && $this->engineFingerprint !== $fingerprint) {
+            throw new InvalidConfigurationException(
+                'The stage state was recorded by a different engine or configuration; stamp it again with'
+                    . ' withEngineFingerprint() if the change is deliberate',
+                ['recorded' => $this->engineFingerprint, 'engine' => $fingerprint]
+            );
+        }
     }
 
     /**
@@ -430,7 +499,11 @@ final readonly class StageState
      * plus any withdrawn participants still referenced by recorded rounds
      * or results — so rehydration resolves all references.
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>}>}
+     * The `engine_fingerprint` key is present only when the state is
+     * stamped (see withEngineFingerprint()), so an unstamped state has the
+     * shape it has always had.
+     *
+     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>}>, engine_fingerprint?: string}
      */
     public function toArray(): array
     {
@@ -455,7 +528,7 @@ final readonly class StageState
             }
         }
 
-        return [
+        $data = [
             'participants' => array_values(array_map(
                 fn(Participant $participant) => $participant->toArray(),
                 $registry
@@ -467,10 +540,20 @@ final readonly class StageState
             'rounds' => array_map(fn(RoundPairing $pairing) => $pairing->toArray(), $this->roundsPlayed),
             'results' => array_map(fn(Result $result) => $result->toArray(), $this->results),
         ];
+
+        if ($this->engineFingerprint !== null) {
+            $data['engine_fingerprint'] = $this->engineFingerprint;
+        }
+
+        return $data;
     }
 
     /**
      * Recreate a state from its array representation.
+     *
+     * The `engine_fingerprint` key is optional: data stored before the
+     * stamp existed, or by a caller that does not stamp, loads as an
+     * unstamped state.
      *
      * @param array<string, mixed> $data
      * @throws InvalidInputException When the data is malformed
@@ -538,7 +621,12 @@ final readonly class StageState
             $results[] = Result::fromArray($resultData, $registry);
         }
 
-        return new self($active, $rounds, $results);
+        $fingerprint = $data['engine_fingerprint'] ?? null;
+        if ($fingerprint !== null && (!is_string($fingerprint) || $fingerprint === '')) {
+            throw new InvalidInputException('Stage state engine fingerprint must be a non-empty string');
+        }
+
+        return new self($active, $rounds, $results, $fingerprint);
     }
 
     /**

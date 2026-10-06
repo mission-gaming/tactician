@@ -83,28 +83,49 @@ readonly class SwissPairingEngine implements StageEngineInterface
     }
 
     /**
+     * What this engine stamps a stage state with, and requires of a state
+     * that carries a stamp: the format and its planned rounds, as
+     * `swiss:planned-rounds=5`, or `swiss:planned-rounds=none` for an
+     * open-ended stage.
+     *
+     * Compare the string; do not parse it. The constraints, the standings
+     * calculator and the randomizer are objects the engine cannot name
+     * and are not part of it. See StageState::withEngineFingerprint().
+     */
+    public function getFingerprint(): string
+    {
+        return 'swiss:planned-rounds=' . ($this->plannedRounds ?? 'none');
+    }
+
+    /**
      * The shape declaration for this stage: rounds when planned, no legs.
      *
      * The plan covers every participant the stage has seen - active ones
      * plus withdrawn participants still referenced by recorded rounds.
      *
-     * @throws InvalidConfigurationException When fewer than 2 participants have been seen
+     * @throws InvalidConfigurationException When fewer than 2 participants have been seen, or
+     *                                       the state is stamped with another engine's fingerprint
      */
     #[Override]
     public function getPlan(StageState $state): SwissPlan
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         return new SwissPlan($state->getAllSeenParticipants(), $this->plannedRounds);
     }
 
     /**
      * Pair the next round from the recorded state.
      *
-     * @throws InvalidConfigurationException When fewer than 2 active participants remain
+     * @throws InvalidConfigurationException When fewer than 2 active participants remain, or
+     *                                       the state is stamped with another engine's fingerprint
      * @throws NoValidPairingException When no complete pairing exists for the round
      */
     #[Override]
     public function pairNextRound(StageState $state): RoundPairing
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         $participants = array_values($state->getParticipants());
         $this->validateParticipants($participants);
 
@@ -182,10 +203,14 @@ readonly class SwissPairingEngine implements StageEngineInterface
      * round. An open-ended stage (no planned rounds) with enough
      * participants never reports complete - the application decides when
      * to stop, or pairNextRound() throws when no valid pairing remains.
+     *
+     * @throws InvalidConfigurationException When the state is stamped with another engine's fingerprint
      */
     #[Override]
     public function isComplete(StageState $state): bool
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         if (count($state->getParticipants()) < 2) {
             return true;
         }
@@ -200,7 +225,8 @@ readonly class SwissPairingEngine implements StageEngineInterface
      * Standings cover every participant the stage has seen, including
      * withdrawn ones - their played games remain part of the record.
      *
-     * @throws InvalidConfigurationException When fewer than 2 participants have been seen
+     * @throws InvalidConfigurationException When fewer than 2 participants have been seen, or
+     *                                       the state is stamped with another engine's fingerprint
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
