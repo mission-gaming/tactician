@@ -18,7 +18,8 @@ use MissionGaming\Tactician\Repack\SessionGrid;
  * heading or a method row the code does not have, so the reference cannot
  * keep describing something that was removed or renamed.
  *
- * What it does not check: that the description beside a name is right.
+ * What it does not check: that the description beside a name is right. It
+ * checks only that a method's row has one.
  * The snippets of the section are executed, and the values they state are
  * pinned, by tests/Feature/DocumentationSnippetsTest.php.
  */
@@ -116,6 +117,9 @@ function repackReferenceProblems(string $markdown, array $types): array
             $methods[$method->getName()] = true;
             if (!str_contains($block, "| `{$method->getName()}(")) {
                 $problems[] = "{$name}::{$method->getName()}() has no row in the reference.";
+            } elseif (preg_match('/^\| `' . preg_quote($method->getName(), '/') . '\(.*` \|\s*\|\s*$/m', $block) === 1) {
+                // A row that names the method and says nothing about it
+                $problems[] = "{$name}::{$method->getName()}() has a row in the reference with nothing in its second column.";
             }
         }
 
@@ -199,6 +203,11 @@ describe('The Repack API reference in docs/USAGE.md', function (): void {
             "| `getGapSlots()` | How many slots between the participant's first and last are empty |\n",
             '',
             'ContiguityBroken::getGapSlots() has no row in the reference.',
+        ],
+        'a method row with its description taken out' => [
+            "| `fingerprint()` | The outcome's fingerprint |\n",
+            "| `fingerprint()` | |\n",
+            'RepackOutcome::fingerprint() has a row in the reference with nothing in its second column.',
         ],
         'a static method row removed' => [
             '| `shapeOnly(int $sessions,',
