@@ -339,6 +339,18 @@ $advancedConstraint = ConstraintSet::create()
     ->build();
 ```
 
+A constraint of your own may keep a count, or throw for an event it cannot
+judge, and what it is asked then decides what you get back. So there are
+two shortcuts the library takes only for a set made of `NoRepeatPairings`,
+`MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
+`SeedProtectionConstraint`, which cannot tell how they are asked: it
+analyses a round robin that cannot be completed once and not once per
+ordering tried, and it skips the branches of a Swiss round search that
+hold no pairing. A set that holds anything that runs your code (a callable,
+a role extractor or metadata validator, a class or subclass of your own, or
+a subclass of `ConstraintSet`) gets the same results without them, which on
+those two failure paths takes longer.
+
 ### Role-Based Constraints
 
 ```php
@@ -1931,8 +1943,11 @@ work the budget does not count, because the repacker first works out which
 start slots can give gap-free runs at all, and that grows with two to the
 power of the slot count: about a second at 16 slots per session and
 several seconds at 20, the widest it reasons about (a wider session is
-packed greedily). Give a wide grid a time limit of your own if the request
-is made while a person waits. `composer bench` measures the machine at
+packed greedily). That work takes memory too: about 100 MB at 18 slots
+per session, 200 MB at 19 and 400 MB at 20, which is past PHP's default
+`memory_limit` of 128 MB, and running out of memory is not an exception a
+caller can catch. Give a wide grid a time limit of your own if the request
+is made while a person waits, and a memory limit that fits it. `composer bench` measures the machine at
 hand.
 
 - **True**: at least one search wanted another step and was refused. A
