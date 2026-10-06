@@ -21,12 +21,25 @@ use Override;
  */
 final readonly class RestSpreadMetric implements QualityMetric
 {
+    /**
+     * Always 'Rest Spread': the key of this metric's measurement in a
+     * scorer's report.
+     */
     #[Override]
     public function getName(): string
     {
         return 'Rest Spread';
     }
 
+    /**
+     * The mean, over every participant that plays in a round, of the
+     * population variance of its gaps, in rounds squared.
+     *
+     * A participant that plays in fewer than three rounds has fewer than two
+     * gaps, adds zero and still counts in the mean. Several events of one participant
+     * in one round are one round played. 0.0 for a schedule without events
+     * in rounds.
+     */
     #[Override]
     public function measure(Schedule $schedule): float
     {

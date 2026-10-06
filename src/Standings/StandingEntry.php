@@ -7,13 +7,21 @@ namespace MissionGaming\Tactician\Standings;
 use MissionGaming\Tactician\DTO\Participant;
 
 /**
- * A single participant's line in the standings table.
+ * A single participant's line in the standings table: its record, its
+ * primary ranking value, its scores and its tiebreaker values.
  *
  * @experimental
  */
 readonly class StandingEntry
 {
     /**
+     * The figures are stored as given and are not checked against each
+     * other.
+     *
+     * @param int $played Results recorded for events the participant is in
+     * @param float $rankingValue The primary ranking value; higher is better
+     * @param float $scoreFor The sum of the participant's own recorded scores
+     * @param float $scoreAgainst The sum of the recorded scores of its opponents
      * @param array<string, float> $tiebreakers Tiebreaker values keyed by tiebreaker name
      */
     public function __construct(
@@ -28,26 +36,42 @@ readonly class StandingEntry
         private array $tiebreakers = []
     ) {}
 
+    /**
+     * The participant this line belongs to.
+     */
     public function getParticipant(): Participant
     {
         return $this->participant;
     }
 
+    /**
+     * The number of results recorded for events the participant is in. Byes
+     * and events without a result are not counted.
+     */
     public function getPlayed(): int
     {
         return $this->played;
     }
 
+    /**
+     * The number of results that name the participant as the winner.
+     */
     public function getWins(): int
     {
         return $this->wins;
     }
 
+    /**
+     * The number of its results that name no winner.
+     */
     public function getDraws(): int
     {
         return $this->draws;
     }
 
+    /**
+     * The number of its results that name another participant as the winner.
+     */
     public function getLosses(): int
     {
         return $this->losses;
@@ -64,22 +88,36 @@ readonly class StandingEntry
         return $this->rankingValue;
     }
 
+    /**
+     * The sum of the participant's own recorded scores; 0.0 when no result
+     * recorded one.
+     */
     public function getScoreFor(): float
     {
         return $this->scoreFor;
     }
 
+    /**
+     * The sum of the scores recorded for the other participants of the
+     * events it played.
+     */
     public function getScoreAgainst(): float
     {
         return $this->scoreAgainst;
     }
 
+    /**
+     * Scores-for minus scores-against.
+     */
     public function getScoreDifference(): float
     {
         return $this->scoreFor - $this->scoreAgainst;
     }
 
     /**
+     * The tiebreaker values keyed by tiebreaker name, in the order the
+     * calculator applies them; empty when it has no tiebreakers.
+     *
      * @return array<string, float>
      */
     public function getTiebreakers(): array
@@ -87,6 +125,10 @@ readonly class StandingEntry
         return $this->tiebreakers;
     }
 
+    /**
+     * The value of the tiebreaker with this name (TiebreakerInterface::getName()),
+     * or null when the entry carries none under it.
+     */
     public function getTiebreakerValue(string $name): ?float
     {
         return $this->tiebreakers[$name] ?? null;
@@ -139,9 +181,10 @@ readonly class StandingEntry
     }
 
     /**
-     * Create a copy of this entry with the given tiebreaker values attached.
+     * A copy of this entry that carries the given tiebreaker values in place
+     * of any it had.
      *
-     * @param array<string, float> $tiebreakers
+     * @param array<string, float> $tiebreakers Values keyed by tiebreaker name
      */
     public function withTiebreakers(array $tiebreakers): self
     {

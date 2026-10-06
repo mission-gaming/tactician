@@ -17,12 +17,26 @@ use Override;
  */
 readonly class SonnebornBergerTiebreaker implements TiebreakerInterface
 {
+    /**
+     * Always 'sonneborn-berger': the key of this tiebreaker's value in
+     * StandingEntry::getTiebreakers().
+     */
     #[Override]
     public function getName(): string
     {
         return 'sonneborn-berger';
     }
 
+    /**
+     * The sum, over every result whose event the participant is in, of the
+     * ranking value of each other participant of that event: in full when
+     * the participant won it, halved when it was drawn, and not at all when
+     * the participant lost it.
+     *
+     * The ranking value is the opponent's final one in the table. An
+     * opponent beaten twice is counted twice. A bye and an event without a
+     * result add nothing, and so does an opponent that has no entry.
+     */
     #[Override]
     public function calculate(Participant $participant, array $results, array $entries): float
     {

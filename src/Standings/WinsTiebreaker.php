@@ -14,12 +14,20 @@ use Override;
  */
 readonly class WinsTiebreaker implements TiebreakerInterface
 {
+    /**
+     * Always 'wins': the key of this tiebreaker's value in
+     * StandingEntry::getTiebreakers().
+     */
     #[Override]
     public function getName(): string
     {
         return 'wins';
     }
 
+    /**
+     * The number of wins on the participant's entry, as a float; 0.0 for a
+     * participant that has no entry. The results are not read.
+     */
     #[Override]
     public function calculate(Participant $participant, array $results, array $entries): float
     {

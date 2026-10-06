@@ -40,6 +40,12 @@ use Random\Randomizer;
  */
 final readonly class ScheduleOptimizer
 {
+    /**
+     * @param ScheduleScorer $scorer Scores every candidate; the lowest score wins
+     * @param Randomizer $randomizer The master randomizer the child seeds are drawn from. Each
+     *                               optimize() call draws one value per sample and so moves it
+     *                               on: a second call on the same optimizer samples other seeds
+     */
     public function __construct(
         private ScheduleScorer $scorer,
         private Randomizer $randomizer
@@ -48,8 +54,14 @@ final readonly class ScheduleOptimizer
     /**
      * Generate N candidates and keep the best-scoring one.
      *
+     * The generator is called once per sample, in order, each time with a
+     * new Mt19937 randomizer seeded from the master randomizer. Of several
+     * candidates with the lowest score the first sampled is kept. An
+     * exception from the generator other than IncompleteScheduleException
+     * is not caught and ends the run.
+     *
      * @param callable(Randomizer): Schedule $generate Builds one candidate from a seeded randomizer
-     * @param int $samples How many candidates to generate
+     * @param int $samples How many candidates to generate, 1 or more
      *
      * @throws InvalidConfigurationException When samples is not positive, or a metric
      *                                       measures a candidate as NAN or INF

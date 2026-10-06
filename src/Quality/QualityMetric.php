@@ -21,12 +21,17 @@ use MissionGaming\Tactician\DTO\Schedule;
 interface QualityMetric
 {
     /**
-     * Human-readable metric name for reports.
+     * Human-readable metric name. The scorer's report is keyed by it, so it
+     * must differ from the name of every other metric of the same scorer,
+     * which refuses a duplicate.
      */
     public function getName(): string;
 
     /**
      * Measure the schedule's defect on this dimension.
+     *
+     * The same schedule must always measure the same: the scorer measures a
+     * schedule once for its score and again for its report.
      *
      * @return float Non-negative and finite; zero is ideal. ScheduleScorer
      *               refuses a measurement of NAN or INF

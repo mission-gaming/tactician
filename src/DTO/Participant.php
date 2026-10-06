@@ -7,23 +7,26 @@ namespace MissionGaming\Tactician\DTO;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
- * Represents a participant in a tournament or competition.
+ * Anything that competes: a player, a club, a squad.
  *
- * A Participant contains identifying information, display labels, optional seeding
- * for ranking/bracket purposes, and custom metadata. Participants are immutable
- * and identified by their unique ID.
+ * A participant is identified by its ID alone. The library compares
+ * participants by ID wherever it matches one against another, so two objects
+ * with the same ID are the same participant whatever their label, seed or
+ * metadata. Participants are immutable.
  *
  * @api
  */
 readonly class Participant
 {
     /**
-     * Create a new Participant with the specified details.
+     * Nothing is validated here. The schedulers and StageState::start()
+     * reject a field in which two participants share an ID.
      *
-     * @param string $id Unique identifier for this participant
-     * @param string $label Display name or label for this participant
-     * @param int|null $seed Optional seeding/ranking number for tournament brackets
-     * @param array<string, mixed> $metadata Additional custom data for this participant
+     * @param string $id The identity. Use a non-empty string: fromArray() refuses an empty one
+     * @param string $label Display name; also orders level entries of a standings table
+     * @param int|null $seed Seeding number, lower is better; null for unseeded. Stages seed
+     *                       entrants from their position in the list, not from this
+     * @param array<string, mixed> $metadata Free-form data; MetadataConstraint reads the key it is given
      */
     public function __construct(
         private string $id,
@@ -33,9 +36,7 @@ readonly class Participant
     ) {}
 
     /**
-     * Get the unique identifier for this participant.
-     *
-     * @return string The participant's unique ID
+     * The ID that identifies this participant.
      */
     public function getId(): string
     {
@@ -43,9 +44,7 @@ readonly class Participant
     }
 
     /**
-     * Get the display label for this participant.
-     *
-     * @return string The participant's display name or label
+     * The display name.
      */
     public function getLabel(): string
     {
@@ -53,9 +52,7 @@ readonly class Participant
     }
 
     /**
-     * Get the seeding/ranking number for this participant.
-     *
-     * @return int|null The participant's seed number, or null if not seeded
+     * The seeding number (lower is better), or null when unseeded.
      */
     public function getSeed(): ?int
     {
@@ -63,9 +60,9 @@ readonly class Participant
     }
 
     /**
-     * Get all metadata associated with this participant.
+     * The metadata as given to the constructor.
      *
-     * @return array<string, mixed> All metadata key-value pairs
+     * @return array<string, mixed>
      */
     public function getMetadata(): array
     {
@@ -73,10 +70,7 @@ readonly class Participant
     }
 
     /**
-     * Check if a specific metadata key exists for this participant.
-     *
-     * @param string $key The metadata key to check for
-     * @return bool True if the key exists, false otherwise
+     * Whether the metadata has the key, including a key whose value is null.
      */
     public function hasMetadata(string $key): bool
     {
@@ -84,11 +78,10 @@ readonly class Participant
     }
 
     /**
-     * Get the value for a specific metadata key.
+     * The metadata value under the key, or the default.
      *
-     * @param string $key The metadata key to retrieve
-     * @param mixed $default The default value to return if the key doesn't exist
-     * @return mixed The metadata value or the default if key not found
+     * The default is also returned for a key that exists with the value
+     * null; use hasMetadata() to tell the two apart.
      */
     public function getMetadataValue(string $key, mixed $default = null): mixed
     {
@@ -108,7 +101,10 @@ readonly class Participant
     }
 
     /**
-     * Convert this participant to a serializable array.
+     * The plain-data form fromArray() accepts.
+     *
+     * The metadata is included as it is; whether it can be encoded (as
+     * JSON, say) is up to the values in it.
      *
      * @return array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}
      */
@@ -123,11 +119,16 @@ readonly class Participant
     }
 
     /**
-     * Recreate a participant from its array representation.
+     * Recreate a participant from the array form toArray() produces.
+     *
+     * 'id' and 'label' are required; a missing 'seed' is null and a missing
+     * 'metadata' is empty. Other keys are ignored.
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When required fields are missing or malformed
+     * @throws InvalidInputException When the ID is not a non-empty string, the label is not
+     *                               a string, the seed is neither an integer nor null, or
+     *                               the metadata is not an array
      */
     public static function fromArray(array $data): self
     {

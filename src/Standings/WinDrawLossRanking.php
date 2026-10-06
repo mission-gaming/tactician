@@ -21,6 +21,14 @@ use Override;
  */
 final readonly class WinDrawLossRanking implements RankingStrategy
 {
+    /**
+     * The values are used as given; nothing requires a win to be worth more
+     * than a draw, or a loss to be worth nothing.
+     *
+     * @param float $winValue Added for each result that names the participant the winner
+     * @param float $drawValue Added for each of its results that names no winner
+     * @param float $lossValue Added for each of its results that names another winner
+     */
     public function __construct(
         private float $winValue = 3.0,
         private float $drawValue = 1.0,
@@ -45,10 +53,12 @@ final readonly class WinDrawLossRanking implements RankingStrategy
 
     /**
      * Build from plain configuration data: ['win' => 3, 'draw' => 1, 'loss' => 0].
-     * Omitted keys use the 3/1/0 defaults.
+     * Omitted keys, and keys set to null, use the 3/1/0 defaults. Other keys
+     * are ignored.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value is not numeric
+     * @throws InvalidConfigurationException When a value is neither an int nor a float (a
+     *                                       numeric string is refused)
      */
     public static function fromArray(array $config): self
     {
@@ -69,6 +79,8 @@ final readonly class WinDrawLossRanking implements RankingStrategy
     }
 
     /**
+     * The plain-data form fromArray() accepts.
+     *
      * @return array{win: float, draw: float, loss: float}
      */
     public function toArray(): array
@@ -80,21 +92,36 @@ final readonly class WinDrawLossRanking implements RankingStrategy
         ];
     }
 
+    /**
+     * The value of a win.
+     */
     public function getWinValue(): float
     {
         return $this->winValue;
     }
 
+    /**
+     * The value of a draw.
+     */
     public function getDrawValue(): float
     {
         return $this->drawValue;
     }
 
+    /**
+     * The value of a loss.
+     */
     public function getLossValue(): float
     {
         return $this->lossValue;
     }
 
+    /**
+     * The sum of the win, draw and loss values over the results whose event
+     * the participant is in: the draw value for a result with no winner,
+     * the win value for one that names the participant, the loss value for
+     * any other. Results of other events are ignored; no result gives 0.0.
+     */
     #[Override]
     public function rank(Participant $participant, array $results): float
     {

@@ -11,10 +11,20 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 /**
  * Calculates an ordered standings table from recorded results.
  *
- * Entries are ranked by the ranking strategy's primary value, then by each
- * configured tiebreaker in order, then by score difference and score for,
- * then by seed (seeded participants first), and finally by natural-order
- * label and ID comparison for a deterministic ordering.
+ * Entries are ordered, best first, by the ranking strategy's primary value
+ * (higher first), then by each configured tiebreaker in order (higher
+ * first), then by score difference and by scores-for (higher first). What
+ * is still level after that is ordered by a fallback that reflects no
+ * result: seed (lower first, unseeded participants last), then label
+ * (natural order, ignoring case), then participant ID.
+ * Standings::getTiedSets() names the entries only the fallback separates.
+ *
+ * The fallback is there so that no two entries compare equal and the order
+ * the participants are given in does not show in the table. One case is
+ * left: IDs are compared as PHP's `<=>` compares strings, which reads two
+ * numeric strings as numbers, so IDs such as '1' and '01' compare equal,
+ * and two such participants that are level on everything before the ID,
+ * label included, keep the order they were given in.
  *
  * @experimental
  */
@@ -30,6 +40,9 @@ readonly class StandingsCalculator
         private array $tiebreakers = []
     ) {}
 
+    /**
+     * The strategy that computes each entry's primary ranking value.
+     */
     public function getRankingStrategy(): RankingStrategy
     {
         return $this->rankingStrategy;
@@ -46,16 +59,32 @@ readonly class StandingsCalculator
     }
 
     /**
-     * Calculate standings for the given participants from recorded results.
+     * Calculate the table of the given participants from the given results.
      *
-     * Participants without any results appear at the bottom of the table with
-     * zeroed records.
+     * The table has one entry per participant ID, in the order the class
+     * describes. For each participant, over the results whose event it is
+     * in: played counts them, a result that names it the winner is a win, a
+     * result with no winner is a draw and any other is a loss (in an event
+     * of three, both who did not win have a loss); scores-for adds its own
+     * recorded scores and scores-against those of every other participant
+     * of the event. A bye is not a result and is counted nowhere.
      *
-     * @param array<Participant> $participants
-     * @param array<Result> $results
+     * A participant without results has a zeroed record and is placed by it
+     * like any other, not last: it stands above a participant whose ranking
+     * value is below zero, or whose ranking value is zero with a score
+     * difference below zero.
      *
-     * @throws InvalidInputException When a result references an unknown participant
-     *                                  or two results reference the same event
+     * Results are told apart by their event object: two results for one
+     * Event instance are refused, and two results for two equal Event
+     * instances are two events played.
+     *
+     * @param array<Participant> $participants Everyone the table lists, in any order. Of two
+     *                                         participants with the same ID the later is kept
+     * @param array<Result> $results The recorded results, in any order
+     *
+     * @throws InvalidInputException When a result's event has a participant who is not
+     *                               among the given ones, or two results reference the
+     *                               same event object
      */
     public function calculate(array $participants, array $results): Standings
     {
