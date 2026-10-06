@@ -3,10 +3,12 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Example.php';
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\CompositionValidator;
@@ -33,23 +35,18 @@ $teams = [
     new Participant('ned', 'Netherlands', 8),
 ];
 
-/**
- * Play events with the better (lower position) side always winning.
- *
- * @param iterable<Event> $events
- * @return array<Result>
- */
-function playEvents(iterable $events): array
-{
+// "Play" events: the better (lower) seed always wins
+$playEvents = static function (iterable $events): array {
     $results = [];
     foreach ($events as $event) {
+        assert($event instanceof Event);
         [$first, $second] = $event->getParticipants();
         $winner = ($first->getSeed() ?? PHP_INT_MAX) < ($second->getSeed() ?? PHP_INT_MAX) ? $first : $second;
         $results[] = new Result($event, $winner);
     }
 
     return $results;
-}
+};
 
 // The declared structure telescopes before any fixture exists
 $violations = (new CompositionValidator())->validateChain(8, [
@@ -60,16 +57,16 @@ if ($violations !== []) {
     throw new RuntimeException(implode(' ', $violations));
 }
 
-echo "=== Group stage: 2 serpentine pools of 4 ===\n\n";
-
+// Group stage: 2 serpentine pools of 4, a round robin in each
 $pools = PoolDistributor::serpentine($teams, pools: 2);
 $calculator = new StandingsCalculator();
 $scheduler = new RoundRobinScheduler();
 $poolOutcomes = [];
+$poolTables = [];
 
 foreach ($pools as $label => $poolTeams) {
     $schedule = $scheduler->schedule($poolTeams);
-    $results = playEvents($schedule);
+    $results = $playEvents($schedule);
 
     // Never qualify from a partial table
     $unplayed = $scheduler->getPlan($poolTeams)->findUnplayedPairings($results);
@@ -79,17 +76,7 @@ foreach ($pools as $label => $poolTeams) {
 
     $standings = $calculator->calculate($poolTeams, $results);
     $poolOutcomes[$label] = new StageOutcome($standings, $results);
-
-    echo "Pool {$label}:\n";
-    foreach ($standings->getEntries() as $position => $entry) {
-        printf(
-            "  %d. %-12s %.0f pts\n",
-            $position + 1,
-            $entry->getParticipant()->getLabel(),
-            $entry->getRankingValue()
-        );
-    }
-    echo "\n";
+    $poolTables['Pool ' . $label] = $standings;
 }
 
 // The hand-off: one combined outcome, top 2 per pool, winners first -
@@ -97,23 +84,17 @@ foreach ($pools as $label => $poolTeams) {
 $combined = StageOutcome::combining($poolOutcomes, $calculator);
 $qualifiers = RankRangeSelector::topPerGroup(2)->select($combined);
 
-echo '=== Knockout: ' . implode(', ', array_map(fn (Participant $p) => $p->getLabel(), $qualifiers)) . " ===\n\n";
-
+// Knockout: position 1 of the qualifier list is seed 1
 $knockout = new SingleEliminationEngine();
-$state = StageState::start($qualifiers); // position 1 = seed 1
+$state = StageState::start($qualifiers);
+$knockoutRounds = [];
 
 while (!$knockout->isComplete($state)) {
     $pairing = $knockout->pairNextRound($state);
-    echo ucfirst((string) $pairing->getLabel()) . ":\n";
-
-    $results = playEvents($pairing->getEvents());
-    foreach ($results as $result) {
-        [$first, $second] = $result->getEvent()->getParticipants();
-        echo "  {$first->getLabel()} vs {$second->getLabel()} => {$result->getWinner()?->getLabel()}\n";
-    }
-    echo "\n";
-
+    $results = $playEvents($pairing->getEvents());
     $state = $state->withRoundPlayed($pairing, $results);
+
+    $knockoutRounds[ucfirst((string) $pairing->getLabel())] = $results;
 }
 
 $outcome = $knockout->getOutcome($state);
@@ -123,4 +104,10 @@ if ($outcome === null) {
 
 // "The champion" is the consumer's derivation of the outcome
 $titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];
-echo "Champions: {$titleHolder->getLabel()}\n";
+
+return Example::present(__FILE__, 'Groups into a knockout', 'Two pools play a round robin each, the top two of each pool qualify, and a single-elimination bracket decides the title. The group stage is a composition of the generic pieces, not a format of its own.', [
+    'Pool tables' => $poolTables,
+    'Qualifiers, in knockout seeding order' => $qualifiers,
+    'Knockout' => $knockoutRounds,
+    'Champion' => $titleHolder,
+]);

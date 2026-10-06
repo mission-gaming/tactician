@@ -1,9 +1,45 @@
-=== First sample vs best of 25 ===
+# The results of examples/17-schedule-optimization.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
 
-Metric                    first         best
-Role Balance              2.000        0.667
-Role Streaks              2.000        1.167
-Pairing Spacing           1.200        2.133
-Weighted score           11.200        6.467
+== Scores (lower is better) ==
+-
+  Metric: Role Balance
+  First sample: 2
+  Best of 25: 0.666667
+-
+  Metric: Role Streaks
+  First sample: 2
+  Best of 25: 1.166667
+-
+  Metric: Pairing Spacing
+  First sample: 1.2
+  Best of 25: 2.133333
+-
+  Metric: Weighted score
+  First sample: 11.2
+  Best of 25: 6.466667
 
-Best sample chosen from 25 generated candidates (0 failed).
+== Sampling ==
+Candidates generated: 25
+Candidates that failed: 0
+
+== The schedule kept ==
+meta: algorithm=round-robin participant_count=6 legs=2 rounds_per_leg=5 total_rounds=10 expected_event_count=30 byes=[]
+R1: p6-p2 p3-p5 p4-p1
+R2: p3-p6 p2-p4 p5-p1
+R3: p6-p4 p1-p3 p5-p2
+R4: p1-p6 p4-p5 p3-p2
+R5: p6-p5 p2-p1 p3-p4
+R6: p6-p1 p5-p2 p4-p3
+R7: p1-p2 p3-p6 p5-p4
+R8: p1-p3 p2-p4 p5-p6
+R9: p4-p1 p3-p5 p6-p2
+R10: p1-p5 p4-p6 p2-p3

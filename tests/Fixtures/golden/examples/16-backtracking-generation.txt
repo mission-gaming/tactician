@@ -1,17 +1,30 @@
-=== Greedy generation (default) ===
-Failed as expected: every rotated ordering violates the policy.
+# The results of examples/16-backtracking-generation.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
 
-=== Backtracking generation (opt-in) ===
-Round 1
-  FC United vs City Rovers
-  Athletic Reds vs Wanderers
-Round 2
-  Athletic Reds vs FC United
-  Wanderers vs City Rovers
-Round 3
-  FC United vs Wanderers
-  City Rovers vs Athletic Reds
+== Default generation ==
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 4 events, expected 6. Constraints may be preventing complete schedule generation.
 
-=== Unsatisfiable configuration ===
-Proven unsatisfiable: the search exhausted every round decomposition.
-FC United vs City Rovers cannot join the generated schedule in any round (blocked by: Reject Everything)
+== Backtracking generation ==
+meta: algorithm=round-robin participant_count=4 legs=1 rounds_per_leg=3 total_rounds=3 expected_event_count=6 byes=[]
+R1: unt-cit ath-wan
+R2: ath-unt wan-cit
+R3: unt-wan cit-ath
+
+== A constraint that rejects everything, with backtracking ==
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Backtracking search exhausted the search space: no round decomposition of the first leg satisfies the constraints, so the configuration is unsatisfiable.
+
+== Blocked pairings it names ==
+- FC United vs City Rovers cannot join the generated schedule in any round (blocked by: Reject Everything)
+- FC United vs Athletic Reds cannot join the generated schedule in any round (blocked by: Reject Everything)
+- FC United vs Wanderers cannot join the generated schedule in any round (blocked by: Reject Everything)
+- City Rovers vs Athletic Reds cannot join the generated schedule in any round (blocked by: Reject Everything)
+- City Rovers vs Wanderers cannot join the generated schedule in any round (blocked by: Reject Everything)
+- Athletic Reds vs Wanderers cannot join the generated schedule in any round (blocked by: Reject Everything)

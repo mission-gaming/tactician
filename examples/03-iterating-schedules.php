@@ -1,358 +1,73 @@
 <?php
+
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Example.php';
 
-use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
-// Create participants
+// Five participants: an odd field, so one participant sits out each round
 $participants = [
-    new Participant('celtic', 'Celtic FC', 1, ['city' => 'Glasgow', 'league' => 'Scottish Premier']),
-    new Participant('athletic', 'Athletic Bilbao', 2, ['city' => 'Bilbao', 'league' => 'La Liga']),
-    new Participant('livorno', 'AS Livorno', 3, ['city' => 'Livorno', 'league' => 'Serie C']),
-    new Participant('redstar', 'Red Star Belgrade', 4, ['city' => 'Belgrade', 'league' => 'SuperLiga']),
-    new Participant('stpauli', 'FC St. Pauli', 5, ['city' => 'Hamburg', 'league' => '2. Bundesliga']),
+    new Participant('celtic', 'Celtic FC'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
+    new Participant('stpauli', 'FC St. Pauli'),
 ];
 
-// Generate schedule
-$constraints = ConstraintSet::create()
-    ->noRepeatPairings()
-    ->build();
+$schedule = (new RoundRobinScheduler())->schedule($participants);
 
-$scheduler = new RoundRobinScheduler($constraints);
-$schedule = $scheduler->schedule($participants);
+// A schedule holds all of its events in memory, as an array. Every way of
+// reading it below returns the same event objects.
 
-// Different ways to access schedule data
-$totalEvents = count($schedule);
-$totalRounds = $schedule->getMetadataValue('total_rounds');
-$algorithm = $schedule->getMetadataValue('algorithm');
-
-// Group events by round for demonstration
-$eventsByRound = [];
+// 1. Iterate it directly
+$iterated = [];
 foreach ($schedule as $event) {
-    $roundNumber = $event->getRound()->getNumber();
-    if (!isset($eventsByRound[$roundNumber])) {
-        $eventsByRound[$roundNumber] = [];
-    }
-    $eventsByRound[$roundNumber][] = $event;
+    $iterated[] = $event;
 }
 
-// Create a flat array for different iteration methods
-$eventsArray = iterator_to_array($schedule);
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Schedule Iteration - Tactician Examples</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-</head>
-<body class="bg-gray-50 min-h-screen">
-    <header class="bg-blue-600 text-white shadow-lg">
-        <div class="max-w-6xl mx-auto px-6 py-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-2xl font-bold">🔄 Schedule Iteration</h1>
-                    <p class="text-blue-100">Different ways to access and display schedule data</p>
-                </div>
-                <a href="index.php" class="bg-blue-700 hover:bg-blue-800 px-4 py-2 rounded-lg transition-colors">
-                    ← Back to Examples
-                </a>
-            </div>
-        </div>
-    </header>
+// 2. Count it
+$total = count($schedule);
 
-    <main class="max-w-6xl mx-auto px-6 py-8">
-        <!-- Schedule Overview -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Schedule Overview</h2>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div class="bg-blue-50 rounded-lg p-4">
-                    <div class="text-2xl font-bold text-blue-600"><?= count($participants); ?></div>
-                    <div class="text-gray-600">Teams</div>
-                </div>
-                <div class="bg-green-50 rounded-lg p-4">
-                    <div class="text-2xl font-bold text-green-600"><?= $totalEvents; ?></div>
-                    <div class="text-gray-600">Matches</div>
-                </div>
-                <div class="bg-purple-50 rounded-lg p-4">
-                    <div class="text-2xl font-bold text-purple-600"><?= $totalRounds; ?></div>
-                    <div class="text-gray-600">Rounds</div>
-                </div>
-                <div class="bg-orange-50 rounded-lg p-4">
-                    <div class="text-2xl font-bold text-orange-600"><?= htmlspecialchars($algorithm); ?></div>
-                    <div class="text-gray-600">Algorithm</div>
-                </div>
-            </div>
-        </div>
+// 3. Take the events as a list, for random access
+$events = $schedule->getEvents();
+$firstEvent = $events[0];
+$lastEvent = $events[count($events) - 1];
 
-        <!-- Method 1: Direct Iteration -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Method 1: Direct Iteration</h2>
-            <p class="text-gray-600 mb-4">
-                A schedule is iterable, so <code>foreach</code> visits every event in generated order.
-                The schedule already holds all of its events in memory; iterating reads them, it does not load them.
-            </p>
-            
-            <div class="bg-gray-900 text-gray-100 rounded-lg p-4 mb-4">
-                <pre><code><?= htmlspecialchars('foreach ($schedule as $event) {
-    $round = $event->getRound();
-    $participants = $event->getParticipants();
-    
-    echo "Round {$round->getNumber()}: ";
-    echo "{$participants[0]->getLabel()} vs {$participants[1]->getLabel()}";
-}'); ?></code></pre>
-            </div>
+// 4. Group the events by round number, or ask for one round
+$eventsByRound = $schedule->getEventsByRound();
+$roundThree = $schedule->getEventsForRound(new Round(3));
 
-            <div class="space-y-2">
-                <?php foreach ($schedule as $event): ?>
-                    <?php $eventParticipants = $event->getParticipants(); ?>
-                    <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-                            Round <?= $event->getRound()->getNumber(); ?>
-                        </span>
-                        <div class="flex items-center space-x-4">
-                            <span class="font-medium"><?= htmlspecialchars($eventParticipants[0]->getLabel()); ?></span>
-                            <span class="text-gray-400">vs</span>
-                            <span class="font-medium"><?= htmlspecialchars($eventParticipants[1]->getLabel()); ?></span>
-                        </div>
-                        <span class="text-sm text-gray-500">
-                            <?= htmlspecialchars($eventParticipants[0]->getMetadataValue('city')); ?> vs
-                            <?= htmlspecialchars($eventParticipants[1]->getMetadataValue('city')); ?>
-                        </span>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
+$eventCountByRound = [];
+foreach ($eventsByRound as $roundNumber => $roundEvents) {
+    $eventCountByRound['Round ' . $roundNumber] = count($roundEvents);
+}
 
-        <!-- Method 2: Counting Events -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Method 2: Counting Events</h2>
-            <p class="text-gray-600 mb-4">
-                A schedule is countable, so <code>count()</code> returns the number of events it holds without a loop.
-            </p>
-            
-            <div class="bg-gray-900 text-gray-100 rounded-lg p-4 mb-4">
-                <pre><code><?= htmlspecialchars('$totalEvents = count($schedule);
-echo "Total events: " . $totalEvents;'); ?></code></pre>
-            </div>
+// 5. Read the metadata: the shape of the schedule, and who has the bye in
+//    each round (round number => participant id)
+$byes = [];
+foreach ($schedule->getMetadataValue('byes') as $roundNumber => $participantId) {
+    $byes['Round ' . $roundNumber] = $participantId;
+}
 
-            <div class="bg-blue-50 rounded-lg p-4">
-                <div class="text-2xl font-bold text-blue-600"><?= $totalEvents; ?></div>
-                <div class="text-blue-800">Total events, from <code>count($schedule)</code></div>
-            </div>
-        </div>
-
-        <!-- Method 3: Convert to Array -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Method 3: Convert to Array (Random Access)</h2>
-            <p class="text-gray-600 mb-4">
-                Convert the schedule to an array when you need random access or want to use array functions.
-                <strong>Note:</strong> The events are already in memory, so this copies the list; nothing new is loaded.
-                <code>$schedule->getEvents()</code> returns the same array directly.
-            </p>
-            
-            <div class="bg-gray-900 text-gray-100 rounded-lg p-4 mb-4">
-                <pre><code><?= htmlspecialchars('$eventsArray = iterator_to_array($schedule);
-
-// Now you can access by index
-$firstEvent = $eventsArray[0];
-$lastEvent = $eventsArray[count($eventsArray) - 1];
-
-// Or use array functions
-$filteredEvents = array_filter($eventsArray, function($event) {
-    return $event->getRound()->getNumber() <= 2;
-});'); ?></code></pre>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="border border-gray-200 rounded-lg p-4">
-                    <h3 class="font-semibold text-gray-800 mb-2">First Event</h3>
-                    <?php $firstEvent = $eventsArray[0]; ?>
-                    <?php $firstParticipants = $firstEvent->getParticipants(); ?>
-                    <div class="text-sm">
-                        <div><strong>Round:</strong> <?= $firstEvent->getRound()->getNumber(); ?></div>
-                        <div><strong>Match:</strong> <?= htmlspecialchars($firstParticipants[0]->getLabel()); ?> vs <?= htmlspecialchars($firstParticipants[1]->getLabel()); ?></div>
-                    </div>
-                </div>
-                
-                <div class="border border-gray-200 rounded-lg p-4">
-                    <h3 class="font-semibold text-gray-800 mb-2">Last Event</h3>
-                    <?php $lastEvent = $eventsArray[count($eventsArray) - 1]; ?>
-                    <?php $lastParticipants = $lastEvent->getParticipants(); ?>
-                    <div class="text-sm">
-                        <div><strong>Round:</strong> <?= $lastEvent->getRound()->getNumber(); ?></div>
-                        <div><strong>Match:</strong> <?= htmlspecialchars($lastParticipants[0]->getLabel()); ?> vs <?= htmlspecialchars($lastParticipants[1]->getLabel()); ?></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mt-4">
-                <h3 class="font-semibold text-gray-800 mb-2">First Two Rounds Only (using array_filter)</h3>
-                <?php
-                $firstTwoRounds = array_filter($eventsArray, function ($event) {
-                    return $event->getRound()->getNumber() <= 2;
-                });
-?>
-                <div class="text-sm text-gray-600 mb-2">
-                    Filtered <?= count($firstTwoRounds); ?> events from first 2 rounds out of <?= count($eventsArray); ?> total events
-                </div>
-                <div class="space-y-1">
-                    <?php foreach ($firstTwoRounds as $event): ?>
-                        <?php $eventParticipants = $event->getParticipants(); ?>
-                        <div class="text-sm p-2 bg-gray-100 rounded">
-                            Round <?= $event->getRound()->getNumber(); ?>: 
-                            <?= htmlspecialchars($eventParticipants[0]->getLabel()); ?> vs 
-                            <?= htmlspecialchars($eventParticipants[1]->getLabel()); ?>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        </div>
-
-        <!-- Method 4: Group by Rounds -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Method 4: Group Events by Round</h2>
-            <p class="text-gray-600 mb-4">
-                Organize events by round number for display purposes. Useful for showing tournament brackets or round-based views.
-            </p>
-            
-            <div class="bg-gray-900 text-gray-100 rounded-lg p-4 mb-4">
-                <pre><code><?= htmlspecialchars('$eventsByRound = [];
-foreach ($schedule as $event) {
-    $roundNumber = $event->getRound()->getNumber();
-    if (!isset($eventsByRound[$roundNumber])) {
-        $eventsByRound[$roundNumber] = [];
-    }
-    $eventsByRound[$roundNumber][] = $event;
-}'); ?></code></pre>
-            </div>
-
-            <div class="space-y-6">
-                <?php foreach ($eventsByRound as $roundNumber => $roundEvents): ?>
-                    <div class="border border-gray-200 rounded-lg p-4">
-                        <h3 class="text-lg font-semibold text-gray-800 mb-3 flex items-center">
-                            <span class="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm mr-3">
-                                Round <?= $roundNumber; ?>
-                            </span>
-                            <span class="text-gray-500 text-sm"><?= count($roundEvents); ?> match<?= count($roundEvents) === 1 ? '' : 'es'; ?></span>
-                        </h3>
-                        
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <?php foreach ($roundEvents as $event): ?>
-                                <?php $eventParticipants = $event->getParticipants(); ?>
-                                <div class="bg-gray-50 rounded p-3">
-                                    <div class="flex items-center justify-between">
-                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[0]->getLabel()); ?></span>
-                                        <span class="text-gray-400 font-bold">VS</span>
-                                        <span class="font-medium text-gray-800"><?= htmlspecialchars($eventParticipants[1]->getLabel()); ?></span>
-                                    </div>
-                                    <div class="text-xs text-gray-500 mt-1 text-center">
-                                        <?= htmlspecialchars($eventParticipants[0]->getMetadataValue('league')); ?> vs 
-                                        <?= htmlspecialchars($eventParticipants[1]->getMetadataValue('league')); ?>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-
-        <!-- Method 5: Accessing Schedule Metadata -->
-        <div class="bg-white rounded-lg shadow-md p-6">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Method 5: Accessing Schedule Metadata</h2>
-            <p class="text-gray-600 mb-4">
-                Schedules contain metadata about how they were generated, useful for understanding the tournament structure.
-            </p>
-            
-            <div class="bg-gray-900 text-gray-100 rounded-lg p-4 mb-4">
-                <pre><code><?= htmlspecialchars('$algorithm = $schedule->getMetadataValue(\'algorithm\');
-$participantCount = $schedule->getMetadataValue(\'participant_count\');
-$totalRounds = $schedule->getMetadataValue(\'total_rounds\');
-
-// Check if metadata exists
-if ($schedule->hasMetadata(\'creation_time\')) {
-    $createdAt = $schedule->getMetadataValue(\'creation_time\');
-}'); ?></code></pre>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <div class="text-sm text-gray-600 mb-1">Algorithm</div>
-                    <div class="font-medium text-gray-800"><?= htmlspecialchars($schedule->getMetadataValue('algorithm')); ?></div>
-                </div>
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <div class="text-sm text-gray-600 mb-1">Participant Count</div>
-                    <div class="font-medium text-gray-800"><?= $schedule->getMetadataValue('participant_count'); ?></div>
-                </div>
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <div class="text-sm text-gray-600 mb-1">Total Rounds</div>
-                    <div class="font-medium text-gray-800"><?= $schedule->getMetadataValue('total_rounds'); ?></div>
-                </div>
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <div class="text-sm text-gray-600 mb-1">Events per Round</div>
-                    <div class="font-medium text-gray-800"><?= $schedule->getMetadataValue('events_per_round'); ?></div>
-                </div>
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <div class="text-sm text-gray-600 mb-1">Default Value Example</div>
-                    <div class="font-medium text-gray-800"><?= htmlspecialchars($schedule->getMetadataValue('nonexistent_key', 'N/A')); ?></div>
-                </div>
-                <div class="bg-gray-50 rounded-lg p-4">
-                    <div class="text-sm text-gray-600 mb-1">Has Custom Metadata?</div>
-                    <div class="font-medium text-gray-800"><?= $schedule->hasMetadata('custom_field') ? 'Yes' : 'No'; ?></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Memory -->
-        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mt-8">
-            <h3 class="text-lg font-semibold text-yellow-800 mb-3">Memory</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-                <div>
-                    <h4 class="font-medium text-yellow-800 mb-2">What a schedule holds</h4>
-                    <ul class="space-y-1 text-yellow-700">
-                        <li>• Every event, in memory, as an array</li>
-                        <li>• Generation builds the whole schedule before returning it</li>
-                        <li>• Nothing is loaded lazily or released as you iterate</li>
-                    </ul>
-                </div>
-                <div>
-                    <h4 class="font-medium text-yellow-800 mb-2">What the methods cost</h4>
-                    <ul class="space-y-1 text-yellow-700">
-                        <li>• foreach and count() read what is already there</li>
-                        <li>• iterator_to_array() and grouping build one more list of the same events</li>
-                        <li>• None of them changes how much the schedule itself holds</li>
-                    </ul>
-                </div>
-            </div>
-            <div class="mt-4 text-yellow-700">
-                <strong>Recommendation:</strong> Pick the method that reads best: iterate to visit every event,
-                count for a total, use an array or the by-round grouping for random access. Being iterable and
-                countable is a convenience, not a memory saving.
-            </div>
-        </div>
-
-        <!-- Navigation -->
-        <div class="flex justify-between mt-8">
-            <a href="02-participants-and-metadata.php" class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg transition-colors">
-                ← Previous: Participants & Metadata
-            </a>
-            <a href="04-basic-constraints.php" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors">
-                Next: Basic Constraints →
-            </a>
-        </div>
-    </main>
-
-    <footer class="bg-gray-800 text-white mt-16">
-        <div class="max-w-6xl mx-auto px-6 py-6 text-center">
-            <p class="text-gray-400">
-                <strong>Tactician</strong> - Modern PHP Tournament Scheduling
-            </p>
-        </div>
-    </footer>
-</body>
-</html>
+return Example::present(__FILE__, 'Reading a schedule', 'Five ways to read the same schedule: iterate it, count it, take the list of events, group it by round, and read its metadata.', [
+    'Schedule' => $schedule,
+    'Events seen by foreach' => count($iterated),
+    'count($schedule)' => $total,
+    'First event' => $firstEvent,
+    'Last event' => $lastEvent,
+    'Number of events in each round' => $eventCountByRound,
+    'Round 3 only' => $roundThree,
+    'Bye in each round' => $byes,
+    'Metadata' => [
+        'algorithm' => $schedule->getMetadataValue('algorithm'),
+        'participant_count' => $schedule->getMetadataValue('participant_count'),
+        'legs' => $schedule->getMetadataValue('legs'),
+        'total_rounds' => $schedule->getMetadataValue('total_rounds'),
+        'last round' => $schedule->getMaxRound()?->getNumber(),
+    ],
+]);

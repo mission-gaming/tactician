@@ -185,7 +185,7 @@ final class GoldenText
      *
      * @throws JsonException
      */
-    private static function event(Event $event): string
+    public static function event(Event $event): string
     {
         $text = implode('-', array_map(
             static fn (Participant $participant): string => $participant->getId(),

@@ -1,0 +1,56 @@
+# The results of examples/03-iterating-schedules.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Schedule ==
+meta: algorithm=round-robin participant_count=5 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=10
+R1: athletic-stpauli livorno-redstar
+R2: athletic-celtic stpauli-redstar
+R3: celtic-livorno redstar-athletic
+R4: redstar-celtic livorno-stpauli
+R5: celtic-stpauli athletic-livorno
+byes: R1=celtic R2=livorno R3=stpauli R4=athletic R5=redstar
+
+== Events seen by foreach ==
+10
+
+== count($schedule) ==
+10
+
+== First event ==
+R1: athletic-stpauli
+
+== Last event ==
+R5: athletic-livorno
+
+== Number of events in each round ==
+Round 1: 2
+Round 2: 2
+Round 3: 2
+Round 4: 2
+Round 5: 2
+
+== Round 3 only ==
+- R3: celtic-livorno
+- R3: redstar-athletic
+
+== Bye in each round ==
+Round 1: celtic
+Round 2: livorno
+Round 3: stpauli
+Round 4: athletic
+Round 5: redstar
+
+== Metadata ==
+algorithm: round-robin
+participant_count: 5
+legs: 1
+total_rounds: 5
+last round: 5

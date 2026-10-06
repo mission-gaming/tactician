@@ -36,8 +36,23 @@ generated output for a fixed input and seed is identical.
   warning or deprecation fails the suite, as does one that stops before its
   last line. The values and printed output the two documents state are pinned
   in the same test.
-- Golden files for the output of the plain-text examples (`examples/13` to
-  `examples/19`), so an example that prints a wrong or empty result fails.
+- Checked results for every example. Each script in `examples/` now computes
+  a named set of results and hands it to one shared renderer
+  (`examples/support/Example.php`), which shows it as text on the command line
+  and as a page under a web server. The suite asserts on those results what
+  each example is there to demonstrate, pins them as text in
+  `tests/Fixtures/golden/examples/`, and fails for an example that has no
+  checked results. A change to the pages' markup touches no fixture.
+- Two examples: a double-elimination bracket with a grand-final reset
+  (`examples/20-double-elimination.php`) and a standings table with a chain of
+  tiebreakers (`examples/21-standings-and-tiebreakers.php`).
+- A test that fails when a script in `examples/` is missing from
+  `examples/README.md` or `examples/index.php`, or when either lists a script
+  that does not exist.
+- A time limit on each block the documentation-snippet test executes: a block
+  that never returns is stopped and fails by name instead of hanging the
+  suite.
+- A documentation step in the release checklist (`docs/RELEASING.md`).
 - Governance files: a security policy (`SECURITY.md`), code owners, a pull
   request template with a compatibility section, and issue forms for bug
   reports and feature requests.
@@ -83,6 +98,14 @@ generated output for a fixed input and seed is identical.
 - Every code block in `README.md` and `docs/USAGE.md` now runs as written:
   imports and the values a block depends on are shown, and inline value
   comments match what the code produces.
+- `README.md` has one feature list instead of two. It now covers everything
+  that has shipped, including schedule repacking, timeline assignment,
+  schedule quality and backtracking generation, and each entry links to its
+  section of the usage guide.
+- Every example runs both on the command line and in a browser; there are no
+  longer separate browser and command-line examples. The example pages no
+  longer load a script from another host. `examples/README.md` and
+  `examples/index.php` list all 21 examples.
 
 ### Removed
 
@@ -117,6 +140,32 @@ generated output for a fixed input and seed is identical.
     `examples/README.md` claimed that iterating a schedule is lazy or
     memory-efficient. A `Schedule` holds all of its events in memory; it is
     iterable and countable.
+  - `README.md` called the library "production ready" and its round-robin
+    roles "balanced". The library is at 0.x with experimental namespaces, and
+    the round-robin generator bounds the home/away split without making it
+    equal; the README, the roadmap and the glossary now say so.
+  - Examples that showed something the code does not do:
+    - `examples/06-rest-periods.php` presented `MinimumRestPeriodsConstraint`
+      as rest between a participant's matches, on a single-leg schedule where
+      the constraint never applies. It now uses two legs and shows the gap
+      between the two meetings of each pair.
+    - `examples/08-custom-constraints.php` described hard constraints as
+      preferences ("soft constraint", "prefer"), and its first rule covered
+      rounds in which the pairing never fell. The rules it shows now change
+      the schedule or fail, and the text says which.
+    - `examples/10-complex-tournament.php` used `rand()` inside constraints to
+      imitate a preference, so its result was not repeatable. Its constraints
+      are now deterministic and each one is shown to hold.
+    - `examples/09-multi-leg-home-away.php` shuffled legs with an unseeded
+      randomizer and drew a league table from random scores; it now passes a
+      seeded randomizer, and standings have their own example (21).
+    - `examples/12-performance-patterns.php` built its sample data with
+      `rand()` and read a metadata key that does not exist. It now reports
+      exact counts and marks its timings as measured; the memory figures are
+      gone.
+    - `examples/04-basic-constraints.php` called `noRepeatPairings()` the
+      constraint that makes each pair meet once; a round robin does that
+      without it, and the example now says so.
 
 ## [0.2.0] - 2026-08-11
 

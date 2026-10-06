@@ -1,0 +1,34 @@
+# The results of examples/21-standings-and-tiebreakers.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Results ==
+- R1: ajax-dynamo => ajax (1-0)
+- R1: boca-celtic => boca (1-0)
+- R2: boca-ajax => ajax (1-2)
+- R2: dynamo-celtic => draw (1-1)
+- R3: ajax-celtic => celtic (0-3)
+- R3: dynamo-boca => boca (0-2)
+
+== Table without tiebreakers ==
+1. boca played=3 wins=2 draws=0 losses=1 value=6 for=4 against=2
+2. ajax played=3 wins=2 draws=0 losses=1 value=6 for=3 against=4
+3. celtic played=3 wins=1 draws=1 losses=1 value=4 for=4 against=2
+4. dynamo played=3 wins=0 draws=1 losses=2 value=1 for=1 against=4
+
+== Table with the tiebreaker chain ==
+1. ajax played=3 wins=2 draws=0 losses=1 value=6 for=3 against=4 wins=2 buchholz=11 sonneborn-berger=7
+2. boca played=3 wins=2 draws=0 losses=1 value=6 for=4 against=2 wins=2 buchholz=11 sonneborn-berger=5
+3. celtic played=3 wins=1 draws=1 losses=1 value=4 for=4 against=2 wins=1 buchholz=13 sonneborn-berger=6.5
+4. dynamo played=3 wins=0 draws=1 losses=2 value=1 for=1 against=4 wins=0 buchholz=16 sonneborn-berger=2
+
+== Order at the top ==
+Without tiebreakers: Boca Juniors, Ajax
+With the chain: Ajax, Boca Juniors

@@ -1,24 +1,38 @@
-=== Group stage: 2 serpentine pools of 4 ===
+# The results of examples/14-groups-to-knockout.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
 
+== Pool tables ==
 Pool A:
-  1. Brazil       9 pts
-  2. England      6 pts
-  3. Spain        3 pts
-  4. Netherlands  0 pts
-
+  1. bra played=3 wins=3 draws=0 losses=0 value=9 for=0 against=0
+  2. eng played=3 wins=2 draws=0 losses=1 value=6 for=0 against=0
+  3. esp played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+  4. ned played=3 wins=0 draws=0 losses=3 value=0 for=0 against=0
 Pool B:
-  1. Argentina    9 pts
-  2. France       6 pts
-  3. Germany      3 pts
-  4. Portugal     0 pts
+  1. arg played=3 wins=3 draws=0 losses=0 value=9 for=0 against=0
+  2. fra played=3 wins=2 draws=0 losses=1 value=6 for=0 against=0
+  3. ger played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+  4. por played=3 wins=0 draws=0 losses=3 value=0 for=0 against=0
 
-=== Knockout: Brazil, Argentina, England, France ===
+== Qualifiers, in knockout seeding order ==
+- bra "Brazil" seed=1
+- arg "Argentina" seed=2
+- eng "England" seed=4
+- fra "France" seed=3
 
+== Knockout ==
 Semifinal:
-  Brazil vs France => Brazil
-  Argentina vs England => Argentina
-
+  - R1: bra-fra => bra
+  - R1: arg-eng => arg
 Final:
-  Brazil vs Argentina => Brazil
+  - R2: bra-arg => bra
 
-Champions: Brazil
+== Champion ==
+bra "Brazil" seed=1

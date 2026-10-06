@@ -1,0 +1,45 @@
+# The results of examples/05-seed-protection.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Round in which seeds 1 and 2 meet ==
+No protection: 2
+Top 2 protected for 25% of the rounds (round 1): 2
+Top 2 protected for 50% of the rounds (rounds 1 to 3): 4
+
+== Schedule without protection ==
+meta: algorithm=round-robin participant_count=8 legs=1 rounds_per_leg=7 total_rounds=7 expected_event_count=28 byes=[]
+R1: celtic-union athletic-rayo livorno-clapton redstar-stpauli
+R2: athletic-celtic union-livorno rayo-redstar clapton-stpauli
+R3: celtic-livorno redstar-athletic stpauli-union clapton-rayo
+R4: redstar-celtic livorno-stpauli athletic-clapton union-rayo
+R5: celtic-stpauli clapton-redstar rayo-livorno union-athletic
+R6: clapton-celtic stpauli-rayo redstar-union livorno-athletic
+R7: celtic-rayo union-clapton athletic-stpauli livorno-redstar
+
+== Schedule protected for 25% of the rounds ==
+meta: algorithm=round-robin participant_count=8 legs=1 rounds_per_leg=7 total_rounds=7 expected_event_count=28 byes=[]
+R1: celtic-union athletic-rayo livorno-clapton redstar-stpauli
+R2: athletic-celtic union-livorno rayo-redstar clapton-stpauli
+R3: celtic-livorno redstar-athletic stpauli-union clapton-rayo
+R4: redstar-celtic livorno-stpauli athletic-clapton union-rayo
+R5: celtic-stpauli clapton-redstar rayo-livorno union-athletic
+R6: clapton-celtic stpauli-rayo redstar-union livorno-athletic
+R7: celtic-rayo union-clapton athletic-stpauli livorno-redstar
+
+== Schedule protected for 50% of the rounds ==
+meta: algorithm=round-robin participant_count=8 legs=1 rounds_per_leg=7 total_rounds=7 expected_event_count=28 byes=[]
+R1: livorno-athletic redstar-celtic stpauli-union clapton-rayo
+R2: redstar-livorno athletic-stpauli celtic-clapton union-rayo
+R3: livorno-stpauli clapton-redstar rayo-athletic union-celtic
+R4: clapton-livorno stpauli-rayo redstar-union athletic-celtic
+R5: livorno-rayo union-clapton celtic-stpauli athletic-redstar
+R6: union-livorno rayo-celtic clapton-athletic stpauli-redstar
+R7: livorno-celtic athletic-union redstar-rayo stpauli-clapton

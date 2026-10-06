@@ -1,0 +1,61 @@
+# The results of examples/09-multi-leg-home-away.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Shape of the mirrored schedule ==
+legs: 2
+rounds_per_leg: 3
+total_rounds: 6
+events: 12
+
+== Mirrored legs ==
+meta: algorithm=round-robin participant_count=4 legs=2 rounds_per_leg=3 total_rounds=6 expected_event_count=12 byes=[]
+R1: mci-che ars-liv
+R2: ars-mci che-liv
+R3: mci-liv che-ars
+R4: che-mci liv-ars
+R5: mci-ars liv-che
+R6: liv-mci ars-che
+
+== Home games per club, mirrored legs ==
+Arsenal: 3
+Chelsea: 3
+Liverpool: 3
+Manchester City: 3
+
+== Repeated legs ==
+meta: algorithm=round-robin participant_count=4 legs=2 rounds_per_leg=3 total_rounds=6 expected_event_count=12 byes=[]
+R1: mci-che ars-liv
+R2: ars-mci che-liv
+R3: mci-liv che-ars
+R4: mci-che ars-liv
+R5: ars-mci che-liv
+R6: mci-liv che-ars
+
+== Home games per club, repeated legs ==
+Arsenal: 4
+Chelsea: 4
+Liverpool: 0
+Manchester City: 4
+
+== Shuffled legs (seed 2026) ==
+meta: algorithm=round-robin participant_count=4 legs=2 rounds_per_leg=3 total_rounds=6 expected_event_count=12 byes=[]
+R1: mci-che ars-liv
+R2: ars-mci che-liv
+R3: mci-liv che-ars
+R4: che-mci ars-liv
+R5: ars-mci che-liv
+R6: liv-mci ars-che
+
+== Home games per club, shuffled legs ==
+Arsenal: 5
+Chelsea: 4
+Liverpool: 1
+Manchester City: 2

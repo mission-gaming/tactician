@@ -1,0 +1,46 @@
+# The results of examples/07-metadata-constraints.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Participants ==
+- wolves "Nordic Wolves" seed=1 {"region":"Europe","platform":"PC","utc_offset":1}
+- thunder "Tokyo Thunder" seed=2 {"region":"Asia","platform":"PC","utc_offset":9}
+- kings "California Kings" seed=3 {"region":"North America","platform":"Console","utc_offset":-8}
+- lions "London Lions" seed=4 {"region":"Europe","platform":"PC","utc_offset":0}
+- squad "São Paulo Squad" seed=5 {"region":"South America","platform":"Console","utc_offset":-3}
+- sharks "Sydney Sharks" seed=6 {"region":"Oceania","platform":"PC","utc_offset":10}
+
+== At most two regions per event: schedule ==
+meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
+R1: wolves-sharks thunder-squad kings-lions
+R2: thunder-wolves sharks-kings squad-lions
+R3: wolves-kings lions-thunder squad-sharks
+R4: lions-wolves kings-squad thunder-sharks
+R5: wolves-squad sharks-lions thunder-kings
+
+== Same platform only ==
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 7 events, expected 15. Constraints may be preventing complete schedule generation.
+
+== Pairings the platform rule blocks ==
+- Sydney Sharks vs California Kings cannot join the generated schedule in any round (blocked by: Same platform)
+- Sydney Sharks vs São Paulo Squad cannot join the generated schedule in any round (blocked by: Same platform)
+- Nordic Wolves vs California Kings cannot join the generated schedule in any round (blocked by: Same platform)
+- Nordic Wolves vs São Paulo Squad cannot join the generated schedule in any round (blocked by: Same platform)
+- Tokyo Thunder vs California Kings cannot join the generated schedule in any round (blocked by: Same platform)
+- Tokyo Thunder vs São Paulo Squad cannot join the generated schedule in any round (blocked by: Same platform)
+- California Kings vs London Lions cannot join the generated schedule in any round (blocked by: Same platform)
+- London Lions vs São Paulo Squad cannot join the generated schedule in any round (blocked by: Same platform)
+
+== UTC offsets within 6 hours only ==
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 5 events, expected 15. Constraints may be preventing complete schedule generation.
+
+== Events under the timezone rule ==
+Generated before it failed: 5
+Needed for a complete schedule: 15

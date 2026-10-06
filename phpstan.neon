@@ -3,6 +3,9 @@ parameters:
 	paths:
 		- src
 		- tests
+		# What the examples share, because the tests call it. The example
+		# scripts themselves are run and checked by tests/Feature/ExamplesTest.php
+		- examples/support
 
 	# Exclude generated files and cache
 	excludePaths:

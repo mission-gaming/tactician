@@ -257,6 +257,44 @@ describe('release checklist', function () use ($root): void {
 
         expect($checklist)->toContain('A tag without a changelog section is not a release.');
     });
+
+    // The steps are numbered by hand and refer to each other by number, so
+    // adding one can leave a reference pointing at the wrong step
+    it('numbers its steps consecutively and refers to the tag step by its number', function () use ($root): void {
+        $checklist = (string) file_get_contents($root . '/docs/RELEASING.md');
+        preg_match_all('/^(\d+)\. \*\*([^*]+?)\.?\*\*/m', $checklist, $steps);
+
+        $titles = array_combine(array_map(intval(...), $steps[1]), $steps[2]);
+
+        $numbers = array_flip($titles);
+
+        // The documents are brought up to date before the pull request that CI runs on
+        expect(array_keys($titles))->toBe(range(1, count($titles)))
+            ->and($numbers)->toHaveKeys(['Documentation', 'Green CI on `main`', 'Annotated tag'])
+            ->and($numbers['Documentation'] ?? 0)->toBeLessThan($numbers['Green CI on `main`'] ?? 0);
+
+        // Step 1 dates the changelog section by "the date the tag will be made (step N)"
+        preg_match('/the tag will be made \(step\s+(\d+)\)/', $checklist, $reference);
+        expect($reference[1] ?? null)->toBe((string) ($numbers['Annotated tag'] ?? 0));
+
+        // Every other "step N" names a step that exists
+        preg_match_all('/\bstep\s+(\d+)\b/i', $checklist, $references);
+        foreach ($references[1] as $number) {
+            expect($titles)->toHaveKey((int) $number);
+        }
+    });
+
+    it('names, in its documentation step, test files that exist', function () use ($root): void {
+        $checklist = (string) file_get_contents($root . '/docs/RELEASING.md');
+        preg_match_all('#\btests/[\w/]+\.php\b#', $checklist, $files);
+
+        expect($files[0])->toContain('tests/Feature/DocumentationSnippetsTest.php')
+            ->toContain('tests/Feature/ExamplesTest.php');
+
+        foreach (array_unique($files[0]) as $file) {
+            expect(is_file($root . '/' . $file))->toBeTrue("docs/RELEASING.md names {$file}, which does not exist.");
+        }
+    });
 });
 
 describe('links', function () use ($root): void {
@@ -291,5 +329,5 @@ describe('links', function () use ($root): void {
 
             expect(array_map($anchor, $headings[1]))->toContain($fragment);
         }
-    })->with(['README.md', 'CHANGELOG.md', 'AGENTS.md', 'SECURITY.md', 'docs/RELEASING.md', 'docs/CONTRIBUTING.md']);
+    })->with(['README.md', 'CHANGELOG.md', 'AGENTS.md', 'SECURITY.md', 'docs/RELEASING.md', 'docs/CONTRIBUTING.md', 'examples/README.md']);
 });

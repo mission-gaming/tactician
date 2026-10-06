@@ -1,17 +1,46 @@
-Repacked schedule (kickoffs in UTC):
-  session 0 slot 2  2026-08-12 20:00  Celtic v AS Livorno (e03)
-  session 1 slot 1  2026-08-19 19:30  Celtic v Rayo Vallecano (e04)
-  session 0 slot 1  2026-08-12 19:30  Celtic v Clapton Community FC (e05)
-  session 0 slot 1  2026-08-12 19:30  Athletic Bilbao v Red Star FC (e06)
-  session 0 slot 2  2026-08-12 20:00  Athletic Bilbao v Rayo Vallecano (e07)
-  session 1 slot 0  2026-08-19 19:00  Athletic Bilbao v Clapton Community FC (e08)
-  session 0 slot 1  2026-08-12 19:30  AS Livorno v Rayo Vallecano (e09)
-  session 1 slot 1  2026-08-19 19:30  AS Livorno v Clapton Community FC (e10)
-  session 1 slot 0  2026-08-19 19:00  Red Star FC v Rayo Vallecano (e11)
-  session 1 slot 2  2026-08-19 20:00  Rayo Vallecano v Celtic (e12)
+# The results of examples/19-repacking-a-season.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
 
-Compromises, itemised:
-  {"kind":"late_start","participant":"cel","session":1,"first_slot":1}
-  {"kind":"late_start","participant":"cla","session":0,"first_slot":1}
-  {"kind":"late_start","participant":"liv","session":1,"first_slot":1}
-  {"kind":"late_start","participant":"ray","session":0,"first_slot":1}
+== Fixtures by event id ==
+e01: Celtic v Athletic Bilbao
+e02: AS Livorno v Red Star FC
+e03: Celtic v AS Livorno
+e04: Celtic v Rayo Vallecano
+e05: Celtic v Clapton Community FC
+e06: Athletic Bilbao v Red Star FC
+e07: Athletic Bilbao v Rayo Vallecano
+e08: Athletic Bilbao v Clapton Community FC
+e09: AS Livorno v Rayo Vallecano
+e10: AS Livorno v Clapton Community FC
+e11: Red Star FC v Rayo Vallecano
+e12: Rayo Vallecano v Celtic
+
+== Repacked schedule ==
+assignments: 10
+  e03 => session 0, slot 2, kickoff 2026-08-12T20:00:00Z
+  e04 => session 1, slot 1, kickoff 2026-08-19T19:30:00Z
+  e05 => session 0, slot 1, kickoff 2026-08-12T19:30:00Z
+  e06 => session 0, slot 1, kickoff 2026-08-12T19:30:00Z
+  e07 => session 0, slot 2, kickoff 2026-08-12T20:00:00Z
+  e08 => session 1, slot 0, kickoff 2026-08-19T19:00:00Z
+  e09 => session 0, slot 1, kickoff 2026-08-12T19:30:00Z
+  e10 => session 1, slot 1, kickoff 2026-08-19T19:30:00Z
+  e11 => session 1, slot 0, kickoff 2026-08-19T19:00:00Z
+  e12 => session 1, slot 2, kickoff 2026-08-19T20:00:00Z
+unplaced: 0
+violations: 4
+  late_start participant=cel session=1 first_slot=1
+  late_start participant=cla session=0 first_slot=1
+  late_start participant=liv session=1 first_slot=1
+  late_start participant=ray session=0 first_slot=1
+
+== Clean ==
+false

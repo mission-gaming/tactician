@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Example.php';
 
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Timeline\BlackoutRule;
@@ -14,7 +16,7 @@ use MissionGaming\Tactician\Timeline\TimelineAssigner;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 
 // A six-team home-and-away league mapped onto real dates: weekly match
-// days with three staggered kickoffs, declared once and assigned
+// days with staggered kickoffs on two pitches, declared once and assigned
 // deterministically. Round-aligned scheduling is the same model with a
 // single slot per round.
 
@@ -53,32 +55,21 @@ $assigner = new TimelineAssigner([
     ]]]),
 ]);
 
+// The result decorates every event with a kickoff, held in UTC, and a
+// resource
 $scheduled = $assigner->assign($schedule, $timeline);
-
-echo "=== Season calendar (kickoffs in UTC) ===\n\n";
-foreach ($scheduled->getEventsByRound() as $round => $scheduledEvents) {
-    $matchDay = $scheduledEvents[0]->getKickoff()->format('D j M Y');
-    echo "Round {$round} - {$matchDay}\n";
-    foreach ($scheduledEvents as $scheduledEvent) {
-        [$home, $away] = $scheduledEvent->getEvent()->getParticipants();
-        printf(
-            "  %s  %-11s  %s vs %s\n",
-            $scheduledEvent->getKickoff()->format('H:i'),
-            (string) $scheduledEvent->getResource(),
-            $home->getLabel(),
-            $away->getLabel()
-        );
-    }
-    echo "\n";
-}
 
 // The decorated view serializes; platforms persist assigned kickoffs and
 // restore them without re-running assignment
 $restored = ScheduledSchedule::fromJson($scheduled->toJson());
-echo 'Serialized and restored ' . count($restored) . " scheduled events.\n";
 
-// Kickoffs were declared as 18:00-20:00 London wall-clock; the whole
-// season falls inside BST, so they emit uniformly as 17:00-19:00 UTC
+// Kickoffs were declared as 18:00 and 20:00 London wall-clock; the whole
+// season falls inside British Summer Time, so they are 17:00 and 19:00 UTC
 $lastRound = array_key_last($scheduled->getEventsByRound());
 $lastKickoff = $scheduled->getEventsByRound()[$lastRound][0]->getKickoff();
-echo "Final round kicks off {$lastKickoff->format('D j M Y H:i')} UTC.\n";
+
+return Example::present(__FILE__, 'Putting a schedule on the calendar', 'A two-leg season assigned to weekly match days with two kickoff times on two pitches, under a minimum-rest rule and a blackout window. Kickoffs are shown in UTC.', [
+    'Season calendar' => $scheduled,
+    'Scheduled events restored from JSON' => count($restored),
+    'First kickoff of the final round' => $lastKickoff,
+]);

@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/support/Example.php';
 
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\Quality\PairingSpacingMetric;
 use MissionGaming\Tactician\Quality\RoleBalanceMetric;
@@ -31,7 +33,8 @@ $players = [
 ];
 
 // Policy: colour balance matters most, then alternation, then how the
-// two meetings of each pair spread across the season
+// two meetings of each pair spread across the season. Every metric is
+// lower-is-better, and so is the weighted score.
 $scorer = new ScheduleScorer([
     ['metric' => new RoleBalanceMetric(), 'weight' => 3.0],
     ['metric' => new RoleStreakMetric(), 'weight' => 2.0],
@@ -45,21 +48,23 @@ $generate = fn (Randomizer $r) => (new RoundRobinScheduler(null, $r))->schedule(
     new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy($r))
 );
 
-$optimizer = new ScheduleOptimizer($scorer, new Randomizer(new Mt19937(2026)));
-
-$single = $optimizer->optimize($generate, 1);
+// The same master seed twice: the first sample alone, then the best of 25
+$single = (new ScheduleOptimizer($scorer, new Randomizer(new Mt19937(2026))))
+    ->optimize($generate, 1);
 $best = (new ScheduleOptimizer($scorer, new Randomizer(new Mt19937(2026))))
     ->optimize($generate, 25);
 
-echo "=== First sample vs best of 25 ===\n\n";
-printf("%-18s %12s %12s\n", 'Metric', 'first', 'best');
+$comparison = [];
 foreach ($single->getReport() as $name => $value) {
-    printf("%-18s %12.3f %12.3f\n", $name, $value, $best->getReport()[$name]);
+    $comparison[] = ['Metric' => $name, 'First sample' => $value, 'Best of 25' => $best->getReport()[$name]];
 }
-printf("%-18s %12.3f %12.3f\n", 'Weighted score', $single->getScore(), $best->getScore());
+$comparison[] = ['Metric' => 'Weighted score', 'First sample' => $single->getScore(), 'Best of 25' => $best->getScore()];
 
-printf(
-    "\nBest sample chosen from %d generated candidates (%d failed).\n",
-    $best->getSamplesGenerated(),
-    $best->getSamplesFailed()
-);
+return Example::present(__FILE__, 'Choosing the best of many schedules', 'Schedule quality is scored, not enforced: the optimizer generates 25 valid schedules from one seed and keeps the one with the lowest weighted score.', [
+    'Scores (lower is better)' => $comparison,
+    'Sampling' => [
+        'Candidates generated' => $best->getSamplesGenerated(),
+        'Candidates that failed' => $best->getSamplesFailed(),
+    ],
+    'The schedule kept' => $best->getSchedule(),
+]);

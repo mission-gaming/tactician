@@ -1,32 +1,41 @@
-=== Swiss Tournament: 8 players, 3 rounds ===
+# The results of examples/13-swiss-stage-engine.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
 
-Round 1
-  Hikaru vs Magnus => Magnus
-  Ding vs Fabiano => Fabiano
-  Ian vs Alireza => Alireza
-  Anish vs Wesley => Wesley
+== Rounds as played ==
+Round 1:
+  - R1: hikaru-magnus => magnus
+  - R1: ding-fabiano => fabiano
+  - R1: ian-alireza => alireza
+  - R1: anish-wesley => wesley
+Round 2:
+  - R2: fabiano-magnus => magnus
+  - R2: wesley-alireza => alireza
+  - R2: ding-hikaru => hikaru
+  - R2: anish-ian => ian
+Round 3:
+  - R3: alireza-magnus => magnus
+  - R3: fabiano-hikaru => hikaru
+  - R3: wesley-ian => ian
+  - R3: anish-ding => ding
 
-Round 2
-  Fabiano vs Magnus => Magnus
-  Wesley vs Alireza => Alireza
-  Ding vs Hikaru => Hikaru
-  Anish vs Ian => Ian
+== Final standings ==
+1. magnus played=3 wins=3 draws=0 losses=0 value=9 for=0 against=0
+2. hikaru played=3 wins=2 draws=0 losses=1 value=6 for=0 against=0
+3. alireza played=3 wins=2 draws=0 losses=1 value=6 for=0 against=0
+4. ian played=3 wins=2 draws=0 losses=1 value=6 for=0 against=0
+5. fabiano played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+6. ding played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+7. wesley played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+8. anish played=3 wins=0 draws=0 losses=3 value=0 for=0 against=0
 
-Round 3
-  Alireza vs Magnus => Magnus
-  Fabiano vs Hikaru => Hikaru
-  Wesley vs Ian => Ian
-  Anish vs Ding => Ding
-
-=== Final Standings ===
-1. Magnus   9.0 pts (3W 0D 0L)
-2. Hikaru   6.0 pts (2W 0D 1L)
-3. Alireza  6.0 pts (2W 0D 1L)
-4. Ian      6.0 pts (2W 0D 1L)
-5. Fabiano  3.0 pts (1W 0D 2L)
-6. Ding     3.0 pts (1W 0D 2L)
-7. Wesley   3.0 pts (1W 0D 2L)
-8. Anish    0.0 pts (0W 0D 3L)
-
-Final round played: round 3
-Total results recorded: 12
+== Outcome ==
+Last round played: 3
+Results recorded: 12

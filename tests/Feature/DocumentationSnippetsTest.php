@@ -39,8 +39,10 @@ use PHPUnit\Framework\Assert;
  *   cleanly, and PHP reports nothing. The harness cannot tell that from
  *   success; the blocks whose printed result the prose relies on are pinned
  *   in "Documented values" as well.
- * - A block that never returns (an endless loop) hangs the run rather than
- *   failing it; the harness sets no time limit.
+ *
+ * A block that never returns does not hang the run: each block has a
+ * wall-clock limit (DocumentationSnippets::TIME_LIMIT), after which it is
+ * stopped and failed by name.
  */
 
 $root = dirname(__DIR__, 2);
@@ -92,7 +94,7 @@ function snippetsMarked(array $extracted, string $mode): array
  *
  * @throws RuntimeException When PHP cannot be started
  */
-function snippetSampleFailure(string $markdown): ?string
+function snippetSampleFailure(string $markdown, float $timeLimit = DocumentationSnippets::TIME_LIMIT): ?string
 {
     $extracted = DocumentationSnippets::extract('sample.md', $markdown);
     Assert::assertSame([], $extracted['problems']);
@@ -106,7 +108,8 @@ function snippetSampleFailure(string $markdown): ?string
     return DocumentationSnippets::run(
         $executed[count($executed) - 1],
         $extracted['snippets'],
-        dirname(__DIR__, 2) . '/vendor/autoload.php'
+        dirname(__DIR__, 2) . '/vendor/autoload.php',
+        $timeLimit
     );
 }
 
@@ -748,6 +751,82 @@ describe('Documentation snippet harness', function (): void {
         ],
         'exit inside hidden setup' => ["## Section\n\n<!-- snippet: setup\nexit;\n-->\n\n```php\nundefinedFunction();\n```\n", 'sample.md:7'],
     ]);
+
+    // Without a limit a block that loops for ever hangs the whole suite, and
+    // the run is killed by the CI job's own timeout with nothing to say which
+    // block it was
+    it('stops a block that never returns and fails it by name', function (string $markdown, string $where): void {
+        $started = microtime(true);
+        $failure = snippetSampleFailure($markdown, 0.5);
+        $elapsed = microtime(true) - $started;
+
+        expect($failure)->toContain($where)
+            ->and($failure)->toContain('the php block did not finish within 0.5 second(s) and was stopped')
+            ->and($failure)->toContain('never returns')
+            ->and($elapsed)->toBeLessThan(10.0);
+    })->with([
+        'an endless loop' => ["```php\nwhile (true) {\n}\n```\n", 'sample.md:1'],
+        'a sleep longer than the limit' => ["```php\nsleep(60);\n```\n", 'sample.md:1'],
+        'a loop that prints as it goes' => ["```php\nwhile (true) {\n    echo 'still here';\n}\n```\n", 'sample.md:1'],
+        'an endless loop in an earlier block' => [
+            "## Section\n\n```php\nwhile (true) {\n}\n```\n\n```php\necho 'never reached';\n```\n",
+            'sample.md:8, under "Section", run after the 1 earlier block(s)',
+        ],
+        'a block marked throws that loops instead' => [
+            "<!-- snippet: throws=\"RuntimeException\" -->\n```php\nwhile (true) {\n}\n```\n",
+            'sample.md:2',
+        ],
+    ]);
+
+    // Stopping the wait is not enough: a process left running would burn a
+    // core for the rest of the suite, and on a developer's machine after it
+    it('leaves no process behind when it stops a block', function (): void {
+        if (!function_exists('posix_kill')) {
+            // The harness limitation: without the posix extension (Windows) there is no way to ask
+            // whether a process id is still alive
+            Assert::markTestSkipped('Needs the posix extension to ask whether the stopped process is gone.');
+        }
+
+        $pidFile = tempnam(sys_get_temp_dir(), 'snippet-pid');
+        Assert::assertIsString($pidFile);
+
+        try {
+            $failure = snippetSampleFailure(
+                "```php\nfile_put_contents(" . var_export($pidFile, true) . ", (string) getmypid());\nwhile (true) {\n}\n```\n",
+                // Long enough for PHP to start and write its id on a slow machine
+                3.0
+            );
+            $pid = (int) file_get_contents($pidFile);
+        } finally {
+            unlink($pidFile);
+        }
+
+        expect($failure)->toContain('was stopped')
+            ->and($pid)->toBeGreaterThan(0)
+            // Signal 0 sends nothing; it reports whether the process exists
+            ->and(posix_kill($pid, 0))->toBeFalse();
+    });
+
+    // What a block wrote before the limit must not be read as its result:
+    // a THROWS block that reported its exception and then hung proved nothing
+    it('fails a stopped block whatever it printed or threw first', function (string $markdown): void {
+        expect(snippetSampleFailure($markdown, 0.5))->toContain('did not finish within 0.5 second(s) and was stopped');
+    })->with([
+        'output, then a loop' => ["```php\necho \"all done\\n\";\nwhile (true) {\n}\n```\n"],
+        'a loop inside a shutdown function' => ["```php\nregister_shutdown_function(static function (): void {\n    while (true) {\n    }\n});\n```\n"],
+        'a loop inside a finally' => [
+            "<!-- snippet: throws=\"RuntimeException\" -->\n```php\ntry {\n    throw new RuntimeException('x');\n} finally {\n    while (true) {\n    }\n}\n```\n",
+        ],
+    ]);
+
+    it('does not stop a block that finishes inside the limit', function (): void {
+        expect(snippetSampleFailure("```php\nusleep(200_000);\necho 'done';\n```\n", 5.0))->toBeNull();
+    });
+
+    it('gives every block of the documents a limit far above what the slowest one needs', function (): void {
+        expect(DocumentationSnippets::TIME_LIMIT)->toBeGreaterThanOrEqual(10.0)
+            ->toBeLessThanOrEqual(120.0);
+    });
 
     it('fails a block that turns PHP\'s error reporting down', function (string $markdown): void {
         $failure = snippetSampleFailure($markdown);
