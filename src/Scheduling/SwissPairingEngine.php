@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Stage\RoundPairing;
@@ -226,7 +227,8 @@ readonly class SwissPairingEngine implements StageEngineInterface
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Swiss pairing requires at least 2 participants',
-                ['participant_count' => count($participants), 'minimum_required' => 2]
+                ['participant_count' => count($participants), 'minimum_required' => 2],
+                reason: InvalidConfigurationReason::TooFewParticipants
             );
         }
     }
@@ -292,7 +294,8 @@ readonly class SwissPairingEngine implements StageEngineInterface
             if (!$rankingStrategy instanceof WinDrawLossRanking) {
                 throw new InvalidConfigurationException(
                     'Swiss bye crediting requires a win/draw/loss ranking strategy; the Swiss convention of counting a bye as a win is undefined under other ranking scales',
-                    ['ranking_strategy' => $rankingStrategy::class]
+                    ['ranking_strategy' => $rankingStrategy::class],
+                    reason: InvalidConfigurationReason::IncompatibleOptions
                 );
             }
 

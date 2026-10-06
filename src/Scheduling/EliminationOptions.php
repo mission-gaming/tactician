@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * Options for the elimination bracket presets.
@@ -32,7 +33,8 @@ final readonly class EliminationOptions
         if ($legsPerTie !== 1 && $legsPerTie !== 2) {
             throw new InvalidConfigurationException(
                 'Ties are played over 1 or 2 legs',
-                ['legs_per_tie' => $legsPerTie]
+                ['legs_per_tie' => $legsPerTie],
+                reason: InvalidConfigurationReason::InvalidLegCount
             );
         }
     }
@@ -50,7 +52,8 @@ final readonly class EliminationOptions
         if (!is_int($legsPerTie)) {
             throw new InvalidConfigurationException(
                 'legs_per_tie must be an integer',
-                ['legs_per_tie' => $legsPerTie]
+                ['legs_per_tie' => $legsPerTie],
+                reason: InvalidConfigurationReason::InvalidLegCount
             );
         }
 
@@ -59,7 +62,8 @@ final readonly class EliminationOptions
         if (!is_bool($reseedEachRound) || !is_bool($grandFinalReset)) {
             throw new InvalidConfigurationException(
                 'reseed_each_round and grand_final_reset must be booleans',
-                ['reseed_each_round' => $reseedEachRound, 'grand_final_reset' => $grandFinalReset]
+                ['reseed_each_round' => $reseedEachRound, 'grand_final_reset' => $grandFinalReset],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 

@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Stage;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * Distributes participants into pools — the generic composition primitive
@@ -40,14 +41,16 @@ final readonly class PoolDistributor
         if ($pools < 1 || $pools > 26) {
             throw new InvalidConfigurationException(
                 'Pool count must be between 1 and 26',
-                ['pools' => $pools]
+                ['pools' => $pools],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
 
         if (count($participants) < $pools * 2) {
             throw new InvalidConfigurationException(
                 'Each pool needs at least 2 participants',
-                ['participant_count' => count($participants), 'pools' => $pools]
+                ['participant_count' => count($participants), 'pools' => $pools],
+                reason: InvalidConfigurationReason::TooFewParticipants
             );
         }
 
@@ -55,7 +58,8 @@ final readonly class PoolDistributor
         if (count($ids) !== count(array_unique($ids))) {
             throw new InvalidConfigurationException(
                 'All participants must have unique IDs',
-                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))]
+                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))],
+                reason: InvalidConfigurationReason::DuplicateParticipantIds
             );
         }
 
@@ -103,7 +107,8 @@ final readonly class PoolDistributor
                 if ($label === null) {
                     throw new InvalidConfigurationException(
                         "Result references participant {$participant->getId()} who is not in any pool",
-                        ['participant' => $participant->getId()]
+                        ['participant' => $participant->getId()],
+                        reason: InvalidConfigurationReason::InvalidResult
                     );
                 }
                 $eventPools[$label] = true;
@@ -112,7 +117,8 @@ final readonly class PoolDistributor
             if (count($eventPools) !== 1) {
                 throw new InvalidConfigurationException(
                     'Result spans multiple pools: ' . implode(', ', array_keys($eventPools)),
-                    ['pools' => array_keys($eventPools)]
+                    ['pools' => array_keys($eventPools)],
+                    reason: InvalidConfigurationReason::InvalidResult
                 );
             }
 

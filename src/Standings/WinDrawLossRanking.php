@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Standings;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Override;
 
 /**
@@ -55,7 +56,8 @@ final readonly class WinDrawLossRanking implements RankingStrategy
             if (!is_int($value) && !is_float($value)) {
                 throw new InvalidConfigurationException(
                     "Ranking value '{$key}' must be a number",
-                    ['key' => $key, 'value' => $value]
+                    ['key' => $key, 'value' => $value],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
             $values[$key] = (float) $value;

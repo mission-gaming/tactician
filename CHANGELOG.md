@@ -48,8 +48,130 @@ heading **Output change (fix)**.
   environment (`LC_ALL`, `LANG`) at startup, so this needed no `setlocale()`
   call in the application. Under the default `C` locale the report is
   unchanged.
+- `InvalidConfigurationException::getDiagnosticReport()` writes a list in the
+  context out entry by entry. It wrote the size of the list and nothing else,
+  so a report about two colliding events did not say which two. That
+  contradicted the contract of `getDiagnosticReport()`, which is a report
+  with the detail needed to resolve the problem. Before and after, for a
+  participant pinned twice in a repack request:
+
+  ```
+  • event_ids: [2 items]         before
+  • event_ids: ["e1", "e2"]      after
+  ```
+
+  A list is written in its own order, with strings in double quotes and with
+  keys where the array is not a list (`[from: "2026-01-01", to: "2026-01-02"]`).
+  Inside the quotes a double quote and a backslash are written with a
+  backslash before them and a control character as its C escape (`\n`,
+  `\000`), so one entry is always one quoted run on one line.
+  An object is still written as its class name. A list of more than 20
+  entries is cut after the twentieth and followed by the number left out
+  (`... 80 more of 100`), and a list nested more than three levels deep is
+  still written as its size. An empty list is still `[0 items]`, and a value
+  that is not a list is written as before. `getContext()` is unchanged.
+- The same report writes an object of an anonymous class as
+  `class@anonymous` (or the name of its parent or first interface before
+  `@anonymous`). It wrote the internal name of the class, which holds a NUL
+  byte and the absolute path of the file that declares it, so the report of
+  one error differed from one machine to the next and put a filesystem path
+  in a log:
+
+  ```
+  • strategy: class@anonymous<NUL>/srv/app/src/League.php:12$0    before
+  • strategy: class@anonymous                                     after
+  ```
+
+  An object of a named class is written as its class name, as before.
+- The "REQUIREMENTS" block of that report no longer lists the round-robin
+  requirements under an error that has nothing to do with a round robin.
+  Every configuration error ended with the same five lines ("Participants
+  array must contain at least 2 participants", "Legs must be a positive
+  integer (≥ 1)" and three more), so a timezone that could not be parsed and
+  a pin conflict in a repack request were each reported with requirements
+  that did not apply to them. Before and after, for
+  `TimelineDefinition::fromArray()` with the timezone `Neverland/Nowhere`:
+
+  ```
+  === INVALID CONFIGURATION DIAGNOSTIC REPORT ===          before and after
+
+  Issue: start or its timezone is not parseable
+
+  === CONFIGURATION DETAILS ===
+  • start: 2026-08-01 19:00:00
+  • timezone: Neverland/Nowhere
+                                                           before only
+  === REQUIREMENTS ===
+  • Participants array must contain at least 2 participants
+  • Legs must be a positive integer (≥ 1)
+  • All participants must have unique IDs
+  • Constraint set must be valid
+  • Scheduler must support the requested configuration
+  ```
+
+  The block is unchanged for the errors it describes: those of
+  `RoundRobinScheduler`, `RoundRobinOptions` and `Stage\RoundRobinPlan`. It is
+  also unchanged for the three factories on `SchedulingException` and for an
+  `InvalidConfigurationException` that code outside the library builds the
+  way it did before, because the library cannot tell what those describe.
+  The six errors `Stage\StageState` raises (see "Added" below) are built that
+  way too, so their report still ends with the round-robin block, which does
+  not describe them: a known gap. Every other configuration error the library
+  raises now has no "REQUIREMENTS" block, and its report ends with the
+  configuration details.
+- The suggestion `IncompleteScheduleException::getDiagnosticReport()` gives
+  for a consecutive role constraint pointed the wrong way. The limit of a
+  `ConsecutiveRoleConstraint` is the most events in a row a participant may
+  have in one role, so reducing it makes the constraint stricter:
+
+  ```
+  • Try reducing the consecutive role constraint limit     before
+  • Try raising the consecutive role constraint limit      after
+  ```
+- A timezone string that holds a NUL byte is rejected with an
+  `InvalidConfigurationException`, like every other timezone PHP cannot use.
+  PHP raises a `\ValueError` for such a string, which is not an `\Exception`,
+  so it passed the catch clause in `Timeline\ZonedTime::parse()` and reached
+  the caller as a PHP error. `TimelineDefinition::fromArray()`,
+  `SessionGrid::fromArray()` and `BlackoutRule::fromArray()` document an
+  `InvalidConfigurationException` for a malformed value, and JSON-decoded
+  configuration can hold such a string (`"Europe/Lon\u0000don"`). The message
+  is the one an unknown timezone gives (`start or its timezone is not
+  parseable`), the reason is `UnparseableTime`, and the `\ValueError` is the
+  previous exception. Code that caught `\ValueError` or `\Error` around these
+  calls for this case no longer sees it there: catch
+  `InvalidConfigurationException`.
 
 ### Added
+
+- A reason on every configuration error, so that code does not have to match
+  message text: `InvalidConfigurationException::getReason()` returns a case
+  of the new backed enum `Exceptions\InvalidConfigurationReason`
+  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 32 more; the
+  usage guide lists them with their backing strings, which are stable
+  identifiers). 124 of the 130 sites that build the exception set one. The
+  six that do not are in `Stage\StageState` (recording a round or its
+  results, and a duplicate ID given to `start()`): `getReason()` returns null
+  for those, and for an exception that code outside the library builds
+  without a reason. A `match` over the reason needs a `default` arm, because
+  a release may add a case.
+- `Exceptions\PinConflictException`, thrown by `RepackRequest` when one
+  participant is pinned in two events at the same session and slot.
+  `getEventIds()` returns the IDs of the two events, and `getParticipantId()`,
+  `getSession()` and `getSlot()` say who and where. It extends
+  `InvalidConfigurationException` with the same message, context, code and
+  previous exception as before, so existing catch clauses and message checks
+  still match.
+- `InvalidConfigurationException::getRequirements()`, the statements the
+  report prints under "REQUIREMENTS", as a list; and the constant
+  `ROUND_ROBIN_REQUIREMENTS` that holds the round-robin ones.
+- Two optional parameters at the end of the constructor of
+  `InvalidConfigurationException`: `reason` and `requirements`. A call written
+  against the five parameters it had before behaves as it did.
+- A test (`tests/Feature/ConfigurationErrorReasonsTest.php`) that reads
+  `src/` and fails when a site builds an `InvalidConfigurationException`
+  without a reason, when an enum case is used by no site, or when the usage
+  guide's table of reasons differs from the enum.
 
 - One catchable type for every exception the library throws on purpose: the
   marker interface `Exceptions\TacticianException`. `catch (TacticianException)`
@@ -78,6 +200,17 @@ heading **Output change (fix)**.
   exception is available from `getPrevious()`, which returned null before.
   Code that compares the exception's class by name, not with `instanceof` or
   a catch clause, sees the new class.
+- A participant pinned twice at one position of a `RepackRequest` is now
+  reported with `Exceptions\PinConflictException`, a subclass of the
+  `InvalidConfigurationException` thrown before. Code that compares the
+  exception's class by name sees the new class.
+
+### Fixed
+
+- `InvalidConfigurationException::getDiagnosticReport()` no longer raises a
+  PHP warning on PHP 8.5 when a context value is the float `NAN`. PHP 8.5
+  warns when `NAN` is cast to a string, and the report cast it. The text is
+  unchanged: `NAN`.
 
 ## [0.2.1] - 2026-10-06
 

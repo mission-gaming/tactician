@@ -107,7 +107,8 @@ hard filters; metrics measure what remains:
 ### Exception Hierarchy
 - **TacticianException**: Marker interface (extends `\Throwable`, adds no method) implemented by every exception the library throws on purpose, so one catch clause covers the library. `tests/Feature/ExceptionMarkerTest.php` fails for a `throw` in `src/` of anything else
 - **SchedulingException**: Abstract base class of the scheduling failures (extends `\Exception`); each carries a diagnostic report
-  - **InvalidConfigurationException**: Invalid scheduler configuration
+  - **InvalidConfigurationException**: A configuration that cannot work. Carries a reason (`getReason()`, an `InvalidConfigurationReason` case set at every site that builds one; `tests/Feature/ConfigurationErrorReasonsTest.php` reads the source to check it), the values involved (`getContext()`), and the requirements of the failing component
+    - **PinConflictException**: One participant pinned in two events at one position of a repack request; carries the two event IDs
   - **IncompleteScheduleException**: Schedule incomplete due to constraint conflicts
   - **NoValidPairingException**: No complete Swiss pairing exists for a round
   - **RepackViolationsException**: A repack outcome with violations, raised only when the caller asks for an exception
@@ -281,7 +282,7 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
 ```
 
 #### Specific Exception Types
-- **InvalidConfigurationException**: Invalid scheduler configuration with context data
+- **InvalidConfigurationException**: Invalid configuration with a reason enum, context data and a diagnostic report that writes every context value out
 - **IncompleteScheduleException**: Schedule incomplete due to constraint conflicts with diagnostics
 
 ### Integration Features

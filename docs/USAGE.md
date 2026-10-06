@@ -69,6 +69,8 @@ anything else that competes.
 | **Movable event** | An existing event the repack may place (`MovableEvent`): an opaque caller-supplied stable id and two participants. The movable set is a multigraph — the same pairing may occur more than once. |
 | **Pinned event** | An event already on the grid that must not move (`PinnedEvent`). It occupies its position for both participants, consumes slot capacity, and may name participants absent from the movable set. Which events are pinned is caller policy about historical provenance. |
 | **Repack violation** | One structured compromise in a repack outcome (`RepackViolation`): double-booking (audited, never produced), unplaced events, interior gaps, late starts, exceeded capacity — data with participant/session/magnitude, never prose. The caller renders its own messages and decides what is fatal. |
+| **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. Where the two events also exceed the capacity of the slot, the request reports that instead (`PinCapacityExceeded`). |
+| **Configuration error reason** | The kind of mistake behind an `InvalidConfigurationException`, as a case of the `InvalidConfigurationReason` enum (`getReason()`). It says what was wrong, not which component found it, and its backing string is a stable identifier. Code branches on the reason and never on the message text. See [Configuration Errors](#configuration-errors). |
 | **Stage plan** | An algorithm's declaration of a stage's shape (`StagePlan`): stable algorithm identifier, total rounds, legs, rounds per leg, and expected event count, plus format-specific integrity validation. Built before generation; context, validation, diagnostics, and constraints read shape facts from it instead of inferring them. Null values are meaningful — legs are null where the concept does not apply (Swiss), totals are null when unknowable up front. |
 
 ## Basic Usage
@@ -1310,7 +1312,8 @@ parent type matches too.
 | Class (in `MissionGaming\Tactician\Exceptions`) | Extends | Thrown when |
 |------|------|------|
 | `SchedulingException` (abstract) | `\Exception` | A scheduling failure. Its subclasses carry a diagnostic report (`getDiagnosticReport()`). |
-| `InvalidConfigurationException` | `SchedulingException` | A scheduler, engine, stage, timeline or grid is configured in a way that cannot work. |
+| `InvalidConfigurationException` | `SchedulingException` | A scheduler, engine, stage, timeline or grid is configured in a way that cannot work. `getReason()` says which mistake it was: see [Configuration Errors](#configuration-errors). |
+| `PinConflictException` | `InvalidConfigurationException` | A repack request pins one participant in two events at the same session and slot. It carries the two event IDs (`getEventIds()`). |
 | `IncompleteScheduleException` | `SchedulingException` | Constraints leave a schedule that cannot be completed. |
 | `NoValidPairingException` | `SchedulingException` | No complete pairing exists for a Swiss round. |
 | `RepackViolationsException` | `SchedulingException` | A repack leaves violations and `RepackOptions(throwOnViolations: true)` asked for an exception instead of the outcome. |
@@ -1363,6 +1366,195 @@ function handleIncompleteSchedule(IncompleteScheduleException $e): void
     echo "\nCompletion: {$e->getActualEventCount()}/{$e->getExpectedEventCount()} events\n";
 }
 ```
+
+### Configuration Errors
+
+An `InvalidConfigurationException` says what is wrong in four ways, each for
+a different reader:
+
+| Accessor | Returns | For |
+|------|------|------|
+| `getReason()` | An `Exceptions\InvalidConfigurationReason` case, or null for an exception that code outside the library built without one | Code that has to tell one mistake from another. Do not match the message text. |
+| `getContext()` | The values involved, keyed by name | Code that needs the values: the IDs, the counts, the setting that was rejected |
+| `getRequirements()` | What the failing component requires, one statement per entry; empty when it states none | A screen that lists the rules next to the error |
+| `getDiagnosticReport()` | The issue, every context value and the requirements, as text | An operator, a log |
+
+The message (`getMessage()`) is a sentence for a person. Most messages are
+the same for every instance of a mistake and name no event and no
+participant (every repack request error is like that); a few write a value
+into the sentence, such as the labels of a drawn tie. Either way, read the
+values from the context and the report, and tell mistakes apart by the
+reason.
+
+A repack request that pins one participant in two events at the same session
+and slot throws `PinConflictException`, a subclass that carries the two event
+IDs. The participants are the four from
+[Constraint Attribution](#constraint-attribution):
+
+```php
+use MissionGaming\Tactician\Exceptions\PinConflictException;
+use MissionGaming\Tactician\Repack\PinnedEvent;
+use MissionGaming\Tactician\Repack\RepackRequest;
+use MissionGaming\Tactician\Repack\SessionGrid;
+
+$grid = SessionGrid::fromArray([
+    'sessions' => ['2026-08-12 20:00'],
+    'timezone' => 'UTC',
+    'slot_interval' => 'PT25M',
+    'slots_per_session' => 4,
+    'capacity_per_slot' => 2,
+]);
+
+try {
+    // Team 1 is pinned twice at session 0, slot 3
+    new RepackRequest(
+        movableEvents: [],
+        pinnedEvents: [
+            new PinnedEvent('e1', $participants[0], $participants[1], 0, 3),
+            new PinnedEvent('e2', $participants[2], $participants[0], 0, 3),
+        ],
+        grid: $grid
+    );
+} catch (PinConflictException $e) {
+    echo 'Unpin one of: ' . implode(', ', $e->getEventIds()) . "\n";
+    echo 'Reason: ' . $e->getReason()?->value . "\n";
+    echo $e->getDiagnosticReport() . "\n";
+}
+```
+
+```text
+Unpin one of: e1, e2
+Reason: pin_conflict
+=== INVALID CONFIGURATION DIAGNOSTIC REPORT ===
+
+Issue: A participant is pinned twice at one position
+
+=== CONFIGURATION DETAILS ===
+• participant: team1
+• session: 0
+• slot: 3
+• event_ids: ["e1", "e2"]
+```
+
+The grid above holds two events per slot. A request checks the capacity of a
+slot before it checks participants, so on a grid whose slots hold one event
+(the default) the same two pins are reported as `PinCapacityExceeded`, by an
+`InvalidConfigurationException` whose context has the session, the slot and
+the capacity, and no event ID.
+
+`PinConflictException` also has `getParticipantId()`, `getSession()` and
+`getSlot()`. It is an `InvalidConfigurationException`, so a catch clause
+written for that class matches it, and its message is the one that class
+gave before the subclass existed.
+
+For every other configuration error, branch on the reason. A `match` over it
+needs a `default` arm, because a release may add a case:
+
+```php
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Timeline\TimelineDefinition;
+
+try {
+    TimelineDefinition::fromArray([
+        'start' => '2026-08-01 19:00:00',
+        'timezone' => 'Europe/Edinburg',
+        'round_interval' => 'P7D',
+    ]);
+} catch (InvalidConfigurationException $e) {
+    echo match ($e->getReason()) {
+        InvalidConfigurationReason::UnparseableTime => 'Check the date, the timezone name and the durations.',
+        InvalidConfigurationReason::TimezoneMismatch => 'Remove the offset from the date: the timezone field decides.',
+        default => 'See the report.',
+    } . "\n";
+    echo $e->getDiagnosticReport() . "\n";
+}
+```
+
+```text
+Check the date, the timezone name and the durations.
+=== INVALID CONFIGURATION DIAGNOSTIC REPORT ===
+
+Issue: start or its timezone is not parseable
+
+=== CONFIGURATION DETAILS ===
+• start: 2026-08-01 19:00:00
+• timezone: Europe/Edinburg
+```
+
+A timezone string that PHP cannot use at all (one that holds a NUL byte, as
+JSON-decoded configuration can) is reported the same way, with the reason
+`UnparseableTime`.
+
+The report writes a list value out in full, in its own order, with strings in
+double quotes (`event_ids: ["e1", "e2"]`) and with keys where the array is not
+a list (`[from: "2026-01-01", to: "2026-01-02"]`). Inside the quotes a double
+quote and a backslash are written with a backslash before them and a control
+character as its C escape (`\n`, `\000`), so one entry is one quoted run on
+one line. An object is written as its
+class name. Two bounds keep it readable: a list of more than 20 entries is cut
+after the twentieth and followed by the number left out
+(`... 80 more of 100`), and a list nested more than three levels deep is
+written as its size (`[2 items]`). An empty list is `[0 items]`.
+
+The "REQUIREMENTS" block of the report belongs to the component that failed.
+An error from the round-robin scheduler, its options or its plan lists the
+five round-robin requirements
+(`InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS`). An error from a
+component that states no requirements, such as the two above, has no such
+block. An `InvalidConfigurationException` that your own code builds with
+neither a reason nor requirements keeps the round-robin block it carried
+before reasons existed; pass `requirements: []` or a list of your own to
+change that.
+
+The reasons, with the string each is backed by (`$reason->value`, a stable
+identifier for logs and stored data):
+
+| Case | Value | The mistake |
+|------|------|------|
+| `TooFewParticipants` | `too_few_participants` | Fewer participants than the format, or one pool of it, needs |
+| `DuplicateParticipantIds` | `duplicate_participant_ids` | Two participants in one list share an ID |
+| `InvalidLegCount` | `invalid_leg_count` | The number of legs is not an integer the format accepts |
+| `InvalidRoundCount` | `invalid_round_count` | The number of rounds is not a positive integer, or is more than the format can provide |
+| `UnsupportedOptions` | `unsupported_options` | A scheduler was given the options object of another format |
+| `IncompatibleOptions` | `incompatible_options` | Two valid settings cannot be used together, or one needs another that is missing |
+| `UnknownIdentifier` | `unknown_identifier` | A strategy, algorithm or mode string is not a known identifier |
+| `WrongValueType` | `wrong_value_type` | A value has the wrong type, or a required key of plain-data configuration is missing |
+| `ValueOutOfRange` | `value_out_of_range` | A number is outside the range allowed for it |
+| `EmptyList` | `empty_list` | A list that needs at least one entry is empty |
+| `DuplicateName` | `duplicate_name` | Two entries of one list carry the same name |
+| `NotSerializable` | `not_serializable` | The configuration has no plain-data form to serialize to |
+| `UnsatisfiableLegStrategy` | `unsatisfiable_leg_strategy` | The leg strategy cannot produce the legs asked for |
+| `BracketComplete` | `bracket_complete` | A further round was asked of a finished bracket |
+| `RoundPartiallyResolved` | `round_partially_resolved` | The next round was asked for while ties of the current one have no complete result |
+| `EventWithoutRoundNumber` | `event_without_round_number` | An event has no round number where one is required |
+| `InvalidResult` | `invalid_result` | A result cannot belong to the stage it was recorded in |
+| `DuplicateResult` | `duplicate_result` | Two results were recorded for the same match |
+| `UndecidedTie` | `undecided_tie` | A tie that must produce a winner has none |
+| `IncompatibleOutcome` | `incompatible_outcome` | A progression selector was given an outcome of a shape it cannot read |
+| `RankUnavailable` | `rank_unavailable` | A progression selector asked for a rank the standings do not have |
+| `EmptyEventId` | `empty_event_id` | A movable or pinned event has an empty ID |
+| `IdenticalParticipants` | `identical_participants` | An event names the same participant on both sides |
+| `DuplicateEventId` | `duplicate_event_id` | Two events of one repack request share an ID |
+| `PinOffGrid` | `pin_off_grid` | A pinned event sits at a position the grid does not have |
+| `PinCapacityExceeded` | `pin_capacity_exceeded` | More events are pinned at one position than a slot can hold |
+| `PinConflict` | `pin_conflict` | One participant is pinned in two events at one position (`PinConflictException`) |
+| `PositionOutOfRange` | `position_out_of_range` | A session, slot, round or resource index is outside the grid or timeline |
+| `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed |
+| `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
+| `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
+| `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
+| `TimelineCapacityExceeded` | `timeline_capacity_exceeded` | A round has more events than the timeline has places for |
+| `ConstraintViolation` | `constraint_violation` | Built by `SchedulingException::constraintViolation()` |
+| `InvalidSchedule` | `invalid_schedule` | Built by `SchedulingException::invalidSchedule()` |
+
+A case says what kind of mistake was made, not which component found it:
+`TooFewParticipants` comes from the round-robin scheduler, the Swiss engine
+and the elimination engines alike. One group of errors has no reason yet:
+those `StageState` raises while a round or its results are recorded
+(`withRoundPlayed()`, `withAdditionalResults()`, and a duplicate ID given to
+`start()`). Their `getReason()` returns null, and because they state neither
+a reason nor requirements their report still ends with the round-robin
+"REQUIREMENTS" block, which does not describe them. Both are known gaps.
 
 ### Catching Every Library Exception
 

@@ -49,7 +49,10 @@ exists as a convenience.
 5. **Pins consume capacity and colours but are not re-emitted**:
    `RepackOutcome::getAssignments()` contains movable events only. Corrupt
    pin input (two pins double-booking a participant, pins overflowing slot
-   capacity, pins off the grid) throws `InvalidConfigurationException` —
+   capacity, pins off the grid) throws `InvalidConfigurationException` (the
+   first as its subclass `PinConflictException`, which names the two events;
+   capacity is checked before it, so two pins that also overflow their slot
+   are reported as the overflow) —
    that is broken *input*, not an unsatisfiable *instance*.
 6. **Violation scoping.** `ContiguityBroken`/`LateStart` are reported only
    for `(participant, session)` cells where the participant has at least one

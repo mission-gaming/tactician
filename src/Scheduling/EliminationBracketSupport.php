@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\TieDecision;
 
 /**
@@ -32,7 +33,8 @@ trait EliminationBracketSupport
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Elimination brackets require at least 2 participants',
-                ['participant_count' => count($participants), 'minimum_required' => 2]
+                ['participant_count' => count($participants), 'minimum_required' => 2],
+                reason: InvalidConfigurationReason::TooFewParticipants
             );
         }
     }
@@ -128,14 +130,16 @@ trait EliminationBracketSupport
             if ($round === null) {
                 throw new InvalidConfigurationException(
                     'Elimination results must reference events with a round number; record results against the events produced by the engine',
-                    ['participants' => array_map(fn(Participant $p) => $p->getId(), $eventParticipants)]
+                    ['participants' => array_map(fn(Participant $p) => $p->getId(), $eventParticipants)],
+                    reason: InvalidConfigurationReason::EventWithoutRoundNumber
                 );
             }
 
             if (count($eventParticipants) !== 2) {
                 throw new InvalidConfigurationException(
                     'Elimination results must reference two-participant events',
-                    ['round' => $round, 'participant_count' => count($eventParticipants)]
+                    ['round' => $round, 'participant_count' => count($eventParticipants)],
+                    reason: InvalidConfigurationReason::InvalidResult
                 );
             }
 
@@ -146,7 +150,8 @@ trait EliminationBracketSupport
                 sort($ids);
                 throw new InvalidConfigurationException(
                     "Two results reference the same elimination match ({$ids[0]} vs {$ids[1]}, round {$round})",
-                    ['round' => $round, 'participants' => $ids]
+                    ['round' => $round, 'participants' => $ids],
+                    reason: InvalidConfigurationReason::DuplicateResult
                 );
             }
 

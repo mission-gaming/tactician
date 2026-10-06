@@ -8,6 +8,7 @@ use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use MissionGaming\Tactician\Timeline\ZonedTime;
 
@@ -61,7 +62,8 @@ final readonly class SessionGrid
         if ($sessionStarts === []) {
             throw new InvalidConfigurationException(
                 'A session grid needs at least 1 session',
-                ['session_starts' => []]
+                ['session_starts' => []],
+                reason: InvalidConfigurationReason::EmptyList
             );
         }
 
@@ -72,7 +74,8 @@ final readonly class SessionGrid
             if (!$start instanceof DateTimeImmutable) {
                 throw new InvalidConfigurationException(
                     'Every session start must be a DateTimeImmutable',
-                    ['index' => $index, 'given' => get_debug_type($start)]
+                    ['index' => $index, 'given' => get_debug_type($start)],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
 
@@ -84,14 +87,16 @@ final readonly class SessionGrid
                         'index' => $index,
                         'timezone' => $start->getTimezone()->getName(),
                         'expected' => $timezone,
-                    ]
+                    ],
+                    reason: InvalidConfigurationReason::TimezoneMismatch
                 );
             }
 
             if ($previous !== null && $start <= $previous) {
                 throw new InvalidConfigurationException(
                     'Session starts must be strictly ascending',
-                    ['index' => $index, 'start' => $start->format('Y-m-d H:i:s')]
+                    ['index' => $index, 'start' => $start->format('Y-m-d H:i:s')],
+                    reason: InvalidConfigurationReason::NonAdvancingTime
                 );
             }
 
@@ -102,21 +107,24 @@ final readonly class SessionGrid
         if ($slotsPerSession < 1) {
             throw new InvalidConfigurationException(
                 'A session needs at least 1 slot',
-                ['slots_per_session' => $slotsPerSession]
+                ['slots_per_session' => $slotsPerSession],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
 
         if ($starts[0]->add($slotInterval) <= $starts[0]) {
             throw new InvalidConfigurationException(
                 'The slot interval must move time forward',
-                ['slot_interval' => TimelineDefinition::formatInterval($slotInterval)]
+                ['slot_interval' => TimelineDefinition::formatInterval($slotInterval)],
+                reason: InvalidConfigurationReason::NonAdvancingTime
             );
         }
 
         if ($capacityPerSlot < 1) {
             throw new InvalidConfigurationException(
                 'A slot needs capacity for at least 1 event',
-                ['capacity_per_slot' => $capacityPerSlot]
+                ['capacity_per_slot' => $capacityPerSlot],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
 
@@ -125,14 +133,16 @@ final readonly class SessionGrid
             if (!is_int($session) || !isset($starts[$session])) {
                 throw new InvalidConfigurationException(
                     'Slot count overrides must target existing session indexes',
-                    ['session' => $session, 'sessions' => count($starts)]
+                    ['session' => $session, 'sessions' => count($starts)],
+                    reason: InvalidConfigurationReason::PositionOutOfRange
                 );
             }
 
             if (!is_int($slots) || $slots < 1) {
                 throw new InvalidConfigurationException(
                     'An overridden session still needs at least 1 slot',
-                    ['session' => $session, 'slots' => $slots]
+                    ['session' => $session, 'slots' => $slots],
+                    reason: InvalidConfigurationReason::ValueOutOfRange
                 );
             }
 
@@ -163,7 +173,8 @@ final readonly class SessionGrid
         if (!is_array($sessions) || $sessions === []) {
             throw new InvalidConfigurationException(
                 'sessions must be a non-empty list of datetime strings',
-                ['sessions' => $sessions]
+                ['sessions' => $sessions],
+                reason: is_array($sessions) ? InvalidConfigurationReason::EmptyList : InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -176,7 +187,8 @@ final readonly class SessionGrid
         if (!is_int($slotsPerSession)) {
             throw new InvalidConfigurationException(
                 'slots_per_session must be an integer',
-                ['slots_per_session' => $slotsPerSession]
+                ['slots_per_session' => $slotsPerSession],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -184,7 +196,8 @@ final readonly class SessionGrid
         if (!is_array($overrides)) {
             throw new InvalidConfigurationException(
                 'slots_per_session_overrides must map session indexes to slot counts',
-                ['slots_per_session_overrides' => $overrides]
+                ['slots_per_session_overrides' => $overrides],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -192,7 +205,8 @@ final readonly class SessionGrid
         if (!is_int($capacityPerSlot)) {
             throw new InvalidConfigurationException(
                 'capacity_per_slot must be an integer',
-                ['capacity_per_slot' => $capacityPerSlot]
+                ['capacity_per_slot' => $capacityPerSlot],
+                reason: InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -253,7 +267,8 @@ final readonly class SessionGrid
         if (!isset($this->sessionStarts[$session])) {
             throw new InvalidConfigurationException(
                 'Session index is out of range for this grid',
-                ['session' => $session, 'sessions' => $this->getSessionCount()]
+                ['session' => $session, 'sessions' => $this->getSessionCount()],
+                reason: InvalidConfigurationReason::PositionOutOfRange
             );
         }
 
@@ -272,7 +287,8 @@ final readonly class SessionGrid
         if (!isset($this->slotCounts[$session])) {
             throw new InvalidConfigurationException(
                 'Session index is out of range for this grid',
-                ['session' => $session, 'sessions' => $this->getSessionCount()]
+                ['session' => $session, 'sessions' => $this->getSessionCount()],
+                reason: InvalidConfigurationReason::PositionOutOfRange
             );
         }
 
@@ -330,7 +346,8 @@ final readonly class SessionGrid
                     'slot' => $slot,
                     'sessions' => $this->getSessionCount(),
                     'slots_in_session' => $this->slotCounts[$session] ?? null,
-                ]
+                ],
+                reason: InvalidConfigurationReason::PositionOutOfRange
             );
         }
 

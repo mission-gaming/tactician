@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Stage;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Override;
 
 /**
@@ -37,14 +38,16 @@ final readonly class SwissPlan implements StagePlan
         if ($rounds !== null && $rounds < 1) {
             throw new InvalidConfigurationException(
                 'Rounds must be a positive integer',
-                ['rounds' => $rounds, 'minimum_required' => 1]
+                ['rounds' => $rounds, 'minimum_required' => 1],
+                reason: InvalidConfigurationReason::InvalidRoundCount
             );
         }
 
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Swiss scheduling requires at least 2 participants',
-                ['participant_count' => count($participants), 'minimum_required' => 2]
+                ['participant_count' => count($participants), 'minimum_required' => 2],
+                reason: InvalidConfigurationReason::TooFewParticipants
             );
         }
 
