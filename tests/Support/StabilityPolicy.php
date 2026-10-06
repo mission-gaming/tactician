@@ -28,9 +28,11 @@ use PhpToken;
  * - a name in a namespace the README does not mention has no answer. The
  *   namespace is unclassified, and the README needs an entry for it.
  *
- * A type may be `@internal` wherever it is: the policy decides between
- * `@api` and `@experimental` only, and asks for `@internal` only under an
- * excluded name.
+ * A type the policy makes `@experimental` may be `@internal` instead: an
+ * experimental type carries no promise that marking it internal would break.
+ * A type the policy makes `@api` may not. The README promises that a stable
+ * type does not change, so it leaves the public surface only by an exclusion
+ * written into the "Stable" list, as `Repack\Internal` is.
  *
  * {@see self::declaredIn()} reads the types a source file declares and the
  * stability tags of each one's docblock with PHP's tokenizer, so a tag in a
@@ -195,11 +197,19 @@ final readonly class StabilityPolicy
             return ["{$name} is in a namespace that README.md lists as neither stable nor experimental."];
         }
 
-        if ($tags[0] === $expected || ($tags[0] === self::INTERNAL)) {
+        if ($tags[0] === $expected) {
             return [];
         }
 
-        return ["{$name} is @{$tags[0]}, but README.md makes it @{$expected}."];
+        if ($tags[0] !== self::INTERNAL) {
+            return ["{$name} is @{$tags[0]}, but README.md makes it @{$expected}."];
+        }
+
+        if ($expected === self::API) {
+            return ["{$name} is @internal, but README.md lists it as stable: a stable type leaves the public surface only when the \"Stable\" list excludes it."];
+        }
+
+        return [];
     }
 
     /**
@@ -268,7 +278,9 @@ final readonly class StabilityPolicy
      */
     private static function tagsOf(string $docblock): array
     {
-        preg_match_all('/^[\s\/*]*@(' . implode('|', self::TAGS) . ')\b/m', $docblock, $matches);
+        // Not followed by a character that would make it another tag
+        // (`@apiVersion`, `@internal-note`, `@api\Something`)
+        preg_match_all('/^[\s\/*]*@(' . implode('|', self::TAGS) . ')(?![\w\\\\-])/m', $docblock, $matches);
 
         return $matches[1];
     }

@@ -17,12 +17,16 @@ use PHPUnit\Framework\Assert;
 // namespaces, and Support\StabilityPolicy reads those lists: a type under a
 // stable entry must not be `@experimental`, a type under an experimental one
 // must not be `@api`, and a type in a namespace the README does not mention
-// fails until the README classifies it. `@internal` is allowed anywhere and
-// required under `Repack\Internal`.
+// fails until the README classifies it. `@internal` is required under
+// `Repack\Internal`, allowed for a type the README makes experimental, and
+// refused for a type it makes stable: the README promises that a stable type
+// does not change, so one leaves the public surface only by an exclusion
+// written into the "Stable" list.
 //
-// Gap left knowingly - whether `@internal` is the right call for a type is a
-// judgement about what consumers are told to use; no test can make it. The
-// test only holds a type to the README once it claims to be public.
+// Gap left knowingly - whether `@internal` is the right call for a type in
+// an experimental namespace is a judgement about what consumers are told to
+// use; no test can make it. The internal types outside `Repack\Internal` are
+// pinned below instead, so that one more is a change somebody wrote down.
 
 $root = dirname(__DIR__, 2);
 
@@ -138,6 +142,128 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
             ->and($types['Repack\Internal\StepBudget'])->toBe([StabilityPolicy::INTERNAL]);
     });
 
+    // Marking a public type internal tells its users to stop and takes the
+    // compatibility promise away from it, and no rule can say whether that is
+    // right. So the set is pinned: a type joins or leaves it in a change that
+    // edits this list, with an entry in the changelog when the type was
+    // public in a release.
+    it('is internal outside Repack\Internal only where this list says so', function () use ($sourceTypes): void {
+        $internal = array_keys(array_filter(
+            $sourceTypes(),
+            static fn(array $tags, string $name): bool => $tags === [StabilityPolicy::INTERNAL] && !str_starts_with($name, 'Repack\Internal\\'),
+            ARRAY_FILTER_USE_BOTH
+        ));
+        sort($internal);
+
+        expect($internal)->toBe([
+            'Diagnostics\SchedulingDiagnostics',
+            'Scheduling\BacktrackingRoundRobinGenerator',
+            'Scheduling\EliminationBracketSupport',
+            'Stage\EngineFingerprint',
+            'Stage\PairKey',
+            'Timeline\DateTimeString',
+            'Timeline\ZonedTime',
+            'Validation\ScheduleValidator',
+            'Validation\ValidatesScheduleCompleteness',
+        ]);
+    });
+
+    // A consumer may be told not to use a type only if the public surface
+    // never hands it one or asks for one. The declared types of every
+    // parameter, return value and property a consumer can reach are read:
+    // public ones, and protected ones of a class that can be extended.
+    //
+    // Gap left knowingly - a type named only in a docblock (`@return`,
+    // `@param`, `@throws`) is not read. None is today; a reviewer has to
+    // look.
+    it('is not an internal type handed out or asked for by a public one', function () use ($sourceTypes): void {
+        $prefix = 'MissionGaming\\Tactician\\';
+        $types = $sourceTypes();
+        $internal = array_keys(array_filter($types, static fn(array $tags): bool => $tags === [StabilityPolicy::INTERNAL]));
+
+        $named = function (?ReflectionType $type) use (&$named): array {
+            if ($type instanceof ReflectionNamedType) {
+                return [$type->getName()];
+            }
+
+            $names = [];
+            if ($type instanceof ReflectionUnionType || $type instanceof ReflectionIntersectionType) {
+                foreach ($type->getTypes() as $part) {
+                    $names = [...$names, ...$named($part)];
+                }
+            }
+
+            return $names;
+        };
+
+        $leaks = [];
+        $members = 0;
+
+        foreach (array_keys($types) as $name) {
+            if (in_array($name, $internal, true)) {
+                continue;
+            }
+
+            $type = $prefix . $name;
+            if (!class_exists($type) && !interface_exists($type) && !trait_exists($type) && !enum_exists($type)) {
+                Assert::fail("{$type} cannot be loaded, so its signatures cannot be read.");
+            }
+
+            $class = new ReflectionClass($type);
+            $reachable = static fn(ReflectionMethod|ReflectionProperty $member): bool => $member->isPublic()
+                || ($member->isProtected() && !$class->isFinal());
+            $exposed = [];
+
+            foreach ($class->getMethods() as $method) {
+                if (!$reachable($method)) {
+                    continue;
+                }
+
+                $exposed["{$method->getName()}()"] = $named($method->getReturnType());
+                foreach ($method->getParameters() as $parameter) {
+                    $exposed["{$method->getName()}()"] = [...$exposed["{$method->getName()}()"], ...$named($parameter->getType())];
+                }
+            }
+
+            foreach ($class->getProperties() as $property) {
+                if ($reachable($property)) {
+                    $exposed['$' . $property->getName()] = $named($property->getType());
+                }
+            }
+
+            foreach ($class->getInterfaceNames() as $interface) {
+                $exposed['implements'][] = $interface;
+            }
+            if ($class->getParentClass() !== false) {
+                $exposed['extends'] = [$class->getParentClass()->getName()];
+            }
+
+            foreach ($exposed as $member => $memberTypes) {
+                ++$members;
+                foreach ($memberTypes as $memberType) {
+                    if (in_array(substr($memberType, strlen($prefix)), $internal, true) && str_starts_with($memberType, $prefix)) {
+                        $leaks[] = "{$name}::{$member} is typed " . substr($memberType, strlen($prefix));
+                    }
+                }
+            }
+        }
+
+        sort($leaks);
+
+        // The three known ones: the validator each whole-schedule generator
+        // holds comes from the internal trait ValidatesScheduleCompleteness
+        // as a protected property, and the three classes are not final. The
+        // README says that the protected members such a trait supplies are
+        // internal, so a subclass may not rely on them. Nothing else may
+        // join this list.
+        expect($members)->toBeGreaterThan(500)
+            ->and($leaks)->toBe([
+                'Scheduling\PotDrawScheduler::$validator is typed Validation\ScheduleValidator',
+                'Scheduling\RoundRobinScheduler::$validator is typed Validation\ScheduleValidator',
+                'Scheduling\SwissScheduler::$validator is typed Validation\ScheduleValidator',
+            ]);
+    });
+
     it('is internal wherever README.md names it as an internal class', function () use ($policy, $sourceTypes): void {
         // "Neither does a class in any other namespace whose docblock is
         // marked `@internal` (`Stage\PairKey`, ...)."
@@ -193,8 +319,8 @@ describe('the rule, on sample source', function () use ($problemsIn): void {
     })->with([
         '@api in a stable namespace' => ["namespace MissionGaming\\Tactician\\DTO;\n/**\n * A sample.\n *\n * @api\n */\nfinal readonly class Sample {}"],
         '@experimental in an experimental namespace' => ["namespace MissionGaming\\Tactician\\Stage;\n/**\n * A sample.\n *\n * @experimental\n */\ninterface Sample {}"],
-        '@internal in a stable namespace' => ["namespace MissionGaming\\Tactician\\DTO;\n/**\n * @internal Not public API\n */\ntrait Sample {}"],
         '@internal in an experimental namespace' => ["namespace MissionGaming\\Tactician\\Stage;\n/**\n * @internal\n */\nenum Sample {}"],
+        '@internal with its reason, in the rest of Scheduling' => ["namespace MissionGaming\\Tactician\\Scheduling;\n/**\n * @internal Not public API\n */\ntrait Sample {}"],
         '@internal under Repack\Internal' => ["namespace MissionGaming\\Tactician\\Repack\\Internal;\n/**\n * @internal\n */\nfinal class Sample {}"],
         'a one-line docblock' => ["namespace MissionGaming\\Tactician\\DTO;\n/** @api */\nclass Sample {}"],
         'an attribute between the docblock and the class' => ["namespace MissionGaming\\Tactician\\DTO;\n/**\n * @api\n */\n#[\\AllowDynamicProperties]\nabstract class Sample {}"],
@@ -256,6 +382,35 @@ describe('the rule, on sample source', function () use ($problemsIn): void {
             "namespace MissionGaming\\Tactician\\Repack\\Internal;\n/**\n * @api\n */\nclass Sample {}",
             'Repack\Internal\Sample is @api, but README.md makes it @internal.',
         ],
+        '@experimental under Repack\Internal' => [
+            "namespace MissionGaming\\Tactician\\Repack\\Internal;\n/**\n * @experimental\n */\nclass Sample {}",
+            'Repack\Internal\Sample is @experimental, but README.md makes it @internal.',
+        ],
+    ]);
+
+    // Marking a type internal withdraws it from the public surface. For a
+    // stable type that is the breaking change the README rules out.
+    it('rejects @internal on a type README.md lists as stable', function (string $php, string $name) use ($problemsIn): void {
+        expect($problemsIn($php))->toBe([
+            "{$name} is @internal, but README.md lists it as stable: a stable type leaves the public surface only when the \"Stable\" list excludes it.",
+        ]);
+    })->with([
+        'in a stable namespace' => ["namespace MissionGaming\\Tactician\\DTO;\n/**\n * @internal Not public API\n */\ntrait Sample {}", 'DTO\Sample'],
+        'nested under a stable namespace' => ["namespace MissionGaming\\Tactician\\Repack\\Deeper;\n/**\n * @internal\n */\nclass Sample {}", 'Repack\Deeper\Sample'],
+        'a class the README lists as stable by name' => ["namespace MissionGaming\\Tactician\\Scheduling;\n/**\n * @internal\n */\nclass RoundRobinScheduler {}", 'Scheduling\RoundRobinScheduler'],
+    ]);
+
+    it('reads a tag only where it stands alone', function (string $docblock, array $tags): void {
+        $declared = StabilityPolicy::declaredIn("<?php\nnamespace MissionGaming\\Tactician\\DTO;\n{$docblock}\nclass Sample {}");
+
+        expect($declared)->toBe([['name' => 'MissionGaming\Tactician\DTO\Sample', 'tags' => $tags]]);
+    })->with([
+        'a tag with a suffix' => ["/**\n * @api-note\n * @internalNote\n * @experimental_feature\n * @api\\Something\n */", []],
+        'a tag followed by a full stop or a reason' => ["/**\n * @internal.\n */", ['internal']],
+        'a tag in a code sample of the docblock counts, so the sample must not start a line with one' => ["/**\n * @api\n *\n *     @internal\n */", ['api', 'internal']],
+        'a tag after other text on its line' => ["/**\n * See also @api and @internal.\n * @experimental\n */", ['experimental']],
+        'the docblock of an earlier statement' => ["/**\n * @api\n */\nconst UNRELATED = 1;\n/**\n * A sample.\n */", []],
+        'a docblock, then a comment, an attribute and modifiers' => ["/**\n * @api\n */\n// a note\n#[\\Attribute(\\Attribute::TARGET_CLASS)]\nfinal readonly", ['api']],
     ]);
 
     it('rejects a type in a namespace README.md does not classify', function () use ($problemsIn): void {
