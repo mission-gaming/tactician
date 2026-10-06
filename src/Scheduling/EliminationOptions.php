@@ -11,8 +11,9 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * Options for the elimination bracket presets.
  *
  * - legsPerTie: knockout ties played over one event or two (mirrored
- *   roles). With two legs the aggregate is decided app-side and recorded
- *   as a tie decision (see TieDecision).
+ *   roles). A tie that finishes level - a drawn single event, or two legs
+ *   that do not decide - is decided app-side and recorded as a tie
+ *   decision (see TieDecision).
  * - reseedEachRound: fixed bracket path (survivors keep their bracket
  *   slots; the default) versus re-seeded knockout (survivors re-ranked by
  *   standings and re-folded each round). Single elimination only in this

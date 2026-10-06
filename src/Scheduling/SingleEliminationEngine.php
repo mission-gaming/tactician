@@ -34,9 +34,11 @@ use Override;
  *   after every round and re-folded, so the strongest remaining records
  *   meet as late as possible.
  *
- * Ties are played over one event or two mirrored legs (legsPerTie); the
- * aggregate of a level two-legged tie is the application's to decide and
- * is recorded as a tie decision (see TieDecision).
+ * Ties are played over one event or two mirrored legs (legsPerTie). A tie
+ * that finishes level - a drawn single event, or two legs that do not
+ * decide - is the application's to decide and is recorded as a tie
+ * decision on the result (see TieDecision); a level tie without one is
+ * refused by every call.
  *
  * There is deliberately no champion accessor: rank 1 of the outcome's
  * standings, or MatchOutcomeSelector::winners() over the final round, is
@@ -123,20 +125,24 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
      * no special cases: in an 8-entrant knockout where favourites hold,
      * the final's winner finishes 3-0, its loser 2-1, the semifinal losers
      * 1-1, and the quarter-final losers 0-1 - 1st, 2nd, joint 3rd, joint
-     * 5th, including the genuine ties.
+     * 5th, including the genuine ties. A single-leg event that finished
+     * level and was decided by its tie decision counts there as a win for
+     * the participant who advanced, so the placement holds; the outcome's
+     * results are the results as recorded, the draw included.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
     {
-        if (!$this->isComplete($state)) {
+        $resolution = $this->resolveBracket($state);
+        if ($resolution['pending'] !== null) {
             return null;
         }
 
         $standings = $this->standingsCalculator->calculate(
             $state->getAllSeenParticipants(),
-            $state->getResults()
+            $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers'])
         );
 
         return new StageOutcome(
@@ -150,7 +156,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
     /**
      * Replay the bracket from the entry fold through the recorded results.
      *
-     * @return array{pending: RoundPairing|null}
+     * @return array{pending: RoundPairing|null, levelAdvancers: array<string, Participant>}
      *
      * @throws InvalidConfigurationException When a round is partially resolved, a tie is broken, or
      *                                       the state is stamped with another engine's fingerprint
@@ -166,6 +172,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
         $totalRounds = (int) log($this->bracketSize(count($participants)), 2);
 
         $slots = $this->buildInitialSlots($participants);
+        $levelAdvancers = [];
 
         for ($round = 1; $round <= $totalRounds; ++$round) {
             // Re-seeded path: after the entry round, survivors are
@@ -175,7 +182,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
             // round's own results are recorded.
             if ($this->options->reseedEachRound && $round > 1) {
                 $survivors = array_values(array_filter($slots, fn(?Participant $slot) => $slot !== null));
-                $slots = $this->buildInitialSlots($this->rankByStandings($survivors, $state, $round));
+                $slots = $this->buildInitialSlots($this->rankByStandings($survivors, $state, $round, $levelAdvancers));
             }
 
             $pairs = array_chunk($slots, 2);
@@ -201,13 +208,15 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
                     );
                 }
 
-                return ['pending' => $this->buildRoundPairing($round, $totalRounds, $pairs)];
+                return ['pending' => $this->buildRoundPairing($round, $totalRounds, $pairs), 'levelAdvancers' => $levelAdvancers];
             }
 
             $nextSlots = [];
             foreach ($pairs as $pair) {
                 if ($pair[0] !== null && ($pair[1] ?? null) !== null) {
-                    $nextSlots[] = $this->lookupAdvancer($resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie);
+                    $advancer = $this->lookupAdvancer($resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie);
+                    $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie, $advancer);
+                    $nextSlots[] = $advancer;
                 } else {
                     $nextSlots[] = $pair[0] ?? $pair[1] ?? null;
                 }
@@ -216,7 +225,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
             $slots = $nextSlots;
         }
 
-        return ['pending' => null];
+        return ['pending' => null, 'levelAdvancers' => $levelAdvancers];
     }
 
     /**
@@ -250,12 +259,15 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
     /**
      * Order survivors by their standings rank as of the given round:
      * only results from earlier rounds count, so the ranking is stable
-     * across replays regardless of what has been recorded since.
+     * across replays regardless of what has been recorded since. A level
+     * event of an earlier round counts as a win for whoever advanced from
+     * it (see resultsForStandings()).
      *
      * @param array<Participant> $survivors
+     * @param array<string, Participant> $levelAdvancers
      * @return array<Participant>
      */
-    private function rankByStandings(array $survivors, StageState $state, int $beforeRound): array
+    private function rankByStandings(array $survivors, StageState $state, int $beforeRound, array $levelAdvancers): array
     {
         $priorResults = array_values(array_filter(
             $state->getResults(),
@@ -264,7 +276,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
 
         $standings = $this->standingsCalculator->calculate(
             $state->getAllSeenParticipants(),
-            $priorResults
+            $this->resultsForStandings($priorResults, $levelAdvancers)
         );
 
         $survivorIds = [];

@@ -49,7 +49,7 @@ anything else that competes.
 | **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out, a `StageOutcome` when play completes. Stages compose via pools and progression selectors. |
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
 | **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
-| **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A level two-legged tie is decided by the application's aggregate rules and recorded as `tie_winner` metadata on a leg result. Ties are not legs: brackets have no legs concept. |
+| **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as `tie_winner` metadata on the event's result, or on a leg's result. Ties are not legs: brackets have no legs concept. |
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
@@ -635,7 +635,9 @@ $schedule = (new SwissScheduler(null, new Randomizer()))
 
 `withResultReplaced()` replaces the result of one event of the **last
 recorded round**, for a result that was entered wrongly. It corrects the
-record; it does not decide an event. The event is found by its round
+record; it does not decide an event (an elimination event that finished
+level is decided by the `tie_winner` it is recorded with, see
+[Recording a Level Event](#recording-a-level-event)). The event is found by its round
 number, its participants in either order and its tie leg, so the state may
 have come back from storage. The replacement takes the place of the old
 result; nothing else in the state changes.
@@ -754,7 +756,8 @@ while (!$engine->isComplete($state)) {
 
     $results = [];
     foreach ($pairing->getEvents() as $event) {
-        // ...play the match; single-leg elimination results cannot be draws...
+        // ...play the match; an event that finishes level needs a decision
+        // (see "Recording a Level Event" below)...
         $results[] = new Result($event, $event->getParticipants()[0]);
     }
     $state = $state->withRoundPlayed($pairing, $results);
@@ -781,7 +784,9 @@ joint 1-1, quarter-final losers joint 0-1 in an 8-entrant bracket.
   level, the aggregate is **yours** to resolve — away goals, extra time,
   penalties are rules Tactician never owns — and you record the decision
   as `TieDecision::TIE_WINNER_KEY` (`'tie_winner'`) metadata on one leg's
-  result. Per-leg results remain ordinary results feeding standings.
+  result. Per-leg results remain ordinary results feeding standings: the
+  table counts each leg as it was recorded, and a decision changes nothing
+  in it.
 
 `DoubleEliminationEngine` adds a losers bracket and a grand final: everyone
 must lose twice to be eliminated, so when the losers champion wins the grand
@@ -789,11 +794,120 @@ final a reset match decides the title (disable with
 `new DoubleEliminationEngine(new EliminationOptions(grandFinalReset: false))`).
 Conflicting, duplicate, or round-less results are rejected with clear
 errors; partially recorded rounds are completed with
-`$state->withAdditionalResults([...])`. The state itself accepts a drawn
-single-leg result, because it does not know the format, and the engine
-then rejects the state on every call. If the draw was entered by mistake,
-correct it with `$state->withResultReplaced(...)` (see
-[Correcting a Recorded Result](#correcting-a-recorded-result)).
+`$state->withAdditionalResults([...])`.
+
+### Recording a Level Event
+
+An elimination tie must send one participant on, and an event can still
+finish level. Who advances is then **your** decision, under rules Tactician
+never owns and never asks about. Record the event as the draw it was, and
+name the participant who advances as `TieDecision::TIE_WINNER_KEY`
+(`'tie_winner'`) metadata on its result, by ID. This is the key and the
+reading a level two-legged tie has, in both engines and in every round of
+them (the losers bracket, the grand final and its reset included).
+
+```php
+use MissionGaming\Tactician\Stage\TieDecision;
+
+[$alice, $bob, $carol, $dave] = $participants;
+
+$state = StageState::start([$alice, $bob, $carol, $dave]);
+$semifinals = $engine->pairNextRound($state);
+[$aliceVsDave, $bobVsCarol] = $semifinals->getEvents();
+
+$state = $state->withRoundPlayed($semifinals, [
+    // Level at 1-1; Dave is the one who advances
+    new Result(
+        $aliceVsDave,
+        null,
+        ['alice' => 1, 'dave' => 1],
+        [TieDecision::TIE_WINNER_KEY => $dave->getId()]
+    ),
+    new Result($bobVsCarol, $bob, ['bob' => 2, 'carol' => 0]),
+]);
+
+foreach ($engine->pairNextRound($state)->getEvents() as $event) {
+    [$first, $second] = $event->getParticipants();
+    echo "{$first->getLabel()} v {$second->getLabel()}\n"; // Dave v Bob
+}
+```
+
+The recorded result is not changed: `isDraw()` is true, `getWinner()` is
+null and the scores are the scores. To read who advanced from a result
+yourself, read the metadata key, or ask `TieDecision::advancer()`, which
+is the reading the engines and `MatchOutcomeSelector` use:
+
+```php
+$recorded = $state->getResults()[0];
+
+echo ($recorded->isDraw() ? 'drawn' : 'won') . ', '
+    . TieDecision::advancer([$recorded], $alice, $dave, 1)?->getLabel() . " advances\n"; // drawn, Dave advances
+```
+
+In the outcome's standings a level event that was decided this way counts
+as a win for the participant who advanced and a loss for the other, with
+the scores as recorded. The table of a single-leg bracket therefore places
+it as it does when every event has a winner: the participant who advanced
+from a level final is rank 1 and not level with the runner-up, and
+re-seeding (`reseedEachRound`) ranks the survivor of a level event with the
+other winners of the round.
+
+A level event that names nobody is refused, and so is one that names a
+participant who is not in the event. The state itself accepts the result,
+because it does not know the format; the engine then rejects the state on
+every call (`isComplete()`, `pairNextRound()`, `getOutcome()`), with a
+message that names the key:
+
+```php
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+
+$undecided = StageState::start([$alice, $bob, $carol, $dave])
+    ->withRoundPlayed($semifinals, [
+        new Result($aliceVsDave, null, ['alice' => 1, 'dave' => 1]),
+        new Result($bobVsCarol, $bob),
+    ]);
+
+try {
+    $engine->pairNextRound($undecided);
+    echo "Paired\n";
+} catch (InvalidConfigurationException $e) {
+    echo "{$e->getReason()?->value}: {$e->getMessage()}\n";
+    // undecided_tie: Invalid scheduler configuration: Elimination events cannot end in a draw
+    // (Alice vs Dave): the event is level, so record who advances as 'tie_winner' metadata on its result
+}
+```
+
+| The level event's result | Reason (`getReason()`) |
+|--------------------------|------------------------|
+| carries no `tie_winner`, or carries `null` | `UndecidedTie` |
+| names a participant who is not one of the two in the event (or a value that is not an ID) | `InvalidResult` |
+
+The decision is read only when the results leave the tie level. On an
+event that has a winner, and on a two-legged tie that the leg wins decide,
+`tie_winner` is not read at all: it cannot overturn the result, and a value
+that names nobody in the tie goes unnoticed there.
+
+Record the decision with the result, in the `withRoundPlayed()` call that
+records the round. `$state->withResultReplaced(...)` is not how a level
+event is decided: it corrects a record that was entered wrongly (see
+[Correcting a Recorded Result](#correcting-a-recorded-result)). A state
+that is stuck on a level event was recorded incompletely or wrongly, and
+the correction says which. If the event did finish level, the decision is
+what the record lacks: replace the result with the same draw, carrying
+`tie_winner`. If the draw was entered by mistake, replace it with the
+result the event had. Do not replace a level event with a win it was not.
+
+```php
+$decided = $undecided->withResultReplaced(new Result(
+    $aliceVsDave,
+    null,
+    ['alice' => 1, 'dave' => 1],
+    [TieDecision::TIE_WINNER_KEY => $alice->getId()]
+));
+
+[$final] = $engine->pairNextRound($decided)->getEvents();
+echo implode(' v ', array_map(fn (Participant $p) => $p->getLabel(), $final->getParticipants())) . "\n"; // Alice v Bob
+```
 
 ## Pools, Progression, and Multi-Stage Tournaments
 

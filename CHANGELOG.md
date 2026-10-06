@@ -205,6 +205,25 @@ heading **Output change (fix)**.
 
 ### Added
 
+- A single-leg elimination event that finishes level can be recorded and
+  decided. Record it as the draw it was, with the ID of the participant who
+  advances as `TieDecision::TIE_WINNER_KEY` (`'tie_winner'`) metadata on
+  its result: the key a level two-legged tie already uses, read the same
+  way. That participant advances in `SingleEliminationEngine` (fixed path
+  and re-seeded) and in `DoubleEliminationEngine` (both brackets, the grand
+  final and its reset, where the other participant takes the loss), and
+  `MatchOutcomeSelector` selects them as the winner. Before,
+  `StageState::withRoundPlayed()` accepted the draw and every later call of
+  the engine threw, so the only way on was to replace the result with a win
+  that did not happen. The recorded result stays a draw; in the standings
+  the engines compute, a level event decided this way counts as a win for
+  the participant who advanced, so the table places the bracket as it does
+  when every event has a winner. A decision that names a participant
+  outside the event is refused as it is for two legs
+  (`InvalidConfigurationReason::InvalidResult`). No input that worked
+  before gives another output: the decision is read only when the result is
+  level, never on a result that has a winner, for one leg as for two. See
+  "Recording a Level Event" in the usage guide.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
@@ -295,6 +314,17 @@ heading **Output change (fix)**.
 
 ### Changed
 
+- The refusal of a drawn single-leg elimination event that names nobody
+  now says how to record the decision. Its message begins with the words it
+  had and goes on, so code that matches the beginning still matches and
+  code that compares the whole message must change; the exception class,
+  `getReason()` (`UndecidedTie`) and `getContext()` are unchanged. Before
+  and after, for Alice against Dave:
+
+  ```
+  Invalid scheduler configuration: Elimination events cannot end in a draw (Alice vs Dave)
+  Invalid scheduler configuration: Elimination events cannot end in a draw (Alice vs Dave): the event is level, so record who advances as 'tie_winner' metadata on its result
+  ```
 - `toJson()` and `fromJson()` of `Schedule`, `StageState` and
   `ScheduledSchedule` now throw `Exceptions\JsonConversionException` where PHP's
   `\JsonException` escaped unwrapped. It is a `\JsonException` with the same
