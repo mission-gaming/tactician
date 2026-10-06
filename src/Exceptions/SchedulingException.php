@@ -6,7 +6,17 @@ namespace MissionGaming\Tactician\Exceptions;
 
 use Exception;
 
-abstract class SchedulingException extends Exception
+/**
+ * Base class of the scheduling failures: an invalid configuration, a
+ * schedule that cannot be completed, a Swiss round with no valid pairing, a
+ * repack that left violations. Each carries a diagnostic report.
+ *
+ * It is not the base of everything the library throws. A rejected argument
+ * or malformed serialized data is an {@see InvalidInputException}, which is
+ * not a `SchedulingException`. To catch every library exception with one
+ * clause, catch {@see TacticianException}.
+ */
+abstract class SchedulingException extends Exception implements TacticianException
 {
     /**
      * Get a diagnostic report with detailed information about the scheduling issue.
