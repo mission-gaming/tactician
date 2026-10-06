@@ -27,7 +27,8 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *   Neither is part of the contract, and either can change in any release.
  *
  * A constraint that keeps state between calls, reads a random source or
- * throws is still supported, and pays the full cost. Two internal shortcuts
+ * throws is not refused, and what it gets back then depends on how the
+ * library happened to ask. No shortcut is taken for it. Two internal shortcuts
  * ask fewer questions: the round-robin scheduler builds no failure analysis
  * for an ordering it goes on from, and the Swiss round search skips
  * branches that hold no complete pairing. Both are taken only for a
@@ -38,10 +39,15 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * other set, one that holds a `CallableConstraint`, a `MetadataConstraint`,
  * a `ConsecutiveRoleConstraint` or a class of your own included, is asked
  * every question it was asked before those shortcuts existed, so what such
- * a constraint sees and what the caller gets back are unchanged.
+ * a constraint sees and what the caller gets back did not change when they
+ * were added. This paragraph describes the present implementation; the
+ * list above is what a constraint may rely on.
  *
  * The library does not catch what a constraint of your own throws: the
  * exception leaves the `schedule()` or `pairNextRound()` call that asked.
+ * The exception to that is a constraint that throws one of the library's
+ * own `IncompleteScheduleException` or `NoValidPairingException`: a
+ * scheduler takes it for a failure of its own.
  *
  * @experimental
  */
