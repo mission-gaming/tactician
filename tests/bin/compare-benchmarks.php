@@ -32,7 +32,8 @@ declare(strict_types=1);
 //
 // A subject the base cannot run (it times out there, or the benchmark is
 // newer than the base) has no baseline: it is listed and does not fail the
-// run. A subject the change cannot run does fail it.
+// run. A subject the change cannot run does fail it, whether or not the base
+// could run it.
 
 use MissionGaming\Tactician\Tests\Support\BenchmarkComparison;
 
@@ -46,6 +47,12 @@ $rounds = (int) ($argv[3] ?? '3');
 
 if ($baseSource === '' || !is_dir($baseSource) || $margin <= 1.0 || $rounds < 1) {
     fwrite(STDERR, "Usage: php tests/bin/compare-benchmarks.php <base src directory> [margin > 1] [rounds >= 1]\n");
+    exit(2);
+}
+// A directory that is not a copy of src/ (its parent, say) would leave every
+// class to Composer, and the change would be compared with itself.
+if (!is_file($baseSource . '/DTO/Participant.php')) {
+    fwrite(STDERR, "{$baseSource} is not a copy of src/: it holds no DTO/Participant.php\n");
     exit(2);
 }
 $baseSource = (string) realpath($baseSource);
@@ -108,7 +115,8 @@ for ($round = 1; $round <= $rounds; ++$round) {
 $rows = BenchmarkComparison::compare(
     BenchmarkComparison::fastestOverRuns($dumps['base']),
     BenchmarkComparison::fastestOverRuns($dumps['change']),
-    $margin
+    $margin,
+    BenchmarkComparison::subjectsOverRuns($dumps['change'])
 );
 
 fwrite(STDOUT, "\nFastest revolution over {$rounds} rounds, base against change (margin {$margin}):\n\n");

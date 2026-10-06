@@ -20,7 +20,10 @@ use SimpleXMLElement;
  * A subject is a regression when the change's fastest revolution is more
  * than the margin times the base's. A subject the base could not run (it
  * timed out, or the benchmark is new) has nothing to be compared with and
- * is reported as such, not as a failure.
+ * is reported as such, not as a failure. A subject the change could not
+ * run is a failure whatever the base did: phpbench lists a subject that
+ * threw or timed out with its errors and no iteration, so the subjects a
+ * dump names (subjects()) are compared with the ones it measured.
  */
 final class BenchmarkComparison
 {
@@ -34,6 +37,65 @@ final class BenchmarkComparison
      */
     public static function fastestBySubject(string $xml): array
     {
+        $fastest = [];
+        foreach (self::subjectElements($xml) as $name => $subject) {
+            foreach ($subject->variant as $variant) {
+                foreach ($variant->iteration as $iteration) {
+                    $revolutions = (int) $iteration['time-revs'];
+                    if ($revolutions < 1) {
+                        continue;
+                    }
+                    $time = (float) $iteration['time-net'] / $revolutions;
+                    $fastest[$name] = min($fastest[$name] ?? $time, $time);
+                }
+            }
+        }
+
+        return $fastest;
+    }
+
+    /**
+     * Every subject a phpbench XML dump names, measured or not: a subject
+     * that threw or timed out is in the dump with its errors and without an
+     * iteration.
+     *
+     * @return list<string> "Class::subject"
+     *
+     * @throws RuntimeException When the text is not a phpbench dump
+     */
+    public static function subjects(string $xml): array
+    {
+        return array_keys(self::subjectElements($xml));
+    }
+
+    /**
+     * Every subject over several dumps.
+     *
+     * @param list<string> $dumps phpbench XML dumps
+     * @return list<string>
+     *
+     * @throws RuntimeException
+     */
+    public static function subjectsOverRuns(array $dumps): array
+    {
+        $subjects = [];
+        foreach ($dumps as $dump) {
+            foreach (self::subjects($dump) as $subject) {
+                $subjects[$subject] = true;
+            }
+        }
+        ksort($subjects);
+
+        return array_keys($subjects);
+    }
+
+    /**
+     * @return array<string, SimpleXMLElement> "Class::subject" => its element
+     *
+     * @throws RuntimeException When the text is not a phpbench dump
+     */
+    private static function subjectElements(string $xml): array
+    {
         $previous = libxml_use_internal_errors(true);
         try {
             $document = simplexml_load_string($xml);
@@ -46,29 +108,19 @@ final class BenchmarkComparison
             throw new RuntimeException('Not a phpbench XML dump.');
         }
 
-        $fastest = [];
+        $subjects = [];
         foreach ($document->suite as $suite) {
             foreach ($suite->benchmark as $benchmark) {
                 $class = ltrim((string) $benchmark['class'], '\\');
                 $class = substr($class, (int) strrpos('\\' . $class, '\\'));
 
                 foreach ($benchmark->subject as $subject) {
-                    $name = $class . '::' . (string) $subject['name'];
-                    foreach ($subject->variant as $variant) {
-                        foreach ($variant->iteration as $iteration) {
-                            $revolutions = (int) $iteration['time-revs'];
-                            if ($revolutions < 1) {
-                                continue;
-                            }
-                            $time = (float) $iteration['time-net'] / $revolutions;
-                            $fastest[$name] = min($fastest[$name] ?? $time, $time);
-                        }
-                    }
+                    $subjects[$class . '::' . (string) $subject['name']] = $subject;
                 }
             }
         }
 
-        return $fastest;
+        return $subjects;
     }
 
     /**
@@ -96,6 +148,9 @@ final class BenchmarkComparison
      * @param array<string, float> $base Fastest revolution by subject, on the base
      * @param array<string, float> $change Fastest revolution by subject, on the change
      * @param float $margin How many times the base's figure the change may take
+     * @param list<string> $changeSubjects Every subject the change's runs named (subjectsOverRuns()),
+     *                                     so that one it could not measure is a row, and a failure,
+     *                                     although neither side has a figure for it
      *
      * @return list<array{subject: string, base: float|null, change: float|null, ratio: float|null, verdict: string}>
      *         One row per subject of either side. The verdict is `ok`,
@@ -103,9 +158,9 @@ final class BenchmarkComparison
      *         `not measured` (the change has none, which is a failure: a
      *         benchmark of the change errored or timed out)
      */
-    public static function compare(array $base, array $change, float $margin): array
+    public static function compare(array $base, array $change, float $margin, array $changeSubjects = []): array
     {
-        $subjects = array_keys($base + $change);
+        $subjects = array_keys($base + $change + array_fill_keys($changeSubjects, 0.0));
         sort($subjects);
 
         $rows = [];

@@ -109,6 +109,41 @@ describe('BenchmarkComparison', function (): void {
         expect(BenchmarkComparison::failed(BenchmarkComparison::compare(['a' => 100.0], [], 1.5)))->toBeTrue();
     });
 
+    it('names a subject that threw or timed out, which has no iteration to measure', function (): void {
+        // What phpbench writes for a subject that failed: the subject, its
+        // variant and the errors, and no iteration.
+        $dump = '<?xml version="1.0"?><phpbench version="1.7.0"><suite tag="">'
+            . '<benchmark class="\Vendor\Benchmark\RepackBench">'
+            . '<subject name="benchThrows"><variant revs="1"><errors><error exception-class="RuntimeException">boom</error></errors></variant></subject>'
+            . '<subject name="benchFine"><variant revs="1"><iteration time-net="500" time-revs="1"/></variant></subject>'
+            . '</benchmark></suite></phpbench>';
+
+        expect(BenchmarkComparison::fastestBySubject($dump))->toBe(['RepackBench::benchFine' => 500.0]);
+        expect(BenchmarkComparison::subjects($dump))->toBe(['RepackBench::benchThrows', 'RepackBench::benchFine']);
+        expect(BenchmarkComparison::subjectsOverRuns([$dump, benchmarkDump(['\A\SwissBench' => ['bench24' => [[80, 2]]]])]))
+            ->toBe(['RepackBench::benchFine', 'RepackBench::benchThrows', 'SwissBench::bench24']);
+        expect(BenchmarkComparison::subjectsOverRuns([]))->toBe([]);
+    });
+
+    it('fails for a subject the change could not run, whatever the base did', function (): void {
+        // "new" fails on the change and does not exist on the base; "both"
+        // fails on both sides. Neither side has a figure for either, so
+        // only the names the change's runs gave make them rows.
+        $rows = BenchmarkComparison::compare(['a' => 100.0], ['a' => 100.0], 1.5, ['a', 'both', 'new']);
+
+        expect(array_column($rows, 'verdict', 'subject'))->toBe(['a' => 'ok', 'both' => 'not measured', 'new' => 'not measured']);
+        expect(BenchmarkComparison::failed($rows))->toBeTrue();
+        // Without the names the same figures pass.
+        expect(BenchmarkComparison::failed(BenchmarkComparison::compare(['a' => 100.0], ['a' => 100.0], 1.5)))->toBeFalse();
+    });
+
+    it('has no baseline for a base figure of zero', function (): void {
+        $rows = BenchmarkComparison::compare(['a' => 0.0], ['a' => 10.0], 1.5);
+
+        expect($rows[0]['verdict'])->toBe('no baseline');
+        expect($rows[0]['ratio'])->toBeNull();
+    });
+
     it('prints times in milliseconds with a point, whatever the locale', function (): void {
         $table = BenchmarkComparison::table(BenchmarkComparison::compare(['a' => 1234.0], ['a' => 2468.0, 'new' => 10.0], 1.5));
 
@@ -195,9 +230,9 @@ describe('The benchmark suite', function (): void {
             ->and(is_file($root . '/tests/Benchmark/bootstrap.php'))->toBeTrue();
     });
 
-    it('refuses a comparison without a base to compare with', function () use ($root): void {
+    it('refuses a comparison without a base to compare with', function (string $directory, string $message) use ($root): void {
         $process = proc_open(
-            [PHP_BINARY, $root . '/tests/bin/compare-benchmarks.php', $root . '/no-such-directory'],
+            [PHP_BINARY, $root . '/tests/bin/compare-benchmarks.php', $root . $directory],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes
         );
@@ -207,8 +242,13 @@ describe('The benchmark suite', function (): void {
         fclose($pipes[2]);
 
         expect(proc_close($process))->toBe(2)
-            ->and($errors)->toContain('Usage: php tests/bin/compare-benchmarks.php');
-    });
+            ->and($errors)->toContain($message);
+    })->with([
+        'no such directory' => ['/no-such-directory', 'Usage: php tests/bin/compare-benchmarks.php'],
+        // The repository root holds src/ and is not src/: every class would
+        // come from the working tree, and the change be compared with itself.
+        'a directory that is not a copy of src/' => ['', 'is not a copy of src/'],
+    ]);
 });
 
 describe('The Benchmarks job', function (): void {

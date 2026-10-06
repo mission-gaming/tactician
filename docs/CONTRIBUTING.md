@@ -82,8 +82,13 @@ is given and against the working tree, by turns, three times each. It
 compares the fastest revolution each side managed, and fails when the
 working tree takes more than 1.5 times as long. Both sides are measured on
 one machine minutes apart, and the fastest of many runs is the one least
-disturbed by whatever else the machine was doing, so the comparison holds on
-a busy machine too. A margin and a number of rounds may follow the directory.
+disturbed by whatever else the machine was doing. That takes most of the
+noise out, not all of it: on a machine that is busy throughout, two runs of
+the same code have differed by nearly the margin, so run a flagged
+benchmark again before believing it. A margin and a number of rounds may
+follow the directory. A benchmark that throws or times out on the working
+tree fails the comparison, whether or not the other side could run it; one
+that only the other side cannot run is listed as having no baseline.
 
 In CI the same comparison is the `Benchmarks` job: a pull request against
 its base, on one runner. That job is not a required check. If it fails, look
