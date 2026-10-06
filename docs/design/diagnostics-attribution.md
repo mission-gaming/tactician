@@ -55,6 +55,15 @@ and report the answers instead of guessing from constraint names.
   24-participant case above, against 0.13 seconds now (PHP 8.4, no
   OPcache, one core). A schedule that succeeds on a later ordering builds
   none. `tests/Feature/FailureAnalysisCostTest.php` counts the analyses.
+- **Unless the constraints could tell.** An analysis asks the constraints
+  about pairings the attempt never tried. Nothing states that a
+  constraint is a predicate: one that runs code of the caller's may count
+  its calls or throw for a pairing it cannot judge, and what it was asked
+  during one ordering's analysis then decides what the next ordering
+  gets. So the analysis of a discarded ordering is skipped only for a
+  constraint set `ConstraintPurity` knows (a `ConstraintSet` of the four
+  built-in classes that hold no callable). For any other set every
+  ordering is analysed as before, and the result is what it was before.
 - **Honest scope**: probing answers "could this pairing join what was
   built?" — attribution against a *different* partial schedule could
   differ. That is the right question for the failure at hand, and the

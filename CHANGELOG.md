@@ -531,7 +531,16 @@ heading **Output change (fix)**.
     45.9 s to 0.13 s at 24. A schedule that succeeds on a later ordering
     paid for the discarded analyses too: `SeedProtectionConstraint(2,
     0.25)` at 32 participants over two legs, 0.41 s to 0.013 s.
-    `ScheduleOptimizer` pays it once per sample.
+    `ScheduleOptimizer` pays it once per sample. This applies to a
+    `ConstraintSet` that holds only `NoRepeatPairings`,
+    `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
+    `SeedProtectionConstraint` objects. An analysis asks the constraints
+    about pairings the ordering never tried, so a constraint that runs
+    code of yours (a callable, a role extractor, a metadata validator, a
+    class or subclass of your own, a subclass of `ConstraintSet`) could
+    keep state or throw, and then answer the next ordering differently.
+    For those every ordering is still analysed and nothing changes,
+    neither the result nor the time.
   - **Constraints that read the history.** `SchedulingContext` answers its
     lookups by participant, pairing, round and leg from an index of its
     events, where every lookup scanned the whole schedule. A check costs
@@ -551,11 +560,16 @@ heading **Output change (fix)**.
     is unchanged, at 0.5 to 0.8 s: that time is the attempts themselves.
     The docblock of `BacktrackingRoundRobinGenerator::STEP_BUDGET` said
     "well under a second" and now states these figures.
-  - **Swiss pairing.** The search for a round no longer walks a branch that
-    provably holds no complete pairing: a set of unpaired participants that
-    cannot be split into pairs that have not played (and, for the built-in
-    history constraints, that the constraints accept). It returns the
-    pairing the plain search returns, or fails as it fails, sooner. A state
+  - **Swiss pairing.** With no constraints, or with a `ConstraintSet` that
+    holds only the four constraint classes named above, the search for a
+    round no longer walks a branch that provably holds no complete pairing:
+    a set of unpaired participants that cannot be split into pairs that
+    have not played and that the constraints accept. It returns the
+    pairing the plain search returns, or fails as it fails, sooner. Under
+    any other constraint the search is the plain one, and asks each
+    constraint exactly what it asked before, in the same order: a branch
+    with no pairing in it may still hold a question your constraint throws
+    on or counts. A state
     with no pairing left (two halves of 11 that have played every pairing
     across the halves): 32 s to 0.003 s before `NoValidPairingException`.
     `SwissScheduler`, 24 participants over all 23 rounds: 1.5 s to 0.018 s.

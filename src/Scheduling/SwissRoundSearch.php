@@ -4,15 +4,11 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Scheduling;
 
-use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
-use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
-use MissionGaming\Tactician\Constraints\NoRepeatPairings;
-use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
-use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\Stage\PairKey;
 use Throwable;
 
@@ -25,105 +21,83 @@ use Throwable;
  *
  * The reference search is the plain depth-first one: take the first
  * unpaired participant, try every later unpaired participant in order, skip
- * a pair that has played, skip a pair the constraints reject, recurse on
- * the rest, and return the first complete pairing found, or null when the
- * tree holds none. This class returns exactly that, for every input. It
- * differs only in the subtrees it does not walk.
+ * a pair that has played, skip a pair the constraints reject (asked with a
+ * context of the recorded rounds plus the pairs made so far in this round),
+ * recurse on the rest, and return the first complete pairing found, or null
+ * when the tree holds none. This class returns exactly that, and throws
+ * exactly what that search throws, for every input.
  *
- * ## Why a subtree may be skipped
+ * ## Constraints that are not known to be predicates
  *
- * Take a node of the search: a set R of participants still unpaired. Every
- * complete pairing below the node splits R into pairs, each of which has
- * not played and is accepted by the constraints. Let G be any graph on R
- * that has an edge for every pair that could be used below the node. Then
- * a complete pairing below the node is a perfect matching of G. So:
+ * For a constraint set ConstraintPurity does not know, this class is the
+ * plain search and nothing else: each constraint is asked about the same
+ * events, with the same contexts, the same number of times and in the same
+ * order as the reference search asks. A constraint that counts its calls,
+ * or throws for a pair it cannot judge, therefore gets what it always got.
+ * The rest of this comment is about the other case: no constraints, or a
+ * set ConstraintPurity knows.
  *
- *     G has no perfect matching  =>  the subtree holds no complete pairing.
+ * ## The shortcut, and why it returns the same
  *
- * The plain search would walk that subtree and return null from it. Not
- * walking it returns the same null, and the search then continues with the
- * same next candidate. Nothing else is ever skipped: a subtree is entered
- * unless G has no perfect matching, the candidates are tried in the same
- * order, and the first complete pairing in that order is returned. The
- * result is therefore the plain search's result, and so is a failure.
+ * A known constraint's verdict on a pair does not depend on the round's
+ * other pairings (ConstraintPurity says why), so it is the verdict under
+ * the context of the recorded rounds alone. Call a pair *open* when it has
+ * not played and the constraints accept it under that context. The plain
+ * search is then a depth-first walk of the perfect matchings of the graph
+ * of open pairs, in a fixed order, and what it returns is the first one in
+ * that order, or null when the graph has none.
  *
- * G is always a superset of the usable pairs (the implication needs only
- * that), in one of two forms:
+ * Take a node of the search: a set R of participants still unpaired. A
+ * complete pairing below the node is a perfect matching of the open pairs
+ * within R, and any such matching is a complete pairing below the node. So
+ * the subtree under a node holds a complete pairing exactly when the open
+ * pairs within its R have a perfect matching. The shortcut walks the same
+ * candidates in the same order and enters a node only when that holds:
  *
- * - **The pairs that have not played.** True for any constraints, which can
- *   only remove pairs.
- * - **The pairs that have not played and that the constraints accept**,
- *   when every constraint's verdict on a pair is the same at every node
- *   (see INDEPENDENT_OF_THE_ROUND). Then G is exactly the usable pairs, a
- *   node is entered only when a complete pairing lies below it, and the
- *   search never backtracks. A verdict that could not be computed (the
- *   constraint threw) counts as an edge, which keeps G a superset.
+ * - a subtree it does not enter is one the plain search returns null from,
+ *   after which the plain search goes on to the same next candidate;
+ * - a subtree it does enter holds a complete pairing, and by the same
+ *   argument so does the first node entered below it, and so on down. It
+ *   never backs out of a node, and the pairing it reaches is the first one
+ *   the plain search would have reached.
  *
- * PerfectMatching decides whether G has a perfect matching (Edmonds'
+ * PerfectMatching decides whether a set has a perfect matching (Edmonds'
  * algorithm; its class comment gives the argument).
  *
- * ## Why it does not always prune
+ * ## A constraint that fails
+ *
+ * Before the shortcut is taken every pair that has not played is put to the
+ * constraints once. A known constraint runs no code of the caller's, but
+ * it can still fail on a malformed event in the recorded history. If any
+ * of those questions throws, the shortcut is given up and the plain search
+ * runs to its end, so the failure reaches the caller from the same question
+ * as it always did. If none throws, no question the plain search asks can
+ * throw either: each is one of those pairs, judged on the same events.
+ *
+ * ## Why it does not always take the shortcut
  *
  * A round with no dead end is paired by the plain search in about one
- * candidate per pair, and reading a whole graph first would cost more than
- * that. The plain search therefore runs first, with an allowance of
+ * candidate per pair, and reading the whole graph first would cost more
+ * than that. The plain search therefore runs first, with an allowance of
  * candidates; a search still running when the allowance is spent is
- * started again with pruning. Both give the same result, so where the
+ * started again with the shortcut. Both give the same result, so where the
  * switch falls changes the time taken and nothing else. The allowance
  * counts candidates, not time, so a run is repeatable.
- *
- * Constraints are assumed to be predicates: the same event and context
- * give the same verdict, with no effect on anything else. The pruned
- * search asks a constraint about fewer pairs on the path, and in the second
- * form of G about pairs the plain search might not have reached.
  *
  * @internal Not public API: SwissPairingEngine is the way to pair a round.
  */
 final class SwissRoundSearch
 {
-    /**
-     * The constraint classes whose verdict on a candidate pair does not
-     * depend on the pairings already chosen for the round being paired.
-     *
-     * Each reads, besides the candidate event, the plan and the participant
-     * list, only context events that one of the candidate's two
-     * participants takes part in (getEventsForParticipant(),
-     * getEventsBetween()). The round's other pairings involve neither of
-     * them, because a participant plays once in a round. So the verdict
-     * under the context of the recorded rounds is the verdict at every
-     * node. `tests/Unit/Scheduling/SwissRoundSearchTest.php` checks this
-     * for each class.
-     *
-     * Only an object of exactly one of these classes qualifies: a subclass
-     * may override isSatisfied(). MetadataConstraint and CallableConstraint
-     * hand the context to a callable of the caller's, which may read
-     * anything, so they do not qualify.
-     */
-    private const array INDEPENDENT_OF_THE_ROUND = [
-        NoRepeatPairings::class,
-        MinimumRestPeriodsConstraint::class,
-        ConsecutiveRoleConstraint::class,
-        RoleBalanceConstraint::class,
-        SeedProtectionConstraint::class,
-    ];
-
-    private const int NOT_READ = 0;
-    private const int CLOSED = 1;
-    private const int OPEN = 2;
-    private const int UNKNOWN = 3;
-
     /** @var list<Participant> The participants to pair, in pairing order; a vertex is a position here */
     private array $participants = [];
 
-    /** @var array<int, array<int, int>> Lower position => higher position => one of the edge states above */
-    private array $edges = [];
+    /** How many candidates the plain search may still try; null for no limit. */
+    private ?int $allowance = null;
 
-    /** How many candidates the plain search may still try. */
-    private int $allowance = 0;
+    /** Whether the constraints are ones the shortcut is sound for. */
+    private readonly bool $constraintsAreKnown;
 
-    private readonly bool $verdictsAreIndependentOfTheRound;
-
-    /** How many searches were started again with pruning (for tests). */
+    /** How many searches were started again with the shortcut (for tests). */
     private int $prunedSearches = 0;
 
     /**
@@ -131,9 +105,11 @@ final class SwissRoundSearch
      * @param array<string, int> $homeCounts Home assignments so far, by participant id
      * @param SchedulingContext $context The context of the recorded rounds
      * @param int|null $plainAllowance Candidates the plain search may try before the search is
-     *                                 started again with pruning; null for the default, the
+     *                                 started again with the shortcut; null for the default, the
      *                                 square of the number of participants. A test seam: the
-     *                                 result is the same for every value
+     *                                 result is the same for every value. Not read for a
+     *                                 constraint set ConstraintPurity does not know, which is
+     *                                 searched plainly to the end
      */
     public function __construct(
         private readonly ?ConstraintSet $constraints,
@@ -143,7 +119,7 @@ final class SwissRoundSearch
         private readonly int $roundNumber,
         private readonly ?int $plainAllowance = null
     ) {
-        $this->verdictsAreIndependentOfTheRound = $this->constraintsAreIndependentOfTheRound();
+        $this->constraintsAreKnown = ConstraintPurity::isKnown($constraints);
     }
 
     /**
@@ -155,33 +131,66 @@ final class SwissRoundSearch
     public function pair(array $orderedParticipants): ?array
     {
         $this->participants = array_values($orderedParticipants);
-        $this->edges = [];
-        $count = count($this->participants);
+        $positions = array_keys($this->participants);
 
-        $this->allowance = $this->plainAllowance ?? $count * $count;
+        if (!$this->constraintsAreKnown) {
+            return $this->pairPlainlyToTheEnd($positions);
+        }
 
-        $events = $this->pairPlainly(array_keys($this->participants), $this->context, []);
+        $this->allowance = $this->plainAllowance ?? count($positions) * count($positions);
+
+        $events = $this->pairPlainly($positions, $this->context, []);
         if ($events !== false) {
             return $events;
         }
 
         ++$this->prunedSearches;
-        $matching = new PerfectMatching($this->mayBePaired(...));
-        $mate = $matching->of(array_keys($this->participants));
+        $open = $this->openPairs();
+        if ($open === null) {
+            // A constraint failed on some pair. Whether the plain search
+            // reaches that pair, and what it returns if it does not, is for
+            // the plain search to say.
+            return $this->pairPlainlyToTheEnd($positions);
+        }
+
+        $matching = new PerfectMatching(
+            static fn(int $first, int $second): bool => $first < $second
+                ? isset($open[$first][$second])
+                : isset($open[$second][$first])
+        );
+        $mate = $matching->of($positions);
         if ($mate === null) {
             return null;
         }
 
-        return $this->pairWithPruning(array_keys($this->participants), $mate, $matching, $this->context, []);
+        return $this->pairAlongTheMatchings($positions, $mate, $matching, $open);
     }
 
     /**
      * How many times pair() gave up the plain search and started again with
-     * pruning.
+     * the shortcut.
      */
     public function getPrunedSearchCount(): int
     {
         return $this->prunedSearches;
+    }
+
+    /**
+     * The plain search with no allowance: the reference search itself.
+     *
+     * @param list<int> $positions
+     * @return list<Event>|null
+     */
+    private function pairPlainlyToTheEnd(array $positions): ?array
+    {
+        $this->allowance = null;
+        $events = $this->pairPlainly($positions, $this->context, []);
+
+        if ($events === false) {
+            throw new InvariantViolationException('A Swiss round search with no allowance ran out of it');
+        }
+
+        return $events;
     }
 
     /**
@@ -202,7 +211,7 @@ final class SwissRoundSearch
         $pivot = array_shift($remaining);
 
         foreach ($remaining as $index => $opponent) {
-            if ($this->allowance-- <= 0) {
+            if ($this->allowance !== null && $this->allowance-- <= 0) {
                 return false;
             }
 
@@ -235,152 +244,85 @@ final class SwissRoundSearch
     }
 
     /**
-     * The same search, entering a node only when its participants have a
-     * perfect matching among the pairs that may be used.
+     * The open pairs: those that have not played and that the constraints
+     * accept under the context of the recorded rounds. Null when a
+     * constraint threw for some pair.
+     *
+     * @return array<int, array<int, true>>|null Lower position => higher position => true
+     */
+    private function openPairs(): ?array
+    {
+        $open = [];
+        $count = count($this->participants);
+
+        for ($first = 0; $first < $count - 1; ++$first) {
+            for ($second = $first + 1; $second < $count; ++$second) {
+                if ($this->havePlayed($first, $second)) {
+                    continue;
+                }
+
+                if ($this->constraints !== null) {
+                    try {
+                        // The earlier position is the pivot when the search
+                        // makes this pair, which decides the event built.
+                        if (!$this->constraints->isSatisfied($this->createEvent($first, $second), $this->context)) {
+                            continue;
+                        }
+                    } catch (Throwable) {
+                        return null;
+                    }
+                }
+
+                $open[$first][$second] = true;
+            }
+        }
+
+        return $open;
+    }
+
+    /**
+     * The first complete pairing in search order, for a set of positions
+     * whose open pairs have a perfect matching: at each step the first
+     * opponent of the first unpaired position that is open to it and leaves
+     * a set that still has a perfect matching.
      *
      * @param list<int> $remaining Positions still unpaired, in pairing order
-     * @param array<int, int> $mate A perfect matching of $remaining in the graph of mayBePaired()
-     * @param SchedulingContext $context The recorded rounds plus this round's events so far
-     * @param list<Event> $roundEvents
-     * @return list<Event>|null
+     * @param array<int, int> $mate A perfect matching of $remaining among the open pairs
+     * @param array<int, array<int, true>> $open
+     * @return list<Event>
      */
-    private function pairWithPruning(
-        array $remaining,
-        array $mate,
-        PerfectMatching $matching,
-        SchedulingContext $context,
-        array $roundEvents
-    ): ?array {
-        if ($remaining === []) {
-            return $roundEvents;
-        }
-
-        $pivot = array_shift($remaining);
-
-        foreach ($remaining as $index => $opponent) {
-            if ($this->havePlayed($pivot, $opponent)) {
-                continue;
-            }
-
-            $event = $this->createEvent($pivot, $opponent);
-            if (!$this->accepts($pivot, $opponent, $event, $context)) {
-                continue;
-            }
-
-            $restMate = $matching->without($mate, $pivot, $opponent);
-            if ($restMate === null) {
-                // The rest cannot be paired off at all: the subtree holds
-                // no complete pairing (see the class comment).
-                continue;
-            }
-
-            $rest = $remaining;
-            unset($rest[$index]);
-
-            $pairings = $this->pairWithPruning(
-                array_values($rest),
-                $restMate,
-                $matching,
-                $this->constraints === null || $this->verdictsAreIndependentOfTheRound
-                    ? $context
-                    : $context->withEvents([$event]),
-                [...$roundEvents, $event]
-            );
-
-            if ($pairings !== null) {
-                return $pairings;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * The constraints' verdict on a candidate at a node of the pruned
-     * search.
-     *
-     * When verdicts are independent of the round, the verdict read once
-     * under the context of the recorded rounds is the verdict here. A
-     * verdict that could not be read then (the constraint threw) is asked
-     * for again, so that the failure reaches the caller as it does from the
-     * plain search.
-     */
-    private function accepts(int $pivot, int $opponent, Event $event, SchedulingContext $context): bool
+    private function pairAlongTheMatchings(array $remaining, array $mate, PerfectMatching $matching, array $open): array
     {
-        if ($this->constraints === null) {
-            return true;
-        }
+        $roundEvents = [];
 
-        if ($this->verdictsAreIndependentOfTheRound) {
-            $state = $this->edgeState($pivot, $opponent);
-            if ($state !== self::UNKNOWN) {
-                return $state === self::OPEN;
+        while ($remaining !== []) {
+            $pivot = array_shift($remaining);
+            $chosen = null;
+
+            foreach ($remaining as $index => $opponent) {
+                if (!isset($open[$pivot][$opponent])) {
+                    continue;
+                }
+
+                $restMate = $matching->without($mate, $pivot, $opponent);
+                if ($restMate !== null) {
+                    $chosen = $index;
+                    $mate = $restMate;
+                    break;
+                }
             }
-        }
 
-        return $this->constraints->isSatisfied($event, $context);
-    }
-
-    /**
-     * Whether two positions are joined in G: the pair has not played and,
-     * where the verdict is the same at every node, the constraints do not
-     * reject it.
-     */
-    private function mayBePaired(int $first, int $second): bool
-    {
-        return $this->edgeState($first, $second) !== self::CLOSED;
-    }
-
-    private function edgeState(int $first, int $second): int
-    {
-        // The pivot of a pair is always the earlier position, which decides
-        // the event built for it.
-        if ($first > $second) {
-            [$first, $second] = [$second, $first];
-        }
-
-        $state = $this->edges[$first][$second] ?? self::NOT_READ;
-        if ($state !== self::NOT_READ) {
-            return $state;
-        }
-
-        if ($this->havePlayed($first, $second)) {
-            $state = self::CLOSED;
-        } elseif ($this->constraints === null || !$this->verdictsAreIndependentOfTheRound) {
-            $state = self::OPEN;
-        } else {
-            try {
-                $state = $this->constraints->isSatisfied($this->createEvent($first, $second), $this->context)
-                    ? self::OPEN
-                    : self::CLOSED;
-            } catch (Throwable) {
-                // Not this method's failure to report: the pair counts as
-                // usable, and accepts() asks again if the search gets here.
-                $state = self::UNKNOWN;
+            if ($chosen === null) {
+                // The pivot's partner in $mate is such an opponent.
+                throw new InvariantViolationException('A perfectly matched set of participants has no first pairing');
             }
+
+            $roundEvents[] = $this->createEvent($pivot, $remaining[$chosen]);
+            unset($remaining[$chosen]);
+            $remaining = array_values($remaining);
         }
 
-        return $this->edges[$first][$second] = $state;
-    }
-
-    private function constraintsAreIndependentOfTheRound(): bool
-    {
-        if ($this->constraints === null) {
-            return true;
-        }
-
-        // A subclass may override isSatisfied() or getConstraints().
-        if ($this->constraints::class !== ConstraintSet::class) {
-            return false;
-        }
-
-        foreach ($this->constraints->getConstraints() as $constraint) {
-            if (!in_array($constraint::class, self::INDEPENDENT_OF_THE_ROUND, true)) {
-                return false;
-            }
-        }
-
-        return true;
+        return $roundEvents;
     }
 
     private function havePlayed(int $first, int $second): bool

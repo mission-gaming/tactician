@@ -37,8 +37,9 @@ class RoundRobinScheduler implements SchedulerInterface
 
     /**
      * True while generating a rotation attempt whose failure the retry loop
-     * will discard: such an attempt's exception is never seen by a caller,
-     * so analyzeFailure() does not build the report it would carry.
+     * will discard, under constraints that cannot tell whether they were
+     * asked (ConstraintPurity): such an attempt's exception is never seen by
+     * a caller, so analyzeFailure() does not build the report it would carry.
      */
     private bool $failureWillBeDiscarded = false;
 
@@ -232,6 +233,13 @@ class RoundRobinScheduler implements SchedulerInterface
      * costs far more than the attempt itself, so it is built once, for the
      * attempt whose exception is thrown, and not for the ones discarded here.
      *
+     * That holds for a constraint set ConstraintPurity knows. The analysis
+     * asks the constraints about pairings the attempt never tried, so a
+     * constraint of the caller's that keeps state, or that throws for a
+     * pairing it cannot judge, answers the next attempt differently once it
+     * has been through an analysis. For such a set every attempt is still
+     * analysed, as it always was, and the result is what it always was.
+     *
      * @param array<Participant> $participants
      * @return array<Event>
      * @throws IncompleteScheduleException When no ordering produces a complete schedule
@@ -246,6 +254,8 @@ class RoundRobinScheduler implements SchedulerInterface
             ? 1
             : min(count($participants), self::MAX_GENERATION_ATTEMPTS);
 
+        $discardedFailuresNeedNoAnalysis = ConstraintPurity::isKnown($this->constraints);
+
         for ($attempt = 0; $attempt < $maxAttempts; ++$attempt) {
             $ordered = $attempt === 0
                 ? $participants
@@ -254,7 +264,7 @@ class RoundRobinScheduler implements SchedulerInterface
             // Reset diagnostics so a successful retry does not report stale
             // violations, and a failure reports only the final attempt.
             $this->clearViolations();
-            $this->failureWillBeDiscarded = $attempt < $maxAttempts - 1;
+            $this->failureWillBeDiscarded = $discardedFailuresNeedNoAnalysis && $attempt < $maxAttempts - 1;
 
             try {
                 return $this->generateIntegratedSchedule($ordered, $strategy, $plan);
@@ -378,7 +388,8 @@ class RoundRobinScheduler implements SchedulerInterface
      * were actually generated. Only meaningful with constraints
      * configured; unconstrained generation cannot fail on pairings.
      *
-     * Null as well for a rotation attempt the retry loop goes on from: that
+     * Null as well for a rotation attempt the retry loop goes on from, when
+     * the constraints cannot tell (see generateScheduleWithRetries()): that
      * exception is caught and dropped, and nothing reads its report.
      *
      * @param array<Participant> $participants
