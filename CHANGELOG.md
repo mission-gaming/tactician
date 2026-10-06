@@ -96,6 +96,14 @@ heading **Output change (fix)**.
   Nothing changes for a field with no such ids: a key, a message and a
   schedule are byte for byte what they were, which includes the order of
   plain decimal ids (`9` before `10`).
+
+  One more case, for an event of three or more participants, which no
+  generator or engine produces: `StageState` found the event of a result by
+  a key that depended on the order the participants were named in, when PHP
+  does not order their ids consistently (`2` is below `10` as a number, `10`
+  below `1a` and `1a` below `2` as text). `withRoundPlayed()` and
+  `withAdditionalResults()` rejected a result that named the participants of
+  its event in another order. The key is now the same in every order.
 - `SwissPairingEngine` treats two participants as level when their ranking
   values differ only by the rounding of a float sum. With a scale floats
   cannot hold exactly, the same results added in another order give

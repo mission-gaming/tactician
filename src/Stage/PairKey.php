@@ -27,10 +27,12 @@ namespace MissionGaming\Tactician\Stage;
  *
  * The comparison is PHP's own for two ids, so it is total on every pair.
  * On three or more ids that mix numeric and non-numeric strings PHP's
- * comparison is not transitive (`'2' < '10' < '1a' < '2'`); for such a
- * list the order depends on the order the ids were given in, exactly as
- * `sort()` does. Every key the library builds from more than two ids is
- * built from one event's participants in the event's own order.
+ * comparison is not transitive (`'2' < '10' < '1a' < '2'`), and `sort()`
+ * gave such a list an order that depended on the order the ids were given
+ * in: one event named two ways had two keys. order() sorts a longer list
+ * from byte order first, so the same ids give the same key however they
+ * are listed. For a list PHP's comparison orders consistently, which is
+ * every list `sort()` gave one key, the key is still the one `sort()` gave.
  *
  * @internal Not public API: the format of a key carries no compatibility
  *           guarantee, and no key is stored or serialized.
@@ -75,6 +77,17 @@ final class PairKey
     public static function order(array $ids): array
     {
         $ordered = array_values($ids);
+
+        // PHP's comparison is not transitive over three or more ids (see
+        // the class comment), and a sort by a comparison that is not
+        // transitive gives a result that depends on where it starts. Start
+        // from byte order, which is total, so that the same ids give the
+        // same order however they were listed. Where the comparison is
+        // transitive there is one sorted order, and this changes nothing.
+        if (count($ordered) > 2) {
+            sort($ordered, SORT_STRING);
+        }
+
         usort($ordered, self::compare(...));
 
         return $ordered;

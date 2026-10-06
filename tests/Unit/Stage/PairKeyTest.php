@@ -18,6 +18,30 @@ function legacyPairKey(array $ids): string
     return implode('|', $ids);
 }
 
+/**
+ * Every order of a list.
+ *
+ * @param list<string> $items
+ * @return list<list<string>>
+ */
+function permutationsOf(array $items): array
+{
+    if (count($items) < 2) {
+        return [$items];
+    }
+
+    $permutations = [];
+    foreach ($items as $index => $item) {
+        $rest = $items;
+        unset($rest[$index]);
+        foreach (permutationsOf(array_values($rest)) as $permutation) {
+            $permutations[] = [$item, ...$permutation];
+        }
+    }
+
+    return $permutations;
+}
+
 describe('PairKey', function (): void {
     // The compatibility promise: for ids that need neither the tiebreak nor
     // the escape, the key is the one the library has always built. The
@@ -48,6 +72,9 @@ describe('PairKey', function (): void {
         $randomizer = new Randomizer(new Mt19937($seed));
         $letters = ['a', 'b', 'c', 'X', 'Y', 'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '_', ':', '.', ' ', 'é'];
 
+        $consistent = 0;
+        $repaired = 0;
+
         for ($case = 0; $case < 400; ++$case) {
             $ids = [];
             $size = $randomizer->getInt(2, 5);
@@ -71,9 +98,63 @@ describe('PairKey', function (): void {
                 }
             }
 
-            expect(PairKey::of(...$ids))->toBe(legacyPairKey($ids), 'ids: ' . json_encode($ids));
+            // PHP's comparison is not transitive over some lists of three
+            // or more ('2' < '10' < '1a' < '2'), and sort() gave such a list
+            // a key that depended on the order it was given in. Where
+            // sort() gave one key, the helper gives that key; where it gave
+            // several, the helper gives one.
+            $legacyKeys = [];
+            $keys = [];
+            foreach (permutationsOf($ids) as $permutation) {
+                $legacyKeys[legacyPairKey($permutation)] = true;
+                $keys[PairKey::of(...$permutation)] = true;
+            }
+
+            expect($keys)->toHaveCount(1, 'ids: ' . json_encode($ids));
+            if (count($legacyKeys) === 1) {
+                expect(array_key_first($keys))->toBe(array_key_first($legacyKeys), 'ids: ' . json_encode($ids));
+                ++$consistent;
+            } else {
+                ++$repaired;
+            }
         }
+
+        // Both kinds of list were drawn, so neither branch above is idle.
+        expect($consistent)->toBeGreaterThan(300)
+            ->and($repaired)->toBeGreaterThan(0);
     })->with([[1], [2], [3]]);
+
+    it('gives three ids one key in every order, where the comparison is not transitive', function (): void {
+        // '2' < '10' as numbers, '10' < '1a' and '1a' < '2' as text.
+        $keys = [];
+        foreach (permutationsOf(['2', '10', '1a']) as $permutation) {
+            $keys[PairKey::of(...$permutation)] = true;
+            expect(PairKey::order($permutation))->toBe(PairKey::order(['2', '10', '1a']));
+        }
+
+        expect(array_keys($keys))->toBe(['10|1a|2']);
+    });
+
+    it('keeps the order sort() gave a longer list that it ordered consistently', function (array $ids, string $expected): void {
+        foreach (permutationsOf($ids) as $permutation) {
+            expect(PairKey::of(...$permutation))->toBe($expected)
+                ->and(legacyPairKey($permutation))->toBe($expected);
+        }
+    })->with([
+        'decimals' => [['100', '9', '10', '2'], '2|9|10|100'],
+        'words' => [['c', 'a', 'b'], 'a|b|c'],
+        'prefixed numbers' => [['p10', 'p9', 'p100'], 'p10|p100|p9'],
+        'negative and positive decimals' => [['-1', '10', '9'], '-1|9|10'],
+    ]);
+
+    it('gives three ids one key when two of them are equal as numbers', function (): void {
+        $keys = [];
+        foreach (permutationsOf(['1', '01', '2']) as $permutation) {
+            $keys[PairKey::of(...$permutation)] = true;
+        }
+
+        expect(array_keys($keys))->toBe(['01|1|2']);
+    });
 
     it('orders plain decimal ids as numbers and reports the order', function (): void {
         expect(PairKey::order(['10', '9']))->toBe(['9', '10'])

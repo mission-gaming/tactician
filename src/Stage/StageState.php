@@ -155,7 +155,7 @@ final readonly class StageState
         $ids = array_map(fn(Participant $participant) => $participant->getId(), $event->getParticipants());
         $leg = $event->getMetadataValue('tie_leg');
 
-        return ($event->getRound()?->getNumber() ?? 0) . ':' . PairKey::of(...$ids) . ':' . (is_int($leg) ? $leg : 1);
+        return ($event->getRound()?->getNumber() ?? 0) . ':' . PairKey::of(...array_values($ids)) . ':' . (is_int($leg) ? $leg : 1);
     }
 
     /**

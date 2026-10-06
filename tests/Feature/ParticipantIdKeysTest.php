@@ -450,3 +450,64 @@ describe('pair keys a caller can read', function (): void {
         ]);
     });
 });
+
+// An Event takes two or more participants and keeps the array it was given,
+// keys included. Nothing in the library generates an event of three, but a
+// state records the events it is handed, and finds a result's event again by
+// its ids.
+describe('events of more than two participants, and events with keyed participants', function (): void {
+    // '2' < '10' as numbers, '10' < '1a' and '1a' < '2' as text: PHP's
+    // comparison goes round in a circle, and a sort by it gave one event
+    // three different keys, by the order its participants were named in.
+    it('finds the result of an event of three whichever order names its participants', function (array $order): void {
+        $byId = [];
+        foreach (keyedParticipants(['2', '10', '1a']) as $participant) {
+            $byId[$participant->getId()] = $participant;
+        }
+        $participants = array_values($byId);
+        $pairing = new RoundPairing(1, null, [new Event($participants, new Round(1))]);
+
+        $named = array_map(fn(string $id): Participant => $byId[$id], $order);
+        $result = new Result(new Event($named, new Round(1)), $named[0]);
+        $correction = new Result(new Event(array_reverse($named), new Round(1)), $named[1]);
+
+        $state = StageState::start($participants)->withRoundPlayed($pairing, [$result]);
+
+        expect($state->getResults())->toBe([$result])
+            ->and($state->withResultReplaced($correction)->getResults())->toBe([$correction]);
+    })->with([
+        'as recorded' => [['2', '10', '1a']],
+        'reversed' => [['1a', '10', '2']],
+        'rotated once' => [['10', '1a', '2']],
+        'rotated twice' => [['1a', '2', '10']],
+        'two swapped' => [['10', '2', '1a']],
+        'the other two swapped' => [['2', '1a', '10']],
+    ]);
+
+    it('still tells an event of three from an event of two of its participants', function (): void {
+        [$a, $b, $c] = $participants = keyedParticipants(['a', 'b', 'c']);
+        $pairing = new RoundPairing(1, null, [new Event([$a, $b, $c], new Round(1))]);
+
+        StageState::start($participants)
+            ->withRoundPlayed($pairing, [new Result(new Event([$a, $b], new Round(1)), $a)]);
+    })->throws(InvalidConfigurationException::class, 'Result references an event that is not part of the pairing being recorded');
+
+    // The ids reach the key helper through an argument list, where PHP
+    // refuses a keyed entry before a numbered one.
+    it('records an event whose participants are keyed by role', function (array $keys): void {
+        [$home, $away] = $participants = keyedParticipants(['01', '1']);
+        $event = new Event(array_combine($keys, [$home, $away]), new Round(1));
+        $result = new Result(new Event([$away, $home], new Round(1)), $away);
+
+        $state = StageState::start($participants)
+            ->withRoundPlayed(new RoundPairing(1, null, [$event]), [$result]);
+
+        expect($state->getResults())->toBe([$result]);
+    })->with([
+        'two names' => [['home', 'away']],
+        'a name before a number' => [['home', 0]],
+        'a number before a name' => [[0, 'away']],
+        'numbers that do not start at zero' => [[5, 2]],
+        'the name of the parameter of the helper' => [['ids', 'id']],
+    ]);
+});
