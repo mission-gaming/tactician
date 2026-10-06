@@ -1030,15 +1030,24 @@ it('displays nothing when another script includes the example', function (): voi
 });
 
 /**
- * Start PHP's built-in web server on a free local port, hand its address to
- * the callback, and stop it afterwards whatever happens.
+ * Start PHP's built-in web server on a free local port, hand the callback a
+ * function that requests a path from it, and stop it afterwards whatever
+ * happens.
  *
- * @param Closure(string): void $requests Given the server's base address, without a trailing slash
+ * The function the callback is given never fails by itself. It returns the
+ * status line (null when no response came back), the body, and a report of
+ * the exchange to use as an assertion message: the address, the status line
+ * or the error, the size of the body, whether the server is still running
+ * or how it ended, and the end of what the server logged. A failure on CI
+ * must be diagnosable from that report alone.
+ *
+ * @param Closure(Closure(string): array{status: ?string, body: string, report: string}): void $requests
+ * @param array<string, string> $environment Environment variables for the server, on top of the inherited ones
  *
  * @throws PHPUnit\Framework\Exception
  * @throws PHPUnit\Framework\SkippedWithMessageException When no server can be started here
  */
-function withExampleServer(string $workingDirectory, string $documentRoot, Closure $requests): void
+function withExampleServer(string $workingDirectory, string $documentRoot, Closure $requests, array $environment = []): void
 {
     // Ask the system for a free port, then release it for the server
     $probe = withoutWarnings(static fn () => stream_socket_server('tcp://127.0.0.1:0'));
@@ -1052,12 +1061,88 @@ function withExampleServer(string $workingDirectory, string $documentRoot, Closu
     Assert::assertIsString($log);
 
     $server = proc_open(
-        [PHP_BINARY, '-d', 'error_reporting=-1', '-d', 'display_errors=1', '-S', $address, '-t', $documentRoot],
+        [
+            PHP_BINARY,
+            '-d', 'error_reporting=-1',
+            '-d', 'display_errors=1',
+            // The JIT is switched off for this server. OPcache does not run on
+            // the command line unless it is asked to, but the built-in server
+            // is another SAPI: there it runs, with whatever JIT the machine
+            // configures, and the PHP setup of the CI jobs turns the tracing
+            // JIT on. The tracing JIT of PHP 8.3 (seen on 8.3.35, on x86-64 and
+            // on ARM64) crashes the server process once the code the examples
+            // share has run often enough to be compiled: served in order, the
+            // fifteenth page kills it, on some runs and not on others. The
+            // crash is in the engine. It needs neither this harness nor a
+            // particular example, and the same pages are served complete
+            // without the JIT. What is tested here is the page each example
+            // serves, so the server gets the engine every PHP has by default.
+            '-d', 'opcache.jit=disable',
+            '-S', $address,
+            '-t', $documentRoot,
+        ],
         [0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'], 1 => ['file', $log, 'a'], 2 => ['file', $log, 'a']],
         $pipes,
-        $workingDirectory
+        $workingDirectory,
+        $environment === [] ? null : array_merge(getenv(), $environment)
     );
     Assert::assertIsResource($server, 'Could not start the built-in web server');
+
+    // How the server ended, once it has: PHP names the signal only the first time it is asked
+    $ended = null;
+
+    $request = static function (string $path) use ($address, $log, $server, &$ended): array {
+        $url = 'http://' . $address . $path;
+        $error = null;
+
+        set_error_handler(static function (int $level, string $message) use (&$error): bool {
+            $error = $message;
+
+            return true;
+        });
+        try {
+            // ignore_errors: the body of a 404 or a 500 is part of the evidence
+            $stream = fopen($url, 'r', false, stream_context_create(['http' => ['ignore_errors' => true, 'timeout' => 30.0]]));
+            $headers = [];
+            $body = '';
+            if ($stream !== false) {
+                $headers = stream_get_meta_data($stream)['wrapper_data'] ?? [];
+                $body = (string) stream_get_contents($stream);
+                fclose($stream);
+            }
+        } finally {
+            restore_error_handler();
+        }
+
+        $status = is_array($headers) && is_string($headers[0] ?? null) ? $headers[0] : null;
+
+        // A server that died is not reaped at once. Without a response, give
+        // it a moment, so that the report can say how it ended
+        $patience = microtime(true) + 3.0;
+        while ($ended === null) {
+            $state = proc_get_status($server);
+            if (!$state['running']) {
+                $ended = $state['signaled'] ? 'stopped by signal ' . $state['termsig'] : 'exited with code ' . $state['exitcode'];
+            }
+            if ($status !== null || microtime(true) > $patience) {
+                break;
+            }
+            usleep(20_000);
+        }
+
+        $logged = array_slice(file($log, FILE_IGNORE_NEW_LINES) ?: [], -15);
+
+        return [
+            'status' => $status,
+            'body' => $body,
+            'report' => "GET {$url}\n"
+                . '  status line: ' . ($status ?? '(no response)') . "\n"
+                . '  error: ' . ($error ?? '(none)') . "\n"
+                . '  body: ' . strlen($body) . " bytes\n"
+                . '  server: ' . ($ended ?? 'running') . "\n"
+                . "  end of the server log:\n    " . implode("\n    ", $logged === [] ? ['(empty)'] : $logged) . "\n",
+        ];
+    };
 
     try {
         // The server needs a moment before it accepts connections
@@ -1077,11 +1162,74 @@ function withExampleServer(string $workingDirectory, string $documentRoot, Closu
             usleep(20_000);
         }
 
-        $requests('http://' . $address);
+        $requests($request);
     } finally {
         proc_terminate($server);
         proc_close($server);
         unlink($log);
+    }
+}
+
+/**
+ * Serve throwaway scripts from a temporary directory with the same server
+ * the examples get, so that the harness itself can be tested.
+ *
+ * @param array<string, string> $scripts Source by file name
+ * @param Closure(Closure(string): array{status: ?string, body: string, report: string}): void $requests
+ * @param array<string, string> $environment
+ *
+ * @throws Random\RandomException When the system has no source of randomness to name the directory with
+ * @throws PHPUnit\Framework\Exception
+ * @throws PHPUnit\Framework\SkippedWithMessageException When no server can be started here
+ */
+function withThrowawayServer(array $scripts, Closure $requests, array $environment = []): void
+{
+    $directory = sys_get_temp_dir() . '/example-server-' . bin2hex(random_bytes(6));
+    Assert::assertTrue(mkdir($directory), "Could not create {$directory}");
+
+    try {
+        foreach ($scripts as $name => $source) {
+            file_put_contents($directory . '/' . $name, $source);
+        }
+
+        withExampleServer($directory, $directory, $requests, $environment);
+    } finally {
+        foreach (glob($directory . '/*') ?: [] as $file) {
+            unlink($file);
+        }
+        rmdir($directory);
+    }
+}
+
+/**
+ * Assert that what the server answered is the complete page of an example:
+ * the whole document, with its navigation, its source and every result.
+ *
+ * @param array{status: ?string, body: string, report: string} $response
+ *
+ * @throws PHPUnit\Framework\Exception
+ * @throws PHPUnit\Framework\ExpectationFailedException When it is anything less, with the report of the request
+ */
+function assertExamplePage(array $response, string $example): void
+{
+    $report = "\n" . $response['report'];
+    $page = $response['body'];
+
+    Assert::assertSame('HTTP/1.1 200 OK', $response['status'], "The server did not answer the request for {$example}.php with a page." . $report);
+    Assert::assertStringStartsWith('<!DOCTYPE html>', $page, "The page of {$example}.php is blank or does not start as a document." . $report);
+    Assert::assertStringEndsWith("</html>\n", $page, "The page of {$example}.php is cut short." . $report);
+
+    expect($page)->toContain('<a href="index.php">All examples</a>')
+        ->toContain("<code>php examples/{$example}.php</code>")
+        // The page lists its own source, escaped
+        ->toContain('<h2>The code that produced this page</h2><pre class="source"><code>&lt;?php')
+        ->toContain('return Example::present(__FILE__, ');
+
+    foreach (['Warning', 'Notice', 'Deprecated', 'Fatal error'] as $marker) {
+        expect($page)->not->toContain("<b>{$marker}</b>");
+    }
+    foreach (array_keys(ExampleResults::of($example)) as $name) {
+        expect($page)->toContain('<h2>' . Example::escape($name) . '</h2>');
     }
 }
 
@@ -1090,39 +1238,163 @@ function withExampleServer(string $workingDirectory, string $documentRoot, Closu
 it('serves every example as a page under the built-in web server', function (string $workingDirectory, string $documentRoot): void {
     $root = dirname(__DIR__, 2);
 
-    withExampleServer($root . $workingDirectory, $documentRoot === 'absolute' ? "{$root}/examples" : $documentRoot, function (string $server): void {
-        $index = (string) file_get_contents($server . '/');
-        expect($index)->toStartWith('<!DOCTYPE html>')
+    withExampleServer($root . $workingDirectory, $documentRoot === 'absolute' ? "{$root}/examples" : $documentRoot, function (Closure $request): void {
+        $index = $request('/');
+        expect($index['status'])->toBe('HTTP/1.1 200 OK', $index['report'])
+            ->and($index['body'])->toStartWith('<!DOCTYPE html>', $index['report'])
             ->toContain('<title>Tactician examples - Tactician examples</title>');
 
         foreach (ExampleResults::names() as $example) {
-            expect($index)->toContain('<a href="' . $example . '.php">');
+            expect($index['body'])->toContain('<a href="' . $example . '.php">');
 
-            $page = (string) file_get_contents("{$server}/{$example}.php");
-            expect($page)->toStartWith('<!DOCTYPE html>')
-                ->toEndWith("</html>\n")
-                ->toContain('<a href="index.php">All examples</a>')
-                ->toContain("<code>php examples/{$example}.php</code>")
-                // The page lists its own source, escaped
-                ->toContain('<h2>The code that produced this page</h2><pre class="source"><code>&lt;?php')
-                ->toContain('return Example::present(__FILE__, ');
-
-            foreach (['Warning', 'Notice', 'Deprecated', 'Fatal error'] as $marker) {
-                expect($page)->not->toContain("<b>{$marker}</b>");
-            }
-            foreach (array_keys(ExampleResults::of($example)) as $name) {
-                expect($page)->toContain('<h2>' . Example::escape($name) . '</h2>');
-            }
+            assertExamplePage($request("/{$example}.php"), $example);
         }
 
         // What the examples share is not a page: requested by itself it shows nothing
-        expect((string) file_get_contents($server . '/support/Example.php'))->toBe('');
+        $shared = $request('/support/Example.php');
+        expect($shared['status'])->toBe('HTTP/1.1 200 OK', $shared['report'])
+            ->and($shared['body'])->toBe('', $shared['report']);
     });
 })->with([
     'started in the project root' => ['', 'examples'],
     'started in the examples directory' => ['/examples', '.'],
     'started elsewhere, with an absolute document root' => ['/tests', 'absolute'],
 ]);
+
+/*
+ * The server test is only worth what its harness is worth, so the harness is
+ * tested as well: that a page which is blank, cut short or missing fails,
+ * that the failure says what the server did, and that the server runs
+ * without the JIT.
+ */
+it('accepts the complete page of an example', function (): void {
+    $example = '01-basic-round-robin';
+    $script = ExampleResults::directory() . "/{$example}.php";
+    $page = Example::renderHtml('Title', 'Summary', ExampleResults::of($example), "{$example}.php", Example::siblings($script), (string) file_get_contents($script));
+
+    assertExamplePage(['status' => 'HTTP/1.1 200 OK', 'body' => $page, 'report' => 'the report'], $example);
+});
+
+it('fails on a page that is blank, cut short or missing, with the report of the request', function (?string $status, Closure $body, string $expected): void {
+    $example = '01-basic-round-robin';
+    $script = ExampleResults::directory() . "/{$example}.php";
+    $page = Example::renderHtml('Title', 'Summary', ExampleResults::of($example), "{$example}.php", Example::siblings($script), (string) file_get_contents($script));
+
+    $failure = null;
+
+    try {
+        assertExamplePage(['status' => $status, 'body' => $body($page), 'report' => "GET http://127.0.0.1:1/{$example}.php\n  end of the server log:\n    the last line"], $example);
+    } catch (PHPUnit\Framework\ExpectationFailedException $caught) {
+        $failure = $caught->getMessage();
+    }
+
+    expect($failure)->toBeString()
+        ->toContain($expected)
+        ->toContain("GET http://127.0.0.1:1/{$example}.php")
+        ->toContain('the last line');
+})->with([
+    'no response at all' => [null, static fn (string $page): string => '', 'did not answer the request for 01-basic-round-robin.php with a page'],
+    'an error status' => ['HTTP/1.1 500 Internal Server Error', static fn (string $page): string => $page, 'did not answer the request for 01-basic-round-robin.php with a page'],
+    'a blank page' => ['HTTP/1.1 200 OK', static fn (string $page): string => '', 'is blank or does not start as a document'],
+    'a page cut short' => ['HTTP/1.1 200 OK', static fn (string $page): string => substr($page, 0, intdiv(strlen($page), 2)), 'is cut short'],
+    'a page without its last line' => ['HTTP/1.1 200 OK', static fn (string $page): string => substr($page, 0, -8), 'is cut short'],
+]);
+
+it('reports the address, the status line and the server log of every request', function (): void {
+    withThrowawayServer([
+        'page.php' => '<?php echo "hello";',
+        'blank.php' => '<?php',
+        'broken.php' => '<?php http_response_code(500); echo "it broke";',
+    ], function (Closure $request): void {
+        $page = $request('/page.php');
+        expect($page['status'])->toBe('HTTP/1.1 200 OK')
+            ->and($page['body'])->toBe('hello')
+            ->and($page['report'])->toMatch('~^GET http://127\.0\.0\.1:\d+/page\.php\n~')
+            ->toContain("  status line: HTTP/1.1 200 OK\n")
+            ->toContain("  error: (none)\n")
+            ->toContain("  body: 5 bytes\n")
+            ->toContain("  server: running\n")
+            ->toContain('[200]: GET /page.php');
+
+        // A blank page is an answer like any other: it is the caller that decides whether it may be blank
+        $blank = $request('/blank.php');
+        expect($blank['status'])->toBe('HTTP/1.1 200 OK')
+            ->and($blank['body'])->toBe('')
+            ->and($blank['report'])->toContain("  body: 0 bytes\n")
+            ->toContain('[200]: GET /blank.php');
+
+        // The body of an error is kept, not swallowed with a warning
+        $broken = $request('/broken.php');
+        expect($broken['status'])->toBe('HTTP/1.1 500 Internal Server Error')
+            ->and($broken['body'])->toBe('it broke')
+            ->and($broken['report'])->toContain('[500]: GET /broken.php');
+
+        $missing = $request('/missing.php');
+        expect($missing['status'])->toBe('HTTP/1.1 404 Not Found')
+            ->and($missing['report'])->toContain('[404]: GET /missing.php');
+    });
+});
+
+// What the intermittent failure on PHP 8.3 looked like from outside: the
+// server process died in the middle of a request. The report must say so
+it('reports a server that died while answering, and how it ended', function (): void {
+    if (!function_exists('posix_kill')) {
+        // The harness limitation: without the posix extension (Windows) a script cannot kill its own server
+        Assert::markTestSkipped('Needs the posix extension for a script to kill the server that runs it.');
+    }
+
+    withThrowawayServer(['dies.php' => '<?php posix_kill(getmypid(), 9);'], function (Closure $request): void {
+        $died = $request('/dies.php');
+        expect($died['status'])->toBeNull()
+            ->and($died['body'])->toBe('')
+            ->and($died['report'])->toContain("  status line: (no response)\n")
+            ->toContain('/dies.php): Failed to open stream')
+            ->toContain("  server: stopped by signal 9\n")
+            ->toContain('Accepted');
+
+        // It stays dead, and the report of the next request still says how it ended
+        $after = $request('/dies.php');
+        expect($after['status'])->toBeNull()
+            ->and($after['report'])->toContain("  server: stopped by signal 9\n");
+    });
+});
+
+it('runs the example server without the JIT, even where the configuration of the machine turns it on', function (): void {
+    $configuration = sys_get_temp_dir() . '/example-server-ini-' . bin2hex(random_bytes(6));
+    Assert::assertTrue(mkdir($configuration), "Could not create {$configuration}");
+
+    try {
+        // What the PHP setup of the CI jobs configures, in a directory PHP scans after its own
+        file_put_contents($configuration . '/jit.ini', "opcache.enable=1\nopcache.jit=tracing\nopcache.jit_buffer_size=64M\n");
+
+        withThrowawayServer(
+            ['jit.php' => '<?php $status = function_exists("opcache_get_status") ? opcache_get_status(false) : false; echo json_encode(['
+                . '"opcache" => is_array($status), "asked for" => get_cfg_var("opcache.jit_buffer_size"), '
+                . '"on" => is_array($status) && ($status["jit"]["on"] ?? false)]);'],
+            function (Closure $request): void {
+                $answer = $request('/jit.php');
+                expect($answer['status'])->toBe('HTTP/1.1 200 OK', $answer['report']);
+
+                $jit = json_decode($answer['body'], true);
+                Assert::assertIsArray($jit, $answer['report']);
+
+                if ($jit['opcache'] !== true) {
+                    // The harness limitation: a PHP without OPcache has no JIT to keep out
+                    Assert::markTestSkipped('OPcache is not loaded in the built-in web server here.');
+                }
+
+                // The server did read the configuration that asks for the JIT, and runs without it all the same
+                expect($jit['asked for'])->toBe('64M')
+                    ->and($jit['on'])->toBeFalse();
+            },
+            // A leading separator keeps the directories PHP scans by default
+            ['PHP_INI_SCAN_DIR' => (string) getenv('PHP_INI_SCAN_DIR') . PATH_SEPARATOR . $configuration]
+        );
+    } finally {
+        unlink($configuration . '/jit.ini');
+        rmdir($configuration);
+    }
+});
 
 it('draws every example as a page without losing a result', function (string $example): void {
     $results = ExampleResults::of($example);
