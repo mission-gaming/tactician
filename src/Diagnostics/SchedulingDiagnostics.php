@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
+use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\PairwisePlan;
 use MissionGaming\Tactician\Stage\StagePlan;
 
@@ -164,9 +165,7 @@ class SchedulingDiagnostics
             $round = $event->getRound()?->getNumber();
             $leg = $round === null ? 1 : min($legs, intdiv($round - 1, $roundsPerLeg) + 1);
 
-            $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
-            sort($ids);
-            $key = implode('|', $ids);
+            $key = PairKey::of($eventParticipants[0]->getId(), $eventParticipants[1]->getId());
             $legMeetingCounts[$key][$leg] = ($legMeetingCounts[$key][$leg] ?? 0) + 1;
         }
 
@@ -177,9 +176,7 @@ class SchedulingDiagnostics
                     continue;
                 }
 
-                $ids = [$participants[$i]->getId(), $participants[$j]->getId()];
-                sort($ids);
-                $key = implode('|', $ids);
+                $key = PairKey::of($participants[$i]->getId(), $participants[$j]->getId());
 
                 for ($leg = 1; $leg <= $legs; ++$leg) {
                     if (($legMeetingCounts[$key][$leg] ?? 0) === 0) {
@@ -384,9 +381,8 @@ class SchedulingDiagnostics
             if (count($eventParticipants) !== 2) {
                 continue;
             }
-            $ids = [$eventParticipants[0]->getId(), $eventParticipants[1]->getId()];
-            sort($ids);
-            $met[implode('|', $ids)] = ($met[implode('|', $ids)] ?? 0) + 1;
+            $key = PairKey::of($eventParticipants[0]->getId(), $eventParticipants[1]->getId());
+            $met[$key] = ($met[$key] ?? 0) + 1;
         }
 
         $missing = [];
@@ -398,9 +394,8 @@ class SchedulingDiagnostics
                     continue;
                 }
 
-                $ids = [$participants[$i]->getId(), $participants[$j]->getId()];
-                sort($ids);
-                if (($met[implode('|', $ids)] ?? 0) < $expected) {
+                $key = PairKey::of($participants[$i]->getId(), $participants[$j]->getId());
+                if (($met[$key] ?? 0) < $expected) {
                     $missing[] = [$participants[$i], $participants[$j]];
                 }
             }

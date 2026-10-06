@@ -8,6 +8,7 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 
 /**
@@ -233,11 +234,13 @@ final class BacktrackingRoundRobinGenerator
         return $this->constraints->isSatisfied($event, $context);
     }
 
+    /**
+     * The key of a pairing, or of a participant's bye when the other seat
+     * is the bye seat. A key of one id has no separator, so a bye never
+     * shares a key with a pairing, whatever the ids are.
+     */
     private function pairKey(Participant $a, ?Participant $b): string
     {
-        $ids = [$a->getId(), $b?->getId() ?? "\0bye"];
-        sort($ids);
-
-        return implode('|', $ids);
+        return $b === null ? PairKey::of($a->getId()) : PairKey::of($a->getId(), $b->getId());
     }
 }

@@ -11,6 +11,7 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
+use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -462,9 +463,6 @@ readonly class SwissPairingEngine implements StageEngineInterface
 
     private function pairingKey(Participant $firstParticipant, Participant $secondParticipant): string
     {
-        $ids = [$firstParticipant->getId(), $secondParticipant->getId()];
-        sort($ids);
-
-        return implode('|', $ids);
+        return PairKey::of($firstParticipant->getId(), $secondParticipant->getId());
     }
 }

@@ -199,7 +199,7 @@ final readonly class RoundRobinPlan implements PairwisePlan
             $participantLabels[$participant->getId()] = $participant->getLabel();
         }
 
-        $expectedPairings = $this->buildExpectedPairingCounts();
+        $expectedPairings = $this->buildExpectedPairings();
         $actualPairings = [];
 
         foreach ($schedule->getEvents() as $index => $event) {
@@ -233,10 +233,10 @@ final readonly class RoundRobinPlan implements PairwisePlan
             $actualPairings[$pairingKey] = ($actualPairings[$pairingKey] ?? 0) + 1;
         }
 
-        foreach ($expectedPairings as $pairingKey => $expectedCount) {
+        foreach ($expectedPairings as $pairingKey => [$firstId, $secondId]) {
             $actualCount = $actualPairings[$pairingKey] ?? 0;
+            $expectedCount = $this->legs;
             if ($actualCount !== $expectedCount) {
-                [$firstId, $secondId] = explode('|', $pairingKey);
                 $violations[] = sprintf(
                     'Pairing %s vs %s appears %d time(s), expected %d.',
                     $participantLabels[$firstId],
@@ -251,19 +251,24 @@ final readonly class RoundRobinPlan implements PairwisePlan
     }
 
     /**
-     * @return array<string, int>
+     * Every pairing the plan expects, each meeting `legs` times: the two
+     * ids in key order, under the pairing's key. The ids are kept beside
+     * the key because a key is not meant to be read back.
+     *
+     * @return array<string, array{0: string, 1: string}>
      */
-    private function buildExpectedPairingCounts(): array
+    private function buildExpectedPairings(): array
     {
         $expectedPairings = [];
         $participantCount = count($this->participants);
 
         for ($i = 0; $i < $participantCount - 1; ++$i) {
             for ($j = $i + 1; $j < $participantCount; ++$j) {
-                $expectedPairings[$this->pairingKey(
+                [$firstId, $secondId] = PairKey::order([
                     $this->participants[$i]->getId(),
-                    $this->participants[$j]->getId()
-                )] = $this->legs;
+                    $this->participants[$j]->getId(),
+                ]);
+                $expectedPairings[PairKey::join([$firstId, $secondId])] = [$firstId, $secondId];
             }
         }
 
@@ -272,9 +277,6 @@ final readonly class RoundRobinPlan implements PairwisePlan
 
     private function pairingKey(string $firstId, string $secondId): string
     {
-        $ids = [$firstId, $secondId];
-        sort($ids);
-
-        return implode('|', $ids);
+        return PairKey::of($firstId, $secondId);
     }
 }
