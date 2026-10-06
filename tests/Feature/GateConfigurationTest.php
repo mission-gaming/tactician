@@ -45,6 +45,36 @@ function gateNeonList(string $neon, string $key): array
 }
 
 /**
+ * The files a NEON file includes, comments left out.
+ *
+ * @return list<string>
+ */
+function gateNeonIncludes(string $neon): array
+{
+    if (preg_match('/^includes:[ \t]*\n((?:\t[^\n]*\n|\n)*)/m', $neon, $match) !== 1) {
+        return [];
+    }
+
+    preg_match_all('/^\t- (\S+)[ \t]*$/m', $match[1], $entries);
+
+    return $entries[1];
+}
+
+/**
+ * How many entries the `ignoreErrors` list of a NEON file holds, in whatever
+ * form an entry is written (a pattern on one line, or a block with `message`,
+ * `messages`, `rawMessage` or `identifier`).
+ */
+function gateNeonIgnoredErrors(string $neon): int
+{
+    if (preg_match('/^\tignoreErrors:[ \t]*\n((?:\t\t[^\n]*(?:\n|$)|\n)*)/m', $neon, $match) !== 1) {
+        return 0;
+    }
+
+    return (int) preg_match_all('/^\t\t-/m', $match[1]);
+}
+
+/**
  * How many findings a PHPStan baseline file holds.
  */
 function gateBaselineSize(string $neon): int
@@ -93,13 +123,69 @@ describe('PHPStan configuration', function () use ($root): void {
 
         expect($common)->toContain("\t- vendor/phpstan/phpstan-strict-rules/rules.neon\n")
             ->and($common)->toContain("\t- vendor/phpstan/phpstan-deprecation-rules/rules.neon\n")
-            // No rule of the strict set is switched off.
-            ->and($common)->not->toContain('strictRules:')
             ->and($composer['require-dev'])->toHaveKeys(['phpstan/phpstan-strict-rules', 'phpstan/phpstan-deprecation-rules']);
 
         foreach (['phpstan.neon', 'phpstan-tests.neon'] as $file) {
             expect((string) file_get_contents($root . '/' . $file))->toContain("\t- phpstan-common.neon\n");
         }
+    });
+
+    it('switches off no rule of the strict set', function (string $file) use ($root): void {
+        // A `strictRules` parameter is how a rule of the set is disabled, and
+        // any of the three files can carry it: the two configurations
+        // override what the shared file sets.
+        expect((string) file_get_contents($root . '/' . $file))->not->toContain('strictRules');
+    })->with(['phpstan-common.neon', 'phpstan.neon', 'phpstan-tests.neon']);
+
+    it('includes the shared rules and one baseline, and nothing else', function (string $file, array $includes) use ($root): void {
+        // Another included file could lower the level, switch a rule off or
+        // ignore errors without any of the files read here changing.
+        expect(gateNeonIncludes((string) file_get_contents($root . '/' . $file)))->toBe($includes);
+    })->with([
+        'phpstan.neon' => ['phpstan.neon', ['phpstan-common.neon', 'phpstan-baseline.neon']],
+        'phpstan-tests.neon' => ['phpstan-tests.neon', ['phpstan-common.neon', 'phpstan-tests-baseline.neon']],
+        'phpstan-common.neon' => ['phpstan-common.neon', [
+            'vendor/phpstan/phpstan-deprecation-rules/rules.neon',
+            'vendor/phpstan/phpstan-strict-rules/rules.neon',
+        ]],
+    ]);
+
+    it('leaves no file of src/ out of the analysis', function () use ($root): void {
+        // Excluding a file is the other way to stop seeing its findings.
+        expect((string) file_get_contents($root . '/phpstan.neon'))->not->toContain('excludePaths')
+            ->and((string) file_get_contents($root . '/phpstan-common.neon'))->not->toContain('excludePaths');
+    });
+
+    it('silences no finding with a comment under src/', function () use ($root): void {
+        // PHPStan's ignore comment on a line does what an ignoreErrors entry
+        // does, from inside the code. The tests use it twice, to pass a value
+        // of the wrong type on purpose; the library has no such case. (The
+        // tag is not spelt out here: PHPStan would read this comment as one.)
+        $silenced = [];
+
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/src', FilesystemIterator::SKIP_DOTS)) as $file) {
+            Assert::assertInstanceOf(SplFileInfo::class, $file);
+
+            if ($file->getExtension() === 'php' && str_contains((string) file_get_contents($file->getPathname()), '@phpstan-ignore')) {
+                $silenced[] = substr($file->getPathname(), strlen($root) + 1);
+            }
+        }
+
+        expect($silenced)->toBe([]);
+    });
+
+    it('keeps a result cache for each configuration', function () use ($root): void {
+        // With the one default file each run of `composer phpstan` discards
+        // the cache the other configuration wrote, and both analyse every
+        // file every time. Both files are in PHPStan's temporary directory,
+        // outside the repository: PHP-CS-Fixer formats every PHP file it
+        // finds under the root, and a result cache is one.
+        $library = gateNeonParameter((string) file_get_contents($root . '/phpstan.neon'), 'resultCachePath');
+        $tests = gateNeonParameter((string) file_get_contents($root . '/phpstan-tests.neon'), 'resultCachePath');
+
+        expect($library)->toStartWith('%tmpDir%/')
+            ->and($tests)->toStartWith('%tmpDir%/')
+            ->and($tests)->not->toBe($library);
     });
 
     it('ignores no error outside the baselines, except the two Pest patterns', function () use ($root): void {
@@ -108,9 +194,14 @@ describe('PHPStan configuration', function () use ($root): void {
         expect((string) file_get_contents($root . '/phpstan.neon'))->not->toContain('ignoreErrors')
             ->and((string) file_get_contents($root . '/phpstan-common.neon'))->not->toContain('ignoreErrors');
 
-        preg_match_all('/^\t\t\tmessage: (.*)$/m', (string) file_get_contents($root . '/phpstan-tests.neon'), $messages);
+        $tests = (string) file_get_contents($root . '/phpstan-tests.neon');
 
-        expect($messages[1])->toHaveCount(2);
+        preg_match_all('/^\t\t\tmessage: (.*)$/m', $tests, $messages);
+
+        // Entries are counted as well as messages: an entry can name an
+        // identifier or a raw message and have no `message` line at all.
+        expect(gateNeonIgnoredErrors($tests))->toBe(2)
+            ->and($messages[1])->toHaveCount(2);
 
         foreach ($messages[1] as $message) {
             expect($message)->toContain('Pest\\\\PendingCalls\\\\TestCall');
@@ -143,6 +234,13 @@ describe('Rector configuration', function () use ($root): void {
         // Without a rule set Rector changes nothing and reports success.
         expect((string) file_get_contents($root . '/rector.php'))
             ->toContain("->withPhpSets(php{$floor[1]}{$floor[2]}: true)");
+    });
+
+    it('enables the dead code and early return sets, for src/ and tests/', function () use ($root): void {
+        $configuration = (string) file_get_contents($root . '/rector.php');
+
+        expect($configuration)->toContain('->withPreparedSets(deadCode: true, earlyReturn: true)')
+            ->and($configuration)->toContain("->withPaths([\n        __DIR__ . '/src',\n        __DIR__ . '/tests',\n    ])");
     });
 
     it('gives a reason for every rule it skips', function () use ($root): void {
@@ -206,7 +304,33 @@ describe('PHPUnit configuration', function () use ($root): void {
         'failOnDeprecation',
         'failOnRisky',
         'failOnPhpunitDeprecation',
+        // The notice that a mock object has no expectation is one of these.
+        'failOnPhpunitNotice',
+        'failOnPhpunitWarning',
+        // Output printed by a test makes it risky, so this is what lets
+        // failOnRisky catch a stray echo.
+        'beStrictAboutOutputDuringTests',
     ]);
+
+    it('is valid against the schema of the installed PHPUnit', function () use ($root): void {
+        // PHPUnit does not stop for a configuration that fails validation:
+        // it warns and carries on, so a misspelt failOn* attribute is a flag
+        // that is quietly off.
+        $document = new DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+
+        try {
+            $loaded = $document->load($root . '/phpunit.xml');
+            $valid = $loaded && $document->schemaValidate($root . '/vendor/phpunit/phpunit/phpunit.xsd');
+            $errors = array_map(fn(LibXMLError $error): string => trim($error->message), libxml_get_errors());
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+
+        expect($errors)->toBe([])
+            ->and($valid)->toBeTrue();
+    });
 
     it('runs the tests in random order', function () use ($root): void {
         $configuration = simplexml_load_file($root . '/phpunit.xml');
