@@ -54,7 +54,7 @@ anything else that competes.
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
-| **Engine fingerprint** | An optional stamp on a stage state naming the engine that pairs it (`StageState::withEngineFingerprint()`): the format and the options that shape its rounds, as each engine's `getFingerprint()` gives them. An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
+| **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format and for the options that shape which rounds the format has or how they are paired, and an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
 | **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. Level means equal; two `WinDrawLossRanking` totals that differ only by the rounding of a float sum are level too, so the same results added in another order do not split a group. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary — those are consumer interpretations of the outcome. |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
@@ -764,7 +764,7 @@ A stage state does not say which engine paired its rounds, and an engine
 replays whatever it is handed. A Swiss state restored into a bracket
 engine, or a two-legged bracket into an engine built for one leg, is read
 as that engine's own history. Stamp the state with the engine's
-**fingerprint** and every other engine refuses it:
+**fingerprint** and every engine with another fingerprint refuses it:
 
 ```php
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
@@ -773,8 +773,6 @@ $engine = new SwissPairingEngine(plannedRounds: 5);
 
 $stamped = StageState::start($participants)
     ->withEngineFingerprint($engine->getFingerprint());
-
-echo $stamped->getEngineFingerprint() . "\n"; // swiss:planned-rounds=5
 
 // The stamp is stored with the state and comes back with it
 $restored = StageState::fromJson($stamped->toJson());
@@ -785,7 +783,8 @@ try {
     (new SingleEliminationEngine())->pairNextRound($restored);
     echo "Paired as a bracket\n";
 } catch (InvalidConfigurationException $e) {
-    echo "Refused: recorded by {$e->getContext()['recorded']}\n"; // Refused: recorded by swiss:planned-rounds=5
+    echo 'Refused: ' . implode('; ', $e->getContext()['differences']) . "\n";
+    // Refused: format: recorded swiss, this engine single-elimination
 }
 ```
 
@@ -794,17 +793,106 @@ serializes without the `engine_fingerprint` key, and data stored before the
 stamp existed loads as an unstamped state. A stamped state keeps its stamp
 through every verb.
 
-A fingerprint names the format and the options that shape its rounds, for
-example `swiss:planned-rounds=5`. It is an opaque string: compare it with
-the one an engine gives, and do not parse it or write one by hand. Constraints, the standings calculator and the randomizer are
-objects the engine cannot name, so they are not part of it. All four
-engine methods (`getPlan()`, `pairNextRound()`, `isComplete()`,
+**What a fingerprint covers.** Two engines have the same fingerprint when
+they are the same format and agree on every option that shapes which rounds
+the format has or how they are paired. An option at its default value is
+not part of the fingerprint. An engine that gains an option in a later
+release therefore keeps the fingerprint of every configuration that leaves
+the option alone, and the states stamped before are still accepted. For one
+configuration the fingerprint is the same in every later release.
+
+| Engine | Part of the fingerprint when not at the default | Not part of it |
+| --- | --- | --- |
+| `SwissPairingEngine` | The standings rules a round is paired from: the ranking scale (default 3/1/0), the tiebreakers in order (default none) | `plannedRounds`, the constraints, the randomizer |
+| `SingleEliminationEngine` | `legsPerTie` (default 1), `reseedEachRound` (default off); in a re-seeded bracket also the standings rules, as for Swiss | `grandFinalReset`; the standings calculator of a bracket on a fixed path |
+| `DoubleEliminationEngine` | `legsPerTie` (default 1), `grandFinalReset` (default on) | The standings calculator |
+
+```php
+use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
+
+$default = (new SwissPairingEngine())->getFingerprint();
+
+// The length of a Swiss stage is not part of it: a stage that is extended
+// by a round keeps its stamp
+var_dump((new SwissPairingEngine(plannedRounds: 6))->getFingerprint() === $default); // bool(true)
+
+// 3/1/0 is the default scale, stated or not
+$threeOneZero = new StandingsCalculator(WinDrawLossRanking::threeOneZero());
+var_dump((new SwissPairingEngine(standingsCalculator: $threeOneZero))->getFingerprint() === $default); // bool(true)
+
+// Another scale pairs the same results differently
+$chess = new SwissPairingEngine(standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero()));
+var_dump($chess->getFingerprint() === $default); // bool(false)
+
+try {
+    $chess->pairNextRound($restored);
+    echo "Paired on the chess scale\n";
+} catch (InvalidConfigurationException $e) {
+    echo 'Refused: ' . implode('; ', $e->getContext()['differences']) . "\n";
+    // Refused: ranking: recorded the default, this engine win-draw-loss,1,0.5,0
+}
+```
+
+The planned rounds of a Swiss stage say when it ends; no round is paired or
+read differently for them. The standings calculator of a bracket that is not
+re-seeded orders the outcome and pairs nothing.
+
+**What it cannot cover.** A fingerprint describes what the library can
+describe, and these limits follow from that:
+
+- The constraints and the randomizer of a Swiss engine change pairings and
+  are not part of the fingerprint: a closure and a seed have no name.
+  Restore them with the state, as you do today.
+- A `RankingStrategy` of your own is stated as "custom". The engine tells it
+  from every `WinDrawLossRanking` scale and not from another strategy of
+  your own. A subclass of `StandingsCalculator` is stated as "custom" too,
+  whatever ranking strategy and tiebreakers it was built with: it may order
+  the table by rules of its own, so it differs from the library's
+  calculator and not from another subclass. A tiebreaker is stated by its
+  `getName()`, so one that orders differently needs a name of its own,
+  including a subclass of one of the library's.
+- A subclass of `SwissPairingEngine` (the class is not final) does not have
+  the fingerprint of the engine it extends, because it may pair differently.
+  Two subclasses have the same one unless they override `getFingerprint()`.
+
+**Treat the string as opaque.** Compare it for equality with the one an
+engine gives. Do not parse it, write one by hand or rely on how it is
+spelled: only its stability for one configuration is promised. A
+fingerprint that begins with `tactician:` is the library's. An engine of
+your own can use any non-empty string that does not begin with it, and
+call `$state->requireEngineFingerprint()` with that string.
+
+All four engine methods (`getPlan()`, `pairNextRound()`, `isComplete()`,
 `getOutcome()`) refuse a state stamped with another fingerprint, with an
-`InvalidConfigurationException`. To change the configuration on purpose in
-mid-stage, such as extending a Swiss stage by a round, stamp the state again:
+`InvalidConfigurationException`. Its message, and the list `differences` in
+its context, say where the two differ: the format, or each option with its
+value on either side. That text is for a person and may change; the context
+also holds the two fingerprints as `recorded` and `engine`. To change the
+configuration on purpose in mid-stage, stamp the state again:
 `$state->withEngineFingerprint($newEngine->getFingerprint())`; passing
-`null` removes the stamp. An engine of your own can use any non-empty
-string and call `$state->requireEngineFingerprint()` with it.
+`null` removes the stamp.
+
+The three engines implement `Stage\FingerprintedEngine`. `getFingerprint()`
+is not part of `StageEngineInterface`, so that an engine written against
+that interface keeps working; code that holds a `StageEngineInterface`
+tests for it before it stamps:
+
+```php
+use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\StageEngineInterface;
+
+function startStage(StageEngineInterface $engine, array $participants): StageState
+{
+    $state = StageState::start($participants);
+
+    return $engine instanceof FingerprintedEngine
+        ? $state->withEngineFingerprint($engine->getFingerprint())
+        : $state;
+}
+
+var_dump(startStage(new SingleEliminationEngine(), $participants)->getEngineFingerprint() !== null); // bool(true)
+```
 
 ## Elimination Brackets
 
