@@ -299,6 +299,153 @@ describe('TacticianException', function (): void {
         ],
     ]);
 
+    it('keeps whichever message and code PHP reported for the JSON', function (Closure $call, string $message, int $code): void {
+        $thrown = tacticianOutcome(fn() => $call(...$this->field))['thrown'];
+
+        expect($thrown)->toBeInstanceOf(JsonConversionException::class);
+        expect($thrown?->getMessage())->toBe($message);
+        expect($thrown?->getCode())->toBe($code);
+        expect($thrown?->getPrevious()?->getCode())->toBe($code);
+    })->with([
+        // Nested deeper than the 512 levels json_decode() reads.
+        'fromJson: nested too deep' => [
+            fn() => Schedule::fromJson(str_repeat('[', 600) . str_repeat(']', 600)),
+            'Maximum stack depth exceeded',
+            JSON_ERROR_DEPTH,
+        ],
+        'fromJson: an empty string' => [fn() => StageState::fromJson(''), 'Syntax error', JSON_ERROR_SYNTAX],
+        'toJson: a number JSON has no form for' => [
+            fn(Participant $alice, Participant $bob) => (new Schedule([new Event([$alice, $bob])], ['ratio' => INF]))->toJson(),
+            'Inf and NaN cannot be JSON encoded',
+            JSON_ERROR_INF_OR_NAN,
+        ],
+    ]);
+
+    it('reports serialized data as an InvalidInputException wherever it is malformed', function (Closure $build, Closure $restore): void {
+        // Every field of a valid serialized form, in turn, removed and then
+        // replaced by each of a set of wrong values. A `fromArray()` method
+        // must either accept the result or reject it with the library's
+        // exception: a \TypeError or a warning from deeper in is a failure.
+        $valid = json_decode($build(...$this->field)->toJson(), true, 512, JSON_THROW_ON_ERROR);
+        $wrong = [
+            null, 0, -1, 1, 1.5, '', 'x', 'p1', '7', 7, true, false, PHP_INT_MAX, "\0",
+            [], [1], [[1]], ['a' => 1], ['id' => 'p1', 'label' => 'Alice'], ['participants' => ['p1', 'p2']], ['number' => 1],
+        ];
+
+        $paths = function (array $data, array $prefix = []) use (&$paths): array {
+            $found = [];
+            foreach ($data as $key => $value) {
+                $found[] = [...$prefix, $key];
+                if (is_array($value)) {
+                    $found = [...$found, ...$paths($value, [...$prefix, $key])];
+                }
+            }
+
+            return $found;
+        };
+        $changed = function (array $data, array $path, mixed $value, bool $remove) {
+            $cursor = &$data;
+            $last = array_pop($path);
+            foreach ($path as $key) {
+                $cursor = &$cursor[$key];
+            }
+            if ($remove) {
+                unset($cursor[$last]);
+            } else {
+                $cursor[$last] = $value;
+            }
+
+            return $data;
+        };
+
+        expect($restore($valid)->toArray())->toEqual($valid);
+
+        $rejected = 0;
+        foreach ($paths($valid) as $path) {
+            $variants = [$changed($valid, $path, null, true)];
+            foreach ($wrong as $value) {
+                $variants[] = $changed($valid, $path, $value, false);
+            }
+
+            foreach ($variants as $variant) {
+                try {
+                    $restore($variant);
+                } catch (InvalidInputException) {
+                    ++$rejected;
+                } catch (Throwable $escaped) {
+                    $this->fail(sprintf(
+                        '%s escaped for %s at %s: %s',
+                        $escaped::class,
+                        json_encode($variant, JSON_PARTIAL_OUTPUT_ON_ERROR),
+                        implode('.', $path),
+                        $escaped->getMessage(),
+                    ));
+                }
+            }
+        }
+
+        // Most wrong values are rejected, so the loop above did run its catch.
+        expect($rejected)->toBeGreaterThan(100);
+    })->with([
+        'Schedule' => [
+            fn(Participant $alice, Participant $bob, Participant $carol) => new Schedule([
+                new Event([$alice, $bob], new Round(1, ['stage' => 'group']), ['court' => 1]),
+                new Event([$bob, $carol], new Round(2)),
+            ], ['season' => 2026]),
+            Schedule::fromArray(...),
+        ],
+        'StageState' => [
+            function (Participant $alice, Participant $bob, Participant $carol) {
+                $event = new Event([$alice, $bob], new Round(1));
+
+                return StageState::start([$alice, $bob, $carol])->withRoundPlayed(
+                    new RoundPairing(1, 'round 1', [$event], [$carol]),
+                    [new Result($event, $alice, ['p1' => 2, 'p2' => 1], ['note' => 'walkover'])],
+                );
+            },
+            StageState::fromArray(...),
+        ],
+        'ScheduledSchedule' => [
+            fn(Participant $alice, Participant $bob, Participant $carol) => new ScheduledSchedule([
+                new ScheduledEvent(new Event([$alice, $bob], new Round(1)), new DateTimeImmutable('2026-01-01T12:00:00Z'), 'court 1'),
+                new ScheduledEvent(new Event([$bob, $carol], new Round(2)), new DateTimeImmutable('2026-01-08T12:00:00Z')),
+            ]),
+            ScheduledSchedule::fromArray(...),
+        ],
+    ]);
+
+    it('leaves an exception from code the caller supplied as it is', function (): void {
+        [$alice, $bob, $carol] = $this->field;
+
+        // A constraint predicate of the caller's own.
+        $failing = ConstraintSet::create()
+            ->custom(fn(Event $event): bool => throw new DomainException('predicate failed'), 'Failing')
+            ->build();
+        $fromPredicate = tacticianOutcome(fn() => (new RoundRobinScheduler($failing))->schedule([$alice, $bob, $carol]));
+
+        expect($fromPredicate['thrown'])->toBeInstanceOf(DomainException::class);
+        expect($fromPredicate['thrown']?->getMessage())->toBe('predicate failed');
+        expect($fromPredicate['caughtBy'])->toBe([LogicException::class]);
+
+        // The jsonSerialize() of an object placed in metadata: PHP hands its
+        // exception on unwrapped, so it is not a JsonConversionException.
+        $unserializable = new class implements JsonSerializable {
+            /**
+             * @throws UnexpectedValueException Always
+             */
+            #[Override]
+            public function jsonSerialize(): never
+            {
+                throw new UnexpectedValueException('not serializable');
+            }
+        };
+        $fromMetadata = tacticianOutcome(fn() => (new Schedule([new Event([$alice, $bob])], ['object' => $unserializable]))->toJson());
+
+        expect($fromMetadata['thrown'])->toBeInstanceOf(UnexpectedValueException::class);
+        expect($fromMetadata['thrown']?->getMessage())->toBe('not serializable');
+        expect($fromMetadata['caughtBy'])->toBe([]);
+    });
+
     it('catches the scheduling failures, which are still SchedulingExceptions', function (): void {
         [$alice, $bob, $carol] = $this->field;
 
