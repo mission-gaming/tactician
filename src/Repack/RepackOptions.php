@@ -22,10 +22,31 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * improvement, per-session packing, repair swaps) in elementary search
  * steps — deterministic and reproducible, unlike wall-clock limits. When
  * the budget runs out, the repacker reports what is left rather than
- * pretending.
+ * pretending, and the outcome says so
+ * ({@see RepackOutcome::isBudgetExhausted()}).
+ *
+ * The weights are bounded so that the objective stays an integer. The
+ * repacker scores a move as at most earlyFillWeight x (sessions - 1) +
+ * 2 x consolidationWeight; beyond PHP_INT_MAX PHP computes that as a
+ * float, where a large weight swallows a small one and the result is no
+ * longer the trade the weights state. The part that does not depend on a
+ * grid is checked here: a consolidation weight above
+ * {@see self::MAX_CONSOLIDATION_WEIGHT} is rejected. The part that depends
+ * on the number of sessions is checked by RepackRequest, which has the
+ * grid.
  */
 final readonly class RepackOptions
 {
+    /**
+     * The largest consolidation weight: half of PHP_INT_MAX, rounded down.
+     * The objective counts the weight twice (once for each participant of
+     * an event), and twice anything larger is not an integer. The value
+     * assumes two participants to an event, which is all the repacker
+     * takes today; it will be revisited when events with more participants
+     * arrive (ADR 0003).
+     */
+    public const int MAX_CONSOLIDATION_WEIGHT = PHP_INT_MAX >> 1;
+
     /**
      * @param int $consolidationWeight Preference for concentrating a participant's
      *                                 events into fewer sessions (0 disables)
@@ -35,7 +56,9 @@ final readonly class RepackOptions
      * @param bool $throwOnViolations Throw RepackViolationsException instead of
      *                                returning an outcome carrying violations
      *
-     * @throws InvalidConfigurationException When a weight is negative or the budget is not positive
+     * @throws InvalidConfigurationException When a weight is negative, the consolidation
+     *                                       weight is above MAX_CONSOLIDATION_WEIGHT, or
+     *                                       the budget is not positive
      */
     public function __construct(
         public int $consolidationWeight = 3,
@@ -47,6 +70,14 @@ final readonly class RepackOptions
             throw new InvalidConfigurationException(
                 'Objective weights must be zero or positive',
                 ['consolidation_weight' => $consolidationWeight, 'early_fill_weight' => $earlyFillWeight],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
+
+        if ($consolidationWeight > self::MAX_CONSOLIDATION_WEIGHT) {
+            throw new InvalidConfigurationException(
+                'The consolidation weight is too large to keep the objective an integer',
+                ['consolidation_weight' => $consolidationWeight, 'largest' => self::MAX_CONSOLIDATION_WEIGHT],
                 reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
