@@ -1222,7 +1222,8 @@ $score = $scorer->score($schedule);   // 4.5: the weighted defect score (3.0 x 1
 $report = $scorer->report($schedule); // ['Role Balance' => 1.5, 'Pairing Spacing' => 0.0]
 ```
 
-A weight is a positive, finite number, and so is every score. The scorer
+A weight is a positive, finite number, and every score is finite (zero is
+the ideal one). The scorer
 throws `InvalidConfigurationException` for a weight of `NAN` or `INF` when
 it is built, and for a metric of your own that measures `NAN` or `INF`, or a
 weighted sum that overflows, when it scores: a score that cannot be
