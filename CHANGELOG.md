@@ -339,9 +339,6 @@ heading **Output change (fix)**.
   PHP warning on PHP 8.5 when a context value is the float `NAN`. PHP 8.5
   warns when `NAN` is cast to a string, and the report cast it. The text is
   unchanged: `NAN`.
-
-### Fixed
-
 - Round-robin generation, the backtracking search and both elimination
   engines accept every participant id. They share the pairing keys described
   under "Output change (fix)" above, and for a field with two ids that are
