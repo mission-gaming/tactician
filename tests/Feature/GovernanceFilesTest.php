@@ -61,7 +61,7 @@ $forms = array_values(array_filter(
     static fn (string $form): bool => !str_starts_with(basename($form), 'config.')
 ));
 $formDataset = array_combine(
-    array_map(fn (string $form) => basename($form), $forms),
+    array_map(basename(...), $forms),
     array_map(fn (string $form) => [$form], $forms)
 );
 

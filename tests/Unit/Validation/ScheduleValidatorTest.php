@@ -670,7 +670,7 @@ describe('ScheduleValidator', function (): void {
             try {
                 $validator->generateConstraintSuggestions($violations, 0);
                 expect(false)->toBeTrue('Expected DivisionByZeroError was not thrown');
-            } catch (\DivisionByZeroError $e) {
+            } catch (\DivisionByZeroError) {
                 expect(true)->toBeTrue();
             }
         });

@@ -61,24 +61,24 @@ use Random\Randomizer;
  */
 final class GoldenCases
 {
-    public const WIRE_SCHEDULE = 'wire/schedule.json';
+    public const string WIRE_SCHEDULE = 'wire/schedule.json';
 
-    public const WIRE_STAGE_STATE = 'wire/stage-state.json';
+    public const string WIRE_STAGE_STATE = 'wire/stage-state.json';
 
-    private const SEEDS = [1, 42, 1337];
+    private const array SEEDS = [1, 42, 1337];
 
-    private const ROUND_ROBIN_SIZES = [2, 3, 4, 5, 6, 7, 8, 14, 17, 20];
+    private const array ROUND_ROBIN_SIZES = [2, 3, 4, 5, 6, 7, 8, 14, 17, 20];
 
-    private const ROUND_ROBIN_LEGS = [1, 2, 3, 4];
+    private const array ROUND_ROBIN_LEGS = [1, 2, 3, 4];
 
-    private const ELIMINATION_SIZES = [5, 8, 12];
+    private const array ELIMINATION_SIZES = [5, 8, 12];
 
-    private const REPACK_SIZES = [12, 16, 24];
+    private const array REPACK_SIZES = [12, 16, 24];
 
     /** Upper bound on driver-loop rounds, so a broken engine fails instead of hanging. */
-    private const MAX_ENGINE_ROUNDS = 64;
+    private const int MAX_ENGINE_ROUNDS = 64;
 
-    private const EXPLANATION = [
+    private const array EXPLANATION = [
         '',
         'A difference from this file is a change to generated output. It must be',
         'explained in the changelog; regenerate with `composer golden-update`.',

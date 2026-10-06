@@ -141,9 +141,7 @@ class IncompleteScheduleException extends SchedulingException
 
             foreach ($violations as $violation) {
                 $constraintName = $violation->constraint->getName();
-                if (!isset($violationsByConstraint[$constraintName])) {
-                    $violationsByConstraint[$constraintName] = [];
-                }
+                $violationsByConstraint[$constraintName] ??= [];
                 $violationsByConstraint[$constraintName][] = $violation;
             }
 

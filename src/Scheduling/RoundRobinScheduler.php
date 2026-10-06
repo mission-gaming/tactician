@@ -28,7 +28,7 @@ class RoundRobinScheduler implements SchedulerInterface
      * Upper bound on rotated-ordering attempts when constraints reject the
      * pairings implied by a given participant order.
      */
-    private const MAX_GENERATION_ATTEMPTS = 25;
+    private const int MAX_GENERATION_ATTEMPTS = 25;
 
     /** @var array<int, string> Participant IDs receiving a bye, keyed by round number */
     private array $roundByes = [];

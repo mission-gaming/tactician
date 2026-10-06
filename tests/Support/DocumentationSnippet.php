@@ -19,13 +19,13 @@ namespace MissionGaming\Tactician\Tests\Support;
  */
 final readonly class DocumentationSnippet
 {
-    public const RUN = 'run';
+    public const string RUN = 'run';
 
-    public const THROWS = 'throws';
+    public const string THROWS = 'throws';
 
-    public const SKIP = 'skip';
+    public const string SKIP = 'skip';
 
-    public const SETUP = 'setup';
+    public const string SETUP = 'setup';
 
     /**
      * @param string $file The document, as a path relative to the repository root

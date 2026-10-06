@@ -853,7 +853,7 @@ it('runs cleanly under full error reporting', function (string $script): void {
         );
     }
 })->with(array_combine(
-    array_map(fn (string $script) => basename($script), $exampleScripts),
+    array_map(basename(...), $exampleScripts),
     array_map(fn (string $script) => [$script], $exampleScripts)
 ));
 

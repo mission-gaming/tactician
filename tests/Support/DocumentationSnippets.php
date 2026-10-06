@@ -75,7 +75,7 @@ final class DocumentationSnippets
      * change set, a documentation-only one included (pinned by
      * tests/Feature/CiConfigurationTest.php).
      */
-    public const DOCUMENTS = ['README.md', 'docs/USAGE.md'];
+    public const array DOCUMENTS = ['README.md', 'docs/USAGE.md'];
 
     /**
      * How long one block (with the earlier blocks of its section) may run,
@@ -84,13 +84,13 @@ final class DocumentationSnippets
      * machine does not trip it, and exists so that a block that never
      * returns fails by name instead of hanging the whole suite.
      */
-    public const TIME_LIMIT = 30.0;
+    public const float TIME_LIMIT = 30.0;
 
     /** What follows the nonce on the line a RUN block prints when it reaches its end. */
-    private const FINISHED = 'finished';
+    private const string FINISHED = 'finished';
 
     /** How often a running block is checked for having finished, in microseconds. */
-    private const POLL_INTERVAL = 5_000;
+    private const int POLL_INTERVAL = 5_000;
 
     /**
      * @return array{snippets: list<DocumentationSnippet>, problems: list<string>}

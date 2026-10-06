@@ -24,8 +24,8 @@ use Override;
  */
 final readonly class RankRangeSelector implements ProgressionSelector
 {
-    private const MODE_OVERALL = 'overall';
-    private const MODE_PER_GROUP = 'per-group';
+    private const string MODE_OVERALL = 'overall';
+    private const string MODE_PER_GROUP = 'per-group';
 
     /**
      * @param 'overall'|'per-group' $mode

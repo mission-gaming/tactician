@@ -72,7 +72,7 @@ class InvalidConfigurationException extends SchedulingException
         }
 
         if (is_object($value)) {
-            return get_class($value);
+            return $value::class;
         }
 
         if (is_bool($value)) {

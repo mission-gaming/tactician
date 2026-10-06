@@ -88,7 +88,7 @@ readonly class MetadataConstraint implements ConstraintInterface
         return new self(
             $metadataKey,
             function (array $values) {
-                $numericValues = array_filter($values, fn ($v) => is_numeric($v));
+                $numericValues = array_filter($values, is_numeric(...));
                 if ($numericValues === []) {
                     return true;
                 }

@@ -20,7 +20,7 @@ use PHPUnit\Framework\Assert;
 $root = dirname(__DIR__, 2);
 $workflows = glob($root . '/.github/workflows/*.{yml,yaml}', GLOB_BRACE) ?: [];
 $workflowDataset = array_combine(
-    array_map(fn (string $workflow) => basename($workflow), $workflows),
+    array_map(basename(...), $workflows),
     array_map(fn (string $workflow) => [$workflow], $workflows)
 );
 
@@ -189,7 +189,7 @@ it('never uses pull_request_target', function (string $workflow): void {
 // result depends on the day it runs, not on the change under review.
 it('keeps the scheduled workflow off pull requests and pushes', function () use ($root, $workflows): void {
     // Discovered, so the pin and permission checks above cover it
-    expect(array_map(fn (string $workflow) => basename($workflow), $workflows))->toContain('scheduled.yml');
+    expect(array_map(basename(...), $workflows))->toContain('scheduled.yml');
 
     $workflow = (string) file_get_contents($root . '/.github/workflows/scheduled.yml');
 

@@ -25,8 +25,8 @@ use Override;
  */
 final readonly class MatchOutcomeSelector implements ProgressionSelector
 {
-    private const MODE_WINNERS = 'winners';
-    private const MODE_LOSERS = 'losers';
+    private const string MODE_WINNERS = 'winners';
+    private const string MODE_LOSERS = 'losers';
 
     /**
      * @param 'winners'|'losers' $mode
