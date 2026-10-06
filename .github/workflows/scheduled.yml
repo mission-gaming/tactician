@@ -50,6 +50,11 @@ jobs:
     - name: Audit dependencies for known vulnerabilities and abandonment
       run: composer audit --abandoned=fail
 
+    # As in ci.yml: one test needs a locale that writes a decimal comma, and
+    # on CI it fails instead of skipping.
+    - name: Generate a locale with a decimal comma
+      run: sudo locale-gen de_DE.UTF-8
+
     - name: Run CI suite
       run: composer ci
 
@@ -74,6 +79,10 @@ jobs:
 
     - name: Resolve and install the newest allowed dependencies
       run: composer update --prefer-dist --no-progress
+
+    # As in ci.yml: the locale test must run here too.
+    - name: Generate a locale with a decimal comma
+      run: sudo locale-gen de_DE.UTF-8
 
     - name: Test suite
       run: composer test
