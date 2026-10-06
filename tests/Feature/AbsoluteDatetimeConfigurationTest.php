@@ -54,9 +54,9 @@ use PHPUnit\Framework\AssertionFailedError;
 // suite has no means to fake one. A child process under another default
 // timezone moves "today" by a day at most, which a string that took only its
 // year from the clock would not show; part 1 is what covers that. When this
-// rule was written, the corpora and some 130,000 further strings were also
-// run under two faked system clocks years apart, on PHP 8.3 and 8.5, and
-// every verdict was the same.
+// rule was written, some 200,000 generated strings were also run under two
+// faked system clocks eleven years apart, on PHP 8.3 and 8.5, and every
+// verdict was the same under both.
 
 /**
  * The data of one scheduled event between two participants, with the given
