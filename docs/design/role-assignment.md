@@ -44,7 +44,16 @@ odd size it plays an even number, so 0 apart is possible.
   constraint that the assigned roles break fails generation loudly. The
   scheduler does not try other roles: constraints are hard filters, and a
   schedule that silently had other roles than the ones asked for would be
-  worse than a failure.
+  worse than a failure. The cost is real and is accepted here: a role
+  assignment does not see the constraints, so a constraint that fixes the
+  role of one pairing can reject the balanced roles although other balanced
+  roles would satisfy it, and the scheduler does not look for them. Of the
+  729 ways to fix the roles of some of the six pairings of four participants,
+  143 fail with the balanced roles, with backtracking on, although a balanced
+  schedule that satisfies them exists; 67 of those succeed with the default
+  roles and no backtracking. A role assignment that is handed the constraints
+  could close that gap. It would need a wider method than `assignRoles()`,
+  which is one reason the namespace is experimental.
 - **Leg strategies keep their meaning.** The role assignment decides the base
   roles of every leg the circle method lays out; the leg strategy then
   mirrors, repeats or shuffles them exactly as it did. "Mirrored" still means
@@ -136,8 +145,10 @@ second-named more often than first-named. (Take every participant such chains
 reach. Each pairing between that set and the rest names the outside
 participant first, so the differences inside the set sum to zero or less; the
 start contributes 2 or more, so another member is below zero.) Reversing the
-chain moves both ends one step towards balance and leaves every participant
-between them unchanged. Each pass lowers the total excess over 1, so the
+chain takes 2 off the difference of the start and adds 2 to that of the far
+end, which was below zero and is now at most 1, and it leaves every
+participant between them unchanged, because each of those has one pairing
+reversed on either side. Each pass lowers the total excess over 1, so the
 repair ends with every participant at most 1 apart, which is 0 apart for one
 that plays an even number of events. The mirror image handles a participant
 that is second-named too often.
@@ -149,10 +160,13 @@ That is the reason for the replay described above.
 
 - **Streaks across legs.** The limit of two in a row is a property of one
   leg. Two mirrored legs meet with the roles of round 1 reversed, and a
-  participant whose single repeat sits at the edge of the leg can then play
-  three in a row. For two mirrored legs the default role assignment scores
-  slightly better on `RoleStreakMetric` in most fields for that reason. Both end balanced; only the balanced one is balanced at the halfway
-  point.
+  participant whose repeat sits at the edge of the leg can then play three
+  in a row in a field of even size and four in a field of odd size (measured
+  for 3 to 30 participants; four is reached with 5, 9, 13 and so on). For
+  two mirrored legs the default role assignment scores better on
+  `RoleStreakMetric` for that reason in every field of even size from 6
+  participants up, and with 5 participants. Both end balanced; only the
+  balanced one is balanced at the halfway point.
 - **A scheduler with a `Randomizer`, over several legs.** The scheduler
   shuffles the participant order of the first leg only and lays the later
   legs out from the order as given. That predates role assignments and is

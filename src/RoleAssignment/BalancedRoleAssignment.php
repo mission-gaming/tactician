@@ -194,9 +194,10 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
      * Reverse chains of pairings until no participant is 2 or more out of
      * balance.
      *
-     * Each pass lowers by one the amount by which the participant it starts
-     * from exceeds a difference of 1, and raises no other participant above
-     * 1, so the loop ends.
+     * Each pass takes 2 off the difference of the participant it starts
+     * from, which lowers the amount by which that participant exceeds a
+     * difference of 1, and it raises no other participant above 1, so the
+     * loop ends.
      *
      * @param list<list<array{0: Participant|null, 1: Participant|null}>> $rounds
      * @return list<list<array{0: Participant|null, 1: Participant|null}>>

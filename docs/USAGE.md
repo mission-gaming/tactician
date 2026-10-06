@@ -558,9 +558,14 @@ Two things the table does not promise:
 - **Streaks across two legs.** The limit of two in a row holds inside a leg.
   Where one leg ends and the next begins, a role can repeat more often. Two
   mirrored legs end balanced under either role assignment; the balanced one
-  also balances the halfway point, and in a field of even size it can put a
-  participant in the same role three times in a row across the middle of the
-  schedule.
+  also balances the halfway point, and across the middle of the schedule it
+  can put a participant in the same role three times in a row in a field of
+  even size and four times in a field of odd size. That is one more than the
+  default in most fields: measured for 6 to 30 participants, the default
+  repeats a role at most twice there in a field of even size, and three
+  times in a field of odd size from 9 participants up. Add a
+  `ConsecutiveRoleConstraint` if a schedule of several legs must not do
+  that; it then fails loudly where the roles break it.
 
 #### Role assignments and constraints
 
@@ -577,6 +582,15 @@ roles to satisfy one:
   the default roles break one. A limit of one same-role event in a row is an
   example: no round robin of an even number of participants, four or more,
   has it.
+- **The failure is about these roles, not about every balanced schedule.**
+  A role assignment does not know the constraints. A rule that fixes the
+  role of one participant or of one pairing ("the first participant is
+  first-named against the second") can reject the roles
+  `BalancedRoleAssignment` chooses although other balanced roles would
+  satisfy it, and although the default roles do. The scheduler does not
+  search for them, with or without `backtracking`. If such a rule matters
+  more than the balance, keep `RoundParityRoleAssignment` for that schedule,
+  or write a role assignment that honours the rule.
 - **Rotated retries.** Every retry lays the legs out again and asks the role
   assignment again, so a schedule that needed a retry keeps the limits above.
 - **Backtracking.** The search chooses the roles of the first leg itself,

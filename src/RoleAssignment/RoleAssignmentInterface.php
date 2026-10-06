@@ -18,7 +18,12 @@ use MissionGaming\Tactician\DTO\Participant;
  * The scheduler asks once for every leg that the circle method lays out,
  * before it checks any constraint, and once for a first leg that the
  * backtracking search found. A leg strategy then derives the roles of the
- * legs after the first from the answer.
+ * legs after the first from the answer. When constraints reject a schedule
+ * the scheduler lays the legs out again from a rotated participant order
+ * and asks again for each, so one call to `schedule()` can ask about more
+ * legs than the schedule has: the answers of a rejected attempt are thrown
+ * away. An implementation gets the rounds and nothing else. It is not told
+ * which leg it is deciding or what the constraints are.
  */
 interface RoleAssignmentInterface
 {
@@ -37,9 +42,13 @@ interface RoleAssignmentInterface
      * The return value has the same rounds and the same seatings in the same
      * order. Each seating is either unchanged or reversed.
      *
-     * An implementation is deterministic: the same rounds give the same
-     * answer. One that needs randomness takes a seeded `Random\Randomizer`
-     * through its own constructor.
+     * An implementation is deterministic: a new instance that is asked the
+     * same questions in the same order gives the same answers. The built-in
+     * ones go further and give the same answer for the same rounds every
+     * time, which is what makes a mirrored leg the mirror of the first. One
+     * that needs randomness takes a seeded `Random\Randomizer` through its
+     * own constructor, and with it gives up that second property: its legs
+     * are each decided on their own.
      *
      * @param list<list<array{0: Participant|null, 1: Participant|null}>> $rounds
      * @return list<list<array{0: Participant|null, 1: Participant|null}>>
