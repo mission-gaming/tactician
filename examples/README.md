@@ -30,6 +30,12 @@ php examples/01-basic-round-robin.php
 php -S localhost:8000 -t examples
 ```
 
+On PHP 8.3 with the tracing JIT switched on (`opcache.jit=tracing` or `1235`
+with a JIT buffer; PHP leaves the JIT off by default), the JIT can crash the
+built-in server after a number of pages, so that a request gets no response
+until the server is started again: start it with
+`php -d opcache.jit=disable -S localhost:8000 -t examples` there.
+
 `composer examples` runs every script once and fails if any of them exits
 with an error.
 

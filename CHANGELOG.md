@@ -183,6 +183,17 @@ is identical.
     - `examples/04-basic-constraints.php` called `noRepeatPairings()` the
       constraint that makes each pair meet once; a round robin does that
       without it, and the example now says so.
+- Test suite only; the library and the examples are unchanged. The test that
+  serves every example as a page from PHP's built-in web server failed now and
+  then on PHP 8.3 where the configuration switches the tracing JIT on (PHP
+  leaves it off by default): the JIT of that version crashes the server
+  process after a number of pages. The server of that test now runs without
+  the JIT, and a request that fails reports its address, the status line, how
+  the server ended and the end of the server log. `examples/README.md` says
+  how to serve the examples on such a configuration. Where that server cannot
+  be started, the test now fails on CI instead of being skipped (elsewhere it
+  is still skipped, with the reason), and a server that finds its port taken
+  is started again on another one, three times at most.
 
 ## [0.2.0] - 2026-08-11
 
