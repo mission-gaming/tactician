@@ -11,7 +11,9 @@ use MissionGaming\Tactician\Examples\Measured;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
+use MissionGaming\Tactician\Exceptions\TacticianException;
 use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\ViolationKind;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
@@ -53,6 +55,11 @@ use PHPUnit\Framework\Assert;
 
 $root = dirname(__DIR__, 2);
 $exampleScripts = glob($root . '/examples/*.php') ?: [];
+
+// The renderer is not autoloaded. A test below that draws a page before any
+// example has been included needs it, whichever test of the file runs first
+// and whether or not another test file has loaded it.
+require_once $root . '/examples/support/Example.php';
 
 /**
  * A named result of an example, checked to be of the expected class.
@@ -391,7 +398,7 @@ $demonstrations = [
             ->and($homeGames($shuffled))->not->toBe($homeGames($repeated));
     },
 
-    // All the constraints hold at once in a complete two-leg season; seed protection and the tier rule moved fixtures
+    // Both rules hold at once in a complete two-leg season, and each one rejects the season generated without them
     '10-complex-tournament' => function (array $results): void {
         $schedule = exampleResult($results, 'Schedule with the constraints', Schedule::class);
 
@@ -408,20 +415,16 @@ $demonstrations = [
             expect(examplePair($event))->not->toBe('fnatic|tsm')
                 ->and($tiers)->not->toBe(['B', 'S']);
         }
-        $gaps = [];
         $mismatchRounds = [];
         foreach (exampleMeetings($schedule) as $pair => $rounds) {
-            expect($rounds[1] - $rounds[0])->toBeGreaterThanOrEqual(7, $pair);
-            $gaps[] = $rounds[1] - $rounds[0];
-
             [$first, $second] = explode('|', $pair);
             if ([$tier[$first], $tier[$second]] === ['S', 'B'] || [$tier[$first], $tier[$second]] === ['B', 'S']) {
                 array_push($mismatchRounds, ...$rounds);
             }
         }
 
-        if ($gaps === [] || $mismatchRounds === []) {
-            Assert::fail('The schedule holds no pairing, or no S-tier against B-tier pairing, to check.');
+        if ($mismatchRounds === []) {
+            Assert::fail('The schedule holds no S-tier against B-tier pairing to check.');
         }
 
         // The summary the example reports for a schedule is the one worked out here from the schedule itself,
@@ -431,30 +434,39 @@ $demonstrations = [
             'Rounds' => 14,
             'Rounds in which seeds 1 and 2 meet' => implode(' and ', exampleMeetings($schedule)['fnatic|tsm']),
             'Earliest round with S-tier against B-tier' => min($mismatchRounds),
-            'Fewest rounds between the two meetings of a pair' => min($gaps),
         ]);
 
-        // Without the constraints seed protection and the tier rule are both broken, so those two are what
-        // moved the fixtures. The gap between meetings is 7 either way: two mirrored legs already give it,
-        // and noRepeatPairings() changes nothing in a round robin (example 04).
+        // Neither rule is inert: the season generated without them has the top two seeds meeting inside the
+        // protected window (rounds 1 and 2) and an S-tier against B-tier event in round 1, so each rule
+        // rejects events of it. The set holds those two rules and nothing that rejects nothing.
         $without = exampleArray($results, 'Without constraints');
         expect($without['Rounds in which seeds 1 and 2 meet'])->toBe('2 and 9')
             ->and($without['Earliest round with S-tier against B-tier'])->toBe(1)
-            ->and($without['Fewest rounds between the two meetings of a pair'])->toBe(7)
-            ->and($results['Constraints in the set'])->toBe(4);
+            ->and($results['Constraints in the set'])->toBe(2);
     },
 
-    // The two exceptions are thrown for the reasons given and carry what the example reads from them
+    // The two exceptions are thrown for the reasons given and carry what the example reads from them, and one
+    // catch of the marker interface takes a scheduling failure and a rejected argument alike
     '11-error-handling' => function (array $results): void {
         $invalid = exampleResult($results, 'Duplicate participant ids', InvalidConfigurationException::class);
         $incomplete = exampleResult($results, 'A constraint that rejects everything', IncompleteScheduleException::class);
 
-        expect($invalid)->toBeInstanceOf(SchedulingException::class)
-            ->and($incomplete)->toBeInstanceOf(SchedulingException::class)
+        expect($invalid)->toBeInstanceOf(TacticianException::class)
+            ->and($incomplete)->toBeInstanceOf(TacticianException::class)
             ->and($results['The issue it names'])->toBe('All participants must have unique IDs')
+            ->and($invalid->getReason())->toBe(InvalidConfigurationReason::DuplicateParticipantIds)
+            ->and($results['Its reason'])->toBe('duplicate_participant_ids')
             ->and($results['How far generation got'])->toBe(['Expected events' => 6, 'Generated events' => 0, 'Missing events' => 6])
             ->and($results['Diagnostic report'])->toBeString()->toContain('Reject everything')
-            ->and($results['Class caught as SchedulingException'])->toBe(IncompleteScheduleException::class);
+            ->and($results['Classes caught as TacticianException'])->toBe([
+                'A schedule the constraints rule out' => IncompleteScheduleException::class,
+                'A round numbered zero' => InvalidInputException::class,
+            ]);
+
+        // The second of the two is what a catch of SchedulingException would have let through
+        $caught = exampleArray($results, 'Classes caught as TacticianException');
+        expect(is_a($caught['A schedule the constraints rule out'], SchedulingException::class, true))->toBeTrue()
+            ->and(is_a($caught['A round numbered zero'], SchedulingException::class, true))->toBeFalse();
 
         assertExampleRoundRobin(exampleResult($results, 'A valid request', Schedule::class), 4);
     },
@@ -678,7 +690,8 @@ $demonstrations = [
             ->and($standings->getEntries()[0]->getParticipant()->getId())->toBe('ana');
     },
 
-    // Every movable event is placed, nobody is double-booked, play is back to back, and only late starts remain
+    // Every movable event is placed, nobody is double-booked, play is back to back, and only late starts remain;
+    // the deeper final session is used, and without it some events find no position
     '19-repacking-a-season' => function (array $results): void {
         $outcome = exampleResult($results, 'Repacked schedule', RepackOutcome::class);
         $fixtures = exampleArray($results, 'Fixtures by event id');
@@ -697,8 +710,8 @@ $demonstrations = [
         $perSlot = [];
         $slotsByParticipant = [];
         foreach ($positions as $eventId => [$session, $slot]) {
-            // Session 0 has 3 slots, session 1 has 4
-            expect($slot)->toBeLessThan($session === 0 ? 3 : 4);
+            // Session 0 has 2 slots, session 1 has 4
+            expect($slot)->toBeLessThan($session === 0 ? 2 : 4);
 
             $perSlot["{$session}/{$slot}"] = ($perSlot["{$session}/{$slot}"] ?? 0) + 1;
             foreach (explode(' v ', (string) $fixtures[$eventId]) as $label) {
@@ -716,9 +729,17 @@ $demonstrations = [
             }
         }
 
-        expect($outcome->getViolations())->toHaveCount(4)
-            ->and($outcome->getViolationsOfKind(ViolationKind::LateStart))->toHaveCount(4)
+        expect($outcome->getViolations())->toHaveCount(3)
+            ->and($outcome->getViolationsOfKind(ViolationKind::LateStart))->toHaveCount(3)
             ->and($results['Clean'])->toBeFalse();
+
+        // The override is not decoration: both slots it adds to the final session hold an event, and the
+        // same request without it leaves events with no position. Every movable event is still accounted for.
+        $without = exampleArray($results, 'Without the deeper final session');
+        expect($perSlot['1/2'] ?? 0)->toBeGreaterThan(0)
+            ->and($perSlot['1/3'] ?? 0)->toBeGreaterThan(0)
+            ->and($without['Unplaced'])->toBeGreaterThan(0)
+            ->and($without['Placed'] + $without['Unplaced'])->toBe(10);
     },
 
     // Out after the second loss: the champion lost once, everybody else twice, and the final was reset

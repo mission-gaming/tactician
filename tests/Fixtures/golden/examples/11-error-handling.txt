@@ -15,6 +15,9 @@ MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid schedu
 == The issue it names ==
 All participants must have unique IDs
 
+== Its reason ==
+duplicate_participant_ids
+
 == A constraint that rejects everything ==
 MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 0 events, expected 6. Constraints may be preventing complete schedule generation.
 
@@ -56,8 +59,9 @@ Missing Events: 6 (100.0%)
 • Test with a simpler configuration first
 • No events were generated - check participant count and constraint configuration
 
-== Class caught as SchedulingException ==
-MissionGaming\Tactician\Exceptions\IncompleteScheduleException
+== Classes caught as TacticianException ==
+A schedule the constraints rule out: MissionGaming\Tactician\Exceptions\IncompleteScheduleException
+A round numbered zero: MissionGaming\Tactician\Exceptions\InvalidInputException
 
 == A valid request ==
 meta: algorithm=round-robin participant_count=4 legs=1 rounds_per_leg=3 total_rounds=3 expected_event_count=6 byes=[]

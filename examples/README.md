@@ -52,8 +52,8 @@ with an error.
 | [07-metadata-constraints.php](07-metadata-constraints.php) | Rules over participant metadata, and how an impossible rule fails |
 | [08-custom-constraints.php](08-custom-constraints.php) | Your own rule as a closure or as a class |
 | [09-multi-leg-home-away.php](09-multi-leg-home-away.php) | Two legs with the mirrored, repeated and shuffled leg strategies |
-| [10-complex-tournament.php](10-complex-tournament.php) | Seed protection, rest and a custom rule in one two-leg season |
-| [11-error-handling.php](11-error-handling.php) | The exceptions the scheduler throws and what they carry |
+| [10-complex-tournament.php](10-complex-tournament.php) | Seed protection and a custom rule together in one two-leg season |
+| [11-error-handling.php](11-error-handling.php) | The exceptions the library throws, what they carry, and the one catch that covers them all |
 | [12-performance-patterns.php](12-performance-patterns.php) | How a round robin grows with the field, and measured generation times |
 | [13-swiss-stage-engine.php](13-swiss-stage-engine.php) | A Swiss stage paired round by round from the results |
 | [14-groups-to-knockout.php](14-groups-to-knockout.php) | Pools, qualification and a single-elimination bracket composed together |
@@ -61,7 +61,7 @@ with an error.
 | [16-backtracking-generation.php](16-backtracking-generation.php) | Constraints the default generator cannot solve, solved by the opt-in search |
 | [17-schedule-optimization.php](17-schedule-optimization.php) | Scoring schedule quality and keeping the best of many samples |
 | [18-stateless-web-flow.php](18-stateless-web-flow.php) | A stage kept as JSON between stateless requests |
-| [19-repacking-a-season.php](19-repacking-a-season.php) | Repacking outstanding events onto an irregular grid of sessions |
+| [19-repacking-a-season.php](19-repacking-a-season.php) | Repacking outstanding events around pinned ones onto an irregular grid of sessions |
 | [20-double-elimination.php](20-double-elimination.php) | A double-elimination bracket with a grand final reset |
 | [21-standings-and-tiebreakers.php](21-standings-and-tiebreakers.php) | A standings table and a chain of tiebreakers |
 | [22-pot-draw.php](22-pot-draw.php) | A league phase drawn up front from seeded pots, with balanced roles |

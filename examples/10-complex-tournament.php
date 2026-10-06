@@ -7,7 +7,6 @@ require_once __DIR__ . '/support/Example.php';
 
 use MissionGaming\Tactician\Constraints\CallableConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
-use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
@@ -16,7 +15,7 @@ use MissionGaming\Tactician\Examples\Example;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 
-// An eight-entrant league season, home and away, with three rules from the
+// An eight-entrant league season, home and away, with two rules from the
 // organiser. Seeds follow the tiers: three S-tier, three A-tier, two B-tier.
 $entrants = [
     new Participant('fnatic', 'Fnatic', 1, ['tier' => 'S', 'region' => 'Europe']),
@@ -36,17 +35,14 @@ $isMismatch = static function (Event $event): bool {
     return in_array('S', $tiers, true) && in_array('B', $tiers, true);
 };
 
-// Two legs of 7 rounds: 14 rounds in all
+// Two legs of 7 rounds: 14 rounds in all. Both rules below reject events of
+// the season the scheduler would otherwise produce. A rule that rejects
+// nothing has no place in the set: noRepeatPairings() is one in any round
+// robin (example 04), and so is a minimum gap between repeat meetings that
+// the legs already give (example 06).
 $constraints = ConstraintSet::create()
-    // Each pair meets once per leg. A round robin does that anyway (example
-    // 04); the rule is here to state it
-    ->noRepeatPairings()
     // The top 2 seeds do not meet in the first 20% of the rounds (rounds 1 and 2)
     ->add(new SeedProtectionConstraint(2, 0.2))
-    // The return fixture comes at least 7 rounds after the first meeting. Two
-    // legs of 7 rounds in the same order already give exactly 7, so this one
-    // moves nothing either
-    ->add(new MinimumRestPeriodsConstraint(7))
     // No S-tier against B-tier in the opening two rounds
     ->add(new CallableConstraint(
         static fn(Event $event): bool => $event->getRound()?->getNumber() > 2 || !$isMismatch($event),
@@ -59,9 +55,9 @@ $homeAndAway = new RoundRobinOptions(legs: 2);
 // For comparison: the same season with no rules
 $unconstrained = (new RoundRobinScheduler())->schedule($entrants, $homeAndAway);
 
-// The first participant order breaks the seed and tier rules, so the
-// scheduler retries with rotated orders and returns the first complete
-// schedule that satisfies every constraint. Had none done so it would have thrown
+// The first participant order breaks both rules, so the scheduler retries
+// with rotated orders and returns the first complete schedule that satisfies
+// every constraint. Had none done so it would have thrown
 // IncompleteScheduleException: see examples 11 and 16.
 $schedule = (new RoundRobinScheduler($constraints))->schedule($entrants, $homeAndAway);
 
@@ -69,7 +65,6 @@ $schedule = (new RoundRobinScheduler($constraints))->schedule($entrants, $homeAn
 $check = static function (Schedule $schedule) use ($isMismatch): array {
     $topSeedsMeet = [];
     $mismatchRounds = [];
-    $meetings = [];
     foreach ($schedule as $event) {
         $round = (int) $event->getRound()?->getNumber();
         [$first, $second] = $event->getParticipants();
@@ -79,9 +74,6 @@ $check = static function (Schedule $schedule) use ($isMismatch): array {
         if ($isMismatch($event)) {
             $mismatchRounds[] = $round;
         }
-        $pair = [$first->getId(), $second->getId()];
-        sort($pair);
-        $meetings[implode('|', $pair)][] = $round;
     }
 
     return [
@@ -89,14 +81,10 @@ $check = static function (Schedule $schedule) use ($isMismatch): array {
         'Rounds' => $schedule->getMetadataValue('total_rounds'),
         'Rounds in which seeds 1 and 2 meet' => implode(' and ', $topSeedsMeet),
         'Earliest round with S-tier against B-tier' => min($mismatchRounds),
-        'Fewest rounds between the two meetings of a pair' => min(array_map(
-            static fn(array $rounds): int => $rounds[1] - $rounds[0],
-            $meetings
-        )),
     ];
 };
 
-return Example::present(__FILE__, 'Several constraints at once', 'A two-leg season under seed protection, a minimum gap between repeat meetings and a custom tier rule, all in one constraint set. Every rule holds in the generated schedule, and the season is still complete.', [
+return Example::present(__FILE__, 'Two rules over a two-leg season', 'A two-leg season under seed protection and a custom tier rule, in one constraint set. The season generated without them breaks both; with them both hold, and the season is still complete.', [
     'Entrants' => $entrants,
     'Constraints in the set' => count($constraints->getConstraints()),
     'Without constraints' => $check($unconstrained),
