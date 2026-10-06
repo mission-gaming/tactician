@@ -155,9 +155,12 @@ final readonly class EngineFingerprint
     }
 
     /**
-     * Read a fingerprint this class wrote; null for any other string (an
-     * application's own stamp, or one in an encoding this version does not
-     * know).
+     * Read a fingerprint this class wrote; null for any other string: an
+     * application's own stamp, one in an encoding this version does not
+     * know, and one that has the prefix and is not spelled as toString()
+     * spells it (options out of order, an option twice, an option without
+     * a value). The last keeps a string that was put together by hand from
+     * being compared option by option as though an engine had written it.
      */
     public static function parse(string $fingerprint): ?self
     {
@@ -182,7 +185,9 @@ final readonly class EngineFingerprint
         }
         ksort($options, SORT_STRING);
 
-        return new self($format, $options);
+        $parsed = new self($format, $options);
+
+        return $parsed->toString() === $fingerprint ? $parsed : null;
     }
 
     /**
@@ -210,7 +215,7 @@ final readonly class EngineFingerprint
             return [match (true) {
                 $stamp !== null => 'the state is stamped by one of the library\'s engines and this engine is not one',
                 $own === null => 'the stamp is not this engine\'s',
-                str_starts_with($recorded, self::PREFIX) => 'the stamp was written by a version of the library this one cannot read',
+                str_starts_with($recorded, self::PREFIX) => 'the stamp begins with the library\'s prefix and is not one this version of the library writes',
                 default => 'the stamp was not written by one of the library\'s engines',
             }];
         }
@@ -235,6 +240,8 @@ final readonly class EngineFingerprint
             }
         }
 
+        // Never empty here: parse() reads only what toString() writes, so
+        // two strings that differ differ in their format or in an option.
         return $differences;
     }
 

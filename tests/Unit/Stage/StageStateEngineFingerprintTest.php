@@ -955,7 +955,18 @@ describe('the fingerprint builder', function (): void {
         'a stamp in an encoding this version does not know' => [
             'tactician:v2:swiss',
             'tactician:v1:swiss',
-            ['the stamp was written by a version of the library this one cannot read'],
+            ["the stamp begins with the library's prefix and is not one this version of the library writes"],
+        ],
+        // Read option by option, these two would differ in nothing.
+        'a stamp with the prefix that no engine wrote' => [
+            'tactician:v1:swiss;subclass=yes;ranking=custom',
+            'tactician:v1:swiss;ranking=custom;subclass=yes',
+            ["the stamp begins with the library's prefix and is not one this version of the library writes"],
+        ],
+        'the same option twice' => [
+            'tactician:v1:swiss;ranking=custom;ranking=custom',
+            'tactician:v1:swiss;ranking=custom',
+            ["the stamp begins with the library's prefix and is not one this version of the library writes"],
         ],
         'a stamp of the library read by an engine of the application' => [
             'tactician:v1:swiss',
@@ -994,3 +1005,7 @@ describe('the fingerprint builder', function (): void {
         expect(count($written))->toBe(count($floats));
     });
 
+        // Spelled otherwise than toString() spells it, so put together by hand.
+        'options out of order' => ['tactician:v1:swiss;subclass=yes;ranking=custom'],
+        'an option twice' => ['tactician:v1:swiss;ranking=custom;ranking=custom'],
+        'a separator at the end' => ['tactician:v1:swiss;'],
