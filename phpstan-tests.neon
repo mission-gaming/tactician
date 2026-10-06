@@ -15,6 +15,9 @@ parameters:
 		# scripts themselves are run and checked by tests/Feature/ExamplesTest.php
 		- examples/support
 
+	# A result cache of its own; phpstan.neon says why.
+	resultCachePath: %tmpDir%/resultCache-tactician-tests.php
+
 	# Exclude generated files and cache
 	excludePaths:
 		- tests/Pest.php

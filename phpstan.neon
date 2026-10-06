@@ -11,3 +11,8 @@ parameters:
 	level: 9
 	paths:
 		- src
+
+	# A result cache of its own. The two configurations run one after the
+	# other, and with the one default file each run discarded the cache the
+	# other had written, so every run analysed every file again.
+	resultCachePath: %tmpDir%/resultCache-tactician-src.php
