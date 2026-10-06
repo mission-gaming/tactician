@@ -76,7 +76,7 @@ final readonly class ScheduleScorer
             if (!is_finite((float) $weight)) {
                 throw new InvalidConfigurationException(
                     'Metric weights must be finite',
-                    ['index' => $index, 'metric' => $entry['metric']->getName(), 'weight' => (string) $weight]
+                    ['index' => $index, 'metric' => $entry['metric']->getName(), 'weight' => self::nameOf((float) $weight)]
                 );
             }
         }
@@ -119,7 +119,7 @@ final readonly class ScheduleScorer
         if (!is_finite($score)) {
             throw new InvalidConfigurationException(
                 'The weighted score is not finite',
-                ['score' => (string) $score]
+                ['score' => self::nameOf($score)]
             );
         }
 
@@ -153,10 +153,24 @@ final readonly class ScheduleScorer
         if (!is_finite($measurement)) {
             throw new InvalidConfigurationException(
                 "Metric {$metric->getName()} measured a value that is not finite",
-                ['metric' => $metric->getName(), 'value' => (string) $measurement]
+                ['metric' => $metric->getName(), 'value' => self::nameOf($measurement)]
             );
         }
 
         return $measurement;
+    }
+
+    /**
+     * The name of a float that is not finite, for the context of a
+     * failure. Written out because a NAN cannot be cast to a string
+     * without a warning from PHP 8.5 on, nor encoded as JSON.
+     */
+    private static function nameOf(float $notFinite): string
+    {
+        if (is_nan($notFinite)) {
+            return 'NAN';
+        }
+
+        return $notFinite > 0 ? 'INF' : '-INF';
     }
 }

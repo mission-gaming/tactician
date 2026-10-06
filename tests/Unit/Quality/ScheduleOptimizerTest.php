@@ -126,19 +126,38 @@ describe('ScheduleScorer', function (): void {
         '-INF' => [-INF],
     ]);
 
-    it('names the metric and the value in the context of the failure', function (): void {
-        $scorer = ScheduleScorer::of(constantMetric(INF, 'Broken'));
+    it('names the metric and the value in the context of the failure', function (float $measurement, string $name): void {
+        $scorer = ScheduleScorer::of(constantMetric($measurement, 'Broken'));
 
         try {
             $scorer->score(new Schedule([]));
         } catch (InvalidConfigurationException $exception) {
-            expect($exception->getContext())->toBe(['metric' => 'Broken', 'value' => 'INF']);
+            expect($exception->getContext())->toBe(['metric' => 'Broken', 'value' => $name]);
 
             return;
         }
 
-        throw new LogicException('The infinite measurement was scored.');
-    });
+        throw new LogicException('The measurement was scored.');
+    })->with([
+        'NAN' => [NAN, 'NAN'],
+        'INF' => [INF, 'INF'],
+        '-INF' => [-INF, '-INF'],
+    ]);
+
+    it('names a weight that is not finite in the context of the failure', function (float $weight, string $name): void {
+        try {
+            new ScheduleScorer([['metric' => new RoleBalanceMetric(), 'weight' => $weight]]);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getContext())->toBe(['index' => 0, 'metric' => 'Role Balance', 'weight' => $name]);
+
+            return;
+        }
+
+        throw new LogicException('The weight was accepted.');
+    })->with([
+        'NAN' => [NAN, 'NAN'],
+        'INF' => [INF, 'INF'],
+    ]);
 
     it('rejects a weighted sum that overflows', function (): void {
         $scorer = new ScheduleScorer([
