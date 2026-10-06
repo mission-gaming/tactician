@@ -30,6 +30,24 @@ final readonly class RepackOutcome
      */
     public const string FINGERPRINT_SCHEME = 'v1';
 
+    /*
+     * The keys of each record in the canonical document of scheme v1. They
+     * are written out, and not read from toArray(), so that a key added to
+     * a toArray() later leaves every v1 fingerprint as it was. Changing a
+     * list below changes the scheme.
+     */
+    private const array FINGERPRINT_ASSIGNMENT_KEYS = ['event_id', 'session', 'slot', 'kickoff'];
+
+    private const array FINGERPRINT_UNPLACED_KEYS = ['event_id', 'reason', 'participant'];
+
+    private const array FINGERPRINT_VIOLATION_KEYS = [
+        ParticipantDoubleBooked::class => ['kind', 'participant', 'session', 'slot', 'event_ids'],
+        EventUnplaced::class => ['kind', 'event_id', 'reason', 'participant'],
+        ContiguityBroken::class => ['kind', 'participant', 'session', 'gap_slots', 'occupied_slots'],
+        LateStart::class => ['kind', 'participant', 'session', 'first_slot'],
+        CapacityExceeded::class => ['kind', 'participant', 'demand', 'capacity', 'shortfall'],
+    ];
+
     /** @var array<string, SlotAssignment> Keyed by event id */
     private array $assignmentsById;
 
@@ -109,6 +127,11 @@ final readonly class RepackOutcome
      * The elements are typed as the interface. The five accessors below
      * return the same lists typed as their classes, so that the getters of
      * a kind can be read without an `instanceof` check.
+     *
+     * The two differ only for an outcome built by hand with a violation
+     * of a class from outside the library: that violation is returned
+     * here, under the kind it states, and by none of the five accessors,
+     * each of which returns objects of its own class only.
      *
      * @return array<RepackViolation>
      */
@@ -231,7 +254,26 @@ final readonly class RepackOutcome
      *
      *     "tactician.repack.outcome.v1\n" SET(assignments) SET(unplaced) SET(violations)
      *
-     * where each list holds what toArray() returns for it, and
+     * where each of the three is a set of records, and a record is a map
+     * with exactly these keys:
+     *
+     *     an assignment              event_id, session, slot, kickoff
+     *     an unplaced event          event_id, reason, participant
+     *     a ParticipantDoubleBooked  kind, participant, session, slot, event_ids
+     *     an EventUnplaced           kind, event_id, reason, participant
+     *     a ContiguityBroken         kind, participant, session, gap_slots, occupied_slots
+     *     a LateStart                kind, participant, session, first_slot
+     *     a CapacityExceeded         kind, participant, demand, capacity, shortfall
+     *
+     * Each key holds what toArray() of the record holds under it: an event
+     * id as a string, a session, a slot and a count as integers, a
+     * participant as its id or null, a kind and a reason as their backing
+     * strings, the lists as lists, and a kickoff as the string
+     * `2026-08-12T19:00:00Z` or null. The keys are named here because
+     * they are the scheme: a key that toArray() gains in a later version
+     * is not part of scheme v1 and does not change a v1 fingerprint. A
+     * violation of any other class is the whole of what its toArray()
+     * returns. And
      *
      *     SET(records)  = "l" COUNT ":" the VALUE of every record, in ascending byte order ";"
      *     VALUE(null)   = "n;"
@@ -246,8 +288,11 @@ final readonly class RepackOutcome
      * COUNT, LENGTH-IN-BYTES and DECIMAL are ASCII decimal digits with no
      * leading zeros, DECIMAL with a leading "-" when negative. A list is
      * an array whose keys are 0, 1, 2 and so on in order; any other array
-     * is a map. Byte order compares unsigned bytes, a shorter string
-     * before a longer one it begins.
+     * is a map. What is put in byte order is the encoded bytes: of each
+     * record in a set, and of each entry (its key and item together) in a
+     * map, so the entry of the key `slot` ("s4:slot;...") comes before
+     * that of `kickoff` ("s7:kickoff;..."). Byte order compares unsigned
+     * bytes, a shorter string before a longer one it begins.
      *
      * What follows from that:
      *
@@ -256,12 +301,12 @@ final readonly class RepackOutcome
      *   record does (the occupied slots of a ContiguityBroken, the event
      *   ids of a ParticipantDoubleBooked); the repacker always writes
      *   those ascending.
-     * - Every field toArray() carries is covered, so a change to any field
-     *   of any assignment, unplaced event or violation changes the
-     *   fingerprint. A participant is covered by its id, as in toArray().
-     *   The kickoff is covered to the second, and is null for a shape-only
-     *   grid, so the same positions on a shape-only grid and on an
-     *   instant-based one have different fingerprints.
+     * - Every field the records have today is covered, so a change to any
+     *   field of any assignment, unplaced event or violation changes the
+     *   fingerprint. A participant is covered by its id and by nothing
+     *   else of it. The kickoff is covered to the second, and is null for
+     *   a shape-only grid, so the same positions on a shape-only grid and
+     *   on an instant-based one have different fingerprints.
      * - isBudgetExhausted() is not covered. Two outcomes holding the same
      *   plan are the same plan, however each search ended.
      * - Nothing in it depends on the PHP version, the platform, the
@@ -273,15 +318,44 @@ final readonly class RepackOutcome
      */
     public function fingerprint(): string
     {
-        $data = $this->toArray();
+        $assignments = [];
+        foreach ($this->assignments as $assignment) {
+            $assignments[] = self::fields($assignment->toArray(), self::FINGERPRINT_ASSIGNMENT_KEYS);
+        }
+
+        $unplaced = [];
+        foreach ($this->unplaced as $unplacedEvent) {
+            $unplaced[] = self::fields($unplacedEvent->toArray(), self::FINGERPRINT_UNPLACED_KEYS);
+        }
+
+        $violations = [];
+        foreach ($this->violations as $violation) {
+            $keys = self::FINGERPRINT_VIOLATION_KEYS[$violation::class] ?? null;
+            // A class from outside the library has no key list to hold it to
+            $violations[] = $keys === null ? $violation->toArray() : self::fields($violation->toArray(), $keys);
+        }
 
         return self::FINGERPRINT_SCHEME . ':' . hash(
             'sha256',
             "tactician.repack.outcome.v1\n"
-            . CanonicalEncoding::set($data['assignments'])
-            . CanonicalEncoding::set($data['unplaced'])
-            . CanonicalEncoding::set($data['violations'])
+            . CanonicalEncoding::set($assignments)
+            . CanonicalEncoding::set($unplaced)
+            . CanonicalEncoding::set($violations)
         );
+    }
+
+    /**
+     * The entries of a record that a fingerprint scheme names, and no
+     * others.
+     *
+     * @param array<string, mixed> $record
+     * @param list<string> $keys
+     *
+     * @return array<string, mixed>
+     */
+    private static function fields(array $record, array $keys): array
+    {
+        return array_intersect_key($record, array_flip($keys));
     }
 
     /**

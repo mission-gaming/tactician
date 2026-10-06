@@ -1302,13 +1302,38 @@ VALUE(map)    = "m" COUNT ":" VALUE(key) VALUE(item) for every entry,
                 the entries in ascending byte order ";"
 ```
 
-Each of the three lists holds what `toArray()` returns for it. `COUNT`,
-`LENGTH-IN-BYTES` and `DECIMAL` are ASCII decimal digits with no leading
-zeros, `DECIMAL` with a leading `-` when negative. A list is an array
-whose keys are 0, 1, 2 and so on in order; any other array is a map.
-Byte order compares unsigned bytes, a shorter string before a longer one
-that begins with it. An outcome with nothing in it has the document
-`"tactician.repack.outcome.v1\nl0:;l0:;l0:;"`.
+Each of the three is a set of records, and a record is a map with exactly
+these keys:
+
+| Record | Keys |
+|---|---|
+| An assignment | `event_id`, `session`, `slot`, `kickoff` |
+| An unplaced event | `event_id`, `reason`, `participant` |
+| A `ParticipantDoubleBooked` | `kind`, `participant`, `session`, `slot`, `event_ids` |
+| An `EventUnplaced` | `kind`, `event_id`, `reason`, `participant` |
+| A `ContiguityBroken` | `kind`, `participant`, `session`, `gap_slots`, `occupied_slots` |
+| A `LateStart` | `kind`, `participant`, `session`, `first_slot` |
+| A `CapacityExceeded` | `kind`, `participant`, `demand`, `capacity`, `shortfall` |
+
+Each key holds what `toArray()` of the record holds under it: an event ID
+as a string, a session, a slot and a count as integers, a participant as
+its ID or null, a kind and a reason as their backing strings, the lists
+as lists, and a kickoff as the string `2026-08-12T19:00:00Z` or null. The
+keys are named because they are the scheme: a key that a `toArray()`
+gains in a later version is not part of scheme `v1` and does not change a
+`v1` fingerprint.
+
+`COUNT`, `LENGTH-IN-BYTES` and `DECIMAL` are ASCII decimal digits with no
+leading zeros, `DECIMAL` with a leading `-` when negative. A list is an
+array whose keys are 0, 1, 2 and so on in order; any other array is a
+map. What is put in byte order is the encoded bytes: of each record in a
+set, and of each entry (its key and item together) in a map, so the entry
+of the key `slot` (`s4:slot;...`) comes before that of `kickoff`
+(`s7:kickoff;...`). Byte order compares unsigned bytes, a shorter string
+before a longer one that begins with it. An outcome with nothing in it
+has the document `"tactician.repack.outcome.v1\nl0:;l0:;l0:;"`, and one
+assignment of the event `e1` to session 0, slot 2 with no kickoff is the
+record `m4:s4:slot;i2;s7:kickoff;n;s7:session;i0;s8:event_id;s2:e1;;`.
 
 What follows from that:
 
@@ -1316,16 +1341,18 @@ What follows from that:
   order of the keys of a record. The order of a list inside a record does
   (the occupied slots of a `ContiguityBroken`, the event IDs of a
   `ParticipantDoubleBooked`); the repacker always writes those ascending.
-- Every field `toArray()` carries is covered. A participant is covered by
-  its ID. A kickoff is covered to the second and is null for a shape-only
-  grid.
+- Every field the records have today is covered. A participant is covered
+  by its ID and by nothing else of it, so a changed label or changed
+  metadata leaves the fingerprint as it was. A kickoff is covered to the
+  second and is null for a shape-only grid.
 - `isBudgetExhausted()` is not covered: two outcomes holding the same
   plan are the same plan, however each search ended.
 - Nothing in it depends on the PHP version, the platform, the locale or
   an ini setting.
-- A violation of a class of your own is covered through its `toArray()`.
-  If that returns something the encoding has no form for (an object, a
-  resource), `fingerprint()` throws an `InvalidInputException`.
+- A violation of a class of your own is covered through its `toArray()`,
+  the whole of it, so its fingerprint is as stable as that method's
+  result. If that returns something the encoding has no form for (an
+  object, a resource), `fingerprint()` throws an `InvalidInputException`.
 
 ### Weight Bounds
 
@@ -1502,7 +1529,10 @@ strings in the table under [Reading the Outcome](#reading-the-outcome).
 #### `RepackViolation`
 
 The interface the five violation classes implement. A class of your own
-may implement it too.
+may implement it too, in an outcome built by hand; the repacker returns
+the five only. Such a violation is in `getViolations()` and in
+`getViolationsOfKind()` for the kind it states, and in none of the five
+typed accessors, each of which returns objects of its own class.
 
 | Method | Returns |
 |---|---|

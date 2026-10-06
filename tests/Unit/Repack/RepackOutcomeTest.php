@@ -113,6 +113,16 @@ describe('RepackOutcome typed accessors', function (): void {
         }
     });
 
+    it('leaves a violation of a class from outside the library to getViolationsOfKind()', function (): void {
+        // The foreign class states the kind LateStart and is not a LateStart
+        $foreign = foreignViolation(['kind' => 'late_start']);
+        $own = new LateStart(new Participant('p', 'P'), 0, 1);
+        $outcome = new RepackOutcome([], [], [$foreign, $own]);
+
+        expect($outcome->getViolationsOfKind(ViolationKind::LateStart))->toBe([$foreign, $own]);
+        expect($outcome->getLateStartViolations())->toBe([$own]);
+    });
+
     it('returns empty lists for a clean outcome', function (): void {
         $outcome = new RepackOutcome([], [], []);
 
@@ -210,6 +220,59 @@ describe('RepackOutcome::fingerprint()', function (): void {
 
     it('is pinned for an outcome holding every kind of record', function (): void {
         expect(outcomeOfEveryKind()->fingerprint())->toBe('v1:5a2ca37420f0e0aab286eb4418d0b6f3a67b6ae2cd375b56aaad4e1f28c80688');
+    });
+
+    // The canonical document of scheme v1 written out for every class of
+    // record, from the key lists in the docblock of fingerprint(). The
+    // bytes were produced by an encoder written in another language from
+    // that docblock. A record class whose keys change fails here.
+    it('is the digest of the documented keys of every class of record', function (): void {
+        $document = "tactician.repack.outcome.v1\n"
+            // The assignment, without a kickoff
+            . 'l1:m4:s4:slot;i2;s7:kickoff;n;s7:session;i0;s8:event_id;s2:e1;;;'
+            // The unplaced event
+            . 'l1:m3:s11:participant;s2:p1;s6:reason;s25:participant_over_capacity;s8:event_id;s2:e9;;;'
+            . 'l6:'
+            // LateStart
+            . 'm4:s10:first_slot;i1;s11:participant;s2:p2;s4:kind;s10:late_start;s7:session;i1;;'
+            // EventUnplaced
+            . 'm4:s11:participant;s2:p1;s4:kind;s14:event_unplaced;s6:reason;s25:participant_over_capacity;s8:event_id;s2:e9;;'
+            // CapacityExceeded for the grid, then for a participant
+            . 'm5:s11:participant;n;s4:kind;s17:capacity_exceeded;s6:demand;i9;s8:capacity;i8;s9:shortfall;i1;;'
+            . 'm5:s11:participant;s2:p1;s4:kind;s17:capacity_exceeded;s6:demand;i5;s8:capacity;i3;s9:shortfall;i2;;'
+            // ParticipantDoubleBooked
+            . 'm5:s11:participant;s2:p1;s4:kind;s25:participant_double_booked;s4:slot;i1;s7:session;i0;s9:event_ids;l2:s2:e1;s2:x1;;;'
+            // ContiguityBroken
+            . 'm5:s11:participant;s2:p2;s14:occupied_slots;l2:i0;i3;;s4:kind;s17:contiguity_broken;s7:session;i1;s9:gap_slots;i2;;'
+            . ';';
+
+        expect(outcomeOfEveryKind()->fingerprint())->toBe('v1:' . hash('sha256', $document));
+    });
+
+    // Scheme v1 names the keys it covers, so that a key added to a
+    // toArray() later does not change a v1 fingerprint. Today the named
+    // keys are all the keys there are. If this fails because a toArray()
+    // gained a key, the fingerprint does not cover the new key: decide
+    // whether that is right (it then needs saying in the usage guide) or
+    // whether the new key calls for a new scheme, and only then change the
+    // list here. Do not add the key to the v1 lists in RepackOutcome.
+    it('covers every key the records have today', function (): void {
+        $data = outcomeOfEveryKind()->toArray();
+
+        $keys = ['assignment' => array_keys($data['assignments'][0]), 'unplaced' => array_keys($data['unplaced'][0])];
+        foreach ($data['violations'] as $violation) {
+            $keys[(string) $violation['kind']] = array_keys($violation);
+        }
+
+        expect($keys)->toBe([
+            'assignment' => ['event_id', 'session', 'slot', 'kickoff'],
+            'unplaced' => ['event_id', 'reason', 'participant'],
+            'participant_double_booked' => ['kind', 'participant', 'session', 'slot', 'event_ids'],
+            'event_unplaced' => ['kind', 'event_id', 'reason', 'participant'],
+            'contiguity_broken' => ['kind', 'participant', 'session', 'gap_slots', 'occupied_slots'],
+            'late_start' => ['kind', 'participant', 'session', 'first_slot'],
+            'capacity_exceeded' => ['kind', 'participant', 'demand', 'capacity', 'shortfall'],
+        ]);
     });
 
     it('is pinned for event ids that are empty, numeric, multi-byte or hold the delimiters', function (): void {

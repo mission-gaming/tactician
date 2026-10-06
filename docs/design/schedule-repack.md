@@ -228,10 +228,16 @@ and the golden fixtures are untouched.
     that). True: a search was cut short and a larger budget may differ.
     It is not in `toArray()`, because existing wire output may not gain a
     key in a patch release.
-29. **The fingerprint is over `toArray()`.** The three lists are what an
-    outcome is, and `toArray()` is already the pinned wire shape, so the
-    fingerprint needs no second definition of an outcome's fields, and a
-    violation class from outside the library is covered the same way.
+29. **The fingerprint is over named keys of `toArray()`.** The three
+    lists are what an outcome is, and `toArray()` is already the pinned
+    wire shape, so the values come from there. The keys do not: scheme
+    `v1` lists the keys of each record class, and the fingerprint reads
+    those and no others. Hashing whatever `toArray()` returns was
+    rejected, because a key added to a wire shape in a later release
+    would then change every `v1` fingerprint without a new scheme, and a
+    specification that says "what `toArray()` returns" cannot be
+    implemented from the page. A violation class from outside the
+    library has no such list and is covered by its whole `toArray()`.
     The encoding is specified on `RepackOutcome::fingerprint()`:
     length-prefixed strings and counted lists (no value can be mistaken
     for two), map entries and the three record lists in byte order (so
