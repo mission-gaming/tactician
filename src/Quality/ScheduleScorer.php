@@ -82,7 +82,8 @@ final readonly class ScheduleScorer
             if (!is_finite((float) $weight)) {
                 throw new InvalidConfigurationException(
                     'Metric weights must be finite',
-                    ['index' => $index, 'metric' => $entry['metric']->getName(), 'weight' => self::nameOf((float) $weight)]
+                    ['index' => $index, 'metric' => $entry['metric']->getName(), 'weight' => self::nameOf((float) $weight)],
+                    reason: InvalidConfigurationReason::ValueOutOfRange
                 );
             }
         }
@@ -125,7 +126,8 @@ final readonly class ScheduleScorer
         if (!is_finite($score)) {
             throw new InvalidConfigurationException(
                 'The weighted score is not finite',
-                ['score' => self::nameOf($score)]
+                ['score' => self::nameOf($score)],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
 
@@ -159,7 +161,8 @@ final readonly class ScheduleScorer
         if (!is_finite($measurement)) {
             throw new InvalidConfigurationException(
                 "Metric {$metric->getName()} measured a value that is not finite",
-                ['metric' => $metric->getName(), 'value' => self::nameOf($measurement)]
+                ['metric' => $metric->getName(), 'value' => self::nameOf($measurement)],
+                reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
 

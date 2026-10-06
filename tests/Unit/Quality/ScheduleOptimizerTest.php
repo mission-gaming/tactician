@@ -8,6 +8,7 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\Quality\PairingSpacingMetric;
 use MissionGaming\Tactician\Quality\QualityMetric;
@@ -132,7 +133,10 @@ describe('ScheduleScorer', function (): void {
         try {
             $scorer->score(new Schedule([]));
         } catch (InvalidConfigurationException $exception) {
-            expect($exception->getContext())->toBe(['metric' => 'Broken', 'value' => $name]);
+            expect($exception->getContext())->toBe(['metric' => 'Broken', 'value' => $name])
+                ->and($exception->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange)
+                ->and($exception->getDiagnosticReport())->toContain("• value: {$name}")
+                ->not->toContain('REQUIREMENTS');
 
             return;
         }
@@ -148,7 +152,10 @@ describe('ScheduleScorer', function (): void {
         try {
             new ScheduleScorer([['metric' => new RoleBalanceMetric(), 'weight' => $weight]]);
         } catch (InvalidConfigurationException $exception) {
-            expect($exception->getContext())->toBe(['index' => 0, 'metric' => 'Role Balance', 'weight' => $name]);
+            expect($exception->getContext())->toBe(['index' => 0, 'metric' => 'Role Balance', 'weight' => $name])
+                ->and($exception->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange)
+                ->and($exception->getDiagnosticReport())->toContain("• weight: {$name}")
+                ->not->toContain('REQUIREMENTS');
 
             return;
         }
@@ -168,6 +175,42 @@ describe('ScheduleScorer', function (): void {
         expect($scorer->report(new Schedule([])))->toBe(['Large' => 1.0e200]);
         expect(fn() => $scorer->score(new Schedule([])))
             ->toThrow(InvalidConfigurationException::class, 'The weighted score is not finite');
+
+        try {
+            $scorer->score(new Schedule([]));
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getContext())->toBe(['score' => 'INF'])
+                ->and($exception->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange);
+        }
+    });
+
+    // INF and -INF are each a finite weight times a finite measurement that
+    // overflowed; their sum is NAN, which no comparison orders either.
+    it('rejects a weighted sum that is not a number', function (): void {
+        $scorer = new ScheduleScorer([
+            ['metric' => constantMetric(1.0e200, 'Large'), 'weight' => 1.0e200],
+            ['metric' => constantMetric(-1.0e200, 'Negative'), 'weight' => 1.0e200],
+        ]);
+
+        try {
+            $scorer->score(new Schedule([]));
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getMessage())->toContain('The weighted score is not finite')
+                ->and($exception->getContext())->toBe(['score' => 'NAN']);
+
+            return;
+        }
+
+        throw new LogicException('A score of NAN was returned.');
+    });
+
+    it('accepts an integer weight and the largest finite weight', function (): void {
+        $scorer = new ScheduleScorer([
+            ['metric' => constantMetric(2.0, 'Two'), 'weight' => 3],
+            ['metric' => constantMetric(0.0, 'Zero'), 'weight' => PHP_FLOAT_MAX],
+        ]);
+
+        expect($scorer->score(new Schedule([])))->toBe(6.0);
     });
 });
 

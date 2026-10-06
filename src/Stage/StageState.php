@@ -227,9 +227,14 @@ final readonly class StageState
     {
         $lastRound = $this->getLastRound();
         if ($lastRound === null) {
+            // The errors of this method and of the fingerprint state no
+            // reason, like the others of this class, and name an empty list
+            // of requirements: without it their report would end with the
+            // round-robin requirements, which do not describe them.
             throw new InvalidConfigurationException(
                 'No round has been recorded to replace a result in',
-                []
+                [],
+                requirements: []
             );
         }
 
@@ -260,7 +265,8 @@ final readonly class StageState
                         fn(Participant $participant) => $participant->getId(),
                         $event->getParticipants()
                     ),
-                ]
+                ],
+                requirements: []
             );
         }
 
@@ -269,7 +275,8 @@ final readonly class StageState
                 "A result of round {$round} cannot be replaced: round {$lastRound->getRoundNumber()} was paired from the"
                     . " results of round {$round}. Rebuild the state up to round {$round} with the corrected result"
                     . ' (StageState::start(), then withRoundPlayed() for each round that stands) and pair again.',
-                ['round' => $round, 'last_round' => $lastRound->getRoundNumber()]
+                ['round' => $round, 'last_round' => $lastRound->getRoundNumber()],
+                requirements: []
             );
         }
 
@@ -321,7 +328,7 @@ final readonly class StageState
     public function withEngineFingerprint(?string $fingerprint): self
     {
         if ($fingerprint === '') {
-            throw new InvalidConfigurationException('An engine fingerprint cannot be empty', []);
+            throw new InvalidConfigurationException('An engine fingerprint cannot be empty', [], requirements: []);
         }
 
         return new self($this->participants, $this->roundsPlayed, $this->results, $fingerprint);
@@ -352,7 +359,8 @@ final readonly class StageState
             throw new InvalidConfigurationException(
                 'The stage state was recorded by a different engine or configuration; stamp it again with'
                     . ' withEngineFingerprint() if the change is deliberate',
-                ['recorded' => $this->engineFingerprint, 'engine' => $fingerprint]
+                ['recorded' => $this->engineFingerprint, 'engine' => $fingerprint],
+                requirements: []
             );
         }
     }

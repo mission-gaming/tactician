@@ -187,9 +187,9 @@ heading **Output change (fix)**.
   also unchanged for the three factories on `SchedulingException` and for an
   `InvalidConfigurationException` that code outside the library builds the
   way it did before, because the library cannot tell what those describe.
-  The six errors `Stage\StageState` raises (see "Added" below) are built that
-  way too, so their report still ends with the round-robin block, which does
-  not describe them: a known gap. Every other configuration error the library
+  Six of the errors `Stage\StageState` raises (see "Added" below) are built
+  that way too, so their report still ends with the round-robin block, which
+  does not describe them: a known gap. Every other configuration error the library
   raises now has no "REQUIREMENTS" block, and its report ends with the
   configuration details.
 - The suggestion `IncompleteScheduleException::getDiagnosticReport()` gives
@@ -222,9 +222,10 @@ heading **Output change (fix)**.
   of the new backed enum `Exceptions\InvalidConfigurationReason`
   (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 32 more; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). 124 of the 130 sites that build the exception set one. The
-  six that do not are in `Stage\StageState` (recording a round or its
-  results, and a duplicate ID given to `start()`): `getReason()` returns null
+  identifiers). 127 of the 138 sites that build the exception set one. The
+  eleven that do not are in `Stage\StageState` (recording a round or its
+  results, replacing a result, the engine fingerprint, and a duplicate ID
+  given to `start()`): `getReason()` returns null
   for those, and for an exception that code outside the library builds
   without a reason. A `match` over the reason needs a `default` arm, because
   a release may add a case.

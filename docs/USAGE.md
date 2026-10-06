@@ -1705,11 +1705,12 @@ identifier for logs and stored data):
 A case says what kind of mistake was made, not which component found it:
 `TooFewParticipants` comes from the round-robin scheduler, the Swiss engine
 and the elimination engines alike. One group of errors has no reason yet:
-those `StageState` raises while a round or its results are recorded
-(`withRoundPlayed()`, `withAdditionalResults()`, and a duplicate ID given to
-`start()`). Their `getReason()` returns null, and because they state neither
-a reason nor requirements their report still ends with the round-robin
-"REQUIREMENTS" block, which does not describe them. Both are known gaps.
+those `StageState` raises (`withRoundPlayed()`, `withAdditionalResults()`,
+`withResultReplaced()`, the engine fingerprint, and a duplicate ID given to
+`start()`). Their `getReason()` returns null. The report of the first two
+and of `start()` also still ends with the round-robin "REQUIREMENTS" block,
+which does not describe them, because they state neither a reason nor
+requirements. Both are known gaps.
 
 ### Catching Every Library Exception
 
