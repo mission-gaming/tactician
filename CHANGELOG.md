@@ -228,10 +228,11 @@ heading **Output change (fix)**.
     role exactly half the time against every pot.
   - The schedule is built directly, with no search, for any even pot size,
     and for an odd pot size with two opponents per pot. Generation time is
-    proportional to the number of events. Who meets whom is drawn evenly;
-    the shape of a round is not drawn: in a round the members of a pot all
-    meet members of one other pot, or of their own, whatever the seed (see
-    "The seed and determinism" in the usage guide for the exact statement).
+    proportional to the number of events. Who meets whom is drawn evenly,
+    and the events are then mixed across the rounds, so that a round does
+    not set one whole pot against another; no event changes in the mixing.
+    The draw is not uniform over every schedule the format allows ("The
+    seed and determinism" in the usage guide says what remains regular).
   - A configuration that cannot exist is refused before anything is drawn,
     with a reason of its own: `OddParticipantCount` (no bye is issued),
     `UnequalPots`, `TooManyOpponentsPerPot` and `OddPotWithOddOpponents`. A

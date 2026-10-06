@@ -854,32 +854,32 @@ var_dump($events($other) === $events($schedule)); // bool(false)
 A key that is left out takes its default: one pot, one opponent per pot,
 seed 0.
 
-The seed chooses one schedule out of the family the generator can construct:
-the order of the members inside each pot, the order of the pots, which
-matchings are used, which side is first, and the order of the rounds. The
-draw is not uniform over every schedule the format allows. The engine behind
-it (`Random\Engine\Xoshiro256StarStar`) is part of the output, and the golden
-fixtures pin one draw of each worked case.
+The seed chooses the order of the members inside each pot, the order of the
+pots, which matchings are used, which side is first, how the events are
+spread over the rounds, and the order of the rounds and of the events in
+them. The engine behind it (`Random\Engine\Xoshiro256StarStar`) is part of
+the output, and the golden fixtures pin one draw of each worked case.
 
 Who meets whom is drawn evenly: between two given pots, or inside one, every
-pairing is as likely as any other. The shape of a round is not drawn at all,
-and no seed changes it:
+pairing is as likely as any other. The generator first builds rounds in which
+whole pots meet each other, and then mixes them: two rounds at a time trade
+events in a way that keeps every entrant in both rounds exactly once, eight
+times the number of rounds over. No event is changed by this, so the
+opponents and the roles are the ones first built. After it a round mixes the
+pots, the events inside the pots are spread over the rounds, and which of
+two pots is first varies from event to event within a round.
 
-- A round is made of whole pots. With an even pot size, all the members of a
-  pot meet members of one other pot in a round, or all of them play inside
-  their own pot. If the number of pots is even as well, every event inside a
-  pot is in one of a few rounds in which every pot plays inside itself: as
-  many rounds as there are opponents per pot.
-- With an odd pot size, every event inside a pot is in one of three rounds,
-  which the pots share with a partner pot. In every other round each pot
-  meets one other pot as a whole.
-- With an even number of opponents per pot, one of the two pots is in the
-  first role in every event between them in a round, and the other pot in
-  another round.
+The draw is still not uniform over every schedule the format allows:
 
-So a round does not mix the pots the way a draw made one event at a time
-does. If the order of play matters to you beyond who meets whom and in which
-role, read the rounds as a valid order and not as a drawn one.
+- the pairings between two pots follow one pattern (a rotation of the two
+  pots' members against each other), and no seed draws a schedule outside it;
+- the mixing is a fixed amount of work, so now and then a round is left in
+  which every pot meets one other pot only (about one round in ten for 16
+  entrants in 4 pots with two opponents per pot, and fewer than one in
+  twenty for the larger cases measured);
+- the smallest fields leave the mixing nothing to trade: with 6 entrants in
+  3 pots of 2, every round has one pot playing inside itself and the other
+  two meeting each other.
 
 ### Feasible, supported and refused configurations
 
@@ -951,7 +951,8 @@ exact number of opponents from every pot, no rematch, and the role balance.
 The scheduler runs it on every schedule it returns.
 
 Generation takes time proportional to the number of events (entrants × pots ×
-opponents per pot / 2): a few milliseconds for 60 entrants.
+opponents per pot / 2), the mixing included: a few milliseconds for 60
+entrants in 6 pots with three opponents per pot.
 
 ## Elimination Brackets
 
