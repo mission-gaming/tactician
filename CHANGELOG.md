@@ -13,10 +13,15 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-06
+
 No library behavior changes: under `src/`, only the formatting and a number
 of expressions rewritten to an equivalent form have changed since 0.2.0. No
 public signature has changed, and generated output for a fixed input and seed
-is identical.
+is identical. Upgrading from 0.2.0 needs no code change.
+
+The installed package is smaller: tests, documentation, examples and tool
+configuration are no longer installed into a consumer's `vendor/` directory.
 
 ### Added
 
@@ -24,20 +29,9 @@ is identical.
   release checklist in `docs/RELEASING.md`, with tests
   (`tests/Feature/VersioningDocumentationTest.php`) that check them against
   the repository.
-- Golden-output tests (`tests/Feature/GoldenOutputTest.php`) that pin generated
-  schedules, bracket pairings, repack assignments, and the JSON wire shapes
-  against text fixtures in `tests/Fixtures/golden/`, captured from 0.2.0. The
-  development-only `composer golden-update` script regenerates them.
-- Optional, tracked settings in `.claude/` for contributors who use an AI
-  coding agent: a hook that formats each PHP file the agent edits and analyses it when it is
-  under `src/` or `tests/` (`tests/Feature/AgentHookTest.php` covers it), and `verify` and `release`
-  commands. The directory is not part of the installed package.
-- A test (`tests/Feature/DocumentationSnippetsTest.php`) that executes every
-  `php` code block of `README.md` and `docs/USAGE.md`, each in a PHP process of
-  its own under `E_ALL`. A block that does not parse, throws, or emits a
-  warning or deprecation fails the suite, as does one that stops before its
-  last line. The values and printed output the two documents state are pinned
-  in the same test.
+- Two examples: a double-elimination bracket with a grand-final reset
+  (`examples/20-double-elimination.php`) and a standings table with a chain of
+  tiebreakers (`examples/21-standings-and-tiebreakers.php`).
 - Checked results for every example. Each script in `examples/` now computes
   a named set of results and hands it to one shared renderer
   (`examples/support/Example.php`), which shows it as text on the command line
@@ -45,37 +39,70 @@ is identical.
   each example is there to demonstrate, pins them as text in
   `tests/Fixtures/golden/examples/`, and fails for an example that has no
   checked results. A change to the pages' markup touches no fixture.
-- Two examples: a double-elimination bracket with a grand-final reset
-  (`examples/20-double-elimination.php`) and a standings table with a chain of
-  tiebreakers (`examples/21-standings-and-tiebreakers.php`).
-- A test that fails when a script in `examples/` is missing from
-  `examples/README.md` or `examples/index.php`, or when either lists a script
-  that does not exist.
-- A time limit on each block the documentation-snippet test executes: a block
-  that never returns is stopped and fails by name instead of hanging the
-  suite.
-- A documentation step in the release checklist (`docs/RELEASING.md`).
+- `homepage` and `support` links in `composer.json`.
 - Governance files: a security policy (`SECURITY.md`), code owners, a pull
   request template with a compatibility section, and issue forms for bug
   reports and feature requests.
-- A weekly scheduled workflow that runs the gate against freshly resolved
-  dependencies on PHP 8.3, 8.4 and 8.5, and the suite against the next PHP
-  version (allowed to fail). It does not run on pull requests.
+- Golden-output tests (`tests/Feature/GoldenOutputTest.php`) that pin generated
+  schedules, bracket pairings, repack assignments, and the JSON wire shapes
+  against text fixtures in `tests/Fixtures/golden/`, captured from 0.2.0. The
+  development-only `composer golden-update` script regenerates them.
+- A test (`tests/Feature/DocumentationSnippetsTest.php`) that executes every
+  `php` code block of `README.md` and `docs/USAGE.md`, each in a PHP process of
+  its own under `E_ALL`. A block that does not parse, throws, or emits a
+  warning or deprecation fails the suite, as does one that stops before its
+  last line. A block that never returns is stopped by a time limit and fails
+  by name instead of hanging the suite. The values and printed output the two
+  documents state are pinned in the same test.
+- A test that fails when a script in `examples/` is missing from
+  `examples/README.md` or `examples/index.php`, or when either lists a script
+  that does not exist.
 - A `composer security-audit` script, which audits the dependencies in
   `composer.lock`. CI runs it on every pull request and push, in a
   `Dependency audit` job of its own that is not a required check. It fails on
   a security advisory and reports an abandoned package without failing. It is
   not part of `composer ci`, which needs no network.
+- A weekly scheduled workflow that runs the gate against freshly resolved
+  dependencies on PHP 8.3, 8.4 and 8.5, and the suite against the next PHP
+  version (allowed to fail). It does not run on pull requests.
 - A `codecov.yml` with a patch-coverage target and a project threshold.
-- `homepage` and `support` links in `composer.json`.
+- Optional, tracked settings in `.claude/` for contributors who use an AI
+  coding agent: a hook that formats each PHP file the agent edits and analyses
+  it when it is under `src/` or `tests/` (`tests/Feature/AgentHookTest.php`
+  covers it), and `verify` and `release` commands. The directory is not part
+  of the installed package.
 
 ### Changed
 
-- The workflows use the current major versions of the checkout, cache and
-  coverage-upload actions.
-- The static analysis gates now check something. None of this changes what
-  the library does: under `src/` it is a reformat and rewrites with the same
-  result.
+- The dist archive, which is what Composer installs, carries only the
+  library: `src/`, `composer.json`, `LICENSE`, `README.md` and `CHANGELOG.md`.
+  A test (`tests/Feature/DistArchiveTest.php`) guards the archive's contents.
+  The repository also gains an `.editorconfig`, and its `.gitignore` patterns
+  are anchored to the root.
+- `README.md` has one feature list instead of two. It now covers everything
+  that has shipped, including schedule repacking, timeline assignment,
+  schedule quality and backtracking generation, and each entry links to its
+  section of the usage guide.
+- Every code block in `README.md` and `docs/USAGE.md` now runs as written:
+  imports and the values a block depends on are shown, and inline value
+  comments match what the code produces.
+- Every example runs both on the command line and in a browser; there are no
+  longer separate browser and command-line examples. The example pages no
+  longer load a script from another host. `examples/README.md` and
+  `examples/index.php` list all 21 examples.
+- Documentation and design notes describe consuming applications generically.
+  A `Restricted terms` CI job checks tracked files and paths against a list
+  the maintainers keep as a repository secret.
+- `AGENTS.md` is now the single guide for contributors and AI coding agents,
+  corrected against the code. `docs/ROADMAP.md` marks every phase as shipped,
+  lists schedule repacking, and gains sections for known limitations and
+  deferred work.
+- `docs/CONTRIBUTING.md` describes the current checks and rules, and states
+  one branch and commit convention.
+- Every PHP file now declares `strict_types=1`. Six test files and the
+  PHP-CS-Fixer configuration did not; a test now checks all of them.
+- The static analysis gates now check something. The reformat and the
+  equivalent rewrites under `src/` come from them.
   - PHPStan analyses `src/` at level 9 (the tests stay at level 8), with
     `phpstan-strict-rules` and `phpstan-deprecation-rules`. What the strict
     rules found in existing code and was not fixed is recorded in two baseline
@@ -88,51 +115,33 @@ is identical.
   - `phpunit.xml` uses the schema of the installed PHPUnit. A test run fails
     on a warning, a notice, a deprecation or a risky test, and tests run in
     random order.
-- The CI workflow cancels a superseded run for a pull request (never a run on
-  `main`), loads a coverage driver in the
-  coverage job only, requests only the PHP extensions the tools need, caches
-  Composer's downloads instead of `vendor/`, and can be started by hand.
-- A coverage upload that cannot authenticate (a pull request from a fork or
-  from Dependabot) no longer fails the `Coverage` check.
 - `composer test-coverage` sets `XDEBUG_MODE=coverage` itself, and
   `composer examples` runs through a PHP script instead of a POSIX shell loop,
   so both work without a prepared environment. `composer examples` now also
   fails an example that emits a warning, a notice or a deprecation, and prints
   the output of the example that failed.
-- `docs/CONTRIBUTING.md` describes the current checks and rules, and states
-  one branch and commit convention.
+- The development tools locked in `composer.lock` are at newer minor and patch
+  releases. The lock file is not part of the installed package.
 - The repack scenario test fixture is now a synthetic instance.
-- The CI workflow runs with least-privilege permissions and pinned actions, and
-  Dependabot keeps the actions up to date.
-- `AGENTS.md` is now the single guide for contributors and AI coding agents,
-  corrected against the code. `docs/ROADMAP.md` marks every phase as shipped,
-  lists schedule repacking, and gains sections for known limitations and
-  deferred work.
-- Every PHP file now declares `strict_types=1`. Six test files and the
-  PHP-CS-Fixer configuration did not; a test now checks all of them.
 - The CI workflow runs the test and coverage jobs for every change set. Its
   documentation-only fast path is removed: the paths filter behind it matched
   every file, so it never skipped anything, and the suite now executes
   documentation, so a documentation-only change must be tested.
-- Every code block in `README.md` and `docs/USAGE.md` now runs as written:
-  imports and the values a block depends on are shown, and inline value
-  comments match what the code produces.
-- `README.md` has one feature list instead of two. It now covers everything
-  that has shipped, including schedule repacking, timeline assignment,
-  schedule quality and backtracking generation, and each entry links to its
-  section of the usage guide.
-- Every example runs both on the command line and in a browser; there are no
-  longer separate browser and command-line examples. The example pages no
-  longer load a script from another host. `examples/README.md` and
-  `examples/index.php` list all 21 examples.
+- The CI workflow cancels a superseded run for a pull request (never a run on
+  `main`), loads a coverage driver in the coverage job only, requests only the
+  PHP extensions the tools need, caches Composer's downloads instead of
+  `vendor/`, and can be started by hand.
+- The CI workflow runs with least-privilege permissions and pinned actions, and
+  Dependabot keeps the actions and the development dependencies up to date.
+- The workflows use the current major versions of the checkout, cache and
+  coverage-upload actions.
 
 ### Removed
 
 - Three development requirements: `fakerphp/faker`, which nothing used, and
   the direct requirements on `nunomaduro/collision` and `phpunit/phpunit`,
-  which Pest already requires. The installed versions of the last two are
-  unchanged. The library has no production dependencies, so consumers are not
-  affected.
+  which Pest already requires and still installs. The library has no
+  production dependencies, so consumers are not affected.
 - The editor-specific agent rule files and the session-notes directory at the
   repository root. Their decisions that still hold are now in `AGENTS.md`,
   `docs/ROADMAP.md`, and two decision records in the new `docs/adr/`; the
@@ -196,6 +205,8 @@ is identical.
   be started, the test now fails on CI instead of being skipped (elsewhere it
   is still skipped, with the reason), and a server that finds its port taken
   is started again on another one, three times at most.
+- CI only. A coverage upload that cannot authenticate (a pull request from a
+  fork or from Dependabot) no longer fails the `Coverage` check.
 
 ## [0.2.0] - 2026-08-11
 
@@ -272,7 +283,8 @@ PHP 8.3+.
 - **Immutable DTOs**: readonly value objects with `toArray()`/`fromArray()`;
   `Schedule` round-trips JSON.
 
-[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/mission-gaming/tactician/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mission-gaming/tactician/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/mission-gaming/tactician/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/mission-gaming/tactician/releases/tag/v0.1.0
