@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Repack;
 
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Repack\Internal\CanonicalEncoding;
+
 /**
  * The product of a repack: the schedule and every compromise in it, as
  * structured data.
@@ -21,6 +24,12 @@ namespace MissionGaming\Tactician\Repack;
  */
 final readonly class RepackOutcome
 {
+    /**
+     * The fingerprint scheme this version of the library writes. It is the
+     * part of a fingerprint before the colon.
+     */
+    public const string FINGERPRINT_SCHEME = 'v1';
+
     /** @var array<string, SlotAssignment> Keyed by event id */
     private array $assignmentsById;
 
@@ -28,12 +37,22 @@ final readonly class RepackOutcome
      * @param array<SlotAssignment> $assignments Sorted by event id
      * @param array<UnplacedEvent> $unplaced Sorted by event id
      * @param array<RepackViolation> $violations Sorted by kind, then scope
+     * @param bool $budgetExhausted Whether the step budget stopped a search
+     *                              while this outcome was computed
+     *
+     * @throws InvalidInputException When a list holds anything other than the
+     *                               objects it is declared to hold
      */
     public function __construct(
         private array $assignments,
         private array $unplaced,
-        private array $violations
+        private array $violations,
+        private bool $budgetExhausted = false
     ) {
+        self::requireInstances($assignments, SlotAssignment::class, 'assignment');
+        self::requireInstances($unplaced, UnplacedEvent::class, 'unplaced event');
+        self::requireInstances($violations, RepackViolation::class, 'violation');
+
         $byId = [];
         foreach ($assignments as $assignment) {
             $byId[$assignment->getEventId()] = $assignment;
@@ -85,6 +104,12 @@ final readonly class RepackOutcome
     }
 
     /**
+     * The violations of one kind, in the order getViolations() has them.
+     *
+     * The elements are typed as the interface. The five accessors below
+     * return the same lists typed as their classes, so that the getters of
+     * a kind can be read without an `instanceof` check.
+     *
      * @return array<RepackViolation>
      */
     public function getViolationsOfKind(ViolationKind $kind): array
@@ -96,11 +121,167 @@ final readonly class RepackOutcome
     }
 
     /**
+     * The double-bookings: a participant at one position twice. Always
+     * empty for an outcome the repacker returned.
+     *
+     * @return list<ParticipantDoubleBooked>
+     */
+    public function getParticipantDoubleBookedViolations(): array
+    {
+        return $this->violationsOfClass(ParticipantDoubleBooked::class);
+    }
+
+    /**
+     * The movable events that received no position, as violations. One for
+     * each entry of getUnplaced(), carrying the same event id, reason and
+     * participant.
+     *
+     * @return list<EventUnplaced>
+     */
+    public function getEventUnplacedViolations(): array
+    {
+        return $this->violationsOfClass(EventUnplaced::class);
+    }
+
+    /**
+     * The interior gaps: one for each participant and session in which the
+     * participant's slots are not consecutive.
+     *
+     * @return list<ContiguityBroken>
+     */
+    public function getContiguityBrokenViolations(): array
+    {
+        return $this->violationsOfClass(ContiguityBroken::class);
+    }
+
+    /**
+     * The late starts: one for each participant and session in which the
+     * participant's first slot is not the session's first.
+     *
+     * @return list<LateStart>
+     */
+    public function getLateStartViolations(): array
+    {
+        return $this->violationsOfClass(LateStart::class);
+    }
+
+    /**
+     * The capacity shortfalls: one for each participant with more events
+     * than free positions, and one for the grid when it is smaller than
+     * the event list.
+     *
+     * @return list<CapacityExceeded>
+     */
+    public function getCapacityExceededViolations(): array
+    {
+        return $this->violationsOfClass(CapacityExceeded::class);
+    }
+
+    /**
      * Whether every event was placed with no compromises at all.
      */
     public function isClean(): bool
     {
         return $this->unplaced === [] && $this->violations === [];
+    }
+
+    /**
+     * Whether the step budget (RepackOptions::$stepBudget) stopped a search
+     * while this outcome was computed.
+     *
+     * True means that at least one of the repacker's searches (the
+     * session-load improvement and parity repair, the exact packing of a
+     * session, the repair of a greedy packing) wanted another step and was
+     * refused, so the outcome is what was reached by then. A larger budget
+     * may give a different outcome for the same request. It is not a
+     * promise of a better one: the instance may have no better packing,
+     * and the searches are heuristics.
+     *
+     * False means that no search was stopped by the budget, so a larger
+     * budget gives the same outcome. It does not mean that the outcome is
+     * the best possible: the searches have limits of their own that the
+     * budget does not lift.
+     *
+     * The flag says nothing about violations. An outcome can be clean with
+     * the flag true (the fallback packed everything after the exact search
+     * ran out), and can carry violations with it false.
+     *
+     * It is not part of toArray() or of fingerprint(): it describes how
+     * the outcome was reached, not the outcome.
+     */
+    public function isBudgetExhausted(): bool
+    {
+        return $this->budgetExhausted;
+    }
+
+    /**
+     * A stable identifier of what this outcome holds: equal for two
+     * outcomes with the same assignments, unplaced events and violations,
+     * and different when any of them differs. For detecting that a plan
+     * computed again is not the plan that was shown before.
+     *
+     * The format is a contract. A fingerprint is the scheme, a colon, and
+     * 64 lowercase hexadecimal digits: `v1:` followed by the SHA-256 of
+     * the canonical document below. A change to the canonical document is
+     * a new scheme, so two fingerprints are comparable when their schemes
+     * are equal, and a stored fingerprint of another scheme is recomputed,
+     * never compared.
+     *
+     * The canonical document of scheme v1 is the bytes
+     *
+     *     "tactician.repack.outcome.v1\n" SET(assignments) SET(unplaced) SET(violations)
+     *
+     * where each list holds what toArray() returns for it, and
+     *
+     *     SET(records)  = "l" COUNT ":" the VALUE of every record, in ascending byte order ";"
+     *     VALUE(null)   = "n;"
+     *     VALUE(bool)   = "b1;" for true, "b0;" for false
+     *     VALUE(int)    = "i" DECIMAL ";"
+     *     VALUE(float)  = "f" the 16 hexadecimal digits of the IEEE 754 double, big-endian ";"
+     *     VALUE(string) = "s" LENGTH-IN-BYTES ":" the bytes ";"
+     *     VALUE(list)   = "l" COUNT ":" the VALUE of every item, in the list's order ";"
+     *     VALUE(map)    = "m" COUNT ":" VALUE(key) VALUE(item) for every entry,
+     *                     the entries in ascending byte order ";"
+     *
+     * COUNT, LENGTH-IN-BYTES and DECIMAL are ASCII decimal digits with no
+     * leading zeros, DECIMAL with a leading "-" when negative. A list is
+     * an array whose keys are 0, 1, 2 and so on in order; any other array
+     * is a map. Byte order compares unsigned bytes, a shorter string
+     * before a longer one it begins.
+     *
+     * What follows from that:
+     *
+     * - The order of the three lists does not matter, and neither does the
+     *   order of the keys of a record. The order of a list inside a
+     *   record does (the occupied slots of a ContiguityBroken, the event
+     *   ids of a ParticipantDoubleBooked); the repacker always writes
+     *   those ascending.
+     * - Every field toArray() carries is covered, so a change to any field
+     *   of any assignment, unplaced event or violation changes the
+     *   fingerprint. A participant is covered by its id, as in toArray().
+     *   The kickoff is covered to the second, and is null for a shape-only
+     *   grid, so the same positions on a shape-only grid and on an
+     *   instant-based one have different fingerprints.
+     * - isBudgetExhausted() is not covered. Two outcomes holding the same
+     *   plan are the same plan, however each search ended.
+     * - Nothing in it depends on the PHP version, the platform, the
+     *   locale or an ini setting.
+     *
+     * @throws InvalidInputException When a violation of a class from outside the library
+     *                               serializes to something the encoding has no form for
+     *                               (an object, a resource)
+     */
+    public function fingerprint(): string
+    {
+        $data = $this->toArray();
+
+        return self::FINGERPRINT_SCHEME . ':' . hash(
+            'sha256',
+            "tactician.repack.outcome.v1\n"
+            . CanonicalEncoding::set($data['assignments'])
+            . CanonicalEncoding::set($data['unplaced'])
+            . CanonicalEncoding::set($data['violations'])
+        );
     }
 
     /**
@@ -125,5 +306,45 @@ final readonly class RepackOutcome
                 $this->violations
             ),
         ];
+    }
+
+    /**
+     * @template T of RepackViolation
+     *
+     * @param class-string<T> $class
+     *
+     * @return list<T>
+     */
+    private function violationsOfClass(string $class): array
+    {
+        $matching = [];
+        foreach ($this->violations as $violation) {
+            if ($violation instanceof $class) {
+                $matching[] = $violation;
+            }
+        }
+
+        return $matching;
+    }
+
+    /**
+     * @param array<mixed> $items
+     * @param class-string $class
+     *
+     * @throws InvalidInputException When an item is not an instance of the class
+     */
+    private static function requireInstances(array $items, string $class, string $noun): void
+    {
+        foreach ($items as $key => $item) {
+            if (!$item instanceof $class) {
+                throw new InvalidInputException(sprintf(
+                    'Every %s of a repack outcome must be a %s; the entry at key %s is of type %s',
+                    $noun,
+                    $class,
+                    is_int($key) ? (string) $key : "'{$key}'",
+                    get_debug_type($item)
+                ));
+            }
+        }
     }
 }

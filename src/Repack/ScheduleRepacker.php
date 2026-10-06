@@ -33,7 +33,8 @@ use MissionGaming\Tactician\Repack\Internal\StepBudget;
  * Deterministic: same input, same output, independent of input list
  * order (events are ordered internally by their caller-supplied ids and
  * nothing else). Pure: no clock reads, no I/O, no persistence. Bounded:
- * every search spends from the options' step budget.
+ * every search spends from the options' step budget, and the outcome says
+ * whether the budget stopped one (RepackOutcome::isBudgetExhausted()).
  *
  * A shape-only grid is repacked exactly as the instant-based grid of the
  * same shape is: positions are all the algorithm reads. The assignments
@@ -260,7 +261,7 @@ final readonly class ScheduleRepacker
             );
         }
 
-        $outcome = new RepackOutcome($assignments, $unplaced, $violations);
+        $outcome = new RepackOutcome($assignments, $unplaced, $violations, $budget->stoppedASearch());
 
         if ($options->throwOnViolations && !$outcome->isClean()) {
             throw new RepackViolationsException($outcome);
