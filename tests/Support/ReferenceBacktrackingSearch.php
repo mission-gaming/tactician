@@ -2,62 +2,35 @@
 
 declare(strict_types=1);
 
-namespace MissionGaming\Tactician\Scheduling;
+namespace MissionGaming\Tactician\Tests\Support;
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 
 /**
- * Backtracking search over round-robin round decompositions.
+ * The backtracking round-robin search as it was first written: every call
+ * carries its own copy of the used pairings and of the events placed so
+ * far, and every pairing attempt builds a context from a fresh copy.
  *
- * The circle method fixes which pairings share a round purely by list
- * order, so the greedy generator only ever sees n decompositions (one per
- * rotation). This search treats leg construction as what it is — a
- * constraint-satisfaction problem over perfect matchings: rounds are
- * built in order, each round picks the first unmatched seat and tries
- * every unused opponent in both orientations under the configured
- * constraints, and dead ends backtrack within the round and then into
- * earlier rounds.
- *
- * The search is deterministic (seat, opponent, and orientation order are
- * fixed; orientation prefers the greedy generator's round-parity role
- * balance) and bounded by a fixed step budget so genuinely unsatisfiable
- * configurations fail loudly instead of running away. See
- * docs/design/backtracking-generation.md.
+ * BacktrackingRoundRobinGenerator now changes one path's state in place.
+ * It must visit the same pairings in the same order, count the same steps
+ * and stop at the same one; this class is what "the same" is measured
+ * against (`tests/Unit/Scheduling/BacktrackingSearchOrderTest.php`). It is
+ * kept as it was on purpose: do not tidy or speed it up.
  */
-final class BacktrackingRoundRobinGenerator
+final class ReferenceBacktrackingSearch
 {
-    /**
-     * Pairing attempts allowed before the search gives up. Generous for
-     * every realistic field size, and a bound on the exponential worst
-     * case.
-     *
-     * The bound is on attempts, not on time: an attempt costs one event
-     * and one evaluation of the constraints. Spending the whole budget
-     * took 0.5 to 0.8 seconds with a constraint that answers in constant
-     * time (fields of 8 and of 24), and 1.8 seconds with a role balance
-     * limit on a field of 20, which reads each participant's history
-     * (PHP 8.4 without OPcache, one core; `composer bench` measures the
-     * machine at hand).
-     */
-    public const STEP_BUDGET = 200_000;
-
     private int $stepsRemaining;
 
     private bool $budgetExhausted = false;
 
     /** @var array<int, string> Participant IDs receiving a bye, keyed by round number */
     private array $roundByes = [];
-
-    /** @var array<string, true> Pair keys on the current search path */
-    private array $usedPairs = [];
-
-    /** @var list<Event> The events on the current search path, in round order */
-    private array $placedEvents = [];
 
     /**
      * @param int $stepBudget Pairing attempts allowed before giving up;
@@ -66,7 +39,7 @@ final class BacktrackingRoundRobinGenerator
      */
     public function __construct(
         private readonly ?ConstraintSet $constraints = null,
-        private readonly int $stepBudget = self::STEP_BUDGET
+        private readonly int $stepBudget = 200_000
     ) {
         $this->stepsRemaining = $stepBudget;
     }
@@ -83,8 +56,6 @@ final class BacktrackingRoundRobinGenerator
         $this->stepsRemaining = $this->stepBudget;
         $this->budgetExhausted = false;
         $this->roundByes = [];
-        $this->usedPairs = [];
-        $this->placedEvents = [];
 
         $participants = array_values($participants);
         $seats = $participants;
@@ -94,18 +65,7 @@ final class BacktrackingRoundRobinGenerator
 
         $roundsPerLeg = $plan->getRoundsPerLeg();
 
-        // Constraints see the events placed so far through a context. The
-        // search keeps one per node of the path and extends it by the one
-        // event a placement adds, where it used to build a context, and a
-        // copy of every placed event, for each pairing attempt.
-        $context = $this->constraints === null ? null : new SchedulingContext($participants, $plan, [], 1);
-
-        $found = $this->searchRound(1, $roundsPerLeg, $seats, $context);
-        $events = $this->placedEvents;
-        $this->usedPairs = [];
-        $this->placedEvents = [];
-
-        return $found ? $events : null;
+        return $this->searchRound(1, $roundsPerLeg, $participants, $seats, [], [], $plan);
     }
 
     /**
@@ -127,44 +87,61 @@ final class BacktrackingRoundRobinGenerator
     }
 
     /**
+     * @param array<Participant> $participants The full field
      * @param array<Participant|null> $seats The field plus the bye seat for odd counts
-     * @param SchedulingContext|null $context The context of the events placed so far; null without constraints
-     * @return bool Whether the rounds from this one on were completed, leaving their events in $placedEvents
+     * @param array<string, true> $usedPairs Pair keys already scheduled this leg
+     * @param array<Event> $events All events of completed rounds
+     * @return array<Event>|null
      */
-    private function searchRound(int $round, int $totalRounds, array $seats, ?SchedulingContext $context): bool
-    {
+    private function searchRound(
+        int $round,
+        int $totalRounds,
+        array $participants,
+        array $seats,
+        array $usedPairs,
+        array $events,
+        RoundRobinPlan $plan
+    ): ?array {
         if ($round > $totalRounds) {
-            return true;
+            return $events;
         }
 
-        return $this->searchMatching($seats, $round, $totalRounds, $seats, $context);
+        return $this->searchMatching($seats, [], $round, $totalRounds, $participants, $seats, $usedPairs, $events, $plan);
     }
 
     /**
      * Extend the current round's partial matching, recursing into the next
      * round when it completes.
      *
-     * The path's state ($usedPairs, $placedEvents, $roundByes) is changed
-     * in place and restored when a branch fails, so a step costs the
-     * pairing it tries and not a copy of the path. The order of seats,
-     * opponents and orientations, and what counts as a step, are what they
-     * were when each call carried its own copies: the search visits the
-     * same nodes in the same order and stops at the same step.
-     *
      * @param array<Participant|null> $remaining Seats not yet matched this round
+     * @param array<Event> $roundEvents The round's events so far
+     * @param array<Participant> $participants The full field
      * @param array<Participant|null> $seats The full seat list
-     * @param SchedulingContext|null $context The context of the events placed so far; null without constraints
-     * @return bool Whether the leg was completed from here, leaving its events in $placedEvents
+     * @param array<string, true> $usedPairs
+     * @param array<Event> $events
+     * @return array<Event>|null
      */
     private function searchMatching(
         array $remaining,
+        array $roundEvents,
         int $round,
         int $totalRounds,
+        array $participants,
         array $seats,
-        ?SchedulingContext $context
-    ): bool {
+        array $usedPairs,
+        array $events,
+        RoundRobinPlan $plan
+    ): ?array {
         if ($remaining === []) {
-            return $this->searchRound($round + 1, $totalRounds, $seats, $context);
+            return $this->searchRound(
+                $round + 1,
+                $totalRounds,
+                $participants,
+                $seats,
+                $usedPairs,
+                [...$events, ...$roundEvents],
+                $plan
+            );
         }
 
         // The bye seat is appended last and pairs are removed two at a
@@ -174,22 +151,23 @@ final class BacktrackingRoundRobinGenerator
 
         foreach ($remaining as $index => $candidate) {
             $pairKey = $this->pairKey($pivot, $candidate);
-            if (isset($this->usedPairs[$pairKey])) {
+            if (isset($usedPairs[$pairKey])) {
                 continue;
             }
 
             $rest = $remaining;
             unset($rest[$index]);
             $rest = array_values($rest);
+            $nextUsedPairs = [...$usedPairs, $pairKey => true];
 
             if ($candidate === null) {
                 // Pairing with the bye seat: the pivot sits this round out.
-                $this->usedPairs[$pairKey] = true;
                 $this->roundByes[$round] = $pivot->getId();
-                if ($this->searchMatching($rest, $round, $totalRounds, $seats, $context)) {
-                    return true;
+                $result = $this->searchMatching($rest, $roundEvents, $round, $totalRounds, $participants, $seats, $nextUsedPairs, $events, $plan);
+                if ($result !== null) {
+                    return $result;
                 }
-                unset($this->roundByes[$round], $this->usedPairs[$pairKey]);
+                unset($this->roundByes[$round]);
                 continue;
             }
 
@@ -197,25 +175,22 @@ final class BacktrackingRoundRobinGenerator
                 if ($this->stepsRemaining-- <= 0) {
                     $this->budgetExhausted = true;
 
-                    return false;
+                    return null;
                 }
 
                 $event = new Event($pair, new Round($round));
-                if ($context !== null && $this->constraints?->isSatisfied($event, $context) === false) {
+                if (!$this->satisfiesConstraints($event, $participants, [...$events, ...$roundEvents], $plan)) {
                     continue;
                 }
 
-                $this->usedPairs[$pairKey] = true;
-                $this->placedEvents[] = $event;
-                if ($this->searchMatching($rest, $round, $totalRounds, $seats, $context?->withEvents([$event]))) {
-                    return true;
+                $result = $this->searchMatching($rest, [...$roundEvents, $event], $round, $totalRounds, $participants, $seats, $nextUsedPairs, $events, $plan);
+                if ($result !== null) {
+                    return $result;
                 }
-                array_pop($this->placedEvents);
-                unset($this->usedPairs[$pairKey]);
             }
         }
 
-        return false;
+        return null;
     }
 
     /**
@@ -232,6 +207,21 @@ final class BacktrackingRoundRobinGenerator
     }
 
     /**
+     * @param array<Participant> $participants
+     * @param array<Event> $priorEvents
+     */
+    private function satisfiesConstraints(Event $event, array $participants, array $priorEvents, RoundRobinPlan $plan): bool
+    {
+        if ($this->constraints === null) {
+            return true;
+        }
+
+        $context = new SchedulingContext($participants, $plan, $priorEvents, 1);
+
+        return $this->constraints->isSatisfied($event, $context);
+    }
+
+    /**
      * The key of a pairing, or of a participant's bye when the other seat
      * is the bye seat.
      *
@@ -239,7 +229,7 @@ final class BacktrackingRoundRobinGenerator
      * holds no separator and a pairing's key holds exactly one, so a bye
      * never shares a key with a pairing, whatever the ids are. The NUL
      * keeps the key a string: PHP would turn the bare id `'7'` into the
-     * integer key 7; a string key keeps one type for every id.
+     * integer key 7, which the array spread in searchMatching() renumbers.
      */
     private function pairKey(Participant $a, ?Participant $b): string
     {
