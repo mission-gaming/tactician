@@ -90,6 +90,35 @@ describe('InvalidConfigurationException', function (): void {
         expect($report)->toContain('pi: 3.14159');
     });
 
+    // Tests that a resource in the context is printed as PHP's string cast
+    // prints it, open or closed
+    it('formats a resource value as the string cast does', function (): void {
+        // Given: Context holding an open and a closed resource
+        $open = fopen('php://memory', 'r');
+        $closed = fopen('php://memory', 'r');
+
+        if ($open === false || $closed === false) {
+            throw new RuntimeException('Could not open a memory stream.');
+        }
+
+        fclose($closed);
+
+        try {
+            $exception = new InvalidConfigurationException('Test issue', ['open' => $open, 'closed' => $closed]);
+
+            // When: Getting diagnostic report
+            $report = $exception->getDiagnosticReport();
+
+            // Then: Each is printed as "Resource id #N"
+            expect($report)->toContain('open: ' . (string) $open)
+                ->and($report)->toContain('closed: ' . (string) $closed)
+                ->and((string) $open)->toStartWith('Resource id #')
+                ->and((string) $closed)->toStartWith('Resource id #');
+        } finally {
+            fclose($open);
+        }
+    });
+
     // Tests that exception generates comprehensive requirements list
     it('generates comprehensive requirements list', function (): void {
         // Given: Exception with any configuration issue

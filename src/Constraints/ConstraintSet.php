@@ -45,7 +45,7 @@ readonly class ConstraintSet
 
     public function isEmpty(): bool
     {
-        return empty($this->constraints);
+        return $this->constraints === [];
     }
 
     public function count(): int

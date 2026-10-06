@@ -29,7 +29,13 @@ readonly class MetadataConstraint implements ConstraintInterface
         $participants = $event->getParticipants();
         $metadataValues = array_map(fn ($p) => $p->getMetadataValue($this->metadataKey), $participants);
 
-        return ($this->validator)($metadataValues, $participants, $event, $context);
+        // The constructor rejects a validator that is not callable; the
+        // property stays `mixed` so that the constructor accepts what it
+        // always has.
+        $validator = $this->validator;
+        assert(is_callable($validator));
+
+        return $validator($metadataValues, $participants, $event, $context);
     }
 
     #[\Override]
@@ -83,7 +89,7 @@ readonly class MetadataConstraint implements ConstraintInterface
             $metadataKey,
             function (array $values) {
                 $numericValues = array_filter($values, fn ($v) => is_numeric($v));
-                if (empty($numericValues)) {
+                if ($numericValues === []) {
                     return true;
                 }
 

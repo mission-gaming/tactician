@@ -114,4 +114,20 @@ describe('ConstraintViolation', function (): void {
         expect($description)->toContain('Home/Away consecutive limit (2)');
         expect($description)->toContain('Alice');
     });
+
+    // Tests that round 0 is treated like a missing round in the description,
+    // as it always was: rounds are 1-based
+    it('does not mention round zero in descriptions', function (): void {
+        // When: Creating a violation with round number 0
+        $violation = new ConstraintViolation(
+            constraint: $this->constraint,
+            rejectedEvent: $this->event,
+            reason: 'Constraint violation occurred',
+            affectedParticipants: [$this->participant1],
+            roundNumber: 0
+        );
+
+        // Then: Description should not mention round
+        expect($violation->getDescription())->not->toContain('round');
+    });
 });

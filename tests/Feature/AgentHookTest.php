@@ -204,7 +204,7 @@ describe('agent hook', function () use ($root, $hook): void {
         'a PHP file under vendor/' => [$root . '/vendor/autoload.php'],
         'a PHP file that does not exist' => [$root . '/src/DoesNotExist.php'],
         'a relative path that does not exist' => ['src/DoesNotExist.php'],
-        // phpstan.neon excludes this file, so PHPStan fails with "No files
+        // phpstan-tests.neon excludes this file, so PHPStan fails with "No files
         // found to analyse". That is not an error in the file.
         'a PHP file that PHPStan is configured to skip' => [$root . '/tests/Pest.php'],
     ]);
@@ -355,8 +355,8 @@ describe('agent hook', function () use ($root, $hook): void {
     });
 
     it('formats a file under examples/ and does not analyse it', function () use ($root, $hook): void {
-        // phpstan.neon analyses src/ and tests/ only, so the example scripts
-        // are not held to level 8 by the gate. This one has an untyped
+        // Neither PHPStan configuration analyses the example scripts, so
+        // the gate does not hold them to a level. This one has an untyped
         // function, which level 8 reports, and it needs formatting.
         $directory = $root . '/examples/agent-hook-probe-' . bin2hex(random_bytes(6));
         $file = $directory . '/Probe.php';
@@ -413,6 +413,41 @@ describe('agent hook, with stand-ins for the tools', function () use ($hook): vo
         'a file under examples/, which the gate does not analyse' => ['examples/Probe.php', ['php-cs-fixer']],
         'a name made of spaces and shell syntax' => ['src/a b $(c) `d` ; e #.php', ['php-cs-fixer', 'phpstan']],
         'a name that starts with a dash' => ['tests/--version.php', ['php-cs-fixer', 'phpstan']],
+    ]);
+
+    it('analyses a file with the configuration the gate uses for its directory', function (string $relative, string $configuration) use ($hook): void {
+        // src/ is held to level 9 and tests/ to level 8, in two files. With
+        // the wrong one the hook would report errors the gate does not, or
+        // miss errors it does.
+        $base = agentHookSandbox($hook);
+        $tree = $base . '/repo';
+
+        try {
+            agentHookStandIn($tree, 'php-cs-fixer');
+            agentHookStandIn($tree, 'phpstan');
+            file_put_contents($tree . '/' . $relative, "<?php\n");
+
+            runAgentHook($tree . '/' . AGENT_HOOK_SCRIPT, agentHookToolCall($tree . '/' . $relative));
+            $calls = agentHookCalls($tree);
+        } finally {
+            agentHookRemoveDirectory($base);
+        }
+
+        $configurations = [];
+
+        foreach ($calls as $call) {
+            if ($call['tool'] === 'phpstan') {
+                $configurations[] = array_values(array_filter(
+                    $call['arguments'],
+                    fn (string $argument): bool => str_starts_with($argument, '--configuration=')
+                ));
+            }
+        }
+
+        expect($configurations)->toBe([['--configuration=' . $configuration]]);
+    })->with([
+        'a file under src/' => ['src/Probe.php', 'phpstan.neon'],
+        'a file under tests/' => ['tests/Probe.php', 'phpstan-tests.neon'],
     ]);
 
     it('acts on the file a path leads to inside the repository', function (string $path, ?string $cwd) use ($hook): void {

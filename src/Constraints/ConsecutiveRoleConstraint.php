@@ -62,8 +62,14 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
             return $roundA <=> $roundB;
         });
 
+        // The constructor rejects an extractor that is not callable; the
+        // property stays `mixed` so that the constructor accepts what it
+        // always has.
+        $roleExtractor = $this->roleExtractor;
+        assert(is_callable($roleExtractor));
+
         // Extract roles for this participant
-        $roles = array_map(fn (Event $event) => ($this->roleExtractor)($event, $participant), $allEvents);
+        $roles = array_map(fn (Event $event) => $roleExtractor($event, $participant), $allEvents);
 
         return !$this->hasConsecutiveRoles($roles, $this->maxConsecutive);
     }
@@ -75,7 +81,7 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
      */
     private function hasConsecutiveRoles(array $roles, int $maxConsecutive): bool
     {
-        if (empty($roles)) {
+        if ($roles === []) {
             return false;
         }
 

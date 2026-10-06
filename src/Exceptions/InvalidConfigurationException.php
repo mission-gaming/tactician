@@ -50,7 +50,7 @@ class InvalidConfigurationException extends SchedulingException
         $report[] = '';
         $report[] = sprintf('Issue: %s', $this->configurationIssue);
 
-        if (!empty($this->context)) {
+        if ($this->context !== []) {
             $report[] = '';
             $report[] = '=== CONFIGURATION DETAILS ===';
             foreach ($this->context as $key => $value) {
@@ -83,7 +83,13 @@ class InvalidConfigurationException extends SchedulingException
             return 'null';
         }
 
-        return (string) $value;
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        // Only a resource, open or closed, reaches this line. print_r()
+        // gives the text the string cast gives: "Resource id #5".
+        return print_r($value, true);
     }
 
     private function getRequirements(): string

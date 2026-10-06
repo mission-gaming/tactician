@@ -168,7 +168,7 @@ class IncompleteScheduleException extends SchedulingException
                     }
                 }
 
-                if (!empty($participantCounts)) {
+                if ($participantCounts !== []) {
                     arsort($participantCounts);
                     $topAffected = array_slice($participantCounts, 0, 3, true);
                     $report[] = sprintf(
@@ -177,7 +177,7 @@ class IncompleteScheduleException extends SchedulingException
                     );
                 }
 
-                if (!empty($roundCounts)) {
+                if ($roundCounts !== []) {
                     ksort($roundCounts);
                     $report[] = sprintf(
                         '  Affected rounds: %s',
@@ -266,7 +266,7 @@ class IncompleteScheduleException extends SchedulingException
             }
         }
 
-        if (empty($suggestions)) {
+        if ($suggestions === []) {
             $suggestions[] = '• Try relaxing constraint requirements';
             $suggestions[] = $hasLegs
                 ? '• Increase the number of participants or legs'

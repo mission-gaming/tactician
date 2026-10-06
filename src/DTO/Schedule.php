@@ -104,7 +104,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
      *
      * Implementation of Countable interface.
      *
-     * @return int The number of events in this schedule
+     * @return int<0, max> The number of events in this schedule
      */
     #[Override]
     public function count(): int
@@ -234,7 +234,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
      */
     public function getMaxRound(): ?Round
     {
-        if (empty($this->events)) {
+        if ($this->events === []) {
             return null;
         }
 
@@ -245,7 +245,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
 
         $nonNullRounds = array_filter($rounds, fn ($round) => $round !== null);
 
-        if (empty($nonNullRounds)) {
+        if ($nonNullRounds === []) {
             return null;
         }
 

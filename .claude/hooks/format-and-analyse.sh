@@ -10,9 +10,10 @@
 # tests/ or examples/ of this repository. It does not follow a symbolic link,
 # because PHP-CS-Fixer rewrites the file and the link's target can be anywhere.
 # For that file it runs PHP-CS-Fixer, then, under src/ or tests/, PHPStan with
-# the repository's configuration. A file under examples/ is formatted only:
-# phpstan.neon does not analyse examples/, so the gate does not hold the
-# example scripts to level 8 and the hook must not either.
+# the configuration the gate uses for that directory: phpstan.neon (level 9)
+# for src/, phpstan-tests.neon (level 8) for tests/. A file under examples/ is
+# formatted only: neither configuration analyses the example scripts, so the
+# gate does not hold them to a level and the hook must not either.
 #
 # Exit status:
 #   0  nothing to do, or the file is clean. Nothing is printed.
@@ -22,8 +23,8 @@
 # It never blocks work it cannot check: unreadable input, a path that holds a
 # control character, a path outside the three directories, a missing file, a
 # symbolic link, a missing tool (PHP, PHP-CS-Fixer, PHPStan), or a PHPStan run
-# that reports no error for the file (phpstan.neon excludes tests/Pest.php,
-# for example) all exit 0 in silence.
+# that reports no error for the file (phpstan-tests.neon excludes
+# tests/Pest.php, for example) all exit 0 in silence.
 # It checks one file only; `composer ci` is the gate.
 #
 # The JSON is read with PHP, which the project needs anyway, so that no other
@@ -78,7 +79,8 @@ file="$directory/$(basename "$file")"
 [ -f "$file" ] || exit 0
 
 case "$file" in
-    "$root"/src/* | "$root"/tests/*) analyse=yes ;;
+    "$root"/src/*) analyse=yes configuration=phpstan.neon ;;
+    "$root"/tests/*) analyse=yes configuration=phpstan-tests.neon ;;
     "$root"/examples/*) analyse=no ;;
     *) exit 0 ;;
 esac
@@ -96,9 +98,9 @@ vendor/bin/php-cs-fixer fix --quiet -- "$file" > /dev/null 2>&1
 
 # The raw format prints one line per error on stdout. PHPStan's own messages
 # (the configuration note, "No files found to analyse" for a file that
-# phpstan.neon excludes, a crash) go to stderr and are not the file's errors,
+# the configuration excludes, a crash) go to stderr and are not the file's errors,
 # so they are dropped: a failure with nothing on stdout is not reported.
-report="$(vendor/bin/phpstan analyse --no-progress --error-format=raw --memory-limit=512M -- "$file" 2> /dev/null)" && exit 0
+report="$(vendor/bin/phpstan analyse --configuration="$configuration" --no-progress --error-format=raw --memory-limit=512M -- "$file" 2> /dev/null)" && exit 0
 
 [ -n "$report" ] || exit 0
 

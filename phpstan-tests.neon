@@ -1,0 +1,45 @@
+# The tests and what the examples share, at level 8. `composer phpstan` runs
+# phpstan.neon (src/, level 9) first and then this configuration.
+includes:
+	- phpstan-common.neon
+	# Findings of the strict rules that were in the code when the rules were
+	# enabled. Shorten the list; do not add to it. Regenerate it with
+	# `vendor/bin/phpstan analyse -c phpstan-tests.neon --generate-baseline phpstan-tests-baseline.neon`.
+	- phpstan-tests-baseline.neon
+
+parameters:
+	level: 8
+	paths:
+		- tests
+		# What the examples share, because the tests call it. The example
+		# scripts themselves are run and checked by tests/Feature/ExamplesTest.php
+		- examples/support
+
+	# Exclude generated files and cache
+	excludePaths:
+		- tests/Pest.php
+
+	# Pest.php is excluded from analysis but declares the shared test
+	# helpers (plan-carrying context builders), so scan it for symbols
+	scanFiles:
+		- tests/Pest.php
+
+	# Pest binds shared state as dynamic properties on the test case
+	# ($this->participants in beforeEach), so treat TestCase as a
+	# universal object crate rather than ignoring the errors textually
+	universalObjectCratesClasses:
+		- PHPUnit\Framework\TestCase
+
+	# Pest 4 types $this inside test closures as Pest\PendingCalls\TestCall,
+	# but at runtime the closures are bound to the TestCase, where dynamic
+	# shared state ($this->participants in beforeEach) and the mocking
+	# helpers ($this->createMock()) are legal. These properties were typed
+	# mixed under the previous crate approach, so the scoped ignores lose no
+	# analysis coverage.
+	ignoreErrors:
+		-
+			message: '#^Access to an undefined property Pest\\PendingCalls\\TestCall::\$[a-zA-Z0-9_]+#'
+			path: tests/*
+		-
+			message: '#^Call to an undefined method Pest\\PendingCalls\\TestCall::[a-zA-Z0-9_]+\(\)#'
+			path: tests/*

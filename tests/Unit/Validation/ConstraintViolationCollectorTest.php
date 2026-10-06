@@ -203,4 +203,22 @@ describe('ConstraintViolationCollector', function (): void {
         expect($rounds)->not->toContain(null);
         expect($rounds)->toHaveCount(2);
     });
+
+    // Tests that round 0 is not reported as an affected round, as it never
+    // was: rounds are 1-based, and the falsy value was always filtered out
+    it('leaves round zero out of the affected rounds', function (): void {
+        // Given: A violation recorded against round 0 and one against round 3
+        foreach ([0, 3] as $roundNumber) {
+            $this->collector->recordViolation(new ConstraintViolation(
+                constraint: $this->constraint,
+                rejectedEvent: $this->event,
+                reason: 'Violation',
+                affectedParticipants: [$this->participant1],
+                roundNumber: $roundNumber
+            ));
+        }
+
+        // Then: Only round 3 is listed
+        expect(array_values($this->collector->getAffectedRounds()))->toBe([3]);
+    });
 });

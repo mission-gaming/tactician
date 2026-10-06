@@ -92,7 +92,7 @@ class ScheduleValidator
                 }
                 $rounds = array_unique($rounds);
                 sort($rounds);
-                $roundsText = empty($rounds) ? '' : ' in rounds [' . implode(',', $rounds) . ']';
+                $roundsText = $rounds === [] ? '' : ' in rounds [' . implode(',', $rounds) . ']';
 
                 $report .= "  - {$constraintName}: {$count} violations{$roundsText}\n";
             }

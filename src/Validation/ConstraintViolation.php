@@ -35,7 +35,7 @@ readonly class ConstraintViolation
      */
     public function getDescription(): string
     {
-        $round = $this->roundNumber ? " in round {$this->roundNumber}" : '';
+        $round = $this->roundNumber !== null && $this->roundNumber !== 0 ? " in round {$this->roundNumber}" : '';
         $participantLabels = array_map(fn (Participant $p) => $p->getLabel(), $this->affectedParticipants);
         $participantList = implode(', ', $participantLabels);
 

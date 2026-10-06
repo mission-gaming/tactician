@@ -105,11 +105,11 @@ class SchedulingDiagnostics
             $suggestions[] = 'Consider relaxing constraints that may be preventing event generation';
         }
 
-        if (!empty($report->getImpossiblePairings())) {
+        if ($report->getImpossiblePairings() !== []) {
             $suggestions[] = 'Some participant pairings cannot be satisfied with current constraints';
         }
 
-        if (!empty($report->getConstraintViolations())) {
+        if ($report->getConstraintViolations() !== []) {
             $suggestions[] = 'Review constraint configuration for potential conflicts';
         }
 
