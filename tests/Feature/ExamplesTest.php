@@ -1134,6 +1134,9 @@ function startExampleServer(string $workingDirectory, string $documentRoot, arra
                 PHP_BINARY,
                 '-d', 'error_reporting=-1',
                 '-d', 'display_errors=1',
+                // An error is displayed the way the page test looks for it (<b>Warning</b>),
+                // whatever the configuration of the machine says
+                '-d', 'html_errors=1',
                 // The JIT is switched off for this server. OPcache does not run on
                 // the command line unless it is asked to, but the built-in server
                 // is another SAPI: there it runs, with whatever JIT the machine
@@ -1579,6 +1582,25 @@ function withMachineConfiguration(string $settings, Closure $use): void
         rmdir($configuration);
     }
 }
+
+// The page test finds an error by the markup PHP gives it, so the server must
+// display errors, and that way, even on a machine configured to do neither
+it('displays the error of a served script the way the page test looks for it', function (): void {
+    withMachineConfiguration("display_errors=0\nhtml_errors=0\nerror_reporting=0\n", function (array $environment): void {
+        withThrowawayServer([
+            'warns.php' => '<?php echo $undefined; echo "after";',
+            'deprecated.php' => '<?php trigger_error("old", E_USER_DEPRECATED); echo "after";',
+            'throws.php' => '<?php throw new RuntimeException("it broke");',
+        ], function (Closure $request): void {
+            foreach (['warns' => '<b>Warning</b>', 'deprecated' => '<b>Deprecated</b>', 'throws' => '<b>Fatal error</b>'] as $script => $marker) {
+                $answer = $request("/{$script}.php");
+                Assert::assertStringContainsString($marker, $answer['body'], $answer['report']);
+            }
+
+            expect($request('/warns.php')['body'])->toEndWith('after');
+        }, $environment);
+    });
+});
 
 it('tells a CI run from a local one for the example server', function (string|false $ci, bool $expected): void {
     expect(exampleServerRunsOnCi($ci))->toBe($expected);
