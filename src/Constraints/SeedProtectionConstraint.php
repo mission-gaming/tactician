@@ -58,21 +58,26 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
      * The name states the protection period as a percentage of the stage's
      * rounds: `Seed Protection (top 2, 20% period)` for a period of 0.2.
      *
-     * The percentage is the shortest decimal number that identifies the
-     * period exactly, with the decimal point moved two places to the right:
-     * 0.5 gives `50%`, 0.125 gives `12.5%`, 1.0 gives `100%` and 0.0 gives
-     * `0%`. It is written in plain positional notation with `.` as the
-     * decimal separator, without an exponent, a thousands separator or
-     * trailing zeros. A period that has no short decimal form is written
-     * with as many digits as it takes to tell it from every other period,
-     * at most 17 significant ones: 1/3 gives `33.33333333333333%`, and
-     * 0.1 + 0.2 gives `30.000000000000004%` where 0.3 gives `30%`.
+     * The percentage is rounded to at most two decimal places, a half going
+     * up: 0.5 gives `50%`, 0.125 gives `12.5%`, 1/3 gives `33.33%`, 2/3 gives
+     * `66.67%`, 1.0 gives `100%` and 0.0 gives `0%`. It is written in plain
+     * positional notation with `.` as the decimal separator, without an
+     * exponent, a thousands separator, trailing zeros or a trailing decimal
+     * point.
      *
-     * Two constraints therefore share a name only when they protect the same
-     * number of seeds for the same period. The name is a lookup key (the
-     * violation collector and the diagnostics group by it), so it does not
-     * depend on the `precision` or `serialize_precision` settings or on the
-     * locale.
+     * What is rounded is the period as a decimal number: the shortest one
+     * that identifies the float, which is the number as it is written in
+     * code. So 0.29 gives `29%`, 0.1 + 0.2 gives `30%`, and 0.33335 gives
+     * `33.34%` although the float nearest to it is slightly below the half.
+     *
+     * The name is a lookup key (the violation collector and the diagnostics
+     * group by it), so it does not depend on the `precision` or
+     * `serialize_precision` settings or on the locale. It does not identify
+     * the period exactly: two constraints that protect the same number of
+     * seeds share a name when their periods round to the same percentage,
+     * which periods closer than 0.0001 can do. 1/3 and 0.3333 are both named
+     * `33.33% period`, a period of 0.99995 or more is named `100% period`,
+     * and one below 0.00005 is named `0% period`.
      */
     #[\Override]
     public function getName(): string
@@ -89,12 +94,8 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
 
         if (is_nan($period)) {
             // The constructor's range check lets NAN through, and no decimal
-            // number identifies it.
+            // number states it.
             return 'NAN';
-        }
-
-        if ($period === 0.0) {
-            return '0';
         }
 
         // The shortest scientific form that reads back as the same float;
@@ -112,20 +113,25 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
 
         [$mantissa, $exponent] = explode('e', $scientific);
         $digits = str_replace('.', '', $mantissa);
+        $exponent = (int) $exponent;
 
-        // Multiplying by 100 is done on the digits, where it is exact: the
-        // decimal point moves two places to the right.
-        $integerDigits = (int) $exponent + 3;
+        // The period in positional notation, as the digit before the decimal
+        // point and the digits after it. A period is at most 1.0, so the
+        // exponent is 0 for 1.0 and for 0.0 and negative for all others.
+        $whole = $exponent < 0 ? '0' : $digits[0];
+        $fraction = $exponent < 0
+            ? str_repeat('0', -$exponent - 1) . $digits
+            : substr($digits, 1);
 
-        if ($integerDigits <= 0) {
-            return '0.' . str_repeat('0', -$integerDigits) . $digits;
-        }
+        // The arithmetic is on the digits, where it is exact; on the float it
+        // is not (0.29 * 100 is 28.999999999999996, and 0.00015 * 10000 is
+        // below 1.5, which would round the wrong way). The first four decimal
+        // places are the percentage in hundredths, and the fifth decides the
+        // rounding.
+        $fraction = str_pad($fraction, 5, '0');
+        $hundredths = (int) ($whole . substr($fraction, 0, 4)) + ($fraction[4] >= '5' ? 1 : 0);
 
-        if ($integerDigits >= strlen($digits)) {
-            return str_pad($digits, $integerDigits, '0');
-        }
-
-        return substr($digits, 0, $integerDigits) . '.' . substr($digits, $integerDigits);
+        return rtrim(rtrim(sprintf('%d.%02d', intdiv($hundredths, 100), $hundredths % 100), '0'), '.');
     }
 
     /**

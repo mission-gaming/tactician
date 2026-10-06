@@ -33,12 +33,13 @@ heading **Output change (fix)**.
   violations, and it appears in the diagnostic report and the suggestions of
   an `IncompleteScheduleException`. Code that matches the name of this
   constraint must change the string it matches: multiply the number in it by
-  100. The percentage is the shortest decimal number that identifies the
-  period exactly, written with `.` as the decimal separator and without
-  trailing zeros, whatever the `precision` and `serialize_precision` settings
-  and the locale: 0.125 gives `12.5%`, 1/3 gives `33.33333333333333%`. Two
-  different periods never share a name. No other constraint's name changes,
-  and no schedule changes.
+  100. The percentage is rounded to at most two decimal places, a half going
+  up, and is written with `.` as the decimal separator and without trailing
+  zeros, whatever the `precision` and `serialize_precision` settings and the
+  locale: 0.125 gives `12.5%`, 1/3 gives `33.33%`, 2/3 gives `66.67%` and
+  0.1 + 0.2 gives `30%`. The name therefore does not identify the period
+  exactly: two periods closer than 0.0001 can share a name, as 1/3 and 0.3333
+  do. No other constraint's name changes, and no schedule changes.
 
 ## [0.2.1] - 2026-10-06
 
