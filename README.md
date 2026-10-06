@@ -312,7 +312,7 @@ Releases are cut with the [release checklist](docs/RELEASING.md).
 
 📝 **[Changelog](CHANGELOG.md)** - Release history and output changes  
 📚 **[Complete Usage Guide](docs/USAGE.md)** - Comprehensive examples and patterns  
-🧩 **[Framework Integration](docs/integrations/symfony.md)** - Wiring Tactician into [Symfony](docs/integrations/symfony.md) and [Laravel](docs/integrations/laravel.md) applications  
+🧩 **[Framework Integration](docs/integrations/symfony.md)** - The adapter an application writes around Tactician, with [Symfony](docs/integrations/symfony.md) and [Laravel](docs/integrations/laravel.md) code  
 🏗️ **[Architecture](docs/ARCHITECTURE.md)** - Technical design and core components  
 🛣️ **[Roadmap](docs/ROADMAP.md)** - What has shipped, known limitations and deferred work  
 📖 **[Contributing Guidelines](docs/CONTRIBUTING.md)** - Development setup and contribution process  

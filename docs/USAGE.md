@@ -3091,19 +3091,25 @@ try {
 
 ## Framework Integration
 
-Tactician has zero production dependencies, so framework integration is
-plain object wiring. Dedicated guides cover the full consumption
-patterns — service registration, config translated through
-`fromArray()`, persisting schedules and stage state, driving
-results-driven engines across stateless requests, and kickoff
-assignment:
+Tactician has zero production dependencies and its entry points are
+stateless objects, so a framework has little to wire. The work of an
+integration is the adapter an application writes around the library, and
+the guides describe that:
 
-- **[Symfony](integrations/symfony.md)**
-- **[Laravel](integrations/laravel.md)**
+- **[Symfony](integrations/symfony.md)**: participants in and output
+  copied into the application's own records, results-driven stages with the
+  engine fingerprint, repacking with a preview and a confirmation, errors
+  and time.
+- **[Laravel](integrations/laravel.md)**: the three places where the
+  framework shows; it refers to the Symfony guide for the rest.
 
-The framework-free core of the pattern — a stage living across request
-cycles with `StageState` serialized between them — is runnable as
-[`examples/18-stateless-web-flow.php`](../examples/18-stateless-web-flow.php).
+The framework-free core of each pattern is runnable: a stage living across
+request cycles with `StageState` serialized between them
+([`examples/18-stateless-web-flow.php`](../examples/18-stateless-web-flow.php)),
+an application's records in and out with a repack previewed and confirmed
+([`examples/23-application-adapter-and-repack.php`](../examples/23-application-adapter-and-repack.php)),
+and results recorded on a bracket
+([`examples/24-recording-bracket-results.php`](../examples/24-recording-bracket-results.php)).
 
 ## Error Handling
 
@@ -3401,14 +3407,14 @@ identifier for logs and stored data):
 | `NotSerializable` | `not_serializable` | The configuration has no plain-data form to serialize to |
 | `UnsatisfiableLegStrategy` | `unsatisfiable_leg_strategy` | The leg strategy cannot produce the legs asked for |
 | `InvalidRoleAssignment` | `invalid_role_assignment` | A role assignment returned something other than the seatings it was given, unchanged or reversed |
-| `UnknownOptionKey` | `unknown_option_key` | Plain-data configuration holds a key the options do not have |
+| `UnknownOptionKey` | `unknown_option_key` | Plain-data configuration holds a key the options do not have. Only `PotDrawOptions::fromArray()` raises it; the other `fromArray()` methods ignore a key they do not know |
 | `OddParticipantCount` | `odd_participant_count` | The format has every participant in every round, issues no bye, and was given an odd number of participants |
 | `UnequalPots` | `unequal_pots` | The participants do not divide into the number of pots asked for |
 | `TooManyOpponentsPerPot` | `too_many_opponents_per_pot` | More opponents are asked from one pot than a pot has other members |
 | `OddPotWithOddOpponents` | `odd_pot_with_odd_opponents` | A pot of odd size cannot hold an odd number of events per member inside itself |
 | `ConfigurationNotYetSupported` | `configuration_not_yet_supported` | The configuration is feasible and the library has no construction for it yet |
 | `BracketComplete` | `bracket_complete` | A further round was asked of a finished bracket |
-| `RoundPartiallyResolved` | `round_partially_resolved` | The next round was asked for while ties of the current one have no complete result |
+| `RoundPartiallyResolved` | `round_partially_resolved` | An elimination engine was asked (`pairNextRound()`, `isComplete()` or `getOutcome()`) while some ties of the current round have a complete result and others do not. A round with no result at all is offered again |
 | `EventWithoutRoundNumber` | `event_without_round_number` | An event has no round number where one is required |
 | `InvalidResult` | `invalid_result` | A result cannot belong to the stage it was recorded in |
 | `DuplicateResult` | `duplicate_result` | Two results were recorded for the same match |
