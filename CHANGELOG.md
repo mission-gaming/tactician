@@ -68,6 +68,12 @@ heading **Output change (fix)**.
 - An architecture test (`tests/Feature/ExceptionMarkerTest.php`) that fails
   when a `throw` in `src/`, an exception built there, or a method's return
   type names a class outside `TacticianException`.
+- A decision record,
+  `docs/adr/0003-multi-participant-events-are-a-2-0-goal.md`: events with
+  more than two participants (a race, a lobby) are a goal for 2.0, the
+  library supports pairwise events only until then, and code written before
+  2.0 must not make that goal harder than it needs to be. The agent guide
+  carries the rule. No behaviour changes.
 
 ### Changed
 
