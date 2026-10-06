@@ -537,6 +537,37 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Tournament scheduled successfully!\nTotal matches: 30\nTotal rounds: 10\n"],
             ['Could not schedule'],
         ],
+        // Rank 1 of an elimination outcome's table is not always the winner of the bracket
+        'the best record of a double-elimination bracket is not its winner' => [
+            'docs/USAGE.md',
+            'MatchOutcomeSelector::winners()->select($doubleOutcome)',
+            ["Rank 1: Heidi (5-2)\nRank 2: Alice (4-1)\nWon the bracket: Alice\n"],
+            [],
+        ],
+        'a two-legged final decided by tie_winner leaves the finalists level' => [
+            'docs/USAGE.md',
+            'MatchOutcomeSelector::winners()->select($finalOutcome)',
+            ["Rank 1: Alice\nWon the tie: Heidi\n1 tied set\n"],
+            [],
+        ],
+        'a bye is no win in the table of a bracket' => [
+            'docs/USAGE.md',
+            'MatchOutcomeSelector::winners()->select($byeOutcome)',
+            ["Alice (1-1)\nHeidi (1-0)\nWon the bracket: Heidi\n"],
+            [],
+        ],
+        'a week in days keeps the time of day, a week in hours does not' => [
+            'docs/USAGE.md',
+            "foreach (['P7D', 'PT168H'] as \$roundInterval)",
+            ["P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00\nPT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00\n"],
+            [],
+        ],
+        'a seed repeats on a new scheduler and not on the second call of one' => [
+            'docs/USAGE.md',
+            '$seeded = fn (): RoundRobinScheduler',
+            ["bool(true)\nbool(false)\n"],
+            [],
+        ],
     ]);
 
     it('prints one match per department in each of the two team-building rounds', function () use ($extracted, $autoload): void {
@@ -735,10 +766,231 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert(count($context->getExistingEvents()) === 1 && count($newContext->getExistingEvents()) === 2);
                 PHP,
         ],
-        'seeded generation repeats' => [
+        // "the first call ... always returns the same schedule, the second call
+        // always returns the same other one"
+        'seeded generation repeats call by call' => [
             'docs/USAGE.md',
             'new Randomizer(new Mt19937(12345))',
-            'assert((new RoundRobinScheduler(null, new Randomizer(new Mt19937(12345))))->schedule($participants)->toJson() === $schedule->toJson());',
+            <<<'PHP'
+                $again = $seeded();
+                assert($again->schedule($participants)->toJson() === $schedule->toJson());
+                $secondCall = $again->schedule($participants)->toJson();
+                assert($secondCall !== $schedule->toJson());
+                $third = $seeded();
+                $third->schedule($participants);
+                assert($third->schedule($participants)->toJson() === $secondCall);
+                // "A scheduler without a Randomizer ... every call returns the same schedule"
+                $plain = new RoundRobinScheduler();
+                assert($plain->schedule($participants)->toJson() === $plain->schedule($participants)->toJson());
+                PHP,
+        ],
+        // The table under "Role-Based Constraints", at its two smallest failing sizes
+        // and one that holds
+        'where a role balance limit of 3 or 4 holds and where it fails' => [
+            'docs/USAGE.md',
+            '$balanceConstraint = RoleBalanceConstraint::homeAway(3);',
+            <<<'PHP'
+                $completes = static function (int $size, \MissionGaming\Tactician\Scheduling\RoundRobinOptions $options): bool {
+                    $field = [];
+                    for ($i = 1; $i <= $size; ++$i) {
+                        $field[] = new \MissionGaming\Tactician\DTO\Participant("p{$i}", "P{$i}");
+                    }
+                    $limit = ConstraintSet::create()->add(RoleBalanceConstraint::homeAway($size % 2 === 0 ? 3 : 4))->build();
+
+                    try {
+                        (new \MissionGaming\Tactician\Scheduling\RoundRobinScheduler($limit))->schedule($field, $options);
+                    } catch (\MissionGaming\Tactician\Exceptions\IncompleteScheduleException) {
+                        return false;
+                    }
+
+                    return true;
+                };
+                $repeated = new \MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy();
+                foreach ([4, 6, 7, 12] as $size) {
+                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions()));
+                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 2)));
+                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 3)));
+                    assert(!$completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 4)));
+                    assert(!$completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 2, strategy: $repeated)));
+                    assert(!$completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 3, strategy: $repeated)));
+                }
+                // "three repeated legs fail for every size from 3"; 5 is a size four mirrored legs complete
+                assert(!$completes(3, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 3, strategy: $repeated)));
+                assert($completes(5, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 4)));
+                PHP,
+        ],
+        // "In a single leg no pair meets twice, so there it rejects nothing"
+        'a minimum of rounds between repeat meetings rejects nothing in a single leg' => [
+            'docs/USAGE.md',
+            '->add(new MinimumRestPeriodsConstraint(2))',
+            <<<'PHP'
+                $field = [];
+                for ($i = 1; $i <= 7; ++$i) {
+                    $field[] = new \MissionGaming\Tactician\DTO\Participant("p{$i}", "P{$i}");
+                }
+                $spaced = new \MissionGaming\Tactician\Scheduling\RoundRobinScheduler(
+                    ConstraintSet::create()->add(new MinimumRestPeriodsConstraint(1000))->build()
+                );
+                assert(count($spaced->schedule($field)) === 21);
+                assert($spaced->getViolationCollector()->getViolations() === []);
+                PHP,
+        ],
+        // "A rejected event is asked about twice ... an event it accepts once"
+        'how often a constraint is asked' => [
+            'docs/USAGE.md',
+            "'Maximum Three Events'",
+            <<<'PHP'
+                $field = [];
+                for ($i = 1; $i <= 4; ++$i) {
+                    $field[] = new \MissionGaming\Tactician\DTO\Participant("p{$i}", "P{$i}");
+                }
+                $asked = 0;
+                $accepting = ConstraintSet::create()->custom(function (Event $event) use (&$asked): bool {
+                    ++$asked;
+
+                    return true;
+                })->build();
+                (new \MissionGaming\Tactician\Scheduling\RoundRobinScheduler($accepting))->schedule($field);
+                assert($asked === 6);
+
+                // One attempt of four participants is six events; an attempt that rejects
+                // one of them asks seven times, and a failed generation asks far more
+                $asked = 0;
+                $rejecting = ConstraintSet::create()->custom(function (Event $event) use (&$asked, $field): bool {
+                    ++$asked;
+
+                    return !($event->hasParticipant($field[0]) && $event->hasParticipant($field[1]));
+                })->build();
+                try {
+                    (new \MissionGaming\Tactician\Scheduling\RoundRobinScheduler($rejecting))->schedule($field);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\IncompleteScheduleException) {
+                    assert($asked > 4 * 7);
+                }
+                PHP,
+        ],
+        // "two Event objects for one match ... are counted as two matches"
+        'the calculator recognises an event by the object' => [
+            'docs/USAGE.md',
+            '$standings = $calculator->calculate($participants, $results);',
+            <<<'PHP'
+                $twice = $calculator->calculate([$alice, $bob], [new Result(new Event([$alice, $bob]), $alice), new Result(new Event([$alice, $bob]), $alice)]);
+                assert($twice->getEntries()[0]->getPlayed() === 2);
+                try {
+                    $calculator->calculate([$alice, $bob], [new Result($eventOne, $alice), new Result($eventOne, $bob)]);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidInputException) {
+                }
+                PHP,
+        ],
+        // The placement reading of the eight-entrant bracket, and its level entries
+        'the table of a single-elimination bracket of eight' => [
+            'docs/USAGE.md',
+            '$titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];',
+            <<<'PHP'
+                $records = array_map(
+                    static fn ($entry): string => "{$entry->getWins()}-{$entry->getLosses()}",
+                    $outcome->getStandings()->getEntries()
+                );
+                assert($records === ['3-0', '2-1', '1-1', '1-1', '0-1', '0-1', '0-1', '0-1']);
+                assert($outcome->getStandings()->getEntries()[0]->getParticipant() === $titleHolder);
+                assert(array_map('count', $outcome->getStandings()->getTiedSets()) === [2, 4]);
+                PHP,
+        ],
+        // "otherwise in the order of the table, the same on every call ... by seed,
+        // then label, then ID, and not by position in the list", and the bound on rounds
+        'a Swiss schedule without a randomizer, and its most rounds' => [
+            'docs/USAGE.md',
+            '$schedule = (new SwissScheduler(null, new Randomizer()))',
+            <<<'PHP'
+                $plain = new SwissScheduler();
+                assert($plain->schedule($participants, new SwissOptions(rounds: 7))->toJson() === $plain->schedule($participants, new SwissOptions(rounds: 7))->toJson());
+
+                $firstRound = static fn (array $field): array => array_map(
+                    static fn ($event): array => array_map(static fn ($p): string => $p->getId(), $event->getParticipants()),
+                    (new SwissScheduler())->schedule($field, new SwissOptions(rounds: 1))->getEvents()
+                );
+                // The same four ids in the same list order: labels and seeds decide who is paired
+                $byLabel = [new Participant('p1', 'D'), new Participant('p2', 'C'), new Participant('p3', 'B'), new Participant('p4', 'A')];
+                $bySeed = [new Participant('p1', 'A', 4), new Participant('p2', 'B', 3), new Participant('p3', 'C', 2), new Participant('p4', 'D', 1)];
+                $inOrder = [new Participant('p1', 'A'), new Participant('p2', 'B'), new Participant('p3', 'C'), new Participant('p4', 'D')];
+                assert($firstRound($byLabel) === $firstRound($bySeed));
+                assert($firstRound($byLabel) !== $firstRound($inOrder));
+                try {
+                    $plain->schedule($participants, new SwissOptions(rounds: 8));
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::InvalidRoundCount);
+                }
+                PHP,
+        ],
+        // What a JSON round trip keeps of a schedule
+        'what a serialized schedule keeps' => [
+            'docs/USAGE.md',
+            '$restored = Schedule::fromJson($json);',
+            <<<'PHP'
+                $entrants = [];
+                for ($i = 1; $i <= 5; ++$i) {
+                    $entrants[] = new Participant("p{$i}", "P{$i}", null, ['rating' => 1.0]);
+                }
+                $back = Schedule::fromJson((new RoundRobinScheduler())->schedule($entrants)->toJson());
+                $ids = array_column($back->toArray()['participants'], 'id');
+                assert($ids !== ['p1', 'p2', 'p3', 'p4', 'p5']);
+                $firstAppearance = [];
+                foreach ($back as $event) {
+                    foreach ($event->getParticipants() as $participant) {
+                        $firstAppearance[$participant->getId()] = true;
+                    }
+                }
+                assert($ids === array_keys($firstAppearance));
+                assert($back->getEvents()[0]->getParticipants()[0]->getMetadataValue('rating') === 1);
+                PHP,
+        ],
+        // "the outer loop stops after its first event"
+        'a schedule has one cursor' => [
+            'docs/USAGE.md',
+            '$eventsByRound = $largeSchedule->getEventsByRound();',
+            <<<'PHP'
+                $visited = 0;
+                foreach ($largeSchedule as $outer) {
+                    foreach ($largeSchedule as $inner) {
+                        ++$visited;
+                    }
+                }
+                assert($visited === 120);
+                $visited = 0;
+                foreach ($largeSchedule as $outer) {
+                    foreach ($largeSchedule->getEvents() as $inner) {
+                        ++$visited;
+                    }
+                }
+                assert($visited === 120 * 120);
+                PHP,
+        ],
+        // "they do not recognise it and let through an event they would reject"
+        'two constraints look for the participant object' => [
+            'docs/USAGE.md',
+            'count($entrySchedule)',
+            <<<'PHP'
+                $first = new Participant('a', 'A', 1);
+                $second = new Participant('b', 'B', 2);
+                $third = new Participant('c', 'C', 3);
+                $plan = new \MissionGaming\Tactician\Stage\RoundRobinPlan([$first, $second, $third], 2);
+                $context = new \MissionGaming\Tactician\Scheduling\SchedulingContext(
+                    [$first, $second, $third],
+                    $plan,
+                    [new \MissionGaming\Tactician\DTO\Event([$first, $second], new \MissionGaming\Tactician\DTO\Round(1))]
+                );
+                $rebuilt = new Participant('a', 'A', 1);
+
+                $streak = \MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint::homeAway(1);
+                assert(!$streak->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$first, $third], new \MissionGaming\Tactician\DTO\Round(2)), $context));
+                assert($streak->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$rebuilt, $third], new \MissionGaming\Tactician\DTO\Round(2)), $context));
+
+                $protection = new \MissionGaming\Tactician\Constraints\SeedProtectionConstraint(2, 1.0);
+                assert(!$protection->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$first, $second], new \MissionGaming\Tactician\DTO\Round(1)), $context));
+                assert($protection->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$rebuilt, $second], new \MissionGaming\Tactician\DTO\Round(1)), $context));
+                PHP,
         ],
         'skill tiers never skip a tier' => [
             'docs/USAGE.md',

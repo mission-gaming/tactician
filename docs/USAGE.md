@@ -1,6 +1,6 @@
 # Usage Guide
 
-This comprehensive guide covers all aspects of using Tactician for tournament scheduling, from basic round-robin tournaments to complex multi-leg scenarios with advanced constraints.
+How to use Tactician, format by format. The test suite executes the `php` blocks of this guide, all but one sketch that says so, and checks the values and output they state.
 
 ## Table of Contents
 
@@ -44,13 +44,13 @@ anything else that competes.
 | **Role** | The position of a participant in an event: first-named (index 0 of `getParticipants()`) or second-named (index 1). The neutral name for what a sport calls home and away, white and black, or server and receiver. |
 | **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `RoundParityRoleAssignment` (the default) alternates with round parity; `BalancedRoleAssignment` ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size. See [Role Assignment](#role-assignment). |
 | **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events — round robin records them in the `byes` schedule metadata, and the Swiss/elimination engines report them on the round pairing. |
-| **Seed** | A participant's ranking, used for bracket placement, serpentine group distribution, and seed-protection constraints. Lower numbers are better; 1 is the top seed. |
+| **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and the standings order uses it as part of its last fallback, between scores-for and the label (see **Tied set**). Whatever follows a table follows that fallback where entries are level: the first round of a Swiss stage, which is paired from a table with no results, the survivors of a re-seeded elimination round, and a rank selector. Bracket placement, serpentine pool distribution and pot membership do not read the seed: they take entrants from their position in the list they are given, so put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
 | **Result** | The recorded outcome of a played event: a winner or a draw, with optional per-participant scores. |
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
 | **Tied set** | Two or more adjacent entries of a standings table that are **level**: equal on the ranking value, on every configured tiebreaker, on score difference and on scores-for, so that only the final fallback (seed, then label, then ID) orders them. `Standings::getTiedSets()` reports each one (`TiedSet`) with the positions it spans. |
-| **Constraint** | A hard rule evaluated during generation (rest periods, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. |
+| **Constraint** | A hard rule on one candidate event, evaluated during generation (rounds between repeat meetings, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. A constraint sees rounds, never times; rules about time are **timeline rules**. |
 | **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out, a `StageOutcome` when play completes. Stages compose via pools and progression selectors. |
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
 | **Pot** | One of the equal blocks a seeded list of entrants is cut into for a pot draw, in list order: the first block is pot 1, the next pot 2, and so on. A pot is not a pool: the members of a pool play each other and are ranked together, while a pot only limits who an entrant can draw. |
@@ -62,11 +62,11 @@ anything else that competes.
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
 | **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format and for the options that shape which rounds the format has or how they are paired, and an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
 | **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. Level means equal; two `WinDrawLossRanking` totals that differ only by the rounding of a float sum are level too, so the same results added in another order do not split a group. |
-| **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary — those are consumer interpretations of the outcome. |
+| **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary. The standings are a table of the whole stage, and rank 1 of an elimination stage is not always the participant who won its last tie: read that with `MatchOutcomeSelector::winners()` (see [Who won the bracket](#who-won-the-bracket)). |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
 | **Slot** | One kickoff time within a round, holding one event per resource (one event total when no resources are declared). A round's events fill its slots deterministically: schedule order against slot time order, resource by resource within a slot. |
-| **Kickoff** | The assigned time of a scheduled event, always emitted in UTC (`ScheduledEvent::getKickoff()`); the timeline's wall-clock arithmetic happens in the stage's declared timezone. |
+| **Kickoff** | The assigned time of a scheduled event, always emitted in UTC (`ScheduledEvent::getKickoff()`); the timeline adds its intervals in the stage's declared timezone (see [Timeline Assignment](#timeline-assignment) for what that means across a daylight-saving change). |
 | **Resource** | A named host of concurrent events within a slot (venue, pitch, court, board...). A slot holds one event per resource; no declared resources means one anonymous resource. Each scheduled event carries its assigned resource. |
 | **Quality metric** | A graded, lower-is-better measure of a valid schedule (`QualityMetric`): role balance, alternation streaks, rest rhythm, repeat spacing. Metrics measure defects — zero is ideal. Composed with weights by `ScheduleScorer`; policy (which metrics, what weights) stays application-side. |
 | **Optimization** | Best-of-N sampling (`ScheduleOptimizer`): generate N candidate schedules from one master seed, score each, keep the best. Deterministic when every randomness source uses the supplied child randomizer. Whole-schedule generators only. |
@@ -219,6 +219,17 @@ Two things to know when the IDs are numbers:
   strings, so `'9'` sorts before `'10'`. It is reached only when ranking
   value, tiebreakers, scores, seed and label are all equal.
 
+Use one `Participant` object per participant within a generation. Almost
+everything matches participants by ID, but `SeedProtectionConstraint` and
+the two `ConsecutiveRoleConstraint` factories (`homeAway()`, `position()`)
+look for the participant object itself in an event. Handed a second object
+with the same ID (a participant rebuilt from stored data and mixed with the
+originals), they do not recognise it and let through an event they would
+reject. The schedulers and engines pass on the objects they were given, and
+a state or schedule restored with `fromArray()` or `fromJson()` shares one
+object per ID, so this arises only where events and participants are put
+together by hand.
+
 ### Working with Events and Rounds
 
 ```php
@@ -260,7 +271,7 @@ use MissionGaming\Tactician\Constraints\MetadataConstraint;
 // Comprehensive constraint configuration
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()  // Prevent duplicate pairings within a leg
-    ->add(new MinimumRestPeriodsConstraint(2))  // 2 rounds minimum between meetings
+    ->add(new MinimumRestPeriodsConstraint(2))  // Two meetings of the same pair are at least 2 rounds apart
     ->add(new SeedProtectionConstraint(2, 0.4))  // Protect top 2 seeds for 40% of tournament
     ->add(ConsecutiveRoleConstraint::homeAway(3))  // Max 3 consecutive home/away games
     ->add(MetadataConstraint::requireSameValue('division'))  // Only pair within same division
@@ -275,6 +286,13 @@ $constraints = ConstraintSet::create()
 > single-leg round robin never repeats a pairing by construction, so the
 > constraint is only load-bearing for generators without that structural
 > guarantee.
+
+> **Note:** `MinimumRestPeriodsConstraint` is about a pair, not about a
+> participant's rest, and it counts rounds, not time: it rejects an event
+> whose two participants last met fewer than the given number of rounds
+> before. In a single leg no pair meets twice, so there it rejects nothing.
+> Rest between a participant's own events, measured in time, is a timeline
+> rule: `MinimumRestRule`, under [Time-Aware Rules](#time-aware-rules).
 
 ### Metadata-Based Constraints
 
@@ -342,16 +360,56 @@ $advancedConstraint = ConstraintSet::create()
     ->build();
 ```
 
-A constraint of your own may keep a count, or throw for an event it cannot
-judge, and what it is asked then decides what you get back. So there are
-two shortcuts the library takes only for a set made of `NoRepeatPairings`,
-`MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and
-`SeedProtectionConstraint`, which cannot tell how they are asked: it
-analyses a round robin that cannot be completed once and not once per
-ordering tried, and it skips the branches of a Swiss round search that
-hold no pairing. A set that holds anything that runs your code (a callable,
-a role extractor or metadata validator, a class or subclass of your own, or
-a subclass of `ConstraintSet`) gets the same results without them, which on
+#### What a constraint may rely on
+
+Write a constraint as a pure predicate: its answer depends on the event it
+is given and on the context it is given, and on nothing that changes while
+a schedule is generated. The library asks constraints in ways that only a
+pure predicate answers consistently, and what it promises is narrow.
+
+It promises that an event is in a schedule or a round pairing only if the
+constraint set accepted it, against a context that holds the events
+generated before it.
+
+It does not promise how often a constraint is asked, in which order, or
+that an event it is asked about ends up in the schedule:
+
+- **A rejected event is asked about twice.** Within one attempt the
+  round-robin scheduler asks about an event it accepts once. It puts an
+  event the set rejected to each constraint of the set again, by itself, to
+  record which of them rejected it. A set stops at the first constraint
+  that rejects, so a later constraint may be asked the second time only.
+- **Retries ask everything again.** A round robin that fails under one
+  participant order is generated again under up to min(participants, 25)
+  rotated orders, and the backtracking search and the Swiss round search
+  put many candidate events to the constraints that they then discard.
+- **A failure analysis asks about events that were never candidates**: each
+  missing pairing, in every round, with either participant first-named,
+  against the events of the failed attempt.
+- **The context is the generation's, not the final schedule's.** It holds
+  what was generated before the event. For a round robin that is the
+  earlier rounds: the other events of the round being laid out are not in
+  it yet. In an attempt that is later discarded, it holds events that are
+  in no schedule.
+
+So a constraint must not count its calls, read a random source or the
+clock, or remember what it was asked. One that does gets a schedule that
+depends on how the library happened to ask. A constraint that throws ends
+the generation with that exception, which the library does not wrap (see
+[What the marker does not cover](#what-the-marker-does-not-cover)); return
+`false` for an event the rule forbids, and `true` for one it has no opinion
+on.
+
+Because purity is not part of `ConstraintInterface`, the library does not
+assume it where assuming it would change what a constraint that breaks the
+rule gets back. Two shortcuts are taken only for a `ConstraintSet` made of
+`NoRepeatPairings`, `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint`
+and `SeedProtectionConstraint` objects, which run no code of yours: a round
+robin that cannot be completed is analysed once and not once per order
+tried, and a Swiss round search skips the branches that hold no pairing. A
+set that holds anything that runs your code (a callable, a role extractor
+or metadata validator, a class or subclass of your own, or a subclass of
+`ConstraintSet`) gets the same results without the shortcuts, which on
 those two failure paths takes longer.
 
 ### Role-Based Constraints
@@ -359,15 +417,15 @@ those two failure paths takes longer.
 ```php
 use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
 
-// Prevent more than 2 consecutive home games
+// At most 2 events in a row in the same role (first-named or second-named)
 $homeAwayConstraint = ConsecutiveRoleConstraint::homeAway(2);
 
-// Limit consecutive position assignments
+// The same rule under its neutral name: both read the role as the
+// participant's index in the event
 $positionConstraint = ConsecutiveRoleConstraint::position(3);
 
-// Keep home/away totals within 3 of each other as the schedule builds.
-// The round-robin generator alternates roles with round parity, so limits
-// of 3 (even fields) or 4 (odd fields) are always satisfiable.
+// Keep the two role totals of every participant within 3 of each other
+// while the schedule is built
 $balanceConstraint = RoleBalanceConstraint::homeAway(3);
 
 // Use in scheduler
@@ -377,6 +435,26 @@ $constraints = ConstraintSet::create()
     ->add($balanceConstraint)
     ->build();
 ```
+
+`RoleBalanceConstraint` is checked on the running totals, so a limit has to
+be at least what the roles of the schedule reach on the way. With the
+default role assignment (see [Role Assignment](#role-assignment)) and a
+scheduler without a `Randomizer`:
+
+| Schedule | A limit of 3 (field of even size) or 4 (field of odd size) |
+|----------|-------------------------------------------------------------|
+| One leg | Holds, for 2 to 30 participants (also with a `Randomizer`) |
+| Two or three mirrored legs | Holds, for 2 to 30 participants |
+| Four mirrored legs | Fails for 4 participants and for every size from 6 to 30 |
+| Two repeated legs | Fails for 4 participants and for every size from 6 to 30; three repeated legs fail for every size from 3 to 30 |
+| Two mirrored legs from a scheduler with a `Randomizer` | Can fail, depending on the seed: the later legs are not the first leg mirrored |
+
+A limit the roles break fails generation with an
+`IncompleteScheduleException`; the scheduler does not look for other roles.
+Repeated legs give every participant the roles of the first leg again, so
+the totals drift by a leg's worth with every leg, and a limit has to allow
+for that. `BalancedRoleAssignment` lowers what a single leg needs to 1 in a
+field of even size and 2 in a field of odd size.
 
 ## Multi-Leg Tournaments
 
@@ -401,19 +479,20 @@ $participants = [
 
 $scheduler = new RoundRobinScheduler();
 
-// Home and away legs (participant order reversed in second leg)
+// Home and away legs (the roles of every pairing reversed in the second leg)
 $mirroredSchedule = $scheduler->schedule(
     $participants,
     new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
 );
 
-// Repeated encounters (same pairings each leg)
+// Repeated encounters (the same pairings in the same roles in every leg)
 $repeatedSchedule = $scheduler->schedule(
     $participants,
     new RoundRobinOptions(legs: 3, strategy: new RepeatedLegStrategy())
 );
 
-// Randomized encounters (shuffled participant order each leg)
+// The same pairings in every leg, with the roles of each pairing drawn
+// at random in the legs after the first
 $shuffledSchedule = $scheduler->schedule(
     $participants,
     new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy())
@@ -506,10 +585,10 @@ foreach ($mirroredSchedule->getEventsByRound() as $roundNumber => $events) {
 ```php
 use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 
-// Constraints work across multiple legs
+// A constraint sees the events of every leg generated so far
 $constraints = ConstraintSet::create()
     ->noRepeatPairings()
-    ->add(new MinimumRestPeriodsConstraint(3))  // 3 rounds between encounters (across legs)
+    ->add(new MinimumRestPeriodsConstraint(3))  // The two meetings of a pair are at least 3 rounds apart
     ->build();
 
 $scheduler = new RoundRobinScheduler($constraints);
@@ -770,8 +849,13 @@ the sport conventions as named constructors — `threeOneZero()`
 construction via `WinDrawLossRanking::fromArray(['win' => 3, 'draw' => 1,
 'loss' => 0])` for config-driven platforms. `SonnebornBergerTiebreaker` is
 also available. Ties beyond the configured tiebreakers fall back to score
-difference, score for, seed, and natural-order label comparison. Each event
-may have at most one result; recording two results for the same event throws.
+difference, score for, seed (a participant without one after those that have
+one), natural-order label comparison, and finally the ID. Each event may
+have at most one result: the calculator throws an `InvalidInputException`
+for two results that hold the same `Event` object. It recognises an event by
+the object and does not compare events, so two `Event` objects for one match
+(one of them rebuilt from stored data, say) are counted as two matches; pass
+it one result per match.
 
 ### Tied sets
 
@@ -907,13 +991,18 @@ numbers, played pairings) and serializes — `toArray()`/`fromArray()` and
 `toJson()`/`fromJson()` — so platforms persist it between rounds instead
 of re-deriving it. Withdrawals are a first-class verb:
 `$state->withoutParticipant($p)` removes a participant from pairing while
-their recorded games still count toward standings. When repeat avoidance
-leaves no complete pairing, a `NoValidPairingException` is thrown with a
-diagnostic report.
+their recorded games still count toward standings. When repeat avoidance and
+the constraints leave no complete pairing, a `NoValidPairingException` is
+thrown with a diagnostic report.
 
-For a whole Swiss schedule without recorded results — random non-repeat
-pairing over N rounds — use the `SwissScheduler` preset, which drives this
-engine through the same loop while recording no results:
+For a whole Swiss schedule without recorded results, use the
+`SwissScheduler` preset, which drives this engine through the same loop
+while recording no results. With no results every participant is level, so
+each round is a non-repeat pairing of the field: drawn at random when the
+scheduler has a `Randomizer`, as below, and otherwise in the order of the
+table, the same on every call. A table with no results is in its fallback
+order: by seed, then label, then ID, and not by position in the list. It refuses more rounds than the number of
+participants minus one, the most a field can play without a repeat:
 
 ```php
 use MissionGaming\Tactician\Scheduling\SwissOptions;
@@ -1336,8 +1425,9 @@ entrants in 6 pots with three opponents per pot.
 
 ## Elimination Brackets
 
-The elimination engines are **presets** — canned compositions of
-single-round knockout stages behind the same stage driver loop as Swiss.
+The elimination engines are **presets**: a whole bracket as one stage,
+behind the same stage driver loop as Swiss. Each engine works out the
+bracket from the recorded stage state on every call.
 Entry pairing folds by **list position** (position 1 is the top entrant;
 positions 1 and 2 land in opposite halves), fields that are not a power of
 two give byes to the top positions, and every round carries a label.
@@ -1372,14 +1462,18 @@ while (!$engine->isComplete($state)) {
 
 $outcome = $engine->getOutcome($state);
 
-// "The champion" is your derivation of the outcome: rank 1 of the
-// standings, or the winners of the final round
+// Who won the bracket: the winner of its last tie
 $titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];
 ```
 
-The outcome's win/loss standings reproduce conventional bracket placement
-with no special cases — champion 3-0, runner-up 2-1, semifinal losers
-joint 1-1, quarter-final losers joint 0-1 in an 8-entrant bracket.
+The outcome's standings are a win/loss table of every event of the stage.
+In the bracket above (single elimination, one event per tie, eight entrants)
+the table reads as a bracket placement: the winner 3-0, the runner-up 2-1,
+the semifinal losers 1-1 and the quarter-final losers 0-1. The two semifinal
+losers are level, and so are the four quarter-final losers: the table orders
+them by its fallback (seed, label, ID), and `getTiedSets()` reports them.
+That reading does not hold for every bracket; see
+[Who won the bracket](#who-won-the-bracket).
 
 `EliminationOptions` configures the preset (plain-data constructible via
 `fromArray()`):
@@ -1402,6 +1496,133 @@ final a reset match decides the title (disable with
 Conflicting, duplicate, or round-less results are rejected with clear
 errors; partially recorded rounds are completed with
 `$state->withAdditionalResults([...])`.
+
+### Who won the bracket
+
+`MatchOutcomeSelector::winners()` reads who won the last tie of the stage
+from the recorded results, and that is the participant who won the bracket.
+Rank 1 of the outcome's standings is the participant with the best
+win/loss record over the whole stage. The two are the same in a
+single-elimination bracket of one event per tie whose field is a power of
+two: its winner has won every round and nobody else has. They can differ in
+three cases:
+
+**Double elimination.** A participant who loses early, comes through the
+losers bracket and wins the first grand final has more wins than the
+participant who then wins the reset:
+
+```php
+use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
+
+[$alice, , , , , , , $heidi] = $participants;
+$double = new DoubleEliminationEngine();
+
+// Heidi loses to Alice in round 1, then wins every event she plays up to
+// and including the first grand final. Alice wins the reset. In every
+// other event the first-named participant wins
+$doubleState = StageState::start($participants);
+while (!$double->isComplete($doubleState)) {
+    $pairing = $double->pairNextRound($doubleState);
+
+    $results = [];
+    foreach ($pairing->getEvents() as $event) {
+        $heidiWins = $event->hasParticipant($heidi)
+            && $pairing->getRoundNumber() > 1
+            && $pairing->getLabel() !== 'grand final reset';
+        $results[] = new Result($event, $heidiWins ? $heidi : $event->getParticipants()[0]);
+    }
+    $doubleState = $doubleState->withRoundPlayed($pairing, $results);
+}
+
+$doubleOutcome = $double->getOutcome($doubleState);
+[$rankOne, $rankTwo] = $doubleOutcome->getStandings()->getEntries();
+
+echo "Rank 1: {$rankOne->getParticipant()->getLabel()} ({$rankOne->getWins()}-{$rankOne->getLosses()})\n";
+echo "Rank 2: {$rankTwo->getParticipant()->getLabel()} ({$rankTwo->getWins()}-{$rankTwo->getLosses()})\n";
+echo 'Won the bracket: ' . MatchOutcomeSelector::winners()->select($doubleOutcome)[0]->getLabel() . "\n";
+```
+
+```text
+Rank 1: Heidi (5-2)
+Rank 2: Alice (4-1)
+Won the bracket: Alice
+```
+
+**A two-legged tie decided by `tie_winner`.** Each leg is recorded as it
+was played and the decision changes nothing in the table (see
+`legsPerTie` above), so two finalists who win a leg each are level in it.
+The table orders them by its fallback, which knows nothing of the decision:
+
+```php
+use MissionGaming\Tactician\Scheduling\EliminationOptions;
+use MissionGaming\Tactician\Stage\TieDecision;
+
+$twoLegged = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+
+$finalState = StageState::start([$alice, $heidi]);
+$finalTie = $twoLegged->pairNextRound($finalState);
+[$firstLeg, $secondLeg] = $finalTie->getEvents();
+
+// A leg each; under the application's rules Heidi advances
+$finalState = $finalState->withRoundPlayed($finalTie, [
+    new Result($firstLeg, $alice),
+    new Result($secondLeg, $heidi, [], [TieDecision::TIE_WINNER_KEY => $heidi->getId()]),
+]);
+
+$finalOutcome = $twoLegged->getOutcome($finalState);
+
+echo 'Rank 1: ' . $finalOutcome->getStandings()->getEntries()[0]->getParticipant()->getLabel() . "\n";
+echo 'Won the tie: ' . MatchOutcomeSelector::winners()->select($finalOutcome)[0]->getLabel() . "\n";
+echo count($finalOutcome->getStandings()->getTiedSets()) . " tied set\n";
+```
+
+```text
+Rank 1: Alice
+Won the tie: Heidi
+1 tied set
+```
+
+**A bye.** A bye is not an event, so it is no win in the table (the Swiss
+engine credits a bye as a win when it orders a round; the bracket engines
+do not). A participant who has a bye and wins the bracket can therefore be
+level with the participant it beat in the final, who played a round more:
+
+```php
+$bob = $participants[1];
+
+// Three entrants: Heidi, in position 1, has the bye of the first round
+$byeState = StageState::start([$heidi, $alice, $bob]);
+while (!$engine->isComplete($byeState)) {
+    $pairing = $engine->pairNextRound($byeState);
+    $byeState = $byeState->withRoundPlayed($pairing, array_map(
+        fn ($event) => new Result($event, $event->getParticipants()[0]),
+        $pairing->getEvents()
+    ));
+}
+
+$byeOutcome = $engine->getOutcome($byeState);
+
+foreach (array_slice($byeOutcome->getStandings()->getEntries(), 0, 2) as $entry) {
+    echo "{$entry->getParticipant()->getLabel()} ({$entry->getWins()}-{$entry->getLosses()})\n";
+}
+echo 'Won the bracket: ' . MatchOutcomeSelector::winners()->select($byeOutcome)[0]->getLabel() . "\n";
+```
+
+```text
+Alice (1-1)
+Heidi (1-0)
+Won the bracket: Heidi
+```
+
+Alice and Heidi both have three points from one win, and the fallback puts
+Alice first by label.
+
+So read the winner of an elimination stage, and who advances from any
+knockout round, with `MatchOutcomeSelector`. Use the standings for what
+they are: a record of every participant's results, for a placement table
+or for re-seeding. A level single-leg event is different from a level
+two-legged tie here: its decision does count in the table (see
+[Recording a Level Event](#recording-a-level-event)).
 
 ### Recording a Level Event
 
@@ -1592,8 +1813,11 @@ $knockoutState = StageState::start($qualifiers); // position 1 = seed 1
 
 **Progression selectors** are the hand-off between stages: they consume a
 `StageOutcome` and produce the ordered entrant list of the next stage.
-Order is authoritative — a stage seeds from list position — so library
-selectors and consumer-derived lists behave identically by construction.
+Order is authoritative: a bracket, a pool distribution and a pot draw seed
+from list position, so library selectors and consumer-derived lists behave
+identically. (A Swiss stage is the exception. It pairs its first round from
+a table with no results, which is ordered by the seed attribute, then label,
+then ID: give the entrants of a Swiss stage seeds if their order matters.)
 Two families cover the two legitimate substrates (and mixing them within
 one decision invites contradictory qualification — pick one ranking
 authority per decision):
@@ -1611,10 +1835,17 @@ MatchOutcomeSelector::winners();              // knockout round -> next round
 MatchOutcomeSelector::losers();               // knockout round -> repechage
 ```
 
-All selectors are plain-data constructible (`fromArray()`/`toArray()`)
-with stable mode identifiers. Selectors are optional machinery, not a
-gate: a consumer computing its own qualification hands the next stage an
-ordered list directly, with no penalty.
+Both selector classes are plain-data constructible
+(`fromArray()`/`toArray()`) with stable mode identifiers; the data does not
+say which class it belongs to, so store that beside it. Selectors are
+optional machinery, not a gate: a consumer computing its own qualification
+hands the next stage an ordered list directly, with no penalty.
+
+A rank selector reads positions, and a standings table gives every entry a
+position even where no result separates two entries. Before you cut a table
+at a rank, look at [`getTiedSets()`](#tied-sets): a tied set that spans the
+cut means the fallback order (seed, label, ID) decides who goes through,
+unless you decide it.
 
 **Ahead-of-time composition validation** checks that a declared
 multi-stage structure telescopes before any fixture exists:
@@ -1683,9 +1914,15 @@ foreach ($scheduled->getEventsByRound() as $round => $scheduledEvents) {
 The rules of the mechanism:
 
 - **Timezone-explicit in, UTC out.** The definition's start carries the
-  stage's timezone; interval arithmetic is wall-clock in that zone (a
-  weekly 19:00 kickoff stays 19:00 across DST transitions), and assigned
+  stage's timezone, intervals are added in that zone, and assigned
   kickoffs are emitted in UTC. Display-timezone policy stays app-side.
+- **Days keep the time of day; hours are elapsed time.** An interval is
+  added as PHP adds a `DateInterval`. One written in days, weeks, months or
+  years keeps the wall-clock time across a daylight-saving change: `P7D`
+  from a 19:00 start is 19:00 every week. One written in hours, minutes or
+  seconds is elapsed time: `PT168H` is 19:00 until the clocks change and an
+  hour off from then on, and `PT24H` likewise. Write a round interval of
+  whole days as `P1D` or `P7D` (see the example below this list).
 - **Deterministic filling.** A round's events fill its slots in schedule
   order against slot time order — the same schedule and timeline always
   produce the same kickoffs.
@@ -1701,6 +1938,38 @@ The rules of the mechanism:
   timeline is cheap, and the decorated view serializes
   (`toArray()`/`fromArray()`/JSON) so platforms persist assigned
   kickoffs.
+
+The two ways to write a week, across the end of British Summer Time on
+25 October 2026:
+
+```php
+$londonTime = new DateTimeZone('Europe/London');
+
+foreach (['P7D', 'PT168H'] as $roundInterval) {
+    $weekly = (new TimelineAssigner())->assign($schedule, new TimelineDefinition(
+        start: new DateTimeImmutable('2026-10-17 19:00', $londonTime),
+        roundInterval: new DateInterval($roundInterval),
+        resources: ['Pitch 1', 'Pitch 2'],
+    ));
+
+    $kickoffs = [];
+    foreach ($weekly->getEventsByRound() as $roundEvents) {
+        $kickoffs[] = $roundEvents[0]->getKickoff()->setTimezone($londonTime)->format('j M H:i');
+    }
+    echo "{$roundInterval}: " . implode(', ', $kickoffs) . "\n";
+}
+```
+
+```text
+P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00
+PT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00
+```
+
+The assigner places events on slots and checks that a round fits. It does
+not look at who is in an event: without a rule it accepts a schedule that
+has one participant in two events at the same time. The generators do not
+produce one within a round; if rounds or stages can overlap in time, add a
+`MinimumRestRule` (see [Time-Aware Rules](#time-aware-rules)).
 
 **Resources** host concurrent events within a slot — venue, pitch,
 court, board, station; the name is generic because the concept is.
@@ -2642,7 +2911,7 @@ $result->getReport();           // its per-metric breakdown
 $result->getSamplesGenerated(); // candidates that generated successfully
 ```
 
-Two rules of the mechanism:
+Three rules of the mechanism:
 
 - **Thread the child randomizer everywhere.** Determinism holds only if
   every randomness source in the generation pipeline uses the supplied
@@ -2650,9 +2919,12 @@ Two rules of the mechanism:
   `ShuffledLegStrategy($r)` above). An unseeded source anywhere makes
   sampling unrepeatable.
 - **Failed samples are skipped, not fatal.** A sample whose generation
-  throws (a shuffled ordering no retry can fix) is counted in
-  `getSamplesFailed()`; only zero valid candidates is an error, in which
-  case the last generation failure is rethrown with its diagnostics.
+  throws an `IncompleteScheduleException` (a shuffled ordering no retry can
+  fix) is counted in `getSamplesFailed()`; only zero valid candidates is an
+  error, in which case the last generation failure is rethrown with its
+  diagnostics. Any other exception from the generator ends the run at once.
+- **The first of equal scores wins.** A later sample replaces the best so
+  far only when it scores lower.
 
 Optimization applies to whole-schedule generators only — results-driven
 engines (Swiss, elimination) pair from results that do not exist yet, so
@@ -2680,8 +2952,19 @@ $json = $schedule->toJson();
 $restored = Schedule::fromJson($json);
 ```
 
-`Participant`, `Round`, `Event`, and `Schedule` all expose
+`Participant`, `Round`, `Event`, `Result` and `Schedule` all expose
 `toArray()`/`fromArray()` for custom persistence.
+
+What a round trip keeps is what JSON can hold:
+
+- **Metadata must be JSON data.** Scalars, lists and maps come back as they
+  were. An object in metadata comes back as whatever its JSON form decodes
+  to, and a float with no fraction (`1.0`) comes back as an integer.
+- **The participant list is derived.** A serialized schedule lists each
+  participant once, in the order of first appearance in the events. It is
+  not the list the schedule was generated from: the order differs, and a
+  participant in no event is absent. Store the entrant list yourself if you
+  need it again, in its order, which is the seeding.
 
 Text that is not valid JSON is reported by a `JsonConversionException` (a
 `\JsonException`), and valid JSON or an array of the wrong shape by an
@@ -2690,7 +2973,7 @@ Text that is not valid JSON is reported by a `JsonConversionException` (a
 
 ## Schedule Validation
 
-Tactician includes comprehensive validation to ensure complete tournaments and prevent silent failures.
+Every whole-schedule generator checks the schedule it built against its stage plan before it returns it: the number of events, then the plan's own integrity rules. A schedule that falls short is never returned; the generator throws an `IncompleteScheduleException`.
 
 ### Basic Validation
 
@@ -3220,7 +3503,7 @@ class CustomScheduler implements SchedulerInterface
 
 Every scheduler can declare the shape of a stage before generating it. The
 plan is what validation, diagnostics, and shape-aware constraints (e.g.
-`SeedProtectionConstraint`) consume — no component infers tournament shape:
+`SeedProtectionConstraint`) read the shape from:
 
 ```php
 use MissionGaming\Tactician\DTO\Participant;
@@ -3297,18 +3580,48 @@ $newContext = $context->withEvents([$newEvent]);
 
 ### Deterministic Randomization
 
+The library draws nothing from a global random source. What is random
+comes from a `Random\Randomizer` you pass in, and a seeded one makes a
+schedule repeatable:
+
 ```php
 use Random\Randomizer;
 use Random\Engine\Mt19937;
 
-// Create seeded randomizer for reproducible results
-$randomizer = new Randomizer(new Mt19937(12345));
+$seeded = fn (): RoundRobinScheduler => new RoundRobinScheduler(null, new Randomizer(new Mt19937(12345)));
 
-$scheduler = new RoundRobinScheduler(null, $randomizer);
+$scheduler = $seeded();
 $schedule = $scheduler->schedule($participants);
 
-// Same seed will always produce the same schedule
+// A new scheduler with the same seed repeats the schedule
+var_dump($seeded()->schedule($participants)->toJson() === $schedule->toJson()); // bool(true)
+
+// The same scheduler does not: its randomizer has moved on
+var_dump($scheduler->schedule($participants)->toJson() === $schedule->toJson()); // bool(false)
 ```
+
+A `Randomizer` is an object with state, and a scheduler or engine that
+holds one draws from it on every call. "The same seed gives the same
+schedule" therefore means the same seed and the same sequence of calls: the
+first call on a scheduler built with seed 12345 always returns the same
+schedule, the second call always returns the same other one. To repeat a
+schedule, build the randomizer again from its seed; do not keep one
+scheduler and call it twice. The same holds for a `SwissPairingEngine`, a
+`SwissScheduler` and a `ShuffledLegStrategy` that hold a randomizer, and
+for a `Randomizer` object shared between two of them.
+
+Three things to know beside that:
+
+- A scheduler without a `Randomizer` is deterministic and keeps no such
+  state: every call returns the same schedule for the same input.
+- `ShuffledLegStrategy` has a randomizer of its own. Given none, it creates
+  an unseeded one for every event, and the schedule differs from run to
+  run even when the scheduler is seeded. `RoundRobinOptions::fromArray()`
+  with `'strategy' => 'shuffled'` builds the strategy that way, because a
+  randomizer has no plain-data form: for a repeatable shuffled schedule,
+  construct `new ShuffledLegStrategy($randomizer)` in code.
+- A pot draw takes its seed as an option and keeps no state between calls
+  (see [The seed and determinism](#the-seed-and-determinism)).
 
 ## Real-World Examples
 
@@ -3367,7 +3680,8 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
 
-// Entrants in sign-up order, which is the order Swiss pairing works from.
+// Entrants seeded in sign-up order. With no results the Swiss table is in
+// seed order, so that is the order pairing works from.
 // It mixes the tiers: left to itself, Swiss pairing would put a
 // professional against an amateur four times in three rounds
 $players = [
@@ -3497,6 +3811,11 @@ convenience, not a memory saving. Schedules are small in practice (a
 it is a question of how your application stores and pages events, not of
 how you iterate.
 
+A `Schedule` is its own iterator and has one cursor. A `foreach` over a
+schedule inside another `foreach` over the same object moves that cursor
+to the end, so the outer loop stops after its first event. To compare every
+event with every other, loop over `getEvents()`, which is a plain array.
+
 ```php
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
@@ -3523,8 +3842,14 @@ $eventsByRound = $largeSchedule->getEventsByRound();
 
 ### Constraint Optimization
 
-Constraints are evaluated in the order they were added, and evaluation
-stops at the first one that rejects an event:
+A constraint set asks its constraints in the order they were added and
+stops at the first one that rejects an event. (The round-robin scheduler
+then asks each constraint about the rejected event once more, to record
+which of them rejected it.) Read the history through the context's lookups
+(`getEventsForParticipant()`, `getEventsBetween()`, `getEventsInRound()`,
+`getEventsForLeg()`), which cost the events they return; a constraint that
+scans `getExistingEvents()` itself costs the whole schedule for every
+event it is asked about.
 
 ```php
 use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
