@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\Tests\Support\CiEnvironment;
 use PHPUnit\Framework\Assert;
 
 // The dist archive is what a consumer gets in vendor/. It is built by
@@ -110,16 +111,6 @@ function distArchiveUnavailableReason(string $root): ?string
 }
 
 /**
- * Whether the CI environment variable says this run is on CI.
- *
- * @param string|false $ci The CI environment variable, false when unset
- */
-function distArchiveRunsOnCi(string|false $ci): bool
-{
-    return $ci !== false && !in_array(strtolower($ci), ['', '0', 'false'], true);
-}
-
-/**
  * The reason to skip the test, or null when git and the repository are usable.
  *
  * @throws PHPUnit\Framework\AssertionFailedError On CI, where the check must run
@@ -134,7 +125,7 @@ function distArchiveSkipReason(string $root): ?string
 
     $message = "Cannot build the dist archive: {$reason}.";
 
-    if (distArchiveRunsOnCi(getenv('CI'))) {
+    if (CiEnvironment::isCi(getenv('CI'))) {
         Assert::fail($message . ' On CI this check must run; a skip would hide it.');
     }
 
@@ -514,7 +505,7 @@ it('writes pax records the parser reads back', function (string $value): void {
 ]);
 
 it('tells a CI run from a local one', function (string|false $ci, bool $expected): void {
-    expect(distArchiveRunsOnCi($ci))->toBe($expected);
+    expect(CiEnvironment::isCi($ci))->toBe($expected);
 })->with([
     'unset' => [false, false],
     'empty' => ['', false],

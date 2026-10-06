@@ -15,6 +15,7 @@ use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\ViolationKind;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Standings\Standings;
+use MissionGaming\Tactician\Tests\Support\CiEnvironment;
 use MissionGaming\Tactician\Tests\Support\ExampleResults;
 use MissionGaming\Tactician\Tests\Support\GoldenCases;
 use MissionGaming\Tactician\Tests\Support\GoldenText;
@@ -1030,16 +1031,6 @@ it('displays nothing when another script includes the example', function (): voi
 });
 
 /**
- * Whether the CI environment variable says this run is on CI.
- *
- * @param string|false $ci The CI environment variable, false when unset
- */
-function exampleServerRunsOnCi(string|false $ci): bool
-{
-    return $ci !== false && !in_array(strtolower($ci), ['', '0', 'false'], true);
-}
-
-/**
  * End a test that needs the built-in web server where none could be started.
  *
  * Elsewhere than on CI that is a harness limitation (a sandbox that forbids
@@ -1053,7 +1044,7 @@ function exampleServerRunsOnCi(string|false $ci): bool
  */
 function exampleServerUnavailable(string $reason, string|false $ci): never
 {
-    if (exampleServerRunsOnCi($ci)) {
+    if (CiEnvironment::isCi($ci)) {
         Assert::fail($reason . "\nOn CI this test must run; a skip would hide it.");
     }
 
@@ -1602,19 +1593,6 @@ it('displays the error of a served script the way the page test looks for it', f
         }, $environment);
     });
 });
-
-it('tells a CI run from a local one for the example server', function (string|false $ci, bool $expected): void {
-    expect(exampleServerRunsOnCi($ci))->toBe($expected);
-})->with([
-    'unset' => [false, false],
-    'empty' => ['', false],
-    'zero' => ['0', false],
-    'false' => ['false', false],
-    'FALSE' => ['FALSE', false],
-    'true' => ['true', true],
-    'TRUE' => ['TRUE', true],
-    'one' => ['1', true],
-]);
 
 // SkippedWithMessageException is an AssertionFailedError as well, so the class is compared, not the type
 it('fails on CI and skips elsewhere when no server can be started, with the reason', function (string|false $ci, string $expected): void {
