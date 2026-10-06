@@ -63,6 +63,43 @@ it('pins every action to a commit SHA with its release in a trailing comment', f
     Assert::assertGreaterThan(0, $references, "{$name} references no actions; the check matched nothing");
 })->with($workflowDataset);
 
+// An update that reaches one reference and misses another leaves two releases
+// of one action in use: the jobs then differ in runtime and behaviour, and the
+// pin check above passes all the same, because each reference is still a
+// commit SHA with a release beside it.
+it('pins each action to one release everywhere it is used', function () use ($workflows): void {
+    $pins = [];
+
+    foreach ($workflows as $workflow) {
+        $lines = explode("\n", (string) file_get_contents($workflow));
+
+        foreach ($lines as $index => $line) {
+            if (preg_match('/^\s*(?:-\s+)?uses:\s*([^\s@]+)@(\S+)\s*#\s*(\S+)\s*$/', $line, $matches) !== 1) {
+                continue;
+            }
+
+            [, $action, $commit, $release] = $matches;
+            $pins[$action]["{$commit} # {$release}"][] = sprintf('%s line %d', basename($workflow), $index + 1);
+        }
+    }
+
+    // Used in both workflows, so the check has something to compare
+    expect($pins)->toHaveKey('actions/checkout');
+    expect(array_unique(array_map(
+        fn(string $where): string => explode(' ', $where)[0],
+        array_merge(...array_values($pins['actions/checkout']))
+    )))->toHaveCount(count($workflows));
+
+    foreach ($pins as $action => $releases) {
+        $found = [];
+        foreach ($releases as $pin => $places) {
+            $found[] = $pin . ' (' . implode(', ', $places) . ')';
+        }
+
+        Assert::assertCount(1, $releases, "{$action} is pinned to more than one release: " . implode('; ', $found));
+    }
+});
+
 it('grants the workflow token read access to contents and nothing else by default', function (string $workflow): void {
     $name = basename($workflow);
     $contents = (string) file_get_contents($workflow);
