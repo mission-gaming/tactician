@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\Tests\Support\StabilityPolicy;
 use PHPUnit\Framework\Assert;
 
 // The versioning policy, the changelog and the release checklist are prose,
@@ -17,17 +18,16 @@ use PHPUnit\Framework\Assert;
 $root = dirname(__DIR__, 2);
 
 /**
+ * The README's stability policy. Support\StabilityPolicy is the one reader of
+ * the section, shared with tests/Feature/StabilityAnnotationsTest.php, which
+ * holds the annotations in `src/` to the same two lists.
+ */
+$policy = fn(): StabilityPolicy => StabilityPolicy::fromReadme((string) file_get_contents($root . '/README.md'));
+
+/**
  * The README's "Versioning and stability" section, heading excluded.
  */
-$stabilitySection = function () use ($root): string {
-    $readme = (string) file_get_contents($root . '/README.md');
-
-    if (preg_match('/^## Versioning and stability\n(.*?)(?=^## )/ms', $readme, $matches) !== 1) {
-        Assert::fail('README.md has no "Versioning and stability" section.');
-    }
-
-    return $matches[1];
-};
+$stabilitySection = fn(): string => $policy()->section();
 
 /**
  * The backticked names in the list that follows a bold label, e.g. the items
@@ -36,35 +36,7 @@ $stabilitySection = function () use ($root): string {
  *
  * @return list<string>
  */
-$classified = function (string $label) use ($stabilitySection): array {
-    $section = $stabilitySection();
-    $start = strpos($section, "**{$label}**");
-
-    if ($start === false) {
-        Assert::fail("The stability section has no \"{$label}\" list.");
-    }
-
-    $names = [];
-    $inList = false;
-
-    foreach (explode("\n", substr($section, $start)) as $line) {
-        $isItem = str_starts_with($line, '- ');
-
-        if (!$inList && !$isItem) {
-            continue;
-        }
-
-        if ($inList && !$isItem && !str_starts_with($line, '  ')) {
-            break;
-        }
-
-        $inList = true;
-        preg_match_all('/`([^`]+)`/', $line, $matches);
-        $names = [...$names, ...$matches[1]];
-    }
-
-    return $names;
-};
+$classified = fn(string $label): array => $policy()->classified($label);
 
 /**
  * @return list<string>
@@ -114,7 +86,7 @@ $changelogBodies = function () use ($root): array {
     return $bodies;
 };
 
-describe('stability classification', function () use ($root, $classified, $sourceNamespaces): void {
+describe('stability classification', function () use ($root, $classified, $policy, $sourceNamespaces): void {
     it('classifies every source namespace as stable or experimental', function () use ($classified, $sourceNamespaces): void {
         $named = array_map(
             fn(string $name) => explode('\\', $name)[0],
@@ -148,7 +120,7 @@ describe('stability classification', function () use ($root, $classified, $sourc
         expect(array_intersect($classified('Stable'), $classified('Experimental')))->toBe([]);
     });
 
-    it('keeps a whole-namespace entry out of the other list', function () use ($classified): void {
+    it('keeps a whole-namespace entry out of the other list', function () use ($classified, $policy): void {
         $whole = fn(array $names): array => array_values(array_filter(
             $names,
             fn(string $name) => !str_contains($name, '\\')
@@ -157,7 +129,9 @@ describe('stability classification', function () use ($root, $classified, $sourc
 
         // `Repack\Internal` is the stable list's own stated exclusion, not a
         // second classification of `Repack`.
-        $stable = array_values(array_diff($classified('Stable'), ['Repack\Internal']));
+        expect($policy()->excluded('Stable'))->toBe(['Repack\Internal']);
+
+        $stable = array_values(array_diff($classified('Stable'), $policy()->excluded('Stable')));
         $experimental = $classified('Experimental');
 
         expect(array_intersect($whole($stable), $roots($experimental)))->toBe([])

@@ -28,6 +28,9 @@ use MissionGaming\Tactician\Stage\RoundRobinPlan;
  * balance) and bounded by a fixed step budget so genuinely unsatisfiable
  * configurations fail loudly instead of running away. See
  * docs/design/backtracking-generation.md.
+ *
+ * @internal Not public API: the search `RoundRobinScheduler` runs for
+ *           `RoundRobinOptions(backtracking: true)`. Turn it on with that option.
  */
 final class BacktrackingRoundRobinGenerator
 {

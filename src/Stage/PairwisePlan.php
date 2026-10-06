@@ -15,6 +15,8 @@ use MissionGaming\Tactician\DTO\Participant;
  * not a universal plan method — Swiss and bracket pairings depend on
  * results, and N-participant formats (racing heats, lobbies) have no
  * pairwise meetings at all.
+ *
+ * @experimental
  */
 interface PairwisePlan extends StagePlan
 {

@@ -18,6 +18,8 @@ use Override;
  * policy into windows — international breaks, venue closures, holidays,
  * recurring patterns — is the application's job; the rule just judges
  * the assigned instants.
+ *
+ * @experimental
  */
 final readonly class BlackoutRule implements TimelineRule
 {

@@ -12,6 +12,8 @@ use Override;
  * drawn opponents (Sonneborn-Berger system).
  *
  * Rewards beating strong opposition rather than merely facing it.
+ *
+ * @experimental
  */
 readonly class SonnebornBergerTiebreaker implements TiebreakerInterface
 {

@@ -212,7 +212,14 @@ release is recorded in the [changelog](CHANGELOG.md).
   case with the heading "Output change (fix)".
 - **Minor releases (0.x)** may contain breaking changes. The changelog lists
   each one with a migration note.
-- **Deprecations precede removals.**
+- **Deprecations precede removals.** A deprecated method keeps working until
+  `1.0.0`. The usage guide lists each one with what to use instead, under
+  [Deprecations](docs/USAGE.md#deprecations). Any release may deprecate a
+  method, a patch release included. That changes no output and no signature,
+  but from PHP 8.4 a call to a deprecated method emits an `E_USER_DEPRECATED`
+  notice, so an application that turns notices into exceptions can see such
+  a call fail after a patch update. The library never calls a deprecated
+  method itself.
 - **Generated output is pinned.** Golden fixtures in
   [`tests/Fixtures/golden/`](tests/Fixtures/golden/) pin generated schedules,
   bracket pairings, repack assignments, and the JSON wire shapes for a set of
@@ -256,7 +263,27 @@ before `1.0.0`):
 Anything not listed as stable is experimental, including the rest of
 `Scheduling`. `Repack\Internal` is internal: it is not public API and carries
 no compatibility guarantee. Neither does a class in any other namespace whose
-docblock is marked `@internal` (`Stage\PairKey`, `Timeline\DateTimeString`).
+docblock is marked `@internal` (`Stage\PairKey` and `Timeline\DateTimeString`,
+for example).
+
+Every class, interface, trait and enum in the library states its own status in
+its docblock, with exactly one of three annotations:
+
+- `@api`: stable surface. An entry of the stable list covers it: its
+  namespace, or the class by name.
+- `@experimental`: public, and expected to change in a minor release before
+  `1.0.0`. It is everything else that is public: what an entry of the
+  experimental list covers, and the rest of `Scheduling`.
+- `@internal`: not public API. Do not call it, extend it or type against it;
+  it can change or disappear in any release.
+
+An architecture test (`tests/Feature/StabilityAnnotationsTest.php`) holds the
+annotations to the two lists above. It fails when a type has no annotation or
+more than one, when a type under a stable entry is `@experimental` or a type
+under an experimental entry is `@api`, and when a namespace is in neither
+list. A type under a stable entry cannot be `@internal` either, unless the
+stable list excludes it, as it does `Repack\Internal`. An experimental type
+can be, and the test pins which ones are.
 
 Some stable signatures carry experimental types. For example,
 `RoundRobinScheduler` accepts a `Constraints\ConstraintSet` and returns a
@@ -265,7 +292,17 @@ Some stable signatures carry experimental types. For example,
 `Constraints\ConstraintSet` and a `Scheduling\SchedulingContext`, and
 `Exceptions\IncompleteScheduleException` exposes `Stage`, `Validation`, and
 `Diagnostics` types. Those types are experimental, so the parts of a stable
-class that use them can change with them.
+class that use them can change with them. The same goes for the two
+interfaces the stable round-robin classes implement,
+`Scheduling\SchedulerInterface` and `Scheduling\SchedulerOptions`: what
+`RoundRobinScheduler` and `RoundRobinOptions` offer is stable, and the
+interfaces, as types to implement or to type against, are experimental.
+
+No public signature hands out or asks for an `@internal` type. A public
+method that a class takes from an `@internal` trait belongs to that class and
+has its status: `getViolationCollector()` on a scheduler is one. The
+protected members such a trait supplies are internal, like the trait: a
+subclass of a scheduler must not rely on them.
 
 Releases are cut with the [release checklist](docs/RELEASING.md).
 

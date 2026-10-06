@@ -7,6 +7,12 @@ namespace MissionGaming\Tactician\Constraints;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
+/**
+ * The constraints one generation runs under, checked together: an event is
+ * acceptable when every constraint in the set is satisfied.
+ *
+ * @experimental
+ */
 readonly class ConstraintSet
 {
     /**

@@ -11,6 +11,8 @@ use MissionGaming\Tactician\DTO\Participant;
  *
  * Every movable event is either assigned or listed here — the counts
  * reconcile exactly, nothing vanishes.
+ *
+ * @api
  */
 final readonly class UnplacedEvent
 {

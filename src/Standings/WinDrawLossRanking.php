@@ -16,6 +16,8 @@ use Override;
  * family. Sport conventions are named constructors rather than API
  * surface: threeOneZero() for the association-football 3/1/0 convention,
  * oneHalfZero() for the chess 1/0.5/0 convention.
+ *
+ * @experimental
  */
 final readonly class WinDrawLossRanking implements RankingStrategy
 {

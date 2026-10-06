@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Constraints;
 
+/**
+ * Fluent builder of a {@see ConstraintSet}, returned by
+ * `ConstraintSet::create()`.
+ *
+ * @experimental
+ */
 class ConstraintSetBuilder
 {
     /** @var array<ConstraintInterface> */

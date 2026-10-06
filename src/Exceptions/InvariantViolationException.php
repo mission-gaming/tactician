@@ -11,5 +11,7 @@ namespace MissionGaming\Tactician\Exceptions;
  *
  * It extends `\LogicException`, which is what these sites threw before this
  * class existed, so `catch (\LogicException)` still matches.
+ *
+ * @api
  */
 final class InvariantViolationException extends \LogicException implements TacticianException {}

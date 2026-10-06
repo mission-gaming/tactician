@@ -17,5 +17,7 @@ namespace MissionGaming\Tactician\Exceptions;
  * It is distinct from {@see InvalidConfigurationException}, which reports a
  * scheduler or stage configuration that cannot work and carries a diagnostic
  * report.
+ *
+ * @api
  */
 final class InvalidInputException extends \InvalidArgumentException implements TacticianException {}

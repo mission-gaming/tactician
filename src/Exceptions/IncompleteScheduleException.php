@@ -15,6 +15,8 @@ use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
  * This exception provides detailed diagnostic information about why the schedule is incomplete,
  * including the stage plan that was being generated, violated constraints, affected participants,
  * and suggestions for resolution.
+ *
+ * @api
  */
 class IncompleteScheduleException extends SchedulingException
 {

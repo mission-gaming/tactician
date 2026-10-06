@@ -16,6 +16,8 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * from it (via planLegs()), and the per-event role decision during
  * generation (via generateEventForLeg()). It never owns schedule shape —
  * rounds and event counts are RoundRobinPlan's job.
+ *
+ * @api
  */
 interface LegStrategyInterface
 {

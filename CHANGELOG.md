@@ -286,6 +286,20 @@ heading **Output change (fix)**.
 
 ### Added
 
+- Every class, interface, trait and enum states its stability in its
+  docblock, with exactly one of `@api` (stable surface), `@experimental`
+  (public, expected to change in a minor release before `1.0.0`) and
+  `@internal` (not public API). The README's "Versioning and stability"
+  section still decides which of the first two a type is: a type that an
+  entry of its stable list covers is `@api`, and every other public type is
+  `@experimental`. No type moved between the two lists.
+  An architecture test (`tests/Feature/StabilityAnnotationsTest.php`) fails
+  when a type has no annotation or more than one, when an annotation
+  contradicts the README, when a namespace is in neither list, when a type
+  the README lists as stable is `@internal`, and when a public signature
+  hands out or asks for an `@internal` type. It pins the `@internal` types
+  outside `Repack\Internal`.
+
 - Balanced role assignment for round robin, opt-in:
   `new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())`, or
   `'role_assignment' => 'balanced'` in plain data. The role of a participant
@@ -633,6 +647,27 @@ heading **Output change (fix)**.
 
 ### Changed
 
+- Six types that were public and unmarked are now `@internal`:
+  `Scheduling\BacktrackingRoundRobinGenerator`, the traits
+  `Scheduling\EliminationBracketSupport` and
+  `Validation\ValidatesScheduleCompleteness`, `Validation\ScheduleValidator`,
+  `Diagnostics\SchedulingDiagnostics` and `Timeline\ZonedTime`. All six are
+  in experimental namespaces. The schedulers, the engines and the
+  `fromArray()` factories use them, and nothing in the usage guide, the
+  examples or the integration guides tells an application to. They behave as
+  before; the annotation says that they carry no compatibility guarantee. An
+  application that uses one directly should stop: turn the backtracking
+  search on with `RoundRobinOptions(backtracking: true)`, check a schedule
+  with the plan's `validateIntegrity()`, read a failure from the exception a
+  scheduler throws, and pass a configured datetime to the `fromArray()`
+  factory that reads it. The public method the validation trait declares,
+  `getViolationCollector()`, is still part of each scheduler that uses the
+  trait. The protected members it supplies (`$validator`,
+  `$violationCollector`, `initializeValidation()`,
+  `validateGeneratedSchedule()`, `recordViolation()` and `clearViolations()`)
+  are internal with it: a subclass of `RoundRobinScheduler`, `SwissScheduler`
+  or `PotDrawScheduler` that uses one should stop.
+
 - The refusal of a drawn single-leg elimination event that names nobody
   now says how to record the decision. Its message begins with the words it
   had and goes on, so code that matches the beginning still matches and
@@ -667,6 +702,37 @@ heading **Output change (fix)**.
   reported with `Exceptions\PinConflictException`, a subclass of the
   `InvalidConfigurationException` thrown before. Code that compares the
   exception's class by name sees the new class.
+
+### Deprecated
+
+Each method below still works and returns what it returned before. It is
+removed in `1.0.0`. It carries the `@deprecated` docblock tag and PHP's
+`#[\Deprecated]` attribute: from PHP 8.4 a call emits an `E_USER_DEPRECATED`
+notice, and on PHP 8.3 the attribute does nothing. An application that turns
+notices into exceptions will see such a call fail on PHP 8.4 or later. The
+usage guide lists the same methods under "Deprecations".
+
+- `SchedulingContext::getTotalLegs()`. It answers 1 for a format that has no
+  legs (Swiss, elimination), which is not a fact about the stage. Read
+  `getPlan()->getLegs()` instead: it is `null` where the concept does not
+  apply. `isMultiLeg()` and `getEventsForLeg()` answer as before and no
+  longer call it, so a subclass of `SchedulingContext` that overrides
+  `getTotalLegs()` no longer changes what those two answer.
+- The three static factories of `SchedulingException`:
+  `invalidParticipantCount()`, `constraintViolation()` and
+  `invalidSchedule()`. Nothing in the library calls them. Construct an
+  `InvalidConfigurationException` with the `InvalidConfigurationReason`
+  instead; the usage guide gives the arguments that build exactly what each
+  factory built.
+- `ScheduleValidator::generateDiagnosticReport()` and
+  `ScheduleValidator::generateConstraintSuggestions()`. Nothing in the
+  library calls them, and there is no replacement: the report of a generation
+  that failed is `IncompleteScheduleException::getDiagnosticReport()`, and
+  its suggestions are in the `DiagnosticReport` that `getAnalysis()` returns.
+- `SchedulingDiagnostics::identifyConstraintConflicts()` and
+  `SchedulingDiagnostics::suggestConstraintAdjustments()`. Nothing in the
+  library calls them, and there is no replacement: the suggestions of an
+  analysis are `DiagnosticReport::getSuggestions()`.
 
 ### Fixed
 
@@ -724,6 +790,18 @@ heading **Output change (fix)**.
     first two events and one participant.
   - A `use` statement without effect in one test file made PHP print a
     warning at the start of every run; it is removed.
+- Tooling only; the library is unchanged. The Rector step of `composer ci`
+  no longer fails now and then with `Child process error` and a syntax error
+  that names `bc7465525847387785d7c`, on a change that Rector does not read.
+  Rector 2.6.7 writes a cache entry in place, and each of its parallel
+  workers loads and rewrites the entry for the configuration when it starts,
+  so a worker could load an entry that another had half written. `rector.php`
+  now runs Rector as one process, which checks the same paths with the same
+  rules and takes about twice as long (some 25 seconds more for each CI
+  job). Rector 2.7.0 writes the entry atomically; a test
+  (`tests/Feature/GateConfigurationTest.php`) requires the one-process
+  setting until that is the locked version, and from then on fails until the
+  setting is removed.
 
 ## [0.2.1] - 2026-10-06
 

@@ -10,6 +10,8 @@ namespace MissionGaming\Tactician\Repack;
  * Violations are data — participant, session, kind, magnitude — never
  * pre-formatted prose: the caller renders and translates its own
  * messages, and the caller decides whether a given violation is fatal.
+ *
+ * @api
  */
 interface RepackViolation
 {

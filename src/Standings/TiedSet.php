@@ -23,6 +23,8 @@ use Override;
  *
  * A set of three entries whose first position is 2 spans positions 2, 3 and
  * 4. Positions are the 1-based positions of {@see Standings::getPosition()}.
+ *
+ * @experimental
  */
 final readonly class TiedSet implements Countable
 {

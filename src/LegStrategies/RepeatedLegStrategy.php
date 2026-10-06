@@ -16,6 +16,8 @@ use Override;
  * This strategy maintains identical schedules across all legs,
  * suitable for tournaments where the same encounters should
  * happen multiple times without variation.
+ *
+ * @api
  */
 readonly class RepeatedLegStrategy implements LegStrategyInterface
 {

@@ -10,6 +10,8 @@ use MissionGaming\Tactician\DTO\Schedule;
  * The outcome of an optimization run: the winning schedule with its
  * score, its per-metric report, and the sample accounting — how many
  * candidates were generated and how many samples failed generation.
+ *
+ * @experimental
  */
 final readonly class OptimizedSchedule
 {

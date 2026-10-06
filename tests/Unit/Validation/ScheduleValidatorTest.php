@@ -13,6 +13,7 @@ use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StagePlan;
+use MissionGaming\Tactician\Tests\Support\DeprecatedCall;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 use MissionGaming\Tactician\Validation\ScheduleValidator;
@@ -323,7 +324,9 @@ describe('ScheduleValidator', function (): void {
             $violations->recordViolation($violation3);
 
             // When: Generating diagnostic report
-            $report = $validator->generateDiagnosticReport(
+            $report = DeprecatedCall::to(
+                $validator,
+                'generateDiagnosticReport',
                 $violations,
                 10,
                 6,
@@ -350,7 +353,9 @@ describe('ScheduleValidator', function (): void {
             $violations = new ConstraintViolationCollector();
 
             // When: Generating diagnostic report
-            $report = $validator->generateDiagnosticReport(
+            $report = DeprecatedCall::to(
+                $validator,
+                'generateDiagnosticReport',
                 $violations,
                 8,
                 5,
@@ -385,7 +390,9 @@ describe('ScheduleValidator', function (): void {
             $violations->recordViolation($violation);
 
             // When: Generating diagnostic report
-            $report = $validator->generateDiagnosticReport(
+            $report = DeprecatedCall::to(
+                $validator,
+                'generateDiagnosticReport',
                 $violations,
                 6,
                 3,
@@ -442,7 +449,9 @@ describe('ScheduleValidator', function (): void {
             $violations->recordViolation($violation3);
 
             // When: Generating diagnostic report
-            $report = $validator->generateDiagnosticReport(
+            $report = DeprecatedCall::to(
+                $validator,
+                'generateDiagnosticReport',
                 $violations,
                 9,
                 7,
@@ -462,7 +471,9 @@ describe('ScheduleValidator', function (): void {
             $violations = new ConstraintViolationCollector();
 
             // When: Generating suggestions
-            $suggestions = $validator->generateConstraintSuggestions(
+            $suggestions = DeprecatedCall::to(
+                $validator,
+                'generateConstraintSuggestions',
                 $violations,
                 3
             );
@@ -491,7 +502,9 @@ describe('ScheduleValidator', function (): void {
             $violations->recordViolation($violation);
 
             // When: Generating suggestions
-            $suggestions = $validator->generateConstraintSuggestions(
+            $suggestions = DeprecatedCall::to(
+                $validator,
+                'generateConstraintSuggestions',
                 $violations,
                 3
             );
@@ -521,7 +534,9 @@ describe('ScheduleValidator', function (): void {
             $violations->recordViolation($violation);
 
             // When: Generating suggestions
-            $suggestions = $validator->generateConstraintSuggestions(
+            $suggestions = DeprecatedCall::to(
+                $validator,
+                'generateConstraintSuggestions',
                 $violations,
                 3
             );
@@ -550,7 +565,9 @@ describe('ScheduleValidator', function (): void {
             $violations->recordViolation($violation);
 
             // When: Generating suggestions
-            $suggestions = $validator->generateConstraintSuggestions(
+            $suggestions = DeprecatedCall::to(
+                $validator,
+                'generateConstraintSuggestions',
                 $violations,
                 3
             );
@@ -583,7 +600,9 @@ describe('ScheduleValidator', function (): void {
             }
 
             // When: Generating suggestions
-            $suggestions = $validator->generateConstraintSuggestions(
+            $suggestions = DeprecatedCall::to(
+                $validator,
+                'generateConstraintSuggestions',
                 $violations,
                 3
             );
@@ -613,7 +632,7 @@ describe('ScheduleValidator', function (): void {
                 ));
             }
 
-            $suggestions = $validator->generateConstraintSuggestions($violations, 4);
+            $suggestions = DeprecatedCall::to($validator, 'generateConstraintSuggestions', $violations, 4);
 
             expect($suggestions)->toContain("Consider reducing rest period requirements for 'custom rest window'");
             expect($suggestions)->toContain("Consider reducing seed protection rounds for 'custom seed shield'");
@@ -636,7 +655,7 @@ describe('ScheduleValidator', function (): void {
                 [$participant1]
             ));
 
-            expect($validator->generateConstraintSuggestions($violations, 4))
+            expect(DeprecatedCall::to($validator, 'generateConstraintSuggestions', $violations, 4))
                 ->toBe("\nSuggestions:\n  - {$expected}\n");
         })->with([
             'the keyword at the start' => ['rest gap', "Consider reducing rest period requirements for 'rest gap'"],
@@ -682,7 +701,9 @@ describe('ScheduleValidator', function (): void {
             $violations->recordViolation($violation);
 
             // When: Generating suggestions
-            $suggestions = $validator->generateConstraintSuggestions(
+            $suggestions = DeprecatedCall::to(
+                $validator,
+                'generateConstraintSuggestions',
                 $violations,
                 3
             );
@@ -712,11 +733,11 @@ describe('ScheduleValidator', function (): void {
             );
             $violations->recordViolation($violation);
 
-            expect(fn() => $validator->generateConstraintSuggestions($violations, $participantCount))
+            expect(fn() => DeprecatedCall::to($validator, 'generateConstraintSuggestions', $violations, $participantCount))
                 ->toThrow(DivisionByZeroError::class);
 
             // Without a violation there is no ratio, and nothing is divided
-            expect($validator->generateConstraintSuggestions(new ConstraintViolationCollector(), $participantCount))->toBe('');
+            expect(DeprecatedCall::to($validator, 'generateConstraintSuggestions', new ConstraintViolationCollector(), $participantCount))->toBe('');
         })->with([[0], [1]]);
 
         // Tests that multiple constraint types generate combined suggestions
@@ -757,7 +778,9 @@ describe('ScheduleValidator', function (): void {
             ));
 
             // When: Generating suggestions
-            $suggestions = $validator->generateConstraintSuggestions(
+            $suggestions = DeprecatedCall::to(
+                $validator,
+                'generateConstraintSuggestions',
                 $violations,
                 4
             );

@@ -23,6 +23,8 @@ use Override;
  * identifiers accepted by fromArray() are stable: 'mirrored', 'repeated',
  * and 'shuffled' for the leg strategy, 'round_parity' and 'balanced' for
  * the role assignment.
+ *
+ * @api
  */
 final readonly class RoundRobinOptions implements SchedulerOptions
 {

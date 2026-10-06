@@ -14,6 +14,8 @@ use Override;
  * An ordered standings table, best-placed participant first.
  *
  * @implements IteratorAggregate<int, StandingEntry>
+ *
+ * @experimental
  */
 readonly class Standings implements IteratorAggregate, Countable
 {

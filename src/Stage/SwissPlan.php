@@ -20,6 +20,8 @@ use Override;
  * The round count is null for an open-ended Swiss stage driven round by
  * round without a configured length (the results-driven engine allows
  * this); whole-schedule generation always knows its rounds.
+ *
+ * @experimental
  */
 final readonly class SwissPlan implements StagePlan
 {

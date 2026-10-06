@@ -11,6 +11,8 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 /**
  * Flexible constraint that validates participant metadata using a callable.
+ *
+ * @experimental
  */
 readonly class MetadataConstraint implements ConstraintInterface
 {

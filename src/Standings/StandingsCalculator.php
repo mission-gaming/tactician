@@ -15,6 +15,8 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * configured tiebreaker in order, then by score difference and score for,
  * then by seed (seeded participants first), and finally by natural-order
  * label and ID comparison for a deterministic ordering.
+ *
+ * @experimental
  */
 readonly class StandingsCalculator
 {

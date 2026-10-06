@@ -11,6 +11,8 @@ namespace MissionGaming\Tactician\Stage;
  * Consumer-derived selections participate by declaring the expected
  * entrant count without a selector — validation participation is opt-in,
  * not mandatory.
+ *
+ * @experimental
  */
 final readonly class StageTransition
 {

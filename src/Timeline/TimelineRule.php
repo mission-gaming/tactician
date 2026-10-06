@@ -16,6 +16,8 @@ namespace MissionGaming\Tactician\Timeline;
  * Rules validate any ScheduledSchedule: the assigner's whole-schedule
  * output, or a view the application accumulates round by round when
  * driving a results-driven stage.
+ *
+ * @experimental
  */
 interface TimelineRule
 {

@@ -21,6 +21,10 @@ use MissionGaming\Tactician\Stage\StagePlan;
  * issues. All shape facts (expected events, legs, pairwise meetings) are
  * read from the stage plan rather than recomputed, so the analysis is
  * correct for whatever format the plan describes.
+ *
+ * @internal Not public API: the scheduler runs it when generation fails, and
+ *           the exception it throws carries the resulting
+ *           {@see DiagnosticReport}.
  */
 class SchedulingDiagnostics
 {
@@ -68,9 +72,14 @@ class SchedulingDiagnostics
     /**
      * Identify constraint conflicts before scheduling begins.
      *
+     * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
+     *             it, and it never reads the constraints it is given. There
+     *             is no replacement.
+     *
      * @param array<Participant> $participants
      * @return array<string>
      */
+    #[\Deprecated(message: 'there is no replacement', since: '0.2.2')]
     public function identifyConstraintConflicts(
         array $participants,
         ConstraintSet $constraints,
@@ -96,8 +105,13 @@ class SchedulingDiagnostics
     /**
      * Suggest constraint adjustments to resolve scheduling issues.
      *
+     * @deprecated since 0.2.2, removed in 1.0.0. Nothing in the library calls
+     *             it. There is no replacement: the suggestions of an
+     *             analysis are `DiagnosticReport::getSuggestions()`.
+     *
      * @return array<string>
      */
+    #[\Deprecated(message: 'there is no replacement; read DiagnosticReport::getSuggestions() for the suggestions of an analysis', since: '0.2.2')]
     public function suggestConstraintAdjustments(DiagnosticReport $report): array
     {
         $suggestions = [];

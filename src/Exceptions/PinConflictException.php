@@ -25,6 +25,8 @@ namespace MissionGaming\Tactician\Exceptions;
  * {@see InvalidConfigurationReason::PinConflict}, and its context holds the
  * same four values as the accessors, under the keys `participant`,
  * `session`, `slot` and `event_ids`.
+ *
+ * @api
  */
 final class PinConflictException extends InvalidConfigurationException
 {

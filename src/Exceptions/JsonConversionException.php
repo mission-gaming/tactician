@@ -16,6 +16,8 @@ namespace MissionGaming\Tactician\Exceptions;
  *
  * JSON that is valid but does not describe the expected object is reported
  * by {@see InvalidInputException} instead.
+ *
+ * @api
  */
 final class JsonConversionException extends \JsonException implements TacticianException
 {

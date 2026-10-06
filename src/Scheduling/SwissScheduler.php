@@ -26,6 +26,8 @@ use Random\Randomizer;
  * random non-repeat pairing (everyone stays tied at zero, so the
  * randomizer shuffles the whole field each round). Use the engine
  * directly when rounds should be paired from actual results.
+ *
+ * @experimental
  */
 class SwissScheduler implements SchedulerInterface
 {

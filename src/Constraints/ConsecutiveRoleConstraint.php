@@ -11,6 +11,8 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 /**
  * Prevents participants from having too many consecutive events in the same role.
+ *
+ * @experimental
  */
 readonly class ConsecutiveRoleConstraint implements ConstraintInterface
 {

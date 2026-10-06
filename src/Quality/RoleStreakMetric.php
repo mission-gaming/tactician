@@ -16,6 +16,8 @@ use Override;
  * appearing participants of (longest streak − 1), so perfect alternation
  * scores zero. Round-less and non-pairwise events carry no ordered role
  * reading and are skipped.
+ *
+ * @experimental
  */
 final readonly class RoleStreakMetric implements QualityMetric
 {

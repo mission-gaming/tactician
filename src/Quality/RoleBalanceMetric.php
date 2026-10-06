@@ -14,6 +14,8 @@ use Override;
  * The measure is the mean over appearing participants of
  * |first-role count − second-role count|. Non-pairwise events carry no
  * role reading and are skipped.
+ *
+ * @experimental
  */
 final readonly class RoleBalanceMetric implements QualityMetric
 {

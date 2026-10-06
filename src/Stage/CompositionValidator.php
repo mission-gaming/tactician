@@ -18,6 +18,8 @@ namespace MissionGaming\Tactician\Stage;
  * and the losers' route consuming what it rejects) validate as separate
  * chains from the same source. Runtime stage entry still validates count
  * and uniqueness — this is the ahead-of-time check.
+ *
+ * @experimental
  */
 final readonly class CompositionValidator
 {
