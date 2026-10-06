@@ -616,9 +616,11 @@ heading **Output change (fix)**.
   workers loads and rewrites the entry for the configuration when it starts,
   so a worker could load an entry that another had half written. `rector.php`
   now runs Rector as one process, which checks the same paths with the same
-  rules and takes longer. Rector 2.7.0 writes the entry atomically; a test
+  rules and takes about twice as long (some 25 seconds more for each CI
+  job). Rector 2.7.0 writes the entry atomically; a test
   (`tests/Feature/GateConfigurationTest.php`) requires the one-process
-  setting until that is the locked version.
+  setting until that is the locked version, and from then on fails until the
+  setting is removed.
 
 ## [0.2.1] - 2026-10-06
 

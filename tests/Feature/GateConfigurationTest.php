@@ -61,6 +61,56 @@ function gateNeonIncludes(string $neon): array
 }
 
 /**
+ * What is wrong with the worker setting of a Rector configuration, given the
+ * locked Rector version, or null when nothing is.
+ *
+ * Rector before 2.7.0 copies a cache entry onto its final path, and every
+ * Rector process loads and rewrites the entry for the configuration when it
+ * starts. Parallel workers start together, so one can load the entry while
+ * another has written part of it: PHP then reports a syntax error in the
+ * half-written file, the worker dies and the run fails with "Child process
+ * error". Rector 2.7.0 writes the entry to a temporary file and renames it.
+ * So before 2.7.0 the configuration must turn the workers off, and from
+ * 2.7.0 it must not: one process takes about twice as long, and a workaround
+ * that nothing asks to be removed stays for ever.
+ *
+ * A version that does not compare as 2.7.0 or later (a pre-release of
+ * 2.7.0, a branch such as `dev-main`) is treated as one that still writes in
+ * place. Comments and string literals are left out of the configuration
+ * before it is searched, so only a call that PHP runs counts.
+ */
+function gateRectorWorkerProblem(string $lockedVersion, string $configuration): ?string
+{
+    $code = '';
+
+    foreach (token_get_all($configuration) as $token) {
+        if (!is_array($token)) {
+            $code .= $token;
+
+            continue;
+        }
+
+        if (!in_array($token[0], [T_COMMENT, T_DOC_COMMENT, T_WHITESPACE, T_CONSTANT_ENCAPSED_STRING], true)) {
+            $code .= $token[1];
+        }
+    }
+
+    $version = ltrim($lockedVersion, 'v');
+    $turnsWorkersOff = str_contains($code, '->withoutParallel()');
+    $turnsWorkersOn = str_contains($code, '->withParallel(');
+
+    if (version_compare($version, '2.7.0', '>=')) {
+        return $turnsWorkersOff
+            ? "Rector {$version} writes its cache atomically, so its parallel workers are safe again: remove ->withoutParallel() and the comment above it from rector.php, then this test and gateRectorWorkerProblem()."
+            : null;
+    }
+
+    return $turnsWorkersOff && !$turnsWorkersOn
+        ? null
+        : "Rector {$version} writes its cache in place, so parallel workers can read a half-written entry: rector.php must call ->withoutParallel() and must not call ->withParallel().";
+}
+
+/**
  * How many entries the `ignoreErrors` list of a NEON file holds, in whatever
  * form an entry is written (a pattern on one line, or a block with `message`,
  * `messages`, `rawMessage` or `identifier`).
@@ -271,17 +321,10 @@ describe('Rector configuration', function () use ($root): void {
             ->and($configuration)->toContain("->withPaths([\n        __DIR__ . '/src',\n        __DIR__ . '/tests',\n    ])");
     });
 
-    it('runs as one process for as long as the locked Rector writes its cache in place', function () use ($root): void {
-        // Rector before 2.7.0 copies a cache entry onto its final path, and
-        // every Rector process loads and rewrites the entry for the
-        // configuration when it starts. Parallel workers start together, so
-        // one can load the entry while another has written part of it: PHP
-        // then reports a syntax error in the half-written file, the worker
-        // dies and the run fails with "Child process error". The gate failed
-        // that way on CI on commits that changed nothing Rector reads.
-        // Rector 2.7.0 writes the entry to a temporary file and renames it.
-        // Until that is the locked version, rector.php must turn the
-        // workers off; after that, either setting is safe.
+    it('runs as one process for as long as the locked Rector writes its cache in place, and no longer', function () use ($root): void {
+        // The gate failed on CI with "Child process error" on commits that
+        // changed nothing Rector reads; gateRectorWorkerProblem() says why
+        // and what it asks of rector.php on each side of Rector 2.7.0.
         $lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, flags: JSON_THROW_ON_ERROR);
         Assert::assertIsArray($lock);
         Assert::assertIsArray($lock['packages-dev']);
@@ -293,22 +336,70 @@ describe('Rector configuration', function () use ($root): void {
 
             if ($package['name'] === 'rector/rector') {
                 Assert::assertIsString($package['version']);
-                $locked = ltrim($package['version'], 'v');
+                $locked = $package['version'];
             }
         }
 
         Assert::assertNotNull($locked, 'composer.lock does not lock rector/rector.');
 
-        $configuration = (string) file_get_contents($root . '/rector.php');
-        $writesAtomically = version_compare($locked, '2.7.0', '>=');
-        $runsAsOneProcess = str_contains($configuration, "\n    ->withoutParallel()\n")
-            && !str_contains($configuration, '->withParallel(');
+        $problem = gateRectorWorkerProblem($locked, (string) file_get_contents($root . '/rector.php'));
 
-        Assert::assertTrue(
-            $writesAtomically || $runsAsOneProcess,
-            "Rector {$locked} writes its cache in place, so parallel workers can read a half-written entry: rector.php must call ->withoutParallel() and must not call ->withParallel().",
-        );
+        Assert::assertNull($problem, (string) $problem);
     });
+
+    // The rule the test above applies, on configurations and versions that
+    // this checkout does not have: without these, the rule is only ever run
+    // on the one case that passes.
+    it('accepts a configuration that turns the workers off while the cache is written in place', function (string $version): void {
+        expect(gateRectorWorkerProblem($version, "<?php\n\nreturn RectorConfig::configure()\n    ->withoutParallel()\n    ->withPhpSets(php83: true);\n"))
+            ->toBeNull();
+    })->with([
+        'the locked version when this was written' => ['2.6.7'],
+        'a version with a v prefix' => ['v2.6.7'],
+        'an earlier minor' => ['2.6.0'],
+        'a release candidate of 2.7.0' => ['2.7.0-RC1'],
+        'a beta of 2.7.0 with a v prefix' => ['v2.7.0-beta2'],
+        'a branch' => ['dev-main'],
+        'a branch alias' => ['2.7.x-dev'],
+    ]);
+
+    it('refuses a configuration that leaves the workers on while the cache is written in place', function (string $configuration): void {
+        expect(gateRectorWorkerProblem('2.6.7', "<?php\n\nreturn RectorConfig::configure()\n{$configuration}    ->withPhpSets(php83: true);\n"))
+            ->toContain('must call ->withoutParallel()');
+    })->with([
+        'no call at all' => [''],
+        'the call in a line comment' => ["    // ->withoutParallel()\n"],
+        'the call on a line of its own inside a block comment' => ["    /*\n    ->withoutParallel()\n    */\n"],
+        'the call in a string' => ["    ->withSkip(['->withoutParallel()'])\n"],
+        'the workers turned on again afterwards' => ["    ->withoutParallel()\n    ->withParallel()\n"],
+        'the workers turned on again with arguments' => ["    ->withoutParallel()\n    ->withParallel(120, 4)\n"],
+    ]);
+
+    it('counts the call however it is laid out, and ignores a mention of the parallel call in a comment', function (string $configuration): void {
+        expect(gateRectorWorkerProblem('2.6.7', "<?php\n\nreturn RectorConfig::configure()\n{$configuration}    ->withPhpSets(php83: true);\n"))
+            ->toBeNull();
+    })->with([
+        'on the line of the call before it' => ["    ->withPaths([__DIR__ . '/src'])->withoutParallel()\n"],
+        'with the arrow on the line above' => ["    ->\n        withoutParallel()\n"],
+        'beside a comment that names ->withParallel()' => ["    // Not ->withParallel(): see below.\n    ->withoutParallel()\n"],
+    ]);
+
+    it('asks for the one-process setting to be removed once the locked Rector writes its cache atomically', function (string $version): void {
+        $workersOff = "<?php\n\nreturn RectorConfig::configure()\n    ->withoutParallel()\n    ->withPhpSets(php83: true);\n";
+        $default = "<?php\n\nreturn RectorConfig::configure()\n    // ->withoutParallel() was here.\n    ->withPhpSets(php83: true);\n";
+        $workersOn = "<?php\n\nreturn RectorConfig::configure()\n    ->withParallel(120, 4)\n    ->withPhpSets(php83: true);\n";
+
+        expect(gateRectorWorkerProblem($version, $workersOff))->toContain('remove ->withoutParallel()')
+            ->and(gateRectorWorkerProblem($version, $default))->toBeNull()
+            ->and(gateRectorWorkerProblem($version, $workersOn))->toBeNull();
+    })->with([
+        'the first version that does' => ['2.7.0'],
+        'that version with a v prefix' => ['v2.7.0'],
+        'a later patch' => ['2.7.1'],
+        'a minor that sorts before 2.7 as text' => ['2.10.0'],
+        'a release candidate of a later minor' => ['2.10.0-RC1'],
+        'the next major' => ['3.0.0'],
+    ]);
 
     it('gives a reason for every rule it skips', function () use ($root): void {
         $configuration = (string) file_get_contents($root . '/rector.php');

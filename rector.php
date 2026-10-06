@@ -22,9 +22,11 @@ return RectorConfig::configure()
     // writing it reads half a PHP file and dies with a syntax error, which
     // the run reports as "Child process error": CI failed that way now and
     // then, on commits that changed nothing Rector reads. One process cannot
-    // race with itself. Rector 2.7.0 writes the entry atomically: when the
-    // locked version reaches it, this line can go
-    // (tests/Feature/GateConfigurationTest.php says when).
+    // race with itself, and it checks the same files with the same rules; it
+    // takes about twice as long. Rector 2.7.0 writes the entry atomically:
+    // when the locked version reaches it, this line goes (a test in
+    // tests/Feature/GateConfigurationTest.php requires the line until then
+    // and fails on it from then on).
     ->withoutParallel()
     // Every PHP set up to 8.3, the Composer floor. Named, not read from the
     // running PHP, so that the gate proposes the same changes on 8.3, 8.4
