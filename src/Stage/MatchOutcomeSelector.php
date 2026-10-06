@@ -155,8 +155,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
         $ties = [];
         foreach ($events as $event) {
             $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
-            sort($ids);
-            $ties[implode('|', $ids)][] = $event;
+            $ties[PairKey::of(...$ids)][] = $event;
         }
 
         return array_values($ties);
@@ -194,10 +193,8 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
         }
 
         $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
-        sort($ids);
-
         $leg = $event->getMetadataValue('tie_leg');
 
-        return $round . ':' . implode('|', $ids) . ':' . (is_int($leg) ? $leg : 1);
+        return $round . ':' . PairKey::of(...$ids) . ':' . (is_int($leg) ? $leg : 1);
     }
 }

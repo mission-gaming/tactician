@@ -26,7 +26,8 @@ interface QualityMetric
     /**
      * Measure the schedule's defect on this dimension.
      *
-     * @return float Non-negative; zero is ideal
+     * @return float Non-negative and finite; zero is ideal. ScheduleScorer
+     *               refuses a measurement of NAN or INF
      */
     public function measure(Schedule $schedule): float;
 }

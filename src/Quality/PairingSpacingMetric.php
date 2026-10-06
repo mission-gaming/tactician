@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Quality;
 
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Stage\PairKey;
 use Override;
 
 /**
@@ -40,9 +41,7 @@ final readonly class PairingSpacingMetric implements QualityMetric
                     continue;
                 }
 
-                $ids = [$participants[0]->getId(), $participants[1]->getId()];
-                sort($ids);
-                $meetings[implode('|', $ids)][] = $round;
+                $meetings[PairKey::of($participants[0]->getId(), $participants[1]->getId())][] = $round;
             }
         }
 
