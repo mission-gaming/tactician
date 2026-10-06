@@ -160,8 +160,9 @@ exists as a convenience.
 
 Decisions made when the API was extended for a downstream consumer that
 works in local wall-clock time and has no shared resource limiting a slot.
-All of it is additive: no placement, drop rule or reported number changed,
-and the golden fixtures are untouched.
+No placement, drop rule or reported number changed, and the golden
+fixtures are untouched. Two decisions reject input that was accepted
+before (31 and 32); the changelog lists them as output changes.
 
 20. **A shape-only grid is the same class, not a second one.** The
     repacker reads slot counts and a capacity and nothing else, so a grid
