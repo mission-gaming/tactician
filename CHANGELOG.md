@@ -147,9 +147,9 @@ heading **Output change (fix)**.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
-  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 32 more; the
+  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 34 more; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). 124 of the 130 sites that build the exception set one. The
+  identifiers). 134 of the 140 sites that build the exception set one. The
   six that do not are in `Stage\StageState` (recording a round or its
   results, and a duplicate ID given to `start()`): `getReason()` returns null
   for those, and for an exception that code outside the library builds
@@ -191,8 +191,71 @@ heading **Output change (fix)**.
   when a `throw` in `src/`, an exception built there, or a method's return
   type names a class outside `TacticianException`.
 
+- Repack: a session grid without instants. `SessionGrid::shapeOnly(int
+  $sessions, int $slotsPerSession = 1, array $slotsPerSessionOverrides = [],
+  ?int $capacityPerSlot = 1)` builds a grid that has the positions and no
+  times, for an application that keeps its own. It is repacked exactly as
+  the instant-based grid of the same shape is. `hasInstants()` tells the two
+  forms apart. On a shape-only grid `getSessionStart()`, `getSlotInterval()`
+  and `getSlotTime()` throw an `InvalidConfigurationException` with the new
+  reason `GridWithoutInstants`; its assignments have no kickoff
+  (`SlotAssignment::hasKickoff()` is false, `getKickoff()` throws with the
+  same reason, and `toArray()` carries `'kickoff' => null`); and as plain
+  data it has `session_count` in place of `sessions`, `timezone` and
+  `slot_interval`. An instant-based grid, its assignments and its plain data
+  are unchanged.
+- Repack: `SessionGrid::ordinalOf(int $session, int $slot)` returns a
+  position's 0-based index in grid order, and
+  `SessionGrid::positionOf(DateTimeImmutable|int $at)` returns
+  `['session' => ..., 'slot' => ...]` for an ordinal or, on an instant-based
+  grid, for an instant, and null when the grid has no such position.
+- Repack: unbounded slot capacity. `capacityPerSlot` accepts `null` (the
+  string `'unbounded'`, `SessionGrid::UNBOUNDED`, as `capacity_per_slot` in
+  plain data), after which only participants limit what shares a slot: the
+  outcome never reports the grid as too small, and any number of events may
+  be pinned at one position. `getCapacityLimit()` returns the capacity or
+  null and `hasUnboundedCapacity()` says which; `getCapacityPerSlot()`
+  throws with the new reason `UnboundedCapacity` on such a grid, because it
+  has no integer to return. The default is still 1, and a missing or null
+  `capacity_per_slot` in plain data still means 1.
+- Repack: a typed accessor on `RepackOutcome` for each kind of violation, so
+  that the getters of a kind can be read without `instanceof`:
+  `getParticipantDoubleBookedViolations()`, `getEventUnplacedViolations()`,
+  `getContiguityBrokenViolations()`, `getLateStartViolations()` and
+  `getCapacityExceededViolations()`.
+- Repack: `RepackOutcome::isBudgetExhausted()` says whether the step budget
+  stopped a search. False means a larger budget gives the same outcome; true
+  means it may give a different one. The flag is the optional fourth
+  constructor parameter of `RepackOutcome` and is not part of `toArray()`.
+- Repack: `RepackOutcome::fingerprint()` returns a stable identifier of the
+  outcome's assignments, unplaced events and violations, for detecting that
+  a plan computed again differs from the plan that was shown. It is `v1:`
+  and the SHA-256 of a canonical encoding that the usage guide and the
+  method's docblock specify as a contract; it does not depend on the order
+  of the lists, the PHP version, the platform, the locale or an ini setting.
+  The budget flag is not part of it.
+- The usage guide documents every public class and method of the Repack
+  namespace, among them `getViolationsOfKind()`, `ViolationKind`,
+  `UnplacedEvent` and the getters of the five violation classes, which were
+  public and undocumented. A test
+  (`tests/Feature/RepackDocumentationCoverageTest.php`) fails when a public
+  type, method, constant, property or enum case of the namespace is missing
+  from that reference, or the reference names one that does not exist.
+
 ### Changed
 
+- The constructor of `Repack\SessionGrid` accepts more than it did, and
+  everything it accepted before means what it meant: `$sessionStarts` may be
+  a session count and `$slotInterval` null (the shape-only form, which
+  `SessionGrid::shapeOnly()` builds), and `$capacityPerSlot` may be null. The
+  constructor of `Repack\SlotAssignment` accepts a null `$kickoff`. Static
+  analysis of calling code sees three wider types: `SessionGrid::toArray()`
+  may return the shape-only keys and a string capacity,
+  `SlotAssignment::toArray()` a null `kickoff`, and
+  `SlotAssignment::getKickoff()`, `SessionGrid::getSlotInterval()` and
+  `SessionGrid::getCapacityPerSlot()` declare an
+  `InvalidConfigurationException`. None of them can occur for a grid built
+  the way grids were built before.
 - `toJson()` and `fromJson()` of `Schedule`, `StageState` and
   `ScheduledSchedule` now throw `Exceptions\JsonConversionException` where PHP's
   `\JsonException` escaped unwrapped. It is a `\JsonException` with the same
@@ -207,6 +270,23 @@ heading **Output change (fix)**.
 
 ### Fixed
 
+- A `RepackOutcome` built with a list that holds something other than the
+  objects it is for (`new RepackOutcome(['x'], [], [])`) is rejected with an
+  `Exceptions\InvalidInputException` that names the list, the key and the
+  type found. It died with a PHP `Error` (a method call on a string) in the
+  constructor or, for the unplaced events and the violations, on the first
+  call that read them.
+- Repack objective weights too large to keep the objective an integer are
+  rejected with an `InvalidConfigurationException`. The repacker scores a
+  move as at most `earlyFillWeight × (sessions − 1) + 2 × consolidationWeight`;
+  beyond `PHP_INT_MAX` PHP computed that as a float, in which the smaller
+  weight was lost, so the result was not the trade the weights state.
+  `RepackOptions` rejects a consolidation weight above
+  `RepackOptions::MAX_CONSOLIDATION_WEIGHT` (half of `PHP_INT_MAX`, reason
+  `ValueOutOfRange`), and `RepackRequest` rejects weights for which the
+  expression is too large for the number of sessions of its grid (reason
+  `IncompatibleOptions`). No weight below those bounds is affected, and no
+  outcome changes.
 - `InvalidConfigurationException::getDiagnosticReport()` no longer raises a
   PHP warning on PHP 8.5 when a context value is the float `NAN`. PHP 8.5
   warns when `NAN` is cast to a string, and the report cast it. The text is
