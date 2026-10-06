@@ -585,6 +585,51 @@ heading **Output change (fix)**.
   (`tests/Feature/RepackDocumentationCoverageTest.php`) fails when a public
   type, method, constant, property or enum case of the namespace is missing
   from that reference, or the reference names one that does not exist.
+- Wider property tests. Test suite only; the library is unchanged.
+  - Round robin: every field size from 2 to 30, one to three legs, each leg
+    strategy and a shuffled field, held to what a complete round robin is,
+    counted from the events: every pairing once in every leg, nobody twice
+    in a round, every round full, rounds 1-based and continuous across legs,
+    and the `byes` metadata of an odd field naming the participant who is in
+    no event of the round, once per participant per leg (none in an even
+    field).
+  - The roles of the default round robin over several legs: the end
+    imbalance for 2 to 30 participants and one to four mirrored or repeated
+    legs as the exact value that follows from a single leg by counting, and
+    the longest run of one role as it is, so that a change either way fails.
+  - Seeds: for everything that takes a `Random\Randomizer` (the round-robin
+    scheduler, its backtracking search, `ShuffledLegStrategy`, the Swiss
+    engine and scheduler, `ScheduleOptimizer`), twenty seeds give twenty
+    different results, so a randomizer that is accepted and never asked
+    fails a test. A second `schedule()` call on a scheduler that holds a
+    randomizer is pinned as what it is: the next schedule of the same random
+    sequence, not the first one again.
+  - Swiss: stages of 2 to 32 participants driven round by round with random
+    results, with and without tiebreakers, a randomizer, a constraint and
+    withdrawals, the state going through JSON after every round. Every round
+    is checked against the usage guide: everyone active is paired once or
+    has the bye, nobody meets twice, one bye in an odd field and none in an
+    even one, the bye to the lowest-placed participant with the fewest so
+    far, nobody paired down past an opponent from a higher score group that
+    was available, and a `NoValidPairingException` only when no complete
+    pairing exists. Fields of up to 16 are driven to their last round, and
+    the number of stages that cannot pair it is recorded.
+- Tests for 39 of the 54 lines of `src/` that no test executed, each through
+  the behaviour that reaches it, among them the single-move relocation of
+  the repack load planner (`tests/Feature/RepackRelocationTest.php`,
+  `tests/Feature/UncoveredPathsTest.php`). The 15 lines that remain are
+  guards for states the surrounding code rules out; the second file lists
+  them with the reason for each.
+- A `composer mutation` script: mutation testing of `src/Scheduling` and
+  `src/Repack/Internal` with Pest's mutation runner, which is installed with
+  Pest, over the tests named in `phpunit.mutation.xml`. The weekly scheduled
+  workflow runs it in one `Mutation testing` job per directory (a maintainer
+  can also start it by hand), which enforces no minimum and publishes the
+  score, the counts and the first untested changes in the job summary. It
+  does not run for a pull request, because a run takes hours of a runner,
+  and it is not part of `composer ci`. Infection was tried first and is not used: it has no
+  adapter for Pest, and through its PHPUnit adapter it counts every change
+  as noticed, because it does not recognise the result line Pest prints.
 
 ### Changed
 
@@ -649,6 +694,36 @@ heading **Output change (fix)**.
   `throw null` with assertions off. The scorer now refuses such a
   measurement (see "Output change (fix)"), and the optimizer takes its first
   candidate as the best so far whatever it scores.
+- Test suite only; the library is unchanged. Tests that proved less than
+  their titles said now prove it, or are gone:
+  - `tests/Feature/ComplexConstraintTest.php` asserted for four constraint
+    sets that generation throws `IncompleteScheduleException`, and took the
+    exception for proof that no schedule exists. The scheduler is greedy and
+    also throws for sets a schedule satisfies, so each case now first shows
+    by counting, checked against the constraints themselves, that no round
+    is left for some pairing. One of the four was not infeasible: a limit of
+    two same-role events in a row over two shuffled legs of eight
+    participants is satisfied by a schedule the library itself generates
+    with mirrored legs. That test also drew its roles from an unseeded
+    randomizer. It is now a seeded test of the loud failure, a test that
+    shows the satisfying schedule, and a test of the wanted behaviour marked
+    as not yet met.
+  - Three tests of `ScheduleValidator` whose only assertion was
+    `expect(true)->toBeTrue()` now assert that the valid schedule is
+    accepted and that the nearest invalid one is refused. The test titled
+    "handles zero participant scenario without division error" asserted that
+    `DivisionByZeroError` is thrown; it is now named for that, and covers
+    one participant as well as none.
+  - A test that timed a closure against the wall clock is removed (the value
+    it also asserted is asserted by the tests beside it). A "stress test"
+    is renamed for what it checks. Two seed-protection tests that asserted
+    "fewer top-seed meetings than some number", which the unconstrained
+    schedule also satisfied, now assert that no two protected seeds meet
+    inside the window and that they do without the constraint. The two
+    tests of mirrored legs check every event and every participant, not the
+    first two events and one participant.
+  - A `use` statement without effect in one test file made PHP print a
+    warning at the start of every run; it is removed.
 
 ## [0.2.1] - 2026-10-06
 
