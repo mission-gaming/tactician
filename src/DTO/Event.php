@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\DTO;
 
-use InvalidArgumentException;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
  * Represents a single event/match in a tournament schedule.
@@ -22,7 +22,7 @@ readonly class Event
      * @param Round|null $round The round this event belongs to (optional)
      * @param array<string, mixed> $metadata Additional custom data for this event
      *
-     * @throws \InvalidArgumentException When fewer than 2 participants are provided
+     * @throws InvalidInputException When fewer than 2 participants are provided
      */
     public function __construct(
         private array $participants,
@@ -30,7 +30,7 @@ readonly class Event
         private array $metadata = []
     ) {
         if (count($participants) < 2) {
-            throw new \InvalidArgumentException('An event must have at least 2 participants');
+            throw new InvalidInputException('An event must have at least 2 participants');
         }
     }
 
@@ -140,19 +140,19 @@ readonly class Event
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
-     * @throws InvalidArgumentException When fields are malformed or a participant ID is unknown
+     * @throws InvalidInputException When fields are malformed or a participant ID is unknown
      */
     public static function fromArray(array $data, array $participantsById): self
     {
         $participantIds = $data['participants'] ?? null;
         if (!is_array($participantIds)) {
-            throw new InvalidArgumentException('Event data requires a participants array');
+            throw new InvalidInputException('Event data requires a participants array');
         }
 
         $participants = [];
         foreach ($participantIds as $participantId) {
             if (!is_string($participantId) || !isset($participantsById[$participantId])) {
-                throw new InvalidArgumentException(
+                throw new InvalidInputException(
                     'Event references unknown participant ' . var_export($participantId, true)
                 );
             }
@@ -161,14 +161,14 @@ readonly class Event
 
         $roundData = $data['round'] ?? null;
         if ($roundData !== null && !is_array($roundData)) {
-            throw new InvalidArgumentException('Event round must be an array or null');
+            throw new InvalidInputException('Event round must be an array or null');
         }
         /** @var array<string, mixed>|null $roundData */
         $round = $roundData === null ? null : Round::fromArray($roundData);
 
         $rawMetadata = $data['metadata'] ?? [];
         if (!is_array($rawMetadata)) {
-            throw new InvalidArgumentException('Event metadata must be an array');
+            throw new InvalidInputException('Event metadata must be an array');
         }
         $metadata = [];
         foreach ($rawMetadata as $key => $value) {

@@ -13,6 +13,7 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
@@ -244,7 +245,7 @@ class RoundRobinScheduler implements SchedulerInterface
             }
         }
 
-        throw new \LogicException('Schedule generation loop must return or throw');
+        throw new InvariantViolationException('Schedule generation loop must return or throw');
     }
 
     /**

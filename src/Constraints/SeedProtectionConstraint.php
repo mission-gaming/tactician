@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Constraints;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 /**
@@ -19,15 +20,18 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  */
 readonly class SeedProtectionConstraint implements ConstraintInterface
 {
+    /**
+     * @throws InvalidInputException When no seed is protected or the period is outside 0.0 to 1.0
+     */
     public function __construct(
         private int $topSeedsToProtect,
         private float $protectionPeriod
     ) {
         if ($topSeedsToProtect < 1) {
-            throw new \InvalidArgumentException('Must protect at least 1 seed');
+            throw new InvalidInputException('Must protect at least 1 seed');
         }
         if ($protectionPeriod < 0.0 || $protectionPeriod > 1.0) {
-            throw new \InvalidArgumentException('Protection period must be between 0.0 and 1.0');
+            throw new InvalidInputException('Protection period must be between 0.0 and 1.0');
         }
     }
 

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Stage;
 
-use InvalidArgumentException;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
  * The pairings a results-driven engine produces for a single round.
@@ -90,28 +90,28 @@ final readonly class RoundPairing
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
-     * @throws InvalidArgumentException When fields are malformed or a participant ID is unknown
+     * @throws InvalidInputException When fields are malformed or a participant ID is unknown
      */
     public static function fromArray(array $data, array $participantsById): self
     {
         $roundNumber = $data['round'] ?? null;
         if (!is_int($roundNumber)) {
-            throw new InvalidArgumentException('Round pairing data requires an integer round number');
+            throw new InvalidInputException('Round pairing data requires an integer round number');
         }
 
         $label = $data['label'] ?? null;
         if ($label !== null && !is_string($label)) {
-            throw new InvalidArgumentException('Round pairing label must be a string or null');
+            throw new InvalidInputException('Round pairing label must be a string or null');
         }
 
         $eventsData = $data['events'] ?? [];
         if (!is_array($eventsData)) {
-            throw new InvalidArgumentException('Round pairing events must be an array');
+            throw new InvalidInputException('Round pairing events must be an array');
         }
         $events = [];
         foreach ($eventsData as $eventData) {
             if (!is_array($eventData)) {
-                throw new InvalidArgumentException('Each round pairing event must be an array');
+                throw new InvalidInputException('Each round pairing event must be an array');
             }
             /** @var array<string, mixed> $eventData */
             $events[] = Event::fromArray($eventData, $participantsById);
@@ -119,12 +119,12 @@ final readonly class RoundPairing
 
         $byeIds = $data['byes'] ?? [];
         if (!is_array($byeIds)) {
-            throw new InvalidArgumentException('Round pairing byes must be an array');
+            throw new InvalidInputException('Round pairing byes must be an array');
         }
         $byes = [];
         foreach ($byeIds as $byeId) {
             if (!is_string($byeId) || !isset($participantsById[$byeId])) {
-                throw new InvalidArgumentException(
+                throw new InvalidInputException(
                     'Round pairing references unknown bye participant ' . var_export($byeId, true)
                 );
             }

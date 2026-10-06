@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Constraints;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 /**
@@ -13,13 +14,16 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  */
 readonly class MetadataConstraint implements ConstraintInterface
 {
+    /**
+     * @throws InvalidInputException When the validator is not callable
+     */
     public function __construct(
         private string $metadataKey,
         private mixed $validator,
         private string $name = 'Metadata Constraint'
     ) {
         if (!is_callable($validator)) {
-            throw new \InvalidArgumentException('Validator must be callable');
+            throw new InvalidInputException('Validator must be callable');
         }
     }
 

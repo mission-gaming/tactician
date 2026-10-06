@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Constraints;
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 
 /**
@@ -13,10 +14,13 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  */
 readonly class MinimumRestPeriodsConstraint implements ConstraintInterface
 {
+    /**
+     * @throws InvalidInputException When the minimum is below 1
+     */
     public function __construct(private int $minRounds)
     {
         if ($minRounds < 1) {
-            throw new \InvalidArgumentException('Minimum rest periods must be at least 1');
+            throw new InvalidInputException('Minimum rest periods must be at least 1');
         }
     }
 

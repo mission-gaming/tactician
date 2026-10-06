@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Standings;
 
-use InvalidArgumentException;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
  * Calculates an ordered standings table from recorded results.
@@ -42,7 +42,7 @@ readonly class StandingsCalculator
      * @param array<Participant> $participants
      * @param array<Result> $results
      *
-     * @throws InvalidArgumentException When a result references an unknown participant
+     * @throws InvalidInputException When a result references an unknown participant
      *                                  or two results reference the same event
      */
     public function calculate(array $participants, array $results): Standings
@@ -51,7 +51,7 @@ readonly class StandingsCalculator
         foreach ($results as $result) {
             $eventId = spl_object_id($result->getEvent());
             if (isset($seenEvents[$eventId])) {
-                throw new InvalidArgumentException(
+                throw new InvalidInputException(
                     'Two results reference the same event; each event can have only one result'
                 );
             }
@@ -83,7 +83,7 @@ readonly class StandingsCalculator
             foreach ($eventParticipants as $participant) {
                 $id = $participant->getId();
                 if (!isset($tallies[$id])) {
-                    throw new InvalidArgumentException(
+                    throw new InvalidInputException(
                         "Result references participant {$id} who is not in the standings"
                     );
                 }

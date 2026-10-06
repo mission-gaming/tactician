@@ -7,9 +7,9 @@ namespace MissionGaming\Tactician\Timeline;
 use DateTimeImmutable;
 use DateTimeZone;
 use Exception;
-use InvalidArgumentException;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
  * An event decorated with its assigned kickoff time.
@@ -84,31 +84,31 @@ final readonly class ScheduledEvent
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
-     * @throws InvalidArgumentException When fields are malformed or a participant ID is unknown
+     * @throws InvalidInputException When fields are malformed or a participant ID is unknown
      */
     public static function fromArray(array $data, array $participantsById): self
     {
         $eventData = $data['event'] ?? null;
         if (!is_array($eventData)) {
-            throw new InvalidArgumentException('Scheduled event data requires an event array');
+            throw new InvalidInputException('Scheduled event data requires an event array');
         }
         /** @var array<string, mixed> $eventData */
         $event = Event::fromArray($eventData, $participantsById);
 
         $kickoffValue = $data['kickoff'] ?? null;
         if (!is_string($kickoffValue)) {
-            throw new InvalidArgumentException('Scheduled event data requires a kickoff string');
+            throw new InvalidInputException('Scheduled event data requires a kickoff string');
         }
 
         try {
             $kickoff = new DateTimeImmutable($kickoffValue, new DateTimeZone('UTC'));
         } catch (Exception $exception) {
-            throw new InvalidArgumentException('Scheduled event kickoff is not parseable', 0, $exception);
+            throw new InvalidInputException('Scheduled event kickoff is not parseable', 0, $exception);
         }
 
         $resource = $data['resource'] ?? null;
         if ($resource !== null && (!is_string($resource) || $resource === '')) {
-            throw new InvalidArgumentException('Scheduled event resource must be a non-empty string or null');
+            throw new InvalidInputException('Scheduled event resource must be a non-empty string or null');
         }
 
         return new self($event, $kickoff, $resource);

@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Scheduling;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
@@ -226,7 +227,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
 
         $winnersChampion = $winnersSlots[0];
         if ($winnersChampion === null || $losersChampion === null) {
-            throw new \LogicException('Bracket resolution lost track of a finalist');
+            throw new InvariantViolationException('Bracket resolution lost track of a finalist');
         }
 
         // Grand final
@@ -242,7 +243,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
         $grandFinalWinner = $stage['winners'][0];
 
         if ($grandFinalWinner === null) {
-            throw new \LogicException('Grand final resolved without a winner');
+            throw new InvariantViolationException('Grand final resolved without a winner');
         }
 
         if (!$this->options->grandFinalReset || $grandFinalWinner->getId() === $winnersChampion->getId()) {

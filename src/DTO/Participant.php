@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\DTO;
 
-use InvalidArgumentException;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
  * Represents a participant in a tournament or competition.
@@ -125,24 +125,24 @@ readonly class Participant
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidArgumentException When required fields are missing or malformed
+     * @throws InvalidInputException When required fields are missing or malformed
      */
     public static function fromArray(array $data): self
     {
         $id = $data['id'] ?? null;
         $label = $data['label'] ?? null;
         if (!is_string($id) || $id === '' || !is_string($label)) {
-            throw new InvalidArgumentException('Participant data requires a non-empty string id and a string label');
+            throw new InvalidInputException('Participant data requires a non-empty string id and a string label');
         }
 
         $seed = $data['seed'] ?? null;
         if ($seed !== null && !is_int($seed)) {
-            throw new InvalidArgumentException('Participant seed must be an integer or null');
+            throw new InvalidInputException('Participant seed must be an integer or null');
         }
 
         $rawMetadata = $data['metadata'] ?? [];
         if (!is_array($rawMetadata)) {
-            throw new InvalidArgumentException('Participant metadata must be an array');
+            throw new InvalidInputException('Participant metadata must be an array');
         }
         $metadata = [];
         foreach ($rawMetadata as $key => $value) {
