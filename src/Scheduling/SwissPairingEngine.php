@@ -54,6 +54,14 @@ use Random\Randomizer;
 readonly class SwissPairingEngine implements StageEngineInterface
 {
     /**
+     * How far apart two ranking values may be and still be level: a
+     * billionth of the larger value, and never less than a billionth.
+     * Far above the rounding error of a float sum, far below any step a
+     * scoring system awards.
+     */
+    private const float LEVEL_TOLERANCE = 1.0e-9;
+
+    /**
      * @param int|null $plannedRounds Total rounds the tournament will run, exposed to
      *                                constraints via the stage plan on the scheduling context;
      *                                null leaves the stage open-ended (isComplete() only
@@ -271,7 +279,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
      * Order participants for pairing: standings order, with previous byes
      * credited as wins (the Swiss convention) so bye recipients pair among
      * the winners, and - when a randomizer is configured - shuffled within
-     * equal-ranking groups.
+     * each score group (see groupLevelRankings() for what level means).
      *
      * Crediting a bye "as a win" is only meaningful under a win/draw/loss
      * ranking, so byes require the standings calculator to use a
@@ -316,44 +324,73 @@ readonly class SwissPairingEngine implements StageEngineInterface
                 ?: ($first['index'] <=> $second['index'])
         );
 
-        if ($this->randomizer !== null) {
-            $indexed = $this->shuffleWithinEqualRankings($indexed);
+        $ordered = [];
+        foreach ($this->groupLevelRankings($indexed) as $group) {
+            // Within a group the table decides, not the last bits of a sum.
+            usort($group, fn(array $first, array $second): int => $first['index'] <=> $second['index']);
+
+            if ($this->randomizer !== null) {
+                $group = $this->randomizer->shuffleArray($group);
+            }
+
+            foreach ($group as $entry) {
+                $ordered[] = $entry['participant'];
+            }
         }
 
-        return array_map(fn(array $entry) => $entry['participant'], $indexed);
+        return $ordered;
     }
 
     /**
-     * Shuffle each run of equal ranking values, preserving the order
-     * between runs. With no recorded rounds every participant ties at
-     * zero, so this shuffles the whole field - which is what makes
-     * results-free driving produce random non-repeat pairings.
+     * Split entries into score groups: runs of participants who are level.
+     *
+     * A ranking value is a float sum, and the sum of values a float cannot
+     * hold exactly depends on the order of its terms: at 1 for a win and
+     * 0.1 for a draw, win-draw-draw is 1.2000000000000002 and
+     * draw-draw-win is 1.2. Two values are therefore level when they
+     * differ by no more than LEVEL_TOLERANCE, relative to the larger of
+     * them and never less than absolutely. A group is measured from its
+     * highest value, so a chain of near-equal values cannot stretch it.
+     *
+     * Scoring that floats hold exactly (3/1/0, 1/0.5/0) is unaffected:
+     * there, level means equal. With no recorded rounds every participant
+     * ties at zero, so a randomizer shuffles the whole field - which is
+     * what makes results-free driving produce random non-repeat pairings.
      *
      * @param array<array{participant: Participant, ranking_value: float, index: int}> $indexed Ordered best first
-     * @return array<array{participant: Participant, ranking_value: float, index: int}>
+     * @return list<list<array{participant: Participant, ranking_value: float, index: int}>>
      */
-    private function shuffleWithinEqualRankings(array $indexed): array
+    private function groupLevelRankings(array $indexed): array
     {
-        assert($this->randomizer !== null);
-
-        $shuffled = [];
+        $groups = [];
         $group = [];
-        $groupValue = null;
+        $groupValue = 0.0;
 
         foreach ($indexed as $entry) {
-            if ($groupValue !== null && $entry['ranking_value'] !== $groupValue) {
-                $shuffled = [...$shuffled, ...$this->randomizer->shuffleArray($group)];
+            if ($group !== [] && !$this->isLevel($groupValue, $entry['ranking_value'])) {
+                $groups[] = $group;
                 $group = [];
             }
-            $groupValue = $entry['ranking_value'];
+            if ($group === []) {
+                $groupValue = $entry['ranking_value'];
+            }
             $group[] = $entry;
         }
 
         if ($group !== []) {
-            $shuffled = [...$shuffled, ...$this->randomizer->shuffleArray($group)];
+            $groups[] = $group;
         }
 
-        return $shuffled;
+        return $groups;
+    }
+
+    private function isLevel(float $first, float $second): bool
+    {
+        if ($first === $second) {
+            return true;
+        }
+
+        return abs($first - $second) <= self::LEVEL_TOLERANCE * max(1.0, abs($first), abs($second));
     }
 
     /**
