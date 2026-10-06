@@ -6,9 +6,9 @@ namespace MissionGaming\Tactician\Timeline;
 
 use DateTimeImmutable;
 use DateTimeZone;
-use Exception;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use Throwable;
 
 /**
  * Parses configuration times against an authoritative declared timezone.
@@ -24,8 +24,9 @@ final readonly class ZonedTime
     /**
      * @param string $field The configuration key, for diagnostics
      *
-     * @throws InvalidConfigurationException When the values are malformed or the
-     *                                       string embeds a contradictory timezone
+     * @throws InvalidConfigurationException When the values are malformed (a timezone PHP rejects
+     *                                       outright, such as one holding a NUL byte, included)
+     *                                       or the string embeds a contradictory timezone
      */
     public static function parse(mixed $value, mixed $timezoneValue, string $field): DateTimeImmutable
     {
@@ -40,7 +41,11 @@ final readonly class ZonedTime
         try {
             $timezone = new DateTimeZone($timezoneValue);
             $time = new DateTimeImmutable($value, $timezone);
-        } catch (Exception $exception) {
+        } catch (Throwable $exception) {
+            // Not `Exception`: DateTimeZone rejects a name that holds a NUL
+            // byte with a ValueError, which is an Error and would pass an
+            // `Exception` clause by. It is one more unparseable timezone.
+            // The block holds the two constructors and nothing else.
             throw new InvalidConfigurationException(
                 "{$field} or its timezone is not parseable",
                 [$field => $value, 'timezone' => $timezoneValue],

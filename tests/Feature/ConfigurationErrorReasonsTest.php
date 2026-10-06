@@ -609,3 +609,40 @@ describe('a pin conflict', function (): void {
             ->and($exception->getPrevious())->toBeNull();
     });
 });
+
+describe('a timezone that holds a NUL byte', function (): void {
+    // PHP rejects such a name with a ValueError, which is not an Exception.
+    // It reached the caller as a PHP error; it is one more bad timezone.
+    it('is reported as a configuration error', function (Closure $mistake, string $issue): void {
+        $exception = configurationErrorFrom($mistake);
+
+        expect($exception->getReason())->toBe(InvalidConfigurationReason::UnparseableTime)
+            ->and($exception->getMessage())->toBe("Invalid scheduler configuration: {$issue}")
+            ->and($exception->getPrevious())->toBeInstanceOf(ValueError::class)
+            ->and($exception->getContext()['timezone'])->toBe("Europe/Lon\0don");
+    })->with([
+        'in a timeline definition' => [
+            fn() => TimelineDefinition::fromArray([
+                'start' => '2026-08-01 19:00:00',
+                'timezone' => "Europe/Lon\0don",
+                'round_interval' => 'P7D',
+            ]),
+            'start or its timezone is not parseable',
+        ],
+        'in a session grid' => [
+            fn() => SessionGrid::fromArray([
+                'sessions' => ['2026-08-12 20:00'],
+                'timezone' => "Europe/Lon\0don",
+                'slot_interval' => 'PT25M',
+            ]),
+            'sessions[0] or its timezone is not parseable',
+        ],
+        'in JSON-decoded configuration' => [
+            fn() => TimelineDefinition::fromArray((array) json_decode(
+                '{"start": "2026-08-01 19:00:00", "timezone": "Europe/Lon\u0000don", "round_interval": "P7D"}',
+                true
+            )),
+            'start or its timezone is not parseable',
+        ],
+    ]);
+});
