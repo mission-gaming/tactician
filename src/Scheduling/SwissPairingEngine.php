@@ -7,7 +7,6 @@ namespace MissionGaming\Tactician\Scheduling;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
-use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
@@ -152,14 +151,12 @@ readonly class SwissPairingEngine implements StageEngineInterface
         $plan = new SwissPlan($state->getAllSeenParticipants(), $this->plannedRounds);
         $context = new SchedulingContext($participants, $plan, $playedEvents);
 
+        // Participants are paired adjacently in pairing order, backtracking
+        // past repeat pairings and constraint rejections.
+        $search = new SwissRoundSearch($this->constraints, $playedPairings, $homeCounts, $context, $roundNumber);
+
         if (count($orderedParticipants) % 2 === 0) {
-            $events = $this->pairOrderedParticipants(
-                $orderedParticipants,
-                $playedPairings,
-                $homeCounts,
-                $context,
-                $roundNumber
-            );
+            $events = $search->pair($orderedParticipants);
 
             if ($events !== null) {
                 return new RoundPairing($roundNumber, null, $events);
@@ -174,13 +171,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
                 fn(Participant $participant) => $participant->getId() !== $byeCandidate->getId()
             ));
 
-            $events = $this->pairOrderedParticipants(
-                $remaining,
-                $playedPairings,
-                $homeCounts,
-                $context,
-                $roundNumber
-            );
+            $events = $search->pair($remaining);
 
             if ($events !== null) {
                 return new RoundPairing($roundNumber, null, $events, [$byeCandidate]);
@@ -270,7 +261,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
         foreach ($playedEvents as $event) {
             $eventParticipants = $event->getParticipants();
             if (count($eventParticipants) === 2) {
-                $playedPairings[$this->pairingKey($eventParticipants[0], $eventParticipants[1])] = true;
+                $playedPairings[PairKey::of($eventParticipants[0]->getId(), $eventParticipants[1]->getId())] = true;
             }
         }
 
@@ -508,89 +499,5 @@ readonly class SwissPairingEngine implements StageEngineInterface
         );
 
         return $candidates;
-    }
-
-    /**
-     * Pair participants adjacently in standings order, backtracking past
-     * repeat pairings and constraint rejections.
-     *
-     * @param array<Participant> $orderedParticipants
-     * @param array<string, bool> $playedPairings
-     * @param array<string, int> $homeCounts
-     * @param array<Event> $roundEvents
-     * @return array<Event>|null Complete pairings for the round, or null if none exist
-     */
-    private function pairOrderedParticipants(
-        array $orderedParticipants,
-        array $playedPairings,
-        array $homeCounts,
-        SchedulingContext $context,
-        int $roundNumber,
-        array $roundEvents = []
-    ): ?array {
-        if ($orderedParticipants === []) {
-            return $roundEvents;
-        }
-
-        $participant = array_shift($orderedParticipants);
-
-        foreach (array_keys($orderedParticipants) as $candidateIndex) {
-            $opponent = $orderedParticipants[$candidateIndex];
-
-            if (isset($playedPairings[$this->pairingKey($participant, $opponent)])) {
-                continue;
-            }
-
-            $event = $this->createEvent($participant, $opponent, $homeCounts, $roundNumber);
-            $eventContext = $context->withEvents($roundEvents);
-            if ($this->constraints !== null && !$this->constraints->isSatisfied($event, $eventContext)) {
-                continue;
-            }
-
-            $remaining = $orderedParticipants;
-            unset($remaining[$candidateIndex]);
-
-            $pairings = $this->pairOrderedParticipants(
-                array_values($remaining),
-                $playedPairings,
-                $homeCounts,
-                $context,
-                $roundNumber,
-                [...$roundEvents, $event]
-            );
-
-            if ($pairings !== null) {
-                return $pairings;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Create the event with home going to whichever participant has had
-     * fewer home assignments (the lower-placed participant on a tie).
-     *
-     * @param array<string, int> $homeCounts
-     */
-    private function createEvent(
-        Participant $higherPlaced,
-        Participant $lowerPlaced,
-        array $homeCounts,
-        int $roundNumber
-    ): Event {
-        $higherHomes = $homeCounts[$higherPlaced->getId()] ?? 0;
-        $lowerHomes = $homeCounts[$lowerPlaced->getId()] ?? 0;
-
-        $participants = $higherHomes < $lowerHomes
-            ? [$higherPlaced, $lowerPlaced]
-            : [$lowerPlaced, $higherPlaced];
-
-        return new Event($participants, new Round($roundNumber));
-    }
-
-    private function pairingKey(Participant $firstParticipant, Participant $secondParticipant): string
-    {
-        return PairKey::of($firstParticipant->getId(), $secondParticipant->getId());
     }
 }
