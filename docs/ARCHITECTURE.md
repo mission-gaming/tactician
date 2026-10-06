@@ -41,7 +41,7 @@ play completes. The `src/Stage/` family:
 - **StageEngineInterface**: The one results-driven contract — `getPlan()`, `pairNextRound()`, `isComplete()`, `getOutcome()` — behind one driver loop for every format
 - **FingerprintedEngine**: The capability interface of an engine that gives a fingerprint (`getFingerprint()`), implemented by the three engines and kept out of `StageEngineInterface` so that adding it broke no implementer. Its docblock is the contract: an opaque string compared for equality, standing for the format and the options that shape which rounds exist or how they are paired; an option at its default is left out, so an engine that gains an option keeps every stamp already stored; the default of such an option never changes afterwards.
 - **EngineFingerprint** (`@internal`): The one place that writes and reads the library's fingerprints. An engine names its format and states each round-shaping option with its default (`with()`); the standings rules of an engine that pairs from the table go through `withStandingsRules()`. It writes `tactician:v1:` (a prefix that keeps the library's strings apart from an application's, and the version of the encoding), the format, and the options that are not at their default, ordered by name and percent-encoded. `differences()` turns two fingerprints into the statements the mismatch error carries. The strings are stored with states, so they are pinned in `tests/Unit/Stage/StageStateEngineFingerprintTest.php`; their spelling is no contract for callers.
-- **StageOutcome**: The uniform completion product: standings, results, bye counts, and the structural final round; pooled stages combine into one outcome carrying the pool structure (`StageOutcome::combining()`). Deliberately no champion/winner vocabulary. The standings are a win/loss table of the whole stage and rank 1 of it is not always the participant who won the last tie (a double-elimination title holder can have a worse record than the participant it beat in the reset, a two-legged final decided by a tie decision leaves the two finalists level in the table, and so can a bye, which is no win in a bracket's table): who won an elimination stage is `MatchOutcomeSelector::winners()` over the outcome. The usage guide has both cases ([Who won the bracket](USAGE.md#who-won-the-bracket)).
+- **StageOutcome**: The uniform completion product: standings, results, bye counts, and the structural final round; pooled stages combine into one outcome carrying the pool structure (`StageOutcome::combining()`). Deliberately no champion/winner vocabulary. The standings are a win/loss table of the whole stage and rank 1 of it is not always the participant who won the last tie (a double-elimination title holder can have a worse record than the participant it beat in the reset, a two-legged final decided by a tie decision leaves the two finalists level in the table, and so can a bye, which is no win in a bracket's table): who won an elimination stage is `MatchOutcomeSelector::winners()` over the outcome. The usage guide has the three cases ([Who won the bracket](USAGE.md#who-won-the-bracket)).
 - **EliminationPlan**: Bracket shape — single elimination knows rounds (log2 of bracket size) and events ((n-1) × legsPerTie); double elimination reports null (the grand final may reset). `getLegsPerTie()` is a tie-structure fact; `getLegs()` stays null.
 - **PoolDistributor**: Serpentine distribution of participants into pools by list position, plus per-pool result splitting — the generic primitive behind group stages
 - **ProgressionSelector**: The hand-off between stages — `RankRangeSelector` (rank slices: overall or per-pool blocks) and `MatchOutcomeSelector` (final-round winners/losers from recorded results, tie-aware). Each of the two has `fromArray()`/`toArray()` with a stable `mode` identifier; the interface declares neither, and nothing picks a selector class from plain data, so an application that stores selectors stores which class it is. Optional machinery: any ordered list is a valid stage entry.
@@ -56,14 +56,14 @@ play completes. The `src/Stage/` family:
 - **PotDrawOptions**: Pots, opponents per pot and the seed of the draw. The seed is an option and not a `Randomizer`, so a draw is repeatable from plain data; `fromArray()` refuses unknown keys.
 - **BacktrackingRoundRobinGenerator** (`@internal`): Opt-in search over the round decompositions the circle method cannot reach (`RoundRobinOptions(backtracking: true)`): per-round perfect matchings built seat by seat under the constraints, both orientations tried, dead ends backtracking across rounds. Deterministic, step-bounded, loud about budget-exhausted vs proven-unsatisfiable.
 - **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, roles proposed by round parity and decided by the configured role assignment, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first; [How a round robin is generated](#how-a-round-robin-is-generated) says what it reads from it.
-- **SwissScheduler**: Whole-schedule Swiss preset — drives SwissPairingEngine through the stage driver loop recording no results, so every participant stays level and a round is a non-repeat pairing of the field: in a random order with a `Randomizer`, and without one in the order of a table with no results, which is the standings fallback (seed, label, ID) and not list position. It refuses more rounds than participants minus one
+- **SwissScheduler**: Whole-schedule Swiss preset — drives SwissPairingEngine through the stage driver loop recording no results, so in a field of even size every participant stays level and a round is a non-repeat pairing of the field: in a random order with a `Randomizer`, and without one in the order of a table with no results, which is the standings fallback (seed, label, ID) and not list position. In a field of odd size a bye counts as a win in the pairing order, so the participants who have had one are ordered ahead of the rest and are paired first. It refuses more rounds than participants minus one
 - **PotDrawScheduler**: Whole-schedule pot draw — a pot-constrained partial round robin, drawn up front and unrelated to Swiss pairing. Built by direct construction, with no search: within-pot rounds from a 1-factorisation of the pot, cross-pot rounds from cyclic shifts between two pots, scheduled by a 1-factorisation of the pots themselves; pots of odd size (two opponents per pot) pair up as partners that share four rounds. Roles are assigned inside the construction. The rounds are then mixed: pairs of rounds trade events along their alternating cycles, which moves events between rounds and changes none. The class docblock holds the argument for why every round is a perfect matching. It takes no constraints and no `Randomizer`: each call seeds its own from the options, so it keeps no state between calls. Pairwise by nature.
 - **SchedulingContext**: What a constraint is given beside the candidate event: the participants, the events generated so far, the current leg and the stage plan (`getPlan()`). Immutable; `withEvents()` returns a new context. Its lookups by participant, pairing, round and leg read an index (`EventIndex`, below). The leg accessors answer for a round robin; for a format without legs `getCurrentLeg()` is 1 and `getEventsForLeg(1)` is every event
 
 ### Results-Driven Engines
 Formats whose later rounds depend on results cannot be generated whole; these
 engines resolve tournament state on every call:
-- **SwissPairingEngine**: A `StageEngineInterface` implementation — standings-aware Monrad pairing from the recorded `StageState`, with repeat avoidance, bye rotation (byes credited as wins), home/away balancing, withdrawal handling, constraint support, and optional randomization within score groups (equal ranking values, and win/draw/loss totals apart only by the rounding of a float sum)
+- **SwissPairingEngine**: A `StageEngineInterface` implementation — standings-aware Monrad pairing from the recorded `StageState`, with repeat avoidance, bye rotation (a bye counts as a win in the pairing order of later rounds, and as nothing in the outcome's table), home/away balancing, withdrawal handling, constraint support, and optional randomization within score groups (equal ranking values, and win/draw/loss totals apart only by the rounding of a float sum)
 - **SwissRoundSearch** (internal): the search that pairs one round for the engine. It returns what a plain depth-first search over opponents in pairing order returns. With no constraints, or with a constraint set `ConstraintPurity` knows, it skips the branches that provably hold no complete pairing: a set of unpaired participants with no perfect matching among the pairs still open to it (`PerfectMatching`, Edmonds' algorithm). A round with no dead end is paired without that test; a search that is still running after a fixed number of candidates is started again with it. Under any other constraint set it is the plain search and nothing else. The class comment gives the proof, and `tests/Unit/Scheduling/SwissRoundSearchTest.php` holds it to the unpruned search on histories of four and of six participants
 - **ConstraintPurity** (internal): says whether a constraint set holds only constraints that cannot tell how often, or in which order, they are asked: a `ConstraintSet` itself, holding objects of exactly `NoRepeatPairings`, `MinimumRestPeriodsConstraint`, `RoleBalanceConstraint` and `SeedProtectionConstraint`. Nothing states that a constraint is a predicate, so a constraint that runs code of the caller's may keep state or throw. The two shortcuts that ask constraints differently (the Swiss search above, and the round-robin retry loop, which builds no failure analysis for an ordering it goes on from) are taken only for a set this class knows
 - **EventIndex** (internal): the lookup maps behind `SchedulingContext`'s queries by participant, pairing, round and leg
@@ -166,6 +166,11 @@ that recorded violations. Those are generic advice, not findings.
 - **JsonConversionException** (extends `\JsonException`): JSON that cannot be read or written; wraps the PHP exception, keeping its message and code
 - **InvariantViolationException** (extends `\LogicException`): A state the library's own logic rules out — a defect, not a caller mistake
 - **UnavailableValueException** (extends `\LogicException`): A value asked of an object that does not hold it (a time from a shape-only `SessionGrid`, the kickoff of an assignment made on one, the capacity of an unbounded grid as a number) — a caller mistake that the object's `has...()` method would have prevented; not a configuration error and not a library defect. Unchecked on purpose, so a method that throws it puts no checked exception on callers that never hold such an object
+
+One more class carries the marker and is not in the list:
+`Repack\Internal\BudgetExhausted` (extends `\RuntimeException`,
+`@internal`), which the repacker throws and catches itself when its step
+budget runs out. It never reaches a caller.
 
 Each class keeps the PHP parent type its throw sites had before the marker
 existed, so a catch clause written against that type still matches. What the
@@ -289,25 +294,26 @@ part of the state.
 ### Namespace dependencies
 
 Which namespace of `src/` refers to classes of which other, from the code
-(docblocks not counted). Namespaces are relative to
-`MissionGaming\Tactician`.
+(docblocks not counted, so a namespace whose classes are named only in the
+type of a docblock, as `DTO\Participant` is in `RoleAssignment`, is not
+listed). Namespaces are relative to `MissionGaming\Tactician`.
 
 | Namespace | Refers to |
 |-----------|-----------|
 | `DTO` | `Exceptions` |
 | `Standings` | `DTO`, `Exceptions` |
-| `RoleAssignment` | `DTO`, `Exceptions` |
+| `RoleAssignment` | `Exceptions` |
 | `Stage` | `DTO`, `Exceptions`, `Standings` |
 | `Timeline` | `DTO`, `Exceptions`, `Stage` |
 | `Quality` | `DTO`, `Exceptions`, `Stage` |
 | `Repack` | `DTO`, `Exceptions`, `Timeline`, `Repack\Internal` |
-| `Repack\Internal` | `DTO`, `Exceptions`, `Repack` |
+| `Repack\Internal` | `Exceptions`, `Repack` |
 | `Constraints` | `DTO`, `Exceptions`, `Scheduling` |
 | `LegStrategies` | `Constraints`, `DTO`, `Scheduling` |
 | `Validation` | `Constraints`, `DTO`, `Exceptions`, `Stage` |
 | `Diagnostics` | `Constraints`, `DTO`, `Scheduling`, `Stage` |
 | `Scheduling` | `Constraints`, `DTO`, `Diagnostics`, `Exceptions`, `LegStrategies`, `RoleAssignment`, `Stage`, `Standings`, `Validation` |
-| `Exceptions` | `DTO`, `Diagnostics`, `Repack`, `Stage`, `Validation` |
+| `Exceptions` | `Diagnostics`, `Repack`, `Stage`, `Validation` |
 
 `Standings`, `Timeline`, `Quality` and `Repack` can be used without a
 scheduler. `Scheduling` is the hub. `Constraints`, `LegStrategies` and
@@ -365,7 +371,7 @@ benchmark suite (`tests/Benchmark/`) on the machine at hand, and the CI job
 
 ### Generation
 - **Unconstrained round robin**: the circle method does work proportional to the number of events. The 200-participant, two-leg case above generates in about a tenth of a second
-- **Constraints**: every candidate event is put to the constraint set once, and a set stops at the first constraint that rejects. What a constraint costs depends on what it reads from the context
+- **Constraints**: within one attempt every candidate event is put to the constraint set once, and a set stops at the first constraint that rejects; a rejected event is then put to each constraint once more to record which rejected it. What a constraint costs depends on what it reads from the context
 - **Indexed context**: `SchedulingContext` answers "which events hold this participant, this pair, this round, this leg" from an index of its event list (`EventIndex`), built on first use and extended, not rebuilt, by `withEvents()`. A lookup costs the events it returns. Before the index every lookup scanned the whole schedule, so one check cost as much as the schedule was long: `NoRepeatPairings` over two legs took 0.12 s at 32 participants and 2.1 s at 64, and takes 0.009 s and 0.07 s now. `tests/Unit/Scheduling/EventIndexTest.php` holds every lookup to a scan. A constraint that calls `getExistingEvents()` and scans the list itself does not benefit
 - **Role alternation**: round-parity roles bound the running role imbalance of a participant within one leg at 3 for a field of even size and 4 for a field of odd size, whatever the field size (checked for 2 to 30 participants)
 
