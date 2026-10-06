@@ -63,6 +63,7 @@ Added after the five phases and released in 0.2.0.
 - **`RoleBalanceConstraint` has a floor with the built-in generator.** `RoundRobinScheduler` bounds the running home/away imbalance at 3 for even field sizes and 4 for odd ones, so only limits at or above those values are always satisfiable. With the opt-in `BalancedRoleAssignment` the floor of a single leg is 1 for even field sizes and 2 for odd ones.
 - **Balanced roles are a property of one leg.** `BalancedRoleAssignment` balances every leg on its own; what the whole schedule adds up to depends on the leg strategy, which keeps its meaning. Mirrored legs are balanced overall for two legs and one apart for three, not for four or more in a field of even size, and nothing is promised about same-role streaks where two legs meet ([design note](design/role-assignment.md)).
 - **A scheduler with a `Randomizer` shuffles the first leg only.** The later legs are laid out from the participant order as given, so with a seeded scheduler they are not the first leg mirrored or repeated pairing by pairing.
+- **Events are pairwise.** `Event` accepts more than two participants, but nothing generates such an event, a `Result` cannot hold a finishing order, and standings and repack work on pairs. Events with more participants are a goal for 2.0 ([ADR 0003](adr/0003-multi-participant-events-are-a-2-0-goal.md)).
 - **`ScheduleOptimizer` samples; it does not search.** It keeps the best of N seeded candidates and works with whole-schedule generators only ([design note](design/schedule-quality.md)).
 
 ## Deferred work
