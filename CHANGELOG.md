@@ -48,6 +48,67 @@ heading **Output change (fix)**.
   environment (`LC_ALL`, `LANG`) at startup, so this needed no `setlocale()`
   call in the application. Under the default `C` locale the report is
   unchanged.
+- Participant ids that are equal as numbers (`'01'` and `'1'`, `'1e3'` and
+  `'1000'`), or that contain `|`, are told apart. **A field with no such ids
+  is unaffected**: every key, message and schedule is byte for byte what it
+  was, including the order of plain decimal ids (`9` before `10`). No action
+  is needed either way. Every map of pairings was keyed by `sort($ids)` and
+  `implode('|', $ids)`; `sort()` compares numeric strings as numbers, so two
+  such ids tied and the key depended on which was named first, and an id
+  with `|` gave two pairings one key (`a` v `b|c`, and `a|b` v `c`). For a
+  field that holds such ids:
+  - `SwissPairingEngine::pairNextRound()` repeated a pairing, or passed over
+    one that had not been played. With ids `0e1`, `0e2`, `01`, `1` and every
+    result drawn, round 2 was round 1 again; it is now `01 v 0e1, 1 v 0e2`.
+  - `RoundRobinPlan::validateIntegrity()` and `findUnplayedPairings()`, and
+    `SwissPlan::validateIntegrity()`, counted one pairing as two or two as
+    one, and named a pairing with `|` in an id wrongly (`Pairing a vs b vs
+    c`). Each violation now counts and names one pairing: `Pairing a vs b|c
+    appears 2 time(s); Swiss pairings may not repeat.`
+  - A `DiagnosticReport`, and so the report of an
+    `IncompleteScheduleException`, listed scheduled pairings as missing.
+  - `PairingSpacingMetric` measured the two meetings of such a pair as two
+    pairs that meet once, so `ScheduleOptimizer` could keep a different
+    candidate.
+  - `MatchOutcomeSelector` treated the two legs of a tie as two ties, or two
+    ties of a round as one.
+  - `StageState::withRoundPlayed()` and `withAdditionalResults()` accepted a
+    result for an event outside the pairing when its ids joined to the text
+    of an event inside it. They now throw the
+    `InvalidConfigurationException` their contract states. The `event`
+    entry in that exception's context writes a `|` inside an id as `\|` and
+    a `\` as `\\`.
+  - For an event of three or more participants, which no generator or engine
+    produces, `StageState` rejected a result that named the participants in
+    another order when PHP does not order their ids consistently (`2` is
+    below `10` as a number, `10` below `1a` and `1a` below `2` as text). The
+    event is now found in every order.
+- `SwissPairingEngine` treats two participants as level when their
+  win/draw/loss totals differ only by the rounding of a float sum. **This
+  affects only a `WinDrawLossRanking` whose values floats cannot hold
+  exactly (0.1 for a draw). Nothing changes for 3/1/0, 1/0.5/0 or any scale
+  in whole or half points, nor for any other `RankingStrategy`, whose values
+  are compared exactly as before.** On such a scale the same results added
+  in another order give different sums: at 1 for a win and 0.1 for a draw,
+  win-draw-draw is 1.2000000000000002 and draw-draw-win is 1.2. The engine
+  compared the two exactly, so level participants fell into different score
+  groups: a randomizer never shuffled them together, and a bye credited as a
+  win ranked above or below the win it stands for. Two totals are now level
+  when they are no further apart than the rounding of sums of that many
+  results can put them (for n results and a largest value M, 2 x n x n x M x
+  `PHP_FLOAT_EPSILON`: 4e-15 after three rounds at 1 for a win), and never
+  when a real result separates them; within a group the standings order
+  decides, and a randomizer shuffles the group. What to check: a seeded
+  stage on such a scale can pair differently from 0.2.1. The standings table
+  itself is unchanged.
+- `ScheduleScorer` refuses numbers that cannot be compared. Its constructor
+  accepted a weight of `NAN` or `INF`, because `NAN` fails no comparison and
+  `INF` is positive, and `score()` and `report()` returned whatever a metric
+  measured. They now throw `InvalidConfigurationException`: the constructor
+  for a weight that is not finite, `score()` and `report()` for a metric that
+  measures `NAN` or `INF`, and `score()` for a weighted sum that overflows.
+  Only a metric of your own can measure such a value; the built-in metrics
+  do not.
 - `InvalidConfigurationException::getDiagnosticReport()` writes a list in the
   context out entry by entry. It wrote the size of the list and nothing else,
   so a report about two colliding events did not say which two. That
@@ -114,9 +175,9 @@ heading **Output change (fix)**.
   also unchanged for the three factories on `SchedulingException` and for an
   `InvalidConfigurationException` that code outside the library builds the
   way it did before, because the library cannot tell what those describe.
-  The six errors `Stage\StageState` raises (see "Added" below) are built that
-  way too, so their report still ends with the round-robin block, which does
-  not describe them: a known gap. Every other configuration error the library
+  Six of the errors `Stage\StageState` raises (see "Added" below) are built
+  that way too, so their report still ends with the round-robin block, which
+  does not describe them: a known gap. Every other configuration error the library
   raises now has no "REQUIREMENTS" block, and its report ends with the
   configuration details.
 - The suggestion `IncompleteScheduleException::getDiagnosticReport()` gives
@@ -149,9 +210,10 @@ heading **Output change (fix)**.
   of the new backed enum `Exceptions\InvalidConfigurationReason`
   (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 32 more; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). 124 of the 130 sites that build the exception set one. The
-  six that do not are in `Stage\StageState` (recording a round or its
-  results, and a duplicate ID given to `start()`): `getReason()` returns null
+  identifiers). 127 of the 138 sites that build the exception set one. The
+  eleven that do not are in `Stage\StageState` (recording a round or its
+  results, replacing a result, the engine fingerprint, and a duplicate ID
+  given to `start()`): `getReason()` returns null
   for those, and for an exception that code outside the library builds
   without a reason. A `match` over the reason needs a `default` arm, because
   a release may add a case.
@@ -190,6 +252,39 @@ heading **Output change (fix)**.
 - An architecture test (`tests/Feature/ExceptionMarkerTest.php`) that fails
   when a `throw` in `src/`, an exception built there, or a method's return
   type names a class outside `TacticianException`.
+- `StageState::withResultReplaced()`: replaces the recorded result of one
+  event of the last recorded round and returns a new state. `StageState` had
+  no verb to change a result, so a result entered wrongly meant rebuilding
+  the state. It is a correction of what was recorded, not a way to decide
+  an event. The event is found by round number, participants in either order
+  and tie leg. The method throws
+  `InvalidConfigurationException` when no round is recorded, when the event
+  has no recorded result, and when its round is not the last recorded one:
+  the rounds after it were paired from its results, so the state is rebuilt
+  instead (`StageState::start()`, then `withRoundPlayed()` for each round
+  that stands).
+- An optional engine fingerprint on `StageState`:
+  `withEngineFingerprint()`, `getEngineFingerprint()` and
+  `requireEngineFingerprint()`, and `getFingerprint()` on
+  `SwissPairingEngine`, `SingleEliminationEngine` and
+  `DoubleEliminationEngine`. A state did not say which engine paired its
+  rounds, so a state restored into another engine, or into the same engine
+  built from other options, was replayed as that engine's own history. A
+  state stamped with a fingerprint is refused by `getPlan()`,
+  `pairNextRound()`, `isComplete()` and `getOutcome()` of every engine whose
+  fingerprint differs, with an `InvalidConfigurationException`. The stamp is
+  opt-in. An unstamped state is accepted by every engine as before and
+  serializes exactly as before; a stamped one adds an `engine_fingerprint`
+  key to `toArray()` and `toJson()`, and `fromArray()` loads data without
+  the key as an unstamped state.
+- Property tests over awkward participant ids: numerically equal strings,
+  leading zeros, exponent forms, ids that contain `|`, `:` or `\`,
+  empty-looking ids, Unicode and control characters, across round robin
+  (multi-leg, randomized, shuffled and backtracking), Swiss and both
+  elimination engines. Each asserts the schedule or bracket is the one
+  ordinary ids give, seat for seat.
+- `Stage\PairKey`, the one helper that builds every pairing key. It is
+  marked `@internal` and is not public API.
 - A decision record,
   `docs/adr/0003-multi-participant-events-are-a-2-0-goal.md`: events with
   more than two participants (a race, a lobby) are a goal for 2.0, the
@@ -218,6 +313,26 @@ heading **Output change (fix)**.
   PHP warning on PHP 8.5 when a context value is the float `NAN`. PHP 8.5
   warns when `NAN` is cast to a string, and the report cast it. The text is
   unchanged: `NAN`.
+- Round-robin generation, the backtracking search and both elimination
+  engines accept every participant id. For a field with two ids that are
+  equal as numbers, or an id that contains `|` (see "Output change (fix)"
+  above), they failed outright: `RoundRobinScheduler::schedule()` threw
+  `IncompleteScheduleException` for the ids `01`, `1`, `2`, `3`, because its
+  own integrity check rejected the complete schedule it had built; a
+  two-legged elimination tie between two such ids never resolved; two ties
+  of one round were rejected as `Two results reference the same elimination
+  match`; and `StageState` rejected the result of an event it had just
+  recorded when the result named the two participants in the other order.
+  The backtracking search also found no schedule for an odd field that
+  holds a participant with the id `"\0bye"`, which it used to mark the bye
+  seat. All of these now produce the schedule or bracket that any other ids
+  give.
+- `ScheduleOptimizer::optimize()` no longer ends without a winner. A metric
+  that measured `NAN` or `INF` left no candidate that scored below the
+  starting best of `INF`, so the run ended in an `AssertionError`, or in
+  `throw null` with assertions off. The scorer now refuses such a
+  measurement (see "Output change (fix)"), and the optimizer takes its first
+  candidate as the best so far whatever it scores.
 
 ## [0.2.1] - 2026-10-06
 

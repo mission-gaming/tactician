@@ -8,6 +8,7 @@ use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 
 /**
@@ -233,11 +234,18 @@ final class BacktrackingRoundRobinGenerator
         return $this->constraints->isSatisfied($event, $context);
     }
 
+    /**
+     * The key of a pairing, or of a participant's bye when the other seat
+     * is the bye seat.
+     *
+     * A bye is keyed by the one id behind a NUL byte. A key of one id
+     * holds no separator and a pairing's key holds exactly one, so a bye
+     * never shares a key with a pairing, whatever the ids are. The NUL
+     * keeps the key a string: PHP would turn the bare id `'7'` into the
+     * integer key 7, which the array spread in searchMatching() renumbers.
+     */
     private function pairKey(Participant $a, ?Participant $b): string
     {
-        $ids = [$a->getId(), $b?->getId() ?? "\0bye"];
-        sort($ids);
-
-        return implode('|', $ids);
+        return $b === null ? "\0" . PairKey::of($a->getId()) : PairKey::of($a->getId(), $b->getId());
     }
 }
