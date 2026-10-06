@@ -5,6 +5,7 @@ declare(strict_types=1);
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
@@ -23,6 +24,7 @@ use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
 use MissionGaming\Tactician\Stage\PoolDistributor;
+use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
@@ -43,18 +45,19 @@ use PHPUnit\Framework\AssertionFailedError;
 // exception that comes out is asked for its reason, its message and its
 // report.
 //
-// Gap left knowingly - the six sites in src/Stage/StageState.php pass no
-// reason yet, so an error from recording a round or its results has a null
-// reason. The file is listed below with the number of sites, so the test
-// fails when a site there gains a reason or a seventh appears, and the entry
-// has to be revisited.
+// Gap left knowingly - the eleven sites in src/Stage/StageState.php pass no
+// reason yet, so an error from recording a round or its results, from
+// replacing a result or from the engine fingerprint has a null reason. The
+// file is listed below with the number of sites, so the test fails when a
+// site there gains a reason or a twelfth appears, and the entry has to be
+// revisited.
 
 /**
  * Files whose sites build the exception without a reason, with how many
  * such sites each has.
  */
 const CONFIGURATION_SITES_WITHOUT_A_REASON = [
-    'src/Stage/StageState.php' => 6,
+    'src/Stage/StageState.php' => 11,
 ];
 
 /**
@@ -744,6 +747,39 @@ describe('the requirements of a configuration error', function (): void {
             configurationErrorGrid(2)
         )],
         'one participant in a Swiss stage' => [fn() => new SwissPlan([new Participant('a', 'A')], 1)],
+        // The errors StageState gained after the block was scoped. They
+        // state no reason, and still do not carry the round-robin block.
+        'a result replaced before any round is recorded' => [function (): void {
+            $alice = new Participant('a', 'Alice');
+            $bob = new Participant('b', 'Bob');
+            StageState::start([$alice, $bob])->withResultReplaced(new Result(new Event([$alice, $bob]), $alice));
+        }],
+        'a result replaced that was never recorded' => [function (): void {
+            $alice = new Participant('a', 'Alice');
+            $bob = new Participant('b', 'Bob');
+            $event = new Event([$alice, $bob], new Round(1));
+            StageState::start([$alice, $bob])
+                ->withRoundPlayed(new RoundPairing(1, null, [$event]), [])
+                ->withResultReplaced(new Result($event, $alice));
+        }],
+        'a result replaced under a later round' => [function (): void {
+            $alice = new Participant('a', 'Alice');
+            $bob = new Participant('b', 'Bob');
+            $first = new Event([$alice, $bob], new Round(1));
+            StageState::start([$alice, $bob])
+                ->withRoundPlayed(new RoundPairing(1, null, [$first]), [new Result($first, $alice)])
+                ->withRoundPlayed(new RoundPairing(2, null, [new Event([$bob, $alice], new Round(2))]), [])
+                ->withResultReplaced(new Result($first, $bob));
+        }],
+        'an empty engine fingerprint' => [
+            fn() => StageState::start([new Participant('a', 'A')])->withEngineFingerprint(''),
+        ],
+        'a state stamped by another engine' => [
+            fn() => (new SingleEliminationEngine())->isComplete(
+                StageState::start([new Participant('a', 'A'), new Participant('b', 'B')])
+                    ->withEngineFingerprint((new SwissPairingEngine())->getFingerprint())
+            ),
+        ],
     ]);
 
     it('writes the whole report of a timezone error', function (): void {

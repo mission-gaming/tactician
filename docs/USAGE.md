@@ -33,7 +33,7 @@ anything else that competes.
 
 | Term | Meaning |
 |------|---------|
-| **Participant** | An entity that competes. Identified by a unique string ID, with a display label, optional seed, and metadata. |
+| **Participant** | An entity that competes. Identified by a unique string ID, with a display label, optional seed, and metadata. The ID is any string and is compared exactly: see [Participant IDs](#participant-ids). |
 | **Event** | A single match/fixture between participants (usually two). Sports platforms often call this a fixture. |
 | **Pairing** | The unordered combination of participants in an event — "Alice vs Bob" regardless of who is home. |
 | **Round** | A set of events played at the same stage of the tournament. Round numbers are 1-based and continuous across legs (a two-leg, 4-participant round robin has rounds 1–6). |
@@ -52,7 +52,9 @@ anything else that competes.
 | **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A level two-legged tie is decided by the application's aggregate rules and recorded as `tie_winner` metadata on a leg result. Ties are not legs: brackets have no legs concept. |
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
-| **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`. |
+| **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
+| **Engine fingerprint** | An optional stamp on a stage state naming the engine that pairs it (`StageState::withEngineFingerprint()`): the format and the options that shape its rounds, as each engine's `getFingerprint()` gives them. An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
+| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. Level means equal; two `WinDrawLossRanking` totals that differ only by the rounding of a float sum are level too, so the same results added in another order do not split a group. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary — those are consumer interpretations of the outcome. |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
@@ -171,6 +173,44 @@ echo $detailedPlayer->getLabel() . "\n";     // 'Team Alpha'
 echo $detailedPlayer->getSeed() . "\n";      // 2
 echo $detailedPlayer->getMetadataValue('region', 'Unknown') . "\n"; // 'Europe'
 ```
+
+### Participant IDs
+
+An ID is any string, and two participants are the same participant only
+when their IDs are the same string. `'01'` and `'1'` are two participants,
+and so are `'1e3'` and `'1000'`, although PHP compares each pair as equal
+numbers. An ID may contain any character, including the `|`, `:` and `\`
+that the library uses inside its own lookup keys. The IDs of one field must
+be unique; nothing else is required of them to generate a schedule or to
+pair a stage. Writing a schedule or a stage state as JSON also needs every
+ID to be valid UTF-8.
+
+```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+
+// Entry numbers as they were typed: two of them are the number one
+$entries = [
+    new Participant('01', 'Entry 01'),
+    new Participant('1', 'Entry 1'),
+    new Participant('a|b', 'Entry A and B'),
+    new Participant('a', 'Entry A'),
+];
+
+$entrySchedule = (new RoundRobinScheduler())->schedule($entries);
+
+echo count($entrySchedule) . " events\n"; // 6 events: every pair meets once
+```
+
+Two things to know when the IDs are numbers:
+
+- PHP turns an array key such as `'42'` into the integer `42`. Where the
+  library returns an array keyed by participant ID (`getByeCounts()`, the
+  scores of a `Result`), cast the key back with `(string)` before you
+  compare it with an ID.
+- The last fallback of the standings order compares IDs as PHP compares two
+  strings, so `'9'` sorts before `'10'`. It is reached only when ranking
+  value, tiebreakers, scores, seed and label are all equal.
 
 ### Working with Events and Rounds
 
@@ -528,6 +568,18 @@ ordered by standings and paired adjacently (Monrad style), backtracking
 past repeat pairings. Byes rotate to the lowest-placed participant with
 the fewest so far and are credited as wins when ordering the next round.
 
+Participants who are level form a **score group**. With a `Randomizer` the
+engine shuffles the order within each group, and a credited bye is level
+with the win it stands for. Level means equal, with one allowance. A
+`WinDrawLossRanking` value is a float sum, and with a scale floats cannot
+hold exactly (0.1 for a draw) the same results added in another order
+differ in the last digits; the engine reads two such totals as level when
+they are no further apart than that rounding can put them, and never when a
+real result separates them. With 3/1/0 or 1/0.5/0 scoring the sums are
+exact, so level means equal. The values of a ranking strategy of your own
+are always compared exactly: return equal values for participants you mean
+to be level.
+
 Every results-driven format shares one driver loop — the single
 integration a platform writes:
 
@@ -585,6 +637,100 @@ use Random\Randomizer;
 $schedule = (new SwissScheduler(null, new Randomizer()))
     ->schedule($participants, new SwissOptions(rounds: 3));
 ```
+
+### Correcting a Recorded Result
+
+`withResultReplaced()` replaces the result of one event of the **last
+recorded round**, for a result that was entered wrongly. It corrects the
+record; it does not decide an event. The event is found by its round
+number, its participants in either order and its tie leg, so the state may
+have come back from storage. The replacement takes the place of the old
+result; nothing else in the state changes.
+
+```php
+// Round 5 is the last recorded round. Its first event was entered as a
+// win for the first participant; the second participant won it.
+$event = $pairing->getEvents()[0];
+[$enteredWinner, $actualWinner] = $event->getParticipants();
+
+$corrected = $state->withResultReplaced(new Result($event, $actualWinner));
+
+echo count($state->getResults()) . ' results before, '
+    . count($corrected->getResults()) . " after\n"; // 20 results before, 20 after
+```
+
+A result of an earlier round is refused. The rounds after it were paired
+from it (a bracket's next round holds the winners, a Swiss round follows
+the table), and a state that kept them over a changed result would hold
+pairings no engine made from it:
+
+```php
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+
+$firstRoundEvent = $state->getRoundsPlayed()[0]->getEvents()[0];
+
+try {
+    $state->withResultReplaced(new Result($firstRoundEvent, $firstRoundEvent->getParticipants()[1]));
+    echo "Replaced\n";
+} catch (InvalidConfigurationException $e) {
+    echo "Refused: round {$e->getContext()['round']} is not the last recorded round "
+        . "({$e->getContext()['last_round']})\n"; // Refused: round 1 is not the last recorded round (5)
+}
+```
+
+To correct an earlier round, rebuild the state: `StageState::start()`, then
+`withRoundPlayed()` for each round that still stands, with the corrected
+result, and ask the engine for the next round again. An event that has no
+recorded result is refused as well: add a first result with
+`withAdditionalResults()`.
+
+### Recording Which Engine Pairs a State
+
+A stage state does not say which engine paired its rounds, and an engine
+replays whatever it is handed. A Swiss state restored into a bracket
+engine, or a two-legged bracket into an engine built for one leg, is read
+as that engine's own history. Stamp the state with the engine's
+**fingerprint** and every other engine refuses it:
+
+```php
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+
+$engine = new SwissPairingEngine(plannedRounds: 5);
+
+$stamped = StageState::start($participants)
+    ->withEngineFingerprint($engine->getFingerprint());
+
+echo $stamped->getEngineFingerprint() . "\n"; // swiss:planned-rounds=5
+
+// The stamp is stored with the state and comes back with it
+$restored = StageState::fromJson($stamped->toJson());
+
+echo count($engine->pairNextRound($restored)->getEvents()) . " events\n"; // 4 events
+
+try {
+    (new SingleEliminationEngine())->pairNextRound($restored);
+    echo "Paired as a bracket\n";
+} catch (InvalidConfigurationException $e) {
+    echo "Refused: recorded by {$e->getContext()['recorded']}\n"; // Refused: recorded by swiss:planned-rounds=5
+}
+```
+
+The stamp is optional. A state without one is accepted by every engine,
+serializes without the `engine_fingerprint` key, and data stored before the
+stamp existed loads as an unstamped state. A stamped state keeps its stamp
+through every verb.
+
+A fingerprint names the format and the options that shape its rounds, for
+example `swiss:planned-rounds=5`. It is an opaque string: compare it with
+the one an engine gives, and do not parse it or write one by hand. Constraints, the standings calculator and the randomizer are
+objects the engine cannot name, so they are not part of it. All four
+engine methods (`getPlan()`, `pairNextRound()`, `isComplete()`,
+`getOutcome()`) refuse a state stamped with another fingerprint, with an
+`InvalidConfigurationException`. To change the configuration on purpose in
+mid-stage, such as extending a Swiss stage by a round, stamp the state again:
+`$state->withEngineFingerprint($newEngine->getFingerprint())`; passing
+`null` removes the stamp. An engine of your own can use any non-empty
+string and call `$state->requireEngineFingerprint()` with it.
 
 ## Elimination Brackets
 
@@ -650,7 +796,11 @@ final a reset match decides the title (disable with
 `new DoubleEliminationEngine(new EliminationOptions(grandFinalReset: false))`).
 Conflicting, duplicate, or round-less results are rejected with clear
 errors; partially recorded rounds are completed with
-`$state->withAdditionalResults([...])`.
+`$state->withAdditionalResults([...])`. The state itself accepts a drawn
+single-leg result, because it does not know the format, and the engine
+then rejects the state on every call. If the draw was entered by mistake,
+correct it with `$state->withResultReplaced(...)` (see
+[Correcting a Recorded Result](#correcting-a-recorded-result)).
 
 ## Pools, Progression, and Multi-Stage Tournaments
 
@@ -1664,6 +1814,13 @@ $score = $scorer->score($schedule);   // 4.5: the weighted defect score (3.0 x 1
 $report = $scorer->report($schedule); // ['Role Balance' => 1.5, 'Pairing Spacing' => 0.0]
 ```
 
+A weight is a positive, finite number, and every score is finite (zero is
+the ideal one). The scorer
+throws `InvalidConfigurationException` for a weight of `NAN` or `INF` when
+it is built, and for a metric of your own that measures `NAN` or `INF`, or a
+weighted sum that overflows, when it scores: a score that cannot be
+compared cannot be ranked.
+
 `ScheduleOptimizer` generates N candidates and keeps the best-scoring
 one. The generators are deterministic given a randomizer, so sampling
 schedules is sampling seeds — one master randomizer derives a child per
@@ -2145,11 +2302,12 @@ identifier for logs and stored data):
 A case says what kind of mistake was made, not which component found it:
 `TooFewParticipants` comes from the round-robin scheduler, the Swiss engine
 and the elimination engines alike. One group of errors has no reason yet:
-those `StageState` raises while a round or its results are recorded
-(`withRoundPlayed()`, `withAdditionalResults()`, and a duplicate ID given to
-`start()`). Their `getReason()` returns null, and because they state neither
-a reason nor requirements their report still ends with the round-robin
-"REQUIREMENTS" block, which does not describe them. Both are known gaps.
+those `StageState` raises (`withRoundPlayed()`, `withAdditionalResults()`,
+`withResultReplaced()`, the engine fingerprint, and a duplicate ID given to
+`start()`). Their `getReason()` returns null. The report of the first two
+and of `start()` also still ends with the round-robin "REQUIREMENTS" block,
+which does not describe them, because they state neither a reason nor
+requirements. Both are known gaps.
 
 ### Catching Every Library Exception
 

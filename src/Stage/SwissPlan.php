@@ -169,7 +169,7 @@ final readonly class SwissPlan implements StagePlan
             if ($pairingCounts[$pairingKey] > 1) {
                 $violations[] = sprintf(
                     'Pairing %s appears %d time(s); Swiss pairings may not repeat.',
-                    str_replace('|', ' vs ', $pairingKey),
+                    implode(' vs ', PairKey::order([$firstId, $secondId])),
                     $pairingCounts[$pairingKey]
                 );
             }
@@ -195,9 +195,6 @@ final readonly class SwissPlan implements StagePlan
 
     private function pairingKey(string $firstId, string $secondId): string
     {
-        $ids = [$firstId, $secondId];
-        sort($ids);
-
-        return implode('|', $ids);
+        return PairKey::of($firstId, $secondId);
     }
 }

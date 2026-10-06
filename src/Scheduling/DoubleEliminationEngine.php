@@ -62,11 +62,29 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
     }
 
     /**
-     * @throws InvalidConfigurationException When fewer than 2 participants have been seen
+     * What this engine stamps a stage state with, and requires of a state
+     * that carries a stamp: the format and the two options that shape its
+     * rounds, as `double-elimination:legs-per-tie=1,grand-final-reset=yes`.
+     *
+     * Compare the string; do not parse it. The standings calculator is an
+     * object the engine cannot name and is not part of it. See
+     * StageState::withEngineFingerprint().
+     */
+    public function getFingerprint(): string
+    {
+        return 'double-elimination:legs-per-tie=' . $this->options->legsPerTie
+            . ',grand-final-reset=' . ($this->options->grandFinalReset ? 'yes' : 'no');
+    }
+
+    /**
+     * @throws InvalidConfigurationException When fewer than 2 participants have been seen, or
+     *                                       the state is stamped with another engine's fingerprint
      */
     #[Override]
     public function getPlan(StageState $state): EliminationPlan
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         return new EliminationPlan(
             $state->getAllSeenParticipants(),
             'double-elimination',
@@ -142,6 +160,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
      */
     private function resolveState(StageState $state): array
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         $participants = array_values($state->getParticipants());
         $this->validateParticipants($participants);
 

@@ -274,6 +274,26 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         }
     })->with([
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'ids that are equal as numbers or hold a separator' => ['docs/USAGE.md', 'count($entrySchedule)', ["6 events\n"], []],
+        'a result replaced in the last round' => [
+            'docs/USAGE.md',
+            '$corrected = $state->withResultReplaced(',
+            ["20 results before, 20 after\n"],
+            [],
+        ],
+        // The block is there to show the refusal
+        'a result of an earlier round refused' => [
+            'docs/USAGE.md',
+            '$firstRoundEvent = ',
+            ["Refused: round 1 is not the last recorded round (5)\n"],
+            ['Replaced'],
+        ],
+        'a stamped state refused by another engine' => [
+            'docs/USAGE.md',
+            '->withEngineFingerprint($engine->getFingerprint());',
+            ["swiss:planned-rounds=5\n4 events\nRefused: recorded by swiss:planned-rounds=5\n"],
+            ['Paired as a bracket'],
+        ],
         'schedule metadata' => [
             'docs/USAGE.md',
             "getMetadataValue('participant_count')",

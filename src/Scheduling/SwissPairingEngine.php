@@ -12,6 +12,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
+use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -75,28 +76,49 @@ readonly class SwissPairingEngine implements StageEngineInterface
     }
 
     /**
+     * What this engine stamps a stage state with, and requires of a state
+     * that carries a stamp: the format and its planned rounds, as
+     * `swiss:planned-rounds=5`, or `swiss:planned-rounds=none` for an
+     * open-ended stage.
+     *
+     * Compare the string; do not parse it. The constraints, the standings
+     * calculator and the randomizer are objects the engine cannot name
+     * and are not part of it. See StageState::withEngineFingerprint().
+     */
+    public function getFingerprint(): string
+    {
+        return 'swiss:planned-rounds=' . ($this->plannedRounds ?? 'none');
+    }
+
+    /**
      * The shape declaration for this stage: rounds when planned, no legs.
      *
      * The plan covers every participant the stage has seen - active ones
      * plus withdrawn participants still referenced by recorded rounds.
      *
-     * @throws InvalidConfigurationException When fewer than 2 participants have been seen
+     * @throws InvalidConfigurationException When fewer than 2 participants have been seen, or
+     *                                       the state is stamped with another engine's fingerprint
      */
     #[Override]
     public function getPlan(StageState $state): SwissPlan
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         return new SwissPlan($state->getAllSeenParticipants(), $this->plannedRounds);
     }
 
     /**
      * Pair the next round from the recorded state.
      *
-     * @throws InvalidConfigurationException When fewer than 2 active participants remain
+     * @throws InvalidConfigurationException When fewer than 2 active participants remain, or
+     *                                       the state is stamped with another engine's fingerprint
      * @throws NoValidPairingException When no complete pairing exists for the round
      */
     #[Override]
     public function pairNextRound(StageState $state): RoundPairing
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         $participants = array_values($state->getParticipants());
         $this->validateParticipants($participants);
 
@@ -174,10 +196,14 @@ readonly class SwissPairingEngine implements StageEngineInterface
      * round. An open-ended stage (no planned rounds) with enough
      * participants never reports complete - the application decides when
      * to stop, or pairNextRound() throws when no valid pairing remains.
+     *
+     * @throws InvalidConfigurationException When the state is stamped with another engine's fingerprint
      */
     #[Override]
     public function isComplete(StageState $state): bool
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         if (count($state->getParticipants()) < 2) {
             return true;
         }
@@ -192,7 +218,8 @@ readonly class SwissPairingEngine implements StageEngineInterface
      * Standings cover every participant the stage has seen, including
      * withdrawn ones - their played games remain part of the record.
      *
-     * @throws InvalidConfigurationException When fewer than 2 participants have been seen
+     * @throws InvalidConfigurationException When fewer than 2 participants have been seen, or
+     *                                       the state is stamped with another engine's fingerprint
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
@@ -272,7 +299,7 @@ readonly class SwissPairingEngine implements StageEngineInterface
      * Order participants for pairing: standings order, with previous byes
      * credited as wins (the Swiss convention) so bye recipients pair among
      * the winners, and - when a randomizer is configured - shuffled within
-     * equal-ranking groups.
+     * each score group (see groupLevelRankings() for what level means).
      *
      * Crediting a bye "as a win" is only meaningful under a win/draw/loss
      * ranking, so byes require the standings calculator to use a
@@ -318,44 +345,143 @@ readonly class SwissPairingEngine implements StageEngineInterface
                 ?: ($first['index'] <=> $second['index'])
         );
 
-        if ($this->randomizer !== null) {
-            $indexed = $this->shuffleWithinEqualRankings($indexed);
+        $tolerance = $this->levelTolerance($entries, $byeCounts);
+
+        $ordered = [];
+        foreach ($this->groupLevelRankings($indexed, $tolerance) as $group) {
+            // Within a group the table decides, not the last bits of a sum.
+            usort($group, fn(array $first, array $second): int => $first['index'] <=> $second['index']);
+
+            if ($this->randomizer !== null) {
+                $group = $this->randomizer->shuffleArray($group);
+            }
+
+            foreach ($group as $entry) {
+                $ordered[] = $entry['participant'];
+            }
         }
 
-        return array_map(fn(array $entry) => $entry['participant'], $indexed);
+        return $ordered;
     }
 
     /**
-     * Shuffle each run of equal ranking values, preserving the order
-     * between runs. With no recorded rounds every participant ties at
-     * zero, so this shuffles the whole field - which is what makes
-     * results-free driving produce random non-repeat pairings.
+     * How far apart two ranking values may be and still be level: the most
+     * that the rounding of float sums can put between two totals that are
+     * the same total. Zero means level is equal.
+     *
+     * Only a WinDrawLossRanking gets a tolerance, because only there does
+     * the engine know how a value was made: a sum of one configured value
+     * per result (the class is final, so there is no subclass to consider).
+     * Any other RankingStrategy is compared exactly: its values are its
+     * own, and two that differ are two different scores however close.
+     *
+     * The bound. Let M be the largest magnitude of the win, draw and loss
+     * values, n the most terms any participant's total has (results played
+     * plus byes credited), and u = PHP_FLOAT_EPSILON / 2 the unit roundoff.
+     *
+     * - Adding k floats in sequence is off by at most (k - 1) * u * S,
+     *   where S is the sum of their magnitudes and S <= k * M (the
+     *   standard bound for recursive summation, to first order in u).
+     * - Crediting b byes multiplies once (off by at most u * b * M) and
+     *   adds once (off by at most u * (k + b) * M).
+     * - Together, with n = k + b: (k - 1) * k + b + n <= n * n, so one
+     *   total is off by at most n * n * u * M.
+     * - Two totals of the same results are therefore at most
+     *   2 * n * n * u * M apart. The tolerance is twice that,
+     *   2 * n * n * PHP_FLOAT_EPSILON * M: the other half covers the
+     *   terms of higher order in u and the rounding of the configured
+     *   values themselves (0.1 is not a tenth), so three draws at 0.1
+     *   are level with one win at 0.3.
+     *
+     * For 3/1/0 over 11 rounds that is 1.6e-13: sums of whole and half
+     * points are exact, so nothing but equal values is ever inside it.
+     *
+     * The cap. A total that differs from another by a real result is one
+     * step away: a result more (a win, draw or loss value that is not
+     * zero) or a result changed (the difference of two of them). The
+     * tolerance never exceeds a quarter of the smallest such step, so on a
+     * scale so stretched that the bound above would reach a step (a win
+     * worth 1e15 draws), totals a real result apart still fall in
+     * different groups, exactly as an exact comparison has them.
+     *
+     * @param array<\MissionGaming\Tactician\Standings\StandingEntry> $entries
+     * @param array<int|string, int> $byeCounts Byes so far, keyed by participant ID
+     */
+    private function levelTolerance(array $entries, array $byeCounts): float
+    {
+        $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
+        if (!$rankingStrategy instanceof WinDrawLossRanking) {
+            return 0.0;
+        }
+
+        $terms = 0;
+        foreach ($entries as $entry) {
+            $terms = max($terms, $entry->getPlayed() + ($byeCounts[$entry->getParticipant()->getId()] ?? 0));
+        }
+
+        $win = $rankingStrategy->getWinValue();
+        $draw = $rankingStrategy->getDrawValue();
+        $loss = $rankingStrategy->getLossValue();
+
+        $tolerance = 2.0 * $terms * $terms * PHP_FLOAT_EPSILON * max(abs($win), abs($draw), abs($loss));
+
+        foreach ([$win, $draw, $loss, $win - $draw, $draw - $loss, $win - $loss] as $step) {
+            if ($step !== 0.0) {
+                $tolerance = min($tolerance, abs($step) / 4.0);
+            }
+        }
+
+        // A value that is not a finite number has no rounding to allow for.
+        return is_finite($tolerance) ? $tolerance : 0.0;
+    }
+
+    /**
+     * Split entries into score groups: runs of participants who are level.
+     *
+     * A win/draw/loss ranking value is a float sum, and the sum of values a
+     * float cannot hold exactly depends on the order of its terms: at 1 for
+     * a win and 0.1 for a draw, win-draw-draw is 1.2000000000000002 and
+     * draw-draw-win is 1.2. Two values are therefore level when they are
+     * equal or no further apart than the tolerance (see levelTolerance();
+     * zero for every ranking strategy but WinDrawLossRanking). A group is
+     * measured from its highest value, so a chain of near-equal values
+     * cannot stretch it.
+     *
+     * Scoring that floats hold exactly (3/1/0, 1/0.5/0) is unaffected:
+     * there, level means equal. With no recorded rounds every participant
+     * ties at zero, so a randomizer shuffles the whole field - which is
+     * what makes results-free driving produce random non-repeat pairings.
      *
      * @param array<array{participant: Participant, ranking_value: float, index: int}> $indexed Ordered best first
-     * @return array<array{participant: Participant, ranking_value: float, index: int}>
+     * @return list<list<array{participant: Participant, ranking_value: float, index: int}>>
      */
-    private function shuffleWithinEqualRankings(array $indexed): array
+    private function groupLevelRankings(array $indexed, float $tolerance): array
     {
-        assert($this->randomizer !== null);
-
-        $shuffled = [];
+        $groups = [];
         $group = [];
-        $groupValue = null;
+        $groupValue = 0.0;
 
         foreach ($indexed as $entry) {
-            if ($groupValue !== null && $entry['ranking_value'] !== $groupValue) {
-                $shuffled = [...$shuffled, ...$this->randomizer->shuffleArray($group)];
+            // INF and NAN are never within a tolerance of anything: the
+            // difference is INF or NAN, and neither is <= a finite number.
+            $level = $entry['ranking_value'] === $groupValue
+                || abs($groupValue - $entry['ranking_value']) <= $tolerance;
+
+            if ($group !== [] && !$level) {
+                $groups[] = $group;
                 $group = [];
             }
-            $groupValue = $entry['ranking_value'];
+            if ($group === []) {
+                $groupValue = $entry['ranking_value'];
+            }
             $group[] = $entry;
         }
 
         if ($group !== []) {
-            $shuffled = [...$shuffled, ...$this->randomizer->shuffleArray($group)];
+            $groups[] = $group;
         }
 
-        return $shuffled;
+        return $groups;
     }
 
     /**
@@ -465,9 +591,6 @@ readonly class SwissPairingEngine implements StageEngineInterface
 
     private function pairingKey(Participant $firstParticipant, Participant $secondParticipant): string
     {
-        $ids = [$firstParticipant->getId(), $secondParticipant->getId()];
-        sort($ids);
-
-        return implode('|', $ids);
+        return PairKey::of($firstParticipant->getId(), $secondParticipant->getId());
     }
 }

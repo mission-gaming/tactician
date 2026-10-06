@@ -102,7 +102,8 @@ class InvalidConfigurationException extends SchedulingException
      *
      * @return ?InvalidConfigurationReason Null when the exception was built without a reason: by
      *                                     code outside the library, or by `Stage\StageState`,
-     *                                     whose errors (recording a round or its results, a
+     *                                     whose errors (recording a round or its results,
+     *                                     replacing a result, the engine fingerprint, a
      *                                     duplicate ID given to `start()`) do not state one yet
      */
     public function getReason(): ?InvalidConfigurationReason

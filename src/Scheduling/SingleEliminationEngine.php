@@ -52,11 +52,29 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
     ) {}
 
     /**
-     * @throws InvalidConfigurationException When fewer than 2 participants have been seen
+     * What this engine stamps a stage state with, and requires of a state
+     * that carries a stamp: the format and the two options that shape its
+     * rounds, as `single-elimination:legs-per-tie=1,reseed-each-round=no`.
+     *
+     * Compare the string; do not parse it. The standings calculator is an
+     * object the engine cannot name and is not part of it. See
+     * StageState::withEngineFingerprint().
+     */
+    public function getFingerprint(): string
+    {
+        return 'single-elimination:legs-per-tie=' . $this->options->legsPerTie
+            . ',reseed-each-round=' . ($this->options->reseedEachRound ? 'yes' : 'no');
+    }
+
+    /**
+     * @throws InvalidConfigurationException When fewer than 2 participants have been seen, or
+     *                                       the state is stamped with another engine's fingerprint
      */
     #[Override]
     public function getPlan(StageState $state): EliminationPlan
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         return new EliminationPlan(
             $state->getAllSeenParticipants(),
             'single-elimination',
@@ -134,10 +152,13 @@ final readonly class SingleEliminationEngine implements StageEngineInterface
      *
      * @return array{pending: RoundPairing|null}
      *
-     * @throws InvalidConfigurationException When a round is partially resolved or a tie is broken
+     * @throws InvalidConfigurationException When a round is partially resolved, a tie is broken, or
+     *                                       the state is stamped with another engine's fingerprint
      */
     private function resolveBracket(StageState $state): array
     {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
         $participants = array_values($state->getParticipants());
         $this->validateParticipants($participants);
 
