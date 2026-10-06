@@ -29,3 +29,4 @@ tests/Fixtures/golden/** text eol=lf
 /phpunit.xml           export-ignore
 /rector.php            export-ignore
 /tests                 export-ignore
+/tools                 export-ignore

@@ -39,6 +39,14 @@ use MissionGaming\Tactician\Tests\Support\BenchmarkComparison;
 
 $root = dirname(__DIR__, 2);
 
+// The runner is installed apart from the library's development dependencies
+// (tools/phpbench/README.md says why), so it may not be there.
+$runner = $root . '/tools/phpbench/vendor/bin/phpbench';
+if (!is_file($runner)) {
+    fwrite(STDERR, "The benchmark runner is not installed. Run `composer bench-install` first.\n");
+    exit(2);
+}
+
 require $root . '/vendor/autoload.php';
 
 $baseSource = $argv[1] ?? '';
@@ -68,7 +76,7 @@ if (!is_dir($output) && !mkdir($output, 0o777, true) && !is_dir($output)) {
  *
  * @return string|null The dump, or null when the run wrote none
  */
-$run = static function (string $side, int $round, ?string $source) use ($root, $output): ?string {
+$run = static function (string $side, int $round, ?string $source) use ($root, $output, $runner): ?string {
     $dump = "{$output}/{$side}-{$round}.xml";
     if (is_file($dump)) {
         unlink($dump);
@@ -76,7 +84,7 @@ $run = static function (string $side, int $round, ?string $source) use ($root, $
 
     $command = [
         PHP_BINARY,
-        $root . '/vendor/bin/phpbench',
+        $runner,
         'run',
         '--config=' . $root . '/tests/Benchmark/phpbench.json',
         '--dump-file=' . $dump,

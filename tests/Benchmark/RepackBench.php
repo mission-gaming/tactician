@@ -12,12 +12,6 @@ use MissionGaming\Tactician\Repack\PinnedEvent;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
-use PhpBench\Attributes\BeforeMethods;
-use PhpBench\Attributes\Iterations;
-use PhpBench\Attributes\OutputTimeUnit;
-use PhpBench\Attributes\Revs;
-use PhpBench\Attributes\Timeout;
-use PhpBench\Attributes\Warmup;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 use RuntimeException;
@@ -34,20 +28,18 @@ use RuntimeException;
  * run with the default step budget, which several of them use up: these
  * measure what a caller waits for, not the best case.
  *
- * Run with `composer bench`.
+ * Run with `composer bench`. RoundRobinBench says how the classes and the
+ * tool that runs them are kept apart.
  */
-#[BeforeMethods('setUp')]
-#[OutputTimeUnit('milliseconds', precision: 1)]
-#[Timeout(30.0)]
 final class RepackBench
 {
     /** @var array<string, RepackRequest> */
-    private array $requests = [];
+    private array $requests;
 
     /**
      * @throws InvalidConfigurationException
      */
-    public function setUp(): void
+    public function __construct()
     {
         $this->requests = [
             'even 24' => self::request(24, uneven: false),
@@ -62,9 +54,6 @@ final class RepackBench
      * @throws RepackViolationsException
      * @throws RuntimeException When the benchmark did not produce what it measures
      */
-    #[Revs(1)]
-    #[Iterations(5)]
-    #[Warmup(1)]
     public function bench24OnEvenSessions(): void
     {
         $this->repack('even 24');
@@ -75,9 +64,6 @@ final class RepackBench
      * @throws RepackViolationsException
      * @throws RuntimeException When the benchmark did not produce what it measures
      */
-    #[Revs(1)]
-    #[Iterations(5)]
-    #[Warmup(1)]
     public function bench24OnUnevenSessionsWithPins(): void
     {
         $this->repack('uneven 24');
@@ -88,9 +74,6 @@ final class RepackBench
      * @throws RepackViolationsException
      * @throws RuntimeException When the benchmark did not produce what it measures
      */
-    #[Revs(1)]
-    #[Iterations(5)]
-    #[Warmup(1)]
     public function bench40OnEvenSessions(): void
     {
         $this->repack('even 40');
@@ -101,9 +84,6 @@ final class RepackBench
      * @throws RepackViolationsException
      * @throws RuntimeException When the benchmark did not produce what it measures
      */
-    #[Revs(1)]
-    #[Iterations(5)]
-    #[Warmup(1)]
     public function bench40OnUnevenSessionsWithPins(): void
     {
         $this->repack('uneven 40');

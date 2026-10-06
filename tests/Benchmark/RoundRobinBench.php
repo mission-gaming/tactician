@@ -12,12 +12,6 @@ use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
-use PhpBench\Attributes\BeforeMethods;
-use PhpBench\Attributes\Iterations;
-use PhpBench\Attributes\OutputTimeUnit;
-use PhpBench\Attributes\Revs;
-use PhpBench\Attributes\Timeout;
-use PhpBench\Attributes\Warmup;
 use RuntimeException;
 
 /**
@@ -26,58 +20,62 @@ use RuntimeException;
  *
  * Run with `composer bench`. Each subject checks what it generated, so a
  * benchmark that stopped doing its work fails and is not reported as fast.
+ *
+ * The classes are plain PHP: nothing here names the tool that runs them
+ * (tools/phpbench/), so the gate analyses them without it installed. What
+ * the tool needs to know is in phpbench.json beside them: every public
+ * method named bench* is a subject, timed for one call at a time, with the
+ * constructor run first and outside the timing. A subject too quick to time
+ * as one call repeats its work itself.
  */
-#[BeforeMethods('setUp')]
-#[OutputTimeUnit('milliseconds', precision: 3)]
-#[Timeout(30.0)]
-final class RoundRobinBench
+final readonly class RoundRobinBench
 {
     /** @var list<Participant> */
-    private array $field24 = [];
+    private array $field24;
 
     /** @var list<Participant> */
-    private array $field32 = [];
+    private array $field32;
 
-    public function setUp(): void
+    public function __construct()
     {
         $this->field24 = self::field(24);
         $this->field32 = self::field(32);
     }
 
     /**
-     * 32 participants, one leg, no constraints: 496 events.
+     * 32 participants, one leg, no constraints: 496 events. Twenty times
+     * over, because one takes under a millisecond.
      *
      * @throws IncompleteScheduleException
      * @throws InvalidConfigurationException
      * @throws RuntimeException When the benchmark did not produce what it measures
      */
-    #[Revs(20)]
-    #[Iterations(5)]
-    #[Warmup(1)]
     public function benchUnconstrained32(): void
     {
-        $schedule = (new RoundRobinScheduler())->schedule($this->field32);
+        for ($repeat = 0; $repeat < 20; ++$repeat) {
+            $schedule = (new RoundRobinScheduler())->schedule($this->field32);
 
-        self::expect(count($schedule) === 496, 'an unconstrained schedule of 496 events');
+            self::expect(count($schedule) === 496, 'an unconstrained schedule of 496 events');
+        }
     }
 
     /**
      * 32 participants, two legs, the top two seeds kept apart for the
      * first quarter: the input order fails, the third rotation succeeds.
+     * Five times over.
      *
      * @throws IncompleteScheduleException
      * @throws InvalidConfigurationException
      * @throws RuntimeException When the benchmark did not produce what it measures
      */
-    #[Revs(5)]
-    #[Iterations(5)]
-    #[Warmup(1)]
     public function benchRetriesUnderSeedProtection32(): void
     {
-        $schedule = (new RoundRobinScheduler(new ConstraintSet([new SeedProtectionConstraint(2, 0.25)])))
-            ->schedule($this->field32, new RoundRobinOptions(legs: 2));
+        for ($repeat = 0; $repeat < 5; ++$repeat) {
+            $schedule = (new RoundRobinScheduler(new ConstraintSet([new SeedProtectionConstraint(2, 0.25)])))
+                ->schedule($this->field32, new RoundRobinOptions(legs: 2));
 
-        self::expect(count($schedule) === 992, 'a seed-protected schedule of 992 events');
+            self::expect(count($schedule) === 992, 'a seed-protected schedule of 992 events');
+        }
     }
 
     /**
@@ -87,9 +85,6 @@ final class RoundRobinBench
      * @throws InvalidConfigurationException
      * @throws RuntimeException When the benchmark did not produce what it measures
      */
-    #[Revs(1)]
-    #[Iterations(5)]
-    #[Warmup(1)]
     public function benchUnsatisfiable24TwoLegs(): void
     {
         $failed = false;

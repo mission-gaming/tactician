@@ -427,6 +427,64 @@ describe('Rector configuration', function () use ($root): void {
     });
 });
 
+// The weekly workflow fails when the library's lock file holds an abandoned
+// package (`composer audit --abandoned=fail`), because that is where a
+// maintainer finds out about one. A package that nothing can be done about
+// would fail it every week. One has been added that way before: the benchmark
+// runner requires an abandoned package, and it now has a lock file of its own
+// (tools/phpbench/). These tests see the next one in the pull request that
+// brings it, not a week after the merge.
+describe('The locked development dependencies', function () use ($root): void {
+    it('hold no package that is marked abandoned', function () use ($root): void {
+        $lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, flags: JSON_THROW_ON_ERROR);
+        Assert::assertIsArray($lock);
+        Assert::assertIsArray($lock['packages']);
+        Assert::assertIsArray($lock['packages-dev']);
+
+        $abandoned = [];
+        foreach ([...$lock['packages'], ...$lock['packages-dev']] as $package) {
+            Assert::assertIsArray($package);
+            Assert::assertIsString($package['name']);
+            // Composer writes `"abandoned": true`, or the name of the
+            // replacement, into the lock file entry of such a package.
+            if (array_key_exists('abandoned', $package) && $package['abandoned'] !== false) {
+                $abandoned[] = $package['name'];
+            }
+        }
+
+        expect($abandoned)->toBe([]);
+    });
+
+    it('do not hold the benchmark runner', function () use ($root): void {
+        $lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, flags: JSON_THROW_ON_ERROR);
+        Assert::assertIsArray($lock);
+        Assert::assertIsArray($lock['packages-dev']);
+
+        $locked = array_column($lock['packages-dev'], 'name');
+
+        expect($locked)->not->toContain('phpbench/phpbench')
+            ->and($locked)->not->toContain('doctrine/annotations');
+    });
+
+    it('recognise an abandoned package in a lock file', function () use ($root): void {
+        // The runner's lock file holds one, which shows that the mark the
+        // first test looks for is the one Composer writes.
+        $lock = json_decode((string) file_get_contents($root . '/tools/phpbench/composer.lock'), true, flags: JSON_THROW_ON_ERROR);
+        Assert::assertIsArray($lock);
+        Assert::assertIsArray($lock['packages']);
+
+        $abandoned = [];
+        foreach ($lock['packages'] as $package) {
+            Assert::assertIsArray($package);
+            if (array_key_exists('abandoned', $package) && $package['abandoned'] !== false) {
+                $abandoned[] = $package['name'];
+            }
+        }
+
+        expect($abandoned)->toBe(['doctrine/annotations']);
+    });
+});
+
 describe('PHP-CS-Fixer configuration', function () use ($root): void {
     it('follows PER Coding Style and the migration set of the Composer floor, and enforces strict types', function () use ($root): void {
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);

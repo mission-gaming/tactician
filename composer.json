@@ -32,7 +32,6 @@
         "ergebnis/composer-normalize": "^2.39",
         "friendsofphp/php-cs-fixer": "^3.0",
         "pestphp/pest": "^4.0",
-        "phpbench/phpbench": "^1.7",
         "phpstan/phpstan": "^2.1",
         "phpstan/phpstan-deprecation-rules": "^2.0",
         "phpstan/phpstan-strict-rules": "^2.0",
@@ -64,12 +63,13 @@
     "scripts": {
         "bench": [
             "Composer\\Config::disableProcessTimeout",
-            "phpbench run --config=tests/Benchmark/phpbench.json --report=aggregate"
+            "@php tests/bin/run-benchmarks.php"
         ],
         "bench-compare": [
             "Composer\\Config::disableProcessTimeout",
             "@php tests/bin/compare-benchmarks.php"
         ],
+        "bench-install": "@composer install --working-dir=tools/phpbench",
         "ci": [
             "@norm",
             "@phpstan",

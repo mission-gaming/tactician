@@ -67,7 +67,22 @@ with no constraints, one that needs retries and one that cannot be
 completed, and Swiss pairing under a constraint. A timing depends on the
 machine, so the suite is not part of the gate.
 
+phpbench is not one of the library's development dependencies. It is
+installed from `tools/phpbench/`, which has a `composer.json` and a
+`composer.lock` of its own, because it requires a package that is abandoned
+with no replacement, and the weekly workflow fails when the library's lock
+file holds an abandoned package
+([`tools/phpbench/README.md`](../tools/phpbench/README.md)). `composer
+install` therefore does not install it, and the two benchmark scripts say so
+when it is missing. The benchmark classes name nothing of phpbench: how a
+subject is run (one call at a time, five iterations, a time limit) is in
+`tests/Benchmark/phpbench.json`, so the gate analyses the classes without
+the runner.
+
 ```bash
+# Install the benchmark runner (once, and after its lock file changes)
+composer bench-install
+
 # Time every benchmark on this machine
 composer bench
 

@@ -1,0 +1,18 @@
+{
+    "name": "mission-gaming/tactician-benchmark-tool",
+    "description": "The benchmark runner of Tactician, installed apart from the library's own development dependencies",
+    "license": "MIT",
+    "type": "project",
+    "require": {
+        "php": "^8.3",
+        "phpbench/phpbench": "^1.7"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "platform": {
+            "php": "8.3.0"
+        },
+        "sort-packages": true
+    }
+}

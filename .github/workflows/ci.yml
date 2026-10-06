@@ -230,6 +230,21 @@ jobs:
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
 
+    # The benchmark runner has a composer.json and a lock file of its own in
+    # tools/phpbench/, apart from the library's development dependencies: it
+    # requires a package that is abandoned with no replacement, and the
+    # weekly workflow fails on an abandoned package in the library's lock
+    # file. This job is the only one that installs it.
+    - name: Install the benchmark runner
+      run: composer bench-install -- --prefer-dist --no-progress
+
+    # The runner's lock file is audited here, where it is used. A security
+    # advisory fails the job. The abandoned package is reported and does not:
+    # it is the reason the runner is kept apart, nothing in this repository
+    # can repair it, and it cannot reach the library's dependency set.
+    - name: Audit the benchmark runner's locked dependencies
+      run: composer audit --working-dir=tools/phpbench --locked --abandoned=report
+
     # Only src/ of the base: the benchmarks, and the tools that run them, are
     # the ones of the change, so both sides are measured the same way.
     - name: Take src/ as it is on the base of the pull request

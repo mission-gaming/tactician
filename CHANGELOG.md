@@ -598,7 +598,10 @@ heading **Output change (fix)**.
   tree by turns on one machine and fails when the working tree is more than
   1.5 times slower; the CI job `Benchmarks` runs it for a pull request
   against its base. The job is not a required check, and the suite is not
-  part of `composer ci`.
+  part of `composer ci`. The runner (phpbench) is installed by `composer
+  bench-install` from `tools/phpbench/`, with a lock file of its own, and
+  is not a development dependency of the library: it requires an abandoned
+  package, which must not enter the library's `composer.lock`.
 
 ### Changed
 

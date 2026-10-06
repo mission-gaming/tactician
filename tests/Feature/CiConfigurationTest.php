@@ -455,9 +455,16 @@ it('audits dependencies in a job of its own that is not a required check, and ke
         $jobs[$job] = $definition[1];
     }
 
-    // The audit runs once, in the audit job, and in neither required job
+    // The library's dependencies are audited once, in the audit job, and in
+    // neither required job. The one other audit in the workflow is of the
+    // benchmark runner's own lock file, in the Benchmarks job
+    // (tests/Feature/BenchmarkComparisonTest.php).
     expect($jobs['audit'])->toContain("      run: composer security-audit\n");
-    expect(preg_match_all('/^\s*run:.*\baudit\b/m', $workflow))->toBe(1);
+    preg_match_all('/^\s*run: (.*\baudit\b.*)$/m', $workflow, $audits);
+    expect($audits[1])->toBe([
+        'composer security-audit',
+        'composer audit --working-dir=tools/phpbench --locked --abandoned=report',
+    ]);
     foreach (['test', 'coverage'] as $required) {
         Assert::assertDoesNotMatchRegularExpression('/^\s*run:.*\baudit\b/m', $jobs[$required], "The required `{$required}` job audits dependencies");
     }

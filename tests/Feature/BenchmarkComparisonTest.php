@@ -184,18 +184,37 @@ describe('The benchmark suite', function (): void {
         ]);
     });
 
-    it('gives every benchmark class a time limit', function (): void {
+    it('gives every subject a time limit', function () use ($root): void {
         // Without one, a subject that runs away holds the CI job until the
         // job's own limit, and the base of a pull request may well run away:
         // it is the code before the change.
+        $configuration = json_decode((string) file_get_contents($root . '/tests/Benchmark/phpbench.json'), true, flags: JSON_THROW_ON_ERROR);
+        Assert::assertIsArray($configuration);
+
+        expect($configuration['runner.timeout'])->toBe(30);
+    });
+
+    it('keeps the benchmark classes free of the tool that runs them', function () use ($root): void {
+        // The gate analyses tests/Benchmark/ and the runner is not installed
+        // for the gate: a class that named a symbol of the runner could not
+        // be analysed. How a subject is run is in phpbench.json instead, and
+        // the runner is told not to look for its attributes.
         expect(benchmarkClassFiles())->toHaveCount(3);
         foreach (benchmarkClassFiles() as $file) {
-            Assert::assertMatchesRegularExpression(
-                '/^#\[Timeout\(\d+\.\d+\)\]\nfinal class /m',
+            Assert::assertDoesNotMatchRegularExpression(
+                '/PhpBench\\\\|^\s*#\[/m',
                 (string) file_get_contents($file),
-                basename($file) . ' sets no #[Timeout] on its class'
+                basename($file) . ' names a class of the benchmark runner, or carries an attribute'
             );
         }
+
+        $configuration = json_decode((string) file_get_contents($root . '/tests/Benchmark/phpbench.json'), true, flags: JSON_THROW_ON_ERROR);
+        Assert::assertIsArray($configuration);
+
+        expect($configuration['runner.attributes'])->toBeFalse()
+            ->and($configuration['runner.revs'])->toBe(1)
+            ->and($configuration['runner.iterations'])->toBe(5)
+            ->and($configuration['runner.warmup'])->toBe(1);
     });
 
     it('runs from Composer scripts that are not part of the gate', function () use ($root): void {
@@ -206,18 +225,49 @@ describe('The benchmark suite', function (): void {
         // a comparison of two source trees over several rounds takes longer.
         expect($composer['scripts']['bench'])->toBe([
             'Composer\\Config::disableProcessTimeout',
-            'phpbench run --config=tests/Benchmark/phpbench.json --report=aggregate',
+            '@php tests/bin/run-benchmarks.php',
         ])
             ->and($composer['scripts']['bench-compare'])->toBe([
                 'Composer\\Config::disableProcessTimeout',
                 '@php tests/bin/compare-benchmarks.php',
             ])
-            ->and($composer['require-dev'])->toHaveKey('phpbench/phpbench');
+            // The runner is installed from a project of its own.
+            ->and($composer['scripts']['bench-install'])->toBe('@composer install --working-dir=tools/phpbench');
 
         // A timing depends on the machine: the gate must give the same
         // answer everywhere.
         expect($composer['scripts']['ci'])->not->toContain('@bench')
             ->and($composer['scripts']['ci'])->not->toContain('@bench-compare');
+    });
+
+    it('runs with a runner that is not a dependency of the library', function () use ($root): void {
+        $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        $tool = json_decode((string) file_get_contents($root . '/tools/phpbench/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+        $toolLock = json_decode((string) file_get_contents($root . '/tools/phpbench/composer.lock'), true, flags: JSON_THROW_ON_ERROR);
+        Assert::assertIsArray($composer);
+        Assert::assertIsArray($tool);
+        Assert::assertIsArray($toolLock);
+
+        /** @var array{require-dev: array<string, string>} $composer */
+        expect($composer['require-dev'])->not->toHaveKey('phpbench/phpbench');
+
+        /** @var array{require: array<string, string>} $tool */
+        expect(array_keys($tool['require']))->toBe(['php', 'phpbench/phpbench']);
+
+        // The lock file of the runner is committed: the job installs what
+        // was reviewed, not what is newest on the day.
+        /** @var array{packages: list<array{name: string}>} $toolLock */
+        expect(array_column($toolLock['packages'], 'name'))->toContain('phpbench/phpbench');
+
+        // Both scripts find the runner there, and say how to install it
+        // when it is missing instead of installing anything themselves.
+        foreach (['run-benchmarks.php', 'compare-benchmarks.php'] as $script) {
+            $source = (string) file_get_contents($root . '/tests/bin/' . $script);
+
+            expect($source)->toContain("\$root . '/tools/phpbench/vendor/bin/phpbench'")
+                ->and($source)->toContain('The benchmark runner is not installed. Run `composer bench-install` first.')
+                ->and($source)->not->toContain("'/vendor/bin/phpbench'");
+        }
     });
 
     it('keeps what it writes out of the repository root', function () use ($root): void {
@@ -269,7 +319,24 @@ describe('The Benchmarks job', function (): void {
         expect($job)->toContain('BASE_SHA: ${{ github.event.pull_request.base.sha }}')
             ->and($job)->toContain('git archive "$BASE_SHA" src | tar -x -C build/base')
             ->and($job)->toContain("      run: composer bench-compare -- build/base/src\n");
-        expect(preg_match_all('/^\s*run:.*\bbench/m', $workflow))->toBe(1);
+
+        // The runner is installed in this job and in no other.
+        expect($job)->toContain("      run: composer bench-install -- --prefer-dist --no-progress\n");
+        expect(preg_match_all('/^\s*run:.*\bbench/m', $workflow))->toBe(2);
+        Assert::assertMatchesRegularExpression('/composer bench-install.*composer bench-compare/s', $job, 'The runner is installed after it is used');
+    });
+
+    it('audits the lock file of the runner, and fails on an advisory only', function () use ($root): void {
+        $workflow = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+        if (preg_match('/^  benchmarks:\n((?:(?:    .*)?\n)*)/m', $workflow, $definition) !== 1) {
+            Assert::fail('ci.yml has no `benchmarks` job');
+        }
+
+        // The runner requires an abandoned package, which is why it is kept
+        // apart: reported here, never a failure, and the lock file is the
+        // committed one.
+        expect($definition[1])->toContain("      run: composer audit --working-dir=tools/phpbench --locked --abandoned=report\n");
+        Assert::assertStringNotContainsString('--abandoned=fail', $workflow);
     });
 
     it('is not a required check and slows no required check', function () use ($root): void {
