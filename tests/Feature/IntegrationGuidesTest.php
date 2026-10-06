@@ -24,17 +24,43 @@ use PHPUnit\Framework\Assert;
  * script, which is what keeps the guide from drifting.
  *
  * A schematic block is framework glue and is not executed by anything. It
- * is checked for what can be checked without the framework: it parses, and
- * every library class it imports exists.
+ * is checked for what can be checked without the framework: it parses,
+ * every library class it imports exists, every static member it names on
+ * one of those classes exists (a method, a constant, an enum case), and
+ * every method it calls on an object is a public method of the library or
+ * is listed below as the framework's or the application's own
+ * (INTEGRATION_GUIDE_FRAMEWORK_METHODS). So a library method that is
+ * renamed fails this file although nothing runs the block.
  *
  * The prose is checked as well: a class, a method, a constructor argument
  * or an enum case named in backticks must exist in the library, and a link
  * to another document must lead to a file and a heading that exist.
  *
+ * A block or a symbol can only be checked if it is found. So a guide may
+ * open a fence with ```php and nothing else, and may not break a backticked
+ * span across two lines: both are asserted.
+ *
  * Not covered, and the reason: whether a schematic block does what its
- * guide says. That needs Symfony, Doctrine or Laravel installed, and the
- * library has no dependency on any of them.
+ * guide says, and whether a method it calls exists on the object it calls
+ * it on (the check knows the name, not the type of the variable). That
+ * needs Symfony, Doctrine or Laravel installed, and the library has no
+ * dependency on any of them.
  */
+
+/**
+ * The methods a schematic block calls on an object that are not the
+ * library's: the framework's, and the application's own. Every other method
+ * called on an object in a schematic block must be a public method of the
+ * library. A name that is both (getId) passes either way.
+ */
+const INTEGRATION_GUIDE_FRAMEWORK_METHODS = [
+    // Doctrine and Symfony
+    'wrapInTransaction', 'persist', 'getReference', 'find', 'error',
+    // Laravel
+    'orderBy', 'get', 'map', 'values', 'all', 'create', 'lockForUpdate', 'findOrFail', 'update', 'withErrors',
+    // The application's own entities, models, repositories and services
+    'findInRankingOrder', 'getName', 'getScheduleOptions', 'getStateJson', 'setStateJson', 'generate', 'clubs', 'fixtures', 'byes',
+];
 
 $integrationGuideFiles = glob(dirname(__DIR__, 2) . '/docs/integrations/*.md');
 $integrationGuides = array_map(basename(...), $integrationGuideFiles === false ? [] : $integrationGuideFiles);
@@ -185,6 +211,81 @@ function integrationGuideHasEnumCase(array $types, string $case): bool
 }
 
 /**
+ * Whether a constructor or a public method of the library has a parameter of
+ * this name.
+ *
+ * @param array<string, class-string> $types
+ */
+function integrationGuideHasParameter(array $types, string $parameter): bool
+{
+    foreach ($types as $type) {
+        foreach ((new ReflectionClass($type))->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+            foreach ($method->getParameters() as $candidate) {
+                if ($candidate->getName() === $parameter) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
+ * What a schematic block names that the library does not have: a static
+ * member of a library class it imports, or a method called on an object
+ * that is neither a public method of the library nor one of the given
+ * framework methods. Empty when there is nothing wrong.
+ *
+ * @param array<string, class-string> $types
+ * @param list<string> $frameworkMethods
+ * @return list<string>
+ *
+ * @throws ReflectionException
+ */
+function integrationGuideSchematicProblems(array $types, string $code, array $frameworkMethods): array
+{
+    preg_match_all('/^use (MissionGaming\\\\Tactician\\\\(?:[A-Za-z]+\\\\)*([A-Za-z]+));$/m', $code, $imports, PREG_SET_ORDER);
+    $imported = [];
+    foreach ($imports as $import) {
+        $imported[$import[2]] = $import[1];
+    }
+
+    // The tokens that carry meaning, as [id or the character itself, text]
+    $tokens = [];
+    foreach (token_get_all("<?php\n" . $code) as $token) {
+        if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+            continue;
+        }
+        $tokens[] = is_array($token) ? [$token[0], $token[1]] : [$token, $token];
+    }
+
+    $problems = [];
+    foreach ($tokens as $index => [$id, $text]) {
+        $next = $tokens[$index + 1] ?? [null, ''];
+
+        if ($id === T_DOUBLE_COLON) {
+            $class = $tokens[$index - 1] ?? [null, ''];
+            $type = $class[0] === T_STRING ? ($imported[$class[1]] ?? null) : null;
+            if ($type === null || $next[0] !== T_STRING) {
+                continue; // not a library class, or ::class
+            }
+            if (!method_exists($type, $next[1]) && !defined($type . '::' . $next[1])) {
+                $problems[] = "{$class[1]}::{$next[1]}, which {$class[1]} does not have";
+            }
+        }
+
+        if (($id === T_OBJECT_OPERATOR || $id === T_NULLSAFE_OBJECT_OPERATOR) && $next[0] === T_STRING && ($tokens[$index + 2][0] ?? null) === '(') {
+            if (!in_array($next[1], $frameworkMethods, true) && !integrationGuideHasMethod($types, $next[1])) {
+                $problems[] = "->{$next[1]}(), which is neither a public method of the library nor a listed framework method";
+            }
+        }
+    }
+
+    return $problems;
+}
+
+/**
  * What is wrong with one backticked piece of prose, or null when it names
  * nothing the library lacks. Text that is not a symbol (a string, a key of
  * plain data, a PHP expression on a variable) is not judged.
@@ -254,6 +355,13 @@ function integrationGuideSymbolProblem(array $types, string $code): ?string
         }
 
         return null;
+    }
+
+    // A bare name in camel case: an argument, as in "capacityPerSlot is how many events may share one slot"
+    if (preg_match('/^[a-z]+[A-Z][A-Za-z]*$/', $code) === 1) {
+        return integrationGuideHasParameter($types, $code) || integrationGuideHasMethod($types, $code)
+            ? null
+            : "names {$code}, which no constructor or method of the library takes as an argument";
     }
 
     // One call or a chain of calls on no stated object: fromArray(), getAnalysis()?->getImpossiblePairings()
@@ -365,6 +473,83 @@ it('holds only blocks that parse, and imports only library classes that exist', 
     }
 })->with($integrationGuides);
 
+// Nothing runs a schematic block, so the library calls in it are checked by name
+it('calls in its schematic blocks only what the library has', function (string $guide): void {
+    $types = integrationGuideLibraryTypes();
+
+    foreach (integrationGuideBlocks(integrationGuide($guide)) as $block) {
+        if ($block['kind'] !== 'schematic') {
+            continue;
+        }
+
+        $problems = integrationGuideSchematicProblems($types, $block['code'], INTEGRATION_GUIDE_FRAMEWORK_METHODS);
+        expect($problems)->toBe(
+            [],
+            "The schematic block at line {$block['line']} of docs/integrations/{$guide} names " . implode('; ', $problems)
+            . '. A framework or application method belongs in INTEGRATION_GUIDE_FRAMEWORK_METHODS.'
+        );
+    }
+})->with($integrationGuides);
+
+it('catches a library call in a schematic block that the library does not have', function (string $code, array $expected): void {
+    $problems = integrationGuideSchematicProblems(integrationGuideLibraryTypes(), $code, ['getStateJson']);
+
+    expect($problems)->toHaveCount(count($expected));
+    foreach ($expected as $index => $fragment) {
+        expect($problems[$index])->toContain($fragment);
+    }
+})->with([
+    'library calls that exist, and a listed framework method' => [
+        "use MissionGaming\\Tactician\\Stage\\StageState;\n\n\$state = StageState::fromJson(\$stage->getStateJson());\necho \$state?->toJson(), StageState::class;",
+        [],
+    ],
+    'a static method the class does not have' => [
+        "use MissionGaming\\Tactician\\Stage\\StageState;\n\n\$state = StageState::fromYaml(\$stored);",
+        ['StageState::fromYaml'],
+    ],
+    'an enum case the enum does not have' => [
+        "use MissionGaming\\Tactician\\Exceptions\\InvalidConfigurationReason;\n\n\$reason = InvalidConfigurationReason::TooFewEntrants;",
+        ['InvalidConfigurationReason::TooFewEntrants'],
+    ],
+    'a method nothing in the library has, and an unlisted framework method' => [
+        "\$pairing = \$engine->pairTheNextRound(\$state);\n\$stage?->setStateJson(\$state->toJson());",
+        ['->pairTheNextRound()', '->setStateJson()'],
+    ],
+    'a static call on a class that is not the library\'s' => [
+        "use Illuminate\\Support\\Facades\\DB;\n\nDB::transaction(static fn() => null);",
+        [],
+    ],
+]);
+
+// A block is checked only if it is found, and a symbol only if its span is
+it('opens every fence with ```php and keeps every backticked span on one line', function (string $guide): void {
+    $open = false;
+    foreach (explode("\n", integrationGuide($guide)) as $index => $line) {
+        $number = $index + 1;
+
+        if (preg_match('/^\s*(```|~~~)/', $line) === 1) {
+            expect($line)->toBe(
+                $open ? '```' : '```php',
+                "Line {$number} of docs/integrations/{$guide} is a fence this file does not read: "
+                . 'open a block with ```php alone at the start of the line and close it with ```.'
+            );
+            $open = !$open;
+
+            continue;
+        }
+
+        if (!$open) {
+            expect(substr_count($line, '`') % 2)->toBe(
+                0,
+                "Line {$number} of docs/integrations/{$guide} has a backticked span that does not close on the line, "
+                . 'so the symbol in it is not checked.'
+            );
+        }
+    }
+
+    expect($open)->toBeFalse("docs/integrations/{$guide} ends inside a fenced block.");
+})->with($integrationGuides);
+
 it('names in its prose only what the library has', function (string $guide): void {
     $types = integrationGuideLibraryTypes();
     preg_match_all('/`([^`\n]+)`/', integrationGuideProse(integrationGuide($guide)), $spans);
@@ -416,6 +601,8 @@ it('catches a symbol the library does not have, and leaves alone what is not a s
     'a bare method nothing has' => ['withResultSwapped()', 'no type of the library has'],
     'a method nothing has, late in a chain' => ['getAnalysis()?->getBlockedPairings()', 'no type of the library has'],
     'a constructor argument that does not exist' => ['RepackOptions(budget: 5)', 'its constructor does not have'],
+    'an argument by itself' => ['capacityPerSlot', null],
+    'an argument by itself that nothing takes' => ['capacityPerSession', 'no constructor or method'],
 ]);
 
 it('links only to files and headings that exist', function (string $guide): void {
