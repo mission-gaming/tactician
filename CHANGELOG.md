@@ -144,12 +144,50 @@ heading **Output change (fix)**.
 
 ### Added
 
+- Pot draws: `Scheduling\PotDrawScheduler`, a whole-schedule generator for
+  the format in which the entrants are cut into pots of equal size in seeding
+  order and every entrant meets a fixed number of opponents from every pot,
+  its own included, with no rematch. Every round is drawn before any event is
+  played. The format is often called "Swiss"; it is not Swiss pairing, because
+  nothing is paired from results. The classes are experimental.
+  - `Scheduling\PotDrawOptions` holds `pots`, `opponentsPerPot` and `seed`
+    (plain data: `pots`, `opponents_per_pot`, `seed`). `fromArray()` throws on
+    a key it does not know. The same participants, options and seed give the
+    same schedule on every call; the scheduler takes no `Random\Randomizer`
+    and builds a seeded one for each call.
+  - `Stage\PotDrawPlan` (algorithm identifier `pot-draw`) states the rounds
+    (pots × opponents per pot) and the events before anything is drawn, and
+    its `validateIntegrity()` checks the format: every entrant once in every
+    round, the exact number of opponents from every pot, no rematch, and the
+    role balance. The scheduler validates every schedule it returns with it.
+  - List position is the seeding: the first block of the list is pot 1. No
+    seed attribute is read.
+  - Roles are balanced. The two role counts of an entrant differ by at most
+    one, and with an even number of opponents per pot an entrant is in each
+    role exactly half the time against every pot.
+  - The schedule is built directly, with no search, for any even pot size,
+    and for an odd pot size with two opponents per pot. Generation time is
+    proportional to the number of events.
+  - A configuration that cannot exist is refused before anything is drawn,
+    with a reason of its own: `OddParticipantCount` (no bye is issued),
+    `UnequalPots`, `TooManyOpponentsPerPot` and `OddPotWithOddOpponents`. A
+    configuration that can exist and has no direct construction yet (an odd
+    pot size with four or more opponents per pot) is refused with
+    `ConfigurationNotYetSupported`. The context of each carries the numbers.
+  - Not in this release: pairs of entrants that must not meet, pots given
+    explicitly instead of cut from list order, and the configurations that
+    need a search.
+- Six cases of `Exceptions\InvalidConfigurationReason`: the five above and
+  `UnknownOptionKey`, for a plain-data key the options do not have.
+- A property suite (`tests/Feature/PotDrawInvariantsTest.php`) that draws
+  every supported pot draw configuration with up to 60 entrants over several
+  seeds and checks the rules of the format by counting in the events.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
-  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 32 more; the
+  (`TooFewParticipants`, `UnparseableTime`, `PinConflict` and 38 more; the
   usage guide lists them with their backing strings, which are stable
-  identifiers). 124 of the 130 sites that build the exception set one. The
+  identifiers). 138 of the 144 sites that build the exception set one. The
   six that do not are in `Stage\StageState` (recording a round or its
   results, and a duplicate ID given to `start()`): `getReason()` returns null
   for those, and for an exception that code outside the library builds
