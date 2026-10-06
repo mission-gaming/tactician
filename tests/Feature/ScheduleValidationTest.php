@@ -205,7 +205,7 @@ describe('Schedule Validation Integration', function (): void {
             // Then: Suggestions should be relevant to consecutive role constraints
             $report = $e->getDiagnosticReport();
             expect($report)->toContain('SUGGESTIONS');
-            expect($report)->toContain('Try reducing the consecutive role constraint limit');
+            expect($report)->toContain('Try raising the consecutive role constraint limit');
             expect($report)->toContain('Consider increasing the number of participants');
             expect($report)->toContain('Add more legs to provide more scheduling flexibility');
         }

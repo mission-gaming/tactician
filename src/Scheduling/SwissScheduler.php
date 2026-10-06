@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
@@ -143,7 +144,8 @@ class SwissScheduler implements SchedulerInterface
         if (!$options instanceof SwissOptions) {
             throw new InvalidConfigurationException(
                 'Swiss scheduling requires SwissOptions',
-                ['options' => $options::class]
+                ['options' => $options::class],
+                reason: InvalidConfigurationReason::UnsupportedOptions
             );
         }
 
@@ -160,14 +162,16 @@ class SwissScheduler implements SchedulerInterface
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Swiss scheduling requires at least 2 participants',
-                ['participant_count' => count($participants), 'minimum_required' => 2]
+                ['participant_count' => count($participants), 'minimum_required' => 2],
+                reason: InvalidConfigurationReason::TooFewParticipants
             );
         }
 
         if ($rounds > count($participants) - 1) {
             throw new InvalidConfigurationException(
                 'Swiss scheduling cannot avoid repeat opponents for more than participant_count - 1 rounds',
-                ['rounds' => $rounds, 'maximum_without_repeats' => count($participants) - 1]
+                ['rounds' => $rounds, 'maximum_without_repeats' => count($participants) - 1],
+                reason: InvalidConfigurationReason::InvalidRoundCount
             );
         }
 
@@ -175,7 +179,8 @@ class SwissScheduler implements SchedulerInterface
         if (count($ids) !== count(array_unique($ids))) {
             throw new InvalidConfigurationException(
                 'All participants must have unique IDs',
-                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))]
+                ['participant_count' => count($participants), 'unique_ids' => count(array_unique($ids))],
+                reason: InvalidConfigurationReason::DuplicateParticipantIds
             );
         }
     }

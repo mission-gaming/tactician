@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * An event already sitting on the grid that must not move.
@@ -40,21 +41,24 @@ final readonly class PinnedEvent
         if ($id === '') {
             throw new InvalidConfigurationException(
                 'A pinned event needs a non-empty id',
-                ['participant_a' => $participantA->getId(), 'participant_b' => $participantB->getId()]
+                ['participant_a' => $participantA->getId(), 'participant_b' => $participantB->getId()],
+                reason: InvalidConfigurationReason::EmptyEventId
             );
         }
 
         if ($participantA->getId() === $participantB->getId()) {
             throw new InvalidConfigurationException(
                 'An event needs two distinct participants',
-                ['event_id' => $id, 'participant' => $participantA->getId()]
+                ['event_id' => $id, 'participant' => $participantA->getId()],
+                reason: InvalidConfigurationReason::IdenticalParticipants
             );
         }
 
         if ($session < 0 || $slot < 0) {
             throw new InvalidConfigurationException(
                 'Pinned positions are 0-based session and slot indexes',
-                ['event_id' => $id, 'session' => $session, 'slot' => $slot]
+                ['event_id' => $id, 'session' => $session, 'slot' => $slot],
+                reason: InvalidConfigurationReason::PositionOutOfRange
             );
         }
     }

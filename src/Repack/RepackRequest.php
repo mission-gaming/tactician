@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\PinConflictException;
 
 /**
  * Everything a repack needs: the movable events, the pinned events, the
@@ -16,6 +18,13 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
  * pins off the grid, pins overflowing a slot's capacity, a participant
  * pinned twice at one position — throws, because no honest outcome can be
  * built over corrupt history.
+ *
+ * Each of those throws an InvalidConfigurationException whose reason
+ * (`getReason()`) says which it was. The message is the same sentence for
+ * every instance of a mistake and names no event; the ids are in the
+ * exception's context and its diagnostic report. A participant pinned twice
+ * at one position throws the PinConflictException subclass, whose
+ * `getEventIds()` returns the two pinned events that collide.
  */
 final readonly class RepackRequest
 {
@@ -29,7 +38,8 @@ final readonly class RepackRequest
      * @param array<MovableEvent> $movableEvents The events to place; order carries no meaning
      * @param array<PinnedEvent> $pinnedEvents The events that must not move; order carries no meaning
      *
-     * @throws InvalidConfigurationException When the input contradicts itself
+     * @throws PinConflictException When one participant is pinned in two events at one position
+     * @throws InvalidConfigurationException When the input contradicts itself in any other way
      */
     public function __construct(
         array $movableEvents,
@@ -42,14 +52,16 @@ final readonly class RepackRequest
             if (!$event instanceof MovableEvent) {
                 throw new InvalidConfigurationException(
                     'Every movable event must be a MovableEvent',
-                    ['index' => $index, 'given' => get_debug_type($event)]
+                    ['index' => $index, 'given' => get_debug_type($event)],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
 
             if (isset($seenIds[$event->getId()])) {
                 throw new InvalidConfigurationException(
                     'Event ids must be unique across the request',
-                    ['event_id' => $event->getId()]
+                    ['event_id' => $event->getId()],
+                    reason: InvalidConfigurationReason::DuplicateEventId
                 );
             }
             $seenIds[$event->getId()] = true;
@@ -61,14 +73,16 @@ final readonly class RepackRequest
             if (!$event instanceof PinnedEvent) {
                 throw new InvalidConfigurationException(
                     'Every pinned event must be a PinnedEvent',
-                    ['index' => $index, 'given' => get_debug_type($event)]
+                    ['index' => $index, 'given' => get_debug_type($event)],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
 
             if (isset($seenIds[$event->getId()])) {
                 throw new InvalidConfigurationException(
                     'Event ids must be unique across the request',
-                    ['event_id' => $event->getId()]
+                    ['event_id' => $event->getId()],
+                    reason: InvalidConfigurationReason::DuplicateEventId
                 );
             }
             $seenIds[$event->getId()] = true;
@@ -81,7 +95,8 @@ final readonly class RepackRequest
                         'session' => $event->getSession(),
                         'slot' => $event->getSlot(),
                         'sessions' => $grid->getSessionCount(),
-                    ]
+                    ],
+                    reason: InvalidConfigurationReason::PinOffGrid
                 );
             }
 
@@ -94,21 +109,20 @@ final readonly class RepackRequest
                         'session' => $event->getSession(),
                         'slot' => $event->getSlot(),
                         'capacity_per_slot' => $grid->getCapacityPerSlot(),
-                    ]
+                    ],
+                    reason: InvalidConfigurationReason::PinCapacityExceeded
                 );
             }
 
             foreach ($event->getParticipants() as $participant) {
                 $key = $position . ':' . $participant->getId();
                 if (isset($participantPositions[$key])) {
-                    throw new InvalidConfigurationException(
-                        'A participant is pinned twice at one position',
-                        [
-                            'participant' => $participant->getId(),
-                            'session' => $event->getSession(),
-                            'slot' => $event->getSlot(),
-                            'event_ids' => [$participantPositions[$key], $event->getId()],
-                        ]
+                    throw new PinConflictException(
+                        $participant->getId(),
+                        $event->getSession(),
+                        $event->getSlot(),
+                        $participantPositions[$key],
+                        $event->getId()
                     );
                 }
                 $participantPositions[$key] = $event->getId();

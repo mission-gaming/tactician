@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Stage;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Override;
 
 /**
@@ -63,7 +64,8 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
         if (!in_array($mode, [self::MODE_WINNERS, self::MODE_LOSERS], true)) {
             throw new InvalidConfigurationException(
                 'Unknown match outcome mode',
-                ['mode' => $mode, 'known' => [self::MODE_WINNERS, self::MODE_LOSERS]]
+                ['mode' => $mode, 'known' => [self::MODE_WINNERS, self::MODE_LOSERS]],
+                reason: InvalidConfigurationReason::UnknownIdentifier
             );
         }
 
@@ -85,7 +87,8 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
         if ($finalRound === null) {
             throw new InvalidConfigurationException(
                 'Match outcome selection requires an outcome with a final round',
-                ['mode' => $this->mode]
+                ['mode' => $this->mode],
+                reason: InvalidConfigurationReason::IncompatibleOutcome
             );
         }
 
@@ -110,7 +113,8 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
             if ($advancer === null) {
                 throw new InvalidConfigurationException(
                     'Final round tie has no complete recorded result',
-                    ['participants' => [$first->getId(), $second->getId()]]
+                    ['participants' => [$first->getId(), $second->getId()]],
+                    reason: InvalidConfigurationReason::UndecidedTie
                 );
             }
 
@@ -184,7 +188,8 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
             // collide with other rounds
             throw new InvalidConfigurationException(
                 'Match outcome selection requires events with round numbers',
-                ['participants' => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants())]
+                ['participants' => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants())],
+                reason: InvalidConfigurationReason::EventWithoutRoundNumber
             );
         }
 

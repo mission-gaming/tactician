@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Timeline;
 
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\RoundPairing;
 
 /**
@@ -37,7 +38,8 @@ final readonly class TimelineAssigner
             if (!$rule instanceof TimelineRule) {
                 throw new InvalidConfigurationException(
                     'Every timeline rule must implement TimelineRule',
-                    ['index' => $index, 'given' => get_debug_type($rule)]
+                    ['index' => $index, 'given' => get_debug_type($rule)],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
         }
@@ -65,7 +67,8 @@ final readonly class TimelineAssigner
         if ($groupedCount !== count($schedule)) {
             throw new InvalidConfigurationException(
                 'Timeline assignment requires every event to carry a round number',
-                ['events' => count($schedule), 'round_grouped_events' => $groupedCount]
+                ['events' => count($schedule), 'round_grouped_events' => $groupedCount],
+                reason: InvalidConfigurationReason::EventWithoutRoundNumber
             );
         }
 
@@ -89,7 +92,8 @@ final readonly class TimelineAssigner
             throw new InvalidConfigurationException(
                 'The assigned timeline has ' . count($violations) . ' time-rule violation(s): '
                     . implode(' ', array_slice($violations, 0, 3)),
-                ['violations' => $violations]
+                ['violations' => $violations],
+                reason: InvalidConfigurationReason::TimeRuleViolation
             );
         }
 
@@ -135,7 +139,8 @@ final readonly class TimelineAssigner
                     'slots_per_round' => $timeline->getSlotsPerRound(),
                     'capacity_per_slot' => $capacityPerSlot,
                     'round_capacity' => $roundCapacity,
-                ]
+                ],
+                reason: InvalidConfigurationReason::TimelineCapacityExceeded
             );
         }
 

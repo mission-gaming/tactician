@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Override;
 
 /**
@@ -25,7 +26,8 @@ final readonly class SwissOptions implements SchedulerOptions
         if ($rounds < 1) {
             throw new InvalidConfigurationException(
                 'Rounds must be a positive integer',
-                ['rounds' => $rounds, 'minimum_required' => 1]
+                ['rounds' => $rounds, 'minimum_required' => 1],
+                reason: InvalidConfigurationReason::InvalidRoundCount
             );
         }
     }
@@ -43,7 +45,8 @@ final readonly class SwissOptions implements SchedulerOptions
         if (!is_int($rounds)) {
             throw new InvalidConfigurationException(
                 'Rounds must be an integer',
-                ['rounds' => $rounds]
+                ['rounds' => $rounds],
+                reason: InvalidConfigurationReason::InvalidRoundCount
             );
         }
 

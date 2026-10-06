@@ -31,7 +31,9 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
         return new InvalidConfigurationException(
             $message,
             ['participant_count' => $count, 'minimum_required' => 2],
-            $message
+            $message,
+            reason: InvalidConfigurationReason::TooFewParticipants,
+            requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
         );
     }
 
@@ -42,7 +44,9 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
         return new InvalidConfigurationException(
             $message,
             ['constraint' => $constraint],
-            $message
+            $message,
+            reason: InvalidConfigurationReason::ConstraintViolation,
+            requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
         );
     }
 
@@ -53,7 +57,9 @@ abstract class SchedulingException extends Exception implements TacticianExcepti
         return new InvalidConfigurationException(
             $message,
             ['reason' => $reason],
-            $message
+            $message,
+            reason: InvalidConfigurationReason::InvalidSchedule,
+            requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
         );
     }
 }

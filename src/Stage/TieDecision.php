@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Stage;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * Resolves who advances from an elimination tie, shared by the bracket
@@ -52,7 +53,8 @@ final readonly class TieDecision
             if ($winner === null) {
                 throw new InvalidConfigurationException(
                     "Elimination events cannot end in a draw ({$first->getLabel()} vs {$second->getLabel()})",
-                    ['participants' => [$first->getId(), $second->getId()]]
+                    ['participants' => [$first->getId(), $second->getId()]],
+                    reason: InvalidConfigurationReason::UndecidedTie
                 );
             }
 
@@ -69,7 +71,8 @@ final readonly class TieDecision
             if (!isset($legWins[$winner->getId()])) {
                 throw new InvalidConfigurationException(
                     'Leg result names a winner who is not in the tie',
-                    ['winner' => $winner->getId(), 'participants' => [$first->getId(), $second->getId()]]
+                    ['winner' => $winner->getId(), 'participants' => [$first->getId(), $second->getId()]],
+                    reason: InvalidConfigurationReason::InvalidResult
                 );
             }
 
@@ -94,14 +97,16 @@ final readonly class TieDecision
 
                 throw new InvalidConfigurationException(
                     'Tie decision names a participant who is not in the tie',
-                    ['tie_winner' => $decision, 'participants' => [$first->getId(), $second->getId()]]
+                    ['tie_winner' => $decision, 'participants' => [$first->getId(), $second->getId()]],
+                    reason: InvalidConfigurationReason::InvalidResult
                 );
             }
         }
 
         throw new InvalidConfigurationException(
             "Two-legged tie between {$first->getLabel()} and {$second->getLabel()} is undecided: the legs are level, so record the aggregate decision as '" . self::TIE_WINNER_KEY . "' metadata on one leg's result",
-            ['participants' => [$first->getId(), $second->getId()]]
+            ['participants' => [$first->getId(), $second->getId()]],
+            reason: InvalidConfigurationReason::UndecidedTie
         );
     }
 }

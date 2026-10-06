@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Scheduling;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\RoundPairing;
@@ -54,7 +55,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
         if ($options->reseedEachRound) {
             throw new InvalidConfigurationException(
                 'Re-seeding conflicts with the fixed dropper choreography of double elimination; it is a single-elimination preset parameter',
-                []
+                [],
+                reason: InvalidConfigurationReason::IncompatibleOptions
             );
         }
     }
@@ -88,7 +90,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
         if ($resolution['pending'] === null) {
             throw new InvalidConfigurationException(
                 'Bracket is complete; no further rounds exist',
-                []
+                [],
+                reason: InvalidConfigurationReason::BracketComplete
             );
         }
 
@@ -311,7 +314,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface
                 throw new InvalidConfigurationException(
                     "Stage '{$stageName}' (round {$roundNumber}) is partially resolved: {$resolved} of " . count($playable)
                         . ' ties have complete results. Record the remaining results before pairing the next round.',
-                    ['round' => $roundNumber, 'stage' => $stageName, 'resolved' => $resolved, 'playable' => count($playable)]
+                    ['round' => $roundNumber, 'stage' => $stageName, 'resolved' => $resolved, 'playable' => count($playable)],
+                    reason: InvalidConfigurationReason::RoundPartiallyResolved
                 );
             }
         }

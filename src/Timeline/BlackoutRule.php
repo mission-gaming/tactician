@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Timeline;
 use DateTimeImmutable;
 use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Override;
 
 /**
@@ -33,7 +34,8 @@ final readonly class BlackoutRule implements TimelineRule
         if ($windows === []) {
             throw new InvalidConfigurationException(
                 'A blackout rule needs at least one window',
-                []
+                [],
+                reason: InvalidConfigurationReason::EmptyList
             );
         }
 
@@ -46,7 +48,8 @@ final readonly class BlackoutRule implements TimelineRule
                         'window' => $index,
                         'from' => $window['from']->format(DATE_ATOM),
                         'to' => $window['to']->format(DATE_ATOM),
-                    ]
+                    ],
+                    reason: InvalidConfigurationReason::NonAdvancingTime
                 );
             }
 
@@ -77,7 +80,8 @@ final readonly class BlackoutRule implements TimelineRule
         if (!is_array($windowsData) || $windowsData === []) {
             throw new InvalidConfigurationException(
                 'Blackout configuration requires a non-empty windows list',
-                ['windows' => $windowsData]
+                ['windows' => $windowsData],
+                reason: is_array($windowsData) ? InvalidConfigurationReason::EmptyList : InvalidConfigurationReason::WrongValueType
             );
         }
 
@@ -86,7 +90,8 @@ final readonly class BlackoutRule implements TimelineRule
             if (!is_array($windowData)) {
                 throw new InvalidConfigurationException(
                     'Each blackout window must be an array',
-                    ['window' => $windowData]
+                    ['window' => $windowData],
+                    reason: InvalidConfigurationReason::WrongValueType
                 );
             }
 
@@ -101,7 +106,8 @@ final readonly class BlackoutRule implements TimelineRule
                 if (!is_string($label)) {
                     throw new InvalidConfigurationException(
                         'Blackout window labels must be strings',
-                        ['label' => $label]
+                        ['label' => $label],
+                        reason: InvalidConfigurationReason::WrongValueType
                     );
                 }
                 $window['label'] = $label;

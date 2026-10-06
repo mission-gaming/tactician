@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Stage;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use Override;
 
 /**
@@ -45,21 +46,24 @@ final readonly class EliminationPlan implements StagePlan
         if (!in_array($algorithm, ['single-elimination', 'double-elimination'], true)) {
             throw new InvalidConfigurationException(
                 'Unknown elimination algorithm identifier',
-                ['algorithm' => $algorithm, 'known' => ['single-elimination', 'double-elimination']]
+                ['algorithm' => $algorithm, 'known' => ['single-elimination', 'double-elimination']],
+                reason: InvalidConfigurationReason::UnknownIdentifier
             );
         }
 
         if ($legsPerTie !== 1 && $legsPerTie !== 2) {
             throw new InvalidConfigurationException(
                 'Ties are played over 1 or 2 legs',
-                ['legs_per_tie' => $legsPerTie]
+                ['legs_per_tie' => $legsPerTie],
+                reason: InvalidConfigurationReason::InvalidLegCount
             );
         }
 
         if (count($participants) < 2) {
             throw new InvalidConfigurationException(
                 'Elimination brackets require at least 2 participants',
-                ['participant_count' => count($participants), 'minimum_required' => 2]
+                ['participant_count' => count($participants), 'minimum_required' => 2],
+                reason: InvalidConfigurationReason::TooFewParticipants
             );
         }
 

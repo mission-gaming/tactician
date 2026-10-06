@@ -357,7 +357,10 @@ describe('IncompleteScheduleException', function (): void {
 
         // Then: Should provide actionable suggestions
         expect($report)->toContain('SUGGESTIONS');
-        expect($report)->toContain('Try reducing the consecutive role constraint limit');
+        // The limit is the most events in a row a participant may have in one
+        // role, so the way to relax the constraint is to raise it
+        expect($report)->toContain('Try raising the consecutive role constraint limit');
+        expect($report)->not->toContain('reducing the consecutive role constraint limit');
         expect($report)->toContain('Consider increasing the number of participants');
         expect($report)->toContain('Add more legs to provide more scheduling flexibility');
     });

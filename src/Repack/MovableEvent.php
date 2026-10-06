@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * An existing event the repack may move: a stable caller-supplied
@@ -31,14 +32,16 @@ final readonly class MovableEvent
         if ($id === '') {
             throw new InvalidConfigurationException(
                 'A movable event needs a non-empty id',
-                ['participant_a' => $participantA->getId(), 'participant_b' => $participantB->getId()]
+                ['participant_a' => $participantA->getId(), 'participant_b' => $participantB->getId()],
+                reason: InvalidConfigurationReason::EmptyEventId
             );
         }
 
         if ($participantA->getId() === $participantB->getId()) {
             throw new InvalidConfigurationException(
                 'An event needs two distinct participants',
-                ['event_id' => $id, 'participant' => $participantA->getId()]
+                ['event_id' => $id, 'participant' => $participantA->getId()],
+                reason: InvalidConfigurationReason::IdenticalParticipants
             );
         }
     }
