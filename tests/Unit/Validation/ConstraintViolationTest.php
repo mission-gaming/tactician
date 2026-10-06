@@ -130,4 +130,22 @@ describe('ConstraintViolation', function (): void {
         // Then: Description should not mention round
         expect($violation->getDescription())->not->toContain('round');
     });
+
+    // Tests that only null and 0 leave the round out. A negative number is
+    // not a round, but it was always printed, so "not zero" must not become
+    // "greater than zero"
+    it('mentions every round number other than zero in descriptions', function (int $roundNumber): void {
+        // When: Creating a violation with that round number
+        $violation = new ConstraintViolation(
+            constraint: $this->constraint,
+            rejectedEvent: $this->event,
+            reason: 'Constraint violation occurred',
+            affectedParticipants: [$this->participant1],
+            roundNumber: $roundNumber
+        );
+
+        // Then: The description names it, between "violated" and the reason
+        expect($violation->getDescription())
+            ->toContain("violated in round {$roundNumber}: Constraint violation occurred");
+    })->with([1, 12, -1, PHP_INT_MAX]);
 });

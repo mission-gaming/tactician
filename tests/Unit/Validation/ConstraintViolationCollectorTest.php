@@ -221,4 +221,40 @@ describe('ConstraintViolationCollector', function (): void {
         // Then: Only round 3 is listed
         expect(array_values($this->collector->getAffectedRounds()))->toBe([3]);
     });
+
+    // Tests the exact array, keys included. The keys are the positions among
+    // the violations that have a round, with gaps where a zero or a repeat
+    // was dropped; a caller that reads them sees a different result if the
+    // list is ever re-indexed
+    it('keeps the position of each affected round as its key', function (): void {
+        // Given: Violations for rounds 0, 3, none, 3, 5 and -2, in that order
+        foreach ([0, 3, null, 3, 5, -2] as $roundNumber) {
+            $this->collector->recordViolation(new ConstraintViolation(
+                constraint: $this->constraint,
+                rejectedEvent: $this->event,
+                reason: 'Violation',
+                affectedParticipants: [$this->participant1],
+                roundNumber: $roundNumber
+            ));
+        }
+
+        // Then: The violation without a round takes no position, round 0 and
+        // the second round 3 leave a gap, and the negative number stays
+        expect($this->collector->getAffectedRounds())->toBe([1 => 3, 3 => 5, 4 => -2]);
+    });
+
+    // Tests that violations with no round at all give an empty list
+    it('reports no affected round when no violation has one', function (): void {
+        foreach ([null, null] as $roundNumber) {
+            $this->collector->recordViolation(new ConstraintViolation(
+                constraint: $this->constraint,
+                rejectedEvent: $this->event,
+                reason: 'Violation',
+                affectedParticipants: [$this->participant1],
+                roundNumber: $roundNumber
+            ));
+        }
+
+        expect($this->collector->getAffectedRounds())->toBe([]);
+    });
 });
