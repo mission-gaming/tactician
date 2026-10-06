@@ -176,9 +176,9 @@ both, even when the answer is no.
 - DTOs are readonly.
 - PHPStan reports zero errors: `src/` at level 9 (`phpstan.neon`), `tests/`
   and `examples/support/` at level 8 (`phpstan-tests.neon`), both with the
-  strict rules and the deprecation rules (`phpstan-common.neon`). The two
-  baseline files list what the strict rules found in code that existed when
-  they were enabled. Fix a finding in new code; do not add it to a baseline or
+  strict rules and the deprecation rules (`phpstan/common.neon`). The two
+  baseline files beside it list what the strict rules found in code that
+  existed when they were enabled. Fix a finding in new code; do not add it to a baseline or
   to `ignoreErrors`.
 - Rector (`rector.php`) applies the PHP sets up to 8.3, the dead code set and
   the early return set. A rule is skipped there only where it would change a

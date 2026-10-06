@@ -1,12 +1,13 @@
 # What both PHPStan configurations share. It is not a configuration to run:
 # phpstan.neon (src/, level 9) and phpstan-tests.neon (tests/ and
-# examples/support/, level 8) include it and add their own level and paths.
+# examples/support/, level 8), at the root, include it and add their own
+# level and paths. A path in this directory is relative to this directory.
 includes:
 	# Use of anything marked @deprecated is an error.
-	- vendor/phpstan/phpstan-deprecation-rules/rules.neon
+	- ../vendor/phpstan/phpstan-deprecation-rules/rules.neon
 	# The strict rule set, whole: no rule in it is switched off. What the
 	# code did not meet when it was enabled is in the two baseline files.
-	- vendor/phpstan/phpstan-strict-rules/rules.neon
+	- ../vendor/phpstan/phpstan-strict-rules/rules.neon
 
 parameters:
 	# Strict rules for better type safety. Note: the PHPStan 1.x options

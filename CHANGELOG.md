@@ -77,7 +77,7 @@ is identical.
   - PHPStan analyses `src/` at level 9 (the tests stay at level 8), with
     `phpstan-strict-rules` and `phpstan-deprecation-rules`. What the strict
     rules found in existing code and was not fixed is recorded in two baseline
-    files.
+    files under `phpstan/`.
   - Rector enabled no rule set, so it checked nothing. It now applies the PHP
     sets up to 8.3, the dead code set and the early return set. Rules that
     would change a public signature are skipped.

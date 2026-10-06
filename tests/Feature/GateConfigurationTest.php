@@ -117,16 +117,17 @@ describe('PHPStan configuration', function () use ($root): void {
     });
 
     it('turns on the strict rules and the deprecation rules for both', function () use ($root): void {
-        $common = (string) file_get_contents($root . '/phpstan-common.neon');
+        $common = (string) file_get_contents($root . '/phpstan/common.neon');
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
         Assert::assertIsArray($composer);
 
-        expect($common)->toContain("\t- vendor/phpstan/phpstan-strict-rules/rules.neon\n")
-            ->and($common)->toContain("\t- vendor/phpstan/phpstan-deprecation-rules/rules.neon\n")
+        // A path in an included file is relative to that file's directory.
+        expect($common)->toContain("\t- ../vendor/phpstan/phpstan-strict-rules/rules.neon\n")
+            ->and($common)->toContain("\t- ../vendor/phpstan/phpstan-deprecation-rules/rules.neon\n")
             ->and($composer['require-dev'])->toHaveKeys(['phpstan/phpstan-strict-rules', 'phpstan/phpstan-deprecation-rules']);
 
         foreach (['phpstan.neon', 'phpstan-tests.neon'] as $file) {
-            expect((string) file_get_contents($root . '/' . $file))->toContain("\t- phpstan-common.neon\n");
+            expect((string) file_get_contents($root . '/' . $file))->toContain("\t- phpstan/common.neon\n");
         }
     });
 
@@ -135,25 +136,52 @@ describe('PHPStan configuration', function () use ($root): void {
         // any of the three files can carry it: the two configurations
         // override what the shared file sets.
         expect((string) file_get_contents($root . '/' . $file))->not->toContain('strictRules');
-    })->with(['phpstan-common.neon', 'phpstan.neon', 'phpstan-tests.neon']);
+    })->with(['phpstan/common.neon', 'phpstan.neon', 'phpstan-tests.neon']);
 
     it('includes the shared rules and one baseline, and nothing else', function (string $file, array $includes) use ($root): void {
         // Another included file could lower the level, switch a rule off or
         // ignore errors without any of the files read here changing.
         expect(gateNeonIncludes((string) file_get_contents($root . '/' . $file)))->toBe($includes);
     })->with([
-        'phpstan.neon' => ['phpstan.neon', ['phpstan-common.neon', 'phpstan-baseline.neon']],
-        'phpstan-tests.neon' => ['phpstan-tests.neon', ['phpstan-common.neon', 'phpstan-tests-baseline.neon']],
-        'phpstan-common.neon' => ['phpstan-common.neon', [
-            'vendor/phpstan/phpstan-deprecation-rules/rules.neon',
-            'vendor/phpstan/phpstan-strict-rules/rules.neon',
+        'phpstan.neon' => ['phpstan.neon', ['phpstan/common.neon', 'phpstan/baseline.neon']],
+        'phpstan-tests.neon' => ['phpstan-tests.neon', ['phpstan/common.neon', 'phpstan/tests-baseline.neon']],
+        'phpstan/common.neon' => ['phpstan/common.neon', [
+            '../vendor/phpstan/phpstan-deprecation-rules/rules.neon',
+            '../vendor/phpstan/phpstan-strict-rules/rules.neon',
         ]],
     ]);
+
+    it('keeps only the two configurations that are run at the root', function () use ($root): void {
+        // The shared include and the baselines are in phpstan/. A NEON file
+        // added beside them or at the root is one no test here reads.
+        $neonFiles = static function (string $directory): array {
+            $found = glob($directory . '/*.neon');
+            Assert::assertIsArray($found);
+
+            return array_map(basename(...), $found);
+        };
+
+        expect($neonFiles($root))->toBe(['phpstan-tests.neon', 'phpstan.neon'])
+            ->and($neonFiles($root . '/phpstan'))->toBe(['baseline.neon', 'common.neon', 'tests-baseline.neon']);
+    });
+
+    it('names in each baseline only files that exist', function (string $file) use ($root): void {
+        // A baseline path is relative to the baseline's own directory. One
+        // that points nowhere would be an entry that matches nothing.
+        preg_match_all('/^\t\t\tpath: (\S+)$/m', (string) file_get_contents($root . '/' . $file), $paths);
+
+        expect($paths[1])->not->toBe([]);
+
+        foreach ($paths[1] as $path) {
+            expect($path)->toStartWith('../')
+                ->and(is_file($root . '/phpstan/' . $path))->toBeTrue();
+        }
+    })->with(['phpstan/baseline.neon', 'phpstan/tests-baseline.neon']);
 
     it('leaves no file of src/ out of the analysis', function () use ($root): void {
         // Excluding a file is the other way to stop seeing its findings.
         expect((string) file_get_contents($root . '/phpstan.neon'))->not->toContain('excludePaths')
-            ->and((string) file_get_contents($root . '/phpstan-common.neon'))->not->toContain('excludePaths');
+            ->and((string) file_get_contents($root . '/phpstan/common.neon'))->not->toContain('excludePaths');
     });
 
     it('silences no finding with a comment under src/', function () use ($root): void {
@@ -192,7 +220,7 @@ describe('PHPStan configuration', function () use ($root): void {
         // An ignored error is a finding nobody will see again. The baselines
         // are the one place for those, and they only shrink.
         expect((string) file_get_contents($root . '/phpstan.neon'))->not->toContain('ignoreErrors')
-            ->and((string) file_get_contents($root . '/phpstan-common.neon'))->not->toContain('ignoreErrors');
+            ->and((string) file_get_contents($root . '/phpstan/common.neon'))->not->toContain('ignoreErrors');
 
         $tests = (string) file_get_contents($root . '/phpstan-tests.neon');
 
@@ -216,8 +244,8 @@ describe('PHPStan configuration', function () use ($root): void {
         expect($size)->toBeGreaterThan(0)
             ->and($size)->toBeLessThanOrEqual($limit);
     })->with([
-        'src/' => ['phpstan-baseline.neon', 7],
-        'tests/ and examples/support/' => ['phpstan-tests-baseline.neon', 30],
+        'src/' => ['phpstan/baseline.neon', 7],
+        'tests/ and examples/support/' => ['phpstan/tests-baseline.neon', 30],
     ]);
 });
 

@@ -1,11 +1,11 @@
 # The library, at level 9. `composer phpstan` runs this configuration and
 # then phpstan-tests.neon, which holds tests/ and examples/support/ at level 8.
 includes:
-	- phpstan-common.neon
+	- phpstan/common.neon
 	# Findings of the strict rules that were in the code when the rules were
 	# enabled. Shorten the list; do not add to it. Regenerate it with
-	# `vendor/bin/phpstan analyse --generate-baseline phpstan-baseline.neon`.
-	- phpstan-baseline.neon
+	# `vendor/bin/phpstan analyse --generate-baseline phpstan/baseline.neon`.
+	- phpstan/baseline.neon
 
 parameters:
 	level: 9

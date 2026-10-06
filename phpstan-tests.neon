@@ -1,11 +1,11 @@
 # The tests and what the examples share, at level 8. `composer phpstan` runs
 # phpstan.neon (src/, level 9) first and then this configuration.
 includes:
-	- phpstan-common.neon
+	- phpstan/common.neon
 	# Findings of the strict rules that were in the code when the rules were
 	# enabled. Shorten the list; do not add to it. Regenerate it with
-	# `vendor/bin/phpstan analyse -c phpstan-tests.neon --generate-baseline phpstan-tests-baseline.neon`.
-	- phpstan-tests-baseline.neon
+	# `vendor/bin/phpstan analyse -c phpstan-tests.neon --generate-baseline phpstan/tests-baseline.neon`.
+	- phpstan/tests-baseline.neon
 
 parameters:
 	level: 8
