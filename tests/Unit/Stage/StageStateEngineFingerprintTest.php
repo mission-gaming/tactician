@@ -92,6 +92,36 @@ describe('StageState engine fingerprint', function (): void {
         'a list' => [['swiss']],
     ])->throws(InvalidInputException::class, 'Stage state engine fingerprint must be a non-empty string');
 
+    it('keeps a stamp of any text through storage', function (string $fingerprint): void {
+        $stamped = StageState::start($this->participants)->withEngineFingerprint($fingerprint);
+
+        expect(StageState::fromJson($stamped->toJson())->getEngineFingerprint())->toBe($fingerprint);
+        $stamped->requireEngineFingerprint($fingerprint);
+    })->with([
+        'a space' => [' '],
+        'quotes and a backslash' => ['my "engine" \\ v1'],
+        'the text null' => ['null'],
+        'a zero' => ['0'],
+        'unicode' => ['ladder:étape=3 🏆'],
+        'a line break' => ["two\nlines"],
+    ]);
+
+    it('writes no key again once the stamp is removed', function (): void {
+        $unstamped = StageState::start($this->participants)->withEngineFingerprint('stamp')->withEngineFingerprint(null);
+
+        expect($unstamped->toArray())->not->toHaveKey('engine_fingerprint')
+            ->and($unstamped->toJson())->toBe(StageState::start($this->participants)->toJson());
+    });
+
+    it('compares the stamp exactly', function (string $recorded, string $required): void {
+        StageState::start($this->participants)->withEngineFingerprint($recorded)->requireEngineFingerprint($required);
+    })->with([
+        'two numbers PHP calls equal' => ['1', '01'],
+        'case' => ['Swiss', 'swiss'],
+        'a trailing space' => ['swiss', 'swiss '],
+        'an empty requirement' => ['swiss', ''],
+    ])->throws(InvalidConfigurationException::class, 'The stage state was recorded by a different engine or configuration');
+
     it('keeps the stamp through every verb', function (): void {
         $event = new Event([$this->alice, $this->bob], new Round(1));
         $other = new Event([$this->carol, $this->dave], new Round(1));
@@ -256,6 +286,86 @@ describe('engine fingerprints', function (): void {
         $extended = $state->withEngineFingerprint($sixRounds->getFingerprint());
 
         expect($sixRounds->pairNextRound($extended)->getRoundNumber())->toBe(1);
+    });
+
+    it('refuses a state with recorded rounds that another engine paired', function (): void {
+        // The case the stamp is for: a state that already holds rounds,
+        // which an engine of another format would replay as its own.
+        $swiss = new SwissPairingEngine(plannedRounds: 3);
+        $state = StageState::start($this->participants)->withEngineFingerprint($swiss->getFingerprint());
+        for ($round = 1; $round <= 2; ++$round) {
+            $pairing = $swiss->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, array_map(
+                fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+                $pairing->getEvents()
+            ));
+        }
+        $restored = StageState::fromJson($state->toJson());
+
+        foreach ([new SingleEliminationEngine(), new DoubleEliminationEngine(), new SwissPairingEngine()] as $reader) {
+            expect(fn() => $reader->pairNextRound($restored))->toThrow(
+                InvalidConfigurationException::class,
+                'The stage state was recorded by a different engine or configuration'
+            );
+        }
+
+        expect($swiss->pairNextRound($restored)->getRoundNumber())->toBe(3);
+    });
+
+    it('tells a planned Swiss stage from an open-ended one', function (): void {
+        $state = StageState::start($this->participants)
+            ->withEngineFingerprint((new SwissPairingEngine(plannedRounds: 1))->getFingerprint());
+
+        expect(fn() => (new SwissPairingEngine())->isComplete($state))->toThrow(InvalidConfigurationException::class);
+    });
+
+    it('reports the stamp before anything else is wrong with the state', function (
+        SwissPairingEngine|SingleEliminationEngine|DoubleEliminationEngine $reader
+    ): void {
+        // One participant is too few for every engine; the stamp is checked first.
+        $state = StageState::start([$this->participants[0]])->withEngineFingerprint('an engine of my own');
+
+        foreach ([
+            fn() => $reader->pairNextRound($state),
+            fn() => $reader->isComplete($state),
+            fn() => $reader->getOutcome($state),
+            fn() => $reader->getPlan($state),
+        ] as $call) {
+            expect($call)->toThrow(
+                InvalidConfigurationException::class,
+                'The stage state was recorded by a different engine or configuration'
+            );
+        }
+    })->with([
+        'Swiss' => [fn() => new SwissPairingEngine()],
+        'single elimination' => [fn() => new SingleEliminationEngine()],
+        'double elimination' => [fn() => new DoubleEliminationEngine()],
+    ]);
+
+    it('gives two engines of one configuration one fingerprint', function (Closure $build): void {
+        expect($build()->getFingerprint())->toBe($build()->getFingerprint());
+    })->with([
+        'Swiss' => [fn() => new SwissPairingEngine(plannedRounds: 4)],
+        'single elimination' => [fn() => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2))],
+        'double elimination' => [fn() => new DoubleEliminationEngine(new EliminationOptions(grandFinalReset: false))],
+    ]);
+
+    it('gives every configuration its own fingerprint', function (): void {
+        $fingerprints = [
+            (new SwissPairingEngine())->getFingerprint(),
+            (new SwissPairingEngine(plannedRounds: 1))->getFingerprint(),
+            (new SwissPairingEngine(plannedRounds: 11))->getFingerprint(),
+        ];
+        foreach ([1, 2] as $legs) {
+            foreach ([true, false] as $flag) {
+                $fingerprints[] = (new SingleEliminationEngine(new EliminationOptions(legsPerTie: $legs, reseedEachRound: $flag)))
+                    ->getFingerprint();
+                $fingerprints[] = (new DoubleEliminationEngine(new EliminationOptions(legsPerTie: $legs, grandFinalReset: $flag)))
+                    ->getFingerprint();
+            }
+        }
+
+        expect(array_unique($fingerprints))->toHaveCount(11);
     });
 
     it('leaves the standings calculator, constraints and randomizer out of the fingerprint', function (): void {

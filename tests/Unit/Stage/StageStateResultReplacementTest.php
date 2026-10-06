@@ -7,6 +7,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
@@ -153,6 +154,74 @@ describe('StageState::withResultReplaced()', function (): void {
         throw new LogicException('A result was replaced under a round that was paired from it.');
     });
 
+    // An event is one round, one set of participants and one leg. Each
+    // replacement below matches a recorded result in two of the three.
+    it('fails for an event that differs from a recorded one in round, participants or leg', function (
+        string $difference,
+        ?int $round
+    ): void {
+        $event = match ($difference) {
+            'round' => new Event([$this->alice, $this->bob], new Round(2)),
+            'no round' => new Event([$this->alice, $this->bob]),
+            'leg' => new Event([$this->alice, $this->bob], new Round(1), ['tie_leg' => 2]),
+            'participants' => new Event([$this->alice, $this->dave], new Round(1)),
+            'a third participant' => new Event([$this->alice, $this->bob, $this->carol], new Round(1)),
+            default => throw new UnexpectedValueException($difference),
+        };
+
+        try {
+            $this->state->withResultReplaced(new Result($event, $this->alice));
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getMessage())->toContain('No result is recorded for the event')
+                ->and($exception->getContext()['round'])->toBe($round);
+
+            return;
+        }
+
+        throw new LogicException('A result was replaced that belongs to another event.');
+    })->with([
+        'a round that is not recorded yet' => ['round', 2],
+        'no round at all' => ['no round', null],
+        'the second leg of a tie recorded as one leg' => ['leg', 1],
+        'one participant of each of two events' => ['participants', 1],
+        'an event with a third participant' => ['a third participant', 1],
+    ]);
+
+    it('replaces the result of one of two events whose ids join to the same text', function (): void {
+        // "a" v "b|c" and "a|b" v "c" both read a|b|c when the ids are joined.
+        $a = new Participant('a', 'A', 1);
+        $bc = new Participant('b|c', 'BC', 2);
+        $ab = new Participant('a|b', 'AB', 3);
+        $c = new Participant('c', 'C', 4);
+        $first = new Event([$a, $bc], new Round(1));
+        $second = new Event([$ab, $c], new Round(1));
+        $firstResult = new Result($first, $a);
+        $secondResult = new Result($second, $ab);
+        $state = StageState::start([$a, $bc, $ab, $c])
+            ->withRoundPlayed(new RoundPairing(1, null, [$first, $second]), [$firstResult, $secondResult]);
+
+        $correction = new Result(new Event([$c, $ab], new Round(1)), $c);
+
+        expect($state->withResultReplaced($correction)->getResults())->toBe([$firstResult, $correction]);
+    });
+
+    it('replaces the result of one of two events whose ids are equal as numbers', function (): void {
+        $one = new Participant('1', 'One', 1);
+        $zeroOne = new Participant('01', 'Zero one', 2);
+        $oneZero = new Participant('1.0', 'One point zero', 3);
+        $exponent = new Participant('1e0', 'Exponent', 4);
+        $first = new Event([$one, $zeroOne], new Round(1));
+        $second = new Event([$oneZero, $exponent], new Round(1));
+        $firstResult = new Result($first, $one);
+        $secondResult = new Result($second, $oneZero);
+        $state = StageState::start([$one, $zeroOne, $oneZero, $exponent])
+            ->withRoundPlayed(new RoundPairing(1, null, [$first, $second]), [$firstResult, $secondResult]);
+
+        $correction = new Result(new Event([$zeroOne, $one], new Round(1)), $zeroOne);
+
+        expect($state->withResultReplaced($correction)->getResults())->toBe([$correction, $secondResult]);
+    });
+
     it('replaces a result of the last round when earlier rounds exist', function (): void {
         $final = new Event([$this->alice, $this->carol], new Round(2));
         $carolWins = new Result($final, $this->carol);
@@ -238,6 +307,82 @@ describe('correcting a result an engine cannot use', function (): void {
         // participant of the first event is one of them.
         expect($leaders->hasParticipant($first->getParticipants()[1]))->toBeTrue()
             ->and($leaders->hasParticipant($second->getParticipants()[0]))->toBeTrue();
+    });
+
+    it('lets a double elimination bracket go on after a drawn match is corrected', function (): void {
+        $engine = new DoubleEliminationEngine();
+        $state = StageState::start($this->participants);
+
+        $opening = $engine->pairNextRound($state);
+        [$first, $second] = $opening->getEvents();
+        $state = $state->withRoundPlayed($opening, [new Result($first), new Result($second, $second->getParticipants()[0])]);
+
+        expect(fn() => $engine->pairNextRound($state))->toThrow(InvalidConfigurationException::class);
+
+        $state = $state->withResultReplaced(new Result($first, $first->getParticipants()[0]));
+
+        // Play it out: every later round is paired from the corrected one.
+        $rounds = 0;
+        while (!$engine->isComplete($state)) {
+            expect(++$rounds)->toBeLessThanOrEqual(8);
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, array_map(
+                fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+                $pairing->getEvents()
+            ));
+        }
+
+        $standings = $engine->getOutcome($state)?->getStandings();
+        expect($standings?->getEntryFor($first->getParticipants()[1])?->getLosses())->toBe(2)
+            ->and($standings?->getEntryFor($first->getParticipants()[1])?->getDraws())->toBe(0);
+    });
+
+    it('decides a two-legged tie that ended level by correcting its second leg', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+        [$alice, $bob] = $this->participants;
+        $state = StageState::start([$alice, $bob]);
+
+        $final = $engine->pairNextRound($state);
+        [$firstLeg, $secondLeg] = $final->getEvents();
+        $state = $state->withRoundPlayed($final, [new Result($firstLeg, $alice), new Result($secondLeg, $bob)]);
+
+        // One leg each and no tie decision: the engine cannot name a winner.
+        expect(fn() => $engine->isComplete($state))->toThrow(InvalidConfigurationException::class);
+
+        // The second leg names the two the other way round from the first;
+        // the correction names them as the first leg does, with the leg.
+        $corrected = $state->withResultReplaced(new Result(
+            new Event($firstLeg->getParticipants(), new Round(1), ['tie_leg' => 2]),
+            $alice
+        ));
+
+        expect($engine->isComplete($corrected))->toBeTrue()
+            ->and($corrected->getResults())->toHaveCount(2)
+            ->and($engine->getOutcome($corrected)?->getStandings()->getEntryFor($alice)?->getWins())->toBe(2);
+    });
+
+    it('counts the corrected result once in the table, after storage', function (): void {
+        $engine = new SwissPairingEngine(plannedRounds: 1);
+        $state = StageState::start($this->participants);
+
+        $round = $engine->pairNextRound($state);
+        [$first, $second] = $round->getEvents();
+        [$entered, $actual] = $first->getParticipants();
+        $state = $state->withRoundPlayed($round, [
+            new Result($first, $entered),
+            new Result($second, $second->getParticipants()[0]),
+        ]);
+
+        $corrected = StageState::fromJson(
+            StageState::fromJson($state->toJson())->withResultReplaced(new Result($first, $actual))->toJson()
+        );
+
+        $standings = $engine->getOutcome($corrected)?->getStandings();
+        expect($corrected->getResults())->toHaveCount(2)
+            ->and($standings?->getEntryFor($actual)?->getWins())->toBe(1)
+            ->and($standings?->getEntryFor($actual)?->getLosses())->toBe(0)
+            ->and($standings?->getEntryFor($entered)?->getWins())->toBe(0)
+            ->and($standings?->getEntryFor($entered)?->getLosses())->toBe(1);
     });
 
     it('is rebuilt, not replaced, when the round is no longer the last', function (): void {
