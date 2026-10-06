@@ -166,9 +166,10 @@ heading **Output change (fix)**.
   `BalancedRoleAssignment`. `RoundRobinOptions` gains a fourth constructor
   parameter, `roleAssignment`, and a public property of the same name;
   `fromArray()` reads the optional key `role_assignment` (`round_parity` or
-  `balanced`), and `toArray()` writes that key only when the role assignment
-  is not the default, so options that do not set it serialize to the three
-  keys they always have. `InvalidConfigurationReason::InvalidRoleAssignment`
+  `balanced`), and `toArray()` writes that key only when a role assignment
+  was named, so options that do not name one serialize to the three keys
+  they always have and options that name one, the default included, keep it
+  through a round trip. `InvalidConfigurationReason::InvalidRoleAssignment`
   is the reason when a custom role assignment returns anything but the
   seatings it was given, each unchanged or reversed.
 

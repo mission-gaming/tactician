@@ -81,14 +81,30 @@ describe('RoundRobinOptions', function (): void {
             ->toBeInstanceOf(BalancedRoleAssignment::class);
     });
 
-    // The wire shape of options that do not set the role assignment is the
-    // three keys it has always been: the key appears only when it says
-    // something other than the default
-    it('serializes the role assignment only when it is not the default', function (): void {
-        expect((new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()))->toArray())
-            ->toBe(['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false]);
-        expect(RoundRobinOptions::fromArray(['role_assignment' => 'round_parity'])->toArray())
-            ->toBe(['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false]);
+    // The wire shape of options that name no role assignment is the three
+    // keys it has always been
+    it('serializes no role assignment when none was named', function (array $payload): void {
+        $threeKeys = ['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false];
+
+        expect((new RoundRobinOptions())->toArray())->toBe($threeKeys);
+        expect(RoundRobinOptions::fromArray($payload)->toArray())->toBe($threeKeys);
+        expect(RoundRobinOptions::fromArray(RoundRobinOptions::fromArray($payload)->toArray())->toArray())->toBe($threeKeys);
+    })->with([
+        'an empty payload' => [[]],
+        'a payload written before the option existed' => [['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false]],
+        'a null role assignment' => [['role_assignment' => null]],
+    ]);
+
+    // The default is to change in 0.3. A caller that names today's default
+    // to keep it must still have named it after a round trip through plain
+    // data, or the stored configuration would follow the new default.
+    it('keeps a role assignment that was named, the default included', function (): void {
+        $pinned = ['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'round_parity'];
+
+        expect((new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()))->toArray())->toBe($pinned);
+        expect(RoundRobinOptions::fromArray(['role_assignment' => 'round_parity'])->toArray())->toBe($pinned);
+        expect(RoundRobinOptions::fromArray($pinned)->toArray())->toBe($pinned);
+        expect(RoundRobinOptions::fromArray($pinned)->roleAssignment)->toBeInstanceOf(RoundParityRoleAssignment::class);
 
         $balanced = new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment());
 

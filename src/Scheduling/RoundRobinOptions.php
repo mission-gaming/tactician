@@ -42,6 +42,14 @@ final readonly class RoundRobinOptions implements SchedulerOptions
     public RoleAssignmentInterface $roleAssignment;
 
     /**
+     * Whether the caller named a role assignment. toArray() writes the
+     * `role_assignment` key for one that was named, the default included, so
+     * that a choice survives a round trip through plain data when a later
+     * release changes the default.
+     */
+    private bool $roleAssignmentNamed;
+
+    /**
      * @param int $legs How many times each participant meets each other participant
      * @param LegStrategyInterface|null $strategy How pairings vary across legs (default: mirrored roles)
      * @param bool $backtracking Search for a schedule when the greedy rotations cannot satisfy
@@ -67,6 +75,7 @@ final readonly class RoundRobinOptions implements SchedulerOptions
 
         $this->strategy = $strategy ?? new MirroredLegStrategy();
         $this->roleAssignment = $roleAssignment ?? new RoundParityRoleAssignment();
+        $this->roleAssignmentNamed = $roleAssignment !== null;
     }
 
     /**
@@ -110,8 +119,8 @@ final readonly class RoundRobinOptions implements SchedulerOptions
             );
         }
 
-        $roleAssignmentId = $config['role_assignment'] ?? 'round_parity';
-        if (!is_string($roleAssignmentId) || !isset(self::ROLE_ASSIGNMENT_IDENTIFIERS[$roleAssignmentId])) {
+        $roleAssignmentId = $config['role_assignment'] ?? null;
+        if ($roleAssignmentId !== null && (!is_string($roleAssignmentId) || !isset(self::ROLE_ASSIGNMENT_IDENTIFIERS[$roleAssignmentId]))) {
             throw new InvalidConfigurationException(
                 'Unknown role assignment identifier',
                 ['role_assignment' => $roleAssignmentId, 'known' => array_keys(self::ROLE_ASSIGNMENT_IDENTIFIERS)],
@@ -121,9 +130,14 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         }
 
         $strategyClass = self::STRATEGY_IDENTIFIERS[$strategyId];
-        $roleAssignmentClass = self::ROLE_ASSIGNMENT_IDENTIFIERS[$roleAssignmentId];
+        $roleAssignmentClass = $roleAssignmentId === null ? null : self::ROLE_ASSIGNMENT_IDENTIFIERS[$roleAssignmentId];
 
-        return new self($legs, new $strategyClass(), $backtracking, new $roleAssignmentClass());
+        return new self(
+            $legs,
+            new $strategyClass(),
+            $backtracking,
+            $roleAssignmentClass === null ? null : new $roleAssignmentClass()
+        );
     }
 
     /**
@@ -134,9 +148,11 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * expressed as plain data and fail loudly rather than serializing
      * something fromArray() could not rebuild.
      *
-     * The `role_assignment` key is present only when the role assignment is
-     * not the default, so options that do not set it serialize to the three
-     * keys they always have.
+     * The `role_assignment` key is present only when a role assignment was
+     * named, in the constructor or in the data given to fromArray(). Options
+     * that do not name one serialize to the three keys they always have, and
+     * options that name the default keep saying so, which is what holds a
+     * stored configuration to its roles when a release changes the default.
      *
      * @return array{legs: int, strategy: string, backtracking: bool, role_assignment?: string}
      * @throws InvalidConfigurationException When the strategy or the role assignment is not one of the built-ins
@@ -156,7 +172,7 @@ final readonly class RoundRobinOptions implements SchedulerOptions
 
         $config = ['legs' => $this->legs, 'strategy' => $identifier, 'backtracking' => $this->backtracking];
 
-        if ($this->roleAssignment instanceof RoundParityRoleAssignment) {
+        if (!$this->roleAssignmentNamed) {
             return $config;
         }
 

@@ -514,8 +514,9 @@ balanced roles also keep these two limits, which the test suite checks:
   even size, or more than 2 apart in a field of odd size.
 
 The option is plain data too. `toArray()` writes the `role_assignment` key
-only when the role assignment is not the default, so options that do not set
-it serialize as before:
+only when a role assignment was named, so options that do not name one
+serialize as before, and options that name one keep it through a round trip,
+the default included:
 
 ```php
 $balancedOptions = RoundRobinOptions::fromArray(['legs' => 2, 'role_assignment' => 'balanced']);
@@ -526,7 +527,10 @@ $balancedOptions->toArray();
 `BalancedRoleAssignment` becomes the default in 0.3. To keep the roles of
 today after that release, name the current default now:
 `new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())`, or
-`'role_assignment' => 'round_parity'` in plain data.
+`'role_assignment' => 'round_parity'` in plain data. Options that name it
+serialize with the key, so a stored configuration stays on these roles;
+options that name no role assignment serialize without it and follow the
+default of the release that reads them.
 
 #### Legs after the first
 
