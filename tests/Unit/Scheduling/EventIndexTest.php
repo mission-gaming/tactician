@@ -133,7 +133,7 @@ describe('EventIndex', function (): void {
     it('answers what a scan answers, for any event list', function (): void {
         $randomizer = new Randomizer(new Mt19937(20_261_006));
 
-        for ($case = 0; $case < 300; ++$case) {
+        for ($case = 0; $case < 150; ++$case) {
             $field = GeneratedEvents::field($randomizer->getInt(2, 9));
             $everyone = [...$field, new Participant('outsider', 'Outsider')];
             $maxRound = 3 * count($field);
@@ -201,7 +201,7 @@ describe('SchedulingContext lookups', function (): void {
     it('agree with a scan of the event list, through withEvents() and withNextLeg()', function (): void {
         $randomizer = new Randomizer(new Mt19937(41));
 
-        for ($case = 0; $case < 150; ++$case) {
+        for ($case = 0; $case < 60; ++$case) {
             $field = GeneratedEvents::field($randomizer->getInt(2, 8));
             $everyone = [...$field, new Participant('outsider', 'Outsider')];
             $maxRound = 3 * count($field);

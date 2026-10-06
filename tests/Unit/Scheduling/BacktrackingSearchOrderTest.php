@@ -103,7 +103,10 @@ describe('The backtracking search, against the search as first written', functio
 
         foreach ([2, 3, 4, 5, 6, 7, 8] as $size) {
             foreach (searchOrderConstraints($size) as $constraints) {
-                foreach ([0, 1, 2, 3, 5, 8, 13, 40, 150, 700, 4000] as $budget) {
+                // The largest budget on the two largest fields is most of
+                // this test's time and reaches no ending the others miss.
+                $budgets = $size <= 6 ? [0, 1, 2, 3, 5, 8, 13, 40, 150, 700, 4000] : [0, 1, 2, 3, 5, 8, 13, 40, 150, 700];
+                foreach ($budgets as $budget) {
                     foreach ([false, true] as $reversed) {
                         $field = $reversed ? array_reverse(searchOrderField($size)) : searchOrderField($size);
                         $plan = new RoundRobinPlan($field, 1);
@@ -136,7 +139,7 @@ describe('The backtracking search, against the search as first written', functio
         // The comparison is only worth something if it covered all three
         // endings: a schedule, a budget that ran out, and a search space
         // that held nothing.
-        expect($compared)->toBe(1078);
+        expect($compared)->toBe(1050);
         expect($stoppedByBudget)->toBeGreaterThan(300);
         expect($exhaustedTheSpace)->toBeGreaterThan(20);
         expect($compared - $stoppedByBudget - $exhaustedTheSpace)->toBeGreaterThan(200);

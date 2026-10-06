@@ -71,13 +71,18 @@ function expectAPerfectMatchingOrNone(?array $mate, array $vertices, array $edge
     }
 
     // What is returned must itself be a perfect matching of the graph.
+    // One expectation for the graph, not one per vertex: the pairs that are
+    // not an edge, or not each other's partner, are collected and must be
+    // none.
     $keys = array_keys($mate);
     sort($keys);
-    expect($keys)->toBe($vertices);
+    $wrong = [];
     foreach ($mate as $vertex => $partner) {
-        expect(isset($edges[$vertex][$partner]))->toBeTrue();
-        expect($mate[$partner])->toBe($vertex);
+        if (!isset($edges[$vertex][$partner]) || ($mate[$partner] ?? null) !== $vertex) {
+            $wrong[] = [$vertex, $partner];
+        }
     }
+    expect([$keys, $wrong])->toBe([$vertices, []]);
 }
 
 describe('PerfectMatching', function (): void {
