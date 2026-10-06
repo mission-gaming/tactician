@@ -279,9 +279,10 @@ it('keeps the scheduled workflow off pull requests and pushes', function () use 
     );
 });
 
-// A coverage driver slows every test down, so only the job that measures
-// coverage loads one.
-it('loads a coverage driver in the coverage job only', function () use ($root): void {
+// A coverage driver slows every test down, so only the jobs that need one
+// load one: the job that measures coverage, and the weekly mutation job,
+// which mutates the lines a test executes.
+it('loads a coverage driver in the coverage job and the weekly mutation job only', function () use ($root): void {
     $ci = (string) file_get_contents($root . '/.github/workflows/ci.yml');
     $scheduled = (string) file_get_contents($root . '/.github/workflows/scheduled.yml');
 
@@ -296,6 +297,8 @@ it('loads a coverage driver in the coverage job only', function () use ($root): 
 
     expect($drivers($ci, 'test'))->toBe(['none'])
         ->and($drivers($ci, 'coverage'))->toBe(['xdebug'])
+        ->and($drivers($ci, 'audit'))->toBe(['none'])
+        ->and($drivers($scheduled, 'mutation'))->toBe(['xdebug'])
         ->and($drivers($scheduled, 'unlocked'))->toBe(['none'])
         ->and($drivers($scheduled, 'next-php'))->toBe(['none']);
 
@@ -401,7 +404,9 @@ it('generates a locale with a decimal comma before every run of the test suite',
     $suiteRuns = 0;
 
     foreach ($jobs as $job) {
-        if (preg_match('/^      run: composer (?:ci|test|test-coverage)$/m', $job, $suite, PREG_OFFSET_CAPTURE) !== 1) {
+        // `composer mutation` runs the suite as well, as a line of a script
+        // block: its output goes through `tee`
+        if (preg_match('/^ {6,}(?:run: )?composer (?:ci|test|test-coverage|mutation)(?: .*)?$/m', $job, $suite, PREG_OFFSET_CAPTURE) !== 1) {
             continue;
         }
 
@@ -413,9 +418,107 @@ it('generates a locale with a decimal comma before every run of the test suite',
     }
 
     // Both workflows run the suite; a pattern that stopped matching would
-    // otherwise pass by finding nothing.
-    expect($suiteRuns)->toBe(2);
+    // otherwise pass by finding nothing. ci.yml runs it in the test and the
+    // coverage job; the scheduled workflow in its two jobs and in the
+    // mutation job.
+    expect($suiteRuns)->toBe(basename($workflow) === 'ci.yml' ? 2 : 3);
 })->with($workflowDataset);
+
+// A mutation run takes hours of a runner: every change to the source
+// starts a test process of its own. So it is not part of
+// `composer ci` and it is in no job of ci.yml: it runs in the weekly
+// workflow, which never runs for a pull request, in a job of its own that
+// enforces no minimum and publishes the score in the job summary.
+it('reports a mutation score once a week, in a job that no pull request waits for and that enforces no minimum', function () use ($root): void {
+    $ci = (string) file_get_contents($root . '/.github/workflows/ci.yml');
+    $workflow = (string) file_get_contents($root . '/.github/workflows/scheduled.yml');
+    $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
+
+    if (preg_match("/^  mutation:\n((?:(?:    .*)?\n)*)/m", $workflow, $definition) !== 1) {
+        Assert::fail('scheduled.yml has no `mutation` job');
+    }
+    $jobs = ['mutation' => $definition[1]];
+
+    // It runs once, in that job, and nowhere in the workflow of the
+    // required checks
+    // One job per directory, each with the path that replaces the two of
+    // the script, so that neither waits for the other or loses its score
+    // to the other's time limit
+    expect(preg_match_all('/^\s*composer mutation\b/m', $workflow))->toBe(1);
+    expect($jobs['mutation'])
+        ->toContain("        directory: ['src/Scheduling', 'src/Repack/Internal']\n")
+        ->toContain("      fail-fast: false\n")
+        ->toContain("        composer mutation -- --path=\${{ matrix.directory }} 2>&1 | tee build/mutation.log\n");
+    Assert::assertDoesNotMatchRegularExpression('/^[^#\n]*mutation/m', $ci, 'ci.yml runs mutation testing');
+
+    // Its check name is its own
+    preg_match_all('/^    name: (.+)$/m', $jobs['mutation'], $names);
+    expect($names[1])->toBe(['Mutation testing, ${{ matrix.directory }}']);
+
+    // It waits for no other job, no condition skips it, and a suite that
+    // fails under it is not tolerated
+    Assert::assertDoesNotMatchRegularExpression(
+        '/^    (?:if|needs|continue-on-error):/m',
+        $jobs['mutation'],
+        'The `mutation` job is conditional, waits on another job or may fail'
+    );
+
+    // The score is of the tests, so the tools come from the lock file
+    expect($jobs['mutation'])->toContain("      run: composer install --prefer-dist --no-progress\n");
+    Assert::assertDoesNotMatchRegularExpression('/^\s*run: composer update/m', $jobs['mutation'], 'The `mutation` job resolves dependencies afresh');
+
+    // A run that never ends is stopped: the job and the run step both have a
+    // limit (GitHub allows a job six hours), and the step's is the lower
+    // one, so that the summary still runs
+    if (
+        preg_match('/^    timeout-minutes: (\d+)$/m', $jobs['mutation'], $jobLimit) !== 1
+        || preg_match('/^      timeout-minutes: (\d+)$/m', $jobs['mutation'], $stepLimit) !== 1
+    ) {
+        Assert::fail('The `mutation` job or its run step has no timeout');
+    }
+    expect((int) $jobLimit[1])->toBeLessThanOrEqual(360)
+        ->and((int) $stepLimit[1])->toBeLessThan((int) $jobLimit[1]);
+
+    // `tee` would hide a failed run without pipefail, which naming the shell sets
+    expect($jobs['mutation'])->toContain("      shell: bash\n");
+
+    // The score goes to the job summary, also after a failed or stopped run
+    expect($jobs['mutation'])
+        ->toContain("      if: \${{ !cancelled() }}\n")
+        ->toContain("      run: php tests/bin/mutation-summary.php build/mutation.log >> \"\$GITHUB_STEP_SUMMARY\"\n");
+    expect(is_file($root . '/tests/bin/mutation-summary.php'))->toBeTrue();
+
+    // The script: the two directories, the lines a test executes, in
+    // parallel, with no minimum score, and outside the gate.
+    //
+    // Two spellings that look right give a wrong score, so they are pinned
+    // out. A second `--path` replaces the first (the option takes one
+    // comma-separated list), which would mutate one directory only. And
+    // `--processes` reaches the test process of every mutation, which then
+    // fails to start: every change is counted as noticed and the score is
+    // 100%.
+    /** @var array{scripts: array<string, string|list<string>>} $composer */
+    expect($composer['scripts']['mutation'])->toBe([
+        'Composer\\Config::disableProcessTimeout',
+        '@putenv XDEBUG_MODE=coverage',
+        'pest --configuration=phpunit.mutation.xml --mutate --everything --covered-only --path=src/Scheduling,src/Repack/Internal --parallel',
+    ]);
+    expect(substr_count(implode(' ', (array) $composer['scripts']['mutation']), '--path='))->toBe(1);
+    expect(implode(' ', (array) $composer['scripts']['mutation']))->not->toContain('--processes');
+    expect(is_file($root . '/phpunit.mutation.xml'))->toBeTrue();
+    expect($composer['scripts']['ci'])->not->toContain('@mutation');
+    foreach ($composer['scripts'] as $name => $script) {
+        expect(implode(' ', (array) $script))->not->toContain('--min', "The `{$name}` script sets a minimum score");
+        if ($name !== 'mutation') {
+            expect(implode(' ', (array) $script))->not->toContain('--mutate');
+        }
+    }
+    expect(is_dir($root . '/src/Scheduling'))->toBeTrue()
+        ->and(is_dir($root . '/src/Repack/Internal'))->toBeTrue();
+
+    // The report is a build product, never a tracked file
+    expect(file($root . '/.gitignore', FILE_IGNORE_NEW_LINES))->toContain('/build');
+});
 
 // Pest requires PHPUnit and Collision itself, at the versions it supports; a
 // second, direct requirement can only disagree with it. Faker was never used.

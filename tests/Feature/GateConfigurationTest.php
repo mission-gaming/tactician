@@ -245,7 +245,7 @@ describe('PHPStan configuration', function () use ($root): void {
             ->and($size)->toBeLessThanOrEqual($limit);
     })->with([
         'src/' => ['phpstan/baseline.neon', 7],
-        'tests/ and examples/support/' => ['phpstan/tests-baseline.neon', 30],
+        'tests/ and examples/support/' => ['phpstan/tests-baseline.neon', 28],
     ]);
 });
 
@@ -372,5 +372,80 @@ describe('PHPUnit configuration', function () use ($root): void {
         // same major version, so only the major version is pinned.
         expect((string) file_get_contents($root . '/phpunit.xml'))
             ->toContain('xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/' . Version::majorVersionNumber() . '.');
+    });
+});
+
+// `composer mutation` runs a part of the suite, named in a configuration of
+// its own (phpunit.mutation.xml says why). It is not part of the gate, and
+// it must not be a quieter suite than the gate's: a test that fails on a
+// warning in `composer test` fails on it in a mutation run as well.
+describe('Mutation testing configuration', function () use ($root): void {
+    it('differs from phpunit.xml in the tests it names and in nothing else', function () use ($root): void {
+        $gate = simplexml_load_file($root . '/phpunit.xml');
+        $mutation = simplexml_load_file($root . '/phpunit.mutation.xml');
+        Assert::assertInstanceOf(SimpleXMLElement::class, $gate);
+        Assert::assertInstanceOf(SimpleXMLElement::class, $mutation);
+
+        $attributes = static function (SimpleXMLElement $configuration): array {
+            $attributes = [];
+            foreach ($configuration->attributes() ?? [] as $name => $value) {
+                $attributes[(string) $name] = (string) $value;
+            }
+            ksort($attributes);
+
+            return $attributes;
+        };
+
+        expect($attributes($mutation))->toBe($attributes($gate))
+            ->and($mutation->source->asXML())->toBe($gate->source->asXML());
+    });
+
+    it('is valid against the schema of the installed PHPUnit', function () use ($root): void {
+        $document = new DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+
+        try {
+            $loaded = $document->load($root . '/phpunit.mutation.xml');
+            $valid = $loaded && $document->schemaValidate($root . '/vendor/phpunit/phpunit/phpunit.xsd');
+            $errors = array_map(fn(LibXMLError $error): string => trim($error->message), libxml_get_errors());
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+
+        expect($errors)->toBe([])
+            ->and($valid)->toBeTrue();
+    });
+
+    it('names only test files and directories that exist, each once', function () use ($root): void {
+        $mutation = simplexml_load_file($root . '/phpunit.mutation.xml');
+        Assert::assertInstanceOf(SimpleXMLElement::class, $mutation);
+
+        $named = [];
+        foreach ($mutation->testsuites->testsuite as $suite) {
+            foreach ($suite->directory as $directory) {
+                expect(is_dir($root . '/' . $directory))->toBeTrue("{$directory} is not a directory")
+                    ->and((string) $directory['suffix'])->toBe('Test.php');
+                $named[] = (string) $directory;
+            }
+            foreach ($suite->file as $file) {
+                expect(is_file($root . '/' . $file))->toBeTrue("{$file} is not a file")
+                    ->and((string) $file)->toEndWith('Test.php');
+                $named[] = (string) $file;
+            }
+        }
+
+        expect($named)->not->toBeEmpty()
+            ->and(array_unique($named))->toHaveCount(count($named));
+
+        // The unit tests of both mutated directories are among them
+        expect($named)->toContain('./tests/Unit/Scheduling', './tests/Unit/Repack');
+
+        // A file inside a directory that is named as well would run twice
+        foreach ($named as $path) {
+            foreach ($named as $other) {
+                expect($path !== $other && str_starts_with($path, $other . '/'))->toBeFalse("{$path} is inside {$other}");
+            }
+        }
     });
 });
