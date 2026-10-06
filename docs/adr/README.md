@@ -12,6 +12,7 @@ there is not repeated here.
 | --- | --- |
 | [0001](0001-reseeded-brackets-rank-from-earlier-rounds.md) | Re-seeded brackets rank survivors from earlier rounds only |
 | [0002](0002-standings-order-is-total.md) | Standings order is total |
+| [0003](0003-multi-participant-events-are-a-2-0-goal.md) | Multi-participant events are a goal for 2.0 |
 
 ## Adding a record
 
