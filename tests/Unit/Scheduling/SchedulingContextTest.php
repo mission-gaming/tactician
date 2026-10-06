@@ -9,6 +9,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StagePlan;
 use MissionGaming\Tactician\Stage\SwissPlan;
+use MissionGaming\Tactician\Tests\Support\DeprecatedCall;
 
 describe('SchedulingContext', function (): void {
     beforeEach(function (): void {
@@ -34,7 +35,7 @@ describe('SchedulingContext', function (): void {
         expect($context->getParticipants())->toBe($this->participants);
         expect($context->getExistingEvents())->toBe([]);
         expect($context->getCurrentLeg())->toBe(1);
-        expect($context->getTotalLegs())->toBe(1);
+        expect(DeprecatedCall::to($context, 'getTotalLegs'))->toBe(1);
         expect($context->getParticipantsPerEvent())->toBe(2);
         expect($context->isMultiLeg())->toBeFalse();
         expect($context->getPlan())->toBeInstanceOf(StagePlan::class);
@@ -48,7 +49,7 @@ describe('SchedulingContext', function (): void {
         expect($context->getParticipants())->toBe($this->participants);
         expect($context->getExistingEvents())->toBe($this->existingEvents);
         expect($context->getCurrentLeg())->toBe(1);
-        expect($context->getTotalLegs())->toBe(1);
+        expect(DeprecatedCall::to($context, 'getTotalLegs'))->toBe(1);
         expect($context->isMultiLeg())->toBeFalse();
     });
 
@@ -60,7 +61,7 @@ describe('SchedulingContext', function (): void {
         expect($context->getParticipants())->toBe($this->participants);
         expect($context->getExistingEvents())->toBe($this->existingEvents);
         expect($context->getCurrentLeg())->toBe(2);
-        expect($context->getTotalLegs())->toBe(3);
+        expect(DeprecatedCall::to($context, 'getTotalLegs'))->toBe(3);
         expect($context->getParticipantsPerEvent())->toBe(2);
         expect($context->isMultiLeg())->toBeTrue();
     });
@@ -80,7 +81,7 @@ describe('SchedulingContext', function (): void {
     it('treats a plan without legs as a single generation leg', function (): void {
         $context = swissContext($this->participants, [], 3);
 
-        expect($context->getTotalLegs())->toBe(1);
+        expect(DeprecatedCall::to($context, 'getTotalLegs'))->toBe(1);
         expect($context->isMultiLeg())->toBeFalse();
         expect($context->getEventsForLeg(1))->toBe([]);
     });
