@@ -59,6 +59,31 @@ function opponentIn(RoundPairing $pairing, Participant $participant): ?Participa
     return null;
 }
 
+/**
+ * A ranking strategy that gives each participant the value listed for its
+ * id, whatever the results are.
+ *
+ * @param array<string, float> $values
+ */
+function fixedRanking(array $values): RankingStrategy
+{
+    return new readonly class ($values) implements RankingStrategy {
+        /**
+         * @param array<string, float> $values
+         */
+        public function __construct(private array $values) {}
+
+        /**
+         * @param array<Result> $results
+         */
+        #[Override]
+        public function rank(Participant $participant, array $results): float
+        {
+            return $this->values[$participant->getId()] ?? 0.0;
+        }
+    };
+}
+
 describe('Swiss score groups', function (): void {
     beforeEach(function (): void {
         $this->field = [];
@@ -216,4 +241,90 @@ describe('Swiss score groups', function (): void {
                 ->toBe('b');
         }
     });
+
+    // The tolerance is relative, so it grows with the values. These are
+    // the values it must not reach: each is a different score, and a
+    // shuffle that put two of them in one group would pair a with someone
+    // other than the participant next in the table.
+    it('keeps different ranking values apart, whatever their size', function (array $values): void {
+        $field = [$this->field['d'], $this->field['c'], $this->field['b'], $this->field['a']];
+
+        for ($seed = 1; $seed <= 40; ++$seed) {
+            $engine = new SwissPairingEngine(
+                standingsCalculator: new StandingsCalculator(fixedRanking($values)),
+                randomizer: new Randomizer(new Mt19937($seed))
+            );
+
+            expect(opponentIn($engine->pairNextRound(StageState::start($field)), $this->field['a'])?->getId())
+                ->toBe('b');
+        }
+    })->with([
+        // Points and a goal difference packed into one whole number.
+        'whole numbers one part in a billion apart' => [['a' => 3.0e10 + 30, 'b' => 3.0e10 + 20, 'c' => 3.0e10 + 10, 'd' => 3.0e10]],
+        'whole numbers at the edge of what a float holds exactly' => [
+            ['a' => 2.0 ** 53, 'b' => 2.0 ** 53 - 1, 'c' => 2.0 ** 53 - 2, 'd' => 2.0 ** 53 - 3],
+        ],
+        'negative whole numbers' => [['a' => -3.0e10, 'b' => -3.0e10 - 10, 'c' => -3.0e10 - 20, 'd' => -3.0e10 - 30]],
+        // INF is within a relative tolerance of every finite value.
+        'a leader ranked at INF' => [['a' => INF, 'b' => 3.0, 'c' => 2.0, 'd' => 1.0]],
+        'two participants ranked at -INF' => [['a' => 2.0, 'b' => 1.0, 'c' => -INF, 'd' => -INF]],
+        'the largest finite values' => [['a' => PHP_FLOAT_MAX, 'b' => 1.0e300, 'c' => 1.0, 'd' => 0.0]],
+        'values below one a millionth apart' => [['a' => 0.500004, 'b' => 0.500003, 'c' => 0.500002, 'd' => 0.500001]],
+        'large values with a fraction, a millionth of their size apart' => [
+            ['a' => 4000000.5, 'b' => 3999996.5, 'c' => 3999992.5, 'd' => 3999988.5],
+        ],
+    ]);
+
+    it('shuffles participants ranked at the same value that is not finite as one group', function (): void {
+        $field = [$this->field['a'], $this->field['b'], $this->field['c'], $this->field['d']];
+
+        $opponents = [];
+        for ($seed = 1; $seed <= 40; ++$seed) {
+            $engine = new SwissPairingEngine(
+                standingsCalculator: new StandingsCalculator(fixedRanking(['a' => INF, 'b' => INF, 'c' => INF, 'd' => INF])),
+                randomizer: new Randomizer(new Mt19937($seed))
+            );
+            $opponents[opponentIn($engine->pairNextRound(StageState::start($field)), $this->field['a'])?->getId()] = true;
+        }
+
+        ksort($opponents);
+        expect(array_keys($opponents))->toBe(['b', 'c', 'd']);
+    });
+
+    // A whole number is exact, and the sum that should have reached it need
+    // not be: 0.7 + 0.2 + 0.1 is 0.9999999999999999.
+    it('groups a whole number with a sum that is one rounding short of it', function (): void {
+        $short = 0.7 + 0.2 + 0.1;
+        expect($short)->not->toBe(1.0);
+
+        $field = [$this->field['a'], $this->field['b'], $this->field['c'], $this->field['d']];
+
+        $opponents = [];
+        for ($seed = 1; $seed <= 40; ++$seed) {
+            $engine = new SwissPairingEngine(
+                standingsCalculator: new StandingsCalculator(fixedRanking(['a' => $short, 'b' => 1.0, 'c' => $short, 'd' => 1.0])),
+                randomizer: new Randomizer(new Mt19937($seed))
+            );
+            $opponents[opponentIn($engine->pairNextRound(StageState::start($field)), $this->field['a'])?->getId()] = true;
+        }
+
+        ksort($opponents);
+        expect(array_keys($opponents))->toBe(['b', 'c', 'd']);
+    });
+
+    // Without a randomizer the order within a group is the table's, so a
+    // group that is cut in the right place pairs straight down the table.
+    it('pairs down the table without a randomizer, for every scale', function (array $values): void {
+        $field = [$this->field['d'], $this->field['c'], $this->field['b'], $this->field['a']];
+
+        $pairing = (new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fixedRanking($values))))
+            ->pairNextRound(StageState::start($field));
+
+        expect(opponentIn($pairing, $this->field['a'])?->getId())->toBe('b')
+            ->and(opponentIn($pairing, $this->field['c'])?->getId())->toBe('d');
+    })->with([
+        'exact values' => [['a' => 4.0, 'b' => 3.0, 'c' => 2.0, 'd' => 1.0]],
+        'values level in pairs' => [['a' => 0.1 + 0.2, 'b' => 0.3, 'c' => 0.1, 'd' => 0.1]],
+        'values that are not finite' => [['a' => INF, 'b' => 1.0, 'c' => 0.0, 'd' => -INF]],
+    ]);
 });

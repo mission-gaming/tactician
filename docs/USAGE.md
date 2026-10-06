@@ -567,7 +567,10 @@ with the win it stands for. Two ranking values are level when they differ
 by no more than a billionth of the larger one: a ranking value is a float
 sum, and with a scale floats cannot hold exactly (0.1 for a draw) the same
 results added in another order differ in the last digits. With 3/1/0 or
-1/0.5/0 scoring, level means equal.
+1/0.5/0 scoring, level means equal. It also means equal between two whole
+numbers of any size, which floats hold exactly, and for a value of `INF` or
+`-INF`: a ranking strategy of your own that packs points and a tiebreak into
+one whole number keeps every difference it makes.
 
 Every results-driven format shares one driver loop — the single
 integration a platform writes:

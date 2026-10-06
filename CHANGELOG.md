@@ -115,12 +115,16 @@ heading **Output change (fix)**.
   they differ by no more than a billionth of the larger one, or by a
   billionth when both are below 1; within a group the standings order
   decides, and a randomizer shuffles the group. For such a scale the
-  pairings of a seeded stage can therefore differ from 0.2.1. Nothing
-  changes for 3/1/0, 1/0.5/0 or any other scale in whole or half points. A
-  custom
-  `RankingStrategy` that separates participants by less than a billionth is
-  now read as level by the Swiss engine; the standings table itself is
-  unchanged.
+  pairings of a seeded stage can therefore differ from 0.2.1. Two whole
+  numbers are level only when they are equal, however large they are, and so
+  is a value of `INF` or `-INF` with any other: floats hold whole numbers
+  exactly, so two different ones are two different scores. Nothing changes
+  for 3/1/0, 1/0.5/0 or any other scale in whole or half points, nor for a
+  ranking that packs points and a tiebreak into one whole number. A custom
+  `RankingStrategy` whose values are not whole numbers, and that separates
+  participants by less than a billionth of the larger value (0.001 at a
+  million), is now read as level by the Swiss engine; the standings table
+  itself is unchanged.
 - `ScheduleScorer` refuses numbers that cannot be compared. Its constructor
   accepted a weight of `NAN` or `INF`, because `NAN` fails no comparison and
   `INF` is positive, and `score()` and `report()` returned whatever a metric

@@ -382,7 +382,8 @@ readonly class SwissPairingEngine implements StageEngineInterface
      * highest value, so a chain of near-equal values cannot stretch it.
      *
      * Scoring that floats hold exactly (3/1/0, 1/0.5/0) is unaffected:
-     * there, level means equal. With no recorded rounds every participant
+     * there, level means equal. So are whole-number values of any size and
+     * values that are not finite (see isLevel()). With no recorded rounds every participant
      * ties at zero, so a randomizer shuffles the whole field - which is
      * what makes results-free driving produce random non-repeat pairings.
      *
@@ -413,10 +414,31 @@ readonly class SwissPairingEngine implements StageEngineInterface
         return $groups;
     }
 
+    /**
+     * Whether two ranking values are level: equal, or apart by no more than
+     * the rounding of a float sum can explain.
+     *
+     * Two cases are never rounding, and are level only when equal. A value
+     * that is not finite: INF is within any tolerance of everything when the
+     * tolerance is relative, so a strategy that ranks a participant at INF or
+     * -INF to set them apart would pull the rest of the field into one group.
+     * And two whole numbers: floats hold whole numbers exactly, so two
+     * different ones are two different scores however large they are (a
+     * strategy that packs points and a tiebreak into one number, such as
+     * points * 1e10 + goal difference, differs by one part in 1e10).
+     */
     private function isLevel(float $first, float $second): bool
     {
         if ($first === $second) {
             return true;
+        }
+
+        if (!is_finite($first) || !is_finite($second)) {
+            return false;
+        }
+
+        if (floor($first) === $first && floor($second) === $second) {
+            return false;
         }
 
         return abs($first - $second) <= self::LEVEL_TOLERANCE * max(1.0, abs($first), abs($second));
