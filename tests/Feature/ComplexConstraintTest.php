@@ -207,12 +207,24 @@ describe('constraint sets that no schedule satisfies', function (): void {
     it('cannot rest a pairing for longer than the next leg lasts', function (): void {
         $field = array_values(complexConstraintField([['a', null, []], ['b', null, []], ['c', null, []], ['d', null, []]]));
         $options = new RoundRobinOptions(legs: 4, strategy: new RepeatedLegStrategy());
-        $scheduler = new RoundRobinScheduler(ConstraintSet::create()->add(new MinimumRestPeriodsConstraint(4))->build());
+        $rest = new MinimumRestPeriodsConstraint(4);
+        $scheduler = new RoundRobinScheduler(ConstraintSet::create()->add($rest)->build());
         $plan = $scheduler->getPlan($field, $options);
 
-        // The count: the rounds of leg 2 that are 4 or more after round 3
+        // The count, asked of the constraint itself: once a pairing has
+        // played in round 3, no round of leg 2 is open to it in either
+        // order, and the first that is open is round 7, in leg 3. Whichever
+        // pairings a schedule puts in round 3, it has two of them.
+        $afterRoundThree = new SchedulingContext($field, $plan, [new Event([$field[0], $field[1]], new Round(3))], 2);
+        $open = array_values(array_filter(
+            range(4, 12),
+            static fn(int $round): bool => $rest->isSatisfied(new Event([$field[0], $field[1]], new Round($round)), $afterRoundThree)
+                || $rest->isSatisfied(new Event([$field[1], $field[0]], new Round($round)), $afterRoundThree)
+        ));
+
         expect($plan->getRoundsPerLeg())->toBe(3)
-            ->and(array_filter(range(4, 6), static fn(int $round): bool => $round - 3 >= 4))->toBe([]);
+            ->and($plan->getTotalRounds())->toBe(12)
+            ->and($open)->toBe(range(7, 12));
 
         expect(fn() => $scheduler->schedule($field, $options))->toThrow(IncompleteScheduleException::class);
     });
