@@ -152,6 +152,102 @@ describe('PotDrawScheduler', function (): void {
             ->and($audit->violations($entrants, 4, 2))->toBe([]);
     })->with([1, 2, 3, 42, 1337]);
 
+    // The worked cases above have no pot of even size with two or more
+    // opponents per pot. These two are small enough to check by hand, and
+    // they are the family in which the layers of the draw must not share a
+    // pairing and the roles inside a pot come from walking cycles.
+    it('draws 8 entrants in 2 pots of 4 with two opponents per pot', function (int $seed): void {
+        $entrants = potDrawEntrants(8);
+        $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(pots: 2, opponentsPerPot: 2, seed: $seed));
+        $audit = PotDrawAudit::of($schedule, $entrants, 2);
+
+        // 2 pots × 2 opponents = 4 rounds of 4 events
+        expect($schedule->count())->toBe(16)
+            ->and($audit->malformed)->toBe([])
+            ->and($audit->eventsByRound)->toBe([1 => 4, 2 => 4, 3 => 4, 4 => 4]);
+
+        foreach ($entrants as $entrant) {
+            $id = $entrant->getId();
+            for ($round = 1; $round <= 4; ++$round) {
+                expect($audit->appearancesByRound[$round][$id] ?? 0)->toBe(1, "{$id} in round {$round}");
+            }
+
+            // Two of the three others in its own pot, two of the four in the other
+            $opponents = $audit->opponentsByPot[$id];
+            ksort($opponents);
+            expect($opponents)->toBe([1 => 2, 2 => 2], $id);
+
+            // One event in each role against each pot
+            $first = $audit->firstRoleByPot[$id];
+            $second = $audit->secondRoleByPot[$id];
+            ksort($first);
+            ksort($second);
+            expect($first)->toBe([1 => 1, 2 => 1], $id)
+                ->and($second)->toBe([1 => 1, 2 => 1], $id);
+        }
+
+        // No rematch: 16 events between 16 different pairs, of which 4
+        // are inside each pot and 8 are between the pots
+        $inside = array_filter(
+            array_keys($audit->meetings),
+            static function (string $pair): bool {
+                [$a, $b] = explode('|', $pair);
+
+                return in_array($a, ['e1', 'e2', 'e3', 'e4'], true) === in_array($b, ['e1', 'e2', 'e3', 'e4'], true);
+            }
+        );
+        expect($audit->meetings)->toHaveCount(16)
+            ->and(array_unique(array_values($audit->meetings)))->toBe([1])
+            ->and($inside)->toHaveCount(8)
+            ->and($audit->violations($entrants, 2, 2))->toBe([]);
+    })->with([0, 1, 2, 3, 4, 5, 6, 7, 42, 1337]);
+
+    it('draws 8 entrants in 2 pots of 4 with three opponents per pot', function (int $seed): void {
+        $entrants = potDrawEntrants(8);
+        $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(pots: 2, opponentsPerPot: 3, seed: $seed));
+        $audit = PotDrawAudit::of($schedule, $entrants, 2);
+
+        // 2 pots × 3 opponents = 6 rounds of 4 events
+        expect($schedule->count())->toBe(24)
+            ->and($audit->malformed)->toBe([])
+            ->and($audit->eventsByRound)->toBe(array_fill(1, 6, 4));
+
+        foreach ($entrants as $entrant) {
+            $id = $entrant->getId();
+            for ($round = 1; $round <= 6; ++$round) {
+                expect($audit->appearancesByRound[$round][$id] ?? 0)->toBe(1, "{$id} in round {$round}");
+            }
+
+            // All three others in its own pot, three of the four in the other
+            $opponents = $audit->opponentsByPot[$id];
+            ksort($opponents);
+            expect($opponents)->toBe([1 => 3, 2 => 3], $id);
+
+            // 6 events, so 3 in each role; against one pot the three events
+            // split two and one
+            $first = $audit->firstRoleByPot[$id] ?? [];
+            $second = $audit->secondRoleByPot[$id] ?? [];
+            expect(array_sum($first))->toBe(3, $id)
+                ->and(array_sum($second))->toBe(3, $id);
+            foreach ([1, 2] as $pot) {
+                expect(abs(($first[$pot] ?? 0) - ($second[$pot] ?? 0)))->toBe(1, "{$id} against pot {$pot}");
+            }
+        }
+
+        // No rematch: every pairing inside a pot is played (6 in each),
+        // and 12 of the 16 pairings between the pots
+        foreach ([['e1', 'e2', 'e3', 'e4'], ['e5', 'e6', 'e7', 'e8']] as $pot) {
+            foreach ($pot as $i => $a) {
+                foreach (array_slice($pot, $i + 1) as $b) {
+                    expect($audit->meetings["{$a}|{$b}"] ?? 0)->toBe(1, "{$a} and {$b}");
+                }
+            }
+        }
+        expect($audit->meetings)->toHaveCount(24)
+            ->and(array_unique(array_values($audit->meetings)))->toBe([1])
+            ->and($audit->violations($entrants, 2, 3))->toBe([]);
+    })->with([0, 1, 2, 3, 4, 5, 6, 7, 42, 1337]);
+
     it('gives the same schedule for the same participants, options and seed', function (int $pots, int $count, int $opponentsPerPot): void {
         $entrants = potDrawEntrants($count);
         $options = new PotDrawOptions($pots, $opponentsPerPot, seed: 2026);
@@ -208,6 +304,91 @@ describe('PotDrawScheduler', function (): void {
         expect(potDrawEventList($scheduler->schedule($entrants, new PotDrawOptions(5, 1, 1))))
             ->not->toBe(potDrawEventList($scheduler->schedule($entrants, new PotDrawOptions(5, 1, 1 + 2 ** 32))));
     });
+
+    // Any integer is a seed: the ends of the range and the negative ones
+    // draw a schedule that keeps the rules, and each draws its own
+    it('draws from the seeds at the ends of the integer range', function (int $count, int $pots, int $opponentsPerPot): void {
+        $entrants = potDrawEntrants($count);
+        $scheduler = new PotDrawScheduler();
+
+        $draws = [];
+        foreach ([0, -1, 1, PHP_INT_MAX, PHP_INT_MIN, -PHP_INT_MAX] as $seed) {
+            $schedule = $scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed));
+
+            expect(PotDrawAudit::of($schedule, $entrants, $pots)->violations($entrants, $pots, $opponentsPerPot))->toBe([], "seed {$seed}")
+                ->and($schedule->getMetadataValue('seed'))->toBe($seed);
+            $draws[] = implode(' ', potDrawEventList($schedule));
+        }
+
+        expect(array_unique($draws))->toHaveCount(6);
+    })->with([
+        '20 in 5 pots' => [20, 5, 1],
+        '36 in 4 pots' => [36, 4, 2],
+        '16 in 2 pots, three opponents' => [16, 2, 3],
+    ]);
+
+    // The usage guide states what no seed changes ("The seed and
+    // determinism"). This is a limit of the construction and not a rule
+    // of the format: if the generator learns to mix the pots within a
+    // round, this test and that passage change together.
+    it('keeps whole pots together in a round whatever the seed', function (
+        int $count,
+        int $pots,
+        int $opponentsPerPot,
+        int $roundsWithEventsInsideAPot
+    ): void {
+        $entrants = potDrawEntrants($count);
+        $potSize = intdiv($count, $pots);
+        $potOf = [];
+        foreach ($entrants as $position => $entrant) {
+            $potOf[$entrant->getId()] = intdiv($position, $potSize);
+        }
+
+        for ($seed = 0; $seed < 20; ++$seed) {
+            $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed));
+
+            $potsMet = [];
+            $firstRoleHolders = [];
+            $inside = [];
+            foreach ($schedule->getEvents() as $event) {
+                [$first, $second] = $event->getParticipants();
+                $round = (int) $event->getRound()?->getNumber();
+                $a = $potOf[$first->getId()];
+                $b = $potOf[$second->getId()];
+                $potsMet[$round][$a][$b] = true;
+                $potsMet[$round][$b][$a] = true;
+                if ($a === $b) {
+                    $inside[$round] = true;
+                } else {
+                    $firstRoleHolders[$round][min($a, $b) . '-' . max($a, $b)][$a] = true;
+                }
+            }
+
+            foreach ($potsMet as $round => $byPot) {
+                foreach ($byPot as $pot => $met) {
+                    // One pot only, unless the round also has events inside pots
+                    expect(count($met))->toBeLessThanOrEqual(isset($inside[$round]) ? 2 : 1, "seed {$seed}, round {$round}, pot {$pot}");
+                }
+            }
+            expect($inside)->toHaveCount($roundsWithEventsInsideAPot, "seed {$seed}");
+
+            if ($opponentsPerPot % 2 === 0) {
+                foreach ($firstRoleHolders as $round => $byPotPair) {
+                    foreach ($byPotPair as $potPair => $holders) {
+                        expect($holders)->toHaveCount(1, "seed {$seed}, round {$round}, pots {$potPair}");
+                    }
+                }
+            }
+        }
+    })->with([
+        // An even pot size and an even number of pots: the pots play
+        // inside themselves in as many rounds as there are opponents per pot
+        '16 in 4 pots of 4, two opponents' => [16, 4, 2, 2],
+        '24 in 4 pots of 6, three opponents' => [24, 4, 3, 3],
+        // An odd pot size: three rounds hold every event inside a pot
+        '36 in 4 pots of 9, two opponents' => [36, 4, 2, 3],
+        '18 in 6 pots of 3, two opponents' => [18, 6, 2, 3],
+    ]);
 
     it('takes the pots from list position and reads no seed attribute', function (): void {
         // The seed attributes say the opposite of the list order
