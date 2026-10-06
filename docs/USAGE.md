@@ -54,7 +54,7 @@ anything else that competes.
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
 | **Engine fingerprint** | An optional stamp on a stage state naming the engine that pairs it (`StageState::withEngineFingerprint()`): the format and the options that shape its rounds, as each engine's `getFingerprint()` gives them. An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
-| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order, shuffles within a score group when it has a randomizer, and treats two ranking values as level when they differ by no more than a billionth of the larger one, so a float sum taken in another order does not split a group. |
+| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. Level means equal; two `WinDrawLossRanking` totals that differ only by the rounding of a float sum are level too, so the same results added in another order do not split a group. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary — those are consumer interpretations of the outcome. |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
@@ -563,14 +563,15 @@ the fewest so far and are credited as wins when ordering the next round.
 
 Participants who are level form a **score group**. With a `Randomizer` the
 engine shuffles the order within each group, and a credited bye is level
-with the win it stands for. Two ranking values are level when they differ
-by no more than a billionth of the larger one: a ranking value is a float
-sum, and with a scale floats cannot hold exactly (0.1 for a draw) the same
-results added in another order differ in the last digits. With 3/1/0 or
-1/0.5/0 scoring, level means equal. It also means equal between two whole
-numbers of any size, which floats hold exactly, and for a value of `INF` or
-`-INF`: a ranking strategy of your own that packs points and a tiebreak into
-one whole number keeps every difference it makes.
+with the win it stands for. Level means equal, with one allowance. A
+`WinDrawLossRanking` value is a float sum, and with a scale floats cannot
+hold exactly (0.1 for a draw) the same results added in another order
+differ in the last digits; the engine reads two such totals as level when
+they are no further apart than that rounding can put them, and never when a
+real result separates them. With 3/1/0 or 1/0.5/0 scoring the sums are
+exact, so level means equal. The values of a ranking strategy of your own
+are always compared exactly: return equal values for participants you mean
+to be level.
 
 Every results-driven format shares one driver loop — the single
 integration a platform writes:

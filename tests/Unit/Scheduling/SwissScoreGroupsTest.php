@@ -135,29 +135,81 @@ describe('Swiss score groups', function (): void {
         expect(array_keys($opponents))->toBe(['b', 'c', 'd']);
     });
 
-    it('groups ranking values that differ by less than the tolerance', function (): void {
-        // No results at all: the ranking value comes straight from the
-        // strategy, which gives a and c the sum 0.1 + 0.2 and b and d 0.3.
-        $noisy = new readonly class implements RankingStrategy {
-            /**
-             * @param array<Result> $results
-             */
-            #[Override]
-            public function rank(Participant $participant, array $results): float
-            {
-                return in_array($participant->getId(), ['a', 'c'], true) ? 0.1 + 0.2 : 0.3;
-            }
-        };
+    // The tolerance belongs to the win/draw/loss ranking, whose sums the
+    // engine can bound. The values of any other strategy are its own.
+    it('compares the values of any other ranking strategy exactly', function (): void {
+        // a and c are ranked at 0.1 + 0.2, which is 0.30000000000000004;
+        // b and d at 0.3. Two groups of two, so a always meets c.
         $field = [$this->field['a'], $this->field['b'], $this->field['c'], $this->field['d']];
+        $ranking = fixedRanking(['a' => 0.1 + 0.2, 'b' => 0.3, 'c' => 0.1 + 0.2, 'd' => 0.3]);
+
+        for ($seed = 1; $seed <= 40; ++$seed) {
+            $engine = new SwissPairingEngine(
+                standingsCalculator: new StandingsCalculator($ranking),
+                randomizer: new Randomizer(new Mt19937($seed))
+            );
+
+            expect(opponentIn($engine->pairNextRound(StageState::start($field)), $this->field['a'])?->getId())
+                ->toBe('c');
+        }
+    });
+
+    it('groups a win and three draws with three draws and a win', function (): void {
+        // 0.3 for a win and 0.1 for a draw. a and c win, then draw three
+        // times; b and d draw three times, then win: the same results in
+        // another order, and two different sums.
+        ['a' => $a, 'b' => $b, 'c' => $c, 'd' => $d, 'e' => $e, 'f' => $f, 'g' => $g, 'h' => $h] = $this->field;
+        $ranking = new WinDrawLossRanking(0.3, 0.1);
+
+        $state = StageState::start(array_values($this->field));
+        $state = withScoredRound($state, 1, [[$a, $e, $a], [$b, $f, null], [$c, $g, $c], [$d, $h, null]]);
+        $state = withScoredRound($state, 2, [[$a, $f, null], [$b, $g, null], [$c, $h, null], [$d, $e, null]]);
+        $state = withScoredRound($state, 3, [[$a, $g, null], [$b, $h, null], [$c, $e, null], [$d, $f, null]]);
+        $state = withScoredRound($state, 4, [[$a, $h, null], [$b, $e, $b], [$c, $f, null], [$d, $g, $d]]);
+
+        $standings = (new StandingsCalculator($ranking))->calculate(array_values($this->field), $state->getResults());
+        expect($standings->getEntryFor($a)?->getRankingValue())
+            ->not->toBe($standings->getEntryFor($b)?->getRankingValue());
 
         $opponents = [];
         for ($seed = 1; $seed <= 40; ++$seed) {
             $engine = new SwissPairingEngine(
-                standingsCalculator: new StandingsCalculator($noisy),
+                standingsCalculator: new StandingsCalculator($ranking),
                 randomizer: new Randomizer(new Mt19937($seed))
             );
-            $opponent = opponentIn($engine->pairNextRound(StageState::start($field)), $this->field['a']);
-            $opponents[$opponent?->getId()] = true;
+            $opponents[opponentIn($engine->pairNextRound($state), $a)?->getId()] = true;
+        }
+
+        ksort($opponents);
+        expect(array_keys($opponents))->toBe(['b', 'c', 'd']);
+    });
+
+    it('groups a win and two losses with three draws that come to the same', function (): void {
+        // 0.3 for a win and 0.1 for a draw: three draws are worth a win,
+        // but 0.1 + 0.1 + 0.1 is 0.30000000000000004. a and c win once
+        // and lose twice; b and d draw three times.
+        ['a' => $a, 'b' => $b, 'c' => $c, 'd' => $d, 'e' => $e, 'f' => $f, 'g' => $g, 'h' => $h] = $this->field;
+        $ranking = new WinDrawLossRanking(0.3, 0.1);
+
+        $state = StageState::start(array_values($this->field));
+        $state = withScoredRound($state, 1, [[$a, $e, $a], [$b, $f, null], [$c, $g, $c], [$d, $h, null]]);
+        $state = withScoredRound($state, 2, [[$a, $f, $f], [$b, $g, null], [$c, $h, $h], [$d, $e, null]]);
+        $state = withScoredRound($state, 3, [[$a, $g, $g], [$b, $h, null], [$c, $e, $e], [$d, $f, null]]);
+
+        $standings = (new StandingsCalculator($ranking))->calculate(array_values($this->field), $state->getResults());
+        expect($standings->getEntryFor($a)?->getRankingValue())->toBe(0.3)
+            ->and($standings->getEntryFor($b)?->getRankingValue())->toBe(0.1 + 0.1 + 0.1)
+            ->and(0.1 + 0.1 + 0.1)->not->toBe(0.3);
+
+        // f and h lead on 0.5 and e and g follow on 0.4; a, b, c and d are
+        // the group below, and none of them has met another.
+        $opponents = [];
+        for ($seed = 1; $seed <= 40; ++$seed) {
+            $engine = new SwissPairingEngine(
+                standingsCalculator: new StandingsCalculator($ranking),
+                randomizer: new Randomizer(new Mt19937($seed))
+            );
+            $opponents[opponentIn($engine->pairNextRound($state), $a)?->getId()] = true;
         }
 
         ksort($opponents);
@@ -194,15 +246,19 @@ describe('Swiss score groups', function (): void {
         expect($ids)->toBe([['x', 'y'], ['r', 'q']]);
     });
 
-    // The two guards below hold before and after the tolerance: it must not
-    // change anything for scoring that floats hold exactly.
-    it('keeps participants half a point apart in different groups', function (
-        WinDrawLossRanking $ranking
-    ): void {
-        ['a' => $a, 'b' => $b, 'c' => $c, 'd' => $d] = $this->field;
+    // The guards below hold before and after the tolerance: it must not
+    // reach two totals that a real result separates, on any scale.
+    it('keeps totals a result apart in different groups', function (WinDrawLossRanking $ranking): void {
+        ['a' => $a, 'b' => $b, 'c' => $c, 'd' => $d, 'e' => $e, 'f' => $f, 'g' => $g, 'h' => $h] = $this->field;
 
-        // a beat c and b drew with d: a leads alone, then b and d, then c.
-        $state = withScoredRound(StageState::start([$a, $b, $c, $d]), 1, [[$a, $c, $a], [$b, $d, null]]);
+        // a and b won, c, d, g and h drew, e and f lost: three groups, and
+        // a and b are the top one, so they meet under every shuffle. One
+        // group too many would give a another opponent sooner or later.
+        $state = withScoredRound(
+            StageState::start(array_values($this->field)),
+            1,
+            [[$a, $e, $a], [$b, $f, $b], [$c, $g, null], [$d, $h, null]]
+        );
 
         for ($seed = 1; $seed <= 40; ++$seed) {
             $engine = new SwissPairingEngine(
@@ -210,13 +266,49 @@ describe('Swiss score groups', function (): void {
                 randomizer: new Randomizer(new Mt19937($seed))
             );
 
-            // a meets one of the two in the group below, never c.
-            expect(opponentIn($engine->pairNextRound($state), $a)?->getId())->toBeIn(['b', 'd']);
+            expect(opponentIn($engine->pairNextRound($state), $a)?->getId())->toBe('b');
         }
     })->with([
         '3/1/0' => [WinDrawLossRanking::threeOneZero()],
         '1/0.5/0' => [WinDrawLossRanking::oneHalfZero()],
+        'a scale floats do not hold exactly' => [new WinDrawLossRanking(0.3, 0.1)],
+        'a loss that costs' => [new WinDrawLossRanking(0.1, 0.0, -0.1)],
+        'the smallest values' => [new WinDrawLossRanking(1.0e-300, 0.5e-300)],
+        'the largest values' => [new WinDrawLossRanking(1.0e300, 0.5e300)],
+        'a win worth a quadrillion draws' => [new WinDrawLossRanking(1.0e15, 1.0)],
+        'a draw worth nearly a win' => [new WinDrawLossRanking(1.0, 1.0 - 2.0 ** -40)],
     ]);
+
+    it('keeps a draw apart from nothing on a scale stretched past the rounding bound', function (): void {
+        // A win is 1e15 and a draw is 1. Over three terms the rounding
+        // bound alone is 4, more than the draw that separates x from y, so
+        // the tolerance is held to a quarter of the smallest step.
+        // x: two draws and a bye credited as a win, 1e15 + 2.
+        // y: a win, a draw and a loss, 1e15 + 1. q is level with y.
+        $x = new Participant('x', 'X', 1);
+        $y = new Participant('y', 'Y', 2);
+        $q = new Participant('q', 'Q', 3);
+        $r = new Participant('r', 'R', 4);
+        $s = new Participant('s', 'S', 5);
+
+        $state = StageState::start([$x, $y, $q, $r, $s]);
+        $state = withScoredRound($state, 1, [[$y, $q, $y], [$s, $r, $s]], [$x]);
+        $state = withScoredRound($state, 2, [[$x, $r, null], [$s, $y, null]], [$q]);
+        $state = withScoredRound($state, 3, [[$q, $x, null], [$r, $y, $r]], [$s]);
+
+        $pairing = (new SwissPairingEngine(
+            standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(1.0e15, 1.0))
+        ))->pairNextRound($state->withoutParticipant($s));
+
+        // x is above y, so y, the lower placed of the two, is named first.
+        // Were they level, the table would decide, and the table (which
+        // does not credit the bye) has y far above x.
+        $ids = array_map(
+            fn(Event $event): array => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants()),
+            $pairing->getEvents()
+        );
+        expect($ids[0])->toBe(['y', 'x']);
+    });
 
     it('keeps ranking values a millionth apart in different groups', function (): void {
         $fine = new readonly class implements RankingStrategy {
@@ -242,10 +334,10 @@ describe('Swiss score groups', function (): void {
         }
     });
 
-    // The tolerance is relative, so it grows with the values. These are
-    // the values it must not reach: each is a different score, and a
-    // shuffle that put two of them in one group would pair a with someone
-    // other than the participant next in the table.
+    // A strategy other than the win/draw/loss ranking is compared exactly.
+    // Each list below is four different scores, and a shuffle that put two
+    // of them in one group would pair a with someone other than the
+    // participant next in the table.
     it('keeps different ranking values apart, whatever their size', function (array $values): void {
         $field = [$this->field['d'], $this->field['c'], $this->field['b'], $this->field['a']];
 
@@ -265,10 +357,20 @@ describe('Swiss score groups', function (): void {
             ['a' => 2.0 ** 53, 'b' => 2.0 ** 53 - 1, 'c' => 2.0 ** 53 - 2, 'd' => 2.0 ** 53 - 3],
         ],
         'negative whole numbers' => [['a' => -3.0e10, 'b' => -3.0e10 - 10, 'c' => -3.0e10 - 20, 'd' => -3.0e10 - 30]],
-        // INF is within a relative tolerance of every finite value.
+        // INF is within any relative tolerance of every finite value.
         'a leader ranked at INF' => [['a' => INF, 'b' => 3.0, 'c' => 2.0, 'd' => 1.0]],
         'two participants ranked at -INF' => [['a' => 2.0, 'b' => 1.0, 'c' => -INF, 'd' => -INF]],
         'the largest finite values' => [['a' => PHP_FLOAT_MAX, 'b' => 1.0e300, 'c' => 1.0, 'd' => 0.0]],
+        // Closer than a billionth of their size, and still four scores.
+        'values one rounding apart' => [
+            ['a' => 1.0 + 3 * PHP_FLOAT_EPSILON, 'b' => 1.0 + 2 * PHP_FLOAT_EPSILON, 'c' => 1.0 + PHP_FLOAT_EPSILON, 'd' => 1.0],
+        ],
+        'seconds since 1970 with a fraction, a quarter of a second apart' => [
+            ['a' => 1700000000.75, 'b' => 1700000000.5, 'c' => 1700000000.25, 'd' => 1700000000.0],
+        ],
+        'small values a billionth of a billionth apart' => [
+            ['a' => 4.0e-18, 'b' => 3.0e-18, 'c' => 2.0e-18, 'd' => 1.0e-18],
+        ],
         'values below one a millionth apart' => [['a' => 0.500004, 'b' => 0.500003, 'c' => 0.500002, 'd' => 0.500001]],
         'large values with a fraction, a millionth of their size apart' => [
             ['a' => 4000000.5, 'b' => 3999996.5, 'c' => 3999992.5, 'd' => 3999988.5],
@@ -291,27 +393,6 @@ describe('Swiss score groups', function (): void {
         expect(array_keys($opponents))->toBe(['b', 'c', 'd']);
     });
 
-    // A whole number is exact, and the sum that should have reached it need
-    // not be: 0.7 + 0.2 + 0.1 is 0.9999999999999999.
-    it('groups a whole number with a sum that is one rounding short of it', function (): void {
-        $short = 0.7 + 0.2 + 0.1;
-        expect($short)->not->toBe(1.0);
-
-        $field = [$this->field['a'], $this->field['b'], $this->field['c'], $this->field['d']];
-
-        $opponents = [];
-        for ($seed = 1; $seed <= 40; ++$seed) {
-            $engine = new SwissPairingEngine(
-                standingsCalculator: new StandingsCalculator(fixedRanking(['a' => $short, 'b' => 1.0, 'c' => $short, 'd' => 1.0])),
-                randomizer: new Randomizer(new Mt19937($seed))
-            );
-            $opponents[opponentIn($engine->pairNextRound(StageState::start($field)), $this->field['a'])?->getId()] = true;
-        }
-
-        ksort($opponents);
-        expect(array_keys($opponents))->toBe(['b', 'c', 'd']);
-    });
-
     // Without a randomizer the order within a group is the table's, so a
     // group that is cut in the right place pairs straight down the table.
     it('pairs down the table without a randomizer, for every scale', function (array $values): void {
@@ -324,7 +405,7 @@ describe('Swiss score groups', function (): void {
             ->and(opponentIn($pairing, $this->field['c'])?->getId())->toBe('d');
     })->with([
         'exact values' => [['a' => 4.0, 'b' => 3.0, 'c' => 2.0, 'd' => 1.0]],
-        'values level in pairs' => [['a' => 0.1 + 0.2, 'b' => 0.3, 'c' => 0.1, 'd' => 0.1]],
+        'values one rounding apart' => [['a' => 0.1 + 0.2, 'b' => 0.3, 'c' => 0.1, 'd' => 0.1]],
         'values that are not finite' => [['a' => INF, 'b' => 1.0, 'c' => 0.0, 'd' => -INF]],
     ]);
 });

@@ -83,24 +83,24 @@ heading **Output change (fix)**.
     another order when PHP does not order their ids consistently (`2` is
     below `10` as a number, `10` below `1a` and `1a` below `2` as text). The
     event is now found in every order.
-- `SwissPairingEngine` treats two participants as level when their ranking
-  values differ only by the rounding of a float sum. **Nothing changes for
-  3/1/0, 1/0.5/0 or any scale in whole or half points, nor for any ranking
-  whose values are whole numbers.** With a scale floats cannot hold exactly,
-  the same results added in another order give different sums: at 1 for a
-  win and 0.1 for a draw, win-draw-draw is 1.2000000000000002 and
-  draw-draw-win is 1.2. The engine compared the two exactly, so level
-  participants fell into different score groups: a randomizer never shuffled
-  them together, and a bye credited as a win ranked above or below the win
-  it stands for. Two values are now level when they differ by no more than a
-  billionth of the larger one (a billionth when both are below 1); within a
-  group the standings order decides, and a randomizer shuffles the group.
-  Two whole numbers, and a value of `INF` or `-INF` with any other, are
-  level only when equal. What to check: a seeded stage on such a scale can
-  pair differently from 0.2.1, and a custom `RankingStrategy` whose values
-  are not whole numbers and that separates participants by less than a
-  billionth of the larger value (0.001 at a million) is now read as level by
-  the Swiss engine. The standings table itself is unchanged.
+- `SwissPairingEngine` treats two participants as level when their
+  win/draw/loss totals differ only by the rounding of a float sum. **This
+  affects only a `WinDrawLossRanking` whose values floats cannot hold
+  exactly (0.1 for a draw). Nothing changes for 3/1/0, 1/0.5/0 or any scale
+  in whole or half points, nor for any other `RankingStrategy`, whose values
+  are compared exactly as before.** On such a scale the same results added
+  in another order give different sums: at 1 for a win and 0.1 for a draw,
+  win-draw-draw is 1.2000000000000002 and draw-draw-win is 1.2. The engine
+  compared the two exactly, so level participants fell into different score
+  groups: a randomizer never shuffled them together, and a bye credited as a
+  win ranked above or below the win it stands for. Two totals are now level
+  when they are no further apart than the rounding of sums of that many
+  results can put them (for n results and a largest value M, 2 x n x n x M x
+  `PHP_FLOAT_EPSILON`: 4e-15 after three rounds at 1 for a win), and never
+  when a real result separates them; within a group the standings order
+  decides, and a randomizer shuffles the group. What to check: a seeded
+  stage on such a scale can pair differently from 0.2.1. The standings table
+  itself is unchanged.
 - `ScheduleScorer` refuses numbers that cannot be compared. Its constructor
   accepted a weight of `NAN` or `INF`, because `NAN` fails no comparison and
   `INF` is positive, and `score()` and `report()` returned whatever a metric

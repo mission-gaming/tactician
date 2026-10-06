@@ -43,7 +43,7 @@ play completes. The `src/Stage/` family:
 ### Results-Driven Engines
 Formats whose later rounds depend on results cannot be generated whole; these
 engines resolve tournament state on every call:
-- **SwissPairingEngine**: A `StageEngineInterface` implementation — standings-aware Monrad pairing from the recorded `StageState`, with repeat avoidance, bye rotation (byes credited as wins), home/away balancing, withdrawal handling, constraint support, and optional randomization within score groups (ranking values level to within a billionth)
+- **SwissPairingEngine**: A `StageEngineInterface` implementation — standings-aware Monrad pairing from the recorded `StageState`, with repeat avoidance, bye rotation (byes credited as wins), home/away balancing, withdrawal handling, constraint support, and optional randomization within score groups (equal ranking values, and win/draw/loss totals apart only by the rounding of a float sum)
 - **SingleEliminationEngine**: `StageEngineInterface` preset — position-folded brackets with byes to top positions, round labels, fixed or re-seeded paths, and one- or two-legged ties (`EliminationOptions`)
 - **DoubleEliminationEngine**: `StageEngineInterface` preset — winners/losers routes with dropper rematch deferral, grand final, and optional bracket reset; the same graph an application could compose by hand
 - All engines emit **RoundPairing** values and finish as a **StageOutcome** (see the stage model); group stages are compositions (PoolDistributor + per-pool stages + selectors), not an engine

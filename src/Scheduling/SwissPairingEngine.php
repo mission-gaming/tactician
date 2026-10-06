@@ -55,14 +55,6 @@ use Random\Randomizer;
 readonly class SwissPairingEngine implements StageEngineInterface
 {
     /**
-     * How far apart two ranking values may be and still be level: a
-     * billionth of the larger value, and never less than a billionth.
-     * Far above the rounding error of a float sum, far below any step a
-     * scoring system awards.
-     */
-    private const float LEVEL_TOLERANCE = 1.0e-9;
-
-    /**
      * @param int|null $plannedRounds Total rounds the tournament will run, exposed to
      *                                constraints via the stage plan on the scheduling context;
      *                                null leaves the stage open-ended (isComplete() only
@@ -353,8 +345,10 @@ readonly class SwissPairingEngine implements StageEngineInterface
                 ?: ($first['index'] <=> $second['index'])
         );
 
+        $tolerance = $this->levelTolerance($entries, $byeCounts);
+
         $ordered = [];
-        foreach ($this->groupLevelRankings($indexed) as $group) {
+        foreach ($this->groupLevelRankings($indexed, $tolerance) as $group) {
             // Within a group the table decides, not the last bits of a sum.
             usort($group, fn(array $first, array $second): int => $first['index'] <=> $second['index']);
 
@@ -371,33 +365,109 @@ readonly class SwissPairingEngine implements StageEngineInterface
     }
 
     /**
+     * How far apart two ranking values may be and still be level: the most
+     * that the rounding of float sums can put between two totals that are
+     * the same total. Zero means level is equal.
+     *
+     * Only a WinDrawLossRanking gets a tolerance, because only there does
+     * the engine know how a value was made: a sum of one configured value
+     * per result (the class is final, so there is no subclass to consider).
+     * Any other RankingStrategy is compared exactly: its values are its
+     * own, and two that differ are two different scores however close.
+     *
+     * The bound. Let M be the largest magnitude of the win, draw and loss
+     * values, n the most terms any participant's total has (results played
+     * plus byes credited), and u = PHP_FLOAT_EPSILON / 2 the unit roundoff.
+     *
+     * - Adding k floats in sequence is off by at most (k - 1) * u * S,
+     *   where S is the sum of their magnitudes and S <= k * M (the
+     *   standard bound for recursive summation, to first order in u).
+     * - Crediting b byes multiplies once (off by at most u * b * M) and
+     *   adds once (off by at most u * (k + b) * M).
+     * - Together, with n = k + b: (k - 1) * k + b + n <= n * n, so one
+     *   total is off by at most n * n * u * M.
+     * - Two totals of the same results are therefore at most
+     *   2 * n * n * u * M apart. The tolerance is twice that,
+     *   2 * n * n * PHP_FLOAT_EPSILON * M: the other half covers the
+     *   terms of higher order in u and the rounding of the configured
+     *   values themselves (0.1 is not a tenth), so three draws at 0.1
+     *   are level with one win at 0.3.
+     *
+     * For 3/1/0 over 11 rounds that is 1.6e-13: sums of whole and half
+     * points are exact, so nothing but equal values is ever inside it.
+     *
+     * The cap. A total that differs from another by a real result is one
+     * step away: a result more (a win, draw or loss value that is not
+     * zero) or a result changed (the difference of two of them). The
+     * tolerance never exceeds a quarter of the smallest such step, so on a
+     * scale so stretched that the bound above would reach a step (a win
+     * worth 1e15 draws), totals a real result apart still fall in
+     * different groups, exactly as an exact comparison has them.
+     *
+     * @param array<\MissionGaming\Tactician\Standings\StandingEntry> $entries
+     * @param array<int|string, int> $byeCounts Byes so far, keyed by participant ID
+     */
+    private function levelTolerance(array $entries, array $byeCounts): float
+    {
+        $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
+        if (!$rankingStrategy instanceof WinDrawLossRanking) {
+            return 0.0;
+        }
+
+        $terms = 0;
+        foreach ($entries as $entry) {
+            $terms = max($terms, $entry->getPlayed() + ($byeCounts[$entry->getParticipant()->getId()] ?? 0));
+        }
+
+        $win = $rankingStrategy->getWinValue();
+        $draw = $rankingStrategy->getDrawValue();
+        $loss = $rankingStrategy->getLossValue();
+
+        $tolerance = 2.0 * $terms * $terms * PHP_FLOAT_EPSILON * max(abs($win), abs($draw), abs($loss));
+
+        foreach ([$win, $draw, $loss, $win - $draw, $draw - $loss, $win - $loss] as $step) {
+            if ($step !== 0.0) {
+                $tolerance = min($tolerance, abs($step) / 4.0);
+            }
+        }
+
+        // A value that is not a finite number has no rounding to allow for.
+        return is_finite($tolerance) ? $tolerance : 0.0;
+    }
+
+    /**
      * Split entries into score groups: runs of participants who are level.
      *
-     * A ranking value is a float sum, and the sum of values a float cannot
-     * hold exactly depends on the order of its terms: at 1 for a win and
-     * 0.1 for a draw, win-draw-draw is 1.2000000000000002 and
-     * draw-draw-win is 1.2. Two values are therefore level when they
-     * differ by no more than LEVEL_TOLERANCE, relative to the larger of
-     * them and never less than absolutely. A group is measured from its
-     * highest value, so a chain of near-equal values cannot stretch it.
+     * A win/draw/loss ranking value is a float sum, and the sum of values a
+     * float cannot hold exactly depends on the order of its terms: at 1 for
+     * a win and 0.1 for a draw, win-draw-draw is 1.2000000000000002 and
+     * draw-draw-win is 1.2. Two values are therefore level when they are
+     * equal or no further apart than the tolerance (see levelTolerance();
+     * zero for every ranking strategy but WinDrawLossRanking). A group is
+     * measured from its highest value, so a chain of near-equal values
+     * cannot stretch it.
      *
      * Scoring that floats hold exactly (3/1/0, 1/0.5/0) is unaffected:
-     * there, level means equal. So are whole-number values of any size and
-     * values that are not finite (see isLevel()). With no recorded rounds every participant
+     * there, level means equal. With no recorded rounds every participant
      * ties at zero, so a randomizer shuffles the whole field - which is
      * what makes results-free driving produce random non-repeat pairings.
      *
      * @param array<array{participant: Participant, ranking_value: float, index: int}> $indexed Ordered best first
      * @return list<list<array{participant: Participant, ranking_value: float, index: int}>>
      */
-    private function groupLevelRankings(array $indexed): array
+    private function groupLevelRankings(array $indexed, float $tolerance): array
     {
         $groups = [];
         $group = [];
         $groupValue = 0.0;
 
         foreach ($indexed as $entry) {
-            if ($group !== [] && !$this->isLevel($groupValue, $entry['ranking_value'])) {
+            // INF and NAN are never within a tolerance of anything: the
+            // difference is INF or NAN, and neither is <= a finite number.
+            $level = $entry['ranking_value'] === $groupValue
+                || abs($groupValue - $entry['ranking_value']) <= $tolerance;
+
+            if ($group !== [] && !$level) {
                 $groups[] = $group;
                 $group = [];
             }
@@ -412,36 +482,6 @@ readonly class SwissPairingEngine implements StageEngineInterface
         }
 
         return $groups;
-    }
-
-    /**
-     * Whether two ranking values are level: equal, or apart by no more than
-     * the rounding of a float sum can explain.
-     *
-     * Two cases are never rounding, and are level only when equal. A value
-     * that is not finite: INF is within any tolerance of everything when the
-     * tolerance is relative, so a strategy that ranks a participant at INF or
-     * -INF to set them apart would pull the rest of the field into one group.
-     * And two whole numbers: floats hold whole numbers exactly, so two
-     * different ones are two different scores however large they are (a
-     * strategy that packs points and a tiebreak into one number, such as
-     * points * 1e10 + goal difference, differs by one part in 1e10).
-     */
-    private function isLevel(float $first, float $second): bool
-    {
-        if ($first === $second) {
-            return true;
-        }
-
-        if (!is_finite($first) || !is_finite($second)) {
-            return false;
-        }
-
-        if (floor($first) === $first && floor($second) === $second) {
-            return false;
-        }
-
-        return abs($first - $second) <= self::LEVEL_TOLERANCE * max(1.0, abs($first), abs($second));
     }
 
     /**
