@@ -271,6 +271,45 @@ describe('Rector configuration', function () use ($root): void {
             ->and($configuration)->toContain("->withPaths([\n        __DIR__ . '/src',\n        __DIR__ . '/tests',\n    ])");
     });
 
+    it('runs as one process for as long as the locked Rector writes its cache in place', function () use ($root): void {
+        // Rector before 2.7.0 copies a cache entry onto its final path, and
+        // every Rector process loads and rewrites the entry for the
+        // configuration when it starts. Parallel workers start together, so
+        // one can load the entry while another has written part of it: PHP
+        // then reports a syntax error in the half-written file, the worker
+        // dies and the run fails with "Child process error". The gate failed
+        // that way on CI on commits that changed nothing Rector reads.
+        // Rector 2.7.0 writes the entry to a temporary file and renames it.
+        // Until that is the locked version, rector.php must turn the
+        // workers off; after that, either setting is safe.
+        $lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, flags: JSON_THROW_ON_ERROR);
+        Assert::assertIsArray($lock);
+        Assert::assertIsArray($lock['packages-dev']);
+
+        $locked = null;
+
+        foreach ($lock['packages-dev'] as $package) {
+            Assert::assertIsArray($package);
+
+            if ($package['name'] === 'rector/rector') {
+                Assert::assertIsString($package['version']);
+                $locked = ltrim($package['version'], 'v');
+            }
+        }
+
+        Assert::assertNotNull($locked, 'composer.lock does not lock rector/rector.');
+
+        $configuration = (string) file_get_contents($root . '/rector.php');
+        $writesAtomically = version_compare($locked, '2.7.0', '>=');
+        $runsAsOneProcess = str_contains($configuration, "\n    ->withoutParallel()\n")
+            && !str_contains($configuration, '->withParallel(');
+
+        Assert::assertTrue(
+            $writesAtomically || $runsAsOneProcess,
+            "Rector {$locked} writes its cache in place, so parallel workers can read a half-written entry: rector.php must call ->withoutParallel() and must not call ->withParallel().",
+        );
+    });
+
     it('gives a reason for every rule it skips', function () use ($root): void {
         $configuration = (string) file_get_contents($root . '/rector.php');
 

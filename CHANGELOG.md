@@ -609,6 +609,16 @@ heading **Output change (fix)**.
   `throw null` with assertions off. The scorer now refuses such a
   measurement (see "Output change (fix)"), and the optimizer takes its first
   candidate as the best so far whatever it scores.
+- Tooling only; the library is unchanged. The Rector step of `composer ci`
+  no longer fails now and then with `Child process error` and a syntax error
+  that names `bc7465525847387785d7c`, on a change that Rector does not read.
+  Rector 2.6.7 writes a cache entry in place, and each of its parallel
+  workers loads and rewrites the entry for the configuration when it starts,
+  so a worker could load an entry that another had half written. `rector.php`
+  now runs Rector as one process, which checks the same paths with the same
+  rules and takes longer. Rector 2.7.0 writes the entry atomically; a test
+  (`tests/Feature/GateConfigurationTest.php`) requires the one-process
+  setting until that is the locked version.
 
 ## [0.2.1] - 2026-10-06
 
