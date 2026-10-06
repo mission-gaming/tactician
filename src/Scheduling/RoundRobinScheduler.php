@@ -287,6 +287,8 @@ class RoundRobinScheduler implements SchedulerInterface
             }
         }
 
+        // Not reached: there is at least one attempt, and the last one
+        // returns or rethrows
         throw new InvariantViolationException('Schedule generation loop must return or throw');
     }
 
@@ -868,6 +870,8 @@ class RoundRobinScheduler implements SchedulerInterface
     private function recordConstraintViolation(Event $event, SchedulingContext $context): void
     {
         if ($this->constraints === null) {
+            // Not reached: this is only called after a constraint has
+            // rejected an event
             return;
         }
 

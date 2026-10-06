@@ -287,6 +287,9 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
             }
         }
 
+        // Not reached: the differences of a leg sum to zero, so a participant
+        // that has one role too often is connected to one that has the other
+        // role too often (the argument is in the docblock)
         throw new InvariantViolationException('A participant out of balance has no chain to one out of balance the other way');
     }
 

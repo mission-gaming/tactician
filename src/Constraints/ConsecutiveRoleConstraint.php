@@ -88,6 +88,8 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     private function hasConsecutiveRoles(array $roles, int $maxConsecutive): bool
     {
         if ($roles === []) {
+            // Not reached: the list always holds the role of the event
+            // being checked
             return false;
         }
 

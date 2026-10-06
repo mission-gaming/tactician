@@ -173,6 +173,8 @@ final class SessionPacker
 
             $target = ContiguityTargets::movableTarget($pins, $load, $this->slotCount);
             if (count($target) < $load) {
+                // Not reached: the load planner never gives a participant
+                // more events in a session than it has free slots there
                 return null;
             }
             $fixedTargets[$pid] = $target;
@@ -563,6 +565,8 @@ final class SessionPacker
     private function improvementTargets(array $occupied): array
     {
         if ($occupied === []) {
+            // Not reached: repair() asks only about a participant that has
+            // a movable event in the session
             return [];
         }
 
@@ -586,6 +590,8 @@ final class SessionPacker
     {
         $event = $this->movableEventAt($pid, $from);
         if ($event === null) {
+            // Not reached: the slot is one of the participant's own movable
+            // slots
             return false;
         }
 
@@ -622,6 +628,9 @@ final class SessionPacker
         while ($frontier !== []) {
             $current = array_shift($frontier);
             if (isset($chainPids[$current])) {
+                // Not reached: the start has an event in one of the two
+                // slots and none in the other, so the chain is a path that
+                // begins there, never a cycle
                 continue;
             }
             $chainPids[$current] = true;
@@ -638,6 +647,7 @@ final class SessionPacker
         }
 
         if ($chainEvents === []) {
+            // Not reached: the chain holds at least the start's own event
             return false;
         }
 
@@ -710,10 +720,13 @@ final class SessionPacker
         $late = 0;
         foreach ($pids as $pid) {
             if (!$this->hasMovableAssignment($pid)) {
+                // Not reached: every participant a move affects has a
+                // movable event in the session, before the move and after
                 continue;
             }
             $occupied = $this->occupiedSlots($pid);
             if ($occupied === []) {
+                // Not reached: for the same reason
                 continue;
             }
             $first = $occupied[0];
@@ -788,6 +801,8 @@ final class SessionPacker
             }
         }
 
+        // Not reached: the one caller passes a slot taken from the
+        // participant's own movable slots
         return null;
     }
 

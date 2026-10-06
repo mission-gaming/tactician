@@ -273,6 +273,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         $winnersChampion = $winnersSlots[0];
         if ($winnersChampion === null || $losersChampion === null) {
+            // Not reached: every pair of the first winners round holds a
+            // participant, so every later winners round is played in full
+            // and the winners final gives each bracket its champion
             throw new InvariantViolationException('Bracket resolution lost track of a finalist');
         }
 
@@ -290,6 +293,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $grandFinalWinner = $stage['winners'][0];
 
         if ($grandFinalWinner === null) {
+            // Not reached: the grand final is a playable pair, and a stage
+            // is only resolved when every playable pair has an advancer
             throw new InvariantViolationException('Grand final resolved without a winner');
         }
 
