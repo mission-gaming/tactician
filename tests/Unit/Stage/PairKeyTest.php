@@ -112,6 +112,27 @@ describe('PairKey', function (): void {
         'an escaped separator written by hand' => [['a\\|b', 'c'], 'a\\\\\\|b|c'],
     ]);
 
+    // A pair takes a shorter route through the helper than a longer list;
+    // order() and join() are the long route, spelled out.
+    it('builds a pair as it builds any list', function (): void {
+        $ids = [
+            'a', 'b', '9', '10', 'p9', 'p10', '10a', '01', '1', '1e3', '1000', '1.0', '0', '-0', '',
+            ' ', "\0", 'a|b', 'b|c', '|', '||', '\\', '\\\\', 'a\\', '\\|b', '|b', 'é',
+        ];
+
+        foreach ($ids as $first) {
+            foreach ($ids as $second) {
+                expect(PairKey::of($first, $second))->toBe(
+                    PairKey::join(PairKey::order([$first, $second])),
+                    'ids: ' . json_encode([$first, $second])
+                );
+            }
+        }
+
+        // Named arguments reach the helper as a keyed list.
+        expect(PairKey::of(first: '10', second: '9'))->toBe('9|10');
+    });
+
     it('gives different id lists different keys', function (): void {
         $ids = [
             'a', 'b', 'c', 'a|b', 'b|c', 'a|b|c', '|', '||', '\\', '\\\\', '\\|', '|\\',

@@ -46,6 +46,23 @@ final class PairKey
      */
     public static function of(string ...$ids): string
     {
+        // Nearly every key is a pair, and the searches build one per
+        // candidate: order the two directly instead of sorting a list.
+        if (count($ids) === 2 && isset($ids[0], $ids[1])) {
+            [$first, $second] = $ids;
+            if (self::compare($first, $second) > 0) {
+                [$first, $second] = [$second, $first];
+            }
+
+            $key = $first . self::SEPARATOR . $second;
+
+            // Exactly one separator and no escape character: neither id
+            // needs escaping, so this is the key already.
+            return substr_count($key, self::SEPARATOR) === 1 && !str_contains($key, self::ESCAPE)
+                ? $key
+                : self::escape($first) . self::SEPARATOR . self::escape($second);
+        }
+
         return self::join(self::order(array_values($ids)));
     }
 
@@ -86,6 +103,10 @@ final class PairKey
 
     private static function escape(string $id): string
     {
+        if (strpbrk($id, self::SEPARATOR . self::ESCAPE) === false) {
+            return $id;
+        }
+
         return strtr($id, [
             self::ESCAPE => self::ESCAPE . self::ESCAPE,
             self::SEPARATOR => self::ESCAPE . self::SEPARATOR,
