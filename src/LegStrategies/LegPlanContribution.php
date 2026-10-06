@@ -9,8 +9,11 @@ namespace MissionGaming\Tactician\LegStrategies;
  *
  * Strategies contribute by returning this immutable value — never by
  * computing schedule shape themselves. All round-robin arithmetic (rounds
- * per leg, event counts) lives in RoundRobinPlan; keeping strategies out
- * of that math is what makes plan/generator drift impossible.
+ * per leg, event counts) lives in RoundRobinPlan, so a strategy cannot
+ * state a shape that differs from the plan's. The two booleans are carried
+ * onto the plan as given, for whoever reads the plan; the library acts on
+ * neither and does not check them against what the strategy's
+ * generateEventForLeg() does.
  *
  * A non-empty $unsatisfiableReasons fails plan construction loudly with
  * those reasons as diagnostics; $warnings are carried onto the plan
@@ -21,6 +24,8 @@ namespace MissionGaming\Tactician\LegStrategies;
 final readonly class LegPlanContribution
 {
     /**
+     * Nothing is validated: the value holds what it is given.
+     *
      * @param bool $rolesMirrorAcrossLegs Whether the strategy reverses event roles in later legs
      * @param bool $requiresRandomization Whether the strategy needs a randomizer during generation
      * @param array<string> $unsatisfiableReasons Non-empty means plan construction fails with diagnostics

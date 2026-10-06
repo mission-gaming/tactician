@@ -24,12 +24,14 @@ interface LegStrategyInterface
     /**
      * Contribute strategy facts to round-robin plan construction.
      *
-     * Returning unsatisfiable reasons fails plan construction with those
-     * reasons as diagnostics, before any event is generated.
+     * The scheduler calls it once per `schedule()` call, before any event
+     * is generated. Returning unsatisfiable reasons fails plan construction
+     * with those reasons as diagnostics: an `InvalidConfigurationException`
+     * with the reason `UnsatisfiableLegStrategy`.
      *
-     * @param array<Participant> $participants All tournament participants
-     * @param int $legs Total number of legs in the tournament
-     * @param ConstraintSet $constraints Tournament constraints
+     * @param array<Participant> $participants All tournament participants, as given to the scheduler
+     * @param int $legs Total number of legs in the tournament (1 or more)
+     * @param ConstraintSet $constraints Tournament constraints; an empty set when the scheduler has none
      */
     public function planLegs(
         array $participants,
@@ -38,16 +40,26 @@ interface LegStrategyInterface
     ): LegPlanContribution;
 
     /**
-     * Generate a specific event for a given leg and round.
+     * Build the event of one pairing in one leg, deciding its roles.
      *
-     * Called during generation to create events with full tournament
-     * context visibility. Returning null means no event should be created
-     * for this pairing.
+     * The scheduler builds the events of the first leg itself and calls
+     * this for every pairing of every later leg, so it is asked with a leg
+     * of 2 or more. The answer is expected to be an event of the two given
+     * participants in the given round; only their order is the strategy's
+     * to choose. The scheduler then puts the event to the constraints.
      *
-     * @param array<Participant> $participants Participants for this event
+     * Returning null creates no event for the pairing. A complete round
+     * robin needs every pairing in every leg, so the leg is then short and
+     * generation fails with an `IncompleteScheduleException`.
+     *
+     * @param array<Participant> $participants The two participants of the pairing, the first-named
+     *                                         at index 0, in the roles the leg has before the
+     *                                         strategy acts: those the role assignment decided for
+     *                                         this leg, or those of the pairing's first-leg event
+     *                                         when the backtracking search found the first leg
      * @param int $leg Current leg being generated (1-based)
      * @param int $round Current round being generated (1-based, continuous across legs)
-     * @param SchedulingContext $context Complete tournament context
+     * @param SchedulingContext $context The events generated before this one, with this leg as its current leg
      */
     public function generateEventForLeg(
         array $participants,

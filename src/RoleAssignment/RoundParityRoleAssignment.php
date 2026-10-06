@@ -23,6 +23,10 @@ use Override;
  */
 final readonly class RoundParityRoleAssignment implements RoleAssignmentInterface
 {
+    /**
+     * The rounds exactly as given: every seating keeps the roles the
+     * generator proposed.
+     */
     #[Override]
     public function assignRoles(array $rounds): array
     {
