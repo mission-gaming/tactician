@@ -80,6 +80,7 @@ hard filters; metrics measure what remains:
 - **WinDrawLossRanking**: The first implementation; sport conventions as named constructors (`threeOneZero()`, `oneHalfZero()`), config-constructible via `fromArray()`
 - **TiebreakerInterface**: Pluggable tiebreakers — **WinsTiebreaker**, **BuchholzTiebreaker**, **SonnebornBergerTiebreaker**
 - **Standings / StandingEntry**: Immutable table and per-participant line
+- **TiedSet**: A group of adjacent entries that only the final fallback orders, with the positions it spans. `Standings::getTiedSets()` derives the sets from the entries on each call with `StandingEntry::isLevelWith()`, which compares what the calculator compares before the fallback (ranking value, each tiebreaker value, score difference, scores-for) with the same exact comparison, so the sets cannot disagree with the order of the table. Reporting only: the order of the entries is unchanged
 
 ### Multi-Leg Architecture
 - **LegStrategyInterface**: Strategy contract for integrated leg generation
