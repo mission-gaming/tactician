@@ -1,7 +1,8 @@
 # Design note: Schedule Quality and Optimization
 
-**Status: IMPLEMENTED — first cut (metrics + best-of-N sampling)** —
-ROADMAP Phase 5's "schedule optimization algorithms and quality metrics".
+**Status: IMPLEMENTED** in 0.1.0 (Phase 5 of the roadmap): metrics and
+best-of-N sampling. Search algorithms behind the scorer are
+[deferred](../ROADMAP.md#deferred-work).
 
 ## Position
 
@@ -25,9 +26,12 @@ which metrics matter (and their weights) is application policy.
 - **Built-ins ship for the properties the library already names**: role
   imbalance (`RoleBalanceMetric`), broken role alternation
   (`RoleStreakMetric`), irregular appearance rhythm (`RestSpreadMetric`),
-  and uneven repeat spacing across legs (`PairingSpacingMetric`). All
-  pairwise-role metrics skip non-pairwise events rather than guessing
-  roles for them.
+  and uneven repeat spacing across legs (`PairingSpacingMetric`). The
+  three that read roles or pairs skip an event that does not have exactly
+  two participants rather than guessing roles for it, and the three that
+  read rounds skip an event without a round. `RestSpreadMetric` reads
+  neither roles nor pairs and counts every participant of an event;
+  `RoleBalanceMetric` reads no rounds and counts a round-less event.
 - **`ScheduleScorer` composes metrics with weights** and reports
   per-metric values alongside the weighted score, so a chosen schedule is
   explainable, not just "best".
@@ -36,8 +40,10 @@ which metrics matter (and their weights) is application policy.
   child seed per sample from one master `Randomizer`, calls a
   caller-supplied `callable(Randomizer): Schedule`, scores each candidate,
   and keeps the winner (ties break to the earliest sample). Same master
-  seed, same result. Smarter algorithms (local search, annealing) can
-  arrive later behind the same scorer without changing any metric.
+  seed on a fresh master randomizer, same result (the optimizer draws
+  from the master on every call, so a second `optimize()` on the same
+  object samples other seeds). Smarter algorithms (local search,
+  annealing) could sit behind the same scorer without changing any metric.
 - **Failed samples are skipped, not fatal** — a sample whose generation
   throws `IncompleteScheduleException` (e.g. a shuffled order no rotation
   can fix) is recorded in the result's sample accounting; only zero valid

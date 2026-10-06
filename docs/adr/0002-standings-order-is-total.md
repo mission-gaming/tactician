@@ -22,7 +22,14 @@ strategy's value and the configured tiebreakers it compares, in this order:
 4. label, in case-insensitive natural order;
 5. participant ID.
 
-IDs are unique within a stage, so the last step always decides.
+IDs are unique within a stage, so the last step decides, with one exception
+found after this record was written: the step compares the two IDs with
+PHP's `<=>`, which compares numeric strings as numbers. Two IDs that are
+different strings and equal numbers (`'01'` and `'1'`) are not ordered by
+it, and two such entries that are level on everything before keep their
+input order. The [roadmap](../ROADMAP.md#known-limitations) records it as a
+known limitation; changing the comparison reorders existing tables, so it
+waits for a minor release.
 
 ## Consequences
 

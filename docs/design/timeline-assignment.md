@@ -1,25 +1,43 @@
 # Design note: Timeline Assignment (dates and times)
 
-**Status: IMPLEMENTING — first cut shipped (slot model + assignment)** —
-the position below was accepted and the design anchors settled during the
-Phase 4 implementation pass. The first cut ships `src/Timeline/`:
-`TimelineDefinition` (the declarative slot model, config-constructible),
-`TimelineAssigner` (deterministic assignment over
+**Status: IMPLEMENTED** in 0.1.0, in three cuts: the slot model and
+assignment, then time-aware rules, then resources. The position below was
+accepted and the design anchors settled while it was built. `src/Timeline/`
+holds `TimelineDefinition` (the declarative slot model,
+config-constructible), `TimelineAssigner` (deterministic assignment over
 `Schedule::getEventsByRound()` and, for results-driven stages, a
-`RoundPairing`), and the `ScheduledEvent`/`ScheduledSchedule` decorations
-(serializable). Round-aligned and staggered kickoffs both come from the
-one slot model, as sketched. Time-aware constraints are the next Phase 4
-milestone; cross-stage clash validation and venue/resource modelling stay
-open. Settled decisions beyond the sketch:
+`RoundPairing`), the `ScheduledEvent`/`ScheduledSchedule` decorations
+(serializable), and the rules `MinimumRestRule` and `BlackoutRule`.
+Round-aligned and staggered kickoffs both come from the one slot model, as
+sketched. Still open: cross-stage clash validation and per-resource
+availability windows ([deferred work](../ROADMAP.md#deferred-work)).
 
-- **One event per slot** in this cut: a round with more events than slots
-  fails loudly (concurrent kickoffs per slot arrive with venue/capacity
-  modelling, which needs a capacity concept to validate against).
+The sections from "The question" on are the note as it was written before
+the implementation. They are kept for the reasoning, and they speak of the
+feature as something to come; where the shipped feature differs, the list
+below says so. The usage guide has the API as it is
+([Timeline Assignment](../USAGE.md#timeline-assignment)).
+
+Settled decisions beyond the sketch:
+
+- **One event per slot unless resources are declared**: a round with more
+  events than the timeline has places for fails loudly. The first cut had
+  one event per slot only; the third cut added resources (below).
 - **Deterministic filling**: a round's events fill its slots in schedule
   order against slot time order.
-- **Wall-clock interval arithmetic** in the definition's timezone: a
-  weekly 19:00 kickoff stays 19:00 across DST transitions; kickoffs are
-  then emitted in UTC (`timezone-explicit in, UTC-normalized out`).
+- **Intervals are added in the definition's timezone**, as PHP adds a
+  `DateInterval` to a zoned time; kickoffs are then emitted in UTC
+  (`timezone-explicit in, UTC-normalized out`). An interval in days, weeks
+  or months keeps the wall-clock time, so a weekly 19:00 kickoff written as
+  `P7D` stays 19:00 across a daylight-saving change. An interval in hours,
+  minutes or seconds is elapsed time: `PT168H` is not `P7D`, and lands an
+  hour off after the change. The note first recorded this as "wall-clock
+  interval arithmetic" without the distinction.
+- **No check of who plays.** The sketch below lists "a participant assigned
+  overlapping slots" among the things that fail loudly. The assigner does
+  not check it: it validates capacity and round numbers. A
+  `MinimumRestRule` of any positive rest is what rejects a participant in
+  two events at one time, and it is opt-in.
 - **Round numbers are absolute offsets**: round N lands at
   start + (N−1) round intervals whether or not earlier rounds exist in
   the schedule, so cross-leg-continuous numbering and partial schedules
@@ -77,9 +95,11 @@ library for three reasons:
    miss: a participant double-booked into overlapping slots, rest windows
    measured in hours rather than rounds, blackout periods. Tactician already
    has the validation-with-diagnostics machinery and the constraint system —
-   time-aware constraints (hour-based `MinimumRestPeriodsConstraint`,
-   blackout windows, venue capacity) are only possible if the library sees
-   times.
+   time-aware rules (rest measured in hours, blackout windows, venue
+   capacity) are only possible if the library sees times. (They shipped as
+   timeline rules, separate from the generation constraints:
+   `MinimumRestPeriodsConstraint` still counts rounds between two meetings
+   of a pair.)
 2. **Round-aligned assignment is a trivial special case of slot
    assignment.** "Everyone plays round N at time T" is one slot per round;
    staggering is multiple slots per round. Designing the slot model gives
@@ -99,31 +119,16 @@ declarative input.
 
 ## Sketch
 
-```php
-// PROPOSED — not implemented (Phase 4)
-$timeline = new TimelineDefinition(
-    start: new DateTimeImmutable('2026-08-01 19:00', new DateTimeZone('Europe/London')),
-    slotsPerRound: 1,                       // round-aligned: everyone plays together
-    roundInterval: DateInterval::createFromDateString('1 week'),
-);
+The sketch was two calls: a `TimelineDefinition` with a zoned start, a round
+interval and one slot per round for round-aligned play, handed with a
+schedule to `TimelineAssigner::assign()`; and the same definition with three
+slots per round and a slot interval for staggered kickoffs. Both shipped in
+that shape, and the usage guide has them as executed code
+([Timeline Assignment](../USAGE.md#timeline-assignment)); the code is not
+repeated here, where nothing would run it.
 
-$scheduled = (new TimelineAssigner())->assign($schedule, $timeline);
-// => ScheduledEvent[] wrapping Event + DateTimeImmutable, grouped by round
-```
-
-Staggered times are the same model with more slots:
-
-```php
-// PROPOSED — not implemented (Phase 4)
-$timeline = new TimelineDefinition(
-    start: new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('Europe/London')),
-    slotsPerRound: 3,                       // 18:00, 19:00, 20:00 kickoffs
-    slotInterval: DateInterval::createFromDateString('1 hour'),
-    roundInterval: DateInterval::createFromDateString('1 week'),
-);
-```
-
-Design anchors (to be settled properly in the Phase 4 pass):
+Design anchors, as proposed (the list under the status says how each was
+settled):
 
 - **Decoration, not mutation**: events stay immutable; assignment produces
   `ScheduledEvent` wrappers (or a `ScheduledSchedule`), so pairing logic and
@@ -152,16 +157,13 @@ could become a library capability later, but only if a consumer needs it.
 
 ## What this means for a consuming application
 
-Nothing changes until Phase 4 ships: the app's date scheduler keeps
-assigning one datetime per round. When Phase 4 lands, the integration is a
-translation — competition config (start date, match days, fixtures per match
-day, time between matches) becomes a `TimelineDefinition`, and the app's
-own date code is deleted rather than extended. Staggered kickoffs then
-require **no new scheduling logic app-side** — only config/UI to express
-"3 slots per match day, an hour apart" and, where relevant, per-slot
-fairness the library validates. Deadline windows, notifications, and
-persistence stay entirely app-side, computed from the assigned times as
-they are today.
+The integration is a translation: competition config (start date, match
+days, fixtures per match day, time between matches) becomes a
+`TimelineDefinition`, and an application's own code that assigned one
+datetime per round can be deleted rather than extended. Staggered kickoffs
+then need no new scheduling logic app-side, only config and UI to express
+"3 slots per match day, an hour apart". Deadline windows, notifications, and
+persistence stay entirely app-side, computed from the assigned times.
 
 **One prerequisite worth flagging early**: staggered times are incompatible
 with inferring round membership from kickoff dates. A platform that
@@ -175,7 +177,8 @@ application just has to stop throwing it away.
 
 ## Sequencing
 
-Phase 4, after the Phase 3 core lands (the assigner should consume
-`StagePlan`-aware schedules and the unified engine output, not the
-pre-Phase-3 shapes). Within Phase 4: slot model → round-aligned assignment →
-staggering → time-aware constraints, each independently shippable.
+Built as Phase 4, after the Phase 3 core, so that the assigner consumes the
+unified engine output (`RoundPairing`) and not the shapes before it. Within
+the phase the order was: slot model, round-aligned assignment and
+staggering (first cut), time-aware rules (second cut), resources (third
+cut).

@@ -1,18 +1,72 @@
 # Design: Phase 3 — Algorithm-Neutral Core
 
-**Status: IMPLEMENTED (revision 4)** — all five milestones shipped: plan
-introduction (M1), typed options + `RankingStrategy` (M2), engine
-unification behind `StageState`/`RoundPairing`/`StageEngineInterface`/
+**Status: IMPLEMENTED (revision 4)**, in 0.1.0 — all five milestones
+shipped: plan introduction (M1), typed options + `RankingStrategy` (M2),
+engine unification behind `StageState`/`RoundPairing`/`StageEngineInterface`/
 `StageOutcome` (M3), progression/pools/bracket presets/two-legged ties
-(M4), and the final sweep (M5). `docs/USAGE.md` and `docs/ARCHITECTURE.md`
-document the shipped shapes, which follow this design with one refinement
-worth noting: the elimination presets keep their bracket walks internally
-(reading the recorded `StageState`) rather than literally chaining
-separate single-round stage objects — the observable contract (one driver
-loop, `RoundPairing` in bracket order, outcome selectors, positional
-seeding, fixed vs re-seeded paths) is exactly as designed. Code blocks are design sketches, not executable examples. All open
-questions have been resolved with the maintainer (decisions marked ✅
-throughout; see "Resolved decisions" at the end).
+(M4), and the final sweep (M5). All open questions were resolved with the
+maintainer (decisions marked ✅ throughout; see "Resolved decisions" at the
+end).
+
+This note is the design as it was written, kept for its reasoning. It
+speaks of the classes it replaced in the present tense, and its code blocks
+are design sketches: none of them is executed, and a signature in one may
+differ from the shipped one. `docs/USAGE.md` and `docs/ARCHITECTURE.md`
+document the shipped shapes.
+
+## Where the shipped code differs from this note
+
+- **The elimination engines are not compositions of single-round stages.**
+  Each walks its bracket itself, from the recorded `StageState` (the two
+  share the internal trait `EliminationBracketSupport`). The library has no
+  public primitive that pairs one knockout round, so "the same graph an
+  application could compose by hand" describes the design intent and not
+  something an application can do with library parts. What a caller sees is
+  as designed: one driver loop, `RoundPairing` in bracket order, outcome
+  selectors, positional seeding, fixed or re-seeded paths.
+- **There is no `GroupStagePlan`.** A group stage is a composition
+  (`PoolDistributor`, a format per pool, `StageOutcome::combining()`), and
+  each pool has the plan of the format it plays. `PotDrawPlan` was added
+  later.
+- **The plan does not make plan/generator drift impossible.** The goal
+  below says generation reads from the plan. The round-robin scheduler reads
+  the legs, the events per leg and the rounds per leg from it, and lays out
+  the rounds of a leg with the circle method from the seat count; the role
+  parity is in the layout, not in the plan. The schedule is checked against
+  the plan before it is returned, which is what catches a disagreement.
+  Nothing in the library reads `rolesMirrorAcrossLegs()`,
+  `requiresRandomization()` or `getWarnings()` from the plan.
+- **No built-in leg strategy reports an unsatisfiable configuration.**
+  `unsatisfiableReasons` is wired through to a loud failure, and the three
+  strategies return none and do not read the constraints they are given.
+- **Selectors do not reseed.** `select()` returns an ordered list and never
+  calls `Participant::withSeed()`; nothing in the library calls it. The
+  order is the seeding, as the resolved rule 1 of section 5 says.
+- **Selectors have no common plain-data form.** Each of the two classes has
+  `fromArray()`/`toArray()` with a mode identifier; the interface declares
+  neither, and nothing maps an identifier to a selector class.
+- **Rank 1 is not always the winner.** Sections 4 and 8 say the winner of a
+  bracket is derivable as rank 1 of the standings. That holds for a
+  single-elimination bracket of one event per tie with no byes. It does not
+  hold for double elimination, for a two-legged tie decided by `tie_winner`,
+  or where a bye is involved; `MatchOutcomeSelector::winners()` is the
+  derivation that always holds
+  ([usage guide](../USAGE.md#who-won-the-bracket)).
+- **`SchedulingContext` still answers for a format without legs.** Its leg
+  helpers treat such a format as one leg (`getTotalLegs()`, which did so
+  visibly, is deprecated); the plan reports null.
+- **`Result` holds a winner or a draw.** It can be recorded against an
+  event of any size, but it has no finishing order
+  ([ADR 0003](../adr/0003-multi-participant-events-are-a-2-0-goal.md)).
+- **Round robin has no stage engine**, so a round-robin stage does not end
+  in a `StageOutcome` by itself; the caller builds one.
+- **Results-free Swiss is a uniform draw in a field of even size only.**
+  The table of replaced classes below says the Swiss engine with a
+  `Randomizer` and no results "reproduces random non-repeat pairing". In a
+  field of odd size a bye counts as a win in the pairing order, so the
+  participants who have had one are ordered and paired first. Without a
+  `Randomizer` the order is that of a table with no results: seed, label,
+  ID, and not list position.
 
 ## Why
 
@@ -182,7 +236,11 @@ non-config-friendly escape hatch.) This also means stable string
 identifiers for algorithms and selectors, so platforms can map config to
 library objects predictably.
 
-## Proposed design
+## The design
+
+As proposed, and as shipped except where
+[the list above](#where-the-shipped-code-differs-from-this-note) says
+otherwise.
 
 ### 1. `StagePlan` — the algorithm's declaration of shape
 
@@ -190,7 +248,7 @@ Constructed by the scheduler/engine before generation and carried everywhere
 the shape is needed:
 
 ```php
-// PROPOSED — not implemented
+// Design sketch, not executed (the shipped API is in docs/USAGE.md)
 interface StagePlan
 {
     public function getAlgorithm(): string;          // stable identifier, e.g. 'round-robin'
@@ -218,8 +276,9 @@ interface PairwisePlan extends StagePlan
 
 Implementations: `RoundRobinPlan` (pairwise, knows everything), `SwissPlan`
 (knows rounds and per-round event counts), `EliminationPlan` (knows match
-totals, stage structure, and — with two-legged ties — events per tie),
-`GroupStagePlan` (composes per-pool plans).
+totals, stage structure, and — with two-legged ties — events per tie). A
+`GroupStagePlan` composing per-pool plans was listed here and was not
+built: a group stage has no plan of its own.
 
 ✅ **Nullability semantics.** The interface carries two distinct null
 meanings, each stated in its accessor's docblock:
@@ -255,7 +314,7 @@ read expected meetings from `PairwisePlan` instead of recomputing formulas.
 ### 2. Typed per-algorithm options
 
 ```php
-// PROPOSED — not implemented
+// Design sketch, not executed (the shipped API is in docs/USAGE.md)
 $schedule = $scheduler->schedule($participants, new RoundRobinOptions(
     legs: 2,
     strategy: new MirroredLegStrategy(),
@@ -283,7 +342,7 @@ diagnostics.
 builder consumes — not by mutating a builder passed to them:
 
 ```php
-// PROPOSED — not implemented
+// Design sketch, not executed (the shipped API is in docs/USAGE.md)
 interface LegStrategyInterface
 {
     /** Facts the plan needs from this strategy. */
@@ -318,7 +377,7 @@ additively — new plan facts are new fields, not interface changes. The old
 ### 4. One engine interface, one driver loop, one completion product
 
 ```php
-// PROPOSED — not implemented
+// Design sketch, not executed (the shipped API is in docs/USAGE.md)
 interface StageEngineInterface
 {
     public function getPlan(StageState $state): StagePlan;
@@ -369,7 +428,7 @@ The driver loop is the single integration a platform writes, and it ends
 uniformly:
 
 ```php
-// PROPOSED — not implemented
+// Design sketch, not executed (the shipped API is in docs/USAGE.md)
 $state = StageState::start($participants);
 while (!$engine->isComplete($state)) {
     $pairing = $engine->pairNextRound($state);
@@ -399,15 +458,15 @@ remains, since "no further rounds exist" is structural, not interpretive.
 
 ### 5. Progression selectors — the hand-off between stages
 
-Selectors consume a `StageOutcome` and produce an ordered, reseeded
-participant list for a destination stage. Two built-in families cover the
+Selectors consume a `StageOutcome` and produce an ordered participant list
+for a destination stage (the order is the seeding; see rule 1 below). Two built-in families cover the
 two legitimate progression substrates:
 
 ```php
-// PROPOSED — not implemented
+// Design sketch, not executed (the shipped API is in docs/USAGE.md)
 interface ProgressionSelector
 {
-    /** @return array<Participant> Reseeded via Participant::withSeed() */
+    /** @return array<Participant> Ordered best first; position is the seeding */
     public function select(StageOutcome $outcome): array;
 
     /** How many participants this selector yields (destination validation). */
@@ -449,8 +508,8 @@ Three rules make the two selection paths coexist without friction:
    pool-distribute wrongly. ✅ Resolved: a stage seeds its entrants **from
    their position in the supplied list** — position 1 is seed 1. Library
    selectors and consumer-derived lists then behave identically by
-   construction, and `withSeed()` becomes an internal detail rather than a
-   hand-off requirement.
+   construction, and `withSeed()` is no hand-off requirement (as shipped,
+   nothing in the library calls it).
 2. **Validation participation is opt-in, not mandatory.** The composition
    validator uses selector-declared cardinalities. A consumer-derived
    selection participates either by implementing `ProgressionSelector`
@@ -473,7 +532,7 @@ bucket plays, how it is scored, and how it is displayed are separate,
 configurable concerns. The engine decomposes accordingly:
 
 ```php
-// PROPOSED — not implemented
+// Design sketch, not executed (the shipped API is in docs/USAGE.md)
 $pools = PoolDistributor::serpentine($participants, pools: 4);  // array<string, array<Participant>>
 // each pool then runs ANY per-stage format (round robin, Swiss, ...)
 // per-pool standings via StandingsCalculator as today
@@ -507,7 +566,7 @@ series score by finishing position, elimination formats barely need a table
 at all. The generalization:
 
 ```php
-// PROPOSED — not implemented
+// Design sketch, not executed (the shipped API is in docs/USAGE.md)
 interface RankingStrategy
 {
     /**
@@ -582,7 +641,7 @@ Candidates considered for the shape object, with the reasoning:
 | `SwissPairingEngine::pairNextRound(4 args)` | `pairNextRound(StageState)` |
 | `SimpleSwissScheduler` | ✅ Removed: the Swiss engine gains an optional `Randomizer` (shuffling within equal-standings groups), which with no recorded results reproduces random non-repeat pairing; a preset covers the whole-schedule convenience |
 | `GroupStageEngine` | ✅ Retired in favour of `PoolDistributor` + per-pool stages + selectors (section 6) |
-| `SingleEliminationEngine`, `DoubleEliminationEngine` | ✅ Rebuilt as presets over composed single-round stages + outcome selectors (one bracket mechanism); `getChampion()` removed |
+| `SingleEliminationEngine`, `DoubleEliminationEngine` | ✅ Rebuilt as `StageEngineInterface` presets that walk their bracket from the recorded state (not, as first designed, over composed single-round stages); `getChampion()` removed |
 | `PointsSystem` | ✅ Generalized to `RankingStrategy` with `WinDrawLossRanking` as the first implementation (section 8); sport-named presets become named constructors |
 | Shape metadata keys on `Schedule` | Kept for serialization/display, but written *from* the plan |
 
