@@ -31,10 +31,19 @@ final readonly class PoolDistributor
      * strength balances — with two pools, positions 1, 4, 5, 8 land in
      * pool A and 2, 3, 6, 7 in B.
      *
-     * @param array<Participant> $participants In seeding order, best first
-     * @return array<string, array<Participant>> Pools keyed by label ('A', 'B', ...)
+     * Every participant is in exactly one pool, and each pool lists its
+     * members in seeding order. When the field does not divide evenly the
+     * pool sizes differ by one. Nothing is random: the same list gives the
+     * same pools.
      *
-     * @throws InvalidConfigurationException When the pool configuration is invalid
+     * @param array<Participant> $participants In seeding order, best first
+     * @param int $pools How many pools, 1 to 26 (the labels are the letters A to Z)
+     * @return array<string, array<Participant>> Pools keyed by label ('A', 'B', ...), in label order
+     *
+     * @throws InvalidConfigurationException When the pool count is outside 1 to 26 (reason
+     *                                       `ValueOutOfRange`), there are fewer than 2 participants
+     *                                       per pool (`TooFewParticipants`), or two participants
+     *                                       share an ID (`DuplicateParticipantIds`)
      */
     public static function serpentine(array $participants, int $pools): array
     {
@@ -85,11 +94,16 @@ final readonly class PoolDistributor
     /**
      * Split results by the pool their participants belong to.
      *
+     * Every pool has an entry, empty when none of the results is its own,
+     * in the order the pools were given; within a pool the results keep
+     * the order they were given in.
+     *
      * @param array<string, array<Participant>> $pools Pools keyed by label
      * @param array<Result> $results
      * @return array<string, array<Result>> Results keyed by pool label
      *
-     * @throws InvalidConfigurationException When a result spans two pools or references a participant in no pool
+     * @throws InvalidConfigurationException When a result spans two pools or references a
+     *                                       participant in no pool (reason `InvalidResult`)
      */
     public static function splitResults(array $pools, array $results): array
     {

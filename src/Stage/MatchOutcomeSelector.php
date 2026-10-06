@@ -59,10 +59,13 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     }
 
     /**
-     * Build from plain configuration data: ['mode' => 'winners'].
+     * Build from plain configuration data: ['mode' => 'winners'] or
+     * ['mode' => 'losers'], the form toArray() gives. Other keys are
+     * ignored.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the mode is unknown
+     * @throws InvalidConfigurationException When the mode is missing or unknown (reason
+     *                                       `UnknownIdentifier`)
      */
     public static function fromArray(array $config): self
     {
@@ -79,6 +82,9 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     }
 
     /**
+     * The plain-data form fromArray() accepts: the mode, 'winners' or
+     * 'losers'.
+     *
      * @return array{mode: string}
      */
     public function toArray(): array
@@ -86,6 +92,30 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
         return ['mode' => $this->mode];
     }
 
+    /**
+     * The winners, or the losers, of the outcome's final round.
+     *
+     * One participant per tie, in the order the final round lists its
+     * events; in winners mode the round's byes follow, in the order the
+     * round lists them. A two-legged tie gives one participant, not one
+     * per leg. Losers mode never includes a bye. Run over the last round
+     * of a bracket, winners mode gives the one participant who took the
+     * title, also where the standings rank another participant first.
+     *
+     * Only the final round is read, from the outcome's results for that
+     * round's events; the standings are not consulted. Every tie of the
+     * round must be complete, and one that finished level must carry its
+     * tie decision (see TieDecision).
+     *
+     * @return array<Participant>
+     * @throws InvalidConfigurationException When the outcome has no final round, as a pooled
+     *                                       outcome has none (reason `IncompatibleOutcome`); when a
+     *                                       tie of the round lacks a result, or is level with no
+     *                                       tie decision (`UndecidedTie`); when a tie decision or a
+     *                                       leg's winner names a participant outside the tie
+     *                                       (`InvalidResult`); or when an event of the round or of
+     *                                       a result has no round number (`EventWithoutRoundNumber`)
+     */
     #[Override]
     public function select(StageOutcome $outcome): array
     {
@@ -141,6 +171,10 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
         return $selected;
     }
 
+    /**
+     * Always null: the count is the number of ties in the final round,
+     * plus its byes in winners mode, which only the outcome says.
+     */
     #[Override]
     public function getSelectionSize(): ?int
     {

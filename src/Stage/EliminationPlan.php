@@ -35,10 +35,14 @@ final readonly class EliminationPlan implements StagePlan
     private array $participantIds;
 
     /**
-     * @param array<Participant> $participants
+     * @param array<Participant> $participants The entrants in seeding order; IDs are not checked
+     *                                         for uniqueness here
      * @param string $algorithm 'single-elimination' or 'double-elimination'; anything else is rejected
      * @param int $legsPerTie Events per knockout tie (1 or 2)
-     * @throws InvalidConfigurationException When the configuration cannot form a bracket
+     * @throws InvalidConfigurationException When the algorithm is unknown (reason
+     *                                       `UnknownIdentifier`), legsPerTie is not 1 or 2
+     *                                       (`InvalidLegCount`), or there are fewer than 2
+     *                                       participants (`TooFewParticipants`)
      */
     public function __construct(
         array $participants,
@@ -77,6 +81,9 @@ final readonly class EliminationPlan implements StagePlan
         $this->participantIds = $ids;
     }
 
+    /**
+     * 'single-elimination' or 'double-elimination', as constructed.
+     */
     #[Override]
     public function getAlgorithm(): string
     {
@@ -109,7 +116,7 @@ final readonly class EliminationPlan implements StagePlan
     }
 
     /**
-     * Brackets have no legs concept; always null.
+     * Brackets have no legs concept; always null, as getLegs() is.
      */
     #[Override]
     public function getRoundsPerLeg(): ?int
@@ -118,7 +125,8 @@ final readonly class EliminationPlan implements StagePlan
     }
 
     /**
-     * Events per knockout tie: 1, or 2 for two-legged ties.
+     * Events per knockout tie: 1, or 2 for two-legged ties. Both events
+     * of a two-legged tie are in the same round.
      */
     public function getLegsPerTie(): int
     {
@@ -141,6 +149,8 @@ final readonly class EliminationPlan implements StagePlan
     }
 
     /**
+     * The entrants as a list, in the order given: the seeding order.
+     *
      * @return array<Participant>
      */
     public function getParticipants(): array
@@ -161,6 +171,17 @@ final readonly class EliminationPlan implements StagePlan
         return $size;
     }
 
+    /**
+     * Checks two things of every event: that it has exactly 2
+     * participants and that both are entrants of the stage. Events are
+     * numbered from 1 in the messages, in schedule order.
+     *
+     * It does not check the bracket itself: who meets whom depends on
+     * results, so the number of events, the rounds and the path through
+     * the bracket are not compared with anything.
+     *
+     * @return array<string>
+     */
     #[Override]
     public function validateIntegrity(Schedule $schedule): array
     {

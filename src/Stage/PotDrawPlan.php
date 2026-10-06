@@ -154,6 +154,9 @@ final readonly class PotDrawPlan implements StagePlan
         $this->potSize = $potSize;
     }
 
+    /**
+     * Always 'pot-draw'.
+     */
     #[Override]
     public function getAlgorithm(): string
     {
@@ -197,6 +200,10 @@ final readonly class PotDrawPlan implements StagePlan
         return intdiv(count($this->participants), 2);
     }
 
+    /**
+     * Events per round × total rounds. Never null: nothing about the
+     * shape depends on the draw.
+     */
     #[Override]
     public function getExpectedEventCount(): int
     {
@@ -211,16 +218,26 @@ final readonly class PotDrawPlan implements StagePlan
         return $this->getTotalRounds();
     }
 
+    /**
+     * How many pots the entrants are cut into, at least 1.
+     */
     public function getPots(): int
     {
         return $this->pots;
     }
 
+    /**
+     * How many entrants each pot holds: the same for every pot.
+     */
     public function getPotSize(): int
     {
         return $this->potSize;
     }
 
+    /**
+     * How many opponents every entrant meets from each pot, its own
+     * included: at least 1 and at most the pot size minus one.
+     */
     public function getOpponentsPerPot(): int
     {
         return $this->opponentsPerPot;
@@ -267,6 +284,9 @@ final readonly class PotDrawPlan implements StagePlan
      * every pot, its own included; an entrant's two role counts differ by
      * at most one, and with an even number of opponents per pot they are
      * equal against every pot.
+     *
+     * @return array<string> Event violations in schedule order, with events numbered from 1,
+     *                       then rounds, then entrants in seeding order
      */
     #[Override]
     public function validateIntegrity(Schedule $schedule): array

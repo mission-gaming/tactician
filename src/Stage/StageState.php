@@ -53,6 +53,8 @@ final readonly class StageState
      * Begin a stage with the given active participants.
      *
      * Order is authoritative: engines seed and pair from list position.
+     * The number of participants is not checked here; an engine refuses
+     * a state with fewer than 2 when it is asked to pair it.
      *
      * @param array<Participant> $participants
      * @throws InvalidConfigurationException When participant IDs collide (reason
@@ -84,6 +86,11 @@ final readonly class StageState
      * number must exceed the last recorded one, and every event and result
      * in the pairing must carry that round number, so the history can
      * never contradict itself.
+     *
+     * What is not checked: that the round number is the next one (a
+     * higher one is accepted, and the gap stays), that the participants
+     * of the pairing are active, and that an event has only one result.
+     * The results are appended to getResults() in the order given.
      *
      * @param array<Result> $results
      * @throws InvalidConfigurationException When the pairing does not follow the recorded rounds
@@ -306,6 +313,10 @@ final readonly class StageState
     /**
      * Withdraw a participant: they leave the active list; their recorded
      * pairings and results remain and still count toward standings.
+     *
+     * The participant is found by ID. Withdrawing one that is not active
+     * changes nothing and is not an error. There is no verb that puts a
+     * withdrawn participant back.
      */
     public function withoutParticipant(Participant $participant): self
     {
@@ -399,6 +410,10 @@ final readonly class StageState
     }
 
     /**
+     * The active participants as a list, in the order the stage was
+     * started with, without those withdrawn since. Engines seed and pair
+     * from this order.
+     *
      * @return array<Participant> Active participants
      */
     public function getParticipants(): array
@@ -423,7 +438,8 @@ final readonly class StageState
     }
 
     /**
-     * The 1-based number the next round should carry.
+     * The 1-based number the next round should carry: 1 before any round
+     * is recorded, otherwise one more than the last recorded round's.
      */
     public function getNextRoundNumber(): int
     {
@@ -433,6 +449,11 @@ final readonly class StageState
     }
 
     /**
+     * Every recorded result, in the order recorded: round by round, with
+     * the results added later by withAdditionalResults() after those of
+     * withRoundPlayed(). A round recorded without results contributes
+     * none, so this can be shorter than getPlayedEvents().
+     *
      * @return array<Result>
      */
     public function getResults(): array
@@ -476,7 +497,8 @@ final readonly class StageState
     }
 
     /**
-     * Bye counts keyed by participant ID.
+     * Bye counts keyed by participant ID. A participant that had no bye
+     * has no entry.
      *
      * @return array<string, int>
      */
@@ -544,7 +566,7 @@ final readonly class StageState
      * stamped (see withEngineFingerprint()), so an unstamped state has the
      * shape it has always had.
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>}>, engine_fingerprint?: string}
+     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}>, engine_fingerprint?: string}
      */
     public function toArray(): array
     {
@@ -595,6 +617,11 @@ final readonly class StageState
      * The `engine_fingerprint` key is optional: data stored before the
      * stamp existed, or by a caller that does not stamp, loads as an
      * unstamped state.
+     *
+     * The shape is checked, and that every ID resolves in the
+     * `participants` registry. The history is not checked as
+     * withRoundPlayed() checks it (round order, results that belong to
+     * their round): the data is trusted to be what toArray() wrote.
      *
      * @param array<string, mixed> $data
      * @throws InvalidInputException When the data is malformed
@@ -671,7 +698,8 @@ final readonly class StageState
     }
 
     /**
-     * Serialize this state to a JSON string.
+     * Serialize this state to a JSON string: toArray(), encoded.
+     * fromJson() reads it back.
      *
      * @throws JsonConversionException When the state contains values JSON cannot represent
      */
@@ -685,7 +713,8 @@ final readonly class StageState
     }
 
     /**
-     * Recreate a state from its JSON representation.
+     * Recreate a state from its JSON representation, as toJson() wrote
+     * it; see fromArray() for what is checked.
      *
      * @throws JsonConversionException When the JSON is malformed
      * @throws InvalidInputException When the decoded data is malformed
