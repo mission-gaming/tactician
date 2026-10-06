@@ -144,6 +144,19 @@ heading **Output change (fix)**.
 
 ### Added
 
+- `Standings::getTiedSets()` reports where the order of a standings table
+  comes from the final fallback and not from a result. It returns a list of
+  the new `Standings\TiedSet`, in table order: each one holds two or more
+  adjacent entries that are level on the ranking value, on every configured
+  tiebreaker, on score difference and on scores-for, with the positions the
+  set spans (`getEntries()`, `getParticipants()`, `getFirstPosition()`,
+  `getLastPosition()`, and it is countable). A table in which results decide
+  every position returns an empty list; a table with no results returns one
+  set of every entry. `StandingEntry::isLevelWith()` is the comparison behind
+  it. Values are level only when they are equal, with no tolerance, which is
+  how the table is ordered. The entries, their order and every existing
+  accessor are unchanged: an application can now see a tie, and the table
+  still gives every entry its own position.
 - A reason on every configuration error, so that code does not have to match
   message text: `InvalidConfigurationException::getReason()` returns a case
   of the new backed enum `Exceptions\InvalidConfigurationReason`
