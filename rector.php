@@ -23,7 +23,7 @@ return RectorConfig::configure()
     // are not: the first rewrites null checks and loop bounds across the
     // generators for style alone, the second adds closure types taken from
     // PHPDoc, which turns a value that is tolerated today into a TypeError.
-    ->withPreparedSets(deadCode: true)
+    ->withPreparedSets(deadCode: true, earlyReturn: true)
     // A rule is skipped where it would change what a consumer of the library
     // can see. Each entry says what the change would be.
     ->withSkip([
