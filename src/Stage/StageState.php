@@ -186,6 +186,93 @@ final readonly class StageState
     }
 
     /**
+     * Replace the recorded result of one event of the most recently
+     * recorded round: the correction of a result entered wrongly, or of
+     * one the format cannot use (a drawn knockout match).
+     *
+     * The result to replace is found by the replacement's event: the same
+     * round number, the same participants in either order, and the same
+     * tie leg. Object identity is not needed, so a state that came back
+     * from storage can be corrected. The replacement takes the place of
+     * the result it replaces in getResults(). If the event had been given
+     * more than one result (withAdditionalResults() does not look for an
+     * existing one), the first is replaced and the others are dropped, so
+     * the event has exactly one result afterwards. Rounds, byes and the
+     * active list are untouched.
+     *
+     * Only the last recorded round can be corrected. Every later round was
+     * paired from the results of the rounds before it — a bracket's next
+     * round holds the winners, a Swiss round follows the table — so a
+     * state that kept those rounds over a changed result would state
+     * pairings no engine made from it. The method refuses instead of
+     * dropping or keeping them. To correct an earlier round, rebuild the
+     * state: StageState::start(), then withRoundPlayed() for each round
+     * that still stands, with the corrected result, and ask the engine for
+     * the next round again. Where the later pairings were in fact played
+     * and stand whatever the correction (a Swiss round is a fact once
+     * played), record them again the same way.
+     *
+     * A replacement removes nothing but the old result: an event whose
+     * result should not exist at all is not what this verb is for.
+     *
+     * @throws InvalidConfigurationException When no round has been recorded, when the event
+     *                                       has no recorded result, or when its round is not
+     *                                       the last recorded round
+     */
+    public function withResultReplaced(Result $result): self
+    {
+        $lastRound = $this->getLastRound();
+        if ($lastRound === null) {
+            throw new InvalidConfigurationException(
+                'No round has been recorded to replace a result in',
+                []
+            );
+        }
+
+        $event = $result->getEvent();
+        $eventKey = $this->eventKey($event);
+        $round = $event->getRound()?->getNumber();
+
+        $results = [];
+        $replaced = false;
+        foreach ($this->results as $recorded) {
+            if ($this->eventKey($recorded->getEvent()) !== $eventKey) {
+                $results[] = $recorded;
+                continue;
+            }
+
+            if (!$replaced) {
+                $results[] = $result;
+                $replaced = true;
+            }
+        }
+
+        if (!$replaced) {
+            throw new InvalidConfigurationException(
+                'No result is recorded for the event; record a first result with withRoundPlayed() or withAdditionalResults()',
+                [
+                    'round' => $round,
+                    'participants' => array_map(
+                        fn(Participant $participant) => $participant->getId(),
+                        $event->getParticipants()
+                    ),
+                ]
+            );
+        }
+
+        if ($round !== $lastRound->getRoundNumber()) {
+            throw new InvalidConfigurationException(
+                "A result of round {$round} cannot be replaced: round {$lastRound->getRoundNumber()} was paired from the"
+                    . " results of round {$round}. Rebuild the state up to round {$round} with the corrected result"
+                    . ' (StageState::start(), then withRoundPlayed() for each round that stands) and pair again.',
+                ['round' => $round, 'last_round' => $lastRound->getRoundNumber()]
+            );
+        }
+
+        return new self($this->participants, $this->roundsPlayed, $results);
+    }
+
+    /**
      * Withdraw a participant: they leave the active list; their recorded
      * pairings and results remain and still count toward standings.
      */
