@@ -19,8 +19,10 @@ use Override;
 final readonly class SwissOptions implements SchedulerOptions
 {
     /**
-     * @param int $rounds Number of Swiss rounds to generate
-     * @throws InvalidConfigurationException When rounds is not a positive integer
+     * @param int $rounds Number of Swiss rounds to generate, at least 1. Whether the field is
+     *                    large enough for that many rounds without a repeat pairing is checked
+     *                    by the scheduler, which knows the participants
+     * @throws InvalidConfigurationException When rounds is below 1
      */
     public function __construct(
         public int $rounds = 3
@@ -37,8 +39,10 @@ final readonly class SwissOptions implements SchedulerOptions
     /**
      * Build from plain configuration data: ['rounds' => 5].
      *
+     * An omitted 'rounds' is 3. A key this class does not have is ignored.
+     *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When rounds is not an integer
+     * @throws InvalidConfigurationException When rounds is not an integer or is below 1
      */
     #[Override]
     public static function fromArray(array $config): static
@@ -56,6 +60,8 @@ final readonly class SwissOptions implements SchedulerOptions
     }
 
     /**
+     * The plain-data form fromArray() accepts.
+     *
      * @return array{rounds: int}
      */
     #[Override]

@@ -15,8 +15,8 @@ use MissionGaming\Tactician\Stage\RoundRobinPlan;
  * Backtracking search over round-robin round decompositions.
  *
  * The circle method fixes which pairings share a round purely by list
- * order, so the greedy generator only ever sees n decompositions (one per
- * rotation). This search treats leg construction as what it is — a
+ * order, so the greedy generator only ever sees n decompositions at most
+ * (one per rotation, and it tries no more than 25). This search treats leg construction as what it is — a
  * constraint-satisfaction problem over perfect matchings: rounds are
  * built in order, each round picks the first unmatched seat and tries
  * every unused opponent in both orientations under the configured

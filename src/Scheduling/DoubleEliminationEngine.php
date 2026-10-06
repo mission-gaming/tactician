@@ -42,10 +42,18 @@ use Override;
  * final or its reset, is decided by the tie decision recorded on its
  * result (see TieDecision), and not advancing from it is the loss that
  * drops or eliminates the other participant. Re-seeding is a
- * single-elimination preset parameter and is rejected here. There is
- * deliberately no champion accessor - rank 1 of the outcome's standings,
- * or MatchOutcomeSelector::winners() over the final round, is the
- * consumer's derivation.
+ * single-elimination preset parameter and is rejected here.
+ *
+ * There is deliberately no champion accessor. The champion is the
+ * participant who advances from the last round played (the grand final,
+ * or its reset): MatchOutcomeSelector::winners() over the outcome's final
+ * round. Rank 1 of the outcome's standings is not that derivation: the
+ * standings are a win/draw/loss table over every result of both brackets,
+ * in the order of the standings calculator, and the longer route through
+ * the losers bracket collects more wins. With 8 entrants and default
+ * options, a participant who loses in round 1, wins the losers bracket and
+ * the first grand final, and loses the reset has 5 wins and is first in
+ * the table; the champion has 4 and is second.
  *
  * @experimental
  */
@@ -54,6 +62,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     use EliminationBracketSupport;
 
     /**
+     * @param StandingsCalculator $standingsCalculator Orders the outcome's standings; it pairs nothing
+     *
      * @throws InvalidConfigurationException When reseedEachRound is requested
      */
     public function __construct(
@@ -90,6 +100,10 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
+     * The shape of the bracket for every participant the state has seen.
+     * Whether the grand final is reset depends on its result, so the plan
+     * reports null for the number of rounds and of events.
+     *
      * @throws InvalidConfigurationException When fewer than 2 participants have been seen, or
      *                                       the state is stamped with another engine's fingerprint
      */
@@ -108,10 +122,30 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     /**
      * Pair the next unresolved stage of the bracket.
      *
-     * @throws InvalidConfigurationException When inputs are malformed, a stage is partially
+     * The bracket is replayed from the state's participant list and its
+     * results on every call, so the same state gives the same pairing, and
+     * a state that has the stage's pairing recorded but none of its results
+     * gives that stage again. The call does not record anything: pass the
+     * pairing and its results to StageState::withRoundPlayed().
+     *
+     * Round numbers are 1-based and count the stages that have an event to
+     * play, in the order they are played; a stage in which every
+     * participant advances without playing takes no number. The round
+     * carries its label ('winners round 1', 'losers round 2', 'winners
+     * final', 'losers final', 'grand final', 'grand final reset'). The
+     * events are in bracket order; a two-legged tie is two consecutive
+     * events with the roles reversed, marked 'tie_leg' 1 and 2 in their
+     * metadata. The byes are the participants who advance from the stage
+     * without playing.
+     *
+     * @throws InvalidConfigurationException When the state has fewer than 2 participants or is
+     *                                       stamped with another engine's fingerprint, a result
+     *                                       has no round number, is not of a two-participant
+     *                                       event or is recorded twice, a stage is partially
      *                                       resolved (record the missing results via
-     *                                       StageState::withAdditionalResults()), a tie is
-     *                                       undecided, or the bracket is complete
+     *                                       StageState::withAdditionalResults()), a completed tie
+     *                                       is level without a usable tie decision, or the
+     *                                       bracket is complete
      */
     #[Override]
     public function pairNextRound(StageState $state): RoundPairing
@@ -130,8 +164,12 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
-     * @throws InvalidConfigurationException When the recorded state is malformed
-     *                                       (partially resolved stages, undecided ties)
+     * Whether the title is decided: the grand final has a result and no
+     * reset is due, or the reset has one. No reset is due when the winners
+     * champion won the grand final or grandFinalReset is off.
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed: every case
+     *                                       pairNextRound() names but the complete bracket
      */
     #[Override]
     public function isComplete(StageState $state): bool
@@ -142,11 +180,16 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     /**
      * The uniform completion product; null while the bracket is unfinished.
      *
-     * In the standings, a single-leg event that finished level and was
-     * decided by its tie decision counts as a win for the participant who
-     * advanced; the outcome's results are the results as recorded.
+     * The standings are a win/draw/loss table over every result of both
+     * brackets, in the order of the standings calculator. They are not a
+     * placement and rank 1 is not the champion (see the class docblock):
+     * use MatchOutcomeSelector::winners() over the outcome's final round.
+     * A single-leg event that finished level and was decided by its tie
+     * decision counts in the table as a win for the participant who
+     * advanced; the legs of a two-legged tie are counted as recorded. The
+     * outcome's results are the results as recorded.
      *
-     * @throws InvalidConfigurationException When the recorded state is malformed
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome

@@ -18,14 +18,23 @@ use Override;
 use Random\Randomizer;
 
 /**
- * Whole-schedule Swiss preset: random non-repeat pairing over N rounds.
+ * Whole-schedule Swiss preset: non-repeat pairing over N rounds, drawn
+ * before any event is played.
  *
  * A canned composition, not a second mechanism - this drives
  * SwissPairingEngine through the standard stage driver loop while
  * recording no results, which reduces standings-aware Monrad pairing to
- * random non-repeat pairing (everyone stays tied at zero, so the
- * randomizer shuffles the whole field each round). Use the engine
+ * non-repeat pairing of the field in the order it stands. Use the engine
  * directly when rounds should be paired from actual results.
+ *
+ * The pairing is random only with a Randomizer, and only in a field of
+ * even size is it random throughout: there everyone stays level at zero,
+ * so the randomizer shuffles the whole field each round. In a field of
+ * odd size a bye is credited as a win in the pairing order, so the
+ * participants who have had a bye are placed above the rest and are
+ * paired with each other first. Without a Randomizer nothing is drawn:
+ * the first round pairs the participants as listed (1 with 2, 3 with 4),
+ * and the same input gives the same schedule.
  *
  * @experimental
  */
@@ -33,6 +42,14 @@ class SwissScheduler implements SchedulerInterface
 {
     use ValidatesScheduleCompleteness;
 
+    /**
+     * @param ConstraintSet|null $constraints Asked about every candidate pairing; a pairing one of
+     *                                        them rejects is not made
+     * @param Randomizer|null $randomizer Shuffles the pairing order of each round (see the class
+     *                                    docblock). It is drawn from on every call, so one
+     *                                    scheduler asked twice gives two different schedules;
+     *                                    seed a new one for a repeatable schedule
+     */
     public function __construct(
         private ?ConstraintSet $constraints = null,
         private ?Randomizer $randomizer = null
@@ -41,14 +58,28 @@ class SwissScheduler implements SchedulerInterface
     }
 
     /**
-     * Generate a Swiss schedule by randomly pairing non-repeat opponents
-     * each round.
+     * Generate a Swiss schedule: every round pairs each participant once,
+     * and no two participants meet twice.
      *
-     * @param array<Participant> $participants
-     * @param SchedulerOptions|null $options SwissOptions, or null for 3 rounds
+     * The events are in round order, rounds numbered from 1. In a field of
+     * odd size one participant sits out each round (SwissPairingEngine says
+     * which); the schedule's 'byes' metadata maps the round number to that
+     * participant's ID. The other metadata keys are 'algorithm',
+     * 'participant_count', 'rounds', 'total_rounds' and
+     * 'expected_event_count'.
      *
-     * @throws InvalidConfigurationException
-     * @throws IncompleteScheduleException When no complete pairing exists for some round
+     * @param array<Participant> $participants At least 2, with unique IDs
+     * @param SchedulerOptions|null $options SwissOptions, or null for 3 rounds. The rounds may not
+     *                                       exceed the number of participants minus 1: beyond that
+     *                                       a repeat pairing cannot be avoided
+     *
+     * @throws InvalidConfigurationException When the options are not SwissOptions, there are fewer
+     *                                       than 2 participants, two share an ID, or there are
+     *                                       more rounds than participants minus 1
+     * @throws IncompleteScheduleException When no complete pairing exists for some round: the
+     *                                     constraints reject too much, or the earlier rounds left
+     *                                     no pairing without a repeat. The NoValidPairingException
+     *                                     of that round is the previous exception
      */
     #[Override]
     public function schedule(
@@ -114,11 +145,12 @@ class SwissScheduler implements SchedulerInterface
     }
 
     /**
-     * Build the Swiss stage plan for the given configuration.
+     * Build the Swiss stage plan for the given configuration: the rounds
+     * and the events schedule() would produce, with nothing paired.
      *
      * @param array<Participant> $participants
      * @param SchedulerOptions|null $options SwissOptions, or null for 3 rounds
-     * @throws InvalidConfigurationException
+     * @throws InvalidConfigurationException For the configurations schedule() refuses
      */
     #[Override]
     public function getPlan(
