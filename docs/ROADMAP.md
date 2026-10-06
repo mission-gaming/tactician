@@ -61,6 +61,7 @@ Added after the five phases and released in 0.2.0.
 - **Greedy generation is the default.** A constraint set that every rotated ordering fails throws `IncompleteScheduleException` even when a schedule exists, unless `RoundRobinOptions(backtracking: true)` is set.
 - **Backtracking searches the first leg only.** Later legs derive from it through the leg strategy; a later leg the constraints reject fails the attempt, because the search does not cross leg boundaries ([design note](design/backtracking-generation.md)).
 - **`RoleBalanceConstraint` has a floor with the built-in generator.** `RoundRobinScheduler` bounds the running home/away imbalance at 3 for even field sizes and 4 for odd ones, so only limits at or above those values are always satisfiable.
+- **Events are pairwise.** `Event` accepts more than two participants, but nothing generates such an event, a `Result` cannot hold a finishing order, and standings and repack work on pairs. Events with more participants are a goal for 2.0 ([ADR 0003](adr/0003-multi-participant-events-are-a-2-0-goal.md)).
 - **`ScheduleOptimizer` samples; it does not search.** It keeps the best of N seeded candidates and works with whole-schedule generators only ([design note](design/schedule-quality.md)).
 
 ## Deferred work

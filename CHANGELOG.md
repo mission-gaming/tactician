@@ -195,7 +195,8 @@ heading **Output change (fix)**.
   more than two participants (a race, a lobby) are a goal for 2.0, the
   library supports pairwise events only until then, and code written before
   2.0 must not make that goal harder than it needs to be. The agent guide
-  carries the rule. No behaviour changes.
+  carries the rule, and the roadmap lists the pairwise scope under its known
+  limitations. No behavior changes.
 
 ### Changed
 
