@@ -91,6 +91,29 @@ $changelogSections = function () use ($root): array {
     );
 };
 
+/**
+ * The text under each `## [x]` heading of the changelog, keyed by version,
+ * with the link definitions at the foot of the file left out.
+ *
+ * @return array<string, string>
+ */
+$changelogBodies = function () use ($root): array {
+    $changelog = (string) file_get_contents($root . '/CHANGELOG.md');
+    $parts = preg_split('/^## \[([^\]]+)\][^\n]*\n/m', $changelog, -1, PREG_SPLIT_DELIM_CAPTURE);
+
+    if ($parts === false) {
+        Assert::fail('CHANGELOG.md could not be split into sections.');
+    }
+
+    $bodies = [];
+
+    for ($index = 1; $index + 1 < count($parts); $index += 2) {
+        $bodies[$parts[$index]] = (string) preg_replace('/^\[[^\]]+\]: \S+$/m', '', $parts[$index + 1]);
+    }
+
+    return $bodies;
+};
+
 describe('stability classification', function () use ($root, $classified, $sourceNamespaces): void {
     it('classifies every source namespace as stable or experimental', function () use ($classified, $sourceNamespaces): void {
         $named = array_map(
@@ -172,7 +195,7 @@ describe('supported PHP versions', function () use ($root, $stabilitySection): v
     });
 });
 
-describe('changelog', function () use ($root, $changelogSections): void {
+describe('changelog', function () use ($root, $changelogSections, $changelogBodies): void {
     it('opens with an Unreleased section', function () use ($changelogSections): void {
         $sections = $changelogSections();
 
@@ -230,6 +253,67 @@ describe('changelog', function () use ($root, $changelogSections): void {
             };
 
             expect($links[$version])->toEndWith($expected);
+        }
+    });
+
+    it('reads a section for every heading', function () use ($changelogSections, $changelogBodies): void {
+        // The three tests below read the bodies; a body that went missing
+        // would pass all of them.
+        expect(array_keys($changelogBodies()))->toBe(array_column($changelogSections(), 'version'));
+    });
+
+    it('groups each section under the Keep a Changelog headings, each once and in order', function () use ($changelogBodies): void {
+        // "Output change (fix)" is this project's own heading (see the top of
+        // the changelog); it leads because it is what an upgrade must read.
+        $allowed = ['Output change (fix)', 'Added', 'Changed', 'Deprecated', 'Removed', 'Fixed', 'Security'];
+
+        foreach ($changelogBodies() as $version => $body) {
+            preg_match_all('/^### (.+)$/m', $body, $matches);
+            $headings = $matches[1];
+
+            expect(array_values(array_diff($headings, $allowed)))->toBe([], "{$version} has a heading that is not a change category.")
+                ->and($headings)->toBe(
+                    array_values(array_intersect($allowed, $headings)),
+                    "{$version} repeats a category or lists its categories out of order."
+                );
+
+            // Nothing sits under a deeper or shallower heading by mistake
+            preg_match_all('/^(#{1,2}|#{4,}) /m', $body, $otherLevels);
+            expect($otherLevels[0])->toBe([], "{$version} has a heading that is not a level-3 category.");
+        }
+    });
+
+    it('has entries in every release section and under every category', function () use ($changelogBodies): void {
+        foreach ($changelogBodies() as $version => $body) {
+            if ($version !== 'Unreleased') {
+                expect($body)->toMatch('/^- \S/m', "{$version} has no entry.");
+            }
+
+            // A category heading with nothing under it, in any section
+            $blocks = preg_split('/^### .+$/m', $body);
+
+            if ($blocks === false) {
+                Assert::fail("{$version} could not be split into categories.");
+            }
+
+            foreach (array_slice($blocks, 1) as $block) {
+                expect($block)->toMatch('/^- \S/m', "{$version} has a category with no entry.");
+            }
+        }
+    });
+
+    it('keeps relative links out of the sections, which are copied into release notes', function () use ($changelogBodies): void {
+        // docs/RELEASING.md copies a section into the GitHub release, where a
+        // link relative to the repository root resolves against the release
+        // page instead. Absolute links and the reference links are fine.
+        foreach ($changelogBodies() as $version => $body) {
+            preg_match_all('/\]\(([^)\s]+)\)/', $body, $matches);
+            $relative = array_values(array_filter(
+                $matches[1],
+                fn(string $target) => preg_match('#^[a-z]+:#i', $target) !== 1
+            ));
+
+            expect($relative)->toBe([], "{$version} has a relative link.");
         }
     });
 
