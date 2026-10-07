@@ -352,11 +352,13 @@ final readonly class StageState
      * again with the new engine's fingerprint.
      *
      * The library's engines each offer getFingerprint() (see
-     * FingerprintedEngine for what a fingerprint covers: an option at its
-     * default is not part of it, so an engine that gains an option still
-     * accepts the states stamped before). Their fingerprints begin with
-     * `tactician:`; any non-empty string that does not will do for an
-     * engine of your own.
+     * FingerprintedEngine for what a fingerprint covers and for how long
+     * one is kept: an option at its default is not part of it, so an
+     * engine that gains an option still accepts the states stamped before;
+     * a patch release keeps every fingerprint, and a 0.x minor release may
+     * change the scheme, with a migration note). Their fingerprints begin
+     * with `tactician:`; any non-empty string that does not will do for
+     * an engine of your own.
      *
      * @throws InvalidConfigurationException When the fingerprint is an empty string
      */

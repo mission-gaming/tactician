@@ -21,19 +21,22 @@ use MissionGaming\Tactician\Standings\WinDrawLossRanking;
  *         ->toString();
  *
  * with() leaves out an option whose value is its default. That is what
- * keeps stored stamps valid: an engine that gains an option adds one
- * with() call, and every configuration that leaves the new option alone
- * has the fingerprint it had before. A new option must therefore be given
- * here with the value that reproduces the behaviour before it existed as
- * its default, and a default, once released, is never changed: changing it
+ * keeps stored stamps valid when an option is added within a scheme: an
+ * engine that gains an option adds one with() call, and every
+ * configuration that leaves the new option alone has the fingerprint it
+ * had before. A new option must therefore be given here with the value
+ * that reproduces the behaviour before it existed as its default, and a
+ * default, once released, is not changed within a scheme: changing it
  * would change what every stored stamp without the option means.
  *
  * The string is `tactician:v1:` followed by the format and one
  * `;name=value` per stated option, ordered by name so that the order of
  * the with() calls means nothing. `tactician:` separates the library's
  * fingerprints from the strings an application gives its own engines.
- * `v1` is the version of this encoding, so that a later release that had
- * to encode differently could still recognise a stamp written by this one.
+ * `v1` is the version of this scheme, so that a stamp of a later scheme
+ * can be told from one written by this one. A patch release does not
+ * change the scheme; a 0.x minor release may, with a migration note in
+ * the changelog (see FingerprintedEngine).
  * A string value is percent-encoded, so no value can be read as a
  * separator, and two configurations have the same string only when every
  * stated option is the same.
@@ -41,9 +44,10 @@ use MissionGaming\Tactician\Standings\WinDrawLossRanking;
  * Format and option names are literals of this library, in lower case with
  * hyphens; they are not encoded.
  *
- * @internal Not public API. The string an engine returns is stable, because
- *           states are stored with it; how it is spelled is not a contract
- *           for anything but this class. Compare fingerprints for equality.
+ * @internal Not public API. The string an engine returns does not change
+ *           in a patch release, because states are stored with it; how it
+ *           is spelled is not a contract for anything but this class.
+ *           Compare fingerprints for equality.
  */
 final readonly class EngineFingerprint
 {

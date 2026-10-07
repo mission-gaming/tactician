@@ -60,7 +60,7 @@ anything else that competes.
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
-| **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format and for the options that shape which rounds the format has or how they are paired, and an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
+| **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format and for the options that shape which rounds the format has or how they are paired, and an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. A patch release keeps the fingerprint of every configuration; a 0.x minor release may change the scheme ([how long it lasts](#recording-which-engine-pairs-a-state)). An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
 | **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. The ranking value it groups by includes a win for every bye a participant has had. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary. The standings are a table of the whole stage, and rank 1 of an elimination stage is not always the participant who won its last tie: read that with `MatchOutcomeSelector::winners()` (see [Who won the bracket](#who-won-the-bracket)). |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
@@ -1111,10 +1111,22 @@ through every verb.
 **What a fingerprint covers.** Two engines have the same fingerprint when
 they are the same format and agree on every option that shapes which rounds
 the format has or how they are paired. An option at its default value is
-not part of the fingerprint. An engine that gains an option in a later
-release therefore keeps the fingerprint of every configuration that leaves
-the option alone, and the states stamped before are still accepted. For one
-configuration the fingerprint is the same in every later release.
+not part of the fingerprint. That is the rule by which an option is added:
+an engine that gains an option keeps the fingerprint of every configuration
+that leaves the option alone, and the states stamped before are still
+accepted.
+
+**How long a fingerprint lasts.** The `Stage` namespace is experimental,
+and how a stage is described is not settled. The fingerprint follows the
+rule for experimental API and promises nothing beyond it (see
+[Versioning and stability](../README.md#versioning-and-stability)):
+
+- A patch release keeps the fingerprint of every configuration, so within
+  the 0.2.x series a stored stamp stays valid.
+- A 0.x minor release may change the scheme. The changelog of that release
+  then has a migration note saying what a stored stamp is replaced with.
+  The string states the version of its scheme (`tactician:v1:`), so that a
+  stamp of a later scheme can be told from one of this scheme.
 
 | Engine | Part of the fingerprint when not at the default | Not part of it |
 | --- | --- | --- |
@@ -1173,7 +1185,8 @@ describe, and these limits follow from that:
 
 **Treat the string as opaque.** Compare it for equality with the one an
 engine gives. Do not parse it, write one by hand or rely on how it is
-spelled: only its stability for one configuration is promised. A
+spelled: nothing is promised about the spelling, and the string itself is
+kept only for as long as stated above. A
 fingerprint that begins with `tactician:` is the library's. An engine of
 your own can use any non-empty string that does not begin with it, and
 call `$state->requireEngineFingerprint()` with that string.
