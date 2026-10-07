@@ -77,11 +77,12 @@ use Random\Randomizer;
  * one layer of a pair has the entrants of A in the first role and the other
  * has those of B. Inside a pot, the two matchings of a pair form cycles of
  * even length; walking each cycle and putting the entrant that is left
- * first gives every member one event in each role. So over a pair of
- * layers an entrant is in each role once against every pot. With k odd one
- * layer is left over, and its p rounds are each a perfect matching of the
- * whole field. They are taken in pairs in the same way: two of them form
- * cycles of even length over the field, and walking each cycle gives every
+ * first, or on a coin the one that is reached, gives every member one
+ * event in each role. So over a pair of layers an entrant is in each role
+ * once against every pot. With k odd one layer is left over, and its p
+ * rounds are each a perfect matching of the whole field. They are taken in
+ * pairs in the same way: two of them form cycles of even length over the
+ * field, and walking each cycle, either way round on a coin, gives every
  * entrant one event in each role. With p odd as well, one round is left
  * over, and each of its events takes its roles from a coin: an entrant then
  * has one role once more than the other, which is the least an odd number
@@ -109,8 +110,13 @@ use Random\Randomizer;
  *   order drawn for the two pots.
  *
  * That is 4 + 2 × (p − 2) = 2 × p rounds. Roles: along its cycle each
- * member is first against the next member and second against the previous
- * one; against every other pot one of the two meetings has it first.
+ * member is first against the member on one side of it and second against
+ * the member on the other, and a coin for each pot says which side;
+ * against every other pot one of the two meetings has it first. The coin
+ * is needed: two partner pots are joined position by position, so without
+ * it their two cycles would run the same way past those positions in every
+ * draw, and with pots of three, where no move changes a pairing, half of
+ * the draws the format allows could not be drawn.
  *
  * ## The walk
  *
@@ -197,9 +203,29 @@ use Random\Randomizer;
  *
  * ### What the walk cannot change
  *
- * - One round (one pot, one opponent) has nothing to trade with, and its
- *   events are all the pairings there are. The draw is the one built: a
- *   matching of the circle method over members in a drawn order.
+ * - The roles. Neither move changes how often an entrant is in each role
+ *   against each pot, so those numbers are the ones the draw was built
+ *   with. With k even the format fixes them. With k odd it does not, and
+ *   they keep a pattern: the rounds of the single layer took their roles
+ *   two at a time, and in two such rounds a pot meets two pots (one of them
+ *   may be itself). Every member of the pot is first once more than second
+ *   against one of the two, and second once more than first against the
+ *   other. So the pots a pot meets come in pairs of that kind, on every
+ *   seed: two pairs for every pot with 20 entrants in 5 pots of 4. Which
+ *   pots are paired, and which way round each entrant has them, is drawn.
+ *   It also means that not every assignment of roles the format allows can
+ *   be drawn: with 6 entrants in 3 pots of 2, 42 or 48 of the 102 or 104
+ *   that one set of pairings and rounds allows. With k even the same is
+ *   true of which opponents an entrant is first against, where few
+ *   opponents can be exchanged: the roles inside a pot were given along
+ *   the cycles of two layers at a time, and one pot of 6 with four
+ *   opponents each is drawn in 360 of the 1,140 ways the format allows,
+ *   the order of the rounds apart.
+ * - One round (one pot, one opponent) has nothing to trade with. The draw
+ *   is the one built: a matching of the circle method over members in a
+ *   drawn order, each event with its roles from a coin, which makes every
+ *   pairing of the field with every assignment of roles as likely as any
+ *   other.
  * - Six entrants or fewer. A cycle has at least four entrants, because two
  *   rounds share no pairing, so two cycles need eight. Two rounds of six
  *   entrants or fewer are one cycle, and the round exchange trades the
@@ -266,6 +292,14 @@ use Random\Randomizer;
  * the first count was too coarse to tell was counted again over six to
  * twelve times as many draws.
  *
+ * What agrees at the two lengths is the shape of a draw, not the draw: a
+ * walk of this length has not forgotten where it started. With 60 entrants
+ * in 15 pots of 4, 63 in 100 of the pairings are still the ones built,
+ * against 50 after ten times the steps and after forty times. Nothing of
+ * that shows in a draw, because the pairings between two pots are drawn
+ * evenly as they are built, and the numbers of sets of three and of four
+ * entrants who all meet across pots are the same at the three lengths.
+ *
  * Sixteen steps for every round are too few for a small field, which is
  * what the second number is for. The slowest field measured is 10 entrants
  * in 2 pots of 5: one pot is first throughout a block always as built,
@@ -295,6 +329,15 @@ use Random\Randomizer;
  * uniform over the draws it can reach; what is not known is whether those
  * are all the draws there are, except for the fields listed under "What
  * the walk cannot change", where they are not.
+ *
+ * For a few of the smallest fields every draw the format allows was
+ * listed, and the draws of 120,000 seeds or more were counted against the
+ * list. 8 entrants in 2 pots of 4 with one opponent per pot (1,728 draws),
+ * 8 as one pot with two opponents (15,120) and 6 in 2 pots of 3 (2,304)
+ * give every draw as often as any other, as far as that many seeds can
+ * tell. 6 entrants in 3 pots of 2 give 2,160 of 7,392, and 6 as one pot
+ * with four opponents 8,640 of 27,360: the rounds of six entrants and the
+ * roles, under "What the walk cannot change".
  *
  * The same entrants, options and seed give the same schedule on every
  * call: each call builds its own `Random\Randomizer` on the
@@ -379,7 +422,7 @@ class PotDrawScheduler implements SchedulerInterface
             ? $this->drawEvenPots($plan->getPots(), $plan->getPotSize(), $plan->getOpponentsPerPot(), $randomizer)
             : $this->drawOddPots($plan->getPots(), $plan->getPotSize(), $randomizer);
 
-        $rounds = $this->mix($rounds, count($entrants), $plan->getPotSize(), $randomizer);
+        $rounds = $this->walk($rounds, count($entrants), $plan->getPotSize(), $randomizer);
         $rounds = $randomizer->shuffleArray($rounds);
 
         $events = [];
@@ -499,7 +542,8 @@ class PotDrawScheduler implements SchedulerInterface
                 [$layers[$layer], $layers[$layer + 1]] = $this->orientMatchingPair(
                     $factors[$choice[$layer]],
                     $factors[$choice[$layer + 1]],
-                    $potSize
+                    $potSize,
+                    $randomizer
                 );
             }
             if ($pairedLayers < $opponentsPerPot) {
@@ -573,7 +617,8 @@ class PotDrawScheduler implements SchedulerInterface
                 [$rounds[$round], $rounds[$round + 1]] = $this->orientMatchingPair(
                     $rounds[$round],
                     $rounds[$round + 1],
-                    $pots * $potSize
+                    $pots * $potSize,
+                    $randomizer
                 );
             }
             if ($pots % 2 === 1) {
@@ -611,13 +656,22 @@ class PotDrawScheduler implements SchedulerInterface
             $shift = $randomizer->getInt(1, $last);
 
             foreach ([$a, $b] as $pot) {
-                for ($position = 1; $position < $last; $position += 2) {
-                    $partnerRounds[0][] = [$members[$pot][$position], $members[$pot][$position + 1]];
+                // The cycle of the pot: each position against the next,
+                // the round of each pair in its key
+                $cycle = [2 => [[$members[$pot][$last], $members[$pot][0]]]];
+                for ($position = 0; $position < $last; ++$position) {
+                    $cycle[1 - $position % 2][] = [$members[$pot][$position], $members[$pot][$position + 1]];
                 }
-                for ($position = 0; $position < $last; $position += 2) {
-                    $partnerRounds[1][] = [$members[$pot][$position], $members[$pot][$position + 1]];
+                // A coin says which way round the cycle the first role
+                // goes. Without it the cycles of two partner pots would run
+                // the same way past the positions they are joined at, in
+                // every draw
+                $forwards = $randomizer->getInt(0, 1) === 0;
+                foreach ($cycle as $round => $pairs) {
+                    foreach ($pairs as [$member, $next]) {
+                        $partnerRounds[$round][] = $forwards ? [$member, $next] : [$next, $member];
+                    }
                 }
-                $partnerRounds[2][] = [$members[$pot][$last], $members[$pot][0]];
             }
 
             $partnerRounds[0][] = [$members[$a][0], $members[$b][0]];
@@ -659,20 +713,20 @@ class PotDrawScheduler implements SchedulerInterface
 
     /**
      * Walk from the constructed rounds to the rounds returned (see "The
-     * walk" in the class docblock): `mixingSteps()` times, two rounds trade
+     * walk" in the class docblock): `walkLength()` times, two rounds trade
      * a cycle of events and entrants of one round offer to exchange
      * opponents.
      *
-     * With fewer than two rounds there is nothing to trade, and one round
-     * of one opponent per pot holds no two events that could exchange
-     * opponents: the rounds are returned as they are.
+     * One round has no round to trade with, and it is drawn evenly as it is
+     * built (one pot, one opponent: "What the walk cannot change"), so it
+     * is returned as it is.
      *
      * @param list<list<array{int, int}>> $rounds
      * @param int $entrants How many entrants there are; every round has each of 0 .. `$entrants` − 1 once
      * @return list<list<array{int, int}>> Rounds that still have every entrant once, with every entrant
      *                                     in the roles and against the pots it had
      */
-    private function mix(array $rounds, int $entrants, int $potSize, Randomizer $randomizer): array
+    private function walk(array $rounds, int $entrants, int $potSize, Randomizer $randomizer): array
     {
         if (count($rounds) < 2) {
             return $rounds;
@@ -699,12 +753,12 @@ class PotDrawScheduler implements SchedulerInterface
             $isFirst[] = $roles;
         }
 
-        for ($step = $this->mixingSteps($entrants, count($rounds)); $step > 0; --$step) {
+        for ($step = $this->walkLength($entrants, count($rounds)); $step > 0; --$step) {
             $this->exchangeRounds($opponent, $isFirst, $entrants, $randomizer);
             $this->exchangeOpponents($opponent, $isFirst, $met, $entrants, $potSize, $randomizer);
         }
 
-        $mixed = [];
+        $walked = [];
         foreach ($opponent as $round => $opponents) {
             $pairs = [];
             for ($entrant = 0; $entrant < $entrants; ++$entrant) {
@@ -712,10 +766,10 @@ class PotDrawScheduler implements SchedulerInterface
                     $pairs[] = [$entrant, $opponents[$entrant]];
                 }
             }
-            $mixed[] = $pairs;
+            $walked[] = $pairs;
         }
 
-        return $mixed;
+        return $walked;
     }
 
     /**
@@ -723,7 +777,7 @@ class PotDrawScheduler implements SchedulerInterface
      * stated in code. "How long the walk is" in the class docblock says
      * what the two numbers were measured against.
      */
-    private function mixingSteps(int $entrants, int $rounds): int
+    private function walkLength(int $entrants, int $rounds): int
     {
         return $rounds * max(self::STEPS_PER_ROUND, intdiv(self::STEPS_PER_ROUND_TIMES_ENTRANTS, $entrants));
     }
@@ -888,14 +942,21 @@ class PotDrawScheduler implements SchedulerInterface
      * Give two perfect matchings of the same positions their roles so that
      * every position is first in one of its two events and second in the
      * other. Together the matchings form cycles of even length; each cycle
-     * is walked once, and the position that is left is first.
+     * is walked once, and a coin says whether the position that is left is
+     * first or the one that is reached. Without the coin the lowest position
+     * of a cycle would have the same role in the first matching in every
+     * draw.
      *
      * @param list<array{int, int}> $firstMatching
      * @param list<array{int, int}> $secondMatching
      * @return array{list<array{int, int}>, list<array{int, int}>} The two matchings as [first role, second role] pairs
      */
-    private function orientMatchingPair(array $firstMatching, array $secondMatching, int $size): array
-    {
+    private function orientMatchingPair(
+        array $firstMatching,
+        array $secondMatching,
+        int $size,
+        Randomizer $randomizer
+    ): array {
         $partnerInFirst = [];
         foreach ($firstMatching as [$x, $y]) {
             $partnerInFirst[$x] = $y;
@@ -915,14 +976,15 @@ class PotDrawScheduler implements SchedulerInterface
                 continue;
             }
 
+            $forwards = $randomizer->getInt(0, 1) === 0;
             $current = $start;
             do {
                 $next = $partnerInFirst[$current];
-                $orientedFirst[] = [$current, $next];
+                $orientedFirst[] = $forwards ? [$current, $next] : [$next, $current];
                 $visited[$current] = true;
                 $visited[$next] = true;
                 $current = $partnerInSecond[$next];
-                $orientedSecond[] = [$next, $current];
+                $orientedSecond[] = $forwards ? [$next, $current] : [$current, $next];
             } while ($current !== $start);
         }
 

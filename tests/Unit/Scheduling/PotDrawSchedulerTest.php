@@ -378,10 +378,16 @@ describe('PotDrawScheduler', function (): void {
 
         expect($whole / $rounds)->toBeBetween(...$wholePotRounds)
             ->and($inside / $rounds)->toBeBetween(...$roundsWithAnEventInsideAPot)
-            // Built: the same number of rounds in every draw
-            ->and(count($insideByDraw))->toBeGreaterThan(1)
             ->and($onePotFirst / $blocks)->toBeBetween(...$blocksWithOnePotFirst)
             ->and($listed / $rounds)->toBeBetween(...$roundsListedByPotPair);
+
+        // Built: the same number of rounds with an event inside a pot in
+        // every draw. Walked, the number varies from draw to draw, unless
+        // nearly every round holds one: then all the draws of a sample this
+        // small can have one in every round
+        if ($roundsWithAnEventInsideAPot[0] < 0.9) {
+            expect(count($insideByDraw))->toBeGreaterThan(1);
+        }
     })->with([
         // Built: 1, 0.25, 1; long run: 0.004, 0.88, 0.6, 0.17
         '16 in 4 pots of 4, two opponents' => [16, 4, 2, 60, [0.0, 0.03], [0.8, 0.94], [0.51, 0.67], [0.09, 0.25]],
@@ -485,10 +491,137 @@ describe('PotDrawScheduler', function (): void {
             ->and($pieces[2])->toBeGreaterThanOrEqual(10);
     });
 
+    // With an odd number of opponents per pot, an entrant is first against
+    // its own pot once more or once less than it is second, and the seed
+    // says which. The roles of the single layer are taken along cycles
+    // through the whole field: walked from the lowest list position every
+    // time, a cycle gives that entrant the same role in every draw, and with
+    // an even number of pots the first entrant of the list is then never
+    // first against the opponent the single layer gives it from its own pot
+    it('gives no entrant the same role against its own pot on every seed', function (int $count, int $pots, int $opponentsPerPot): void {
+        $entrants = potDrawEntrants($count);
+        $scheduler = new PotDrawScheduler();
+        $potSize = intdiv($count, $pots);
+
+        $firstMoreOften = array_fill_keys(array_map(static fn(Participant $entrant): string => $entrant->getId(), $entrants), 0);
+        for ($seed = 0; $seed < 40; ++$seed) {
+            $audit = PotDrawAudit::of($scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)), $entrants, $pots);
+            foreach ($entrants as $index => $entrant) {
+                $ownPot = intdiv($index, $potSize) + 1;
+                $first = $audit->firstRoleByPot[$entrant->getId()][$ownPot] ?? 0;
+                $second = $audit->secondRoleByPot[$entrant->getId()][$ownPot] ?? 0;
+                expect(abs($first - $second))->toBe(1, "{$entrant->getId()}, seed {$seed}");
+                $firstMoreOften[$entrant->getId()] += $first > $second ? 1 : 0;
+            }
+        }
+
+        // 20 of the 40 seeds on average, for every entrant
+        foreach ($firstMoreOften as $id => $seeds) {
+            expect($seeds)->toBeBetween(8, 32, $id);
+        }
+    })->with([
+        '8 in 2 pots of 4, one opponent' => [8, 2, 1],
+        '16 in 4 pots of 4, one opponent' => [16, 4, 1],
+        '16 in 4 pots of 4, three opponents' => [16, 4, 3],
+        '24 in 6 pots of 4, one opponent' => [24, 6, 1],
+        '20 in 5 pots of 4, one opponent' => [20, 5, 1],
+    ]);
+
+    // In a pot of odd size each member is first against one member of its
+    // pot, the next one on a cycle through the pot, and second against
+    // another. Between two pots each member of the one is first against one
+    // member of the other. When those pairs carry "next" in the one pot onto
+    // "next" in the other in every draw, the two cycles always run the same
+    // way: that is so for two partner pots unless a coin turns each cycle,
+    // and with pots of three no move can change it afterwards
+    it('turns the cycle inside a pot of odd size either way', function (int $count, int $pots, int $draws): void {
+        $entrants = potDrawEntrants($count);
+        $potSize = intdiv($count, $pots);
+        $index = array_flip(array_map(static fn(Participant $entrant): string => $entrant->getId(), $entrants));
+
+        $ontoNext = 0;
+        $ontoPrevious = 0;
+        for ($seed = 0; $seed < $draws; ++$seed) {
+            $next = [];
+            $firstAgainst = [];
+            foreach ((new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, 2, $seed))->getEvents() as $event) {
+                $first = $index[$event->getParticipants()[0]->getId()];
+                $second = $index[$event->getParticipants()[1]->getId()];
+                if (intdiv($first, $potSize) === intdiv($second, $potSize)) {
+                    $next[$first] = $second;
+                } else {
+                    $firstAgainst[intdiv($second, $potSize)][$first] = $second;
+                }
+            }
+
+            foreach ($firstAgainst as $pairs) {
+                foreach ($pairs as $member => $opponent) {
+                    $opponentOfNext = $pairs[$next[$member]];
+                    $ontoNext += $next[$opponent] === $opponentOfNext ? 1 : 0;
+                    $ontoPrevious += $next[$opponentOfNext] === $opponent ? 1 : 0;
+                }
+            }
+        }
+
+        // As likely one way as the other
+        expect($ontoNext / ($ontoNext + $ontoPrevious))->toBeBetween(0.4, 0.6);
+    })->with([
+        // Without the coin: every time, in every draw
+        '6 in 2 pots of 3' => [6, 2, 100],
+        // Without the coin: two times in three (one pot in three is the partner)
+        '12 in 4 pots of 3' => [12, 4, 100],
+        // Without the coin, as built: every time. The walk takes most of it away
+        '10 in 2 pots of 5' => [10, 2, 200],
+    ]);
+
     // The fields a move can do nothing for, as the class docblock lists
     // them ("What the walk cannot change"). Each is drawn and keeps the
     // rules; what is asserted is the shape that stays.
     describe('leaves alone what its moves cannot change:', function (): void {
+        // No move changes how often an entrant is in each role against each
+        // pot. With an odd number of opponents per pot the single layer took
+        // its roles two rounds at a time, so the pots a pot meets come in
+        // pairs: every member of the pot leans one way against the one and
+        // the other way against the other
+        it('the roles, which pair off the pots a pot meets when the opponents per pot are odd', function (int $count, int $pots, int $opponentsPerPot, int $pairs): void {
+            $entrants = potDrawEntrants($count);
+            $potSize = intdiv($count, $pots);
+
+            for ($seed = 0; $seed < 30; ++$seed) {
+                $audit = PotDrawAudit::of((new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)), $entrants, $pots);
+
+                // Entrant => pot => events first less events second against it
+                $lean = [];
+                foreach ($entrants as $entrant) {
+                    for ($pot = 1; $pot <= $pots; ++$pot) {
+                        $lean[$entrant->getId()][$pot] = ($audit->firstRoleByPot[$entrant->getId()][$pot] ?? 0)
+                            - ($audit->secondRoleByPot[$entrant->getId()][$pot] ?? 0);
+                    }
+                }
+
+                for ($pot = 0; $pot < $pots; ++$pot) {
+                    $members = array_slice($entrants, $pot * $potSize, $potSize);
+                    $opposite = 0;
+                    for ($one = 1; $one <= $pots; ++$one) {
+                        for ($other = $one + 1; $other <= $pots; ++$other) {
+                            $everyMember = true;
+                            foreach ($members as $member) {
+                                $everyMember = $everyMember && $lean[$member->getId()][$one] === -$lean[$member->getId()][$other];
+                            }
+                            $opposite += $everyMember ? 1 : 0;
+                        }
+                    }
+                    expect($opposite)->toBeGreaterThanOrEqual($pairs, "seed {$seed}");
+                }
+            }
+        })->with([
+            // 5 rounds in the single layer: two pairs of them, and one round over
+            '20 entrants in 5 pots of 4, one opponent' => [20, 5, 1, 2],
+            // 6 rounds: three pairs
+            '48 entrants in 6 pots of 8, one opponent' => [48, 6, 1, 3],
+            '24 entrants in 4 pots of 6, three opponents' => [24, 4, 3, 2],
+        ]);
+
         // Two rounds of six or fewer entrants form one cycle, so the round
         // exchange trades whole rounds and every round keeps the pots it
         // was built with
