@@ -669,6 +669,57 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert(count((new PotDrawScheduler())->schedule(array_slice($entrants, 0, 8), new PotDrawOptions(pots: 1, opponentsPerPot: 3))) === 12);
                 PHP,
         ],
+        // What "How a draw is made, and what it is uniform over" states
+        'pot draw: the length of the walk, the measured figures and a field a move cannot change' => [
+            'docs/USAGE.md',
+            '$stored = $drawOptions->toArray();',
+            <<<'PHP'
+                // 16 steps for every round, and 1,024 divided by the entrants for a field of fewer than 64
+                $rule = new \ReflectionClass(PotDrawScheduler::class);
+                assert($rule->getConstant('STEPS_PER_ROUND') === 16);
+                assert($rule->getConstant('STEPS_PER_ROUND_TIMES_ENTRANTS') === 1024);
+                // The figures for 36 entrants in 4 pots of 9, over the seeds 0 to 39 (320 rounds, 240 pot pairs)
+                $rounds = 0;
+                $wholePotRounds = 0;
+                $blocks = 0;
+                $blocksWithOnePotFirst = 0;
+                $potPairs = 0;
+                $potPairsInRotation = 0;
+                for ($seed = 0; $seed < 40; ++$seed) {
+                    $regularity = \MissionGaming\Tactician\Tests\Support\PotDrawRegularity::of(
+                        (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(pots: 4, opponentsPerPot: 2, seed: $seed)),
+                        $entrants,
+                        4
+                    );
+                    $rounds += $regularity->rounds;
+                    $wholePotRounds += $regularity->wholePotRounds;
+                    $blocks += $regularity->blocks;
+                    $blocksWithOnePotFirst += $regularity->blocksWithOnePotFirst;
+                    $potPairs += $regularity->potPairs;
+                    $potPairsInRotation += $regularity->potPairsInRotation;
+                }
+                assert($rounds === 320 && $wholePotRounds === 0);
+                assert(abs($blocksWithOnePotFirst / $blocks - 0.38) < 0.07);
+                assert($potPairs === 240 && abs($potPairsInRotation / $potPairs - 0.32) < 0.1);
+                // 6 entrants in 3 pots of 2: every round has one pot playing inside itself and the other two meeting each other
+                $six = array_slice($entrants, 0, 6);
+                for ($seed = 0; $seed < 20; ++$seed) {
+                    $potPairsByRound = [];
+                    foreach ((new PotDrawScheduler())->schedule($six, new PotDrawOptions(pots: 3, opponentsPerPot: 1, seed: $seed)) as $event) {
+                        [$a, $b] = $event->getParticipants();
+                        $pots = [intdiv((int) substr($a->getId(), 1) - 1, 2), intdiv((int) substr($b->getId(), 1) - 1, 2)];
+                        sort($pots);
+                        $potPairsByRound[(int) $event->getRound()?->getNumber()][] = $pots;
+                    }
+                    assert(count($potPairsByRound) === 3);
+                    foreach ($potPairsByRound as $potPairsOfRound) {
+                        $inside = array_values(array_filter($potPairsOfRound, fn (array $pair): bool => $pair[0] === $pair[1]));
+                        $between = array_values(array_filter($potPairsOfRound, fn (array $pair): bool => $pair[0] !== $pair[1]));
+                        assert(count($inside) === 1 && count($between) === 2 && $between[0] === $between[1]);
+                    }
+                }
+                PHP,
+        ],
         'bracket placement' => [
             'docs/USAGE.md',
             '$titleHolder = ',
