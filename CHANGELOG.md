@@ -383,12 +383,23 @@ heading **Output change (fix)**.
     one, and with an even number of opponents per pot an entrant is in each
     role exactly half the time against every pot.
   - The schedule is built directly, with no search, for any even pot size,
-    and for an odd pot size with two opponents per pot. Generation time is
-    proportional to the number of events. Who meets whom is drawn evenly,
-    and the events are then mixed across the rounds, so that a round does
-    not set one whole pot against another; no event changes in the mixing.
-    The draw is not uniform over every schedule the format allows ("The
-    seed and determinism" in the usage guide says what remains regular).
+    and for an odd pot size with two opponents per pot. The draw that is
+    built is then the start of a walk of two moves, each of which keeps
+    every rule of the format: two rounds trade events, which changes no
+    event, and two members of one pot exchange opponents inside a round,
+    each keeping its role and the pot its opponent comes from, when that
+    makes no two entrants meet twice. So a round does not set one whole pot
+    against another, and the pairings between two pots are not kept to the
+    pattern they were built with. The length of the walk follows the
+    configuration (16 steps for every round, and more for a field of fewer
+    than 64 entrants); it was chosen so that the measured shape of a draw
+    agrees with that of a walk ten times as long, for every supported
+    configuration with up to 60 entrants. Nothing is searched or tried
+    again, and generation time is proportional to the number of events. Who
+    meets whom is drawn evenly. The draw is not claimed to be uniform over
+    every schedule the format allows: "How a draw is made, and what it is
+    uniform over" in the usage guide says what is measured, what is argued,
+    and which fields keep part of the shape they were built with.
   - A configuration that cannot exist is refused before anything is drawn,
     with a reason of its own: `OddParticipantCount` (no bye is issued),
     `UnequalPots`, `TooManyOpponentsPerPot` and `OddPotWithOddOpponents`. A

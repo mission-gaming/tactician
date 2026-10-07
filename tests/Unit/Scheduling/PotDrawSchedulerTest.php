@@ -11,6 +11,7 @@ use MissionGaming\Tactician\Scheduling\PotDrawScheduler;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Stage\PotDrawPlan;
 use MissionGaming\Tactician\Tests\Support\PotDrawAudit;
+use MissionGaming\Tactician\Tests\Support\PotDrawRegularity;
 
 /**
  * Entrants "e1".."en" in seeding order.
@@ -327,128 +328,288 @@ describe('PotDrawScheduler', function (): void {
         '16 in 2 pots, three opponents' => [16, 2, 3],
     ]);
 
-    // As it is built, a draw sets whole pots against each other in every
-    // round, keeps the events inside the pots in a few rounds, has one pot
-    // first against another for a whole round, and lists a round's events
-    // pot pair by pot pair. The scheduler mixes the rounds so that none of
-    // that is certain. The comments on the bounds say what the unmixed
-    // construction gives; each bound is far from that and far from what
-    // the mixed draws measure.
-    it('does not give the rounds the shape they were built with', function (
+    // As it is built, a draw has a shape the format does not ask for: every
+    // round sets whole pots against each other, the events inside the pots
+    // share a few rounds, one pot is first against another for a whole
+    // round, and a round's events are listed pot pair by pot pair. The
+    // scheduler walks away from that shape, and it walks long enough that
+    // ten times as many steps give the same figures (the class docblock,
+    // "How long the walk is"). Each row states, for one configuration and
+    // the seeds 0 to `$seeds` - 1, the range every share must be in: the
+    // long-run value is the one measured over thousands of draws at ten
+    // times the steps, and the range is that value with a margin for the
+    // number of draws here. The seeds are fixed, so the counts are the same
+    // on every run. "Built" is what the construction alone gives, and what
+    // a walk that is too short stays close to.
+    it('walks away from the shape a draw is built with', function (
         int $count,
         int $pots,
-        int $opponentsPerPot
+        int $opponentsPerPot,
+        int $seeds,
+        array $wholePotRounds,
+        array $roundsWithAnEventInsideAPot,
+        array $blocksWithOnePotFirst,
+        array $roundsListedByPotPair
     ): void {
         $entrants = potDrawEntrants($count);
-        $potSize = intdiv($count, $pots);
-        $position = [];
-        foreach ($entrants as $index => $entrant) {
-            $position[$entrant->getId()] = $index;
-        }
+        $scheduler = new PotDrawScheduler();
 
         $rounds = 0;
-        $wholePotRounds = 0;
+        $whole = 0;
+        $inside = 0;
+        $insideByDraw = [];
         $blocks = 0;
-        $blocksWithOnePotFirst = 0;
-        $roundsListedByPotPair = 0;
-        $roundsListedInSeedingOrder = 0;
-        $roundsWithEventsInsideAPot = [];
+        $onePotFirst = 0;
+        $listed = 0;
+        for ($seed = 0; $seed < $seeds; ++$seed) {
+            $regularity = PotDrawRegularity::of(
+                $scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)),
+                $entrants,
+                $pots
+            );
+            $rounds += $regularity->rounds;
+            $whole += $regularity->wholePotRounds;
+            $inside += $regularity->roundsWithAnEventInsideAPot;
+            $insideByDraw[$regularity->roundsWithAnEventInsideAPot] = true;
+            $blocks += $regularity->blocks;
+            $onePotFirst += $regularity->blocksWithOnePotFirst;
+            $listed += $regularity->roundsListedByPotPair;
+        }
 
+        expect($whole / $rounds)->toBeBetween(...$wholePotRounds)
+            ->and($inside / $rounds)->toBeBetween(...$roundsWithAnEventInsideAPot)
+            // Built: the same number of rounds in every draw
+            ->and(count($insideByDraw))->toBeGreaterThan(1)
+            ->and($onePotFirst / $blocks)->toBeBetween(...$blocksWithOnePotFirst)
+            ->and($listed / $rounds)->toBeBetween(...$roundsListedByPotPair);
+    })->with([
+        // Built: 1, 0.25, 1; long run: 0.004, 0.88, 0.6, 0.17
+        '16 in 4 pots of 4, two opponents' => [16, 4, 2, 60, [0.0, 0.03], [0.8, 0.94], [0.51, 0.67], [0.09, 0.25]],
+        // Built: 1, 0.25, 0.89; long run: 0, 0.96, 0.49, 0.002
+        '24 in 4 pots of 6, three opponents' => [24, 4, 3, 40, [0.0, 0.01], [0.93, 1.0], [0.41, 0.57], [0.0, 0.03]],
+        // Built: 0.63, 0.38, 1; long run: 0, 0.99, 0.37, 0
+        '36 in 4 pots of 9, two opponents' => [36, 4, 2, 40, [0.0, 0.01], [0.96, 1.0], [0.3, 0.44], [0.0, 0.01]],
+        // Built: 1, 1, 0.03; long run: 0.014, 0.86, 0.28, 0.08
+        '20 in 5 pots of 4, one opponent' => [20, 5, 1, 60, [0.0, 0.04], [0.8, 0.92], [0.21, 0.35], [0.03, 0.13]],
+        // The field that takes longest to lose its shape. Built: 0.25,
+        // 0.75, 1; long run: 0.12, 0.88, 0.52, 0.34
+        '10 in 2 pots of 5, two opponents' => [10, 2, 2, 100, [0.07, 0.17], [0.83, 0.93], [0.44, 0.61], [0.26, 0.43]],
+    ]);
+
+    // Built, the pairings between two pots are rotations: with one order
+    // of the members of each pot, position i of the one meets positions
+    // i + d of the other. The opponent exchange leaves that family. With
+    // two opponents per pot the pairings between two pots are cycles, and
+    // rotations give cycles of one length only, so a pot pair whose cycles
+    // differ in length is certainly not a rotation.
+    it('does not keep the pairings between two pots to rotations of one order', function (): void {
+        $entrants = potDrawEntrants(36);
+        $scheduler = new PotDrawScheduler();
+
+        $potPairs = 0;
+        $inRotation = 0;
+        $drawsWithoutRotation = 0;
         for ($seed = 0; $seed < 40; ++$seed) {
-            $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed));
+            $regularity = PotDrawRegularity::of($scheduler->schedule($entrants, new PotDrawOptions(4, 2, $seed)), $entrants, 4);
+            $potPairs += $regularity->potPairs;
+            $inRotation += $regularity->potPairsInRotation;
+            $drawsWithoutRotation += $regularity->potPairsInRotation === 0 ? 1 : 0;
+        }
 
-            $potPairs = [];
-            $firstPositions = [];
-            $firstRoleHolders = [];
-            foreach ($schedule->getEvents() as $event) {
-                [$first, $second] = $event->getParticipants();
-                $round = (int) $event->getRound()?->getNumber();
-                $a = intdiv($position[$first->getId()], $potSize);
-                $b = intdiv($position[$second->getId()], $potSize);
-                $potPair = min($a, $b) . '-' . max($a, $b);
-                $potPairs[$round][] = $potPair;
-                $firstPositions[$round][] = $position[$first->getId()];
-                if ($a !== $b) {
-                    $firstRoleHolders[$round][$potPair][] = $a;
-                }
+        // 4 pots are 6 pot pairs a draw. Built: every one of the 240 passes.
+        // Long run: 0.31 of them do
+        expect($potPairs)->toBe(240)
+            ->and($inRotation / $potPairs)->toBeBetween(0.21, 0.41)
+            ->and($drawsWithoutRotation)->toBeGreaterThan(0);
+    });
+
+    // With one opponent per pot a single pot pair is always a rotation,
+    // and a pattern would show in three pots if the pots had one member
+    // order each for every pot they meet: if a meets b and b meets c, then
+    // whether c meets a would be the same for every member of the pot of a.
+    // The members of two pots face each other in an order drawn for the
+    // two, and the opponent exchange moves the pairings on from there.
+    it('does not keep three pots to rotations of one order', function (int $count, int $pots, int $opponentsPerPot, float $least, float $most): void {
+        $entrants = potDrawEntrants($count);
+        $scheduler = new PotDrawScheduler();
+
+        $potTriples = 0;
+        $inRotation = 0;
+        for ($seed = 0; $seed < 60; ++$seed) {
+            $regularity = PotDrawRegularity::of(
+                $scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)),
+                $entrants,
+                $pots
+            );
+            $potTriples += $regularity->potTriples;
+            $inRotation += $regularity->potTriplesInRotation;
+        }
+
+        // With one order for each pot: every set of three pots passes
+        expect($inRotation / $potTriples)->toBeBetween($least, $most);
+    })->with([
+        // Long run: 0.44
+        '20 in 5 pots of 4, one opponent' => [20, 5, 1, 0.34, 0.54],
+        // Long run: 0.47
+        '16 in 4 pots of 4, two opponents' => [16, 4, 2, 0.35, 0.59],
+    ]);
+
+    // With one opponent per pot the draw used to leave the field in two
+    // halves that never met across the pots: the members at even positions
+    // of every pot, and those at odd positions
+    it('does not split a field with one opponent per pot into halves that never meet', function (): void {
+        $entrants = potDrawEntrants(20);
+        $scheduler = new PotDrawScheduler();
+
+        $connected = 0;
+        for ($seed = 0; $seed < 60; ++$seed) {
+            $regularity = PotDrawRegularity::of($scheduler->schedule($entrants, new PotDrawOptions(5, 1, $seed)), $entrants, 5);
+            $connected += $regularity->betweenPotComponents === 1 ? 1 : 0;
+        }
+
+        // Long run: 299 draws in 300 are in one piece
+        expect($connected)->toBeGreaterThanOrEqual(57);
+
+        // 6 entrants in 3 pots of 2 allow both: two sets of three who all
+        // meet, or one ring of six
+        $entrants = potDrawEntrants(6);
+        $pieces = [1 => 0, 2 => 0];
+        for ($seed = 0; $seed < 40; ++$seed) {
+            $regularity = PotDrawRegularity::of($scheduler->schedule($entrants, new PotDrawOptions(3, 1, $seed)), $entrants, 3);
+            $pieces[$regularity->betweenPotComponents] = ($pieces[$regularity->betweenPotComponents] ?? 0) + 1;
+        }
+
+        // Each is half of the eight ways the three pots can be joined
+        expect(array_keys($pieces))->toBe([1, 2])
+            ->and($pieces[1])->toBeGreaterThanOrEqual(10)
+            ->and($pieces[2])->toBeGreaterThanOrEqual(10);
+    });
+
+    // The fields a move can do nothing for, as the class docblock lists
+    // them ("What the walk cannot change"). Each is drawn and keeps the
+    // rules; what is asserted is the shape that stays.
+    describe('leaves alone what its moves cannot change:', function (): void {
+        // Two rounds of six or fewer entrants form one cycle, so the round
+        // exchange trades whole rounds and every round keeps the pots it
+        // was built with
+        it('the rounds of six entrants or fewer', function (int $count, int $pots, int $opponentsPerPot, int $wholePotRounds): void {
+            $entrants = potDrawEntrants($count);
+
+            for ($seed = 0; $seed < 30; ++$seed) {
+                $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed));
+                $regularity = PotDrawRegularity::of($schedule, $entrants, $pots);
+
+                expect(PotDrawAudit::of($schedule, $entrants, $pots)->violations($entrants, $pots, $opponentsPerPot))->toBe([], "seed {$seed}")
+                    ->and($regularity->wholePotRounds)->toBe($wholePotRounds, "seed {$seed}")
+                    ->and($regularity->roundPairsInOneCycle)->toBe($regularity->roundPairs, "seed {$seed}");
+            }
+        })->with([
+            // One pot inside itself and the other two against each other, in every round
+            '6 entrants in 3 pots of 2' => [6, 3, 1, 3],
+            // One round between the pots and one inside them
+            '4 entrants in 2 pots of 2' => [4, 2, 1, 2],
+            // Three rounds with one event between the pots, and one round between them only
+            '6 entrants in 2 pots of 3' => [6, 2, 2, 1],
+        ]);
+
+        it('one round, which has nothing to trade with', function (int $count, int $pots, int $events): void {
+            $entrants = potDrawEntrants($count);
+
+            $draws = [];
+            for ($seed = 0; $seed < 30; ++$seed) {
+                $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, 1, $seed));
+                $draws[implode(' ', potDrawEventList($schedule))] = true;
+
+                expect($schedule->count())->toBe($events)
+                    ->and(PotDrawAudit::of($schedule, $entrants, $pots)->violations($entrants, $pots, 1))->toBe([], "seed {$seed}");
             }
 
-            $withInside = 0;
-            foreach ($potPairs as $round => $listed) {
-                ++$rounds;
+            // The seed still draws who meets whom
+            expect(count($draws))->toBeGreaterThan($count === 2 ? 1 : 10);
+        })->with([
+            '2 entrants' => [2, 1, 1],
+            '4 entrants as one pot' => [4, 1, 2],
+            '12 entrants as one pot' => [12, 1, 6],
+        ]);
 
-                // Whole pots: every pot is in one pot pair only
-                $pairsOfPot = [];
-                $inside = false;
-                foreach (array_unique($listed) as $potPair) {
-                    [$a, $b] = explode('-', $potPair);
-                    $pairsOfPot[$a][$potPair] = true;
-                    $pairsOfPot[$b][$potPair] = true;
-                    $inside = $inside || $a === $b;
-                }
-                $wholePotRounds += max(array_map(count(...), $pairsOfPot)) === 1 ? 1 : 0;
-                $withInside += $inside ? 1 : 0;
+        // Between two pots of three an entrant misses one member of the
+        // other pot, and no two entrants can exchange opponents and keep
+        // one event in each role against that pot. Nothing needs changing:
+        // which three pairs do not meet is drawn evenly for every two pots
+        // when the draw is built, and one pot pair says nothing about
+        // another
+        it('the pairings of pots of three, which are drawn evenly as built', function (): void {
+            $entrants = potDrawEntrants(12);
 
-                // Listed pot pair by pot pair: no pot pair comes back after another
-                $runs = 1;
-                for ($i = 1; $i < count($listed); ++$i) {
-                    $runs += $listed[$i] !== $listed[$i - 1] ? 1 : 0;
-                }
-                $roundsListedByPotPair += $runs === count(array_unique($listed)) ? 1 : 0;
+            $leftOut = [];
+            $potTriples = 0;
+            $inRotation = 0;
+            for ($seed = 0; $seed < 120; ++$seed) {
+                $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(4, 2, $seed));
+                $audit = PotDrawAudit::of($schedule, $entrants, 4);
+                $regularity = PotDrawRegularity::of($schedule, $entrants, 4);
+                $potTriples += $regularity->potTriples;
+                $inRotation += $regularity->potTriplesInRotation;
 
-                $sorted = $firstPositions[$round];
-                sort($sorted);
-                $roundsListedInSeedingOrder += $sorted === $firstPositions[$round] ? 1 : 0;
+                expect($audit->violations($entrants, 4, 2))->toBe([], "seed {$seed}");
 
-                foreach ($firstRoleHolders[$round] ?? [] as $holders) {
-                    if (count($holders) >= 2) {
-                        ++$blocks;
-                        $blocksWithOnePotFirst += count(array_unique($holders)) === 1 ? 1 : 0;
+                // The pairs of pot 1 (e1..e3) and pot 2 (e4..e6) that do not meet
+                $pairs = [];
+                foreach (['e1', 'e2', 'e3'] as $a) {
+                    foreach (['e4', 'e5', 'e6'] as $b) {
+                        if (!isset($audit->meetings["{$a}|{$b}"])) {
+                            $pairs[] = "{$a}-{$b}";
+                        }
                     }
                 }
+                expect($pairs)->toHaveCount(3, "seed {$seed}");
+                $leftOut[implode(' ', $pairs)] = ($leftOut[implode(' ', $pairs)] ?? 0) + 1;
             }
-            $roundsWithEventsInsideAPot[$withInside] = true;
-        }
 
-        // Unmixed: every round, or five rounds in eight for 36 entrants
-        expect($wholePotRounds / $rounds)->toBeLessThan(0.25)
-            // Unmixed: the same number of rounds for every seed
-            ->and(count($roundsWithEventsInsideAPot))->toBeGreaterThan(1)
-            // Unmixed: every round
-            ->and($roundsListedByPotPair / $rounds)->toBeLessThan(0.5)
-            // Without the shuffle of a round's events: every round
-            ->and($roundsListedInSeedingOrder / $rounds)->toBeLessThan(0.1);
+            // Three pairs that leave out one member of each pot each: the six
+            // ways to match three with three, 20 draws each on average
+            $rarest = array_values($leftOut);
+            sort($rarest);
+            expect($leftOut)->toHaveCount(6)
+                ->and($rarest[0] ?? 0)->toBeGreaterThanOrEqual(10)
+                // With one member order for each pot and no order drawn for
+                // each two pots, every set of three pots would pass the
+                // rotation test. Long run: 0.49
+                ->and($inRotation / $potTriples)->toBeBetween(0.38, 0.6);
+        });
 
-        if ($opponentsPerPot % 2 === 0) {
-            // Unmixed: every time two pots meet more than once in a round
-            expect($blocksWithOnePotFirst / $blocks)->toBeLessThan(0.9);
-        }
-    })->with([
-        '16 in 4 pots of 4, two opponents' => [16, 4, 2],
-        '24 in 4 pots of 6, three opponents' => [24, 4, 3],
-        '36 in 4 pots of 9, two opponents' => [36, 4, 2],
-        '20 in 5 pots of 4, one opponent' => [20, 5, 1],
-    ]);
+        // One pot in which everyone meets everyone is a single round robin:
+        // no pairing can change, and when the pot size less one is prime
+        // every two rounds of the circle method form one cycle, so no round
+        // can change either
+        it('a single round robin of a pot whose size less one is prime', function (int $count): void {
+            $entrants = potDrawEntrants($count);
 
-    // With fewer than two rounds there is nothing to mix, and the smallest
-    // fields leave the mixing no choice: they are drawn all the same
-    it('draws the configurations too small to mix', function (int $count, int $pots, int $opponentsPerPot, int $events): void {
-        $entrants = potDrawEntrants($count);
+            for ($seed = 0; $seed < 10; ++$seed) {
+                $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(1, $count - 1, $seed));
+                $regularity = PotDrawRegularity::of($schedule, $entrants, 1);
 
-        foreach ([0, 1, 2, 3, 4] as $seed) {
-            $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed));
+                expect(PotDrawAudit::of($schedule, $entrants, 1)->violations($entrants, 1, $count - 1))->toBe([], "seed {$seed}")
+                    ->and($regularity->roundPairsInOneCycle)->toBe($regularity->roundPairs, "seed {$seed}");
+            }
+        })->with([8, 12, 14, 18]);
 
-            expect($schedule->count())->toBe($events)
-                ->and(PotDrawAudit::of($schedule, $entrants, $pots)->violations($entrants, $pots, $opponentsPerPot))->toBe([], "seed {$seed}");
-        }
-    })->with([
-        '2 entrants, one round of one event' => [2, 1, 1, 1],
-        '4 entrants as one pot, one round' => [4, 1, 1, 2],
-        '4 entrants as one pot, three rounds' => [4, 1, 3, 6],
-        '4 entrants in 2 pots of 2, two rounds' => [4, 2, 1, 4],
-        '6 entrants in 2 pots of 3, four rounds' => [6, 2, 2, 12],
-        '12 entrants in 6 pots of 2, six rounds' => [12, 6, 1, 36],
-    ]);
+        // 9 and 15 are not prime: rounds of 10 and of 16 do trade events
+        it('and not a single round robin of another size', function (int $count): void {
+            $entrants = potDrawEntrants($count);
+
+            $roundPairs = 0;
+            $inOneCycle = 0;
+            for ($seed = 0; $seed < 10; ++$seed) {
+                $regularity = PotDrawRegularity::of((new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(1, $count - 1, $seed)), $entrants, 1);
+                $roundPairs += $regularity->roundPairs;
+                $inOneCycle += $regularity->roundPairsInOneCycle;
+            }
+
+            expect($inOneCycle)->toBeLessThan($roundPairs)
+                ->and($inOneCycle)->toBeGreaterThan(0);
+        })->with([10, 16]);
+    });
 
     it('takes the pots from list position and reads no seed attribute', function (): void {
         // The seed attributes say the opposite of the list order
