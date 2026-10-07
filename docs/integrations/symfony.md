@@ -362,8 +362,12 @@ with the new engine's fingerprint; otherwise fix the code that builds the
 engine.
 
 - Compare the string for equality and treat it as opaque.
-- An option left at its default is not part of it, so a library upgrade
-  that adds an option does not invalidate the states you have stored.
+- An option left at its default is not part of it, so an option added to
+  an engine does not invalidate the states you have stored.
+- A patch release keeps every fingerprint. The engines are experimental,
+  so a minor release may change how fingerprints are written and require
+  stored states to be stamped again; the changelog of that release says
+  how.
 - It does not cover the constraints or the `Randomizer` of a Swiss
   engine. Restore those yourself.
 - A state with no stamp is accepted by every engine.

@@ -273,12 +273,16 @@ describe('engine fingerprints', function (): void {
     });
 
     // Written out, as literals: a stored state carries these strings, so a
-    // change to one of them is a breaking change. It refuses every state
-    // stamped before it, in every application that stored one. A row is
-    // added when an engine gains an option (the option used); no row is
-    // edited or removed. If this test fails, the fix is in the code, not
-    // in the string. The strings are pinned here and nowhere promised:
-    // callers compare fingerprints, they do not read them.
+    // change to one of them is a change of scheme, allowed only in a minor
+    // release with a migration note, and with a new version in the string
+    // (EngineFingerprint::VERSION) in place of `v1`; within 0.2.x these
+    // literals must not change. A changed string refuses every state
+    // stamped before it, in every application that stored one. Within a
+    // scheme a row is added when an engine gains an option (the option
+    // used), and no row is edited or removed. If this test fails, the fix
+    // is in the code, not in the string. The spelling of the strings is
+    // pinned here and nowhere promised: callers compare fingerprints, they
+    // do not read them.
     it('gives each configuration the string stored states carry', function (
         FingerprintedEngine $engine,
         string $fingerprint

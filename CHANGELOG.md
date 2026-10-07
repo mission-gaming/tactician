@@ -498,10 +498,15 @@ heading **Output change (fix)**.
   A fingerprint is an opaque string, compared for equality. It stands for
   the format and for the options that shape which rounds the format has or
   how they are paired, and an option at its default is left out: an engine
-  that gains an option in a later release keeps the fingerprint of every
-  configuration that does not use it, so states stamped by this release are
-  still accepted. For one configuration the string does not change in later
-  releases. Part of it when not at the default: for the elimination
+  that gains an option keeps the fingerprint of every configuration that
+  does not use it. `Stage` is experimental and the fingerprint follows the
+  rule for experimental API, no more: a patch release keeps the fingerprint
+  of every configuration, and a 0.x minor release may change the scheme,
+  with a migration note here saying what a stored stamp is replaced with
+  (the string states the version of its scheme, `tactician:v1:`, so that a
+  later scheme can be told apart).
+
+  Part of it when not at the default: for the elimination
   engines `legsPerTie`, and `reseedEachRound` (single) or `grandFinalReset`
   (double); for Swiss, and for a re-seeded bracket, the standings rules a
   round is paired from (the `WinDrawLossRanking` scale, the tiebreakers in
