@@ -504,7 +504,9 @@ heading **Output change (fix)**.
   of every configuration, and a 0.x minor release may change the scheme,
   with a migration note here saying what a stored stamp is replaced with
   (the string states the version of its scheme, `tactician:v1:`, so that a
-  later scheme can be told apart). Part of it when not at the default: for the elimination
+  later scheme can be told apart).
+
+  Part of it when not at the default: for the elimination
   engines `legsPerTie`, and `reseedEachRound` (single) or `grandFinalReset`
   (double); for Swiss, and for a re-seeded bracket, the standings rules a
   round is paired from (the `WinDrawLossRanking` scale, the tiebreakers in
