@@ -36,7 +36,10 @@ use MissionGaming\Tactician\Standings\WinDrawLossRanking;
  * `v1` is the version of this scheme, so that a stamp of a later scheme
  * can be told from one written by this one. A patch release does not
  * change the scheme; a 0.x minor release may, with a migration note in
- * the changelog (see FingerprintedEngine).
+ * the changelog (see FingerprintedEngine). A change of scheme changes
+ * VERSION with it: a string that kept `v1` and meant something else
+ * would be read, option by option, as a stamp of this scheme, and a
+ * changed default would be accepted without a word.
  * A string value is percent-encoded, so no value can be read as a
  * separator, and two configurations have the same string only when every
  * stated option is the same.
@@ -160,7 +163,7 @@ final readonly class EngineFingerprint
 
     /**
      * Read a fingerprint this class wrote; null for any other string: an
-     * application's own stamp, one in an encoding this version does not
+     * application's own stamp, one of a scheme this version does not
      * know, and one that has the prefix and is not spelled as toString()
      * spells it (options out of order, an option twice, an option without
      * a value). The last keeps a string that was put together by hand from
