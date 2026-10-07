@@ -1409,6 +1409,15 @@ What that gives, and what it does not:
   allows.** A walk of this kind, run long enough, is as likely to end on any
   one of the draws it can reach as on any other. It is not proved that it can
   reach all of them, and the walk has a fixed length.
+- **The roles are the ones the draw was built with.** Neither move changes
+  how often an entrant is in each role against each pot. With an even number
+  of opponents per pot the format fixes those numbers. With an odd number it
+  does not, and a pattern stays on every seed: the pots a pot meets (itself
+  included) come in pairs, and every member of the pot is first once more
+  than second against one pot of a pair and second once more than first
+  against the other. With 20 entrants in 5 pots of 4 every pot has two such
+  pairs. Which pots are paired, and which way round an entrant has them, is
+  drawn, and no entrant is more likely to be first than another.
 - **Some fields give a move nothing to do**, and the first and the last of
   these keep that part of the shape they were built with:
   - with six entrants or fewer, two rounds can only trade all of their
@@ -1494,7 +1503,7 @@ exact number of opponents from every pot, no rematch, and the role balance.
 The scheduler runs it on every schedule it returns.
 
 Generation takes time proportional to the number of events (entrants × pots ×
-opponents per pot / 2), the mixing included: a few milliseconds for 60
+opponents per pot / 2), the walk included: a few milliseconds for 60
 entrants in 6 pots with three opponents per pot.
 
 ## Elimination Brackets

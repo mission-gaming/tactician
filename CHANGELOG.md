@@ -396,10 +396,12 @@ heading **Output change (fix)**.
     agrees with that of a walk ten times as long, for every supported
     configuration with up to 60 entrants. Nothing is searched or tried
     again, and generation time is proportional to the number of events. Who
-    meets whom is drawn evenly. The draw is not claimed to be uniform over
-    every schedule the format allows: "How a draw is made, and what it is
-    uniform over" in the usage guide says what is measured, what is argued,
-    and which fields keep part of the shape they were built with.
+    meets whom is drawn evenly, and no entrant is more likely to hold the
+    first role than another. The roles are the ones the draw was built
+    with: no move of the walk changes them. The draw is not claimed to be
+    uniform over every schedule the format allows: "How a draw is made, and
+    what it is uniform over" in the usage guide says what is measured, what
+    is argued, and which fields keep part of the shape they were built with.
   - A configuration that cannot exist is refused before anything is drawn,
     with a reason of its own: `OddParticipantCount` (no bye is issued),
     `UnequalPots`, `TooManyOpponentsPerPot` and `OddPotWithOddOpponents`. A
