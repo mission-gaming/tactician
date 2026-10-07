@@ -1122,7 +1122,10 @@ rule for experimental API and promises nothing beyond it (see
 [Versioning and stability](../README.md#versioning-and-stability)):
 
 - A patch release keeps the fingerprint of every configuration, so within
-  the 0.2.x series a stored stamp stays valid.
+  the 0.2.x series a stored stamp stays valid. The exception is the one
+  the patch rule itself has: a fingerprint that was wrong (one string for
+  two configurations that pair differently, for example) may be corrected,
+  and the changelog then lists it under "Output change (fix)".
 - A 0.x minor release may change the scheme. The changelog of that release
   then has a migration note saying what a stored stamp is replaced with.
   The string states the version of its scheme (`tactician:v1:`), so that a
@@ -1186,10 +1189,10 @@ describe, and these limits follow from that:
 **Treat the string as opaque.** Compare it for equality with the one an
 engine gives. Do not parse it, write one by hand or rely on how it is
 spelled: nothing is promised about the spelling, and the string itself is
-kept only for as long as stated above. A
-fingerprint that begins with `tactician:` is the library's. An engine of
-your own can use any non-empty string that does not begin with it, and
-call `$state->requireEngineFingerprint()` with that string.
+kept only for as long as stated above. A fingerprint that begins with
+`tactician:` is the library's. An engine of your own can use any non-empty
+string that does not begin with it, and call
+`$state->requireEngineFingerprint()` with that string.
 
 All four engine methods (`getPlan()`, `pairNextRound()`, `isComplete()`,
 `getOutcome()`) refuse a state stamped with another fingerprint, with an
