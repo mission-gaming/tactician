@@ -189,6 +189,24 @@ describe('Pot draw invariants', function (): void {
                     $failures[] = "{$name}, seed {$seed}: {$violation}";
                 }
 
+                // More than the format asks, and what the scheduler
+                // documents: with an odd number of opponents per pot an
+                // entrant is first once more or once less than second
+                // against every pot (an even number is exactly half each
+                // way, which the audit counts)
+                if ($opponentsPerPot % 2 === 1) {
+                    foreach ($field as $entrant) {
+                        $id = $entrant->getId();
+                        for ($pot = 1; $pot <= $pots; ++$pot) {
+                            $first = $audit->firstRoleByPot[$id][$pot] ?? 0;
+                            $second = $audit->secondRoleByPot[$id][$pot] ?? 0;
+                            if (abs($first - $second) !== 1) {
+                                $failures[] = "{$name}, seed {$seed}: {$id} is first {$first} and second {$second} time(s) against pot {$pot}";
+                            }
+                        }
+                    }
+                }
+
                 // The plan's counts, stated before generation, are the counts generated
                 $plan = $scheduler->getPlan($field, $options);
                 if ($plan->getTotalRounds() !== count($audit->eventsByRound)
