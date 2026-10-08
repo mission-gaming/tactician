@@ -350,7 +350,9 @@ use Random\Randomizer;
  * `Xoshiro256StarStar` engine from the seed and keeps no state between
  * calls. Nothing in the draw depends on anything but the entrants' list
  * positions and that randomizer: the walk and the roles read their maps by
- * entrant and by round, never in the order they were filled.
+ * entrant and by round, never in the order they were filled. The one list
+ * read in the order it was filled is the events an entrant has waiting,
+ * and that order is the one drawn for the entrant.
  *
  * ## Cost
  *
