@@ -457,6 +457,31 @@ describe('PotDrawScheduler', function (): void {
         '16 in 4 pots of 4, two opponents' => [16, 4, 2, 0.2, 0.44],
     ]);
 
+    // The opponent exchange does not need two pots: four members of one pot
+    // exchange opponents as well. One pot of 8 with two opponents each is
+    // built from two rounds of the circle method, whose events always form
+    // one cycle through all eight (7 is prime), and no round exchange
+    // changes a pairing. Of the 3,150 ways to choose two rounds of eight
+    // that share no pairing, 2,520 form one cycle of eight and 630 form two
+    // cycles of four.
+    it('exchanges opponents inside a single pot', function (): void {
+        $entrants = potDrawEntrants(8);
+        $scheduler = new PotDrawScheduler();
+
+        $oneCycle = 0;
+        for ($seed = 0; $seed < 100; ++$seed) {
+            $schedule = $scheduler->schedule($entrants, new PotDrawOptions(1, 2, $seed));
+            $regularity = PotDrawRegularity::of($schedule, $entrants, 1);
+
+            expect(PotDrawAudit::of($schedule, $entrants, 1)->violations($entrants, 1, 2))->toBe([], "seed {$seed}")
+                ->and($regularity->roundPairs)->toBe(1);
+            $oneCycle += $regularity->roundPairsInOneCycle;
+        }
+
+        // Built: all 100. Drawn evenly: 80 in 100
+        expect($oneCycle)->toBeBetween(68, 92);
+    });
+
     // With one opponent per pot the draw used to leave the field in two
     // halves that never met across the pots: the members at even positions
     // of every pot, and those at odd positions
