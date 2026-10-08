@@ -156,7 +156,7 @@ describe('PotDrawScheduler', function (): void {
     // The worked cases above have no pot of even size with two or more
     // opponents per pot. These two are small enough to check by hand, and
     // they are the family in which the layers of the draw must not share a
-    // pairing and the roles inside a pot come from walking cycles.
+    // pairing.
     it('draws 8 entrants in 2 pots of 4 with two opponents per pot', function (int $seed): void {
         $entrants = potDrawEntrants(8);
         $schedule = (new PotDrawScheduler())->schedule($entrants, new PotDrawOptions(pots: 2, opponentsPerPot: 2, seed: $seed));
@@ -613,7 +613,10 @@ describe('PotDrawScheduler', function (): void {
     // "next" in the other as often as onto "previous" when the roles of
     // every trail come from a coin of its own. Two pots that are built
     // together, position by position, would otherwise run the same way in
-    // every draw.
+    // every draw. This pins a pattern of the construction that gave roles
+    // while it built: no single change to the present rule is known that
+    // brings it back, so the test guards against a return to roles given
+    // by position and is not seen to fail against this scheduler.
     it('does not line up the roles inside two pots of odd size', function (int $count, int $pots, int $draws): void {
         $entrants = potDrawEntrants($count);
         $potSize = intdiv($count, $pots);
