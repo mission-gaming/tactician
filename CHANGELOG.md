@@ -13,6 +13,17 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-08
+
+A new format (the pot draw), an opt-in balanced role assignment for round
+robin, additions to the stage, standings, exception and repack API, and fixes
+to output that was broken. For a fixed input and seed the output is what it
+was in 0.2.1, except where an entry under "Output change (fix)" says
+otherwise: no golden fixture of generated output has changed. Before
+upgrading from 0.2.1, read "Output change (fix)" and "Changed": each entry
+says whom it affects and what to check. A call to one of the eight methods
+under "Deprecated" emits a notice from PHP 8.4.
+
 ### Output change (fix)
 
 - `SeedProtectionConstraint::getName()` states the protection period as the
@@ -1521,7 +1532,8 @@ PHP 8.3+.
 - **Immutable DTOs**: readonly value objects with `toArray()`/`fromArray()`;
   `Schedule` round-trips JSON.
 
-[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/mission-gaming/tactician/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mission-gaming/tactician/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mission-gaming/tactician/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/mission-gaming/tactician/compare/v0.1.0...v0.1.1
