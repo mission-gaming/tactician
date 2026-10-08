@@ -677,9 +677,13 @@ under "Deprecated" emits a notice from PHP 8.4.
   coverage report of the continuous integration, each through the behaviour
   that reaches it, among them the single-move relocation of the repack load
   planner (`tests/Feature/RepackRelocationTest.php`,
-  `tests/Feature/UncoveredPathsTest.php`). The 15 lines that remain are
+  `tests/Feature/UncoveredPathsTest.php`). The 15 lines that remained were
   guards for states the surrounding code rules out; each carries its reason
-  in the source, in a comment that starts `// Not reached:`.
+  in the source, in a comment that starts `// Not reached:`. With the code
+  added since, the report of this release leaves 21 lines unexecuted (99.6%
+  of lines are executed): 16 such guards, and five lines without that
+  comment, in `NoRepeatPairings`, `SchedulingContext` and the Swiss round
+  search.
 - A `composer mutation` script: mutation testing of `src/Scheduling` and
   `src/Repack/Internal` with Pest's mutation runner, which is installed with
   Pest, over the tests named in `phpunit.mutation.xml`. A workflow of its
