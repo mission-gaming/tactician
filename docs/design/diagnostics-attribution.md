@@ -1,7 +1,7 @@
 # Design note: Constraint Attribution Diagnostics
 
 **Status: IMPLEMENTED** in 0.1.0 (Phase 5 of the roadmap); the "once per
-failure" decision below is in `main` and not yet in a release.
+failure" decision below is in 0.2.2.
 
 ## Position
 

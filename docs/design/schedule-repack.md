@@ -1,9 +1,9 @@
 # Design note: Schedule Repacking
 
 **Status: IMPLEMENTED** in 0.2.0, with the additions under
-[API additions](#api-additions-022) in `main` and not yet in a release. It
-was built from an external brief (v2, the revision with an empty pinned set
-on the reference instance). This note doubles as the decisions log of that
+[API additions](#api-additions-022) in 0.2.2. It was built from an external
+brief (v2, the revision with an empty pinned set on the reference
+instance). This note doubles as the decisions log of that
 implementation: every judgement call made while building it is recorded
 here, in the order it was made, so a later entry can replace an earlier
 one. Where that happened the earlier entry says so.
