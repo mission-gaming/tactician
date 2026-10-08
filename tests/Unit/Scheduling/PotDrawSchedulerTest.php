@@ -267,6 +267,9 @@ describe('PotDrawScheduler', function (): void {
         '6 in 3 pots' => [3, 6, 1],
         '20 in 5 pots' => [5, 20, 1],
         '36 in 4 pots' => [4, 36, 2],
+        // An odd number of rounds: every entrant leaves one event alone
+        '20 in 5 pots, three opponents' => [5, 20, 3],
+        '16 in 2 pots, three opponents' => [2, 16, 3],
     ]);
 
     it('gives a different schedule for every seed', function (int $pots, int $count, int $opponentsPerPot): void {
@@ -330,17 +333,16 @@ describe('PotDrawScheduler', function (): void {
 
     // As it is built, a draw has a shape the format does not ask for: every
     // round sets whole pots against each other, the events inside the pots
-    // share a few rounds, one pot is first against another for a whole
-    // round, and a round's events are listed pot pair by pot pair. The
-    // scheduler walks away from that shape, and it walks long enough that
-    // ten times as many steps give the same figures (the class docblock,
-    // "How long the walk is"). Each row states, for one configuration and
-    // the seeds 0 to `$seeds` - 1, the range every share must be in: the
-    // long-run value is the one measured over thousands of draws at ten
-    // times the steps, and the range is that value with a margin for the
-    // number of draws here. The seeds are fixed, so the counts are the same
-    // on every run. "Built" is what the construction alone gives, and what
-    // a walk that is too short stays close to.
+    // share a few rounds, and a round's events are listed pot pair by pot
+    // pair. The scheduler walks away from that shape, and it walks long
+    // enough that ten times as many steps give the same figures (the class
+    // docblock, "How long the walk is"). Each row states, for one
+    // configuration and the seeds 0 to `$seeds` - 1, the range every share
+    // must be in: the long-run value is the one measured over 2,000 rounds
+    // or more at ten times the steps, and the range is that value with a
+    // margin for the number of draws here. The seeds are fixed, so the
+    // counts are the same on every run. "Built" is what the construction
+    // alone gives, and what a walk that is too short stays close to.
     it('walks away from the shape a draw is built with', function (
         int $count,
         int $pots,
@@ -348,7 +350,6 @@ describe('PotDrawScheduler', function (): void {
         int $seeds,
         array $wholePotRounds,
         array $roundsWithAnEventInsideAPot,
-        array $blocksWithOnePotFirst,
         array $roundsListedByPotPair
     ): void {
         $entrants = potDrawEntrants($count);
@@ -358,8 +359,6 @@ describe('PotDrawScheduler', function (): void {
         $whole = 0;
         $inside = 0;
         $insideByDraw = [];
-        $blocks = 0;
-        $onePotFirst = 0;
         $listed = 0;
         for ($seed = 0; $seed < $seeds; ++$seed) {
             $regularity = PotDrawRegularity::of(
@@ -371,14 +370,11 @@ describe('PotDrawScheduler', function (): void {
             $whole += $regularity->wholePotRounds;
             $inside += $regularity->roundsWithAnEventInsideAPot;
             $insideByDraw[$regularity->roundsWithAnEventInsideAPot] = true;
-            $blocks += $regularity->blocks;
-            $onePotFirst += $regularity->blocksWithOnePotFirst;
             $listed += $regularity->roundsListedByPotPair;
         }
 
         expect($whole / $rounds)->toBeBetween(...$wholePotRounds)
             ->and($inside / $rounds)->toBeBetween(...$roundsWithAnEventInsideAPot)
-            ->and($onePotFirst / $blocks)->toBeBetween(...$blocksWithOnePotFirst)
             ->and($listed / $rounds)->toBeBetween(...$roundsListedByPotPair);
 
         // Built: the same number of rounds with an event inside a pot in
@@ -389,17 +385,20 @@ describe('PotDrawScheduler', function (): void {
             expect(count($insideByDraw))->toBeGreaterThan(1);
         }
     })->with([
-        // Built: 1, 0.25, 1; long run: 0.004, 0.88, 0.6, 0.17
-        '16 in 4 pots of 4, two opponents' => [16, 4, 2, 60, [0.0, 0.03], [0.8, 0.94], [0.51, 0.67], [0.09, 0.25]],
-        // Built: 1, 0.25, 0.89; long run: 0, 0.96, 0.49, 0.002
-        '24 in 4 pots of 6, three opponents' => [24, 4, 3, 40, [0.0, 0.01], [0.93, 1.0], [0.41, 0.57], [0.0, 0.03]],
-        // Built: 0.63, 0.38, 1; long run: 0, 0.99, 0.37, 0
-        '36 in 4 pots of 9, two opponents' => [36, 4, 2, 40, [0.0, 0.01], [0.96, 1.0], [0.3, 0.44], [0.0, 0.01]],
-        // Built: 1, 1, 0.03; long run: 0.014, 0.86, 0.28, 0.08
-        '20 in 5 pots of 4, one opponent' => [20, 5, 1, 60, [0.0, 0.04], [0.8, 0.92], [0.21, 0.35], [0.03, 0.13]],
-        // The field that takes longest to lose its shape. Built: 0.25,
-        // 0.75, 1; long run: 0.12, 0.88, 0.52, 0.34
-        '10 in 2 pots of 5, two opponents' => [10, 2, 2, 100, [0.07, 0.17], [0.83, 0.93], [0.44, 0.61], [0.26, 0.43]],
+        // Built: 1, 0.25; long run: 0.003, 0.88, 0.15
+        '16 in 4 pots of 4, two opponents' => [16, 4, 2, 60, [0.0, 0.03], [0.8, 0.94], [0.08, 0.22]],
+        // Built: 1, 0.25; long run: 0, 0.96, 0.002
+        '24 in 4 pots of 6, three opponents' => [24, 4, 3, 40, [0.0, 0.01], [0.93, 1.0], [0.0, 0.03]],
+        // Built: 0.63, 0.38; long run: 0, 0.99, 0
+        '36 in 4 pots of 9, two opponents' => [36, 4, 2, 40, [0.0, 0.01], [0.96, 1.0], [0.0, 0.01]],
+        // Built: 1, 1; long run: 0.010, 0.85, 0.06
+        '20 in 5 pots of 4, one opponent' => [20, 5, 1, 60, [0.0, 0.04], [0.79, 0.91], [0.02, 0.12]],
+        // Built: 0.25, 0.75; long run: 0.11, 0.89, 0.35
+        '10 in 2 pots of 5, two opponents' => [10, 2, 2, 100, [0.06, 0.16], [0.84, 0.94], [0.27, 0.43]],
+        // The smallest fields need more steps for every round than the
+        // rest. Built: 1, 0.5; after 16 steps for every round: 0.37, 0.82;
+        // long run: 0.33, 0.835, 0.56
+        '8 in 2 pots of 4, three opponents' => [8, 2, 3, 300, [0.3, 0.36], [0.82, 0.85], [0.5, 0.62]],
     ]);
 
     // Built, the pairings between two pots are rotations: with one order
@@ -414,19 +413,17 @@ describe('PotDrawScheduler', function (): void {
 
         $potPairs = 0;
         $inRotation = 0;
-        $drawsWithoutRotation = 0;
         for ($seed = 0; $seed < 40; ++$seed) {
             $regularity = PotDrawRegularity::of($scheduler->schedule($entrants, new PotDrawOptions(4, 2, $seed)), $entrants, 4);
             $potPairs += $regularity->potPairs;
             $inRotation += $regularity->potPairsInRotation;
-            $drawsWithoutRotation += $regularity->potPairsInRotation === 0 ? 1 : 0;
         }
 
         // 4 pots are 6 pot pairs a draw. Built: every one of the 240 passes.
-        // Long run: 0.31 of them do
+        // Long run: 0.52 of them do, which is the share of the ways to join
+        // two pots of 9 twice each in which every cycle has one length
         expect($potPairs)->toBe(240)
-            ->and($inRotation / $potPairs)->toBeBetween(0.21, 0.41)
-            ->and($drawsWithoutRotation)->toBeGreaterThan(0);
+            ->and($inRotation / $potPairs)->toBeBetween(0.42, 0.62);
     });
 
     // With one opponent per pot a single pot pair is always a rotation,
@@ -456,8 +453,8 @@ describe('PotDrawScheduler', function (): void {
     })->with([
         // Long run: 0.44
         '20 in 5 pots of 4, one opponent' => [20, 5, 1, 0.34, 0.54],
-        // Long run: 0.47
-        '16 in 4 pots of 4, two opponents' => [16, 4, 2, 0.35, 0.59],
+        // Long run: 0.32
+        '16 in 4 pots of 4, two opponents' => [16, 4, 2, 0.2, 0.44],
     ]);
 
     // With one opponent per pot the draw used to leave the field in two
@@ -491,13 +488,15 @@ describe('PotDrawScheduler', function (): void {
             ->and($pieces[2])->toBeGreaterThanOrEqual(10);
     });
 
-    // With an odd number of opponents per pot, an entrant is first against
-    // its own pot once more or once less than it is second, and the seed
-    // says which. The roles of the single layer are taken along cycles
-    // through the whole field: walked from the lowest list position every
-    // time, a cycle gives that entrant the same role in every draw, and with
-    // an even number of pots the first entrant of the list is then never
-    // first against the opponent the single layer gives it from its own pot
+    // Roles are given last, by one rule: every entrant puts its events in
+    // twos, against one pot as far as they go, and is first in one event of
+    // a two and second in the other. With an odd number of opponents per
+    // pot that leaves an entrant first once more or once less than second
+    // against every pot, and the seed says which. Nothing in the rule looks
+    // at who the entrant is, so over the seeds each is first more often
+    // against its own pot about half the time. (A rule that walks its trails
+    // from the lowest list position, without a coin, gives the first entrant
+    // of the list the same role on every seed.)
     it('gives no entrant the same role against its own pot on every seed', function (int $count, int $pots, int $opponentsPerPot): void {
         $entrants = potDrawEntrants($count);
         $scheduler = new PotDrawScheduler();
@@ -507,11 +506,19 @@ describe('PotDrawScheduler', function (): void {
         for ($seed = 0; $seed < 40; ++$seed) {
             $audit = PotDrawAudit::of($scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)), $entrants, $pots);
             foreach ($entrants as $index => $entrant) {
+                $id = $entrant->getId();
+                // Within one against every pot, which is more than the
+                // format asks for an odd number of opponents per pot
+                for ($pot = 1; $pot <= $pots; ++$pot) {
+                    expect(abs(($audit->firstRoleByPot[$id][$pot] ?? 0) - ($audit->secondRoleByPot[$id][$pot] ?? 0)))
+                        ->toBe(1, "{$id} against pot {$pot}, seed {$seed}");
+                }
+                // And within one over all its events
+                expect(abs(array_sum($audit->firstRoleByPot[$id] ?? []) - array_sum($audit->secondRoleByPot[$id] ?? [])))
+                    ->toBe(($pots * $opponentsPerPot) % 2, "{$id}, seed {$seed}");
+
                 $ownPot = intdiv($index, $potSize) + 1;
-                $first = $audit->firstRoleByPot[$entrant->getId()][$ownPot] ?? 0;
-                $second = $audit->secondRoleByPot[$entrant->getId()][$ownPot] ?? 0;
-                expect(abs($first - $second))->toBe(1, "{$entrant->getId()}, seed {$seed}");
-                $firstMoreOften[$entrant->getId()] += $first > $second ? 1 : 0;
+                $firstMoreOften[$id] += ($audit->firstRoleByPot[$id][$ownPot] ?? 0) > ($audit->secondRoleByPot[$id][$ownPot] ?? 0) ? 1 : 0;
             }
         }
 
@@ -525,16 +532,18 @@ describe('PotDrawScheduler', function (): void {
         '16 in 4 pots of 4, three opponents' => [16, 4, 3],
         '24 in 6 pots of 4, one opponent' => [24, 6, 1],
         '20 in 5 pots of 4, one opponent' => [20, 5, 1],
+        '12 in 3 pots of 4, three opponents' => [12, 3, 3],
     ]);
 
-    // In a pot of odd size each member is first against one member of its
-    // pot, the next one on a cycle through the pot, and second against
-    // another. Between two pots each member of the one is first against one
-    // member of the other. When those pairs carry "next" in the one pot onto
-    // "next" in the other in every draw, the two cycles always run the same
-    // way: that is so for two partner pots unless a coin turns each cycle,
-    // and with pots of three no move can change it afterwards
-    it('turns the cycle inside a pot of odd size either way', function (int $count, int $pots, int $draws): void {
+    // With two opponents per pot each member of a pot is first against one
+    // member of its pot (call it the next one) and second against another,
+    // and between two pots each member of the one is first against one
+    // member of the other. Those pairs carry "next" in the one pot onto
+    // "next" in the other as often as onto "previous" when the roles of
+    // every trail come from a coin of its own. Two pots that are built
+    // together, position by position, would otherwise run the same way in
+    // every draw.
+    it('does not line up the roles inside two pots of odd size', function (int $count, int $pots, int $draws): void {
         $entrants = potDrawEntrants($count);
         $potSize = intdiv($count, $pots);
         $index = array_flip(array_map(static fn(Participant $entrant): string => $entrant->getId(), $entrants));
@@ -566,65 +575,148 @@ describe('PotDrawScheduler', function (): void {
         // As likely one way as the other
         expect($ontoNext / ($ontoNext + $ontoPrevious))->toBeBetween(0.4, 0.6);
     })->with([
-        // Without the coin: every time, in every draw
         '6 in 2 pots of 3' => [6, 2, 100],
-        // Without the coin: two times in three (one pot in three is the partner)
         '12 in 4 pots of 3' => [12, 4, 100],
-        // Without the coin, as built: every time. The walk takes most of it away
         '10 in 2 pots of 5' => [10, 2, 200],
+    ]);
+
+    // With an odd number of opponents per pot an entrant leans one way or
+    // the other against every pot: first once more than second, or second
+    // once more. When every entrant takes the events it has left over in a
+    // drawn order, two pots are not a pair that every member of a third pot
+    // leans opposite ways against, except by chance. (Taken in the order of
+    // the pots, or two rounds at a time, they are such a pair in every
+    // draw.)
+    it('does not pair off the pots a pot meets', function (int $count, int $pots, int $opponentsPerPot, float $most): void {
+        $entrants = potDrawEntrants($count);
+        $potSize = intdiv($count, $pots);
+
+        $triples = 0;
+        $opposite = 0;
+        $potsWithNoPair = 0;
+        for ($seed = 0; $seed < 20; ++$seed) {
+            $audit = PotDrawAudit::of((new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)), $entrants, $pots);
+
+            // Entrant => pot => events first less events second against it
+            $lean = [];
+            foreach ($entrants as $entrant) {
+                for ($pot = 1; $pot <= $pots; ++$pot) {
+                    $lean[$entrant->getId()][$pot] = ($audit->firstRoleByPot[$entrant->getId()][$pot] ?? 0)
+                        - ($audit->secondRoleByPot[$entrant->getId()][$pot] ?? 0);
+                }
+            }
+
+            for ($pot = 0; $pot < $pots; ++$pot) {
+                $members = array_slice($entrants, $pot * $potSize, $potSize);
+                $pairs = 0;
+                for ($one = 1; $one <= $pots; ++$one) {
+                    for ($other = $one + 1; $other <= $pots; ++$other) {
+                        $everyMember = true;
+                        foreach ($members as $member) {
+                            $everyMember = $everyMember && $lean[$member->getId()][$one] === -$lean[$member->getId()][$other];
+                        }
+                        ++$triples;
+                        $pairs += $everyMember ? 1 : 0;
+                    }
+                }
+                $opposite += $pairs;
+                $potsWithNoPair += $pairs === 0 ? 1 : 0;
+            }
+        }
+
+        expect($opposite / $triples)->toBeLessThan($most)
+            // In most draws a pot has no such pair at all
+            ->and($potsWithNoPair)->toBeGreaterThan(10 * $pots);
+    })->with([
+        // By chance: 2 in 1,000. Two rounds at a time: 200 in 1,000
+        '60 in 5 pots of 12, one opponent' => [60, 5, 1, 0.02],
+        // By chance: 17 in 1,000. Two rounds at a time: 226 in 1,000
+        '48 in 6 pots of 8, one opponent' => [48, 6, 1, 0.06],
+        // By chance: 18 in 1,000. Two rounds at a time: 206 in 1,000
+        '40 in 5 pots of 8, three opponents' => [40, 5, 3, 0.06],
+    ]);
+
+    // An entrant takes its events in an order drawn for it. Were they taken
+    // in the order of the rounds, every entrant would put the same two
+    // rounds together, and in those two rounds every entrant of the field
+    // would be first in the one and second in the other
+    it('does not pair off the rounds', function (int $count, int $pots, int $opponentsPerPot): void {
+        $entrants = potDrawEntrants($count);
+        $scheduler = new PotDrawScheduler();
+
+        $pairedRounds = 0;
+        for ($seed = 0; $seed < 20; ++$seed) {
+            // Round => participant ID => whether it is first
+            $first = [];
+            foreach ($scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed))->getEvents() as $event) {
+                $round = (int) $event->getRound()?->getNumber();
+                $first[$round][$event->getParticipants()[0]->getId()] = true;
+                $first[$round][$event->getParticipants()[1]->getId()] = false;
+            }
+
+            foreach ($first as $round => $roles) {
+                foreach ($first as $other => $otherRoles) {
+                    if ($other <= $round) {
+                        continue;
+                    }
+
+                    $opposite = true;
+                    foreach ($roles as $id => $isFirst) {
+                        $opposite = $opposite && $otherRoles[$id] !== $isFirst;
+                    }
+                    $pairedRounds += $opposite ? 1 : 0;
+                }
+            }
+        }
+
+        // By chance: once in 2 to the power of half the field, for two rounds
+        expect($pairedRounds)->toBe(0);
+    })->with([
+        '20 in 5 pots of 4, one opponent' => [20, 5, 1],
+        '24 in 6 pots of 4, one opponent' => [24, 6, 1],
+    ]);
+
+    // Every assignment of roles that keeps the counts can be drawn. Four
+    // entrants who all meet have 3 rounds, in 6 orders, and 24 ways to give
+    // the six events their roles with every entrant first once or twice;
+    // 4 entrants in 2 pots of 2 have 4 ways to place their four events and
+    // 2 ways to give them roles
+    it('draws every assignment of roles for the smallest fields', function (int $count, int $pots, int $opponentsPerPot, int $seeds, int $draws): void {
+        $entrants = potDrawEntrants($count);
+        $scheduler = new PotDrawScheduler();
+
+        $seen = [];
+        for ($seed = 0; $seed < $seeds; ++$seed) {
+            $rounds = [];
+            foreach ($scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed))->getEvents() as $event) {
+                $rounds[(int) $event->getRound()?->getNumber()][] = $event->getParticipants()[0]->getId() . '-' . $event->getParticipants()[1]->getId();
+            }
+            foreach ($rounds as $number => $events) {
+                sort($events);
+                $rounds[$number] = implode(' ', $events);
+            }
+            $draw = implode(' | ', $rounds);
+            $seen[$draw] = ($seen[$draw] ?? 0) + 1;
+        }
+
+        // Every one of them, and none much more often than another
+        $counts = array_values($seen);
+        sort($counts);
+        expect($counts)->toHaveCount($draws)
+            ->and($counts[count($counts) - 1] ?? 0)->toBeLessThan(4 * ($counts[0] ?? 0));
+    })->with([
+        '4 entrants as one pot, three opponents' => [4, 1, 3, 6000, 144],
+        '4 entrants in 2 pots of 2' => [4, 2, 1, 800, 8],
     ]);
 
     // The fields a move can do nothing for, as the class docblock lists
     // them ("What the walk cannot change"). Each is drawn and keeps the
     // rules; what is asserted is the shape that stays.
     describe('leaves alone what its moves cannot change:', function (): void {
-        // No move changes how often an entrant is in each role against each
-        // pot. With an odd number of opponents per pot the single layer took
-        // its roles two rounds at a time, so the pots a pot meets come in
-        // pairs: every member of the pot leans one way against the one and
-        // the other way against the other
-        it('the roles, which pair off the pots a pot meets when the opponents per pot are odd', function (int $count, int $pots, int $opponentsPerPot, int $pairs): void {
-            $entrants = potDrawEntrants($count);
-            $potSize = intdiv($count, $pots);
-
-            for ($seed = 0; $seed < 30; ++$seed) {
-                $audit = PotDrawAudit::of((new PotDrawScheduler())->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)), $entrants, $pots);
-
-                // Entrant => pot => events first less events second against it
-                $lean = [];
-                foreach ($entrants as $entrant) {
-                    for ($pot = 1; $pot <= $pots; ++$pot) {
-                        $lean[$entrant->getId()][$pot] = ($audit->firstRoleByPot[$entrant->getId()][$pot] ?? 0)
-                            - ($audit->secondRoleByPot[$entrant->getId()][$pot] ?? 0);
-                    }
-                }
-
-                for ($pot = 0; $pot < $pots; ++$pot) {
-                    $members = array_slice($entrants, $pot * $potSize, $potSize);
-                    $opposite = 0;
-                    for ($one = 1; $one <= $pots; ++$one) {
-                        for ($other = $one + 1; $other <= $pots; ++$other) {
-                            $everyMember = true;
-                            foreach ($members as $member) {
-                                $everyMember = $everyMember && $lean[$member->getId()][$one] === -$lean[$member->getId()][$other];
-                            }
-                            $opposite += $everyMember ? 1 : 0;
-                        }
-                    }
-                    expect($opposite)->toBeGreaterThanOrEqual($pairs, "seed {$seed}");
-                }
-            }
-        })->with([
-            // 5 rounds in the single layer: two pairs of them, and one round over
-            '20 entrants in 5 pots of 4, one opponent' => [20, 5, 1, 2],
-            // 6 rounds: three pairs
-            '48 entrants in 6 pots of 8, one opponent' => [48, 6, 1, 3],
-            '24 entrants in 4 pots of 6, three opponents' => [24, 4, 3, 2],
-        ]);
-
         // Two rounds of six or fewer entrants form one cycle, so the round
-        // exchange trades whole rounds and every round keeps the pots it
-        // was built with
+        // exchange trades whole rounds; and an opponent exchange in a round
+        // of whole pots gives a round of the same pots. Every round keeps
+        // the pots it was built with
         it('the rounds of six entrants or fewer', function (int $count, int $pots, int $opponentsPerPot, int $wholePotRounds): void {
             $entrants = potDrawEntrants($count);
 
@@ -666,12 +758,11 @@ describe('PotDrawScheduler', function (): void {
         ]);
 
         // Between two pots of three an entrant misses one member of the
-        // other pot, and no two entrants can exchange opponents and keep
-        // one event in each role against that pot. Nothing needs changing:
-        // which three pairs do not meet is drawn evenly for every two pots
-        // when the draw is built, and one pot pair says nothing about
-        // another
-        it('the pairings of pots of three, which are drawn evenly as built', function (): void {
+        // other pot, so the pairs that do not meet match the members of the
+        // two pots one to one, whatever is exchanged. Which of the six ways
+        // it is, is drawn evenly for every two pots, and one pot pair says
+        // nothing about another
+        it('that two pots of three leave out one way to match them, each as often', function (): void {
             $entrants = potDrawEntrants(12);
 
             $leftOut = [];

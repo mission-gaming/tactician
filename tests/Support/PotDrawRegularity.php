@@ -12,10 +12,11 @@ use MissionGaming\Tactician\DTO\Schedule;
  * How regular a pot draw schedule is, counted from its events.
  *
  * A pot draw is built with a shape the format does not ask for: whole pots
- * set against each other in a round, one pot first against another for a
- * whole round, the pairings between two pots a rotation of one member
- * order. The scheduler then walks away from that shape. These counts say
- * how much of it is left, so that a test can state how much may be.
+ * set against each other in a round, the pairings between two pots a
+ * rotation of one member order. The scheduler then walks away from that
+ * shape. These counts say how much of it is left, so that a test can state
+ * how much may be. The roles are given after the walk; the count of blocks
+ * in which one pot is first throughout says how they fell.
  *
  * Like `PotDrawAudit`, nothing here reads `Stage\PotDrawPlan` or the
  * schedule metadata: the pots are worked out from list position.

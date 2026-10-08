@@ -681,8 +681,6 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 // The figures for 36 entrants in 4 pots of 9, over the seeds 0 to 39 (320 rounds, 240 pot pairs)
                 $rounds = 0;
                 $wholePotRounds = 0;
-                $blocks = 0;
-                $blocksWithOnePotFirst = 0;
                 $potPairs = 0;
                 $potPairsInRotation = 0;
                 for ($seed = 0; $seed < 40; ++$seed) {
@@ -693,14 +691,11 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     );
                     $rounds += $regularity->rounds;
                     $wholePotRounds += $regularity->wholePotRounds;
-                    $blocks += $regularity->blocks;
-                    $blocksWithOnePotFirst += $regularity->blocksWithOnePotFirst;
                     $potPairs += $regularity->potPairs;
                     $potPairsInRotation += $regularity->potPairsInRotation;
                 }
                 assert($rounds === 320 && $wholePotRounds === 0);
-                assert(abs($blocksWithOnePotFirst / $blocks - 0.38) < 0.07);
-                assert($potPairs === 240 && abs($potPairsInRotation / $potPairs - 0.32) < 0.1);
+                assert($potPairs === 240 && abs($potPairsInRotation / $potPairs - 0.52) < 0.1);
                 // 6 entrants in 3 pots of 2: every round has one pot playing inside itself and the other two meeting each other
                 $six = array_slice($entrants, 0, 6);
                 for ($seed = 0; $seed < 20; ++$seed) {

@@ -1352,30 +1352,31 @@ A key that is left out takes its default: one pot, one opponent per pot,
 seed 0.
 
 The seed chooses the order of the members inside each pot, the order of the
-pots, which matchings are used, which side is first, every choice of the walk
-described below, and the order of the rounds and of the events in them. The
+pots, which matchings are used, every choice of the walk described below, the
+roles, and the order of the rounds and of the events in them. The
 engine behind it (`Random\Engine\Xoshiro256StarStar`) is part of the output,
 and the golden fixtures pin one draw of each worked case.
 
 ### How a draw is made, and what it is uniform over
 
-The generator first builds a draw directly, with no search. That draw keeps
-every rule of the format, and it has a shape the format does not ask for:
-every round sets whole pots against each other, one pot is first against
-another for a whole round, and the pairings between two pots follow one
-pattern (a rotation of the two pots' members against each other). The
-generator then walks away from that shape with two moves, each of which keeps
-every rule:
+A draw is made in three steps: who meets whom in which round is built, a walk
+changes it, and then every event is given its roles.
+
+The generator first builds the rounds directly, with no search. They keep
+every rule of the format, and they have a shape the format does not ask for:
+every round sets whole pots against each other, and the pairings between two
+pots follow one pattern (a rotation of the two pots' members against each
+other). The generator then walks away from that shape with two moves, each of
+which keeps every rule:
 
 - **The round exchange** moves events between two rounds. Following an
   entrant's event in one round, its opponent's event in the other, and so on,
   comes back to the entrant; the two rounds trade the events on the way. Every
   entrant passed is still in both rounds once, and no event changes.
 - **The opponent exchange** changes who meets whom. In one round, two members
-  of one pot who are in the same role, and whose opponents are in one pot,
-  exchange opponents, unless that would make two entrants meet twice. Each of
-  the four keeps its role and the pot its opponent comes from, so every count
-  the format states is what it was.
+  of one pot whose opponents are in one pot exchange opponents, unless that
+  would make two entrants meet twice. Each of the four keeps the pot its
+  opponent comes from, so every count the format states is what it was.
 
 A move the rules do not allow is skipped. Nothing is searched and nothing is
 tried again, so a draw cannot fail and takes time in proportion to its number
@@ -1384,50 +1385,51 @@ for a field of fewer than 64 entrants (1,024 divided by the number of
 entrants, for every round). A step is one round exchange and, in one round,
 as many offers of an opponent exchange as the round has events.
 
+**The roles are given last**, by one rule. Every entrant puts its events in
+twos, in an order drawn for it: two events against the same pot as far as
+they go, and then, with an odd number of opponents per pot, the events left
+over, one against each pot. It is first in one event of a two and second in
+the other. The twos join the events into trails, and one coin for each trail
+decides every role on it. So an entrant is first as often as second but for
+one event at most, and also against any one pot, which with an even number of
+opponents per pot means exactly half each way.
+
 What that gives, and what it does not:
 
 - **Who meets whom is drawn evenly.** Between two given pots, or inside one,
   every pairing is as likely as any other.
-- **The shape the draw was built with is gone, as far as a longer walk can
+- **The shape the rounds were built with is gone, as far as a longer walk can
   remove it.** The length of the walk was chosen by measurement, over every
   supported configuration with up to 60 entrants: how often a round is made
-  of whole pots, how many rounds hold an event inside a pot, how often one
-  pot is first throughout when two pots meet several times in a round, how
-  often a round's events are listed pot pair by pot pair, and how often the
-  pairings between two pots are still a rotation. A walk of this length and a
-  walk ten times as long give the same figures: within 5 in 100 for every one
-  of them in every configuration, and within 1 in 100 on average. The one
-  exception is the last figure in a field where an entrant meets all but two
-  members of every other pot: few events can exchange opponents there, and
-  the two walks are up to 7 in 100 apart. For 36
-  entrants in 4 pots of 9 with two opponents per pot: no round is made of
-  whole pots (as built, five rounds in eight are); when two pots meet more
-  than once in a round, one of them is first throughout 38 times in 100 (as
-  built, always); and the pairings between two pots are a rotation for 32 pot
-  pairs in 100 (as built, for all).
+  of whole pots, how many rounds hold an event inside a pot, how often a
+  round's events are listed pot pair by pot pair, how often two rounds form a
+  single cycle, and how often the pairings between two pots, or among three,
+  are still a rotation. A walk of this length and a walk ten times as long
+  give the same figures: within 5 in 100 for every one of them in every
+  configuration, and within 1 in 100 on average. For 36 entrants in 4 pots of
+  9 with two opponents per pot: no round is made of whole pots (as built,
+  five rounds in eight are), and the pairings between two pots pass the test
+  for a rotation for 52 pot pairs in 100 (as built, for all), which is the
+  share among all the ways two pots of nine can be joined.
+- **No entrant is more likely to be first than another, and no pattern of
+  roles is built in.** Every assignment of roles that keeps the counts above
+  can be drawn. With two opponents per pot each is as likely as any other for
+  the same pairings; otherwise they are close to it and not equal.
 - **The draw is not claimed to be uniform over every schedule the format
   allows.** A walk of this kind, run long enough, is as likely to end on any
-  one of the draws it can reach as on any other. It is not proved that it can
-  reach all of them, and the walk has a fixed length.
-- **The roles are the ones the draw was built with.** Neither move changes
-  how often an entrant is in each role against each pot. With an even number
-  of opponents per pot the format fixes those numbers. With an odd number it
-  does not, and a pattern stays on every seed: the pots a pot meets (itself
-  included) come in pairs, and every member of the pot is first once more
-  than second against one pot of a pair and second once more than first
-  against the other. With 20 entrants in 5 pots of 4 every pot has two such
-  pairs. Which pots are paired, and which way round an entrant has them, is
-  drawn, and no entrant is more likely to be first than another.
-- **Some fields give a move nothing to do**, and the first and the last of
-  these keep that part of the shape they were built with:
-  - with six entrants or fewer, two rounds can only trade all of their
-    events, so every round keeps the pots it was built with: with 6 entrants
-    in 3 pots of 2, every round has one pot playing inside itself and the
-    other two meeting each other;
-  - with pots of three, no two entrants can exchange opponents and keep one
-    event in each role against the other pot. Nothing is lost by it: which
-    members of two pots of three do not meet is drawn evenly when the draw is
-    built;
+  one of the ways to meet that it can reach as on any other. It is not proved
+  that it can reach all of them, and the walk has a fixed length. The roles
+  are drawn after the walk, so pairings that allow more assignments of roles
+  are not drawn more often for that. For a few of the smallest fields every
+  schedule was listed and the draws of 240,000 seeds counted against the
+  list: 8 entrants in 2 pots of 4, 6 in 2 pots of 3, and 6 as one pot with
+  four opponents each give every way to meet as often as any other, and every
+  assignment of roles.
+- **Two kinds of field keep part of the shape they were built with:**
+  - with 6 entrants in 3 pots of 2, two rounds can only trade all of their
+    events, and an exchange of opponents gives a round of the same pots: every
+    round has one pot playing inside itself and the other two meeting each
+    other. That is 48 of the 72 ways those nine events can be placed;
   - one pot in which every member meets every other is a single round robin:
     no pairing can change, and when the pot size less one is a prime number
     (a pot of 8, 12 or 14, say) its rounds are those of the circle method,
