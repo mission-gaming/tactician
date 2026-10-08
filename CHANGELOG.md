@@ -17,12 +17,16 @@ heading **Output change (fix)**.
 
 A new format (the pot draw), an opt-in balanced role assignment for round
 robin, additions to the stage, standings, exception and repack API, and fixes
-to output that was broken. For a fixed input and seed the output is what it
-was in 0.2.1, except where an entry under "Output change (fix)" says
-otherwise: no golden fixture of generated output has changed. Before
-upgrading from 0.2.1, read "Output change (fix)" and "Changed": each entry
-says whom it affects and what to check. A call to one of the eight methods
-under "Deprecated" emits a notice from PHP 8.4.
+to output that was broken. For a fixed input and seed, what 0.2.1 returned
+is returned unchanged, except where an entry under "Output change (fix)"
+says otherwise. No golden fixture outside `examples/` has changed; the
+three example fixtures that did change follow examples that were rewritten.
+Two things are listed elsewhere: an input that failed outright in 0.2.1 and
+now succeeds is under "Fixed", and one exception message that goes on after
+the words it had is under "Changed". Before upgrading from 0.2.1, read
+"Output change (fix)" and "Changed": each entry says whom it affects and
+what to check. A call to one of the eight methods under "Deprecated" emits
+a notice from PHP 8.4.
 
 ### Output change (fix)
 
@@ -67,8 +71,9 @@ under "Deprecated" emits a notice from PHP 8.4.
   is needed either way. Every map of pairings was keyed by `sort($ids)` and
   `implode('|', $ids)`; `sort()` compares numeric strings as numbers, so two
   such ids tied and the key depended on which was named first, and an id
-  with `|` gave two pairings one key (`a` v `b|c`, and `a|b` v `c`). For a
-  field that holds such ids:
+  with `|` gave two pairings one key (`a` v `b|c`, and `a|b` v `c`). Where
+  that made generation or a bracket fail outright, the entry is under
+  "Fixed". For a field that holds such ids:
   - `SwissPairingEngine::pairNextRound()` repeated a pairing, or passed over
     one that had not been played. With ids `0e1`, `0e2`, `01`, `1` and every
     result drawn, round 2 was round 1 again; it is now `01 v 0e1, 1 v 0e2`.
