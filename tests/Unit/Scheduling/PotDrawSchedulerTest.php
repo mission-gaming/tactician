@@ -494,15 +494,19 @@ describe('PotDrawScheduler', function (): void {
     // pot that leaves an entrant first once more or once less than second
     // against every pot, and the seed says which. Nothing in the rule looks
     // at who the entrant is, so over the seeds each is first more often
-    // against its own pot about half the time. (A rule that walks its trails
-    // from the lowest list position, without a coin, gives the first entrant
-    // of the list the same role on every seed.)
+    // against its own pot about half the time. With an odd number of rounds
+    // an entrant is also first once more or once less than second over all
+    // its events, and that is each way about half the time as well. (The
+    // trails that end are walked from the end of the entrant earlier in the
+    // list: without the coin of such a trail, the first entrant of the list
+    // is first more often than second on every seed.)
     it('gives no entrant the same role against its own pot on every seed', function (int $count, int $pots, int $opponentsPerPot): void {
         $entrants = potDrawEntrants($count);
         $scheduler = new PotDrawScheduler();
         $potSize = intdiv($count, $pots);
 
         $firstMoreOften = array_fill_keys(array_map(static fn(Participant $entrant): string => $entrant->getId(), $entrants), 0);
+        $firstMoreOftenOverall = $firstMoreOften;
         for ($seed = 0; $seed < 40; ++$seed) {
             $audit = PotDrawAudit::of($scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed)), $entrants, $pots);
             foreach ($entrants as $index => $entrant) {
@@ -519,12 +523,23 @@ describe('PotDrawScheduler', function (): void {
 
                 $ownPot = intdiv($index, $potSize) + 1;
                 $firstMoreOften[$id] += ($audit->firstRoleByPot[$id][$ownPot] ?? 0) > ($audit->secondRoleByPot[$id][$ownPot] ?? 0) ? 1 : 0;
+                $firstMoreOftenOverall[$id] += array_sum($audit->firstRoleByPot[$id] ?? []) > array_sum($audit->secondRoleByPot[$id] ?? []) ? 1 : 0;
             }
         }
 
         // 20 of the 40 seeds on average, for every entrant
         foreach ($firstMoreOften as $id => $seeds) {
             expect($seeds)->toBeBetween(8, 32, $id);
+        }
+
+        // Over all its events: never with an even number of rounds, and 20
+        // of the 40 seeds on average with an odd number
+        foreach ($firstMoreOftenOverall as $id => $seeds) {
+            if (($pots * $opponentsPerPot) % 2 === 0) {
+                expect($seeds)->toBe(0, $id);
+            } else {
+                expect($seeds)->toBeBetween(8, 32, $id);
+            }
         }
     })->with([
         '8 in 2 pots of 4, one opponent' => [8, 2, 1],
@@ -533,6 +548,37 @@ describe('PotDrawScheduler', function (): void {
         '24 in 6 pots of 4, one opponent' => [24, 6, 1],
         '20 in 5 pots of 4, one opponent' => [20, 5, 1],
         '12 in 3 pots of 4, three opponents' => [12, 3, 3],
+    ]);
+
+    // The coin of a trail decides which of the two entrants of its first
+    // event is first, and nothing else does: not where they are in the list.
+    // With an odd number of rounds a trail that ends has an entrant at each
+    // end who left that event alone, and it is walked from the end of the
+    // one earlier in the list. (Without the coin that entrant is first in
+    // the event it left alone and the later one is second in its own, so
+    // the earlier an entrant is in the list, the more often it is first.)
+    it('is as likely to put the earlier of two entrants in the list first as second', function (int $count, int $pots, int $opponentsPerPot, int $seeds): void {
+        $entrants = potDrawEntrants($count);
+        $index = array_flip(array_map(static fn(Participant $entrant): string => $entrant->getId(), $entrants));
+        $scheduler = new PotDrawScheduler();
+
+        $events = 0;
+        $earlierFirst = 0;
+        for ($seed = 0; $seed < $seeds; ++$seed) {
+            foreach ($scheduler->schedule($entrants, new PotDrawOptions($pots, $opponentsPerPot, $seed))->getEvents() as $event) {
+                ++$events;
+                $earlierFirst += $index[$event->getParticipants()[0]->getId()] < $index[$event->getParticipants()[1]->getId()] ? 1 : 0;
+            }
+        }
+
+        // Half of the events. Each row has 5,000 events or more, and an
+        // event's roles are not independent of the others on its trail, so
+        // the range is wider than 5,000 coins would need
+        expect($earlierFirst / $events)->toBeBetween(0.47, 0.53);
+    })->with([
+        '12 in 3 pots of 4, one opponent' => [12, 3, 1, 300],
+        '12 in 3 pots of 4, three opponents' => [12, 3, 3, 100],
+        '20 in 5 pots of 4, one opponent' => [20, 5, 1, 100],
     ]);
 
     // With two opponents per pot each member of a pot is first against one
@@ -848,6 +894,22 @@ describe('PotDrawScheduler', function (): void {
         // Counted with pots cut from list order: e1..e4 are pot 1
         expect(PotDrawAudit::of($schedule, $entrants, 2)->violations($entrants, 2, 1))->toBe([])
             ->and(potDrawEventList($schedule))->toBe(potDrawEventList((new PotDrawScheduler())->schedule(potDrawEntrants(8), $options)));
+    });
+
+    // The keys of the list are not read: an entrant is its place in the list
+    it('draws the same schedule whatever the keys of the participant list', function (): void {
+        $entrants = potDrawEntrants(12);
+        $keyed = [];
+        foreach ($entrants as $place => $entrant) {
+            // Keys that are neither a list nor in order
+            $keyed[$place % 2 === 0 ? "k{$place}" : 100 - $place] = $entrant;
+        }
+        $options = new PotDrawOptions(pots: 3, opponentsPerPot: 3, seed: 9);
+
+        $schedule = (new PotDrawScheduler())->schedule($keyed, $options);
+
+        expect(PotDrawAudit::of($schedule, $entrants, 3)->violations($entrants, 3, 3))->toBe([])
+            ->and(potDrawEventList($schedule))->toBe(potDrawEventList((new PotDrawScheduler())->schedule($entrants, $options)));
     });
 
     it('draws a different field when the list order changes', function (): void {
