@@ -15,8 +15,8 @@ use MissionGaming\Tactician\DTO\Schedule;
  * set against each other in a round, the pairings between two pots a
  * rotation of one member order. The scheduler then walks away from that
  * shape. These counts say how much of it is left, so that a test can state
- * how much may be. The roles are given after the walk; the count of blocks
- * in which one pot is first throughout says how they fell.
+ * how much may be. Nothing here reads the roles, which are given after the
+ * walk.
  *
  * Like `PotDrawAudit`, nothing here reads `Stage\PotDrawPlan` or the
  * schedule metadata: the pots are worked out from list position.
@@ -27,8 +27,6 @@ final readonly class PotDrawRegularity
      * @param int $rounds Rounds in the schedule
      * @param int $wholePotRounds Rounds in which every pot meets one pot only (another, or itself)
      * @param int $roundsWithAnEventInsideAPot Rounds holding an event between two members of one pot
-     * @param int $blocks Times two different pots meet in two or more events of one round
-     * @param int $blocksWithOnePotFirst Those blocks in which one of the two pots holds the first role throughout
      * @param int $roundsListedByPotPair Rounds whose events are listed pot pair by pot pair
      * @param int $potPairs Pairs of different pots
      * @param int $potPairsInRotation Those pairs whose pairings pass `isRotation()`
@@ -42,8 +40,6 @@ final readonly class PotDrawRegularity
         public int $rounds,
         public int $wholePotRounds,
         public int $roundsWithAnEventInsideAPot,
-        public int $blocks,
-        public int $blocksWithOnePotFirst,
         public int $roundsListedByPotPair,
         public int $potPairs,
         public int $potPairsInRotation,
@@ -69,7 +65,7 @@ final readonly class PotDrawRegularity
             $position[$participant->getId()] = $index;
         }
 
-        // Round => list of [first, second] as list positions, in schedule order
+        // Round => list of the two list positions of an event, in schedule order
         $byRound = [];
         // Entrant => entrant => true, for every two that meet
         $meets = array_fill(0, $count, []);
@@ -89,14 +85,11 @@ final readonly class PotDrawRegularity
 
         $wholePotRounds = 0;
         $roundsWithInside = 0;
-        $blocks = 0;
-        $blocksWithOnePotFirst = 0;
         $roundsListedByPotPair = 0;
 
         foreach ($byRound as $events) {
             $listed = [];
             $pairsOfPot = [];
-            $firstRoleHolders = [];
             $inside = false;
             foreach ($events as [$first, $second]) {
                 $a = intdiv($first, $potSize);
@@ -105,11 +98,7 @@ final readonly class PotDrawRegularity
                 $listed[] = $potPair;
                 $pairsOfPot[$a][$potPair] = true;
                 $pairsOfPot[$b][$potPair] = true;
-                if ($a === $b) {
-                    $inside = true;
-                } else {
-                    $firstRoleHolders[$potPair][] = $a;
-                }
+                $inside = $inside || $a === $b;
             }
 
             $wholePotRounds += max(array_map(count(...), $pairsOfPot)) === 1 ? 1 : 0;
@@ -121,13 +110,6 @@ final readonly class PotDrawRegularity
                 $runs += $listed[$i] !== $listed[$i - 1] ? 1 : 0;
             }
             $roundsListedByPotPair += $runs === count(array_unique($listed)) ? 1 : 0;
-
-            foreach ($firstRoleHolders as $holders) {
-                if (count($holders) >= 2) {
-                    ++$blocks;
-                    $blocksWithOnePotFirst += count(array_unique($holders)) === 1 ? 1 : 0;
-                }
-            }
         }
 
         $potPairs = 0;
@@ -159,8 +141,6 @@ final readonly class PotDrawRegularity
             count($byRound),
             $wholePotRounds,
             $roundsWithInside,
-            $blocks,
-            $blocksWithOnePotFirst,
             $roundsListedByPotPair,
             $potPairs,
             $potPairsInRotation,
