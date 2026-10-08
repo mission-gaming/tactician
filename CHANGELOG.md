@@ -383,25 +383,30 @@ heading **Output change (fix)**.
     one, and with an even number of opponents per pot an entrant is in each
     role exactly half the time against every pot.
   - The schedule is built directly, with no search, for any even pot size,
-    and for an odd pot size with two opponents per pot. The draw that is
-    built is then the start of a walk of two moves, each of which keeps
-    every rule of the format: two rounds trade events, which changes no
-    event, and two members of one pot exchange opponents inside a round,
-    each keeping its role and the pot its opponent comes from, when that
-    makes no two entrants meet twice. So a round does not set one whole pot
-    against another, and the pairings between two pots are not kept to the
-    pattern they were built with. The length of the walk follows the
+    and for an odd pot size with two opponents per pot. What is built is
+    who meets whom in which round, and it is then the start of a walk of
+    two moves, each of which keeps every rule of the format: two rounds
+    trade events, which changes no event, and two members of one pot
+    exchange opponents inside a round, each keeping the pot its opponent
+    comes from, when that makes no two entrants meet twice. So a round does
+    not set one whole pot against another, and the pairings between two
+    pots are not kept to the pattern they were built with. The length of
+    the walk follows the
     configuration (16 steps for every round, and more for a field of fewer
     than 64 entrants); it was chosen so that the measured shape of a draw
     agrees with that of a walk ten times as long, for every supported
     configuration with up to 60 entrants. Nothing is searched or tried
-    again, and generation time is proportional to the number of events. Who
-    meets whom is drawn evenly, and no entrant is more likely to hold the
-    first role than another. The roles are the ones the draw was built
-    with: no move of the walk changes them. The draw is not claimed to be
-    uniform over every schedule the format allows: "How a draw is made, and
-    what it is uniform over" in the usage guide says what is measured, what
-    is argued, and which fields keep part of the shape they were built with.
+    again, and generation time is proportional to the number of events. The
+    roles are given last, by one rule: every entrant puts its events in
+    twos, against one pot as far as they go, and is first in one event of
+    a two and second in the other. That keeps an entrant within one of
+    even against every pot as well as over all its events, and every
+    assignment of roles with those counts can be drawn. Who meets whom is
+    drawn evenly, and no entrant is more likely to hold the first role
+    than another. The draw is not claimed to be uniform over every schedule
+    the format allows: "How a draw is made, and what it is uniform over" in
+    the usage guide says what is measured, what is argued, and which fields
+    keep part of the shape they were built with.
   - A configuration that cannot exist is refused before anything is drawn,
     with a reason of its own: `OddParticipantCount` (no bye is issued),
     `UnequalPots`, `TooManyOpponentsPerPot` and `OddPotWithOddOpponents`. A
