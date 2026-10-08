@@ -23,6 +23,11 @@ use MissionGaming\Tactician\Tests\Support\PotDrawAudit;
 // opponents per pot an entrant is in each role half the time against every
 // pot; the plan's counts are the generated counts; the same seed gives the
 // same schedule and different seeds give different ones.
+//
+// A draw is built and then walked with two moves (the round exchange and
+// the opponent exchange), and every draw here of more than one round has
+// gone through both: a move that broke a rule in some configuration would
+// show as a violation counted here.
 
 /**
  * The largest field the sweep covers.
@@ -37,11 +42,20 @@ const POT_DRAW_SWEEP_SEEDS = 3;
 
 /**
  * Fields larger than this are drawn with one seed fewer. Drawing takes time
- * in proportion to the events, and the largest fields hold most of the
- * events of the sweep; every configuration is still drawn, with two
- * different seeds and a repeat of the first.
+ * in proportion to the events, and the larger fields hold most of the
+ * events of the sweep; every configuration is still drawn with two
+ * different seeds.
  */
-const POT_DRAW_SWEEP_LARGE_FIELD = 40;
+const POT_DRAW_SWEEP_LARGE_FIELD = 20;
+
+/**
+ * Fields larger than this are not drawn a second time with their first
+ * seed. That repeat checks that one scheduler gives the same schedule after
+ * it has drawn others, which does not depend on the size of the field; the
+ * 631 configurations up to this size are repeated, and the largest fields
+ * hold two thirds of the drawing time of the sweep.
+ */
+const POT_DRAW_SWEEP_REPEAT_LIMIT = 40;
 
 /**
  * Seeds drawn for each of the three worked cases.
@@ -175,6 +189,24 @@ describe('Pot draw invariants', function (): void {
                     $failures[] = "{$name}, seed {$seed}: {$violation}";
                 }
 
+                // More than the format asks, and what the scheduler
+                // documents: with an odd number of opponents per pot an
+                // entrant is first once more or once less than second
+                // against every pot (an even number is exactly half each
+                // way, which the audit counts)
+                if ($opponentsPerPot % 2 === 1) {
+                    foreach ($field as $entrant) {
+                        $id = $entrant->getId();
+                        for ($pot = 1; $pot <= $pots; ++$pot) {
+                            $first = $audit->firstRoleByPot[$id][$pot] ?? 0;
+                            $second = $audit->secondRoleByPot[$id][$pot] ?? 0;
+                            if (abs($first - $second) !== 1) {
+                                $failures[] = "{$name}, seed {$seed}: {$id} is first {$first} and second {$second} time(s) against pot {$pot}";
+                            }
+                        }
+                    }
+                }
+
                 // The plan's counts, stated before generation, are the counts generated
                 $plan = $scheduler->getPlan($field, $options);
                 if ($plan->getTotalRounds() !== count($audit->eventsByRound)
@@ -189,7 +221,7 @@ describe('Pot draw invariants', function (): void {
 
                 // The same call on the same instance, after the draws of
                 // other seeds, gives the same schedule
-                if ($draw === $seedCount - 1) {
+                if ($draw === $seedCount - 1 && $count <= POT_DRAW_SWEEP_REPEAT_LIMIT) {
                     $firstOptions = new PotDrawOptions($pots, $opponentsPerPot, $index * POT_DRAW_SWEEP_SEEDS);
                     if (potDrawFingerprint($scheduler->schedule($field, $firstOptions)) !== array_key_first($fingerprints)) {
                         $failures[] = "{$name}: a second call with the first seed drew another schedule";
@@ -206,8 +238,8 @@ describe('Pot draw invariants', function (): void {
         }
 
         expect(array_slice($failures, 0, 20))->toBe([])
-            ->and($draws)->toBe(3529)
-            ->and($seeds)->toHaveCount(3529);
+            ->and($draws)->toBe(3052)
+            ->and($seeds)->toHaveCount(3052);
     });
 
     it('holds every rule for the worked cases over many seeds', function (int $count, int $pots, int $opponentsPerPot): void {

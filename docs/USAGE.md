@@ -1352,32 +1352,91 @@ A key that is left out takes its default: one pot, one opponent per pot,
 seed 0.
 
 The seed chooses the order of the members inside each pot, the order of the
-pots, which matchings are used, which side is first, how the events are
-spread over the rounds, and the order of the rounds and of the events in
-them. The engine behind it (`Random\Engine\Xoshiro256StarStar`) is part of
-the output, and the golden fixtures pin one draw of each worked case.
+pots, which matchings are used, every choice of the walk described below, the
+roles, and the order of the rounds and of the events in them. The
+engine behind it (`Random\Engine\Xoshiro256StarStar`) is part of the output,
+and the golden fixtures pin one draw of each worked case.
 
-Who meets whom is drawn evenly: between two given pots, or inside one, every
-pairing is as likely as any other. The generator first builds rounds in which
-whole pots meet each other, and then mixes them: two rounds at a time trade
-events in a way that keeps every entrant in both rounds exactly once, eight
-times the number of rounds over. No event is changed by this, so the
-opponents and the roles are the ones first built. After it a round mixes the
-pots, the events inside the pots are spread over the rounds, and which of
-two pots is first varies from event to event within a round.
+### How a draw is made, and what it is uniform over
 
-The draw is still not uniform over every schedule the format allows:
+A draw is made in three steps: who meets whom in which round is built, a walk
+changes it, and then every event is given its roles.
 
-- the pairings between two pots follow one pattern (a rotation of the two
-  pots' members against each other), and no seed draws a schedule outside it;
-- the mixing is a fixed amount of work, so now and then a round is left
-  that is still made of whole pots, each meeting one other pot or playing
-  inside itself (about one round in ten for 16 entrants in 4 pots with two
-  opponents per pot, and fewer than one in twenty for the larger cases
-  measured);
-- the smallest fields leave the mixing nothing to trade: with 6 entrants in
-  3 pots of 2, every round has one pot playing inside itself and the other
-  two meeting each other.
+The generator first builds the rounds directly, with no search. They keep
+every rule of the format, and they have a shape the format does not ask for:
+every round sets whole pots against each other, and the pairings between two
+pots follow one pattern (a rotation of the two pots' members against each
+other). The generator then walks away from that shape with two moves, each of
+which keeps every rule:
+
+- **The round exchange** moves events between two rounds. Following an
+  entrant's event in one round, its opponent's event in the other, and so on,
+  comes back to the entrant; the two rounds trade the events on the way. Every
+  entrant passed is still in both rounds once, and no event changes.
+- **The opponent exchange** changes who meets whom. In one round, two members
+  of one pot whose opponents are in one pot exchange opponents, unless that
+  would make two entrants meet twice. Each of the four keeps the pot its
+  opponent comes from, so every count the format states is what it was.
+
+A move the rules do not allow is skipped. Nothing is searched and nothing is
+tried again, so a draw cannot fail and takes time in proportion to its number
+of events. The walk takes 16 steps for every round of the schedule, and more
+for a field of 60 entrants or fewer (1,024 divided by the number of entrants
+and rounded down, for every round). A step is one round exchange and, in one
+round, as many offers of an opponent exchange as the round has events.
+
+**The roles are given last**, by one rule. Every entrant puts its events in
+twos, in an order drawn for it: two events against the same pot as far as
+they go, and then, with an odd number of opponents per pot, the events left
+over, one against each pot. It is first in one event of a two and second in
+the other. The twos join the events into trails, and one coin for each trail
+decides every role on it. So an entrant is first as often as second but for
+one event at most, and also against any one pot, which with an even number of
+opponents per pot means exactly half each way.
+
+What that gives, and what it does not:
+
+- **Who meets whom is drawn evenly.** Between two given pots, or inside one,
+  every pairing is as likely as any other.
+- **The shape the rounds were built with is gone, as far as a longer walk can
+  remove it.** The length of the walk was chosen by measurement, over every
+  supported configuration with up to 60 entrants: how often a round is made
+  of whole pots, how many rounds hold an event inside a pot, how often a
+  round's events are listed pot pair by pot pair, how often two rounds form a
+  single cycle, and how often the pairings between two pots, or among three,
+  are still a rotation. A walk of this length and a walk ten times as long
+  give the same figures: within 5 in 100 for every one of them in every
+  configuration, and within 1 in 100 on average. For 36 entrants in 4 pots of
+  9 with two opponents per pot: no round is made of whole pots (as built,
+  five rounds in eight are), and the pairings between two pots pass the test
+  for a rotation for 52 pot pairs in 100 (as built, for all), which is the
+  share among all the ways two pots of nine can be joined.
+- **No entrant is more likely to be first than another, and no pattern of
+  roles is built in.** Every assignment of roles that keeps the counts above
+  can be drawn. With two opponents per pot each is as likely as any other for
+  the same pairings. Otherwise they are not equally likely, and the spread
+  widens with the field: the class docblock of `PotDrawScheduler` gives the
+  figures worked out for the smallest fields. That is about whole
+  assignments: each single event is as likely one way round as the other.
+- **The draw is not claimed to be uniform over every schedule the format
+  allows.** A walk of this kind, run long enough, is as likely to end on any
+  one of the ways to meet that it can reach as on any other. It is not proved
+  that it can reach all of them, and the walk has a fixed length. The roles
+  are drawn after the walk, so pairings that allow more assignments of roles
+  are not drawn more often for that. For a few of the smallest fields every
+  schedule was listed and the draws of 240,000 seeds counted against the
+  list: 8 entrants in 2 pots of 4, 6 in 2 pots of 3, and 6 as one pot with
+  four opponents each give every way to meet as often as any other, and every
+  assignment of roles.
+- **Two kinds of field keep part of the shape they were built with:**
+  - with 6 entrants in 3 pots of 2, two rounds can only trade all of their
+    events, and an exchange of opponents gives a round of the same pots: every
+    round has one pot playing inside itself and the other two meeting each
+    other. That is 48 of the 72 ways those nine events can be placed;
+  - one pot in which every member meets every other is a single round robin:
+    no pairing can change, and when the pot size less one is a prime number
+    (a pot of 8, 12 or 14, say) its rounds are those of the circle method,
+    with the members in a drawn order.
 
 ### Feasible, supported and refused configurations
 
@@ -1449,7 +1508,7 @@ exact number of opponents from every pot, no rematch, and the role balance.
 The scheduler runs it on every schedule it returns.
 
 Generation takes time proportional to the number of events (entrants × pots ×
-opponents per pot / 2), the mixing included: a few milliseconds for 60
+opponents per pot / 2), the walk included: a few milliseconds for 60
 entrants in 6 pots with three opponents per pot.
 
 ## Elimination Brackets
