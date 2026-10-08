@@ -391,16 +391,15 @@ heading **Output change (fix)**.
     comes from, when that makes no two entrants meet twice. So a round does
     not set one whole pot against another, and the pairings between two
     pots are not kept to the pattern they were built with. The length of
-    the walk follows the
-    configuration (16 steps for every round, and more for a field of fewer
-    than 64 entrants); it was chosen so that the measured shape of a draw
-    agrees with that of a walk ten times as long, for every supported
-    configuration with up to 60 entrants. Nothing is searched or tried
-    again, and generation time is proportional to the number of events. The
-    roles are given last, by one rule: every entrant puts its events in
-    twos, against one pot as far as they go, and is first in one event of
-    a two and second in the other. That keeps an entrant within one of
-    even against every pot as well as over all its events, and every
+    the walk follows the configuration (16 steps for every round, and more
+    for a field of 60 entrants or fewer); it was chosen so that the measured
+    shape of a draw agrees with that of a walk ten times as long, for every
+    supported configuration with up to 60 entrants. Nothing is searched or
+    tried again, and generation time is proportional to the number of
+    events. The roles are given last, by one rule: every entrant puts its
+    events in twos, against one pot as far as they go, and is first in one
+    event of a two and second in the other. That keeps an entrant within
+    one of even against every pot as well as over all its events, and every
     assignment of roles with those counts can be drawn. Who meets whom is
     drawn evenly, and no entrant is more likely to hold the first role
     than another. The draw is not claimed to be uniform over every schedule

@@ -674,7 +674,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$stored = $drawOptions->toArray();',
             <<<'PHP'
-                // 16 steps for every round, and 1,024 divided by the entrants for a field of fewer than 64
+                // 16 steps for every round, and 1,024 divided by the entrants for a field of 60 or fewer
                 $rule = new \ReflectionClass(PotDrawScheduler::class);
                 assert($rule->getConstant('STEPS_PER_ROUND') === 16);
                 assert($rule->getConstant('STEPS_PER_ROUND_TIMES_ENTRANTS') === 1024);

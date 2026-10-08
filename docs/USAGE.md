@@ -1381,9 +1381,9 @@ which keeps every rule:
 A move the rules do not allow is skipped. Nothing is searched and nothing is
 tried again, so a draw cannot fail and takes time in proportion to its number
 of events. The walk takes 16 steps for every round of the schedule, and more
-for a field of fewer than 64 entrants (1,024 divided by the number of
-entrants, for every round). A step is one round exchange and, in one round,
-as many offers of an opponent exchange as the round has events.
+for a field of 60 entrants or fewer (1,024 divided by the number of entrants
+and rounded down, for every round). A step is one round exchange and, in one
+round, as many offers of an opponent exchange as the round has events.
 
 **The roles are given last**, by one rule. Every entrant puts its events in
 twos, in an order drawn for it: two events against the same pot as far as

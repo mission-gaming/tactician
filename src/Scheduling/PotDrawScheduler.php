@@ -258,9 +258,10 @@ use Random\Randomizer;
  * a little short: 8 entrants in 2 pots of 4 with three opponents per pot
  * have 0.37 of their rounds made of whole pots after 16 steps for every
  * round, and 0.33 at the length above (128 steps for every round) and at
- * ten times that; as built it is all of them. A field of 64 entrants or
- * more takes the 16 steps for every round; a sample of fields from 64 to
- * 140 entrants agrees with ten times as many in the same way.
+ * ten times that; as built it is all of them. A field of 62 entrants or
+ * more takes the 16 steps for every round (1,024 ÷ 62 is 16 when rounded
+ * down); a sample of fields from 64 to 140 entrants agrees with ten times
+ * as many in the same way.
  *
  * ## The roles
  *
@@ -356,10 +357,11 @@ use Random\Randomizer;
  * Time and memory are proportional to the number of events,
  * entrants × rounds / 2. A step of the walk passes at most every entrant
  * once in the round exchange (the cycle) and makes entrants / 2 offers, so
- * it costs at most 1.5 × entrants entrant visits. For 64 entrants or more
+ * it costs at most 1.5 × entrants entrant visits. For 62 entrants or more
  * that is 16 × rounds steps and at most 48 visits for each event; a
- * smaller field is walked for as long as one of 64 entrants with the same
- * number of rounds, 1,536 visits for each round. The roles pass every
+ * smaller field is walked for no longer than one of 64 entrants with the
+ * same number of rounds, at most 1,536 visits for each round. The roles
+ * pass every
  * event twice at each of its entrants, once to put it in a two and once on
  * its trail. The construction and the validation that follows pass every
  * event a few times.
@@ -377,9 +379,9 @@ class PotDrawScheduler implements SchedulerInterface
     private const int STEPS_PER_ROUND = 16;
 
     /**
-     * A field of fewer entrants than this number divided by
-     * STEPS_PER_ROUND takes more steps for every round: this number divided
-     * by its entrants. Part of the output for a seed.
+     * A field takes this number divided by its entrants, rounded down, as
+     * its steps for every round when that is more than STEPS_PER_ROUND: a
+     * field of 60 entrants or fewer. Part of the output for a seed.
      */
     private const int STEPS_PER_ROUND_TIMES_ENTRANTS = 1024;
 
