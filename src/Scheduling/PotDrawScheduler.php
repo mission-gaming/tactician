@@ -246,10 +246,10 @@ use Random\Randomizer;
  * walk of this length has not forgotten where it started. With 60 entrants
  * in 15 pots of 4, 36 in 100 of the pairings are still the ones built,
  * against 25 after ten times the steps and after forty times, which is
- * what chance gives. Nothing of
- * that shows in a draw, because the pairings between two pots are drawn
- * evenly as they are built, and the numbers of sets of three and of four
- * entrants who all meet across pots are the same at the three lengths.
+ * what chance gives. Nothing of that shows in a draw, because the
+ * pairings between two pots are drawn evenly as they are built, and the
+ * numbers of sets of three and of four entrants who all meet across pots
+ * are the same at the three lengths.
  *
  * Sixteen is the least of the numbers tried that is enough: with 8 steps for
  * every round, 54 entrants in 27 pots of 2 have 0.49 of their rounds listed
@@ -283,8 +283,12 @@ use Random\Randomizer;
  * ends at both ends with an event an entrant left alone. One coin decides
  * a whole trail: it gives the roles of its first event, and from there
  * every entrant passed is in the other role than it was in the event
- * before. A closed trail agrees with itself when it comes round, because
- * the entrant it started with put the last event with the first.
+ * before. A closed trail has three events or more: two events that both
+ * of their entrants put together would be the same two entrants meeting
+ * twice. So its last event leads back to the first through the entrant
+ * the trail started with, not through that entrant's opponent, and the
+ * trail agrees with itself when it comes round: the entrant it started
+ * with put the last event with the first, and has the other role in it.
  *
  * So an entrant is first in exactly one event of every two it made. That
  * is first k / 2 times against every pot when k is even; and when k is
@@ -299,14 +303,23 @@ use Random\Randomizer;
  * with one in which it is second, with one left over when k is odd; the
  * events left over are first and second equally often but for one, and go
  * together in the same way. The drawn order can give those twos, and the
- * coins can fall with them. They are not all drawn equally often: an
- * assignment is the more likely the more ways of putting the events in
- * twos lead to it. With two opponents
- * per pot they are: an entrant has one way to put its events in twos, the
- * trails are the cycles those twos make, and every cycle takes a coin of
- * its own. For the fields small enough to list every assignment ("The
- * seed"), each one was drawn, and the assignments of one draw came within
- * a few in a hundred of equally often.
+ * coins can fall with them. They are not all drawn equally often: every
+ * way of putting the events in twos is as likely as any other, and an
+ * assignment it leads to takes its share of one in 2 to the power of the
+ * number of trails, so an assignment is the more likely the more ways
+ * lead to it and the fewer trails those ways have. When every entrant has
+ * one way only to put its events in twos, the assignments of one draw are
+ * equally likely: the trails are the cycles those twos make, and every
+ * cycle takes a coin of its own. That is so with two opponents per pot,
+ * and with two rounds. Elsewhere the spread was worked out exactly for
+ * the smallest fields, from every way of putting the events in twos: for
+ * one pot of 6 with four opponents an assignment is drawn between 0.92
+ * and 1.04 times as often as it would be if all were equally likely, and
+ * for 6 entrants in 3 pots of 2 between 0.96 and 1.03. It widens with
+ * the field (one pot of 8 with four opponents: between 0.88 and 1.17 for
+ * the two draws worked out), and it is not known for the fields too
+ * large to work out. Each of the listed fields ("The seed") drew every
+ * assignment.
  *
  * No entrant is more likely to be first than another, because the order
  * of its events and the coins are drawn without looking at who it is.
@@ -363,10 +376,9 @@ use Random\Randomizer;
  * that is 16 × rounds steps and at most 48 visits for each event; a
  * smaller field is walked for no longer than one of 64 entrants with the
  * same number of rounds, at most 1,536 visits for each round. The roles
- * pass every
- * event twice at each of its entrants, once to put it in a two and once on
- * its trail. The construction and the validation that follows pass every
- * event a few times.
+ * pass every event twice at each of its entrants, once to put it in a two
+ * and once on its trail. The construction and the validation that follows
+ * pass every event a few times.
  *
  * @experimental
  */

@@ -1414,7 +1414,10 @@ What that gives, and what it does not:
 - **No entrant is more likely to be first than another, and no pattern of
   roles is built in.** Every assignment of roles that keeps the counts above
   can be drawn. With two opponents per pot each is as likely as any other for
-  the same pairings; otherwise they are close to it and not equal.
+  the same pairings. Otherwise they are not equally likely, and the spread
+  widens with the field: the class docblock of `PotDrawScheduler` gives the
+  figures worked out for the smallest fields. That is about whole
+  assignments: each single event is as likely one way round as the other.
 - **The draw is not claimed to be uniform over every schedule the format
   allows.** A walk of this kind, run long enough, is as likely to end on any
   one of the ways to meet that it can reach as on any other. It is not proved
