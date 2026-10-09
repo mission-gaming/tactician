@@ -20,6 +20,7 @@ use MissionGaming\Tactician\Repack\SlotAssignment;
 use MissionGaming\Tactician\Repack\UnplacedEvent;
 use MissionGaming\Tactician\Repack\UnplacedReason;
 use MissionGaming\Tactician\Repack\ViolationKind;
+use MissionGaming\Tactician\Tests\Support\RepackBruteForce;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -172,7 +173,7 @@ function assertNoSlotAvailableIsLiteral(
         for ($session = 0; $session < $grid->getSessionCount(); ++$session) {
             for ($slot = 0; $slot < $grid->getSlotCount($session); ++$slot) {
                 $position = "{$session}:{$slot}";
-                $freePositionExists = ($occupancy[$position] ?? 0) < $grid->getCapacityPerSlot()
+                $freePositionExists = ($occupancy[$position] ?? 0) < ($grid->getCapacityLimit() ?? PHP_INT_MAX)
                     && !isset($busy["{$position}:{$a->getId()}"])
                     && !isset($busy["{$position}:{$b->getId()}"]);
                 expect($freePositionExists)->toBeFalse();
@@ -860,5 +861,377 @@ describe('Repack step budget flag', function (): void {
         } catch (RepackViolationsException $exception) {
             expect($exception->getOutcome()->isBudgetExhausted())->toBeTrue();
         }
+    });
+
+    it('is false for an outcome the last placement step changed only when a larger budget changes nothing', function (string $name): void {
+        [$movable, $pinned, $grid] = smallRepackCorpus()[$name];
+        $repacker = new ScheduleRepacker();
+        $run = static fn(int $budget): RepackOutcome => $repacker->repack(
+            new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
+        );
+
+        $ample = $run(PHP_INT_MAX);
+        expect($ample->isBudgetExhausted())->toBeFalse();
+
+        foreach ([1, 2, 5, 20, 100, 1_000, 200_000] as $budget) {
+            $outcome = $run($budget);
+            if (!$outcome->isBudgetExhausted()) {
+                expect($outcome->toArray())->toBe($ample->toArray());
+            }
+            assertProperness($outcome, $movable, $pinned);
+            expect(count($outcome->getAssignments()) + count($outcome->getUnplaced()))->toBe(count($movable));
+        }
+    })->with(array_slice(array_keys(smallRepackCorpus()), 0, 40));
+
+    it('gives the last placement step a budget of its own, so a run whose searches spent theirs still places every event', function (): void {
+        // A complete round robin of 24 on six four-slot sessions: the
+        // packing searches spend the whole default budget, and 26 events
+        // were left unplaced before the last placement step existed
+        $outcome = (new ScheduleRepacker())->repack(completeGraphRequest(24, 'from one'));
+
+        expect($outcome->isBudgetExhausted())->toBeTrue()
+            ->and($outcome->getUnplaced())->toBe([])
+            ->and($outcome->getAssignments())->toHaveCount(276);
+    });
+});
+
+/**
+ * A single round robin of n participants on ceil(n / 4) sessions of four
+ * slots with capacity n / 2: every participant has at least n slots for
+ * its n - 1 events, and no slot can hold more than the n / 2 events a
+ * perfect matching has, so a placement of every event exists (an even
+ * round robin decomposes into n - 1 perfect matchings).
+ *
+ * Event ids are given in pair order: "1".."E" ('from one'), "1000".. ('from
+ * a thousand'), or a non-numeric id whose byte order is unrelated to the
+ * pair order ('scrambled').
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ */
+function completeGraphRequest(int $n, string $idFormat): RepackRequest
+{
+    $participants = [];
+    for ($i = 1; $i <= $n; ++$i) {
+        $participants[$i] = new Participant((string) $i, "P{$i}");
+    }
+
+    $movable = [];
+    $k = 0;
+    for ($i = 1; $i <= $n; ++$i) {
+        for ($j = $i + 1; $j <= $n; ++$j) {
+            ++$k;
+            $id = match ($idFormat) {
+                'from one' => (string) $k,
+                'from a thousand' => (string) (999 + $k),
+                'scrambled' => sprintf('m-%s', dechex($k * 7919 % 10007)),
+                default => throw new LogicException("Unknown id format {$idFormat}"),
+            };
+            $movable[] = new MovableEvent($id, $participants[$i], $participants[$j]);
+        }
+    }
+
+    return new RepackRequest($movable, [], SessionGrid::shapeOnly(intdiv($n + 3, 4), 4, [], intdiv($n, 2)));
+}
+
+/**
+ * A random request small enough for RepackBruteForce: three to six
+ * participants, one to three sessions of one to three slots, a capacity
+ * of 1, 2, 3 or unbounded, three to nine events (repeated pairings
+ * included) and up to two legal pins.
+ *
+ * @return array{0: array<MovableEvent>, 1: array<PinnedEvent>, 2: SessionGrid}
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ * @throws Random\RandomException
+ */
+function tinyRepackInstance(int $seed): array
+{
+    $rng = new Randomizer(new Mt19937($seed));
+    $participantCount = $rng->getInt(3, 6);
+    $participants = [];
+    for ($i = 1; $i <= $participantCount; ++$i) {
+        $participants[] = new Participant("p{$i}", "P{$i}");
+    }
+    $sessions = $rng->getInt(1, 3);
+    $slots = $rng->getInt(1, 3);
+    $capacityChoice = $rng->getInt(0, 3);
+    $capacity = $capacityChoice === 0 ? null : $capacityChoice;
+    $grid = SessionGrid::shapeOnly($sessions, $slots, [], $capacity);
+
+    $movable = [];
+    $eventCount = $rng->getInt(3, 9);
+    for ($i = 1; $i <= $eventCount; ++$i) {
+        $a = $rng->getInt(0, $participantCount - 1);
+        $b = $rng->getInt(0, $participantCount - 2);
+        if ($b >= $a) {
+            ++$b;
+        }
+        $movable[] = new MovableEvent(sprintf('m%02d', $i), $participants[$a], $participants[$b]);
+    }
+
+    $pinned = [];
+    $pinnedAt = [];
+    $countAt = [];
+    $attempts = $rng->getInt(0, 2);
+    for ($i = 1; $i <= $attempts; ++$i) {
+        $a = $rng->getInt(0, $participantCount - 1);
+        $b = $rng->getInt(0, $participantCount - 2);
+        if ($b >= $a) {
+            ++$b;
+        }
+        $session = $rng->getInt(0, $sessions - 1);
+        $slot = $rng->getInt(0, $slots - 1);
+        $position = "{$session}:{$slot}";
+        if ($capacity !== null && ($countAt[$position] ?? 0) >= $capacity) {
+            continue;
+        }
+        if (isset($pinnedAt["{$position}:{$a}"]) || isset($pinnedAt["{$position}:{$b}"])) {
+            continue;
+        }
+        $pinned[] = new PinnedEvent("x{$i}", $participants[$a], $participants[$b], $session, $slot);
+        $pinnedAt["{$position}:{$a}"] = true;
+        $pinnedAt["{$position}:{$b}"] = true;
+        $countAt[$position] = ($countAt[$position] ?? 0) + 1;
+    }
+
+    return [$movable, $pinned, $grid];
+}
+
+/**
+ * The corpus the repacker is compared with RepackBruteForce on: named
+ * instances for the cases the issue reported (one-slot sessions, the drop
+ * rule, under-reported demand, pins and capacity limits), then 300 random
+ * tiny ones. Of the random ones, 458 of the first 3,000 seeds came out
+ * below the optimum before the last placement step and the drop rule
+ * were changed; the first 300 hold 40 of them.
+ *
+ * @return array<string, array{0: array<MovableEvent>, 1: array<PinnedEvent>, 2: SessionGrid}>
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ * @throws Random\RandomException
+ */
+function smallRepackCorpus(): array
+{
+    static $corpus = null;
+    if ($corpus !== null) {
+        return $corpus;
+    }
+
+    $p = [];
+    for ($i = 1; $i <= 6; ++$i) {
+        $p[$i] = new Participant("p{$i}", "P{$i}");
+    }
+
+    $k6 = [];
+    for ($i = 1; $i <= 6; ++$i) {
+        for ($j = $i + 1; $j <= 6; ++$j) {
+            $k6[] = new MovableEvent("k{$i}{$j}", $p[$i], $p[$j]);
+        }
+    }
+
+    $corpus = [
+        // Fifteen events, six one-slot sessions: the standard rounds fit
+        'complete round robin of six on one-slot sessions' => [$k6, [], SessionGrid::shapeOnly(6, 1, [], 3)],
+        // One slot: p3 and p5 each have one event too many, and they share one
+        'two over-capacity participants sharing an event' => [
+            [new MovableEvent('e1', $p[3], $p[5]), new MovableEvent('e2', $p[5], $p[6]), new MovableEvent('e3', $p[3], $p[2])],
+            [],
+            SessionGrid::shapeOnly(1, 1, [], 3),
+        ],
+        // p1 and p2 are each two over, and two of their events are shared
+        'two over-capacity participants sharing two events' => [
+            [
+                new MovableEvent('e1', $p[1], $p[2]),
+                new MovableEvent('e2', $p[1], $p[2]),
+                new MovableEvent('e3', $p[1], $p[3]),
+                new MovableEvent('e4', $p[2], $p[4]),
+            ],
+            [],
+            SessionGrid::shapeOnly(1, 1, [], null),
+        ],
+        // Which over-capacity events go decides whether the rest fit: p4 is
+        // pinned at two of three slots, and the pins hold capacity
+        'over-capacity drops that decide what fits' => [
+            [
+                new MovableEvent('m01', $p[2], $p[5]),
+                new MovableEvent('m02', $p[2], $p[4]),
+                new MovableEvent('m03', $p[4], $p[3]),
+                new MovableEvent('m04', $p[2], $p[4]),
+            ],
+            [new PinnedEvent('x1', $p[4], $p[5], 0, 2), new PinnedEvent('x2', $p[2], $p[4], 0, 1)],
+            SessionGrid::shapeOnly(1, 3, [], 2),
+        ],
+        // Capacity 1 on one-slot sessions: every position holds one event
+        'one event per position' => [
+            [
+                new MovableEvent('e1', $p[1], $p[2]),
+                new MovableEvent('e2', $p[3], $p[4]),
+                new MovableEvent('e3', $p[1], $p[3]),
+                new MovableEvent('e4', $p[2], $p[4]),
+                new MovableEvent('e5', $p[1], $p[4]),
+            ],
+            [new PinnedEvent('x1', $p[5], $p[6], 1, 0)],
+            SessionGrid::shapeOnly(4, 1, [], 1),
+        ],
+    ];
+
+    for ($seed = 1; $seed <= 300; ++$seed) {
+        $corpus["random instance {$seed}"] = tinyRepackInstance($seed);
+    }
+
+    return $corpus;
+}
+
+describe('Repacking every placeable event', function (): void {
+    it('places every event of a complete round robin that fits the grid', function (int $n, string $idFormat): void {
+        $request = completeGraphRequest($n, $idFormat);
+
+        $outcome = (new ScheduleRepacker())->repack($request);
+
+        expect($outcome->getUnplaced())->toBe([])
+            ->and($outcome->getAssignments())->toHaveCount(intdiv($n * ($n - 1), 2))
+            ->and($outcome->getCapacityExceededViolations())->toBe([]);
+        assertProperness($outcome, $request->getMovableEvents(), []);
+
+        // No slot holds more than the capacity
+        $perSlot = [];
+        foreach ($outcome->getAssignments() as $assignment) {
+            $key = "{$assignment->getSession()}:{$assignment->getSlot()}";
+            $perSlot[$key] = ($perSlot[$key] ?? 0) + 1;
+        }
+        foreach ($perSlot as $count) {
+            expect($count)->toBeLessThanOrEqual(intdiv($n, 2));
+        }
+    })->with(range(6, 40, 2))->with(['from one', 'from a thousand', 'scrambled']);
+
+    it('places as many events as the best placement there is', function (string $name): void {
+        [$movable, $pinned, $grid] = smallRepackCorpus()[$name];
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+
+        expect(count($outcome->getAssignments()))->toBe(RepackBruteForce::maxPlaced($movable, $pinned, $grid));
+        assertProperness($outcome, $movable, $pinned);
+        assertNoSlotAvailableIsLiteral($outcome, $movable, $pinned, $grid);
+        expect(count($outcome->getAssignments()) + count($outcome->getUnplaced()))->toBe(count($movable))
+            ->and(count($outcome->getEventUnplacedViolations()))->toBe(count($outcome->getUnplaced()));
+
+        // Pins hold capacity: no position holds more than the grid allows
+        $capacity = $grid->getCapacityLimit();
+        if ($capacity !== null) {
+            $perPosition = [];
+            foreach ($pinned as $pin) {
+                $key = "{$pin->getSession()}:{$pin->getSlot()}";
+                $perPosition[$key] = ($perPosition[$key] ?? 0) + 1;
+            }
+            foreach ($outcome->getAssignments() as $assignment) {
+                $key = "{$assignment->getSession()}:{$assignment->getSlot()}";
+                $perPosition[$key] = ($perPosition[$key] ?? 0) + 1;
+            }
+            expect($perPosition === [] ? 0 : max($perPosition))->toBeLessThanOrEqual($capacity);
+        }
+
+        // Every over-capacity participant has at least its shortfall of
+        // events unplaced as over capacity, each naming it or the other
+        // over-capacity participant of the event
+        $overCapacity = [];
+        foreach ($outcome->getCapacityExceededViolations() as $violation) {
+            if ($violation->getParticipant() !== null) {
+                $overCapacity[$violation->getParticipant()->getId()] = $violation->getShortfall();
+            }
+        }
+        $participantsOf = [];
+        foreach ($movable as $event) {
+            $participantsOf[$event->getId()] = [$event->getParticipantA()->getId(), $event->getParticipantB()->getId()];
+        }
+        $covered = [];
+        foreach ($outcome->getUnplaced() as $unplaced) {
+            if ($unplaced->getReason() !== UnplacedReason::ParticipantOverCapacity) {
+                continue;
+            }
+            $named = $unplaced->getParticipant()?->getId();
+            expect($overCapacity)->toHaveKey((string) $named)
+                ->and($participantsOf[$unplaced->getEventId()])->toContain($named);
+            foreach ($participantsOf[$unplaced->getEventId()] as $id) {
+                $covered[$id] = ($covered[$id] ?? 0) + 1;
+            }
+        }
+        foreach ($overCapacity as $id => $shortfall) {
+            expect($covered[$id] ?? 0)->toBeGreaterThanOrEqual($shortfall);
+        }
+    })->with(array_keys(smallRepackCorpus()));
+
+    it('drops the event two over-capacity participants share before any other', function (): void {
+        // One slot of capacity 3. p3 plays p5 and p2, p5 plays p3 and p6:
+        // each has two events and one position, and one event between
+        // them fixes both, leaving p5 v p6 and p3 v p2 to share the slot
+        $p2 = new Participant('p2', 'P2');
+        $p3 = new Participant('p3', 'P3');
+        $p5 = new Participant('p5', 'P5');
+        $p6 = new Participant('p6', 'P6');
+        $movable = [new MovableEvent('e1', $p3, $p5), new MovableEvent('e2', $p5, $p6), new MovableEvent('e3', $p3, $p2)];
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, 1, [], 3)));
+
+        expect(array_map(static fn(SlotAssignment $a): string => $a->getEventId(), $outcome->getAssignments()))->toBe(['e2', 'e3'])
+            ->and(array_map(static fn(UnplacedEvent $u): array => $u->toArray(), $outcome->getUnplaced()))->toBe([
+                ['event_id' => 'e1', 'reason' => 'participant_over_capacity', 'participant' => 'p3'],
+            ])
+            ->and(array_map(static fn(CapacityExceeded $v): array => $v->toArray(), $outcome->getCapacityExceededViolations()))->toBe([
+                ['kind' => 'capacity_exceeded', 'participant' => 'p3', 'demand' => 2, 'capacity' => 1, 'shortfall' => 1],
+                ['kind' => 'capacity_exceeded', 'participant' => 'p5', 'demand' => 2, 'capacity' => 1, 'shortfall' => 1],
+            ]);
+    });
+
+    it('reports an over-capacity participant with its demand before any event was dropped', function (): void {
+        // One slot, no capacity limit. p1 plays p2 twice and p3 once, p2
+        // plays p1 twice and p4 once: three events each for one position.
+        // Dropping p1 v p3 and one p1 v p2 first, as the earlier rule did,
+        // made p2's demand look like two
+        $p1 = new Participant('p1', 'P1');
+        $p2 = new Participant('p2', 'P2');
+        $p3 = new Participant('p3', 'P3');
+        $p4 = new Participant('p4', 'P4');
+        $movable = [
+            new MovableEvent('e1', $p1, $p2),
+            new MovableEvent('e2', $p1, $p2),
+            new MovableEvent('e3', $p1, $p3),
+            new MovableEvent('e4', $p2, $p4),
+        ];
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, 1, [], null)));
+
+        expect(array_map(static fn(CapacityExceeded $v): array => $v->toArray(), $outcome->getCapacityExceededViolations()))->toBe([
+            ['kind' => 'capacity_exceeded', 'participant' => 'p1', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
+            ['kind' => 'capacity_exceeded', 'participant' => 'p2', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
+        ]);
+        // The two events they share are the two dropped, and both others fit
+        expect(array_map(static fn(SlotAssignment $a): string => $a->getEventId(), $outcome->getAssignments()))->toBe(['e3', 'e4']);
+    });
+
+    it('reports an over-capacity participant that dropping another participant\'s events would have fixed', function (): void {
+        // Two slots; p1 is pinned at the second, so it has one free
+        // position for three events, and p2 has two for three. The events
+        // p1 must lose include one against p2, which fixes p2 as well; the
+        // earlier rule then left p2 out of the report
+        $p1 = new Participant('p1', 'P1');
+        $p2 = new Participant('p2', 'P2');
+        $p3 = new Participant('p3', 'P3');
+        $p4 = new Participant('p4', 'P4');
+        $p5 = new Participant('p5', 'P5');
+        $movable = [
+            new MovableEvent('e1', $p1, $p2),
+            new MovableEvent('e2', $p1, $p2),
+            new MovableEvent('e3', $p1, $p3),
+            new MovableEvent('e4', $p2, $p4),
+        ];
+        $pinned = [new PinnedEvent('x1', $p1, $p5, 0, 1)];
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 2, [], null)));
+
+        expect(array_map(static fn(CapacityExceeded $v): array => $v->toArray(), $outcome->getCapacityExceededViolations()))->toBe([
+            ['kind' => 'capacity_exceeded', 'participant' => 'p1', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
+            ['kind' => 'capacity_exceeded', 'participant' => 'p2', 'demand' => 3, 'capacity' => 2, 'shortfall' => 1],
+        ]);
+        expect($outcome->getAssignments())->toHaveCount(2);
     });
 });
