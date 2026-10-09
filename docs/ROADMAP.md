@@ -14,7 +14,7 @@ see [What is next](#what-is-next).
 | 0.1.1 | 2026-07-04 | A correction to `composer.json`; no code change |
 | 0.2.0 | 2026-08-11 | [Schedule repacking](#schedule-repacking-020) |
 | 0.2.1 | 2026-10-06 | No change in library behaviour: a smaller installed package, the versioning policy, executed documentation and pinned output |
-| Unreleased | | The additions under [Since 0.2.1](#since-021) |
+| 0.2.2 | 2026-10-09 | The additions under [0.2.2](#022), and fixes to output that was broken |
 
 The work before 0.1.0 was planned in five phases. All five were complete in
 0.1.0, and the names are kept because the design notes refer to them.
@@ -62,10 +62,9 @@ Design note: [timeline-assignment.md](design/timeline-assignment.md)
 
 Design note: [schedule-repack.md](design/schedule-repack.md)
 
-### Since 0.2.1
+### 0.2.2
 
-In `main`, not yet in a release. The changelog's `Unreleased` section has the
-detail and the output changes.
+The changelog's `0.2.2` section has the detail and the output changes.
 
 - **Pot draws** (`PotDrawScheduler`, `PotDrawOptions`, `PotDrawPlan`): pairings drawn up front from seeded pots. Experimental
 - **Balanced role assignment** for round robin, opt-in ([role-assignment.md](design/role-assignment.md))

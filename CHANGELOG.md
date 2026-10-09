@@ -13,6 +13,21 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-09
+
+A new format (the pot draw), an opt-in balanced role assignment for round
+robin, additions to the stage, standings, exception and repack API, and fixes
+to output that was broken. For a fixed input and seed, what 0.2.1 returned
+is returned unchanged, except where an entry under "Output change (fix)"
+says otherwise. No golden fixture outside `examples/` has changed; the
+three example fixtures that did change follow examples that were rewritten.
+Two things are listed elsewhere: an input that failed outright in 0.2.1 and
+now succeeds is under "Fixed", and one exception message that goes on after
+the words it had is under "Changed". Before upgrading from 0.2.1, read
+"Output change (fix)" and "Changed": each entry says whom it affects and
+what to check. A call to one of the eight methods under "Deprecated" emits
+a notice from PHP 8.4.
+
 ### Output change (fix)
 
 - `SeedProtectionConstraint::getName()` states the protection period as the
@@ -33,8 +48,9 @@ heading **Output change (fix)**.
   violations, and it appears in the diagnostic report and the suggestions of
   an `IncompleteScheduleException`. Code that matches the name of this
   constraint must change the string it matches: multiply the number in it by
-  100 and round it to two decimal places. The percentage is rounded to at most two decimal places, a half going
-  up, and is written with `.` as the decimal separator and without trailing
+  100 and round it to two decimal places. The percentage is rounded to at
+  most two decimal places, a half going up, and is written with `.` as the
+  decimal separator and without trailing
   zeros, whatever the `precision` and `serialize_precision` settings and the
   locale: 0.125 gives `12.5%`, 1/3 gives `33.33%`, 2/3 gives `66.67%` and
   0.1 + 0.2 gives `30%`. The name therefore does not identify the period
@@ -55,8 +71,9 @@ heading **Output change (fix)**.
   is needed either way. Every map of pairings was keyed by `sort($ids)` and
   `implode('|', $ids)`; `sort()` compares numeric strings as numbers, so two
   such ids tied and the key depended on which was named first, and an id
-  with `|` gave two pairings one key (`a` v `b|c`, and `a|b` v `c`). For a
-  field that holds such ids:
+  with `|` gave two pairings one key (`a` v `b|c`, and `a|b` v `c`). Where
+  that made generation or a bracket fail outright, the entry is under
+  "Fixed". For a field that holds such ids:
   - `SwissPairingEngine::pairNextRound()` repeated a pairing, or passed over
     one that had not been played. With ids `0e1`, `0e2`, `01`, `1` and every
     result drawn, round 2 was round 1 again; it is now `01 v 0e1, 1 v 0e2`.
@@ -292,7 +309,8 @@ heading **Output change (fix)**.
   `@internal` (not public API). The README's "Versioning and stability"
   section still decides which of the first two a type is: a type that an
   entry of its stable list covers is `@api`, and every other public type is
-  `@experimental`. No type moved between the two lists.
+  `@experimental`. No type moved between the two lists; six types that had
+  no mark are now `@internal` (see "Changed").
   An architecture test (`tests/Feature/StabilityAnnotationsTest.php`) fails
   when a type has no annotation or more than one, when an annotation
   contradicts the README, when a namespace is in neither list, when a type
@@ -415,8 +433,14 @@ heading **Output change (fix)**.
   - Not in this release: pairs of entrants that must not meet, pots given
     explicitly instead of cut from list order, and the configurations that
     need a search.
-- Six cases of `Exceptions\InvalidConfigurationReason`: the five above and
-  `UnknownOptionKey`, for a plain-data key the options do not have.
+  - `examples/22-pot-draw.php` draws a league phase of 36 entrants in four
+    pots: the plan before the draw, the opponents of the top seed pot by
+    pot, the same seed giving the same schedule, and a configuration that
+    is refused.
+- Six cases of `Exceptions\InvalidConfigurationReason` for the pot draw: the
+  five above and `UnknownOptionKey`, for a plain-data key the options do not
+  have. The enum itself is new in this release: see "A reason on every
+  configuration error" below.
 - A property suite (`tests/Feature/PotDrawInvariantsTest.php`) that draws
   every supported pot draw configuration with up to 60 entrants over several
   seeds and checks the rules of the format by counting in the events.
@@ -446,8 +470,8 @@ heading **Output change (fix)**.
   replacing a result and the engine fingerprint; an event with no round
   number at all is `EventWithoutRoundNumber` there too). `getReason()`
   returns null only for an exception that code outside the library builds
-  without a reason. A `match` over the reason needs a `default` arm, because a release
-  may add a case.
+  without a reason. A `match` over the reason needs a `default` arm, because
+  a release may add a case.
 - `Exceptions\PinConflictException`, thrown by `RepackRequest` when one
   participant is pinned in two events at the same session and slot.
   `getEventIds()` returns the IDs of the two events, and `getParticipantId()`,
@@ -471,15 +495,19 @@ heading **Output change (fix)**.
   now covers the scheduling failures under `SchedulingException` and the
   rejected arguments and malformed data that were thrown as a bare
   `\InvalidArgumentException` before. Three classes carry it to the sites
-  that were outside `SchedulingException`: `Exceptions\InvalidInputException`
-  (extends `\InvalidArgumentException`, 60 sites in the DTOs, the stage and
-  timeline value objects, the constraints, `SwissPairingEngine` and
-  `StandingsCalculator`), `Exceptions\InvariantViolationException` (extends
-  `\LogicException`, three internal guards) and
+  that were outside `SchedulingException` in 0.2.1:
+  `Exceptions\InvalidInputException` (extends `\InvalidArgumentException`;
+  the 60 sites that threw one, in the DTOs, the stage and timeline value
+  objects, the constraints, `SwissPairingEngine` and `StandingsCalculator`),
+  `Exceptions\InvariantViolationException` (extends `\LogicException`; the
+  three internal guards that threw one) and
   `Exceptions\JsonConversionException` (extends `\JsonException`). Each
   extends the type its sites threw before, so existing catch clauses still
-  match, and no message, code or previous exception has changed. The usage
-  guide lists the classes and what the marker does not cover.
+  match, and no message, code or previous exception has changed. The code
+  that is new in this release throws the same classes, and one more that is
+  outside `SchedulingException`: `Exceptions\UnavailableValueException`
+  (below). The usage guide lists the classes and what the marker does not
+  cover.
 - An architecture test (`tests/Feature/ExceptionMarkerTest.php`) that fails
   when a `throw` in `src/`, an exception built there, or a method's return
   type names a class outside `TacticianException`.
@@ -654,17 +682,21 @@ heading **Output change (fix)**.
   coverage report of the continuous integration, each through the behaviour
   that reaches it, among them the single-move relocation of the repack load
   planner (`tests/Feature/RepackRelocationTest.php`,
-  `tests/Feature/UncoveredPathsTest.php`). The 15 lines that remain are
+  `tests/Feature/UncoveredPathsTest.php`). The 15 lines that remained were
   guards for states the surrounding code rules out; each carries its reason
-  in the source, in a comment that starts `// Not reached:`.
+  in the source, in a comment that starts `// Not reached:`. With the code
+  added since, the report of this release leaves 21 lines unexecuted (99.6%
+  of lines are executed): 16 such guards, and five lines without that
+  comment, in `NoRepeatPairings`, `SchedulingContext` and the Swiss round
+  search.
 - A `composer mutation` script: mutation testing of `src/Scheduling` and
   `src/Repack/Internal` with Pest's mutation runner, which is installed with
   Pest, over the tests named in `phpunit.mutation.xml`. A workflow of its
   own, `.github/workflows/mutation.yml`, runs it once a week (a maintainer
   can also start it by hand), apart from the scheduled workflow so that a
   slow or stopped run cannot hide what that one found. The source is
-  mutated in seven shards, one `Mutation testing, <shard>` job each, sized to
-  end well inside a three-hour limit on a standard runner; a test fails
+  mutated in seven shards, one `Mutation testing, <shard>` job each, sized
+  for a three-hour limit on a standard runner; a test fails
   when a PHP file of the two directories is in no shard or in two. Each
   job enforces no minimum and publishes its shard's score, the counts and
   the first untested changes in the job summary. The runner's score counts
@@ -672,9 +704,7 @@ heading **Output change (fix)**.
   also gives the share that a failing test noticed; a job that is stopped
   at its time limit is red, gives no score and says how many changes the
   run got through. It does not run for a pull request, because a run takes
-  hours of a runner, and it is not part of `composer ci`. The scores are
-  not confirmed in CI yet: the workflow runs on the default branch only, so
-  its first run is started by hand after this is merged. Infection was
+  hours of a runner, and it is not part of `composer ci`. Infection was
   tried first and is not used: it has no adapter for Pest, and through its
   PHPUnit adapter it counts every change as noticed, because it does not
   recognise the result line Pest prints.
@@ -726,7 +756,9 @@ heading **Output change (fix)**.
 
 ### Changed
 
-- Several operations cost less. **No output changes for any input**: every
+- Several operations cost less. **These changes alter no output for any
+  input** (the outputs this release does change are under "Output change
+  (fix)"): every
   schedule, pairing, repack outcome (assignments, unplaced events,
   violations, `isBudgetExhausted()` and `fingerprint()`), exception and
   diagnostic report is what it was, and a step budget stops every search at
@@ -1018,8 +1050,10 @@ usage guide lists the same methods under "Deprecations".
     the number of times a constraint is asked nor the order is promised. A
     rejected event is asked about a second time, retries and searches ask
     again, and a failure analysis asks about events that were never
-    candidates. This is the assumption behind the performance entry under
-    "Changed" above.
+    candidates. The library does not rely on this where relying on it would
+    change what a constraint that breaks it gets back: the two shortcuts of
+    the performance entry under "Changed" are taken only for constraints
+    that run no code of yours.
   - **Smaller corrections in the usage guide**: `StandingsCalculator`
     recognises a repeated event by the `Event` object, so two objects for
     one match are counted twice; `SeedProtectionConstraint` and the
@@ -1037,8 +1071,9 @@ usage guide lists the same methods under "Deprecations".
     schedule of a field of odd size the participants are not all level,
     because a bye counts as a win in the pairing order (and as nothing in
     the outcome's table), and the bound of participants minus one rounds
-    refuses a field of odd size a last round it could play without a repeat; a bracket re-seeded each round ranks an entrant who
-    had a bye below the winners of that round; a constraint asked by the
+    refuses a field of odd size a last round it could play without a
+    repeat; a bracket re-seeded each round ranks an entrant who had a bye
+    below the winners of that round; a constraint asked by the
     backtracking search or the Swiss round search sees the pairings already
     made in the candidate's own round; `CompositionValidator` counts a
     `MatchOutcomeSelector` as the hand-off after one knockout round, which
@@ -1054,10 +1089,10 @@ usage guide lists the same methods under "Deprecations".
   - **`AGENTS.md` and `docs/CONTRIBUTING.md`** no longer say that a stage
     never reads the seed attribute, that nothing derived from a table
     depends on input order, or that every DTO is readonly.
-  - **`docs/ROADMAP.md`** says in which release each part shipped and what
-    is in `main` but not yet released, and its known limitations are the
-    ones above. **The design notes** state their status (two still read
-    "implementing" or "proposed" for features that shipped in 0.1.0) and
+  - **`docs/ROADMAP.md`** says in which release each part shipped, and its
+    known limitations are the ones above. **The design notes** state their
+    status (two still read "implementing" or "proposed" for features that
+    shipped in 0.1.0) and
     list where the shipped code differs from the design: there is no
     `GroupStagePlan`, selectors do not reseed with `withSeed()`, and the
     elimination engines are not compositions of single-round stages.
@@ -1506,7 +1541,8 @@ PHP 8.3+.
 - **Immutable DTOs**: readonly value objects with `toArray()`/`fromArray()`;
   `Schedule` round-trips JSON.
 
-[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/mission-gaming/tactician/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mission-gaming/tactician/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mission-gaming/tactician/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/mission-gaming/tactician/compare/v0.1.0...v0.1.1

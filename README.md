@@ -37,8 +37,10 @@ the last one, which is about the library as a whole.
   nothing in it is paired from results. [Pot draws](docs/USAGE.md#pot-draws)
 - **Single and double elimination**: fold seeding by list position, byes, round
   labels, one- or two-legged ties; re-seeding each round for single
-  elimination, and an optional grand-final reset for double elimination.
-  [Elimination brackets](docs/USAGE.md#elimination-brackets)
+  elimination, and an optional grand-final reset for double elimination. An
+  event or a tie that finishes level is decided by naming who advances.
+  [Elimination brackets](docs/USAGE.md#elimination-brackets),
+  [recording a level event](docs/USAGE.md#recording-a-level-event)
 - **Group stages and multi-stage tournaments**, composed from serpentine pools
   and progression selectors. A declared chain of stages can be checked for
   matching entrant counts before any event exists. [Pools, progression, and multi-stage tournaments](docs/USAGE.md#pools-progression-and-multi-stage-tournaments)
@@ -53,9 +55,13 @@ the last one, which is about the library as a whole.
   constraints throws, with a report that names the constraint and the pairings
   it blocks; a partial schedule is never returned. The scheduler first retries
   a bounded number of rotated participant orders, and an opt-in backtracking
-  search covers the round layouts those cannot reach.
+  search covers the round layouts those cannot reach. Every exception the
+  library throws on purpose implements one interface, and a configuration
+  error carries a reason that code can match without reading the message.
   [Backtracking generation](docs/USAGE.md#backtracking-generation),
-  [error handling](docs/USAGE.md#error-handling)
+  [error handling](docs/USAGE.md#error-handling),
+  [configuration errors](docs/USAGE.md#configuration-errors),
+  [catching every library exception](docs/USAGE.md#catching-every-library-exception)
 - **Schedule quality**: lower-is-better metrics, a weighted scorer, and an
   optimizer that keeps the best of N seeded samples.
   [Schedule quality and optimization](docs/USAGE.md#schedule-quality-and-optimization)
@@ -63,8 +69,18 @@ the last one, which is about the library as a whole.
 **Results, time and repair**
 
 - **Results and standings**: a ranking strategy (3/1/0 and 1/½/0 presets), then
-  a chain of tiebreakers (wins, Buchholz, Sonneborn–Berger).
-  [Results and standings](docs/USAGE.md#results-and-standings)
+  a chain of tiebreakers (wins, Buchholz, Sonneborn–Berger). The table gives
+  every entry its own position and reports the sets of entries that no result
+  separates.
+  [Results and standings](docs/USAGE.md#results-and-standings),
+  [tied sets](docs/USAGE.md#tied-sets)
+- **Stage state between rounds**: the state of a results-driven stage is
+  plain data that an application stores between rounds. A recorded result of
+  the last round can be replaced, and a state can be stamped with the
+  fingerprint of the engine that pairs it, so that another engine or another
+  configuration refuses it.
+  [Correcting a recorded result](docs/USAGE.md#correcting-a-recorded-result),
+  [recording which engine pairs a state](docs/USAGE.md#recording-which-engine-pairs-a-state)
 - **Timeline assignment**: kickoff times and named resources for every event
   from a declarative slot pattern, with minimum-rest and blackout rules.
   Kickoffs are emitted in UTC.
@@ -72,8 +88,14 @@ the last one, which is about the library as a whole.
 - **Schedule repacking**: existing events, some of them pinned, placed onto an
   irregular grid of sessions so that nobody is double-booked and each
   participant plays back to back within a session. What cannot be satisfied
-  comes back as itemised violations instead of an exception.
-  [Schedule repacking](docs/USAGE.md#schedule-repacking)
+  comes back as itemised violations instead of an exception. A grid can be
+  given without times and with no limit on the events in a slot, and an
+  outcome has a fingerprint that tells whether a plan computed again is the
+  plan that was shown.
+  [Schedule repacking](docs/USAGE.md#schedule-repacking),
+  [grids without instants](docs/USAGE.md#grids-without-instants),
+  [unbounded capacity](docs/USAGE.md#unbounded-capacity),
+  [outcome fingerprints](docs/USAGE.md#outcome-fingerprints)
 
 **Foundations**
 
