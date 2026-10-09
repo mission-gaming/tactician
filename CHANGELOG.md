@@ -13,7 +13,7 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
-## [0.2.2] - 2026-10-08
+## [0.2.2] - 2026-10-09
 
 A new format (the pot draw), an opt-in balanced role assignment for round
 robin, additions to the stage, standings, exception and repack API, and fixes
