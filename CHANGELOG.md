@@ -13,6 +13,103 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+Three fixes to `ScheduleRepacker` output that was broken. No public
+signature changes. A repack whose outcome has no unplaced event and no
+`CapacityExceeded` is returned byte for byte as 0.2.2 returned it, with the
+same fingerprint. An outcome that has either can change: it is changed only
+where it left an event unplaced that a placement could hold, dropped more
+events than a participant's shortfall needed, or understated a
+`CapacityExceeded`. For every outcome that changes, `toArray()` and
+`RepackOutcome::fingerprint()` change with it, so a fingerprint kept from
+0.2.2 for such a request no longer matches: repack again before comparing.
+
+### Output change (fix)
+
+- **The repacker places events it used to leave unplaced although a
+  placement held them.** The phases before the last sweep never moved a
+  placed event to free a position for another one, so a larger step budget
+  could not help. A last placement step now runs when an event is still
+  unplaced after the sweep: it moves placed events along alternating paths
+  (a Kempe chain is one), and where that is not enough, exchanges one placed
+  event for one unplaced event when that lets a further one in. It never
+  double-books a participant, never moves a pin and never fills a slot past
+  its capacity. It is offered the events dropped for an over-capacity
+  participant too: a participant never holds more positions than it has
+  free, so placing one only changes which of its events is the one that does
+  not fit, and the reasons are then given again to the events still
+  unplaced, by the drop rule below. Before and after:
+
+  | Request | 0.2.2 | Unreleased |
+  |---|---|---|
+  | Complete round robin of 6 on six one-slot sessions, capacity 3 | 13 placed, 2 `no_slot_available` | 15 placed |
+  | Complete round robin of 24 on six four-slot sessions, capacity 12 (ids `1`–`276`) | 250 placed, 26 unplaced | 276 placed |
+  | The same with ids from `1000` | 255 placed, 21 unplaced | 276 placed |
+  | Complete round robin of 40 on ten four-slot sessions, capacity 20 | 732 placed, 48 unplaced | 780 placed |
+  | Complete round robin of 40 on nine four-slot sessions, capacity 20 (each participant 3 over) | 628 placed | 720 placed, the most there can be |
+
+  Every complete round robin of an even number of participants from 6 to 40
+  on a grid with at least as many slots per participant as it has events now
+  places every event, and on 3,000 small random requests the number placed
+  equals the best any placement achieves (it fell short on 458 of them).
+  Who is affected: anyone whose repack outcome lists unplaced events. What
+  to check: an outcome that listed events as `no_slot_available` may now
+  place them, so its assignments move as well, and the assignments of a
+  session the step moved events through can carry gaps or late starts that
+  were not there (they are reported as `ContiguityBroken` and `LateStart`).
+  The golden fixtures `repack/round-robin.txt` (the second case above),
+  `repack/budget-stops.txt` (the six lines whose outcome had unplaced
+  events: five at a budget of 30 steps and one at 1,000) and
+  `examples/19-repacking-a-season.txt` and
+  `examples/23-application-adapter-and-repack.txt` (see the next two entries)
+  change; no other fixture does.
+
+  The step has a budget of its own, of the size `RepackOptions::$stepBudget`
+  gives: the earlier searches stop where they always stopped, and a run whose
+  earlier searches spent the whole budget still gets the step. A repack can
+  therefore take up to twice the steps it did, and `isBudgetExhausted()` is
+  also true when this step was stopped; false still means that a larger
+  budget gives the same outcome.
+
+- **The over-capacity drop rule drops an event between two over-capacity
+  participants first.** It sorted a participant's events by the slack of the
+  opponent, so an event shared by two participants who both had too many
+  was kept and two others were dropped. It now drops first as many shared
+  events as can count towards both shortfalls, and only then each
+  participant's other events, by the opponent's slack as before. Before and
+  after, for one slot of capacity 3 and the events `p3 v p5`, `p5 v p6` and
+  `p3 v p2` (p3 and p5 each have two events for one position): 0.2.2 placed
+  1 event and dropped `p5 v p6` and `p3 v p2`; now `p3 v p5` is dropped and
+  the other two are placed. Who is affected: requests in which two
+  over-capacity participants meet. What to check: more events are placed,
+  and different events are listed as `participant_over_capacity`. In
+  `examples/19-repacking-a-season.php` the grid without the deeper session
+  places 8 events instead of 7 (Celtic and Rayo Vallecano are both one over
+  and meet twice); in `examples/23-application-adapter-and-repack.php` the
+  first preview drops `fx05` (Harbour Athletic v Northgate Rovers, both one
+  over) instead of `fx09` and `fx10`, and `fx10` is now unplaced as
+  `no_slot_available`, because no placement holds more than three of the
+  five fixtures.
+
+- **`CapacityExceeded` reports a participant's demand before any event was
+  dropped, and reports every participant with more events than free
+  positions.** The participants were processed one after another, and a
+  participant's demand was counted after the events dropped for earlier
+  ones, so it was understated, and a participant whose shortfall an earlier
+  drop had covered was not reported at all. Before and after, for one slot
+  with no capacity limit and the events `p1 v p2` twice, `p1 v p3` and
+  `p2 v p4`: 0.2.2 reported p1 with demand 3 and p2 with demand 2 (shortfall
+  1); now both have demand 3 and shortfall 2. Who is affected: requests with
+  two or more over-capacity participants that meet. What to check: a
+  `CapacityExceeded` can have a larger demand and shortfall, and there can be
+  more of them. `CapacityExceeded::getShortfall()` said that exactly the
+  shortfall of a participant's events are unplaced as
+  `participant_over_capacity`, naming it; once two over-capacity participants
+  meet that was not true before either, and the docblock now says what is:
+  at least that many are, each naming it or the other over-capacity
+  participant of the event. The `CapacityExceeded` of the grid
+  as a whole is unchanged: it still counts the events left after the
+  participants' drops.
+
 ## [0.2.2] - 2026-10-09
 
 A new format (the pot draw), an opt-in balanced role assignment for round
