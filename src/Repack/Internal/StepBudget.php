@@ -8,8 +8,11 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * The shared elementary-step counter bounding every repack search.
  *
  * One budget instance is threaded through all phases, so the documented
- * RepackOptions::$stepBudget is a genuine whole-run bound. Steps, not
- * wall clock: behaviour is reproducible.
+ * RepackOptions::$stepBudget is a genuine bound on them together. The
+ * last placement step (LeftoverRecolourer) gets a second instance of the
+ * same size, so that it runs even when the phases before it spent the
+ * first; a whole repack spends at most twice the budget. Steps, not wall
+ * clock: behaviour is reproducible.
  *
  * The budget also records whether it ever stopped a search
  * ({@see self::stoppedASearch()}), which the outcome reports. Both ways a
