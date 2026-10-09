@@ -18,7 +18,8 @@ enum UnplacedReason: string
      * One of the event's participants needs more positions than the grid
      * has free for it (its event count exceeds its free positions once
      * pins are respected). The accompanying CapacityExceeded violation
-     * names the participant and the shortfall.
+     * names the participant and the shortfall. An event between two such
+     * participants counts towards both shortfalls and names one of them.
      */
     case ParticipantOverCapacity = 'participant_over_capacity';
 

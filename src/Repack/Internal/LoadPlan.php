@@ -20,10 +20,13 @@ final readonly class LoadPlan
      * @param array<int, int> $sessionByEvent Event index => session index
      * @param array<UnplacedEvent> $unplaced Events no session can hold, with reasons
      * @param array<RepackViolation> $violations Capacity violations detected while planning
+     * @param array<int, int> $shortfalls Over-capacity participant index => how many of its
+     *                                    events cannot be placed
      */
     public function __construct(
         public array $sessionByEvent,
         public array $unplaced,
-        public array $violations
+        public array $violations,
+        public array $shortfalls = []
     ) {}
 }

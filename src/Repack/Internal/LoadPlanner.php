@@ -25,8 +25,12 @@ use MissionGaming\Tactician\Repack\UnplacedReason;
  * fixing it here is cheap, fixing it during slot search is impossible).
  *
  * Events that exceed a participant's total free positions are dropped
- * here, deterministically: the participant's events against the
- * opponents with the most slack go first (least damage to everyone
+ * here, deterministically and no more than needed. Every over-capacity
+ * participant is reported first, with its demand before any drop. Events
+ * between two over-capacity participants go first, as many of them as
+ * can count towards both shortfalls (sharedDrops()); then each
+ * participant still short, largest shortfall first, drops its events
+ * against the opponents with the most slack (least damage to everyone
  * else's feasibility), tie-broken by event id descending.
  *
  * All ids are the orchestrator's dense integer indexes; index order is
@@ -36,6 +40,12 @@ use MissionGaming\Tactician\Repack\UnplacedReason;
  */
 final class LoadPlanner
 {
+    /**
+     * How many nodes the search for the shared over-capacity drops may
+     * expand (see sharedDrops()).
+     */
+    private const int SHARED_DROP_NODE_LIMIT = 100_000;
+
     /** @var array<int, array{int, int}> */
     private array $edges;
 
@@ -73,6 +83,9 @@ final class LoadPlanner
 
     /** @var array<int, int> */
     private array $sessionByEvent = [];
+
+    /** @var array<int, int> Over-capacity participant => shortfall */
+    private array $shortfalls = [];
 
     /**
      * @var array<string, int> Placement scores already worked out, by slot count, fixed mask and
@@ -169,7 +182,7 @@ final class LoadPlanner
 
         ksort($this->sessionByEvent);
 
-        return new LoadPlan($this->sessionByEvent, $unplaced, $violations);
+        return new LoadPlan($this->sessionByEvent, $unplaced, $violations, $this->shortfalls);
     }
 
     /**
@@ -179,6 +192,45 @@ final class LoadPlanner
      */
     private function dropOverCapacityParticipants(array &$dropped, array &$unplaced, array &$violations): void
     {
+        // Every over-capacity participant is reported, with its demand
+        // before any event is dropped: largest shortfall first, then index
+        /** @var array<int, int> $need Participant => events of it still to drop */
+        $need = [];
+        foreach ($this->demand as $pid => $demand) {
+            if ($demand > $this->freeTotal[$pid]) {
+                $need[$pid] = $demand - $this->freeTotal[$pid];
+            }
+        }
+        $this->shortfalls = $need;
+        if ($need === []) {
+            return;
+        }
+        $reported = array_keys($need);
+        usort($reported, static fn(int $x, int $y): int => [$need[$y], $x] <=> [$need[$x], $y]);
+        foreach ($reported as $pid) {
+            $violations[] = new CapacityExceeded(
+                $this->participants[$pid],
+                $this->demand[$pid],
+                $this->freeTotal[$pid]
+            );
+        }
+
+        // An event between two over-capacity participants counts towards
+        // both shortfalls, so as many of those as can count twice go first
+        foreach (self::sharedDrops($this->edges, $need) as $eventIndex) {
+            [$a, $b] = $this->edges[$eventIndex];
+            // Named for the one with the larger shortfall, then the lower index
+            $named = [$need[$b], $a] > [$need[$a], $b] ? $b : $a;
+            $dropped[$eventIndex] = true;
+            --$this->demand[$a];
+            --$this->demand[$b];
+            $unplaced[] = new UnplacedEvent(
+                $this->eventIds[$eventIndex],
+                UnplacedReason::ParticipantOverCapacity,
+                $this->participants[$named]
+            );
+        }
+
         while (true) {
             $worstPid = null;
             $worstShortfall = 0;
@@ -193,12 +245,6 @@ final class LoadPlanner
             if ($worstPid === null) {
                 return;
             }
-
-            $violations[] = new CapacityExceeded(
-                $this->participants[$worstPid],
-                $this->demand[$worstPid],
-                $this->freeTotal[$worstPid]
-            );
 
             $candidates = [];
             foreach ($this->edges as $eventIndex => [$a, $b]) {
@@ -228,6 +274,110 @@ final class LoadPlanner
                 );
             }
         }
+    }
+
+    /**
+     * The events between two over-capacity participants to drop: as many
+     * as there can be with no participant losing more of them than its
+     * shortfall (a maximum b-matching on those events, each participant's
+     * b its shortfall). Each one dropped saves an event that would
+     * otherwise be dropped for the other participant.
+     *
+     * Exact by a depth-first search over the events in index order, each
+     * taken before it is left out. The search starts from a greedy set,
+     * replaces it only with a strictly larger one, and stops after
+     * SHARED_DROP_NODE_LIMIT nodes, a fixed number and not the step
+     * budget, so which events are dropped never depends on the budget;
+     * past the limit the largest set found so far is used. Over-capacity
+     * participants that share events are few in practice, and the limit
+     * is far above what they need.
+     *
+     * The orchestrator asks the same question again, of the events left
+     * unplaced at the end, when the last placement step has placed an
+     * event dropped here (see ScheduleRepacker).
+     *
+     * @param array<int, array{int, int}> $edges The events to choose from, event index => participant
+     *                                           index pair, indexes ascending
+     * @param array<int, int> $need Over-capacity participant => shortfall
+     *
+     * @return list<int> Event indexes, ascending
+     */
+    public static function sharedDrops(array $edges, array $need): array
+    {
+        $shared = [];
+        foreach ($edges as $eventIndex => [$a, $b]) {
+            if (isset($need[$a], $need[$b])) {
+                $shared[] = $eventIndex;
+            }
+        }
+        if ($shared === []) {
+            return [];
+        }
+
+        // Greedy start: the events of the participants with the fewest
+        // shared events first, which is optimal on paths and stars
+        $degree = [];
+        foreach ($shared as $eventIndex) {
+            foreach ($edges[$eventIndex] as $pid) {
+                $degree[$pid] = ($degree[$pid] ?? 0) + 1;
+            }
+        }
+        $order = $shared;
+        usort($order, static function (int $x, int $y) use ($degree, $edges): int {
+            $tightX = min($degree[$edges[$x][0]], $degree[$edges[$x][1]]);
+            $tightY = min($degree[$edges[$y][0]], $degree[$edges[$y][1]]);
+
+            return [$tightX, $x] <=> [$tightY, $y];
+        });
+        $left = $need;
+        $best = [];
+        foreach ($order as $eventIndex) {
+            [$a, $b] = $edges[$eventIndex];
+            if ($left[$a] > 0 && $left[$b] > 0) {
+                --$left[$a];
+                --$left[$b];
+                $best[] = $eventIndex;
+            }
+        }
+        sort($best);
+
+        $nodes = 0;
+        $chosen = [];
+        $left = $need;
+        $search = static function (int $at) use (&$search, &$best, &$chosen, &$left, &$nodes, $shared, $edges): void {
+            if (count($chosen) > count($best)) {
+                $best = $chosen;
+            }
+            if ($at === count($shared) || ++$nodes > self::SHARED_DROP_NODE_LIMIT) {
+                return;
+            }
+
+            // No set below this node can beat the best: every further event
+            // takes one unit of need from each of two participants
+            $open = 0;
+            foreach ($left as $units) {
+                $open += $units;
+            }
+            if (count($chosen) + min(count($shared) - $at, intdiv($open, 2)) <= count($best)) {
+                return;
+            }
+
+            $eventIndex = $shared[$at];
+            [$a, $b] = $edges[$eventIndex];
+            if ($left[$a] > 0 && $left[$b] > 0) {
+                --$left[$a];
+                --$left[$b];
+                $chosen[] = $eventIndex;
+                $search($at + 1);
+                array_pop($chosen);
+                ++$left[$a];
+                ++$left[$b];
+            }
+            $search($at + 1);
+        };
+        $search(0);
+
+        return $best;
     }
 
     /**
