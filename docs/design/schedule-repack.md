@@ -333,9 +333,20 @@ returned; the changelog lists what changed for the others.
     Two limits of the step's own, independent of the budget, bound the
     exchange search: two levels of exchange, and 2,000 exchanges per
     search; and no exchange is searched for once the placed count reaches
-    a ceiling no placement can pass (half the sum, over participants, of
-    the smaller of event count and unpinned positions, and no more than
-    the grid's places).
+    a ceiling no placement can pass. The ceiling is the smallest of four
+    bounds: all the events less the over-capacity drops (the planner drops
+    no more than the shortfalls need, decision 35); half the sum, over
+    participants, of the smaller of event count and unpinned positions;
+    the grid's places; and, position by position, half of each connected
+    group of participants not pinned there, rounded down, and no more than
+    the position's places. Without the first and the last, a request whose
+    leftovers no placement can hold (only over-capacity drops left over, or
+    a group with an odd number of participants, which leaves one of them
+    out of every position) ran a hopeless exchange search: it spent the
+    whole second budget, took a second or more where 0.2.2 took
+    milliseconds, and reported the budget exhausted on an outcome 0.2.2
+    reported without, identical otherwise. An exchange search that fails
+    on an instance the ceiling does not see still costs up to its limits.
 34. **The over-capacity drops are offered to the last step too.** A
     participant can never hold more positions than it has free, so placing
     a dropped event cannot break its capacity; it only changes which of

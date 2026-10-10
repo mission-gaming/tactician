@@ -68,7 +68,12 @@ events than a participant's shortfall needed, or understated a
   earlier searches spent the whole budget still gets the step. A repack can
   therefore take up to twice the steps it did, and `isBudgetExhausted()` is
   also true when this step was stopped; false still means that a larger
-  budget gives the same outcome.
+  budget gives the same outcome. The step searches for an exchange only
+  while a placement could hold more events than are placed, so a request
+  whose leftovers no placement can hold costs about what it did in 0.2.2;
+  one the step improves, or one whose leftovers it cannot rule out, can take
+  longer (up to a second or two with the default budget on the requests
+  measured).
 
 - **The over-capacity drop rule drops an event between two over-capacity
   participants first.** It sorted a participant's events by the slack of the
@@ -81,7 +86,11 @@ events than a participant's shortfall needed, or understated a
   1 event and dropped `p5 v p6` and `p3 v p2`; now `p3 v p5` is dropped and
   the other two are placed. Who is affected: requests in which two
   over-capacity participants meet. What to check: more events are placed,
-  and different events are listed as `participant_over_capacity`. In
+  and different events are listed as `participant_over_capacity`. Where the
+  grid itself is full, the number placed can stay the same while the events
+  dropped, and so the assignments and their `ContiguityBroken` and
+  `LateStart` violations, change, and the grid's `CapacityExceeded` has a
+  larger demand, because fewer events were dropped before it counts. In
   `examples/19-repacking-a-season.php` the grid without the deeper session
   places 8 events instead of 7 (Celtic and Rayo Vallecano are both one over
   and meet twice); in `examples/23-application-adapter-and-repack.php` the
@@ -107,8 +116,8 @@ events than a participant's shortfall needed, or understated a
   meet that was not true before either, and the docblock now says what is:
   at least that many are, each naming it or the other over-capacity
   participant of the event. The `CapacityExceeded` of the grid
-  as a whole is unchanged: it still counts the events left after the
-  participants' drops.
+  as a whole keeps its meaning: it still counts the events left after the
+  participants' drops, which are fewer where the previous entry applies.
 
 ## [0.2.2] - 2026-10-09
 
