@@ -268,7 +268,7 @@ final readonly class ScheduleRepacker
                 $pinCounts,
                 $slotCounts,
                 $capacityPerSlot,
-                count($dropped)
+                $plan->leftOutAtLeast
             );
         }
 

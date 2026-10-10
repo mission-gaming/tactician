@@ -25,13 +25,18 @@ use MissionGaming\Tactician\Repack\UnplacedReason;
  * fixing it here is cheap, fixing it during slot search is impossible).
  *
  * Events that exceed a participant's total free positions are dropped
- * here, deterministically and no more than needed. Every over-capacity
+ * here, deterministically. Every over-capacity
  * participant is reported first, with its demand before any drop. Events
  * between two over-capacity participants go first, as many of them as
  * can count towards both shortfalls (sharedDrops()); then each
  * participant still short, largest shortfall first, drops its events
  * against the opponents with the most slack (least damage to everyone
- * else's feasibility), tie-broken by event id descending.
+ * else's feasibility), tie-broken by event id descending. That drops no
+ * more events than the shortfalls need when the search for shared drops
+ * finishes; when it stops at its node limit it can drop more, and the
+ * plan says so (LoadPlan::$leftOutAtLeast holds a bound that needs no
+ * search instead of the drop count). The last placement step is offered
+ * every drop, and places those it can.
  *
  * All ids are the orchestrator's dense integer indexes; index order is
  * caller-id order, so index tie-breaks are id tie-breaks.
@@ -86,6 +91,9 @@ final class LoadPlanner
 
     /** @var array<int, int> Over-capacity participant => shortfall */
     private array $shortfalls = [];
+
+    /** How many events no placement can hold, at least (see LoadPlan) */
+    private int $leftOutAtLeast = 0;
 
     /**
      * @var array<string, int> Placement scores already worked out, by slot count, fixed mask and
@@ -182,7 +190,7 @@ final class LoadPlanner
 
         ksort($this->sessionByEvent);
 
-        return new LoadPlan($this->sessionByEvent, $unplaced, $violations, $this->shortfalls);
+        return new LoadPlan($this->sessionByEvent, $unplaced, $violations, $this->shortfalls, $this->leftOutAtLeast);
     }
 
     /**
@@ -202,6 +210,7 @@ final class LoadPlanner
             }
         }
         $this->shortfalls = $need;
+        $this->leftOutAtLeast = 0;
         if ($need === []) {
             return;
         }
@@ -217,7 +226,21 @@ final class LoadPlanner
 
         // An event between two over-capacity participants counts towards
         // both shortfalls, so as many of those as can count twice go first
-        foreach (self::sharedDrops($this->edges, $need) as $eventIndex) {
+        $shared = self::sharedDrops($this->edges, $need, $exact);
+
+        // No placement leaves out fewer events than the shortfalls less
+        // the largest set of shared drops. When the set found is known to
+        // be a largest one, the drops below are exactly that many; when it
+        // may not be, a bound that needs no search stands in for it
+        $sharedEvents = [];
+        foreach ($this->edges as $eventIndex => [$a, $b]) {
+            if (isset($need[$a], $need[$b])) {
+                $sharedEvents[] = $eventIndex;
+            }
+        }
+        $this->leftOutAtLeast = array_sum($need)
+            - ($exact ? count($shared) : self::sharedDropCeiling($this->edges, $sharedEvents, $need));
+        foreach ($shared as $eventIndex) {
             [$a, $b] = $this->edges[$eventIndex];
             // Named for the one with the larger shortfall, then the lower index
             $named = [$need[$b], $a] > [$need[$a], $b] ? $b : $a;
@@ -288,9 +311,12 @@ final class LoadPlanner
      * replaces it only with a strictly larger one, and stops after
      * SHARED_DROP_NODE_LIMIT nodes, a fixed number and not the step
      * budget, so which events are dropped never depends on the budget;
-     * past the limit the largest set found so far is used. Over-capacity
-     * participants that share events are few in practice, and the limit
-     * is far above what they need.
+     * past the limit the largest set found so far is used, and it can be
+     * smaller than the largest there is: with a dozen over-capacity
+     * participants sharing some forty events the limit is reached, and
+     * the planner then drops more events than the shortfalls need. $exact
+     * says which case it was, so that nothing downstream relies on the
+     * set being a largest one when it may not be.
      *
      * The orchestrator asks the same question again, of the events left
      * unplaced at the end, when the last placement step has placed an
@@ -299,11 +325,14 @@ final class LoadPlanner
      * @param array<int, array{int, int}> $edges The events to choose from, event index => participant
      *                                           index pair, indexes ascending
      * @param array<int, int> $need Over-capacity participant => shortfall
+     * @param bool|null $exact Set to whether the set returned is known to be a largest one
+     * @param-out bool $exact
      *
      * @return list<int> Event indexes, ascending
      */
-    public static function sharedDrops(array $edges, array $need): array
+    public static function sharedDrops(array $edges, array $need, ?bool &$exact = null): array
     {
+        $exact = true;
         $shared = [];
         foreach ($edges as $eventIndex => [$a, $b]) {
             if (isset($need[$a], $need[$b])) {
@@ -377,7 +406,39 @@ final class LoadPlanner
         };
         $search(0);
 
+        // The set is known to be a largest one when the search ran to its
+        // end, or when it is as large as no set can exceed: half the sum,
+        // over the participants, of the smaller of the shortfall and the
+        // shared events
+        $exact = $nodes <= self::SHARED_DROP_NODE_LIMIT || count($best) === self::sharedDropCeiling($edges, $shared, $need);
+
         return $best;
+    }
+
+    /**
+     * A number of shared events no set of shared drops can exceed: half
+     * the sum, over the over-capacity participants, of the smaller of its
+     * shortfall and its shared events, and no more than the shared events.
+     * It needs no search, so it holds whether or not sharedDrops() finished.
+     *
+     * @param array<int, array{int, int}> $edges
+     * @param list<int> $shared Event indexes between two over-capacity participants
+     * @param array<int, int> $need Over-capacity participant => shortfall
+     */
+    private static function sharedDropCeiling(array $edges, array $shared, array $need): int
+    {
+        $degree = [];
+        foreach ($shared as $eventIndex) {
+            foreach ($edges[$eventIndex] as $pid) {
+                $degree[$pid] = ($degree[$pid] ?? 0) + 1;
+            }
+        }
+        $ends = 0;
+        foreach ($degree as $pid => $count) {
+            $ends += min($count, $need[$pid]);
+        }
+
+        return min(count($shared), intdiv($ends, 2));
     }
 
     /**
