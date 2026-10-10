@@ -63,24 +63,39 @@ events than a participant's shortfall needed, or understated a
   `examples/23-application-adapter-and-repack.txt` (see the next two entries)
   change; no other fixture does.
 
-  The step has a budget of its own, of the size `RepackOptions::$stepBudget`
-  gives: the earlier searches stop where they always stopped, and a run whose
-  earlier searches spent the whole budget still gets the step. A repack can
-  therefore take up to twice the steps it did, and `isBudgetExhausted()` is
-  also true when this step was stopped; false still means that a larger
-  budget gives the same outcome. The step searches for an exchange only
-  while a placement could hold more events than are placed, so a request
-  whose leftovers no placement can hold costs about what it did in 0.2.2;
-  one the step improves, or one whose leftovers it cannot rule out, can take
-  longer (up to a second or two with the default budget on the requests
-  measured).
+  **A repack can now spend up to twice `RepackOptions::$stepBudget`.** The
+  step has a budget of its own, of that size: the earlier searches stop
+  where they always stopped, and a run whose earlier searches spent the
+  whole first budget still gets the step. `isBudgetExhausted()` is also
+  true when the step's budget stopped it; false still means that a larger
+  budget gives the same outcome. The step also stops searching after a
+  fixed number of position checks of its own (about a sixth of a second),
+  whatever the budget. It looks for an exchange only while a placement
+  could hold more events than are placed; where that bound cannot rule out
+  more, the search runs until its own limits. The cost, measured with the
+  default budget on 297 requests of 4 to 40 participants and up to 804
+  events: a request the step does not reach costs what it did in 0.2.2;
+  the step itself added up to about 0.2 seconds (804 events on eight
+  five-slot sessions: 0.40 seconds before, 0.58 after, 644 events placed
+  where 0.2.2 placed 640), and no request took longer than 0.7 seconds.
+  Where the drop rule below drops fewer events, the packing searches have
+  more events to place and can spend their whole first budget where they
+  did not: one request of 123 events took 0.54 seconds where 0.2.2 took
+  0.01, placing 120 where 0.2.2 placed 117. The limit can leave an event unplaced that a
+  longer search would have placed: on one of the 297 requests the step
+  placed 65 events where an unlimited search placed 67 (0.2.2 placed 64).
 
 - **The over-capacity drop rule drops an event between two over-capacity
   participants first.** It sorted a participant's events by the slack of the
   opponent, so an event shared by two participants who both had too many
   was kept and two others were dropped. It now drops first as many shared
   events as can count towards both shortfalls, and only then each
-  participant's other events, by the opponent's slack as before. Before and
+  participant's other events, by the opponent's slack as before. The search
+  for the shared events stops at a fixed node limit; with many
+  over-capacity participants sharing many events (a dozen sharing some
+  forty) it can stop with fewer than the most there are, and then drops
+  more events than the shortfalls need. The last placement step is offered
+  every drop and places those it can. Before and
   after, for one slot of capacity 3 and the events `p3 v p5`, `p5 v p6` and
   `p3 v p2` (p3 and p5 each have two events for one position): 0.2.2 placed
   1 event and dropped `p5 v p6` and `p3 v p2`; now `p3 v p5` is dropped and

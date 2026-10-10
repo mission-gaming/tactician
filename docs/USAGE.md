@@ -83,7 +83,7 @@ anything else that competes.
 | **Pinned event** | An event already on the grid that must not move (`PinnedEvent`). It occupies its position for both participants, consumes slot capacity, and may name participants absent from the movable set. Which events are pinned is caller policy about historical provenance. |
 | **Repack violation** | One structured compromise in a repack outcome (`RepackViolation`): double-booking (audited, never produced), unplaced events, interior gaps, late starts, exceeded capacity — data with participant/session/magnitude, never prose. The caller renders its own messages and decides what is fatal. |
 | **Unplaced event** | A movable event the repack gave no position (`UnplacedEvent`), with the reason (`UnplacedReason`). Every movable event is either assigned or unplaced. |
-| **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`), shared by all of its searches, with as many again for the last placement step. Steps, not time, so the result is the same on every machine. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
+| **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the last placement step has a second one of its own, so a repack can spend up to twice that number. Steps, not time, so the result is the same on every machine. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
 | **Last placement step** | The part of a repack that runs only when an event is still unplaced: it moves placed events along alternating paths, and exchanges one placed event for one unplaced event where that lets a further one in, to place events the earlier phases left over. It never double-books, never moves a pin and never exceeds a slot's capacity. |
 | **Outcome fingerprint** | A short string identifying what a repack outcome holds (`RepackOutcome::fingerprint()`): equal for the same assignments, unplaced events and violations, different when any differs, and the same on every PHP version and platform. For detecting that a plan computed again is not the plan that was shown. |
 | **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. Where the two events also exceed the capacity of the slot, the request reports that instead (`PinCapacityExceeded`). |
@@ -2569,13 +2569,17 @@ unplaced as `participant_over_capacity`.
 
 ### The Step Budget
 
-Every search the repacker runs spends from one budget,
-`RepackOptions(stepBudget: ...)`, counted in search steps, not in time:
-the same request and budget give the same outcome on every machine. The
-last placement step, which runs only when an event is still unplaced,
-has a budget of its own of the same size, so that it still runs when the
-searches before it spent theirs; a repack spends at most twice the
-budget. When a budget runs out the repacker stops searching and returns
+`RepackOptions(stepBudget: ...)` is counted in search steps, not in
+time: the same request and budget give the same outcome on every
+machine. There are two budgets of that size. The load planning and the
+packing of each session spend from the first. The last placement step,
+which runs only when an event is still unplaced, spends from a second
+one of its own, so that it still runs when the searches before it spent
+theirs. **A repack can therefore spend up to twice `stepBudget`.** The
+last placement step also stops after a fixed number of position checks
+of its own, whatever the budget, so that a request whose leftovers
+cannot be placed does not spend its whole second budget looking. When a
+budget runs out the repacker stops searching and returns
 what it has reached, with everything that is left reported as usual.
 `isBudgetExhausted()` says whether that happened:
 

@@ -334,8 +334,10 @@ returned; the changelog lists what changed for the others.
     exchange search: two levels of exchange, and 2,000 exchanges per
     search; and no exchange is searched for once the placed count reaches
     a ceiling no placement can pass. The ceiling is the smallest of four
-    bounds: all the events less the over-capacity drops (the planner drops
-    no more than the shortfalls need, decision 35); half the sum, over
+    bounds: all the events less the number no placement can hold (the
+    planner's drop count when its search for shared drops finished, and
+    otherwise the shortfalls less a bound on the shared drops that needs
+    no search, decision 35); half the sum, over
     participants, of the smaller of event count and unpinned positions;
     the grid's places; and, position by position, half of each connected
     group of participants not pinned there, rounded down, and no more than
@@ -345,8 +347,21 @@ returned; the changelog lists what changed for the others.
     out of every position) ran a hopeless exchange search: it spent the
     whole second budget, took a second or more where 0.2.2 took
     milliseconds, and reported the budget exhausted on an outcome 0.2.2
-    reported without, identical otherwise. An exchange search that fails
-    on an instance the ceiling does not see still costs up to its limits.
+    reported without, identical otherwise. The ceiling does not see every
+    request whose leftovers cannot be placed (a group of five linked to
+    the next by one event makes the last bound count a pair at every
+    position that only one position can hold), and on those the exchange
+    search ran to its limits on every round: up to eight seconds on
+    requests of 300 to 800 events that 0.2.2 repacked in under half a
+    second. So the whole step also stops searching after 500,000 position
+    checks (`WORK_LIMIT`, about a sixth of a second), a limit of its own
+    like the others. It is about 25 times what the complete round robins
+    of up to 40 participants and the small corpus need, which still reach
+    their optimum; on a few requests it leaves an event unplaced that a
+    longer search would have placed (of the 297 requests timed, one placed
+    65 events where an unlimited search placed 67 and 0.2.2 placed 64).
+    Direct placements continue after it, so `no_slot_available` stays
+    literally true.
 34. **The over-capacity drops are offered to the last step too.** A
     participant can never hold more positions than it has free, so placing
     a dropped event cannot break its capacity; it only changes which of
@@ -363,8 +378,17 @@ returned; the changelog lists what changed for the others.
     b-matching on those events, each participant's b its shortfall. It is
     found by a depth-first search started from a greedy set, bounded by a
     fixed 100,000 nodes and not by the step budget, so that which events
-    are dropped never depends on the budget; over-capacity participants
-    that meet are few, and the bound is far above what they need. Each
+    are dropped never depends on the budget. The bound is not always
+    enough: a dozen over-capacity participants sharing some forty events
+    reach it, and the set found can then be smaller than the largest
+    (18 where 20 exist), so the planner drops more events than the
+    shortfalls need. The search reports whether it finished, or found a
+    set as large as a bound that needs no search allows; only then does
+    the last placement step take the drop count as the number of events
+    no placement can hold, and otherwise it uses the shortfalls less that
+    bound (half the sum, over the participants, of the smaller of the
+    shortfall and the shared events). The step is offered the drops, so
+    it places what the extra drops left out where it can. Each
     participant still short then drops by opponent slack, as decision 8
     said. A dropped event between two over-capacity participants names the
     one with the larger shortfall, then the lower id. Every over-capacity
@@ -388,10 +412,12 @@ returned; the changelog lists what changed for the others.
     (which are not a search) are made after that. `isBudgetExhausted()` is
     true when either budget stopped a search. Its documented meaning
     holds: when no budget stopped a search, every search ran to its own
-    end, the step's limits of its own (depth, exchanges, ceiling) do not
+    end, the step's limits of its own (depth, exchanges, ceiling, position
+    checks) do not
     depend on the budget, and so a larger budget gives the same outcome;
     an invariant test checks it on the small corpus. The cost is that a
-    repack can spend twice the budget, which the usage guide states. An
+    repack can spend up to twice `stepBudget`, which the usage guide, the
+    `RepackOptions` docblock and the `StepBudget` docblock state. An
     option to switch the step off, or to size its budget, was not added:
     a patch release adds nothing to the public signature.
 
@@ -424,4 +450,9 @@ capacity, capacity 1) and 300 random tiny ones is compared with an
 exhaustive search (`tests/Support/RepackBruteForce.php`), which the
 repacker must match exactly; on the first 3,000 random seeds it matched
 every one, where 0.2.2 fell short on 458. A complete round robin of 40 in
-that shape took 0.5 to 0.7 seconds on the machine it was measured on.
+that shape took 0.5 to 0.7 seconds on the machine it was measured on. One
+test takes a request on which the planner's search for shared drops
+stops at its node limit, and checks that the step still places the most
+events there can be, worked out from an exhaustive b-matching; another
+checks that a request whose search ends at the step's position-check
+limit reports no exhausted budget and is unchanged by any larger budget.
