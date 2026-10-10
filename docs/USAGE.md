@@ -2348,7 +2348,9 @@ reaches it.
 
 The repacker is deterministic (same input, same output, independent of
 input list order), pure (no clock reads, no I/O), and bounded in steps
-(every search spends from `RepackOptions(stepBudget: ...)`). The bound
+(the packing searches spend from one budget of
+`RepackOptions(stepBudget: ...)` steps, and the last placement step from
+a second of the same size, so a repack can spend up to twice that). The bound
 makes a repack reproducible, which is what a preview that is later
 confirmed needs. It is not a bound on time: see
 [The Step Budget](#the-step-budget) for what a repack takes. Events that fall entirely outside the grid cannot collide with
@@ -2602,8 +2604,12 @@ complete single round robin of 24 participants took between 0.05 and 1.0
 seconds over sessions of four to six slots, and one of 40 participants
 between 0.1 and 1.3 seconds; the slower figures are requests that use the
 whole budget. A request that leaves events over also runs the last
-placement step: one of 40 participants on one session fewer than its
-events need took about one second. A step costs a few microseconds. Sessions of many slots add
+placement step, with a budget of its own, so it can take up to twice as
+long: one that nearly fits a two-leg season of 38 participants (657
+events on seven sessions of five slots) took about one second, most of
+it the first budget, and a single round robin of 40 on one session fewer
+than its events need took about 0.8 seconds. A smaller `stepBudget`
+trades placed events for time. A step costs a few microseconds. Sessions of many slots add
 work the budget does not count, because the repacker first works out which
 start slots can give gap-free runs at all, and that grows with two to the
 power of the slot count: on the requests measured, up to several seconds

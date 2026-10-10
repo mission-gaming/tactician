@@ -73,17 +73,25 @@ events than a participant's shortfall needed, or understated a
   whatever the budget. It looks for an exchange only while a placement
   could hold more events than are placed; where that bound cannot rule out
   more, the search runs until its own limits. The cost, measured with the
-  default budget on 297 requests of 4 to 40 participants and up to 804
-  events: a request the step does not reach costs what it did in 0.2.2;
-  the step itself added up to about 0.2 seconds (804 events on eight
-  five-slot sessions: 0.40 seconds before, 0.58 after, 644 events placed
-  where 0.2.2 placed 640), and no request took longer than 0.7 seconds.
-  Where the drop rule below drops fewer events, the packing searches have
-  more events to place and can spend their whole first budget where they
-  did not: one request of 123 events took 0.54 seconds where 0.2.2 took
-  0.01, placing 120 where 0.2.2 placed 117. The limit can leave an event unplaced that a
-  longer search would have placed: on one of the 297 requests the step
-  placed 65 events where an unlimited search placed 67 (0.2.2 placed 64).
+  default budget on some 300 requests of 4 to 40 participants and up to
+  804 events: a request the step does not reach costs what it did in
+  0.2.2, and the step itself adds about 0.1 to 0.2 seconds where it runs
+  (804 events on eight five-slot sessions: 0.40 seconds before, 0.58
+  after, 644 events placed where 0.2.2 placed 640). Most of the extra time
+  comes from elsewhere: where the drop rule below drops fewer events, the
+  packing searches have more events to place and can spend their whole
+  first budget where they did not. A request that nearly fits a two-leg
+  season of about 40 participants took up to about 1.1 seconds (657
+  events of 38 participants on seven five-slot sessions, capacity 19:
+  0.13 seconds before, 1.02 after, 615 placed where 0.2.2 placed 581), and
+  one that is far too large for its grid went from 0.01 to 0.83 seconds
+  (558 events on two five-slot sessions: 180 placed where 0.2.2 placed
+  78). A smaller `stepBudget` trades placed events for time. The step's
+  limit can leave an event unplaced that a longer search would have
+  placed: on over-capacity requests near a full grid it cost one or two
+  events on 20 of 120 requests measured, and on one request of 84 events
+  it placed 65 where an unlimited search placed 67; every one of them
+  still placed at least what 0.2.2 placed.
 
 - **The over-capacity drop rule drops an event between two over-capacity
   participants first.** It sorted a participant's events by the slack of the

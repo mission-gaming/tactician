@@ -358,8 +358,10 @@ returned; the changelog lists what changed for the others.
     like the others. It is about 25 times what the complete round robins
     of up to 40 participants and the small corpus need, which still reach
     their optimum; on a few requests it leaves an event unplaced that a
-    longer search would have placed (of the 297 requests timed, one placed
-    65 events where an unlimited search placed 67 and 0.2.2 placed 64).
+    longer search would have placed: on over-capacity requests near a
+    full grid it cost one or two events on 20 of 120 requests measured,
+    and on one request of 84 events it placed 65 where an unlimited search
+    placed 67, always at least what 0.2.2 placed.
     Direct placements continue after it, so `no_slot_available` stays
     literally true.
 34. **The over-capacity drops are offered to the last step too.** A
@@ -388,7 +390,10 @@ returned; the changelog lists what changed for the others.
     no placement can hold, and otherwise it uses the shortfalls less that
     bound (half the sum, over the participants, of the smaller of the
     shortfall and the shared events). The step is offered the drops, so
-    it places what the extra drops left out where it can. Each
+    it places what the extra drops left out where it can. This search,
+    run once by the planner and once more when the step relabels, is
+    bounded by its nodes only, not by a step budget: about 40 to 65
+    milliseconds each on 400 to 700 shared events. Each
     participant still short then drops by opponent slack, as decision 8
     said. A dropped event between two over-capacity participants names the
     one with the larger shortfall, then the lower id. Every over-capacity
