@@ -1,7 +1,8 @@
 # Design note: Schedule Repacking
 
 **Status: IMPLEMENTED** in 0.2.0, with the additions under
-[API additions](#api-additions-022) in 0.2.2. It was built from an external
+[API additions](#api-additions-022) in 0.2.2 and the fixes under
+[Placement fixes](#placement-fixes-023) in 0.2.3. It was built from an external
 brief (v2, the revision with an empty pinned set on the reference
 instance). This note doubles as the decisions log of that
 implementation: every judgement call made while building it is recorded
@@ -73,7 +74,9 @@ exists as a convenience.
    the opponents with the most slack (free colours minus load), tie-broken
    by event id descending. Deterministic and least damaging to everyone
    else's feasibility. Over-capacity participants are processed by largest
-   shortfall first, then id.
+   shortfall first, then id. **Amended by decisions 34 and 35**: events
+   between two over-capacity participants are dropped first, and every
+   over-capacity participant is reported with its demand before any drop.
 9. **Objectives 5 vs 6 trade** (consolidate vs finish early) is explicit:
    `RepackOptions(consolidationWeight: 3, earlyFillWeight: 1)` — integer
    weights, consolidation deliberately dominant by default because its
@@ -83,7 +86,8 @@ exists as a convenience.
     (`RepackOptions(stepBudget: 200_000)` default) counted in elementary
     search steps across Phase A improvement, Phase B backtracking nodes,
     and Phase C repair attempts. Bounded by steps, not wall clock, for
-    reproducibility.
+    reproducibility. **Amended by decision 36**: the last placement step
+    has a second budget of the same size.
 11. **Algorithm** follows the brief's three-phase shape:
     - **Phase A** assigns events to sessions (greedy by tightest
       participant first, scored by the two weights, capacity- and
@@ -107,6 +111,8 @@ exists as a convenience.
       swaps that preserve properness; chains containing a pinned event are
       unswappable), then a final cross-session sweep tries any remaining
       free colour anywhere before an event is declared unplaced.
+      **Extended by decision 33**: what the sweep leaves over goes to a
+      last placement step that moves placed events.
 12. **Audit is a separate final pass** over pins + assignments producing
     the violation list from observed occupancy, so reported violations are
     facts about the returned schedule, not solver intentions. Double-booking
@@ -251,7 +257,8 @@ before (31 and 32); the changelog lists them as output changes.
     run is the run any larger budget gives (an invariant test checks
     that). True: a search was cut short and a larger budget may differ.
     It is not in `toArray()`, because existing wire output may not gain a
-    key in a patch release.
+    key in a patch release. Decision 36 says how the last placement step
+    keeps this meaning.
 29. **The fingerprint is over named keys of `toArray()`.** The three
     lists are what an outcome is, and `toArray()` is already the pinned
     wire shape, so the values come from there. The keys do not: scheme
@@ -289,6 +296,136 @@ before (31 and 32); the changelog lists them as output changes.
     call. It is input to a value object, not a configuration, so it is
     reported the way the other value objects report theirs.
 
+## Placement fixes (0.2.3)
+
+Decisions made when three kinds of broken output were fixed in a patch
+release: events left unplaced although a placement held them, an
+over-capacity drop rule that dropped more events than needed, and
+`CapacityExceeded` violations that understated demand or left a
+participant out. No public signature changed. An outcome with no unplaced
+event and no `CapacityExceeded` is byte-identical to the one 0.2.2
+returned; the changelog lists what changed for the others.
+
+33. **A last placement step moves placed events.** Phase A's single-move
+    relocation and the final sweep never move an event that is placed, so
+    an event they leave over stays unplaced however large the budget.
+    `LeftoverRecolourer` runs after the sweep, only when an event is still
+    unplaced, so an outcome with nothing unplaced is untouched by
+    construction. It searches alternating paths (ejection chains: the
+    event takes a position where one placed event is in its way, that
+    event moves on in the same way, until one lands where nothing is in
+    its way; where both participants are in the way, both events move and
+    the path branches), the edge-colouring counterpart of an augmenting
+    path, with a Kempe chain as one case. Each event moves at most once per
+    search, so a search is linear in the placed events. Where no path
+    exists, it tries an exchange: an unplaced event takes the position of
+    one placed event, which leaves the schedule, and the exchange stands
+    only when an alternating path, or one more exchange, then places
+    another event. Every move is journalled and taken back unless the
+    count of placed events rises, and every intermediate state is proper,
+    respects pins and respects capacity. Placement comes before contiguity
+    here, as it already did in the sweep: moved events can leave gaps and
+    late starts, which the audit reports. Lifted events try their own
+    session's slots first, to keep the planner's loads. A full exact
+    search (an integer program, or a matching formulation over all
+    positions) was rejected: it would not be bounded in steps, and the
+    alternating paths reach the optimum on every instance tested (below).
+    Two limits of the step's own, independent of the budget, bound the
+    exchange search: two levels of exchange, and 2,000 exchanges per
+    search; and no exchange is searched for once the placed count reaches
+    a ceiling no placement can pass. The ceiling is the smallest of four
+    bounds: all the events less the number no placement can hold (the
+    planner's drop count when its search for shared drops finished, and
+    otherwise the shortfalls less a bound on the shared drops that needs
+    no search, decision 35); half the sum, over
+    participants, of the smaller of event count and unpinned positions;
+    the grid's places; and, position by position, half of each connected
+    group of participants not pinned there, rounded down, and no more than
+    the position's places. Without the first and the last, a request whose
+    leftovers no placement can hold (only over-capacity drops left over, or
+    a group with an odd number of participants, which leaves one of them
+    out of every position) ran a hopeless exchange search: it spent the
+    whole second budget, took a second or more where 0.2.2 took
+    milliseconds, and reported the budget exhausted on an outcome 0.2.2
+    reported without, identical otherwise. The ceiling does not see every
+    request whose leftovers cannot be placed (a group of five linked to
+    the next by one event makes the last bound count a pair at every
+    position that only one position can hold), and on those the exchange
+    search ran to its limits on every round: up to eight seconds on
+    requests of 300 to 800 events that 0.2.2 repacked in under half a
+    second. So the whole step also stops searching after 500,000 position
+    checks (`WORK_LIMIT`, about a sixth of a second), a limit of its own
+    like the others. It is about 25 times what the complete round robins
+    of up to 40 participants and the small corpus need, which still reach
+    their optimum; on a few requests it leaves an event unplaced that a
+    longer search would have placed: on over-capacity requests near a
+    full grid it cost one or two events on 20 of 120 requests measured,
+    and on one request of 84 events it placed 65 where an unlimited search
+    placed 67, always at least what 0.2.2 placed.
+    Direct placements continue after it, so `no_slot_available` stays
+    literally true.
+34. **The over-capacity drops are offered to the last step too.** A
+    participant can never hold more positions than it has free, so placing
+    a dropped event cannot break its capacity; it only changes which of
+    its events is the one that does not fit. Which events to drop decides
+    what fits around them, and no rule on the event list alone gets it
+    right every time (the small corpus has instances where dropping by
+    opponent slack leaves an event over that dropping another would have
+    placed). When the step places a dropped event, the reasons are given
+    again from the events still unplaced, by the rule of decision 35;
+    while every drop is still unplaced, the planner's reasons stand.
+35. **Shared drops first, and demand before any drop.** An event between
+    two over-capacity participants counts towards both shortfalls, so as
+    many of those as can count twice are dropped first: a maximum
+    b-matching on those events, each participant's b its shortfall. It is
+    found by a depth-first search started from a greedy set, bounded by a
+    fixed 100,000 nodes and not by the step budget, so that which events
+    are dropped never depends on the budget. The bound is not always
+    enough: a dozen over-capacity participants sharing some forty events
+    reach it, and the set found can then be smaller than the largest
+    (18 where 20 exist), so the planner drops more events than the
+    shortfalls need. The search reports whether it finished, or found a
+    set as large as a bound that needs no search allows; only then does
+    the last placement step take the drop count as the number of events
+    no placement can hold, and otherwise it uses the shortfalls less that
+    bound (half the sum, over the participants, of the smaller of the
+    shortfall and the shared events). The step is offered the drops, so
+    it places what the extra drops left out where it can. This search,
+    run once by the planner and once more when the step relabels, is
+    bounded by its nodes only, not by a step budget: about 40 to 65
+    milliseconds each on 400 to 700 shared events. Each
+    participant still short then drops by opponent slack, as decision 8
+    said. A dropped event between two over-capacity participants names the
+    one with the larger shortfall, then the lower id. Every over-capacity
+    participant is reported, with the demand it had before any drop,
+    largest shortfall first, then id: the order in which the planner always
+    processed them, so an outcome with one over-capacity participant, or
+    several that do not meet, reports exactly what it did. The grid's
+    `CapacityExceeded` keeps its documented meaning (the events left after
+    the participants' drops); it was not understated.
+36. **The last step has a budget of its own, the same size.** On the
+    largest requests the packing searches spend the whole budget before
+    the sweep (the complete round robins of 24 and 40 in issue #48 did),
+    so a step that drew on the same budget would never run where it is
+    needed most. A second `StepBudget` of `RepackOptions::$stepBudget`
+    steps is made for it, and every alternating-path node and every
+    exchange spends one step. The searches before it stop exactly where
+    they stopped in 0.2.2, because nothing they draw on changed. When the
+    first budget is already spent the step runs anyway, on its own
+    budget; when its own budget runs out it stops, keeps what it has
+    placed, takes back the move it was in, and only direct placements
+    (which are not a search) are made after that. `isBudgetExhausted()` is
+    true when either budget stopped a search. Its documented meaning
+    holds: when no budget stopped a search, every search ran to its own
+    end, the step's limits of its own (depth, exchanges, ceiling, position
+    checks) do not
+    depend on the budget, and so a larger budget gives the same outcome;
+    an invariant test checks it on the small corpus. The cost is that a
+    repack can spend up to twice `stepBudget`, which the usage guide, the
+    `RepackOptions` docblock and the `StepBudget` docblock state. An
+    option to switch the step off, or to size its budget, was not added:
+    a patch release adds nothing to the public signature.
+
 ## Testing
 
 Per the brief: property tests over seeded random multigraphs (properness,
@@ -308,3 +445,19 @@ flag is false is unchanged by a larger budget. Literal fingerprints for
 fixed outcomes are pinned in `tests/Unit/Repack/RepackOutcomeTest.php`;
 they were computed by an implementation written apart from the library's,
 from the documented scheme.
+
+The 0.2.3 fixes add two sweeps. Every complete round robin of an even
+number of participants from 6 to 40, on ⌈n/4⌉ four-slot sessions of
+capacity n/2, places every event, with ids `1`… in pair order, ids from
+`1000`, and non-numeric ids in an unrelated order. A corpus of five named
+instances (one-slot sessions, shared over-capacity events, pins holding
+capacity, capacity 1) and 300 random tiny ones is compared with an
+exhaustive search (`tests/Support/RepackBruteForce.php`), which the
+repacker must match exactly; on the first 3,000 random seeds it matched
+every one, where 0.2.2 fell short on 458. A complete round robin of 40 in
+that shape took 0.5 to 0.7 seconds on the machine it was measured on. One
+test takes a request on which the planner's search for shared drops
+stops at its node limit, and checks that the step still places the most
+events there can be, worked out from an exhaustive b-matching; another
+checks that a request whose search ends at the step's position-check
+limit reports no exhausted budget and is unchanged by any larger budget.

@@ -807,10 +807,13 @@ unplaced events and violations, and different when any of them differs.
 
 ### The step budget, time and memory
 
-Every search of a repack spends from one budget,
-`RepackOptions(stepBudget: ...)`, counted in steps and not in seconds.
-That is what makes the outcome the same everywhere.
-`isBudgetExhausted()` says whether the budget stopped a search:
+A repack's searches are bounded by `RepackOptions(stepBudget: ...)`,
+counted in steps and not in seconds. That is what makes the outcome the
+same everywhere. There are two budgets of that size: the packing searches
+share one, and the last placement step, which runs only when an event is
+still unplaced, has one of its own, so a repack can spend up to twice
+`stepBudget`. `isBudgetExhausted()` says whether a budget stopped a
+search:
 
 - **True**: a larger budget may give another outcome for the same
   request. It is not a promise of a better one.

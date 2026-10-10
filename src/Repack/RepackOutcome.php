@@ -232,8 +232,11 @@ final readonly class RepackOutcome
      *
      * True means that at least one of the repacker's searches (the
      * session-load improvement and parity repair, the exact packing of a
-     * session, the repair of a greedy packing) wanted another step and was
-     * refused, so the outcome is what was reached by then. A larger budget
+     * session, the repair of a greedy packing, the last placement step that
+     * moves placed events to make room for unplaced ones) wanted another
+     * step and was refused, so the outcome is what was reached by then. The
+     * last placement step has a budget of its own, of the same size, and
+     * counts here as the others do. A larger budget
      * may give a different outcome for the same request. It is not a
      * promise of a better one: the instance may have no better packing,
      * and the searches are heuristics.
