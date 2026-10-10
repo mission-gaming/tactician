@@ -53,7 +53,22 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * Each alternating-path node and each exchange spends one step from the
  * budget it is given; with no step left the searches stop and only
  * direct moves are made. The exchange limit is a limit of the search's
- * own, like the depth, and does not depend on the budget. A lifted event
+ * own, like the depth, and does not depend on the budget.
+ *
+ * The whole step also stops searching after WORK_LIMIT position checks
+ * (a check is one look at whether an event fits a position; each costs
+ * well under a microsecond). The ceiling cannot prove of every request
+ * that nothing more fits, and where it cannot, the exchange search
+ * would otherwise run to its limits on every round: seconds on requests
+ * of a few hundred events that 0.2.2 repacked in milliseconds. The
+ * limit is fixed, like the others, so a larger budget gives the same
+ * outcome and the budget flag is not set when it is reached. Direct
+ * moves go on after it, so an event left unplaced as NoSlotAvailable
+ * still has no position with room and both participants free. It is
+ * about 25 times what the largest complete round robin of the tests (40
+ * participants) and the small corpus need, and on some requests it
+ * leaves an event unplaced that a longer search would have placed.
+ * A lifted event
  * tries the positions of its own session first, in slot order, and then
  * the rest of the grid in grid order, so the session loads the planner
  * chose change as little as they can; the gaps the moves leave are the
@@ -78,7 +93,18 @@ final class LeftoverRecolourer
      */
     private const int EXCHANGE_NODE_LIMIT = 2_000;
 
+    /**
+     * How many position checks the whole step may make before it starts
+     * no further search: a limit of the step's own, which the step budget
+     * does not lift (see the class docblock). About a sixth of a second
+     * on the machine it was measured on.
+     */
+    private const int WORK_LIMIT = 500_000;
+
     private int $exchangeNodes = 0;
+
+    /** Position checks made so far, against WORK_LIMIT */
+    private int $work = 0;
 
     /** @var array<int, array{int, int}> */
     private array $edges = [];
@@ -125,9 +151,8 @@ final class LeftoverRecolourer
      * @param array<int, array<int, array<int>>> $pinSlots Session => participant => pinned slots
      * @param array<int, array<int, int>> $pinCounts Session => slot => pinned event count
      * @param array<int, int> $slotCounts Session => slot count
-     * @param int $leftOutAtLeast How many of the events no placement can hold: the
-     *                            planner's over-capacity drops, which are as few as
-     *                            the shortfalls allow (see ceiling())
+     * @param int $leftOutAtLeast How many of the events no placement can hold, at
+     *                            least (LoadPlan::$leftOutAtLeast; see ceiling())
      *
      * @return list<int> The events that are still unplaced, ascending
      */
@@ -148,6 +173,7 @@ final class LeftoverRecolourer
         $this->occupant = [];
         $this->pinned = [];
         $this->positionOf = [];
+        $this->work = 0;
 
         /** @var array<int, array<int, int>> $indexOf */
         $indexOf = [];
@@ -208,13 +234,13 @@ final class LeftoverRecolourer
 
     /**
      * A number of placed events no placement can exceed, the smallest of
-     * four bounds. All the events less the ones no placement can hold:
-     * every over-capacity participant must leave out its shortfall, and
-     * the planner drops no more events than that takes (its search for
-     * the events two over-capacity participants share is exact up to a
-     * node limit far above what they need; past it, this bound may be too
-     * low, and an exchange that would place one more is then not looked
-     * for). Half the sum, over the participants, of the smaller of
+     * four bounds. All the events less the ones no placement can hold
+     * ($leftOutAtLeast, from the planner: every over-capacity participant
+     * must leave out its shortfall, and an event between two of them
+     * counts for both; the planner gives its own drop count only when its
+     * search for those shared events is known to have found a largest
+     * set, and a bound that needs no search otherwise, so this is never
+     * more than the true number). Half the sum, over the participants, of the smaller of
      * its event count and its unpinned positions. The places the grid
      * has. And, position by position, the smaller of the position's
      * places and the events it could hold at most: an event takes two
@@ -361,7 +387,11 @@ final class LeftoverRecolourer
                     if (isset($fixed[$outgoing])) {
                         continue;
                     }
-                    if (++$this->exchangeNodes > self::EXCHANGE_NODE_LIMIT || !$this->budget->consume()) {
+                    if (
+                        ++$this->exchangeNodes > self::EXCHANGE_NODE_LIMIT
+                        || $this->work > self::WORK_LIMIT
+                        || !$this->budget->consume()
+                    ) {
                         return null;
                     }
 
@@ -450,6 +480,9 @@ final class LeftoverRecolourer
      */
     private function insert(int $eventIndex, ?int $fromSession): bool
     {
+        if ($this->work > self::WORK_LIMIT) {
+            return false;
+        }
         if ($this->hasSaturatedParticipant($eventIndex)) {
             // A participant whose every unpinned position already holds one
             // of its events is in the way wherever the event goes, and the
@@ -571,6 +604,7 @@ final class LeftoverRecolourer
      */
     private function blocking(int $eventIndex, int $index): ?array
     {
+        ++$this->work;
         $blocking = [];
         foreach ($this->edges[$eventIndex] as $pid) {
             if (isset($this->pinned[$index][$pid])) {

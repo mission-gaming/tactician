@@ -7,6 +7,7 @@ use MissionGaming\Tactician\Exceptions\RepackViolationsException;
 use MissionGaming\Tactician\Repack\CapacityExceeded;
 use MissionGaming\Tactician\Repack\ContiguityBroken;
 use MissionGaming\Tactician\Repack\EventUnplaced;
+use MissionGaming\Tactician\Repack\Internal\LoadPlanner;
 use MissionGaming\Tactician\Repack\LateStart;
 use MissionGaming\Tactician\Repack\MovableEvent;
 use MissionGaming\Tactician\Repack\ParticipantDoubleBooked;
@@ -961,6 +962,32 @@ describe('Repack step budget flag', function (): void {
             ->toBe(['participant_over_capacity', 'participant_over_capacity'])
             ->and($outcome->isBudgetExhausted())->toBeFalse();
     });
+
+    it('stops the last placement step at a limit of its own, which no budget changes', function (): void {
+        // Four participants with 34 events on three sessions of six slots,
+        // capacity 2. 30 events fit (0.2.2 placed 27), and no placement
+        // holds 31, which none of the step's bounds can prove: its search
+        // for a 31st ends at the step's limit of position checks, not at
+        // the budget. So the flag stays false, and a budget as large as
+        // there is gives the same outcome
+        $edges = [[1, 0], [3, 2], [0, 1], [1, 2], [3, 1], [1, 3], [1, 3], [1, 3], [1, 3], [0, 1], [3, 0], [0, 3], [3, 0], [0, 1], [0, 2], [0, 1], [1, 2], [2, 1], [2, 0], [2, 1], [0, 3], [0, 1], [3, 0], [3, 1], [0, 2], [3, 0], [2, 3], [2, 3], [1, 0], [3, 0], [0, 1], [2, 1], [0, 2], [0, 3]];
+        $participant = static fn(int $i): Participant => new Participant("p{$i}", "P{$i}");
+        $movable = [];
+        foreach ($edges as $k => [$a, $b]) {
+            $movable[] = new MovableEvent(sprintf('m%02d', $k), $participant($a), $participant($b));
+        }
+        $grid = SessionGrid::shapeOnly(3, 6, [], 2);
+        $repacker = new ScheduleRepacker();
+
+        $default = $repacker->repack(new RepackRequest($movable, [], $grid));
+        $ample = $repacker->repack(new RepackRequest($movable, [], $grid, new RepackOptions(stepBudget: PHP_INT_MAX)));
+
+        expect($default->getAssignments())->toHaveCount(30)
+            ->and($default->isBudgetExhausted())->toBeFalse()
+            ->and($ample->toArray())->toBe($default->toArray())
+            ->and($ample->isBudgetExhausted())->toBeFalse();
+        assertProperness($default, $movable, []);
+    });
 });
 
 /**
@@ -1150,6 +1177,40 @@ function smallRepackCorpus(): array
     return $corpus;
 }
 
+/**
+ * The largest number of events between two over-capacity participants
+ * that can count towards both shortfalls (a maximum b-matching, each
+ * participant's b its shortfall), by an exhaustive search with no node
+ * limit: the reference LoadPlanner::sharedDrops() is compared with.
+ *
+ * @param list<array{int, int}> $edges
+ * @param array<int, int> $need
+ */
+function largestSharedDrops(array $edges, array $need): int
+{
+    $shared = array_values(array_filter($edges, static fn(array $e): bool => isset($need[$e[0]], $need[$e[1]])));
+    $best = 0;
+    $search = static function (int $at, int $chosen) use (&$search, &$best, &$need, $shared): void {
+        $best = max($best, $chosen);
+        $open = array_sum($need);
+        if ($at === count($shared) || $chosen + min(count($shared) - $at, intdiv($open, 2)) <= $best) {
+            return;
+        }
+        [$a, $b] = $shared[$at];
+        if ($need[$a] > 0 && $need[$b] > 0) {
+            --$need[$a];
+            --$need[$b];
+            $search($at + 1, $chosen + 1);
+            ++$need[$a];
+            ++$need[$b];
+        }
+        $search($at + 1, $chosen);
+    };
+    $search(0, 0);
+
+    return $best;
+}
+
 describe('Repacking every placeable event', function (): void {
     it('places every event of a complete round robin that fits the grid', function (int $n, string $idFormat): void {
         $request = completeGraphRequest($n, $idFormat);
@@ -1227,6 +1288,55 @@ describe('Repacking every placeable event', function (): void {
             expect($covered[$id] ?? 0)->toBeGreaterThanOrEqual($shortfall);
         }
     })->with(array_keys(smallRepackCorpus()));
+
+    it('places every event it can when the search for shared drops stops at its node limit', function (): void {
+        // Thirteen participants on one session of six slots, no capacity
+        // limit, most of them pinned at several slots: the 37 events are
+        // all between two over-capacity participants. The planner's search
+        // for shared drops stops at its node limit with a smaller set than
+        // the largest, so it drops more events than the shortfalls need,
+        // and the number of events no placement can hold must not be taken
+        // from its drops
+        $edges = [[6, 10], [9, 3], [8, 0], [2, 4], [10, 4], [4, 8], [3, 5], [2, 9], [11, 1], [6, 2], [9, 2], [2, 6], [2, 6], [4, 2], [5, 1], [6, 7], [9, 11], [5, 1], [1, 9], [3, 7], [11, 1], [6, 1], [9, 2], [11, 10], [6, 2], [9, 12], [2, 3], [11, 12], [10, 6], [5, 10], [5, 8], [1, 2], [7, 8], [7, 2], [4, 8], [2, 12], [8, 5]];
+        $pins = [[0, 1000, 0], [0, 1001, 5], [0, 1002, 4], [0, 1003, 1], [0, 1004, 2], [0, 1005, 3], [3, 1006, 0], [3, 1007, 4], [3, 1008, 3], [3, 1009, 2], [3, 1010, 1], [4, 1011, 5], [4, 1012, 0], [5, 1013, 3], [5, 1014, 5], [5, 1015, 2], [5, 1016, 1], [5, 1017, 0], [5, 1018, 4], [7, 1019, 4], [7, 1020, 1], [7, 1021, 3], [7, 1022, 0], [7, 1023, 5], [7, 1024, 2], [8, 1025, 1], [8, 1026, 5], [8, 1027, 2], [8, 1028, 4], [8, 1029, 0], [9, 1030, 3], [10, 1031, 4], [10, 1032, 5], [11, 1033, 4], [11, 1034, 1], [11, 1035, 3], [11, 1036, 5], [12, 1037, 3], [12, 1038, 2], [12, 1039, 5], [12, 1040, 0]];
+
+        $participant = static fn(int $i): Participant => new Participant("p{$i}", "P{$i}");
+        $movable = [];
+        foreach ($edges as $k => [$a, $b]) {
+            $movable[] = new MovableEvent(sprintf('m%02d', $k), $participant($a), $participant($b));
+        }
+        $pinned = [];
+        $pinnedSlots = [];
+        foreach ($pins as $k => [$a, $partner, $slot]) {
+            $pinned[] = new PinnedEvent("x{$k}", $participant($a), $participant($partner), 0, $slot);
+            $pinnedSlots[$a] = ($pinnedSlots[$a] ?? 0) + 1;
+        }
+
+        $demand = [];
+        foreach ($edges as [$a, $b]) {
+            $demand[$a] = ($demand[$a] ?? 0) + 1;
+            $demand[$b] = ($demand[$b] ?? 0) + 1;
+        }
+        $need = [];
+        foreach ($demand as $pid => $count) {
+            $free = 6 - ($pinnedSlots[$pid] ?? 0);
+            if ($count > $free) {
+                $need[$pid] = $count - $free;
+            }
+        }
+        LoadPlanner::sharedDrops($edges, $need, $exact);
+        expect($exact)->toBeFalse();
+
+        // No placement leaves out fewer events than the shortfalls less the
+        // largest set of shared drops, so this many is the most that fit
+        $most = count($edges) - (array_sum($need) - largestSharedDrops($edges, $need));
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 6, [], null)));
+
+        expect($most)->toBe(16)
+            ->and($outcome->getAssignments())->toHaveCount($most);
+        assertProperness($outcome, $movable, $pinned);
+    });
 
     it('drops the event two over-capacity participants share before any other', function (): void {
         // One slot of capacity 3. p3 plays p5 and p2, p5 plays p3 and p6:
