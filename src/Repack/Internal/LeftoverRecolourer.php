@@ -125,6 +125,9 @@ final class LeftoverRecolourer
      * @param array<int, array<int, array<int>>> $pinSlots Session => participant => pinned slots
      * @param array<int, array<int, int>> $pinCounts Session => slot => pinned event count
      * @param array<int, int> $slotCounts Session => slot count
+     * @param int $leftOutAtLeast How many of the events no placement can hold: the
+     *                            planner's over-capacity drops, which are as few as
+     *                            the shortfalls allow (see ceiling())
      *
      * @return list<int> The events that are still unplaced, ascending
      */
@@ -135,7 +138,8 @@ final class LeftoverRecolourer
         array $pinSlots,
         array $pinCounts,
         array $slotCounts,
-        int $capacityPerSlot
+        int $capacityPerSlot,
+        int $leftOutAtLeast = 0
     ): array {
         $this->edges = $edges;
         $this->positionList = [];
@@ -182,7 +186,7 @@ final class LeftoverRecolourer
 
         $remaining = array_values($leftovers);
         sort($remaining);
-        $ceiling = $this->ceiling($remaining);
+        $ceiling = $this->ceiling($remaining, $leftOutAtLeast);
         do {
             $before = count($remaining);
             $remaining = $this->placeEach($remaining);
@@ -203,29 +207,87 @@ final class LeftoverRecolourer
     }
 
     /**
-     * A number of placed events no placement can exceed: half the sum,
-     * over the participants, of the smaller of its event count and its
-     * unpinned positions, and no more than the places the grid has. An
-     * exchange is searched for only below it, so a schedule that already
-     * places as many events as can be placed costs no exchange search.
+     * A number of placed events no placement can exceed, the smallest of
+     * four bounds. All the events less the ones no placement can hold:
+     * every over-capacity participant must leave out its shortfall, and
+     * the planner drops no more events than that takes (its search for
+     * the events two over-capacity participants share is exact up to a
+     * node limit far above what they need; past it, this bound may be too
+     * low, and an exchange that would place one more is then not looked
+     * for). Half the sum, over the participants, of the smaller of
+     * its event count and its unpinned positions. The places the grid
+     * has. And, position by position, the smaller of the position's
+     * places and the events it could hold at most: an event takes two
+     * participants of one group of participants linked by events (a
+     * connected component), so a position holds at most half of each
+     * group's participants not pinned there, rounded down. The last bound
+     * is the one that sees an odd group: a single round robin of an odd
+     * number of participants always leaves one of them out of every
+     * position. An exchange is searched for only below the ceiling, so a
+     * schedule that already places as many events as can be placed costs
+     * no exchange search.
      *
      * @param list<int> $remaining
      */
-    private function ceiling(array $remaining): int
+    private function ceiling(array $remaining, int $leftOutAtLeast): int
     {
-        $count = $this->load;
-        foreach ($remaining as $eventIndex) {
-            foreach ($this->edges[$eventIndex] as $pid) {
-                $count[$pid] = ($count[$pid] ?? 0) + 1;
+        $events = [...array_keys($this->positionOf), ...$remaining];
+
+        $count = [];
+        /** @var array<int, int> $root Participant => a participant closer to its group's root */
+        $root = [];
+        $find = static function (int $pid) use (&$root): int {
+            while ($root[$pid] !== $pid) {
+                $root[$pid] = $root[$root[$pid]];
+                $pid = $root[$pid];
+            }
+
+            return $pid;
+        };
+        foreach ($events as $eventIndex) {
+            [$a, $b] = $this->edges[$eventIndex];
+            $count[$a] = ($count[$a] ?? 0) + 1;
+            $count[$b] = ($count[$b] ?? 0) + 1;
+            $root[$a] ??= $a;
+            $root[$b] ??= $b;
+            $ra = $find($a);
+            $rb = $find($b);
+            if ($ra !== $rb) {
+                $root[max($ra, $rb)] = min($ra, $rb);
             }
         }
 
         $ends = 0;
-        foreach ($count as $pid => $events) {
-            $ends += min($events, $this->unpinned[$pid]);
+        /** @var array<int, int> $groupSize Group root => participants */
+        $groupSize = [];
+        foreach ($count as $pid => $eventCount) {
+            $ends += min($eventCount, $this->unpinned[$pid]);
+            $group = $find($pid);
+            $groupSize[$group] = ($groupSize[$group] ?? 0) + 1;
         }
 
-        return min(intdiv($ends, 2), count($this->positionOf) + array_sum($this->room));
+        $placedAt = array_count_values($this->positionOf);
+        $byPositions = 0;
+        foreach (array_keys($this->positionList) as $index) {
+            $free = $groupSize;
+            foreach (array_keys($this->pinned[$index] ?? []) as $pid) {
+                if (isset($count[$pid])) {
+                    --$free[$find($pid)];
+                }
+            }
+            $pairs = 0;
+            foreach ($free as $participants) {
+                $pairs += intdiv($participants, 2);
+            }
+            $byPositions += min($pairs, $this->room[$index] + ($placedAt[$index] ?? 0));
+        }
+
+        return min(
+            count($events) - $leftOutAtLeast,
+            intdiv($ends, 2),
+            count($this->positionOf) + array_sum($this->room),
+            $byPositions
+        );
     }
 
     /**

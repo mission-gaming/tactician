@@ -893,6 +893,74 @@ describe('Repack step budget flag', function (): void {
             ->and($outcome->getUnplaced())->toBe([])
             ->and($outcome->getAssignments())->toHaveCount(276);
     });
+
+    it('spends no budget on the last placement step when every group of participants already fills the positions it can', function (): void {
+        // Eight separate single round robins of five participants on four
+        // one-slot sessions. A position holds at most two events of a group
+        // of five, so 8 of each group's 10 events is the most there is, and
+        // the earlier phases place exactly that. Searching for an exchange
+        // anyway spent the whole default budget, and the outcome said the
+        // budget had stopped a search although no budget could place more
+        $participants = [];
+        for ($i = 1; $i <= 40; ++$i) {
+            $participants[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [];
+        for ($group = 0; $group < 8; ++$group) {
+            for ($i = 1; $i <= 5; ++$i) {
+                for ($j = $i + 1; $j <= 5; ++$j) {
+                    $movable[] = new MovableEvent(
+                        sprintf('g%d-%d%d', $group, $i, $j),
+                        $participants[$group * 5 + $i],
+                        $participants[$group * 5 + $j]
+                    );
+                }
+            }
+        }
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(4, 1, [], null)));
+
+        expect($outcome->getAssignments())->toHaveCount(64)
+            ->and($outcome->getUnplaced())->toHaveCount(16)
+            ->and($outcome->isBudgetExhausted())->toBeFalse();
+    });
+
+    it('spends no budget on the last placement step when only the over-capacity drops are left over', function (): void {
+        // p1 has seven events for five slots, so two of them cannot be
+        // placed, and every other event is. Placing a dropped event would
+        // only leave out another of p1's, so there is nothing to search
+        // for, and a budget of 50 that the earlier phases do not use up
+        // must not be reported as having stopped one
+        $p = [];
+        for ($i = 1; $i <= 6; ++$i) {
+            $p[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [
+            new MovableEvent('m01', $p[1], $p[3]),
+            new MovableEvent('m02', $p[1], $p[6]),
+            new MovableEvent('m03', $p[2], $p[4]),
+            new MovableEvent('m04', $p[2], $p[5]),
+            new MovableEvent('m05', $p[2], $p[1]),
+            new MovableEvent('m06', $p[6], $p[1]),
+            new MovableEvent('m07', $p[1], $p[3]),
+            new MovableEvent('m08', $p[6], $p[1]),
+            new MovableEvent('m09', $p[6], $p[4]),
+            new MovableEvent('m10', $p[4], $p[1]),
+        ];
+        $pinned = [new PinnedEvent('x1', $p[5], $p[4], 0, 1)];
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+            $movable,
+            $pinned,
+            SessionGrid::shapeOnly(1, 5, [], 4),
+            new RepackOptions(stepBudget: 50)
+        ));
+
+        expect($outcome->getAssignments())->toHaveCount(8)
+            ->and(array_map(static fn(UnplacedEvent $u): string => $u->getReason()->value, $outcome->getUnplaced()))
+            ->toBe(['participant_over_capacity', 'participant_over_capacity'])
+            ->and($outcome->isBudgetExhausted())->toBeFalse();
+    });
 });
 
 /**

@@ -267,7 +267,8 @@ final readonly class ScheduleRepacker
                 $pinSlots,
                 $pinCounts,
                 $slotCounts,
-                $capacityPerSlot
+                $capacityPerSlot,
+                count($dropped)
             );
         }
 

@@ -146,6 +146,30 @@ describe('LeftoverRecolourer', function (): void {
             ->and($budget->stoppedASearch())->toBeFalse();
     });
 
+    it('searches for no exchange when the events left over are as many as no placement can hold', function (): void {
+        // Participant 0 has four events for two slots, so two of them never
+        // fit, and the two placed are the most there can be. Without the
+        // count of events no placement holds, the ceiling is three and the
+        // exchange search asks the empty budget for a step
+        $positions = [0 => [0, 0], 1 => [0, 1]];
+        $budget = new StepBudget(0);
+
+        $left = (new LeftoverRecolourer($budget))->place(
+            [[0, 1], [0, 2], [0, 3], [0, 4]],
+            $positions,
+            [2, 3],
+            [],
+            [],
+            [0 => 2],
+            9,
+            2
+        );
+
+        expect($left)->toBe([2, 3])
+            ->and($positions)->toBe([0 => [0, 0], 1 => [0, 1]])
+            ->and($budget->stoppedASearch())->toBeFalse();
+    });
+
     it('never moves a pinned participant onto its pinned position', function (): void {
         // Participant 1 is pinned at the only other slot, so event 1 (1 v 2)
         // cannot go there, and event 0 is in its way at slot 0
