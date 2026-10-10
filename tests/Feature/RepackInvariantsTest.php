@@ -963,13 +963,15 @@ describe('Repack step budget flag', function (): void {
             ->and($outcome->isBudgetExhausted())->toBeFalse();
     });
 
-    it('stops the last placement step at a limit of its own, which no budget changes', function (): void {
+    it('reports no exhausted budget when the last placement step ends at limits of its own', function (): void {
         // Four participants with 34 events on three sessions of six slots,
         // capacity 2. 30 events fit (0.2.2 placed 27), and no placement
         // holds 31, which none of the step's bounds can prove: its search
-        // for a 31st ends at the step's limit of position checks, not at
-        // the budget. So the flag stays false, and a budget as large as
-        // there is gives the same outcome
+        // for a 31st ends at limits of the step's own (the position-check
+        // limit, and without it the exchange limits), not at the budget.
+        // So the flag stays false, and a budget as large as there is gives
+        // the same outcome. That the position-check limit stops the step is
+        // pinned by the unit tests of LeftoverRecolourer
         $edges = [[1, 0], [3, 2], [0, 1], [1, 2], [3, 1], [1, 3], [1, 3], [1, 3], [1, 3], [0, 1], [3, 0], [0, 3], [3, 0], [0, 1], [0, 2], [0, 1], [1, 2], [2, 1], [2, 0], [2, 1], [0, 3], [0, 1], [3, 0], [3, 1], [0, 2], [3, 0], [2, 3], [2, 3], [1, 0], [3, 0], [0, 1], [2, 1], [0, 2], [0, 3]];
         $participant = static fn(int $i): Participant => new Participant("p{$i}", "P{$i}");
         $movable = [];

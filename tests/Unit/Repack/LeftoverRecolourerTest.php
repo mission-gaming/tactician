@@ -170,6 +170,56 @@ describe('LeftoverRecolourer', function (): void {
             ->and($budget->stoppedASearch())->toBeFalse();
     });
 
+    it('starts no search once its position checks pass the work limit, and leaves the budget flag alone', function (): void {
+        // The alternating-path request above: the direct pass makes three
+        // position checks, and the path needs more. With a limit of three
+        // the path's second node is refused and the first is taken back;
+        // with a limit of two no path is started at all. Neither is a
+        // budget stopping a search
+        foreach ([2, 3] as $limit) {
+            $positions = [0 => [0, 0], 1 => [0, 1]];
+            $budget = new StepBudget(1_000);
+
+            $left = (new LeftoverRecolourer($budget, $limit))->place(
+                [[0, 2], [1, 3], [0, 1]],
+                $positions,
+                [2],
+                [0 => [0 => [2], 9 => [2]]],
+                [0 => [2 => 1]],
+                [0 => 3],
+                2
+            );
+
+            expect($left)->toBe([2])
+                ->and($positions)->toBe([0 => [0, 0], 1 => [0, 1]])
+                ->and($budget->stoppedASearch())->toBeFalse();
+        }
+    });
+
+    it('searches for no exchange once its position checks pass the work limit', function (): void {
+        // The exchange request above, which places a third event with the
+        // default limit; its direct and path rounds alone pass a limit of 10
+        $positions = [0 => [0, 0], 1 => [1, 0]];
+
+        $left = (new LeftoverRecolourer(new StepBudget(100), 10))->place(
+            [[3, 1], [2, 3], [3, 0], [2, 1]],
+            $positions,
+            [2, 3],
+            [],
+            [],
+            [0 => 1, 1 => 1],
+            9
+        );
+
+        expect($left)->toBe([2, 3])
+            ->and($positions)->toBe([0 => [0, 0], 1 => [1, 0]]);
+    });
+
+    it('gives the repacker a work limit of 500,000 position checks', function (): void {
+        // The figure the design note and the changelog state and measured
+        expect(LeftoverRecolourer::WORK_LIMIT)->toBe(500_000);
+    });
+
     it('never moves a pinned participant onto its pinned position', function (): void {
         // Participant 1 is pinned at the only other slot, so event 1 (1 v 2)
         // cannot go there, and event 0 is in its way at slot 0

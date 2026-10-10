@@ -99,11 +99,11 @@ final class LeftoverRecolourer
      * does not lift (see the class docblock). About a sixth of a second
      * on the machine it was measured on.
      */
-    private const int WORK_LIMIT = 500_000;
+    public const int WORK_LIMIT = 500_000;
 
     private int $exchangeNodes = 0;
 
-    /** Position checks made so far, against WORK_LIMIT */
+    /** Position checks made so far, against the work limit */
     private int $work = 0;
 
     /** @var array<int, array{int, int}> */
@@ -142,7 +142,16 @@ final class LeftoverRecolourer
      */
     private array $journal = [];
 
-    public function __construct(private readonly StepBudget $budget) {}
+    /**
+     * @param int $workLimit Position checks after which no further search
+     *                       starts; the repacker always passes WORK_LIMIT, and
+     *                       the unit tests pass a smaller one to see the step
+     *                       stop at it
+     */
+    public function __construct(
+        private readonly StepBudget $budget,
+        private readonly int $workLimit = self::WORK_LIMIT
+    ) {}
 
     /**
      * @param array<int, array{int, int}> $edges Event index => participant index pair
@@ -389,7 +398,7 @@ final class LeftoverRecolourer
                     }
                     if (
                         ++$this->exchangeNodes > self::EXCHANGE_NODE_LIMIT
-                        || $this->work > self::WORK_LIMIT
+                        || $this->work > $this->workLimit
                         || !$this->budget->consume()
                     ) {
                         return null;
@@ -480,7 +489,7 @@ final class LeftoverRecolourer
      */
     private function insert(int $eventIndex, ?int $fromSession): bool
     {
-        if ($this->work > self::WORK_LIMIT) {
+        if ($this->work > $this->workLimit) {
             return false;
         }
         if ($this->hasSaturatedParticipant($eventIndex)) {
