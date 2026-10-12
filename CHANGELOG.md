@@ -13,7 +13,7 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
-## [0.2.3] - 2026-10-12
+## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public
 signature changes. A repack whose outcome has no unplaced event and no
