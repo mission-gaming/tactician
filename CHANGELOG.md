@@ -13,6 +13,8 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-12
+
 Three fixes to `ScheduleRepacker` output that was broken. No public
 signature changes. A repack whose outcome has no unplaced event and no
 `CapacityExceeded` is returned byte for byte as 0.2.2 returned it, with the
@@ -39,7 +41,7 @@ events than a participant's shortfall needed, or understated a
   not fit, and the reasons are then given again to the events still
   unplaced, by the drop rule below. Before and after:
 
-  | Request | 0.2.2 | Unreleased |
+  | Request | 0.2.2 | 0.2.3 |
   |---|---|---|
   | Complete round robin of 6 on six one-slot sessions, capacity 3 | 13 placed, 2 `no_slot_available` | 15 placed |
   | Complete round robin of 24 on six four-slot sessions, capacity 12 (ids `1`–`276`) | 250 placed, 26 unplaced | 276 placed |
@@ -141,6 +143,12 @@ events than a participant's shortfall needed, or understated a
   participant of the event. The `CapacityExceeded` of the grid
   as a whole keeps its meaning: it still counts the events left after the
   participants' drops, which are fewer where the previous entry applies.
+
+### Changed
+
+- The `Mutation testing` workflow has an eighth shard, `repack recolouring`,
+  for the new internal file `src/Repack/Internal/LeftoverRecolourer.php`.
+  Nothing a consumer installs changes.
 
 ## [0.2.2] - 2026-10-09
 
@@ -1670,7 +1678,8 @@ PHP 8.3+.
 - **Immutable DTOs**: readonly value objects with `toArray()`/`fromArray()`;
   `Schedule` round-trips JSON.
 
-[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/mission-gaming/tactician/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/mission-gaming/tactician/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/mission-gaming/tactician/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/mission-gaming/tactician/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/mission-gaming/tactician/compare/v0.1.1...v0.2.0

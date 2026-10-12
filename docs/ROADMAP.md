@@ -15,6 +15,7 @@ see [What is next](#what-is-next).
 | 0.2.0 | 2026-08-11 | [Schedule repacking](#schedule-repacking-020) |
 | 0.2.1 | 2026-10-06 | No change in library behaviour: a smaller installed package, the versioning policy, executed documentation and pinned output |
 | 0.2.2 | 2026-10-09 | The additions under [0.2.2](#022), and fixes to output that was broken |
+| 0.2.3 | 2026-10-12 | No additions: three fixes to repack output that was broken ([placement fixes](design/schedule-repack.md#placement-fixes-023)) |
 
 The work before 0.1.0 was planned in five phases. All five were complete in
 0.1.0, and the names are kept because the design notes refer to them.
