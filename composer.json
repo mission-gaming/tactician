@@ -47,7 +47,10 @@
     "autoload-dev": {
         "psr-4": {
             "MissionGaming\\Tactician\\Tests\\": "tests/"
-        }
+        },
+        "files": [
+            "tests/mutation-memory.php"
+        ]
     },
     "config": {
         "allow-plugins": {
