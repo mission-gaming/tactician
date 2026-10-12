@@ -22,7 +22,8 @@ use Override;
  * Defaults to a single mirrored leg with round-parity roles. The
  * identifiers accepted by fromArray() are stable: 'mirrored', 'repeated',
  * and 'shuffled' for the leg strategy, 'round_parity' and 'balanced' for
- * the role assignment.
+ * the role assignment. The shuffled strategy draws, so in plain data it
+ * comes with the seed of its draws, `strategy_seed`.
  *
  * @api
  */
@@ -84,17 +85,24 @@ final readonly class RoundRobinOptions implements SchedulerOptions
     /**
      * Build from plain configuration data:
      * ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false,
-     * 'role_assignment' => 'balanced']. Every key is optional, and a key
-     * this class does not have is ignored.
+     * 'role_assignment' => 'balanced'], or with the one strategy that
+     * draws, ['legs' => 2, 'strategy' => 'shuffled', 'strategy_seed' => 7].
+     * A key this class does not have is ignored.
      *
-     * The strategy and the role assignment are built without arguments, so
-     * 'shuffled' gives a ShuffledLegStrategy with a randomizer of its own
-     * that no seed controls: build the options with the constructor to pass
-     * a seeded one.
+     * Every key is optional but one: `strategy_seed` is required with
+     * 'shuffled' and refused with any other strategy. It is the integer
+     * that ShuffledLegStrategy takes as its seed, so options built from the
+     * same data give the same schedule on every call; nothing built here
+     * draws from an unseeded source. A seed that a strategy would not read
+     * is refused and not ignored, so that stored data never names a seed
+     * that decides nothing. A `strategy_seed` of null is the key left out,
+     * as it is for `role_assignment`.
      *
      * @param array<string, mixed> $config
      * @throws InvalidConfigurationException When legs is not an integer or is below 1, backtracking
-     *                                       is not a boolean, or an identifier is unknown
+     *                                       is not a boolean, an identifier is unknown, strategy_seed
+     *                                       is not an integer, the shuffled strategy has no
+     *                                       strategy_seed, or another strategy has one
      */
     #[Override]
     public static function fromArray(array $config): static
@@ -140,11 +148,42 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         }
 
         $strategyClass = self::STRATEGY_IDENTIFIERS[$strategyId];
+        $strategySeed = $config['strategy_seed'] ?? null;
+        if ($strategySeed !== null && !is_int($strategySeed)) {
+            throw new InvalidConfigurationException(
+                'strategy_seed must be an integer',
+                ['strategy_seed' => $strategySeed],
+                reason: InvalidConfigurationReason::WrongValueType,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
+            );
+        }
+
+        if ($strategyClass === ShuffledLegStrategy::class) {
+            if (!is_int($strategySeed)) {
+                throw new InvalidConfigurationException(
+                    "The 'shuffled' leg strategy needs a strategy_seed: an integer that decides its draws",
+                    ['strategy' => $strategyId],
+                    reason: InvalidConfigurationReason::IncompatibleOptions,
+                    requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
+                );
+            }
+            $strategy = new ShuffledLegStrategy(seed: $strategySeed);
+        } elseif ($strategySeed !== null) {
+            throw new InvalidConfigurationException(
+                "strategy_seed is the seed of the 'shuffled' leg strategy and no other strategy draws",
+                ['strategy' => $strategyId, 'strategy_seed' => $strategySeed],
+                reason: InvalidConfigurationReason::IncompatibleOptions,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
+            );
+        } else {
+            $strategy = new $strategyClass();
+        }
+
         $roleAssignmentClass = $roleAssignmentId === null ? null : self::ROLE_ASSIGNMENT_IDENTIFIERS[$roleAssignmentId];
 
         return new self(
             $legs,
-            new $strategyClass(),
+            $strategy,
             $backtracking,
             $roleAssignmentClass === null ? null : new $roleAssignmentClass()
         );
@@ -164,12 +203,17 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * options that name the default keep saying so, which is what holds a
      * stored configuration to its roles when a release changes the default.
      *
-     * A randomizer given to a ShuffledLegStrategy is not part of the data:
-     * such options serialize to 'shuffled', and fromArray() rebuilds them
-     * with an unseeded strategy.
+     * A ShuffledLegStrategy built from a seed serializes to 'shuffled' and
+     * its seed under `strategy_seed`, the one key that is present for that
+     * strategy only. One that holds a randomizer cannot be expressed as
+     * plain data, because the state of a randomizer is not a value
+     * fromArray() could rebuild it from, and fails loudly like a custom
+     * strategy does.
      *
-     * @return array{legs: int, strategy: string, backtracking: bool, role_assignment?: string}
-     * @throws InvalidConfigurationException When the strategy or the role assignment is not one of the built-ins
+     * @return array{legs: int, strategy: string, backtracking: bool, strategy_seed?: int, role_assignment?: string}
+     * @throws InvalidConfigurationException When the strategy or the role assignment is not one of the
+     *                                       built-ins, or the strategy is a ShuffledLegStrategy that
+     *                                       holds a randomizer
      */
     #[Override]
     public function toArray(): array
@@ -185,6 +229,18 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         }
 
         $config = ['legs' => $this->legs, 'strategy' => $identifier, 'backtracking' => $this->backtracking];
+
+        if ($this->strategy instanceof ShuffledLegStrategy) {
+            if ($this->strategy->seed === null) {
+                throw new InvalidConfigurationException(
+                    'A shuffled leg strategy that holds a randomizer cannot be serialized: build it from a seed',
+                    ['strategy' => $this->strategy::class],
+                    reason: InvalidConfigurationReason::NotSerializable,
+                    requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
+                );
+            }
+            $config['strategy_seed'] = $this->strategy->seed;
+        }
 
         if (!$this->roleAssignmentNamed) {
             return $config;
