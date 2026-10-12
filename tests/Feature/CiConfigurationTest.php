@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippets;
+use MissionGaming\Tactician\Tests\Support\MutationMemoryLimit;
 use PHPUnit\Framework\Assert;
 
 // The CI hardening is configuration, so nothing in the library exercises it.
@@ -609,6 +610,17 @@ it('reports a mutation score for every shard once a week, in jobs that enforce n
         ->toContain("      if: \${{ !cancelled() }}\n")
         ->toContain("      run: php tests/bin/mutation-summary.php build/mutation.log \"\${{ matrix.shard }}\" \"\${{ matrix.path }}\" >> \"\$GITHUB_STEP_SUMMARY\"\n");
     expect(is_file($root . '/tests/bin/mutation-summary.php'))->toBeTrue();
+
+    // A change that makes the code allocate without end must end its own
+    // test process, not the runner: before the test processes had a memory
+    // limit, such shards ended with a runner shutdown and no summary. The
+    // limit is the one a test process sets for itself
+    // (tests/Feature/MutationMemoryLimitTest.php), and the workflow names
+    // no other: a higher one, times the four processes of a runner, is how
+    // a runner runs out of memory
+    expect($workflow)->not->toContain(MutationMemoryLimit::ENV_LIMIT)
+        ->and($workflow)->not->toContain('memory_limit')
+        ->and($workflow)->not->toContain('ini-values');
 
     // The script: the two directories, the lines a test executes, in
     // parallel, with no minimum score, and outside the gate.

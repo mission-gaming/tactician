@@ -40,6 +40,18 @@ jobs:
   # more than twice the estimate, because the rate is not even: a change that
   # makes a search run for ever costs its whole time limit.
   #
+  # A change can also make the code allocate without end: a loop that counts
+  # the wrong way and adds to an array on every pass. The runner stops a
+  # test process at a time limit only, and such a process took the memory of
+  # the whole runner well before that: the job then ended with "The runner
+  # has received a shutdown signal" and no summary. So the test process of
+  # every change has a memory limit, one gigabyte, which the process sets
+  # for itself as it loads the autoloader
+  # (tests/Support/MutationMemoryLimit.php): four processes at the limit
+  # take a quarter of a standard runner's memory. A process that reaches it
+  # ends, the runner counts the change as tested, and the summary says how
+  # many changes ended that way. Nothing here sets another limit.
+  #
   # A job reports its shard in its summary and does not fail on the score
   # (the script sets no minimum). It fails when the tests themselves do not
   # pass, and when the run is stopped at its limit. A stopped shard is red on
@@ -107,6 +119,8 @@ jobs:
         composer mutation -- --path=${{ matrix.path }} 2>&1 | tee build/mutation.log
 
     # Also after a run that failed or was stopped, with whatever it printed.
+    # The script reads build/mutation-memory.log as well, where the test
+    # processes that ended at the memory limit wrote a line each.
     - name: Report the shard in the job summary
       if: ${{ !cancelled() }}
       run: php tests/bin/mutation-summary.php build/mutation.log "${{ matrix.shard }}" "${{ matrix.path }}" >> "$GITHUB_STEP_SUMMARY"

@@ -175,19 +175,42 @@ counts the change as tested when a test fails and as untested when they all
 still pass. The score is the share that was tested. The run prints every
 untested change with its diff.
 
-Read the score with two things in mind. The runner counts a change whose
+Read the score with three things in mind. The runner counts a change whose
 tests ran into its time limit as tested, although no test failed on it: a
 change that makes a search run for ever is "noticed" only in that sense.
-The summary script therefore also gives the share that a failing test
-noticed. And leave the number of processes to `--parallel`, which the
-script passes: with `--processes` added, the test process of every change
-fails to start, and the run reports every change as tested, a score of
-100% that means nothing.
+It counts a change whose test process ran out of memory in the same way
+(see below). The summary script therefore also gives the share that a
+failing test noticed, which leaves both out. And leave the number of
+processes to `--parallel`, which the script passes: with `--processes`
+added, the test process of every change fails to start, and the run reports
+every change as tested, a score of 100% that means nothing.
+
+The test process of every change has a memory limit of one gigabyte. A
+change can make the code allocate without end (a loop that counts the wrong
+way and adds to an array on every pass), and the runner's time limit for a
+test process, the duration of the first, unmutated run of the tests and a
+fifth more, comes too late for that: on a CI runner such a process took all
+the memory there was, and the job ended with a runner shutdown and no
+summary. A process that reaches the limit ends with PHP's fatal error and
+writes a line to `build/mutation-memory.log`; the summary script reads that
+file and says how many changes ended that way and in which source files.
+The limit is set by `tests/mutation-memory.php`, which Composer's autoloader
+loads in a development checkout (`autoload-dev.files`): it acts in the test
+process of a change only, whatever `memory_limit` PHP is configured with,
+and does nothing in any other process. After you pull the change that added
+it, run `composer install` once, which writes the autoloader again, or your
+runs have no limit. The environment variable `TACTICIAN_MUTATION_MEMORY_LIMIT`
+replaces the limit (`512M`, `2G`), and `TACTICIAN_MUTATION_MEMORY_LOG` names
+another file for the log; give that file to the summary script as its fourth
+argument. A change that
+ends there is not a defect of the library: a search that is unbounded once
+its bound is removed is as designed. A search that is unbounded for some
+input of the unchanged code would be one.
 
 It is not part of the gate and it enforces no minimum. A run over both
 directories takes hours, because every one of some 3,400 changes starts a
 test process of its own, and a change that makes a search run for ever is
-only stopped by a timeout; `src/Repack/Internal` alone takes a few minutes
+only stopped by the time limit; `src/Repack/Internal` alone takes a few minutes
 on a fast machine. Some changes cannot be noticed at all, because they
 change nothing a caller can see (the order in which two equal candidates
 are tried, a guard that cannot be reached).
