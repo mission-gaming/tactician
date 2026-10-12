@@ -13,6 +13,89 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Output change (fix)
+
+- **Mirrored legs alternate: `MirroredLegStrategy` reverses the roles in the
+  even-numbered legs only.** It reversed them in every leg after the first,
+  so a pair that met three times was split 1:2 and a pair that met four
+  times 1:3, and the imbalance grew with every leg. The odd-numbered legs
+  now have the roles of the first leg and the even-numbered legs have them
+  reversed. A pair's meetings are split as evenly as their number allows
+  (level over an even number of legs, one apart over an odd number), an even
+  number of legs ends with every participant first-named as often as
+  second-named, and an odd number ends as a single leg does.
+
+  **Who is affected.** A round robin of three or more legs under
+  `MirroredLegStrategy`, which is the default leg strategy, so
+  `new RoundRobinOptions(legs: 3)` and `['legs' => 3]` are included: with
+  either role assignment, with or without constraints, a `Randomizer` or
+  backtracking. Schedules of one or two legs are byte for byte what they
+  were. So is every schedule under `RepeatedLegStrategy` or
+  `ShuffledLegStrategy`, and every two-legged elimination tie.
+
+  **What changes.** In the third leg, and in every odd-numbered leg after
+  it, each event has its two participants in the other order. Which pair
+  meets in which round does not change, and neither do the byes, the round
+  numbers, the metadata or the number of events. Before and after for four
+  participants `1` to `4` over three legs, with the default options (rounds
+  1 to 6, the first two legs, are the same in both):
+
+  ```
+            before        after
+  R7:       4-1 3-2       1-4 2-3
+  R8:       1-2 3-4       2-1 4-3
+  R9:       3-1 2-4       1-3 4-2
+  ```
+
+  Before, 1 met 4 as `1-4`, `4-1`, `4-1`; after, as `1-4`, `4-1`, `1-4`.
+  The same field over four legs had one participant first-named in nine
+  events in a row and ended 6 apart; it now repeats a role three times at
+  most and ends level.
+
+  **What to check (migration).**
+  - A schedule of three or more mirrored legs that was generated before and
+    is stored: it is not regenerated identically. Keep the stored events if
+    they are published; regenerate if the even split is wanted. Anything
+    that compares a fresh schedule with a stored one, or with its hash,
+    for such options will see a difference.
+  - Code that read "leg 2 and later" as "roles reversed": the rule is now
+    "even-numbered legs".
+  - A `RoleBalanceConstraint` or `ConsecutiveRoleConstraint` on such a
+    schedule sees the new roles. A limit that two mirrored legs satisfy is
+    now satisfied by any number of them, so a configuration that failed with
+    an `IncompleteScheduleException` at four mirrored legs (a role balance
+    limit of 3 in a field of even size, for example) can now succeed. One
+    that relied on the old roles of a third leg can fail where it succeeded,
+    although no case of that is known.
+  - To keep the old roles, pass a leg strategy of your own that reverses
+    every leg after the first: `generateEventForLeg()` of
+    `LegStrategyInterface` is the whole of it.
+  - A leg strategy of your own that states `rolesMirrorAcrossLegs: true` is
+    not affected. The flag is documented as "reverses the roles in the
+    even-numbered legs" from this release; the library carries it and acts
+    on nothing in it.
+
+  With a scheduler that holds a `Randomizer`, only the first leg is laid
+  out from the shuffled field, as before, so the later legs are not the
+  first leg reversed. They alternate among themselves: leg 3 is leg 2
+  reversed. A pair is then one apart over an odd number of legs and level or
+  two apart over an even number.
+
+  Six golden fixtures change, in their sections for three and four legs and
+  in the rounds of the third leg only (their sections for one and two legs
+  are unchanged): `round-robin/mirrored-unseeded.txt`,
+  `round-robin/mirrored-seed-1.txt`, `round-robin/mirrored-seed-42.txt`,
+  `round-robin/mirrored-seed-1337.txt`,
+  `round-robin/balanced-mirrored-unseeded.txt` and
+  `round-robin/balanced-mirrored-seed-42.txt`.
+
+  The documents that described the old behaviour as the contract are
+  corrected with it: the docblocks of `MirroredLegStrategy`,
+  `LegPlanContribution`, `RoundRobinPlan` and `RoleBalanceConstraint`, the
+  tables under "Role-Based Constraints" and "Legs after the first" in the
+  usage guide, the architecture document, the roadmap's limitations and the
+  role assignment design note.
+
 ## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public
