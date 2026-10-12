@@ -20,9 +20,11 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  *
  * The step budget bounds every search the repacker runs (session-load
  * improvement, per-session packing, repair swaps) in elementary search
- * steps — deterministic and reproducible, unlike wall-clock limits. When
- * the budget runs out, the repacker reports what is left rather than
- * pretending, and the outcome says so
+ * steps — deterministic and reproducible, unlike wall-clock limits. The
+ * last placement step, which runs only when an event is still unplaced,
+ * gets a budget of its own of the same size, so a repack spends at most
+ * twice the budget. When a budget runs out, the repacker reports what is
+ * left rather than pretending, and the outcome says so
  * ({@see RepackOutcome::isBudgetExhausted()}).
  *
  * The weights are bounded so that the objective stays an integer. The
@@ -54,7 +56,8 @@ final readonly class RepackOptions
      *                                 events into fewer sessions (0 disables)
      * @param int $earlyFillWeight Preference for filling earliest sessions first
      *                             (0 disables)
-     * @param int $stepBudget Elementary search steps shared by every phase
+     * @param int $stepBudget Elementary search steps shared by every phase, and
+     *                        as many again for the last placement step
      * @param bool $throwOnViolations Throw RepackViolationsException instead of
      *                                returning an outcome carrying violations
      *

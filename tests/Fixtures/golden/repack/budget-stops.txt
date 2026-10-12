@@ -13,7 +13,7 @@
 
 == n=8, tight: 28 movable, 0 pinned, 2 sessions, capacityPerSlot=4 ==
 step budget 1: stopped a search, 25 assigned, 3 unplaced, 13 violations, fingerprint v1:93a5ce8dd34787ed49ed6c84ca53d0414783cdecd470032fcf7dc27b1d0248d8
-step budget 30: stopped a search, 25 assigned, 3 unplaced, 13 violations, fingerprint v1:93a5ce8dd34787ed49ed6c84ca53d0414783cdecd470032fcf7dc27b1d0248d8
+step budget 30: stopped a search, 28 assigned, 0 unplaced, 4 violations, fingerprint v1:334c73c5dc1b8bd23ee7cf955712aae570eee9f3c42b3dee5edaf1896a20a1b8
 step budget 1000: stopped nothing, 28 assigned, 0 unplaced, 0 violations, fingerprint v1:a90ebb1b8d47c330c76874e68a957b0886c337375689495985373069a903f084
 step budget 30000: stopped nothing, 28 assigned, 0 unplaced, 0 violations, fingerprint v1:a90ebb1b8d47c330c76874e68a957b0886c337375689495985373069a903f084
 step budget 200000: stopped nothing, 28 assigned, 0 unplaced, 0 violations, fingerprint v1:a90ebb1b8d47c330c76874e68a957b0886c337375689495985373069a903f084
@@ -27,7 +27,7 @@ step budget 200000: stopped nothing, 25 assigned, 0 unplaced, 15 violations, fin
 
 == n=12, tight: 66 movable, 0 pinned, 3 sessions, capacityPerSlot=6 ==
 step budget 1: stopped a search, 62 assigned, 4 unplaced, 20 violations, fingerprint v1:48dcd0152fc03ad77641b942e97c6e953b010ddc040af627194fe7e0c26b4cd4
-step budget 30: stopped a search, 62 assigned, 4 unplaced, 20 violations, fingerprint v1:48dcd0152fc03ad77641b942e97c6e953b010ddc040af627194fe7e0c26b4cd4
+step budget 30: stopped a search, 66 assigned, 0 unplaced, 10 violations, fingerprint v1:b29cece70ae732e52dd9fd7b1499481a31ea16bf09e486a1279805411582aea4
 step budget 1000: stopped nothing, 66 assigned, 0 unplaced, 2 violations, fingerprint v1:f1ae6a3c182cacb7350609580ff4ef9e491c619e3fd69984a4d9d6d4e6f02eb7
 step budget 30000: stopped nothing, 66 assigned, 0 unplaced, 2 violations, fingerprint v1:f1ae6a3c182cacb7350609580ff4ef9e491c619e3fd69984a4d9d6d4e6f02eb7
 step budget 200000: stopped nothing, 66 assigned, 0 unplaced, 2 violations, fingerprint v1:f1ae6a3c182cacb7350609580ff4ef9e491c619e3fd69984a4d9d6d4e6f02eb7
@@ -41,7 +41,7 @@ step budget 200000: stopped a search, 63 assigned, 0 unplaced, 37 violations, fi
 
 == n=16, tight: 120 movable, 0 pinned, 4 sessions, capacityPerSlot=8 ==
 step budget 1: stopped a search, 113 assigned, 7 unplaced, 27 violations, fingerprint v1:77ce7ca7fc00722d12393dcbf23acf5f93ca66deebe0d99977f14fa0995fcc3f
-step budget 30: stopped a search, 109 assigned, 11 unplaced, 39 violations, fingerprint v1:b6113aa20718e4c62e50817b48f646399b63045afd7a5547b9e0f043ae0a0d25
+step budget 30: stopped a search, 119 assigned, 1 unplaced, 17 violations, fingerprint v1:54907933ce4df5fbe93da3fa7c2c4d706b42c409882ba8da2993c7237c2713f3
 step budget 1000: stopped nothing, 120 assigned, 0 unplaced, 0 violations, fingerprint v1:ade8c6c9408595911955c50104f424d5b2a556ceac3d252fbf20f1e5659e1c1d
 step budget 30000: stopped nothing, 120 assigned, 0 unplaced, 0 violations, fingerprint v1:ade8c6c9408595911955c50104f424d5b2a556ceac3d252fbf20f1e5659e1c1d
 step budget 200000: stopped nothing, 120 assigned, 0 unplaced, 0 violations, fingerprint v1:ade8c6c9408595911955c50104f424d5b2a556ceac3d252fbf20f1e5659e1c1d
@@ -55,7 +55,7 @@ step budget 200000: stopped a search, 117 assigned, 0 unplaced, 76 violations, f
 
 == n=20, tight: 190 movable, 0 pinned, 5 sessions, capacityPerSlot=10 ==
 step budget 1: stopped a search, 173 assigned, 17 unplaced, 50 violations, fingerprint v1:6f762a837ca941e6d4f3444e3b5642c07551b486d8a9fbd70c15a78b527eb050
-step budget 30: stopped a search, 175 assigned, 15 unplaced, 49 violations, fingerprint v1:5db029648d9f657b44aa876e6708c94344b87faa6933438c9f929453f0985268
+step budget 30: stopped a search, 184 assigned, 6 unplaced, 30 violations, fingerprint v1:b8fe244f15901111e2b353e20658f5509158f2a85be2130f64ee65da47e3708c
 step budget 1000: stopped a search, 190 assigned, 0 unplaced, 12 violations, fingerprint v1:e8fab7c4ada4ea3e653c008fc2a5e6336c1c8246c2d8f9eb96836977c2e25fb0
 step budget 30000: stopped a search, 190 assigned, 0 unplaced, 12 violations, fingerprint v1:e8fab7c4ada4ea3e653c008fc2a5e6336c1c8246c2d8f9eb96836977c2e25fb0
 step budget 200000: stopped nothing, 190 assigned, 0 unplaced, 4 violations, fingerprint v1:8b6efe84c095379641cc4ad869b51f6345ee13e89f035d42210ea4af438b278b
@@ -69,8 +69,8 @@ step budget 200000: stopped a search, 187 assigned, 0 unplaced, 124 violations, 
 
 == n=24, tight: 276 movable, 0 pinned, 6 sessions, capacityPerSlot=12 ==
 step budget 1: stopped a search, 255 assigned, 21 unplaced, 58 violations, fingerprint v1:7a927b93e6068dd0458925b91253c6ca3dcb00a9e6a9a8759c641c5046244e33
-step budget 30: stopped a search, 260 assigned, 16 unplaced, 56 violations, fingerprint v1:81119fc06f032c35d17195fb76042234288f986aa7193810162d6c8e75549fcc
-step budget 1000: stopped a search, 275 assigned, 1 unplaced, 15 violations, fingerprint v1:e43c82cfe47dd15ff11f653c60923571852ddc14780fc27b395bc78be6df1d35
+step budget 30: stopped a search, 269 assigned, 7 unplaced, 37 violations, fingerprint v1:ee728608b59ae238332c1747f1f6c6096fc68644d85f422f87dc50c94018c9e5
+step budget 1000: stopped a search, 276 assigned, 0 unplaced, 14 violations, fingerprint v1:364692294058a979b0d74d13e189805b0993edf0d2e1c84bace3862aa0ecee03
 step budget 30000: stopped a search, 276 assigned, 0 unplaced, 12 violations, fingerprint v1:9cdb9db0d5112170f98d43f475e5736220087256e2f5567f252f2d743e7147ee
 step budget 200000: stopped a search, 276 assigned, 0 unplaced, 12 violations, fingerprint v1:9cdb9db0d5112170f98d43f475e5736220087256e2f5567f252f2d743e7147ee
 

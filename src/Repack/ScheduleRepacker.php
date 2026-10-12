@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\RepackViolationsException;
+use MissionGaming\Tactician\Repack\Internal\LeftoverRecolourer;
 use MissionGaming\Tactician\Repack\Internal\LoadPlanner;
 use MissionGaming\Tactician\Repack\Internal\RepackAuditor;
 use MissionGaming\Tactician\Repack\Internal\SessionPacker;
@@ -26,15 +27,19 @@ use MissionGaming\Tactician\Repack\Internal\StepBudget;
  * decided first (capacity- and pin-aware, weighted between consolidation
  * and early fill), each session is then packed against its contiguity
  * targets by exact search, and a bounded greedy-plus-repair fallback
- * covers what exact search cannot reach. Properness — no participant
- * twice at one position, pins immovable — is never traded; contiguity is
- * satisfied or reported, never silently relaxed.
+ * covers what exact search cannot reach. When an event is still unplaced
+ * after that, a last placement step moves placed events to make room for
+ * it, across sessions: placing an event comes before contiguity, whose
+ * breaks are reported. Properness — no participant twice at one
+ * position, pins immovable — is never traded; contiguity is satisfied or
+ * reported, never silently relaxed.
  *
  * Deterministic: same input, same output, independent of input list
  * order (events are ordered internally by their caller-supplied ids and
  * nothing else). Pure: no clock reads, no I/O, no persistence. Bounded:
- * every search spends from the options' step budget, and the outcome says
- * whether the budget stopped one (RepackOutcome::isBudgetExhausted()).
+ * every search spends from the options' step budget (the last placement
+ * step from a budget of its own of the same size), and the outcome says
+ * whether a budget stopped one (RepackOutcome::isBudgetExhausted()).
  *
  * A shape-only grid is repacked exactly as the instant-based grid of the
  * same shape is: positions are all the algorithm reads. The assignments
@@ -70,8 +75,15 @@ final readonly class ScheduleRepacker
      * An event the planner gave to one session can end in another: what
      * a session's packing leaves over, and what the planner could give to
      * no session, is put at the first position, in grid order, that has
-     * room and both participants free, and is unplaced with the reason
-     * NoSlotAvailable when there is none.
+     * room and both participants free. When an event is still unplaced
+     * after that, the last placement step moves placed events along
+     * alternating paths, and exchanges one placed event for one unplaced
+     * event where that lets a further one in, until no move places one
+     * more; it is offered the events dropped for an over-capacity
+     * participant too. A move that does not place one more event is taken
+     * back, so an outcome with nothing unplaced never reaches this step.
+     * An event still unplaced has the reason NoSlotAvailable only when no
+     * position has room with both its participants free.
      *
      * @throws RepackViolationsException Only when the options opted into
      *                                   throwOnViolations and the outcome
@@ -210,16 +222,18 @@ final readonly class ScheduleRepacker
         // rejections with that reason re-enter the sweep alongside packer
         // leftovers; deliberate over-capacity drops do not, because their
         // absence is what makes the CapacityExceeded arithmetic true.
-        $unplaced = [];
+        /** @var array<int, UnplacedEvent> $dropped Event index => its over-capacity drop */
+        $dropped = [];
         $eventIndexById = array_flip($eventIds);
         foreach ($plan->unplaced as $planUnplaced) {
             if ($planUnplaced->getReason() === UnplacedReason::NoSlotAvailable) {
                 $leftovers[] = $eventIndexById[$planUnplaced->getEventId()];
                 continue;
             }
-            $unplaced[] = $planUnplaced;
+            $dropped[$eventIndexById[$planUnplaced->getEventId()]] = $planUnplaced;
         }
         sort($leftovers);
+        $stillLeft = [];
         foreach ($leftovers as $eventIndex) {
             $position = $this->firstFreePosition(
                 $eventIndex,
@@ -231,11 +245,34 @@ final readonly class ScheduleRepacker
                 $capacityPerSlot
             );
             if ($position === null) {
-                $unplaced[] = new UnplacedEvent($eventIds[$eventIndex], UnplacedReason::NoSlotAvailable);
+                $stillLeft[] = $eventIndex;
                 continue;
             }
             $positions[$eventIndex] = $position;
         }
+
+        // Last resort, reached only when an event is still unplaced: move
+        // placed events along alternating paths to open a position for
+        // it. The over-capacity drops are offered too: a participant can
+        // never hold more positions than it has free, so placing one only
+        // changes which of its events is the one that does not fit. The
+        // step has a budget of its own, of the same size, so that a run
+        // whose earlier searches spent the whole budget still gets one.
+        $recolourBudget = new StepBudget($options->stepBudget);
+        if ($stillLeft !== [] || $dropped !== []) {
+            $stillLeft = (new LeftoverRecolourer($recolourBudget))->place(
+                $edges,
+                $positions,
+                [...$stillLeft, ...array_keys($dropped)],
+                $pinSlots,
+                $pinCounts,
+                $slotCounts,
+                $capacityPerSlot,
+                $plan->leftOutAtLeast
+            );
+        }
+
+        $unplaced = $this->label($stillLeft, $dropped, $plan->shortfalls, $edges, $eventIds, $participants);
 
         usort(
             $unplaced,
@@ -282,13 +319,108 @@ final readonly class ScheduleRepacker
             );
         }
 
-        $outcome = new RepackOutcome($assignments, $unplaced, $violations, $budget->stoppedASearch());
+        $outcome = new RepackOutcome(
+            $assignments,
+            $unplaced,
+            $violations,
+            $budget->stoppedASearch() || $recolourBudget->stoppedASearch()
+        );
 
         if ($options->throwOnViolations && !$outcome->isClean()) {
             throw new RepackViolationsException($outcome);
         }
 
         return $outcome;
+    }
+
+    /**
+     * The unplaced list: every event still without a position, with its
+     * reason.
+     *
+     * While every over-capacity drop is still unplaced, the drops keep
+     * the reasons the planner gave them and every other event has the
+     * reason NoSlotAvailable. When the last placement step placed a
+     * drop, the reasons are given again from the events still unplaced,
+     * by the planner's rule: events between two over-capacity
+     * participants first, as many as can count towards both shortfalls,
+     * then for each participant still short (largest shortfall first) its
+     * remaining events, highest event id first, until its shortfall is
+     * covered. A participant never holds more positions than it has free,
+     * so it always has enough events still unplaced.
+     *
+     * @param list<int> $stillLeft Event indexes, ascending
+     * @param array<int, UnplacedEvent> $dropped Event index => the planner's over-capacity drop
+     * @param array<int, int> $shortfalls Over-capacity participant index => shortfall
+     * @param array<int, array{int, int}> $edges
+     * @param array<string> $eventIds
+     * @param array<Participant> $participants
+     *
+     * @return list<UnplacedEvent> In ascending event id order
+     */
+    private function label(
+        array $stillLeft,
+        array $dropped,
+        array $shortfalls,
+        array $edges,
+        array $eventIds,
+        array $participants
+    ): array {
+        $left = array_fill_keys($stillLeft, true);
+        $dropsAllLeft = array_diff_key($dropped, $left) === [];
+
+        /** @var array<int, int> $overCapacityFor Event index => the participant it is unplaced for */
+        $overCapacityFor = [];
+        if (!$dropsAllLeft) {
+            $candidates = [];
+            foreach ($stillLeft as $eventIndex) {
+                $candidates[$eventIndex] = $edges[$eventIndex];
+            }
+
+            $need = $shortfalls;
+            foreach (LoadPlanner::sharedDrops($candidates, $shortfalls) as $eventIndex) {
+                [$a, $b] = $edges[$eventIndex];
+                $overCapacityFor[$eventIndex] = [$shortfalls[$b], $a] > [$shortfalls[$a], $b] ? $b : $a;
+                --$need[$a];
+                --$need[$b];
+            }
+
+            $short = array_keys($shortfalls);
+            usort($short, static fn(int $x, int $y): int => [$shortfalls[$y], $x] <=> [$shortfalls[$x], $y]);
+            foreach ($short as $pid) {
+                foreach (array_reverse($stillLeft) as $eventIndex) {
+                    if ($need[$pid] < 1) {
+                        break;
+                    }
+                    [$a, $b] = $edges[$eventIndex];
+                    if (isset($overCapacityFor[$eventIndex]) || ($a !== $pid && $b !== $pid)) {
+                        continue;
+                    }
+                    $overCapacityFor[$eventIndex] = $pid;
+                    $other = $a === $pid ? $b : $a;
+                    --$need[$pid];
+                    if (($need[$other] ?? 0) > 0) {
+                        --$need[$other];
+                    }
+                }
+            }
+        }
+
+        $unplaced = [];
+        foreach ($stillLeft as $eventIndex) {
+            if ($dropsAllLeft && isset($dropped[$eventIndex])) {
+                $unplaced[] = $dropped[$eventIndex];
+            } elseif (isset($overCapacityFor[$eventIndex])) {
+                $unplaced[] = new UnplacedEvent(
+                    $eventIds[$eventIndex],
+                    UnplacedReason::ParticipantOverCapacity,
+                    $participants[$overCapacityFor[$eventIndex]]
+                );
+            } else {
+                $unplaced[] = new UnplacedEvent($eventIds[$eventIndex], UnplacedReason::NoSlotAvailable);
+            }
+        }
+
+        return $unplaced;
     }
 
     /**

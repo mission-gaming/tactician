@@ -25,9 +25,10 @@ final readonly class CapacityExceeded implements RepackViolation
     /**
      * @param Participant|null $participant The participant whose events do not fit, or
      *                                      null when it is the grid that is too small
-     * @param int $demand How many movable events need a place: the participant's, or all
-     *                    of them. Events already left out for an over-capacity
-     *                    participant are not counted again
+     * @param int $demand How many movable events need a place: all of the participant's,
+     *                    counted before any event is dropped, or, for the grid, all
+     *                    of them less the events already left out for over-capacity
+     *                    participants
      * @param int $capacity How many of them the scope can take: the positions the
      *                      participant is not pinned at, or the places for an event on the
      *                      whole grid (positions times capacity per slot, less the pinned
@@ -76,10 +77,12 @@ final readonly class CapacityExceeded implements RepackViolation
 
     /**
      * How many events cannot fit in this scope: demand less capacity, and
-     * never below 0. For a participant, the repacker leaves exactly this
-     * many of its events unplaced with the reason ParticipantOverCapacity
-     * and the participant named; for the grid, at least this many events
-     * are unplaced.
+     * never below 0. For a participant, the repacker leaves at least this
+     * many of its events unplaced with the reason ParticipantOverCapacity,
+     * each naming it or, for an event between two over-capacity
+     * participants, the other one; it reports every participant whose
+     * events outnumber its free positions. For the grid, at least this
+     * many events are unplaced.
      */
     public function getShortfall(): int
     {

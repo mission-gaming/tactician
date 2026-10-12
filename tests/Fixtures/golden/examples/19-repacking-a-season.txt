@@ -45,5 +45,5 @@ violations: 3
 false
 
 == Without the deeper final session ==
-Placed: 7
-Unplaced: 3
+Placed: 8
+Unplaced: 2
