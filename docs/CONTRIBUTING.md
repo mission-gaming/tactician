@@ -175,19 +175,71 @@ counts the change as tested when a test fails and as untested when they all
 still pass. The score is the share that was tested. The run prints every
 untested change with its diff.
 
-Read the score with two things in mind. The runner counts a change whose
+Read the score with three things in mind. The runner counts a change whose
 tests ran into its time limit as tested, although no test failed on it: a
 change that makes a search run for ever is "noticed" only in that sense.
-The summary script therefore also gives the share that a failing test
-noticed. And leave the number of processes to `--parallel`, which the
-script passes: with `--processes` added, the test process of every change
-fails to start, and the run reports every change as tested, a score of
-100% that means nothing.
+It counts a change whose test process ran out of memory in the same way
+(see below). The summary script therefore also gives the share that a
+failing test noticed, which leaves both out. And leave the number of
+processes to `--parallel`, which the script passes: with `--processes`
+added, the test process of every change fails to start, and the run reports
+every change as tested, a score of 100% that means nothing.
+
+The test process of every change has a memory limit of one gigabyte. A
+change can make the code allocate without end (a loop that counts the wrong
+way and adds to an array on every pass), and the runner's time limit for a
+test process, the duration of the first, unmutated run of the tests and a
+fifth more, comes too late for that: on a CI runner such a process took all
+the memory there was, and the job ended with a runner shutdown and no
+summary. A process that reaches the limit ends with PHP's fatal error and
+writes a line to `build/mutation-memory.log`; the summary script reads that
+file and says how many changes ended that way and in which source files.
+A line names the source file and the changed copy of it that the runner
+wrote (a file in `vendor/pestphp/pest-plugin-mutate/.temp/mutations/`, to
+compare with the source); that name is not the ID the run prints for an
+untested change, which `--id` takes. The count is not the same on every
+run of the same source: the tests of a change run in random order and stop
+at the first failure, so a change that one test fails on and another runs
+out of memory on can end either way (one change of `IntervalPlacement`
+does; the same holds for the time limit).
+
+The limit comes with `composer mutation`, and with nothing else. The command
+runs `tests/bin/run-mutation.php`, which writes a one-line PHP configuration
+file to `build/mutation-ini/` and starts Pest with that directory added to
+the environment variable `PHP_INI_SCAN_DIR`. The file names
+`tests/mutation-memory.php` as `auto_prepend_file`, so PHP runs it before
+the script of every process of the run: in the test process of a change it
+sets the limit, whatever `memory_limit` PHP is configured with, in the
+process that starts the run it starts the log afresh, and in any other it
+does nothing. Three things follow:
+
+- A run started in another way, `vendor/bin/pest --mutate` typed directly,
+  has no limit and writes no log, as before there was one. The summary
+  script says so for such a run ("The test processes of this run had no
+  memory limit"), where a run that had the limit says how many changes
+  ended there, or that none did. Delete a `build/mutation-memory.log` that
+  an earlier run left before you summarise a run of that kind: nothing in
+  it removes the file.
+- A `PHP_INI_SCAN_DIR` of your own is kept: the directory is added after
+  what the variable holds, and when it is not set, after the directory PHP
+  was built with. A file of yours that sets `auto_prepend_file` loses to
+  this one for the run.
+- It is used on Linux (the CI runners) and on macOS. Nothing in it is
+  particular to them, but it has not been run on Windows. Where the
+  configuration file cannot be written, the run goes on without the limit
+  and its summary says that it had none.
+
+The environment variable `TACTICIAN_MUTATION_MEMORY_LIMIT` replaces the
+limit (`512M`, `2G`), and `TACTICIAN_MUTATION_MEMORY_LOG` names another file
+for the log; give that file to the summary script as its fourth argument. A
+change that ends at the limit is not a defect of the library: a search that
+is unbounded once its bound is removed is as designed. A search that is
+unbounded for some input of the unchanged code would be one.
 
 It is not part of the gate and it enforces no minimum. A run over both
 directories takes hours, because every one of some 3,400 changes starts a
 test process of its own, and a change that makes a search run for ever is
-only stopped by a timeout; `src/Repack/Internal` alone takes a few minutes
+only stopped by the time limit; `src/Repack/Internal` alone takes a few minutes
 on a fast machine. Some changes cannot be noticed at all, because they
 change nothing a caller can see (the order in which two equal candidates
 are tried, a guard that cannot be reached).
@@ -208,10 +260,10 @@ through and what it found in them, and the shard is then to be split. Read
 the summaries when you change generation or repack logic: an untested
 change in the lines you touched is a test to write.
 
-The scores have not been confirmed in CI yet. The workflow runs on the
-default branch only, so its first run is started by hand there after the
-change that adds it is merged; the size of the shards rests on one local
-measurement until then.
+The weekly run is of the default branch. A maintainer can start the
+workflow for another branch, to see what a change to the tests or to the
+workflow does before it is merged:
+`gh workflow run "Mutation testing" --ref <branch>`.
 
 The run does not use the whole suite. Every change starts a test process
 of its own, so the tests are the ones named in `phpunit.mutation.xml`: the
