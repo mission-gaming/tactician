@@ -171,6 +171,45 @@ describe('StructuralOrder', function (): void {
             ->and(array_slice($order, 4))->toBe([2, 4, 6]);
     });
 
+    it('stops splitting the classes once it is past its work limit, and leaves them in the order of the numbers', function (): void {
+        // A line of nine. Splitting to the end takes a pass for each step
+        // from the ends to the middle: 4 first, then 3 and 5, 2 and 6, 1
+        // and 7, and the ends. With no work to do, only the pass that was
+        // under way when the limit was passed is made: the two events of
+        // 2 to 6 are both against a participant with two events, those of
+        // 1 and 7 are not, and the ends have one event. A line of a
+        // thousand would otherwise take five hundred passes over all of
+        // it, whatever the limit
+        $line = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8]];
+
+        expect(StructuralOrder::of(9, $line, [], 1))->toBe([2, 3, 4, 5, 6, 1, 7, 0, 8])
+            ->and(StructuralOrder::of(9, $line, [])[0])->toBe(4);
+    });
+
+    it('orders a round robin of forty with one round played within its work limit', function (): void {
+        // The hardest request of that size for the ordering: everybody has
+        // the same events and the same pin, and no two can be exchanged,
+        // so each participant left is tried at every step. Within the
+        // limit the order is the one unlimited work gives, and so does not
+        // depend on the numbers; at 600,000 opponents looked at, which the
+        // limit once was, it fell back to the numbers
+        $events = [];
+        $pins = [];
+        for ($i = 0; $i < 40; ++$i) {
+            for ($j = $i + 1; $j < 40; ++$j) {
+                $round = $j === 39 ? (2 * $i) % 39 : ($i + $j) % 39;
+                if ($round === 0) {
+                    $pins[] = [$i, $j, 0, 0];
+                } else {
+                    $events[] = [$i, $j];
+                }
+            }
+        }
+        [$events, $pins] = renumbered(40, $events, $pins, 7);
+
+        expect(StructuralOrder::of(40, $events, $pins))->toBe(StructuralOrder::of(40, $events, $pins, PHP_INT_MAX));
+    });
+
     it('orders no participants as nothing, and participants with no events by their numbers', function (): void {
         expect(StructuralOrder::of(0, [], []))->toBe([])
             ->and(StructuralOrder::of(3, [], []))->toBe([0, 1, 2]);

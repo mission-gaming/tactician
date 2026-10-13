@@ -45,25 +45,34 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * (two descriptions can be equal for participants that are not alike),
  * nor past the work limit below.
  *
- * The work is bounded by a count of its own (WORK_LIMIT, in opponents
- * looked at), not by a step budget, so the order never depends on the
- * caller's budget; past the limit no further participant is tried, and
- * the classes still left are put in id order as they stand.
+ * The work is bounded by a count of its own (WORK_LIMIT: one for every
+ * participant looked at and one for each of its opponents), not by a step
+ * budget, so the order never depends on the
+ * caller's budget; past the limit no class is split further and no
+ * further participant is tried, and the classes still left are put in id
+ * order as they stand. The order of such a request does depend on its
+ * ids, and so can its outcome.
  *
  * @internal
  */
 final class StructuralOrder
 {
     /**
-     * How many opponents the refinement may look at before the classes
-     * still left are put in id order: a limit of its own, which no budget
-     * lifts. A round robin of 40 with five rounds played, in which every
-     * participant has to be tried once, needs about 500,000; one with a
-     * single round played, in which everybody is alike and no two can
-     * simply be exchanged, would need twice the limit, and its participants
-     * are put in id order from where the limit is reached.
+     * How much the refinement may look at before the classes still left
+     * are put in id order, counted as one for a participant and one for
+     * each of its opponents and pins on every pass: a limit of its own,
+     * which no budget lifts. It is sized for the hardest request of 40 participants there
+     * is for this ordering: a complete round robin with a single round
+     * played, in which everybody is alike and no two can simply be
+     * exchanged, so that every participant left has to be tried at every
+     * step. That one needs about 1,300,000 (under a tenth of a second on
+     * the machine it was measured on); with 36 participants it needs
+     * 870,000, with 44 it needs 1,900,000 and is past the limit, and its
+     * participants are then put in id order from where the limit is
+     * reached. Rounds played beyond the first tell the participants apart
+     * and need far less.
      */
-    public const int WORK_LIMIT = 600_000;
+    public const int WORK_LIMIT = 1_500_000;
 
     /** @var array<int, array<int, int>> Participant => opponent => movable events between them */
     private array $opponents;
@@ -98,7 +107,7 @@ final class StructuralOrder
      * @param int $count How many participants there are, numbered from 0 in id order
      * @param array<int, array{int, int}> $events The movable events, as pairs of those numbers
      * @param array<int, array{int, int, int, int}> $pins The pinned events: [participant, participant, session, slot]
-     * @param int $workLimit Opponents looked at before the rest falls to id order; the repacker always
+     * @param int $workLimit Work done before the rest falls to id order; the repacker always
      *                       passes WORK_LIMIT, and the unit tests pass a smaller one to see the fallback
      *
      * @return list<int> The participants' numbers, in structural order
@@ -144,6 +153,8 @@ final class StructuralOrder
             sort($at);
             $keys[$pid] = sprintf('%010d|', $maxDegree - $degree[$pid]) . implode(',', $at);
         }
+        // Cut short by the work limit or not, these classes are in an
+        // order the ids had no part in; the loop below settles the rest
         [$classes] = $this->refine(self::split([range(0, $this->count - 1)], $keys));
 
         while (count($classes) < $this->count) {
@@ -168,7 +179,12 @@ final class StructuralOrder
                 $rest = array_values(array_filter($class, static fn(int $pid): bool => $pid !== $first));
                 $tried = $classes;
                 array_splice($tried, $at, 1, [[$first], $rest]);
-                [$refined, $description] = $this->refine($tried);
+                [$refined, $description, $finished] = $this->refine($tried);
+                if (!$finished) {
+                    // The limit was reached inside this trial: what it
+                    // describes is not as far as the others were taken
+                    break;
+                }
                 if ($best === null || strcmp($description, $bestDescription) < 0) {
                     $best = $refined;
                     $bestDescription = $description;
@@ -193,18 +209,27 @@ final class StructuralOrder
 
     /**
      * Split the classes by what their members have against each class,
-     * until no class splits.
+     * until no class splits or the work limit is passed. A long chain of
+     * participants takes one pass for every two of them, so without the
+     * limit here the work of a single call grew with the square of the
+     * request.
      *
      * @param list<list<int>> $classes
      *
-     * @return array{list<list<int>>, string} The classes, and their description: for each class in
-     *                                        order its size and what each of its members has against
-     *                                        every class, which names no participant
+     * @return array{list<list<int>>, string, bool} The classes; their description (for each class in
+     *                                              order its size and what each of its members has
+     *                                              against every class, which names no participant);
+     *                                              and whether no class splits any more, without which
+     *                                              the description is empty
      */
     private function refine(array $classes): array
     {
         $positions = count($this->pins) + 1;
         while (true) {
+            if ($this->work > $this->workLimit) {
+                return [$classes, '', false];
+            }
+
             $classOf = [];
             foreach ($classes as $at => $class) {
                 foreach ($class as $pid) {
@@ -221,7 +246,7 @@ final class StructuralOrder
                 foreach ($this->pinned[$pid] as [$number, $other]) {
                     $seen[] = -1 - ($classOf[$other] * $positions + $number);
                 }
-                $this->work += count($seen);
+                $this->work += count($seen) + 1;
                 sort($seen);
                 $keys[$pid] = implode(',', $seen);
             }
@@ -233,7 +258,7 @@ final class StructuralOrder
                     $description[] = count($class) . ':' . $keys[$class[0]];
                 }
 
-                return [$classes, implode('|', $description)];
+                return [$classes, implode('|', $description), true];
             }
             $classes = $refined;
         }
