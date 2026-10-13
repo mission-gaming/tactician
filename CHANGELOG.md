@@ -13,6 +13,105 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Output change (fix)
+
+- **Mirrored legs alternate: `MirroredLegStrategy` reverses the roles in the
+  even-numbered legs only.** It reversed them in every leg after the first,
+  so a pair that met three times was split 1:2 and a pair that met four
+  times 1:3, and the imbalance grew with every leg. The odd-numbered legs
+  now have the roles of the first leg and the even-numbered legs have them
+  reversed. A pair's meetings are split as evenly as their number allows
+  (level over an even number of legs, one apart over an odd number), an even
+  number of legs ends with every participant first-named as often as
+  second-named, and an odd number ends as a single leg does.
+
+  **Who is affected.** A round robin of three or more legs under
+  `MirroredLegStrategy`, which is the default leg strategy, so
+  `new RoundRobinOptions(legs: 3)` and `['legs' => 3]` are included: with
+  either role assignment, with or without constraints, a `Randomizer` or
+  backtracking. Schedules of one or two legs are byte for byte what they
+  were. So is every schedule under `RepeatedLegStrategy` or
+  `ShuffledLegStrategy`, and every two-legged elimination tie.
+
+  **What changes.** In the third leg, and in every odd-numbered leg after
+  it, each event has its two participants in the other order. Which pair
+  meets in which round does not change, and neither do the byes, the round
+  numbers, the metadata or the number of events. Before and after for four
+  participants `1` to `4` over three legs, with the default options (rounds
+  1 to 6, the first two legs, are the same in both):
+
+  ```
+            before        after
+  R7:       4-1 3-2       1-4 2-3
+  R8:       1-2 3-4       2-1 4-3
+  R9:       3-1 2-4       1-3 4-2
+  ```
+
+  Before, 1 met 4 as `1-4`, `4-1`, `4-1`; after, as `1-4`, `4-1`, `1-4`.
+  The same field over four legs had one participant first-named in nine
+  events in a row and ended 6 apart; it now repeats a role three times at
+  most and ends level.
+
+  **What to check (migration).**
+  - A schedule of three or more mirrored legs that was generated before and
+    is stored: it is not regenerated identically. Keep the stored events if
+    they are published; regenerate if the even split is wanted. Anything
+    that compares a fresh schedule with a stored one, or with its hash,
+    for such options will see a difference.
+  - Code that read "leg 2 and later" as "roles reversed": the rule is now
+    "even-numbered legs".
+  - A `RoleBalanceConstraint` or `ConsecutiveRoleConstraint` on such a
+    schedule sees the new roles. What that does depends on the scheduler:
+    - **Without a `Randomizer`**, a limit that two mirrored legs satisfy is
+      now satisfied by any number of them, so a configuration that failed
+      with an `IncompleteScheduleException` at four mirrored legs (a role
+      balance limit of 3 in a field of even size, for example) can now
+      succeed. None is known that succeeded and now fails: the tests compare
+      the old roles with the new for both constraints at every limit from 1
+      to 5, in fields of 2 to 8, over three and four legs and with either
+      role assignment.
+    - **With a `Randomizer`**, a configuration can also fail where it
+      succeeded. The scheduler lays the second and third legs out from the
+      same order, so the third leg used to repeat the second and now meets
+      it as two mirrored legs of a scheduler without a `Randomizer` meet,
+      and a role can repeat more often there. Five participants over three
+      legs with `ConsecutiveRoleConstraint::homeAway(3)` and the default
+      roles completed in 0.2.x and now throw an
+      `IncompleteScheduleException`, for every seed tried. Generate such a
+      configuration again before relying on it: it fails loudly if the
+      limit no longer holds.
+  - To keep the old roles, pass a leg strategy of your own that reverses
+    every leg after the first. `LegStrategyInterface` has two methods:
+    `generateEventForLeg()` returns the pairing as given for leg 1 and
+    reversed for every other leg, and `planLegs()` states what
+    `MirroredLegStrategy` states. The tests hold such a strategy to the
+    "before" column above.
+  - A leg strategy of your own that states `rolesMirrorAcrossLegs: true` is
+    not affected. The flag is documented as "reverses the roles in the
+    even-numbered legs" from this release; the library carries it and acts
+    on nothing in it.
+
+  With a scheduler that holds a `Randomizer`, only the first leg is laid
+  out from the shuffled field, as before, so the later legs are not the
+  first leg reversed. They alternate among themselves: leg 3 is leg 2
+  reversed. A pair is then one apart over an odd number of legs and level or
+  two apart over an even number.
+
+  Six golden fixtures change, in their sections for three and four legs and
+  in the rounds of the third leg only (their sections for one and two legs
+  are unchanged): `round-robin/mirrored-unseeded.txt`,
+  `round-robin/mirrored-seed-1.txt`, `round-robin/mirrored-seed-42.txt`,
+  `round-robin/mirrored-seed-1337.txt`,
+  `round-robin/balanced-mirrored-unseeded.txt` and
+  `round-robin/balanced-mirrored-seed-42.txt`.
+
+  The documents that described the old behaviour as the contract are
+  corrected with it: the docblocks of `MirroredLegStrategy`,
+  `LegPlanContribution`, `RoundRobinPlan` and `RoleBalanceConstraint`, the
+  tables under "Role-Based Constraints" and "Legs after the first" in the
+  usage guide, the architecture document, the roadmap's limitations and the
+  role assignment design note.
+
 ### Added
 
 - **A schedule keeps its entrants: `Schedule::getEntrants()`.** It returns
@@ -344,6 +443,30 @@ heading **Output change (fix)**.
   property tests now hold every leg strategy, at one to three legs and
   every field size from 2 to 16, to the same schedule on every run from the
   same plain data, with and without a seeded scheduler.
+
+- **A shard of the `Mutation testing` workflow is no longer ended by a
+  runner shutdown before it reports.** Tooling only: nothing a consumer
+  installs changes. Some changes the mutation runner makes turn a counting
+  loop into one that never ends and adds to an array on every pass (in
+  `SessionPacker` and `ContiguityTargets`, a `++$slot` that becomes
+  `--$slot`). The runner stops a test process at a time limit only, and such
+  a process took all the memory of a CI runner before that, so the job ended
+  with "The runner has received a shutdown signal" and no summary. The test
+  process of every change now has a memory limit of one gigabyte
+  (`TACTICIAN_MUTATION_MEMORY_LIMIT` replaces it): a process that reaches it
+  ends with PHP's fatal error, the runner counts the change as tested and
+  goes on, and the process writes a line to `build/mutation-memory.log`. The
+  summary of a run says how many changes ended that way and in which source
+  files, and leaves them out of the share that a failing test noticed, as it
+  does for the changes that ran into the time limit. The limit comes with
+  `composer mutation`: the command now runs `tests/bin/run-mutation.php`,
+  which adds a directory to `PHP_INI_SCAN_DIR` (a value of your own is kept)
+  so that PHP runs `tests/mutation-memory.php` before the script of every
+  process of the run. Composer's autoloader does not load that file, and
+  `composer.json`'s autoload sections are unchanged. A run started as
+  `vendor/bin/pest --mutate` has no limit, as before, and its summary says
+  so. None of these changes shows a defect in the library: each removes the
+  bound of a loop that is bounded as written.
 
 ## [0.2.3] - 2026-10-13
 

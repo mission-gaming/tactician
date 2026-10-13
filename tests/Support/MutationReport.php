@@ -19,7 +19,7 @@ namespace MissionGaming\Tactician\Tests\Support;
  * It reads what is printed and nothing else: a run that printed no score
  * has none ({@see MutationReport::$score} is null), and the summary says so.
  *
- * Two things the printed score does not say, which the summary adds:
+ * Three things the printed score does not say, which the summary adds:
  *
  * - The runner counts a mutation whose tests ran into the time limit as
  *   tested: its score is (tested + timeout) / all. A change that makes a
@@ -29,6 +29,13 @@ namespace MissionGaming\Tactician\Tests\Support;
  *   It has printed one character per finished mutation by then, and the
  *   summary counts those: how far the run got and what it had found, with
  *   no score, because a part of a run has none.
+ * - The runner counts a mutation whose test process ended at its memory
+ *   limit as tested too, and prints nothing that tells it from one a test
+ *   failed on. Those processes write a log of their own
+ *   ({@see MutationMemoryLimit}); given that log, the summary says how many
+ *   there were and leaves them out of the share a failing test noticed. A
+ *   run that left no log had no memory limit, and the summary says that
+ *   instead: "none ended at the limit" would be untrue of it.
  */
 final readonly class MutationReport
 {
@@ -40,16 +47,26 @@ final readonly class MutationReport
      * @param int|null $created How many mutations the run said it created; null when it did not get that far
      * @param array{tested: int, untested: int, timeout: int, uncovered: int} $progress
      *     The mutations the run had finished, counted in the one character it prints for each as it goes
+     * @param array<string, int>|null $memoryLimited Source file => mutations whose test process ended at its
+     *     memory limit, most first; null when the run left no log of those processes, which is a run
+     *     whose test processes had no memory limit
      */
     private function __construct(
         public ?string $score,
         public array $counts,
         public array $survivors,
         public ?int $created,
-        public array $progress
+        public array $progress,
+        public ?array $memoryLimited
     ) {}
 
-    public static function fromOutput(string $output): self
+    /**
+     * @param string $output What the run printed
+     * @param string|null $memoryLog What its test processes wrote to {@see MutationMemoryLimit::LOG}; an empty
+     *     string for a run in which no process ended at the limit, and null for a run that left no such
+     *     file, which is one that was not started through `composer mutation` and had no limit
+     */
+    public static function fromOutput(string $output, ?string $memoryLog = null): self
     {
         $lines = explode("\n", str_replace("\r", '', (string) preg_replace('/\e\[[0-9;]*[A-Za-z]/', '', $output)));
 
@@ -135,7 +152,7 @@ final readonly class MutationReport
             $survivors[] = $current;
         }
 
-        return new self($score, $counts, $survivors, $created, $progress);
+        return new self($score, $counts, $survivors, $created, $progress, $memoryLog === null ? null : MutationMemoryLimit::read($memoryLog));
     }
 
     /**
@@ -169,6 +186,7 @@ final readonly class MutationReport
                     $this->progress['uncovered'] > 0 ? ", {$this->progress['uncovered']} uncovered" : ''
                 );
             }
+            $markdown[] = $this->memorySentence() . "\n";
 
             return implode("\n", $markdown);
         }
@@ -182,17 +200,21 @@ final readonly class MutationReport
         $markdown[] = 'Mutations: ' . implode(', ', $counts) . ".\n";
         $markdown[] = "A tested mutation is a change to the source that made a test fail. An untested one is a change that no test noticed. The score is reported, not enforced: this job does not fail on it.\n";
 
-        // The second figure, always: without a timeout it is the score
+        $markdown[] = $this->memorySentence() . "\n";
+
+        // The second figure, always: without a timeout and without a
+        // process that ended at its memory limit it is the score
         $all = array_sum($this->counts);
+        $noticed = max(0, ($this->counts['tested'] ?? 0) - array_sum($this->memoryLimited ?? []));
         if ($all > 0) {
             $markdown[] = sprintf(
                 "%sA failing test noticed %d of %d mutations, which is %s%%.\n",
                 ($this->counts['timeout'] ?? 0) > 0
                     ? 'The score counts a mutation whose tests ran into the time limit as tested: no test failed on it, the tests were cut off. '
                     : '',
-                $this->counts['tested'] ?? 0,
+                $noticed,
                 $all,
-                number_format(($this->counts['tested'] ?? 0) / $all * 100, 2)
+                number_format($noticed / $all * 100, 2)
             );
         }
 
@@ -232,5 +254,34 @@ final readonly class MutationReport
         }
 
         return implode("\n", $markdown);
+    }
+
+    /**
+     * How many mutations ended at the memory limit of their test process,
+     * and in which source files; or that the run had no such limit.
+     */
+    private function memorySentence(): string
+    {
+        if ($this->memoryLimited === null) {
+            return 'The test processes of this run had no memory limit: it left no memory log, which a run started with `composer mutation` does. '
+                . 'A mutation that makes the code allocate without end is then stopped at the time limit only, if the machine lasts that long, and none is counted here.';
+        }
+
+        $count = array_sum($this->memoryLimited ?? []);
+        if ($count === 0) {
+            return 'No mutation ended at the memory limit of its test process.';
+        }
+
+        $files = [];
+        foreach ($this->memoryLimited ?? [] as $file => $mutations) {
+            $files[] = "`{$file}` ({$mutations})";
+        }
+
+        return sprintf(
+            '%d %s at the memory limit of the test process: %s. The runner counts such a mutation as tested, although no test failed on it: PHP ended the process.',
+            $count,
+            $count === 1 ? 'mutation ended' : 'mutations ended',
+            implode(', ', $files)
+        );
     }
 }
