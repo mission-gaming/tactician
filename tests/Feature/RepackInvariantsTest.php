@@ -884,40 +884,43 @@ describe('Repack step budget flag', function (): void {
         }
     })->with(array_slice(array_keys(smallRepackCorpus()), 0, 40));
 
-    it('gives the last placement step a budget of its own, so a run whose searches spent theirs still places every event', function (): void {
-        // Seven events on three sessions of two slots, with two pins. Five
-        // steps do not carry the planning and packing searches through,
-        // and they leave an event over that only moving placed events can
-        // place. The last placement step does that on five steps of its
-        // own; on the steps the searches left, which is none, it could not
-        // (a complete round robin of 24 was the case here until the rounds
-        // of issue #49 made its searches end well inside the budget)
+    it('gives the steps after the packing a budget of their own, so a run whose searches spent theirs still closes a gap', function (): void {
+        // Three participants who all meet, one event to a slot, on two
+        // sessions of three slots. In one session the three events follow
+        // each other and the participant of the first and the third waits
+        // a slot; two events in one session and one in the other leave no
+        // gap. Three steps do not carry the planning and packing through,
+        // and what they leave has the gap. The search for fewer gap slots
+        // closes it on three steps of its own; on the steps the searches
+        // left, which is none, it could not.
+        //
+        // The count of placed events no longer shows the second budget (a
+        // complete round robin of 24 was the case here, and then a request
+        // of seven events): the rounds the events are ordered by are a
+        // schedule of their own, made without a step of either budget, and
+        // they are returned when the planned schedule places fewer
         $p = [];
-        for ($i = 1; $i <= 4; ++$i) {
+        for ($i = 1; $i <= 3; ++$i) {
             $p[$i] = new Participant("p{$i}", "P{$i}");
         }
         $movable = [
-            new MovableEvent('m01', $p[2], $p[4]),
-            new MovableEvent('m02', $p[1], $p[4]),
-            new MovableEvent('m03', $p[1], $p[4]),
-            new MovableEvent('m04', $p[3], $p[2]),
-            new MovableEvent('m05', $p[3], $p[4]),
-            new MovableEvent('m06', $p[3], $p[4]),
-            new MovableEvent('m07', $p[1], $p[3]),
+            new MovableEvent('a', $p[1], $p[2]),
+            new MovableEvent('b', $p[2], $p[3]),
+            new MovableEvent('c', $p[1], $p[3]),
         ];
-        $pinned = [new PinnedEvent('x0', $p[3], $p[2], 2, 0), new PinnedEvent('x1', $p[2], $p[4], 0, 1)];
 
         $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
             $movable,
-            $pinned,
-            SessionGrid::shapeOnly(3, 2, [], 3),
-            new RepackOptions(stepBudget: 5)
+            [],
+            SessionGrid::shapeOnly(2, 3, [], 1),
+            new RepackOptions(stepBudget: 3)
         ));
 
         expect($outcome->isBudgetExhausted())->toBeTrue()
             ->and($outcome->getUnplaced())->toBe([])
-            ->and($outcome->getAssignments())->toHaveCount(7);
-        assertProperness($outcome, $movable, $pinned);
+            ->and($outcome->getAssignments())->toHaveCount(3)
+            ->and($outcome->getContiguityBrokenViolations())->toBe([]);
+        assertProperness($outcome, $movable, []);
     });
 
     it('spends no budget on the last placement step when every group of participants already fills the positions it can', function (): void {
@@ -952,13 +955,18 @@ describe('Repack step budget flag', function (): void {
     });
 
     it('spends no budget on the last placement step when only the over-capacity drops are left over', function (): void {
-        // p1 has seven events for five slots, so two of them cannot be
-        // placed, and every other event is. Placing a dropped event would
-        // only leave out another of p1's, so there is nothing to search
-        // for, and a budget of 5,000 that neither the earlier phases nor
-        // the search for a placement with fewer gaps use up must not be
-        // reported as having stopped one (a search for an exchange spent
-        // every step it was given)
+        // p1 has seven events for five positions, so two of them cannot
+        // be placed, and every other event is. Placing a dropped event
+        // would only leave out another of p1's, so there is nothing to
+        // search for, and a budget of 60 that the earlier phases do not
+        // use up (they spend 47) must not be reported as having stopped a
+        // search: a search for an exchange here spends 74 steps of the
+        // second budget. The positions are five sessions of one slot, so
+        // that no schedule of them has a gap and the search for fewer gap
+        // slots, which spends from the same second budget, has nothing to
+        // do. On one session of five slots, which this request was on
+        // before that search existed, it takes some 1,400 steps, and a
+        // budget large enough for it no longer notices the exchange search
         $p = [];
         for ($i = 1; $i <= 6; ++$i) {
             $p[$i] = new Participant("p{$i}", "P{$i}");
@@ -975,13 +983,13 @@ describe('Repack step budget flag', function (): void {
             new MovableEvent('m09', $p[6], $p[4]),
             new MovableEvent('m10', $p[4], $p[1]),
         ];
-        $pinned = [new PinnedEvent('x1', $p[5], $p[4], 0, 1)];
+        $pinned = [new PinnedEvent('x1', $p[5], $p[4], 1, 0)];
 
         $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
             $movable,
             $pinned,
-            SessionGrid::shapeOnly(1, 5, [], 4),
-            new RepackOptions(stepBudget: 5_000)
+            SessionGrid::shapeOnly(5, 1, [], 4),
+            new RepackOptions(stepBudget: 60)
         ));
 
         expect($outcome->getAssignments())->toHaveCount(8)
@@ -1797,6 +1805,43 @@ describe('Repacking the same request under other ids', function (): void {
             expectSameRepack($outcome, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
         }
     })->with([8, 12, 16, 20]);
+
+    it('gives a large round robin with one round played the same counts under other participant ids', function (int $n): void {
+        // One round played is the hardest request of its size to order:
+        // everybody has the same events and the same pin, and no two
+        // participants can simply be exchanged. With the ordering's work
+        // limit at 600,000 these fell back to the ids, and a round robin
+        // of 40 on sessions of four, five and six slots came back with no
+        // gap under one naming and with nine and ten gaps under two others
+        $participants = [];
+        for ($i = 0; $i < $n; ++$i) {
+            $participants[$i] = new Participant(sprintf('t%02d', $i), "T{$i}");
+        }
+        $movable = [];
+        $pinned = [];
+        for ($i = 0; $i < $n; ++$i) {
+            for ($j = $i + 1; $j < $n; ++$j) {
+                $round = $j === $n - 1 ? (2 * $i) % ($n - 1) : ($i + $j) % ($n - 1);
+                if ($round === 0) {
+                    $pinned[] = new PinnedEvent("x{$i}-{$j}", $participants[$i], $participants[$j], 0, 0);
+                } else {
+                    $movable[] = new MovableEvent("m{$i}-{$j}", $participants[$i], $participants[$j]);
+                }
+            }
+        }
+        $slots = [];
+        for ($positions = 0; $positions < $n + 1; $positions += 4 + (count($slots) - 1) % 3) {
+            $slots[] = 4 + count($slots) % 3;
+        }
+        $grid = SessionGrid::shapeOnly(count($slots), 4, $slots, intdiv($n, 2));
+        $described = labelFreeDescription((new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid)));
+
+        foreach ([1, 2] as $shuffle) {
+            [$request] = relabelledRequest($movable, $pinned, $grid, $shuffle);
+
+            expect(labelFreeDescription((new ScheduleRepacker())->repack($request)))->toBe($described);
+        }
+    })->with([36, 40]);
 });
 
 describe('Repacking without an avoidable gap', function (): void {
