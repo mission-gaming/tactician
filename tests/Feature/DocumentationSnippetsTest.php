@@ -1070,8 +1070,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
-        // What a JSON round trip keeps of a schedule. That the entrant order is lost is a
-        // known defect (issue #53)
+        // What a JSON round trip keeps of a schedule: "The entrant list is kept, in its
+        // order". Until issue #53 was fixed the list came back in the order of first
+        // appearance in the events, which for five entrants is another order.
         'what a serialized schedule keeps' => [
             'docs/USAGE.md',
             '$restored = Schedule::fromJson($json);',
@@ -1080,16 +1081,19 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 for ($i = 1; $i <= 5; ++$i) {
                     $entrants[] = new Participant("p{$i}", "P{$i}", null, ['rating' => 1.0]);
                 }
-                $back = Schedule::fromJson((new RoundRobinScheduler())->schedule($entrants)->toJson());
+                $generated = (new RoundRobinScheduler())->schedule($entrants);
+                assert($generated->getEntrants() === $entrants);
+                $back = Schedule::fromJson($generated->toJson());
                 $ids = array_column($back->toArray()['participants'], 'id');
-                assert($ids !== ['p1', 'p2', 'p3', 'p4', 'p5']);
+                assert($ids === ['p1', 'p2', 'p3', 'p4', 'p5']);
+                assert(array_map(fn (Participant $entrant) => $entrant->getId(), $back->getEntrants()) === $ids);
                 $firstAppearance = [];
                 foreach ($back as $event) {
                     foreach ($event->getParticipants() as $participant) {
                         $firstAppearance[$participant->getId()] = true;
                     }
                 }
-                assert($ids === array_keys($firstAppearance));
+                assert($ids !== array_keys($firstAppearance));
                 assert($back->getEvents()[0]->getParticipants()[0]->getMetadataValue('rating') === 1);
                 PHP,
         ],

@@ -397,7 +397,14 @@ final class PlainDataForms
                         $events[] = self::event($random, $field);
                     }
 
-                    return new Schedule($events, self::metadata($random));
+                    // Half of them state their entrants, in an order of their own
+                    // and with those who have no event; the rest leave the list
+                    // to be read from the events
+                    return new Schedule(
+                        $events,
+                        self::metadata($random),
+                        $random->getInt(0, 1) === 1 ? $random->shuffleArray(array_values($field)) : null
+                    );
                 },
             ],
             'stage state' => [

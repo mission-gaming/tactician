@@ -3161,11 +3161,18 @@ What a round trip keeps is what JSON can hold:
 - **Metadata must be JSON data.** Scalars, lists and maps come back as they
   were. An object in metadata comes back as whatever its JSON form decodes
   to, and a float with no fraction (`1.0`) comes back as an integer.
-- **The participant list is derived.** A serialized schedule lists each
-  participant once, in the order of first appearance in the events. It is
-  not the list the schedule was generated from: the order differs, and a
-  participant in no event is absent. Store the entrant list yourself if you
-  need it again, in its order, which is the seeding.
+- **The entrant list is kept, in its order.** A schedule knows its
+  entrants: `getEntrants()` returns the list a generator was given, in that
+  order, which is the seeding where position decides. A serialized schedule
+  lists them as its `participants`, each once, in that order, an entrant in
+  no event included, and `fromArray()` and `fromJson()` give the same list
+  back. A schedule built from events alone (`new Schedule($events)`) has no
+  list to keep, so its entrants are the participants in the order they
+  first appear in the events; pass the list as the third argument,
+  `new Schedule($events, $metadata, $entrants)`, to state it. A schedule
+  that 0.2.x stored has its participants in that first-appearance order,
+  and loads with them as its entrants: the order the generator was given
+  was not written then and cannot be recovered from the data.
 
 Text that is not valid JSON is reported by a `JsonConversionException` (a
 `\JsonException`), and valid JSON or an array with an entry of the wrong

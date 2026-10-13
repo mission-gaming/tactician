@@ -15,6 +15,23 @@ heading **Output change (fix)**.
 
 ### Added
 
+- **A schedule keeps its entrants: `Schedule::getEntrants()`.** It returns
+  every participant the schedule is of, once, as a list. For a schedule
+  that `RoundRobinScheduler`, `SwissScheduler` or `PotDrawScheduler`
+  returned it is the list the scheduler was given, the same objects in the
+  same order, which is the seeding where position decides. The constructor
+  takes the list as a third, optional parameter:
+  `new Schedule($events, $metadata, $entrants)`. Left out, the entrants are
+  read from the events in the order of first appearance, which is what a
+  schedule built by hand had before. Given, the list has to hold every
+  participant of every event and no ID twice (`InvalidInputException`
+  otherwise), and may hold an entrant who is in no event. `addEvent()`
+  keeps the list and adds a participant it does not hold after it. The
+  list survives `toArray()`/`fromArray()` and JSON in its order (#53).
+- **`InvalidConfigurationReason::UnsupportedFormatVersion`**
+  (`unsupported_format_version`), for plain-data configuration that states
+  a format version the release does not read; see the entry on
+  `format_version` under Changed.
 - **`ShuffledLegStrategy` takes an integer seed, and
   `RoundRobinOptions` reads and writes it as plain data.**
   `new ShuffledLegStrategy(seed: 2026)` draws the roles of the later legs
@@ -151,6 +168,30 @@ heading **Output change (fix)**.
   `calculate($field, [...$seasonOne, ...$seasonTwo])` returned a table.
   After: it throws at the first pair that met in the same round of both
   (#53).
+- **Breaking: a serialized schedule lists its participants in entrant
+  order, and `Schedule::fromArray()` refuses a participant listed twice.**
+  A schedule did not hold the list it was generated from. `toArray()` wrote
+  the participants in the order they first appear in the events, so five
+  entrants `p1` to `p5` were written, and read back, as `p2, p5, p3, p4,
+  p1`, and the seeding, which is the order of the list, could not be
+  recovered. A schedule now keeps its entrants (see `getEntrants()` under
+  Added), and the `participants` of the array are that list in its order,
+  an entrant in no event included. The key, its shape and the events are
+  unchanged, so the form is still version 1. Who is affected: code that
+  relies on the order of `participants` in a serialized schedule, or that
+  compares a stored schedule byte for byte with a newly generated one; and
+  data whose `participants` list one ID twice, which was read with the
+  later entry winning and is now refused (`toArray()` never wrote that).
+  What to change: nothing for reading; a comparison of stored JSON with
+  new output sees the participants in another order. Schedules that 0.2.x
+  stored load unchanged, with their participants, in the order they were
+  written, as their entrants: the order the generator was given was not
+  written and cannot be recovered. Before, for the three entrants `1, 2,
+  3`: `"participants":[{"id":"2",...},{"id":"3",...},{"id":"1",...}]`.
+  After: `"participants":[{"id":"1",...},{"id":"2",...},{"id":"3",...}]`.
+  Golden fixture: `tests/Fixtures/golden/wire/schedule.json` lists its
+  three participants as `1, 2, 3` where it listed `2, 3, 1`; its events and
+  metadata are unchanged (#53).
 - **Breaking: `new Participant()` refuses an empty ID, and `new Event()`
   refuses a participant listed twice.** `Participant::fromArray()` already
   refused the empty string as an ID and the constructor took it; an event

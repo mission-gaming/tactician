@@ -46,6 +46,16 @@ by 0.2.x keeps loading. 0.3.0 writes version 1 with the key: the forms did
 not change in 0.3.0, the key was added to say so. Because 0.2.x ignored
 keys it did not know, an array written by 0.3.0 is read by 0.2.x as well.
 
+One form says more in 0.3.0 than it did, and is still version 1. The
+`participants` of a schedule are its entrants in their order, where 0.2.x
+listed the participants in the order they first appear in the events. The
+key, its type and what a reader does with it are the same: each participant
+of the schedule once, referenced by ID from the events. An array from 0.2.x
+read by 0.3.0 gives the entrants in the only order the array holds, which is
+the order a schedule built from those events has anyway; an array from 0.3.0
+read by 0.2.x gives the same events. Neither reader misreads the other's
+array, which is the test the next paragraph but one states.
+
 **A version the reader does not know is refused.** A value above the newest
 version the release reads means the array was written by a later release.
 It is refused, with the version found and the newest one read, and never

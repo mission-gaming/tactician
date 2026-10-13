@@ -11,7 +11,7 @@ limited, in the [roadmap](ROADMAP.md).
 - **Participant**: Immutable participant representation with ID, label, seed, and metadata
 - **Event**: Immutable match/event representation with participants, round, and metadata
 - **Round**: Immutable round representation with number and metadata
-- **Schedule**: Iterator/Countable collection of events with metadata support and JSON serialization
+- **Schedule**: Iterator/Countable collection of events with metadata support and JSON serialization. It keeps its entrants (`getEntrants()`): the list a generator was given, in that order, which is the seeding where position decides, or the participants in the order they first appear when a schedule is built from events alone. The list is the `participants` of the serialized form, so the order survives a round trip
 - **Result**: Immutable outcome of a played event (winner or draw, optional per-participant scores)
 
 `Participant`, `Event`, `Round` and `Result` are `readonly` classes.
