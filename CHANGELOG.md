@@ -557,7 +557,25 @@ entry on the engine fingerprint.
   a few participants have most of the events are compared with an
   exhaustive search. It is not a promise for every request: the
   repacker is still a set of bounded searches from three orders of the
-  events.
+  events. A second review looked for requests of another shape that do
+  place fewer, and found them where the pins are scattered: of 200
+  round robins of 16 to 40 participants with an eighth to a half of
+  their events pinned at positions drawn at random, on a grid with a
+  place for every event or one position to spare, 11 place fewer events
+  than 0.2.3 did, by one to three (100 place more; 55,265 events for
+  54,946 in all, with 904 gap slots for 1,557). Of 600 larger requests
+  of mixed kinds (round robins of one and two legs, of an odd number,
+  with extra events for a few participants, complete bipartite and
+  random pairings, on grids from short to roomy) two place fewer and 35
+  more, and of 7,500 small ones of the over-capacity kinds none does
+  and 41 place more. On nine of the eleven the last placement step
+  places as many as 0.2.3 or more when it is given forty times its limit
+  of position checks and fifty times its limit of exchanges, in two to
+  five times the time; on the other two (18 participants each) no limit
+  that was tried does. Where
+  the rounds played are pinned as whole rounds, which is what a season
+  under way looks like, none of 320 requests of 20 to 40 participants
+  places fewer and 144 place more.
 
   *Time* (PHP 8.4, one core, `composer bench`, fastest of three):
 
@@ -586,7 +604,19 @@ entry on the engine fingerprint.
   budget no longer makes a repack as short as it did: a round robin of
   40 with 60 pins took 0.03 seconds at a budget of one step and takes
   0.6 (and places all 720 events without a gap, where 0.2.3 placed 650
-  at that budget and 718 at the default). Requests that 0.2.3 packed
+  at that budget and 718 at the default). The second review measured
+  the 200 round robins with scattered pins named above: 0.56 seconds at
+  the median and 3.1 at most, where 0.2.3 took 0.1 and 1.4; and at a
+  budget of one step 0.28 seconds at the median and 1.4 at most, where
+  0.2.3 took 7 milliseconds and 26. The slowest request it found is two
+  legs among 29 participants (807 events and five pinned, on a grid
+  with 43 more places than events, where 14 events still find no
+  position): 4.1 seconds
+  where 0.2.3 took 0.4 for as many events placed, and 2 seconds at a
+  budget of one step, where 0.2.3 took 0.03 and placed 42 fewer. At a
+  budget of one step nearly all of that time is the laying out of the
+  events before any session is chosen, which no budget shortens.
+  Requests that 0.2.3 packed
   without a search are the ones that are slower by the most: a round
   robin of 40 with 400 of its events pinned took 0.03 seconds and takes
   0.5 (with 84 gap slots for 157), 800 events between 800 separate

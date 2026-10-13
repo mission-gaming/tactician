@@ -3046,7 +3046,17 @@ at the end (up to about a tenth of a second, only when a gap is left).
 So a budget of one step does not make a large repack short: a round
 robin of 40 with 60 events pinned took 0.6 seconds at a budget of one
 step and 1 second at the default, and placed every event without a gap
-at both. A smaller `stepBudget` trades gaps and late starts for time,
+at both. That request is a mild one. Two hundred round robins of 16 to
+40 participants with an eighth to a half of their events pinned at
+scattered positions took 0.28 seconds at the median and 1.4 at most at a
+budget of one step (0.56 and 3.1 at the default), and the slowest
+request measured, two legs among 29 participants with five events
+pinned on a grid that does not hold them all, took 2 seconds at a
+budget of one step and 4.1 at the default. Nearly all of the time at a
+budget of one step is the laying out of the events, so **`stepBudget`
+does not bound the time of a repack**: where a repack runs while a
+person waits, bound the size of the request or give the call a time
+limit of your own. A smaller `stepBudget` trades gaps and late starts for time,
 and less time than it used to. A step costs a few microseconds. Sessions
 of many slots are the slowest thing a repack does, on a request of many
 participants with few events each, whose sessions do not pack. Before a

@@ -804,6 +804,37 @@ signature changed.
     participant against three others, of which 60 fit, took 0.2 seconds
     and takes 1.5. A bound from a set of participants that every event
     touches would see that one, and was not added here.
+    A second review compared with 0.2.3 on requests made another way,
+    and "none places fewer" does not hold outside the two sets above.
+    Of 200 round robins of 16 to 40 participants with an eighth to a
+    half of their events pinned at positions drawn at random, on a grid
+    with a place for every event or one position to spare, 11 place
+    fewer events than 0.2.3 (by one to three), 100 place more, and the
+    200 place 55,265 for 54,946 with 904 gap slots for 1,557; they took
+    0.56 seconds at the median and 3.1 at most where 0.2.3 took 0.1 and
+    1.4. Of 600 larger requests of mixed kinds two place fewer and 35
+    more; of 7,500 small ones of the over-capacity kinds none does and
+    41 place more; of 320 seasons of 20 to 40 participants with whole
+    rounds pinned none does and 144 place more. The ids of those
+    requests put the events in no order, which is the order 0.2.3 took
+    them in, and on nine of the eleven the step places as many as 0.2.3
+    or more with forty times its limit of position checks and fifty
+    times its limit of exchanges, in two to five times the time: the
+    limit is a trade and those requests are where it is paid. The same
+    review made the exchange search depth-first again in a copy of the
+    source and compared: over 600 large requests the copy placed four
+    events more in all (more on three requests, fewer on one) and over
+    2,500 small ones as many on every request, so trying every single
+    exchange before a chain of two is neither needed nor harmful on
+    anything measured, which is why no test holds it. And it measured a
+    budget of one step, where nearly all the time left is the round
+    layout (decision 40), whose limit does not depend on the budget: up
+    to 2 seconds on 807 events, against 0.06 with the layout's search
+    switched off (and 780 events placed for 793). Giving the layout a
+    share of this limit in proportion to a budget below the default
+    would make `stepBudget` bound the time, and would make the rounds,
+    and so the outcome, depend on the budget where the budget flag is
+    false today; it was left as a decision to take, not taken.
 
 ## Testing
 
