@@ -158,11 +158,14 @@ final class PlainDataForms
             'elimination options' => [
                 'class' => EliminationOptions::class,
                 'kind' => self::CONFIGURATION,
-                'keys' => ['legs_per_tie', 'reseed_each_round', 'grand_final_reset'],
-                'sample' => ['legs_per_tie' => 2, 'reseed_each_round' => true, 'grand_final_reset' => false],
+                'keys' => ['legs_per_tie', 'reseed_each_round', 'grand_final_reset', 'third_place'],
+                'sample' => ['legs_per_tie' => 2, 'reseed_each_round' => true, 'grand_final_reset' => false, 'third_place' => true],
                 'read' => static fn(array $data, array $registry): object => EliminationOptions::fromArray(self::stringKeyed($data)),
+                // Half of them with a third-place tie, which writes the key
+                // `third_place`; the rest write no such key
                 'generate' => static fn(Randomizer $random, array $field): object => new EliminationOptions(
                     $random->getInt(1, 2),
+                    $random->getInt(0, 1) === 1,
                     $random->getInt(0, 1) === 1,
                     $random->getInt(0, 1) === 1
                 ),

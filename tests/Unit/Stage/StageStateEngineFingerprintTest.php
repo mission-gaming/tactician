@@ -384,6 +384,19 @@ describe('engine fingerprints', function (): void {
             ),
             'tactician:v2:single-elimination',
         ],
+        // Added with the third-place option; the rows above are as they were.
+        'single elimination with a third-place tie' => [
+            fn() => new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)),
+            'tactician:v2:single-elimination;third-place=yes',
+        ],
+        'two-legged, re-seeded single elimination with a third-place tie' => [
+            fn() => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2, reseedEachRound: true, thirdPlace: true)),
+            'tactician:v2:single-elimination;legs-per-tie=2;reseed-each-round=yes;third-place=yes',
+        ],
+        'single elimination with the third-place option stated as off' => [
+            fn() => new SingleEliminationEngine(new EliminationOptions(thirdPlace: false)),
+            'tactician:v2:single-elimination',
+        ],
         'double elimination' => [fn() => new DoubleEliminationEngine(), 'tactician:v2:double-elimination'],
         'two-legged double elimination' => [
             fn() => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
@@ -431,6 +444,7 @@ describe('engine fingerprints', function (): void {
             'legsPerTie',           // in: legs-per-tie, default 1
             'reseedEachRound',      // in for single (default false); double rejects it
             'grandFinalReset',      // in for double (default true); single does not read it
+            'thirdPlace',           // in for single: third-place, default false; double rejects it
         ])->and($constructor(StandingsCalculator::class))->toBe([
             'rankingStrategy',      // in: ranking, default 3/1/0
             'tiebreakers',          // in: tiebreakers, default none
@@ -454,7 +468,8 @@ describe('engine fingerprints', function (): void {
         $ranking = (new StandingsCalculator())->getRankingStrategy();
         assert($ranking instanceof WinDrawLossRanking);
 
-        expect([$options->legsPerTie, $options->reseedEachRound, $options->grandFinalReset])->toBe([1, false, true])
+        expect([$options->legsPerTie, $options->reseedEachRound, $options->grandFinalReset, $options->thirdPlace])
+            ->toBe([1, false, true, false])
             ->and($ranking->toArray())->toBe(['format_version' => 1, 'win' => 3.0, 'draw' => 1.0, 'loss' => 0.0])
             ->and((new StandingsCalculator())->getTiebreakers())->toBe([]);
     });

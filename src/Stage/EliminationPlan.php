@@ -15,9 +15,11 @@ use Override;
  *
  * A single elimination bracket knows its shape up front: log2(bracket
  * size) rounds and (n-1) × legsPerTie events (every tie eliminates exactly
- * one participant). Double elimination cannot know either — the grand
- * final may or may not reset — so both report null (unknowable), never a
- * fabricated value.
+ * one participant). A third-place tie adds one tie to the last round of a
+ * field of 4 or more: the rounds are the same and the events are
+ * n × legsPerTie. Double
+ * elimination cannot know either — the grand final may or may not reset —
+ * so both report null (unknowable), never a fabricated value.
  *
  * Brackets have no legs: getLegs() is null. Two-legged ties do not change
  * that — legsPerTie is a tie-structure fact exposed as getLegsPerTie(),
@@ -28,6 +30,13 @@ use Override;
  */
 final readonly class EliminationPlan implements StagePlan
 {
+    /**
+     * The smallest field the third-place option accepts. A field of 3 has
+     * one entrant who goes out before the last round, who is third without
+     * a tie; a field of 2 has no third place.
+     */
+    public const int THIRD_PLACE_MINIMUM = 3;
+
     /** @var array<Participant> */
     private array $participants;
 
@@ -39,15 +48,22 @@ final readonly class EliminationPlan implements StagePlan
      *                                         for uniqueness here
      * @param string $algorithm 'single-elimination' or 'double-elimination'; anything else is rejected
      * @param int $legsPerTie Events per knockout tie (1 or 2)
+     * @param bool $thirdPlace Whether the bracket was given the third-place option
+     *                         (EliminationOptions::$thirdPlace). Single elimination only. A
+     *                         field of 3 is accepted and has no such tie: see
+     *                         hasThirdPlaceTie()
      * @throws InvalidConfigurationException When the algorithm is unknown (reason
      *                                       `UnknownIdentifier`), legsPerTie is not 1 or 2
-     *                                       (`InvalidLegCount`), or there are fewer than 2
-     *                                       participants (`TooFewParticipants`)
+     *                                       (`InvalidLegCount`), there are fewer than 2
+     *                                       participants, or fewer than 3 with thirdPlace
+     *                                       (`TooFewParticipants`), or thirdPlace is given for
+     *                                       double elimination (`IncompatibleOptions`)
      */
     public function __construct(
         array $participants,
         private string $algorithm,
-        private int $legsPerTie = 1
+        private int $legsPerTie = 1,
+        private bool $thirdPlace = false
     ) {
         if (!in_array($algorithm, ['single-elimination', 'double-elimination'], true)) {
             throw new InvalidConfigurationException(
@@ -73,6 +89,24 @@ final readonly class EliminationPlan implements StagePlan
             );
         }
 
+        if ($thirdPlace && $algorithm !== 'single-elimination') {
+            throw new InvalidConfigurationException(
+                'A third-place tie is a single elimination option: the losers bracket of a double elimination'
+                    . ' bracket already decides third place',
+                ['algorithm' => $algorithm],
+                reason: InvalidConfigurationReason::IncompatibleOptions
+            );
+        }
+
+        if ($thirdPlace && count($participants) < self::THIRD_PLACE_MINIMUM) {
+            throw new InvalidConfigurationException(
+                'A bracket with the third-place option requires at least ' . self::THIRD_PLACE_MINIMUM . ' participants:'
+                    . ' with 2 there is no third place to decide',
+                ['participant_count' => count($participants), 'minimum_required' => self::THIRD_PLACE_MINIMUM],
+                reason: InvalidConfigurationReason::TooFewParticipants
+            );
+        }
+
         $this->participants = array_values($participants);
         $ids = [];
         foreach ($this->participants as $participant) {
@@ -93,7 +127,8 @@ final readonly class EliminationPlan implements StagePlan
     /**
      * Single elimination knows its rounds (log2 of the bracket size);
      * double elimination cannot (the grand final may reset), so it
-     * reports null rather than a fabricated count.
+     * reports null rather than a fabricated count. A third-place tie is in
+     * the last round and adds none.
      */
     #[Override]
     public function getTotalRounds(): ?int
@@ -134,9 +169,25 @@ final readonly class EliminationPlan implements StagePlan
     }
 
     /**
+     * Whether the last round of the bracket holds a third-place tie beside
+     * the final: the option was given and the field has 4 entrants or
+     * more.
+     *
+     * A field of 3 with the option has none. Its bracket has one tie in
+     * the round before the last (the top entrant has a bye there), so one
+     * entrant goes out in it and is third without playing for it.
+     */
+    public function hasThirdPlaceTie(): bool
+    {
+        return $this->thirdPlace && count($this->participants) > self::THIRD_PLACE_MINIMUM;
+    }
+
+    /**
      * Single elimination: every tie eliminates exactly one participant, so
-     * n-1 ties × legsPerTie events. Double elimination: null (the grand
-     * final may or may not reset).
+     * n-1 ties × legsPerTie events, and one tie more where the bracket has
+     * a third-place tie (hasThirdPlaceTie()), which is played over the
+     * same number of legs. Double elimination: null (the grand final may
+     * or may not reset).
      */
     #[Override]
     public function getExpectedEventCount(): ?int
@@ -145,7 +196,9 @@ final readonly class EliminationPlan implements StagePlan
             return null;
         }
 
-        return (count($this->participants) - 1) * $this->legsPerTie;
+        $ties = count($this->participants) - 1 + ($this->hasThirdPlaceTie() ? 1 : 0);
+
+        return $ties * $this->legsPerTie;
     }
 
     /**

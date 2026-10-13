@@ -29,9 +29,12 @@ readonly class Event
      * @param array<Participant> $participants At least 2, each with an ID of its own,
      *                                         first-named participant first
      * @param Round|null $round The round the event is played in; null for an event not yet in a round
-     * @param array<string, mixed> $metadata Free-form data. The library reads one key, 'tie_leg',
-     *                                       which the elimination engines set on the two events
-     *                                       of a two-legged tie
+     * @param array<string, mixed> $metadata Free-form data. The library reads two keys. 'tie_leg'
+     *                                       is set by the elimination engines on the two events
+     *                                       of a two-legged tie. 'bracket_tie' is set by the
+     *                                       single elimination engine on the events of the last
+     *                                       round of a bracket with a third-place tie, and is
+     *                                       read through Stage\BracketTie::of()
      *
      * @throws InvalidInputException When fewer than 2 participants are provided, or one
      *                               participant ID is listed twice
