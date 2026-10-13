@@ -1,6 +1,10 @@
 # 0002. Standings order is total
 
-Status: accepted
+Status: superseded by [0004](0004-position-decides-where-results-do-not.md)
+
+The record below is kept as it was written. Its fallback (seed, label, ID)
+is no longer what the code does: where an entrant list exists its order
+decides, and a standalone table falls back on seed and ID only.
 
 ## Context
 
