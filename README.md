@@ -83,6 +83,16 @@ the last one, which is about the library as a whole.
   who won it.
   [Results and standings](docs/USAGE.md#results-and-standings),
   [tied sets](docs/USAGE.md#tied-sets)
+- **Awarded results and adjustments**: a result can be marked as awarded, for
+  an event that was not played, and counts for the participant it names; a
+  competition chooses whether its nominal score counts and whether it counts
+  between tied participants. An adjustment adds to or takes from one
+  participant's ranking value for a reason that is no event, shows in the
+  table as a figure of its own, and is carried by the stage state, so the
+  next Swiss round is paired from the adjusted totals. The library records
+  both and decides neither.
+  [Awarded results](docs/USAGE.md#awarded-results),
+  [adjustments](docs/USAGE.md#adjustments)
 - **Stage state between rounds**: the state of a results-driven stage is
   plain data that an application stores between rounds. A recorded result of
   the last round can be replaced, and a state can be stamped with the

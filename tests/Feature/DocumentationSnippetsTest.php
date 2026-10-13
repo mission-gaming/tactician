@@ -355,6 +355,41 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Positions 1 to 4: Alice, Bob, Carol, Dave\nThe results do not decide who takes the top 2 positions\n0 tied sets\n"],
             [],
         ],
+        'an awarded result, with its nominal score and without' => [
+            'docs/USAGE.md',
+            "award: new Award('no-show', 'Bob did not appear')",
+            ["1W, 3 pts, 2 played of which 1 awarded, score difference 1\n1W, 3 pts, score difference -2\n"],
+            [],
+        ],
+        'an awarded result between the tied participants, counted and not' => [
+            'docs/USAGE.md',
+            '$betweenTheTied = new class implements TiedParticipantsTiebreaker {',
+            ["1W, 1 between the tied, 0 tied sets\n1W, 0 between the tied, 1 tied sets\n"],
+            [],
+        ],
+        'adjustments beside what was earned' => [
+            'docs/USAGE.md',
+            '$adjusted = $calculator->withAdjustments($standings, $adjustments);',
+            [
+                "Carol: 4 earned, 0 adjustment, 4 total\n"
+                . "Alice: 4 earned, -1 adjustment, 3 total\n"
+                . "Bob: 0 earned, 2 adjustment, 2 total\n"
+                . "Dave: 0 earned, 0 adjustment, 0 total\n",
+            ],
+            [],
+        ],
+        'a Swiss round paired from the adjusted totals' => [
+            'docs/USAGE.md',
+            "\$stage = \$stage->withAdjustment(new Adjustment('carol', -4.0, 'ruling'));",
+            ["Alice v Dave\nBob v Carol\n1 adjustment stored\n"],
+            [],
+        ],
+        'an awarded result that sends a participant on in a bracket' => [
+            'docs/USAGE.md',
+            "new Result(\$aliceVsDave, \$dave, award: new Award('no-show')),",
+            ["Dave v Bob\n"],
+            ['Alice v'],
+        ],
         'elimination round labels' => ['docs/USAGE.md', 'echo "{$pairing->getLabel()}\n";', ["quarterfinal\nsemifinal\nfinal\n"], []],
         'a level elimination event that names who advances' => [
             'docs/USAGE.md',

@@ -420,6 +420,64 @@ entry on the engine fingerprint.
 
 ### Added
 
+- **Awarded results.** A `Result` can say that its event was not played and
+  that the application gave it this outcome: `new Result($event, $winner,
+  $scores, award: new Award('label', 'reason'))`. `DTO\Award` (new) is the
+  mark, with an optional label and an optional reason that the library
+  stores and never reads; `Result::isAwarded()` and `Result::getAward()`
+  read it, and the constructor of `Result` has a fifth parameter, `award`,
+  default none. An awarded result is a result: it counts for the winner it
+  names (as a draw when it names none), is counted in played, wins, draws
+  and losses, is the one result of its event (one beside a played result of
+  the same event is refused as two results of one event), and settles what
+  a result settles, so the participant it names advances from an
+  elimination tie. `StandingEntry::getAwarded()` (new, with a constructor
+  parameter `awarded`, default 0) says how many of an entry's results were
+  awarded. Two things are the caller's choice, on the calculator:
+  `StandingsCalculator` takes an `AwardedResultPolicy` (new) as a third
+  constructor argument and returns it with `getAwardedResultPolicy()`.
+  `countScores` (`count_scores` in `fromArray()`/`toArray()`, default
+  true) says whether the scores of an awarded result, its nominal score,
+  count in scores-for, scores-against and the score difference;
+  `countBetweenTiedParticipants` (`count_between_tied_participants`,
+  default true) says whether a tiebreaker computed between the tied
+  participants only is handed awarded results. Such a tiebreaker declares
+  itself with the new marker interface `TiedParticipantsTiebreaker`; the
+  library ships none yet (#58). A result writes the mark under the key
+  `award`, only when it is awarded, so the array of a played result is
+  unchanged and an array written by an earlier release reads as played. An
+  engine fingerprint states either choice of the policy only when it is
+  off, so every stamp written before is unchanged ("Awarded results" in
+  the usage guide, #100).
+- **Adjustments.** `Standings\Adjustment` (new) is an amount added to, or
+  taken from, one participant's ranking value for a reason that is no
+  event: a participant ID, a signed amount, and an optional label and
+  reason that the library never reads, with `fromArray()`/`toArray()`
+  (`participant`, `amount`, `label`, `reason`).
+  `StandingsCalculator::withAdjustments(Standings $standings, array
+  $adjustments)` applies them to a table and puts it in order again;
+  `StandingEntry::getAdjustment()` is the sum for the entry,
+  `getEarnedRankingValue()` what the results gave, and `getRankingValue()`
+  the two together, which the table is ordered by
+  (`StandingEntry::withAdjustment()` builds such an entry, and the
+  constructor has a twelfth parameter, `adjustment`, default 0.0). The
+  amount is on the scale of the ranking strategy, so an adjustment is
+  accepted under every strategy; tiebreakers computed from opponents'
+  ranking values use what an opponent earned. A stage keeps its
+  adjustments on its state: `StageState::withAdjustment(Adjustment
+  $adjustment)` and `getAdjustments()`, written under the key
+  `adjustments` only when there is one. Every table an engine builds from
+  the state has them: the next Swiss round is paired from the adjusted
+  totals, a re-seeded bracket folds its survivors by them, and the table of
+  an outcome shows each beside what was earned, where it orders the
+  entrants a bracket put out in the same round and moves nobody between
+  tiers. `StageOutcome::combining()` keeps the adjustment of each pool
+  entry. An adjustment for a participant the table or the stage does not
+  have is rejected with an `InvalidInputException`. A participant who
+  withdrew and is named by nothing but an adjustment is still one of
+  `StageState::getAllSeenParticipants()`. With no awarded result and no
+  adjustment every table and every pairing is what it was ("Adjustments"
+  in the usage guide, #100).
 - **An entrant list on a table and on an outcome.**
   `Standings::withTiedSetsOrderedBy(array $entrants)` returns the table
   with the entries of every tied set in the order of the list, and moves
