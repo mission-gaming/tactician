@@ -399,10 +399,11 @@ describe('a leg strategy that yields no event', function (): void {
             $failure = $exception;
         }
 
-        expect((string) $failure?->getDiagnosticReport())
-            ->toContain('• Review CallableConstraint settings for compatibility')
-            ->toContain('• Use fewer or less restrictive constraints')
-            ->not->toContain('No constraint rejection was recorded');
+        $report = (string) $failure?->getDiagnosticReport();
+
+        expect($report)->toContain('• Review CallableConstraint settings for compatibility')
+            ->and($report)->toContain('• Use fewer or less restrictive constraints')
+            ->and($report)->not->toContain('No constraint rejection was recorded');
     });
 
     it('names both causes when the strategy gives no event for some pairings and a constraint rejects others', function (): void {

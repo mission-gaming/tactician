@@ -87,7 +87,9 @@ final readonly class MinimumRestRule implements TimelineRule
         $reference = new DateTimeImmutable('@0');
 
         try {
-            $readsBack = $reference->add(TimelineDefinition::parseInterval($written, 'rest')) == $reference->add($this->minimumRest);
+            $readBack = TimelineDefinition::parseInterval($written, 'rest');
+            // Compared as instants, fraction of a second included
+            $readsBack = ($reference->add($readBack) <=> $reference->add($this->minimumRest)) === 0;
             $previous = null;
         } catch (InvalidConfigurationException $exception) {
             $readsBack = false;
