@@ -20,8 +20,13 @@ use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StagePlan;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\AwardedResultPolicy;
+use MissionGaming\Tactician\Standings\BetweenTiedParticipants;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
+use MissionGaming\Tactician\Standings\ByeTreatment;
 use MissionGaming\Tactician\Standings\RankingStrategy;
+use MissionGaming\Tactician\Standings\RankingValueTiebreaker;
+use MissionGaming\Tactician\Standings\ScoreDifferenceTiebreaker;
+use MissionGaming\Tactician\Standings\ScoresForTiebreaker;
 use MissionGaming\Tactician\Standings\SonnebornBergerTiebreaker;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
@@ -369,6 +374,54 @@ describe('engine fingerprints', function (): void {
             )),
             'tactician:v2:swiss;awarded-between-tied=no',
         ],
+        // Added with the value of a bye and the bye treatment of a
+        // tiebreaker; the rows above are as they were.
+        'Swiss with the value of a bye stated as the value of a win' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(3.0, 1.0, 0.0, 3.0))),
+            'tactician:v2:swiss',
+        ],
+        'Swiss with a bye worth a draw' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
+                WinDrawLossRanking::threeOneZero()->withByeValue(1.0)
+            )),
+            'tactician:v2:swiss;bye-value=1',
+        ],
+        'Swiss on the chess scale with a bye worth nothing' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
+                WinDrawLossRanking::oneHalfZero()->withByeValue(0.0)
+            )),
+            'tactician:v2:swiss;bye-value=0;ranking=win-draw-loss,1,0.5,0',
+        ],
+        'Swiss with tiebreakers that leave byes uncounted, stated' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
+                tiebreakers: [new BuchholzTiebreaker(ByeTreatment::Uncounted), new SonnebornBergerTiebreaker(ByeTreatment::Uncounted)]
+            )),
+            'tactician:v2:swiss;tiebreakers=buchholz,sonneborn-berger',
+        ],
+        'Swiss with tiebreakers that count byes' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
+                tiebreakers: [new BuchholzTiebreaker(ByeTreatment::OwnRankingValue), new WinsTiebreaker(), new SonnebornBergerTiebreaker(ByeTreatment::Zero)]
+            )),
+            'tactician:v2:swiss;tiebreaker-byes=buchholz%3Aown-ranking-value,sonneborn-berger%3Azero;tiebreakers=buchholz,wins,sonneborn-berger',
+        ],
+        'Swiss with tiebreakers between the tied participants' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
+                tiebreakers: [
+                    new BetweenTiedParticipants(new RankingValueTiebreaker()),
+                    new BetweenTiedParticipants(new ScoreDifferenceTiebreaker()),
+                    new ScoreDifferenceTiebreaker(),
+                    new ScoresForTiebreaker(),
+                ]
+            )),
+            'tactician:v2:swiss;tiebreakers=between-tied%3Aranking-value,between-tied%3Ascore-difference,score-difference,scores-for',
+        ],
+        're-seeded single elimination with a bye worth nothing' => [
+            fn() => new SingleEliminationEngine(
+                new EliminationOptions(reseedEachRound: true),
+                new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue(0.0))
+            ),
+            'tactician:v2:single-elimination;bye-value=0;reseed-each-round=yes',
+        ],
         're-seeded single elimination with both choices of the awarded result policy off' => [
             fn() => new SingleEliminationEngine(
                 new EliminationOptions(reseedEachRound: true),
@@ -501,11 +554,17 @@ describe('engine fingerprints', function (): void {
             'winValue',             // in, default 3
             'drawValue',            // in, default 1
             'lossValue',            // in, default 0
+            'byeValue',             // in: bye-value, default the value of a win
         ]);
 
-        // A tiebreaker is stated by its name alone, which is right while
-        // none of the library's takes an option.
-        foreach ([BuchholzTiebreaker::class, SonnebornBergerTiebreaker::class, WinsTiebreaker::class] as $tiebreaker) {
+        // A tiebreaker is stated by its name, and the two that read byes by
+        // their treatment of them as well: tiebreaker-byes, default uncounted.
+        // The one between the tied participants is named after its measure.
+        foreach ([BuchholzTiebreaker::class, SonnebornBergerTiebreaker::class] as $tiebreaker) {
+            expect($constructor($tiebreaker))->toBe(['byes']);
+        }
+        expect($constructor(BetweenTiedParticipants::class))->toBe(['measure']);
+        foreach ([WinsTiebreaker::class, ScoreDifferenceTiebreaker::class, ScoresForTiebreaker::class, RankingValueTiebreaker::class] as $tiebreaker) {
             expect($constructor($tiebreaker))->toBe([]);
         }
     });

@@ -178,7 +178,7 @@ describe('SwissPairingEngine', function (): void {
 
     // Crediting a bye "as a win" is undefined under a non-win/draw/loss
     // ranking scale, so the engine fails loudly instead of guessing
-    it('rejects bye crediting under a non-win-draw-loss ranking strategy', function (): void {
+    it('rejects bye crediting under a ranking strategy that does not say what a bye is worth', function (): void {
         $customRanking = new readonly class implements RankingStrategy {
             /**
              * @param array<Result> $results
@@ -201,7 +201,7 @@ describe('SwissPairingEngine', function (): void {
         ], [$this->eve]);
 
         expect(fn() => $engine->pairNextRound($state))
-            ->toThrow(InvalidConfigurationException::class, 'win/draw/loss ranking strategy');
+            ->toThrow(InvalidConfigurationException::class, 'a ranking strategy that says what a bye is worth (RankingStrategyWithByeValue)');
     });
 
     it('credits a bye as a win when ordering the next round', function (): void {

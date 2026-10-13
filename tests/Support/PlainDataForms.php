@@ -44,6 +44,9 @@ use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\AwardedResultPolicy;
+use MissionGaming\Tactician\Standings\ByeTreatment;
+use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\TiebreakerChain;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use MissionGaming\Tactician\Timeline\BlackoutRule;
 use MissionGaming\Tactician\Timeline\MinimumRestRule;
@@ -112,6 +115,7 @@ final class PlainDataForms
         // The order of a set of level entries, as a rank selector takes it
         $decision = ['participants' => ['c', 'a', 'b'], 'label' => 'drawn by lot', 'reason' => 'Level on every figure'];
         $adjustment = ['participant' => 'b', 'amount' => -3.0, 'label' => 'deduction', 'reason' => 'a late entry'];
+        $tiebreaker = ['tiebreaker' => 'buchholz', 'byes' => 'own-ranking-value'];
         $window = ['from' => '2026-11-09 00:00', 'to' => '2026-11-17 00:00', 'timezone' => 'Europe/London', 'label' => 'break'];
 
         return [
@@ -202,14 +206,51 @@ final class PlainDataForms
             'win-draw-loss ranking' => [
                 'class' => WinDrawLossRanking::class,
                 'kind' => self::CONFIGURATION,
-                'keys' => ['win', 'draw', 'loss'],
-                'sample' => ['win' => 2.0, 'draw' => 0.5, 'loss' => -1.0],
+                'keys' => ['win', 'draw', 'loss', 'bye'],
+                'sample' => ['win' => 2.0, 'draw' => 0.5, 'loss' => -1.0, 'bye' => 0.25],
                 'read' => static fn(array $data, array $registry): object => WinDrawLossRanking::fromArray(self::stringKeyed($data)),
-                'generate' => static fn(Randomizer $random, array $field): object => new WinDrawLossRanking(
-                    $random->getInt(-4, 12) / 2,
-                    $random->getInt(-4, 12) / 4,
-                    $random->getInt(-4, 12) / 8
-                ),
+                'generate' => self::ranking(...),
+            ],
+            'standings calculator' => [
+                'class' => StandingsCalculator::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['ranking', 'tiebreakers', 'awarded_results'],
+                'sample' => [
+                    'ranking' => ['win' => 2.0, 'draw' => 1.0, 'loss' => 0.0, 'bye' => 'draw'],
+                    'tiebreakers' => ['between-tied:ranking-value', 'score-difference', $tiebreaker],
+                    'awarded_results' => ['count_scores' => false, 'count_between_tied_participants' => true],
+                ],
+                'read' => static fn(array $data, array $registry): object => StandingsCalculator::fromArray($data),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    // Any of the identifiers, each once at most, in a drawn
+                    // order; the two that read byes with any treatment
+                    $chain = [];
+                    foreach ($random->shuffleArray(TiebreakerChain::identifiers()) as $identifier) {
+                        $leftOut = $random->getInt(0, 2);
+                        $drawn = $random->getInt(0, 2);
+                        if ($leftOut > 0) {
+                            continue;
+                        }
+                        $treatment = ByeTreatment::cases()[$drawn];
+                        $chain[] = in_array($identifier, ['buchholz', 'sonneborn-berger'], true) && $treatment !== ByeTreatment::Uncounted
+                            ? ['tiebreaker' => $identifier, 'byes' => $treatment->value]
+                            : $identifier;
+                    }
+
+                    return new StandingsCalculator(
+                        self::ranking($random, $field),
+                        TiebreakerChain::fromIdentifiers($chain),
+                        new AwardedResultPolicy($random->getInt(0, 1) === 1, $random->getInt(0, 1) === 1)
+                    );
+                },
+            ],
+            'tiebreaker with options' => [
+                'class' => StandingsCalculator::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['tiebreaker', 'byes'],
+                'sample' => $tiebreaker,
+                'read' => static fn(array $data, array $registry): object => StandingsCalculator::fromArray(['tiebreakers' => [$data]]),
+                'generate' => null,
             ],
             'match outcome selector' => [
                 'class' => MatchOutcomeSelector::class,
@@ -579,7 +620,7 @@ final class PlainDataForms
      */
     public static function addedInZeroThree(): array
     {
-        return [Award::class, Decider::class, Adjustment::class, AwardedResultPolicy::class, BestOfRankSelector::class];
+        return [Award::class, Decider::class, Adjustment::class, AwardedResultPolicy::class, BestOfRankSelector::class, StandingsCalculator::class];
     }
 
     /**
@@ -802,6 +843,22 @@ final class PlainDataForms
             [$field[$first], $field[$second]],
             $random->getInt(0, 5) === 0 ? null : new Round($random->getInt(1, 30), self::metadata($random)),
             self::metadata($random)
+        );
+    }
+
+    /**
+     * A win/draw/loss scale; half of them with a value for a bye, which
+     * writes the key `bye`, and the rest with none.
+     *
+     * @param array<Participant> $field
+     */
+    private static function ranking(Randomizer $random, array $field): WinDrawLossRanking
+    {
+        return new WinDrawLossRanking(
+            $random->getInt(-4, 12) / 2,
+            $random->getInt(-4, 12) / 4,
+            $random->getInt(-4, 12) / 8,
+            $random->getInt(0, 1) === 1 ? $random->getInt(-4, 12) / 4 : null
         );
     }
 

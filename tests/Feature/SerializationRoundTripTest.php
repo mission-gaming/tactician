@@ -103,7 +103,7 @@ describe('an instance of a serializable type', function (): void {
         $form = PlainDataForms::all()[$name];
         if ($form['generate'] === null) {
             // A part with no class of its own: its container is another entry
-            expect($name)->toBe('blackout window');
+            expect(['blackout window', 'tiebreaker with options'])->toContain($name);
 
             return;
         }
@@ -227,7 +227,7 @@ describe('the format version of an array that is written', function (): void {
     it('may be missing from an array that is read: the value is the same', function (string $name, array $field): void {
         $form = PlainDataForms::all()[$name];
         if ($form['generate'] === null) {
-            expect($name)->toBe('blackout window');
+            expect(['blackout window', 'tiebreaker with options'])->toContain($name);
 
             return;
         }

@@ -20,9 +20,9 @@ use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
-use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use Override;
 
 /**
@@ -227,8 +227,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                                       TieDecision refuses (`InvalidResult`), a recorded
      *                                       round holds a third-place tie where this engine
      *                                       plays none (reason `RecordedRoundMismatch`), a re-seeded
-     *                                       bracket has a bye and a ranking strategy that is not
-     *                                       a WinDrawLossRanking (`IncompatibleOptions`), or the
+     *                                       bracket has a bye and a ranking strategy that does
+     *                                       not say what a bye is worth (`IncompatibleOptions`), or the
      *                                       bracket is complete
      */
     #[Override]
@@ -600,8 +600,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * @return array{Participant, Participant}|null
      *
      * @throws InvalidConfigurationException When the bracket is re-seeded, one of the two had a
-     *                                       bye and the ranking strategy is not a
-     *                                       WinDrawLossRanking
+     *                                       bye and the ranking strategy does not say what a
+     *                                       bye is worth
      */
     private function thirdPlaceTie(
         array $wentOutInPreviousRound,
@@ -698,15 +698,16 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * Refuse a re-seeded bracket that will have a bye it cannot credit.
      *
      * A field that is not a power of two has byes in its first round, and
-     * the ranking before the second round credits each as a tie won, which
-     * needs the value of a win (StandingsCalculator::withByesCredited()).
+     * the ranking before the second round credits each one, which needs a
+     * ranking strategy that says what a bye is worth
+     * (RankingStrategyWithByeValue; StandingsCalculator::calculateWith()).
      * The entrant list says all of that before a round is paired, so the
      * bracket is refused then, on every call, and not after its first
      * round has been played.
      *
      * @throws InvalidConfigurationException When the bracket is re-seeded, the field is not a
-     *                                       power of two and the ranking strategy is not a
-     *                                       WinDrawLossRanking
+     *                                       power of two and the ranking strategy does not say
+     *                                       what a bye is worth
      */
     private function requireByesToBeCreditable(int $participantCount): void
     {
@@ -715,14 +716,15 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         }
 
         $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
-        if ($rankingStrategy instanceof WinDrawLossRanking) {
+        if ($rankingStrategy instanceof RankingStrategyWithByeValue) {
             return;
         }
 
         throw new InvalidConfigurationException(
-            "A re-seeded bracket of {$participantCount} entrants has byes, and crediting a bye requires a win/draw/loss"
-                . ' ranking strategy: counting a bye as a tie won is undefined under other ranking scales.'
-                . ' Use a WinDrawLossRanking, a field that is a power of two, or a bracket on a fixed path',
+            "A re-seeded bracket of {$participantCount} entrants has byes, and crediting a bye requires a ranking strategy"
+                . ' that says what a bye is worth: nothing else says what advancing without a tie counts for on its scale.'
+                . ' Use a RankingStrategyWithByeValue (WinDrawLossRanking is one), a field that is a power of two, or a'
+                . ' bracket on a fixed path',
             ['ranking_strategy' => $rankingStrategy::class, 'participant_count' => $participantCount],
             reason: InvalidConfigurationReason::IncompatibleOptions
         );
@@ -809,8 +811,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * event of an earlier round counts as a win for whoever advanced from
      * it (see resultsForStandings()).
      *
-     * A bye is an advance like a tie won, so it is credited as one: a win
-     * for each leg of a tie. Without that an entrant who sat out the first
+     * A bye is an advance like a tie won, so it is credited as one: the
+     * value the ranking strategy gives a bye (the value of a win unless the
+     * caller chose another) for each leg of a tie. Without that an entrant who sat out the first
      * round would rank below everyone who played it, and the top of the
      * entrant list would be folded as the bottom of the round. Survivors
      * the table leaves level are in the order of the participant list:
@@ -840,8 +843,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * @param array<int|string, int> $byes Byes of the earlier rounds, by participant ID
      * @return array<Participant>
      *
-     * @throws InvalidConfigurationException When a survivor had a bye and the ranking strategy is
-     *                                       not a WinDrawLossRanking
+     * @throws InvalidConfigurationException When a survivor had a bye and the ranking strategy does
+     *                                       not say what a bye is worth
      */
     private function rankByStandings(
         array $survivors,
@@ -857,13 +860,12 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         $entrants = $this->entrantsOf($state);
         $standings = $this->standingsCalculator
-            ->withAdjustments(
-                $this->standingsCalculator->withByesCredited(
-                    $this->standingsCalculator->calculate($entrants, $this->resultsForStandings($priorResults, $levelAdvancers)),
-                    $byes,
-                    $this->options->legsPerTie
-                ),
-                $state->getAdjustments()
+            ->calculateWith(
+                $entrants,
+                $this->resultsForStandings($priorResults, $levelAdvancers),
+                $byes,
+                $state->getAdjustments(),
+                $this->options->legsPerTie
             )
             ->withTiedSetsOrderedBy($entrants);
 

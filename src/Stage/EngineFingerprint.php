@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Stage;
 
+use MissionGaming\Tactician\Standings\ByeTreatment;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\TiebreakerInterface;
+use MissionGaming\Tactician\Standings\TiebreakerWithByeTreatment;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 
 /**
@@ -131,6 +133,16 @@ final readonly class EngineFingerprint
      * so that what is written today for one without options stays as it
      * is.
      *
+     * Two options of the library's own are stated by that rule. The value
+     * of a bye of a WinDrawLossRanking is part of the fingerprint
+     * (`bye-value`) only when it is not the value of a win, which is what
+     * a bye was worth before it could be chosen. The bye treatment of a
+     * tiebreaker (TiebreakerWithByeTreatment) is part of it
+     * (`tiebreaker-byes`, as `name:treatment`) only when it is not
+     * ByeTreatment::Uncounted. Both change the table a bye gives, and so
+     * the rounds paired from it. A ranking strategy of the application's
+     * is `custom` whatever it says a bye is worth.
+     *
      * The two choices of the calculator's awarded result policy are stated
      * by that rule: each is part of the fingerprint only when it is off,
      * which is not its default, so every calculator built before the policy
@@ -153,9 +165,22 @@ final readonly class EngineFingerprint
         $ranking = $calculator->getRankingStrategy();
         $awardedResults = $calculator->getAwardedResultPolicy();
 
+        // A treatment of byes that is not the default, by tiebreaker
+        $byeTreatments = [];
+        foreach ($calculator->getTiebreakers() as $tiebreaker) {
+            if ($tiebreaker instanceof TiebreakerWithByeTreatment && $tiebreaker->getByeTreatment() !== ByeTreatment::Uncounted) {
+                $byeTreatments[] = $tiebreaker->getName() . ':' . $tiebreaker->getByeTreatment()->value;
+            }
+        }
+
+        // The value of a bye is stated where it is not the value of a win
+        $byeValue = $ranking instanceof WinDrawLossRanking ? $ranking->getByeValue() : 0.0;
+        $winValue = $ranking instanceof WinDrawLossRanking ? $ranking->getWinValue() : 0.0;
+
         return $this
             ->with('awarded-scores', $awardedResults->countScores, true)
             ->with('awarded-between-tied', $awardedResults->countBetweenTiedParticipants, true)
+            ->with('bye-value', $byeValue, $winValue)
             ->with(
                 'ranking',
                 $ranking instanceof WinDrawLossRanking
@@ -163,6 +188,7 @@ final readonly class EngineFingerprint
                     : 'custom',
                 ['win-draw-loss', 3.0, 1.0, 0.0]
             )
+            ->with('tiebreaker-byes', $byeTreatments, [])
             ->with(
                 'tiebreakers',
                 array_map(

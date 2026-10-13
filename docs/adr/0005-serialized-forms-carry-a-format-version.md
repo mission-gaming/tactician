@@ -47,8 +47,8 @@ the optional keys 0.3.0 added before the key existed (`strategy_seed` in
 round-robin options, `seed` in Swiss options, `ties`, `comparison` and
 `decisions` in a rank range selector, `third_place` in elimination options,
 `award` and `decider` in a result, `adjustments` and `entrants` in a stage
-state and `paired_on_incomplete_results` in a round pairing). Each of those
-may be left out and is then read
+state, `paired_on_incomplete_results` in a round pairing and `bye` in a
+win-draw-loss ranking). Each of those may be left out and is then read
 as 0.2.x behaved, so an array without the version key is read as version 1,
 under the rules of version 1, and data stored by 0.2.x keeps loading.
 `tests/Fixtures/stored-by-0.2/` holds every form as the 0.2.x tags wrote it,

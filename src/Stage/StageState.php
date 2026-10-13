@@ -984,8 +984,27 @@ final readonly class StageState
     }
 
     /**
+     * The byes of every recorded round: the participants its pairing lists
+     * as having one (RoundPairing::getByes()), by round number in the
+     * order the rounds were recorded. Every recorded round is a key, with
+     * an empty list where nobody had a bye.
+     *
+     * @return array<int, list<Participant>>
+     */
+    public function getByesByRound(): array
+    {
+        $byes = [];
+        foreach ($this->roundsPlayed as $pairing) {
+            $byes[$pairing->getRoundNumber()] = array_values($pairing->getByes());
+        }
+
+        return $byes;
+    }
+
+    /**
      * Bye counts keyed by participant ID. A participant that had no bye
-     * has no entry.
+     * has no entry. This is the shape a standings calculator takes byes
+     * in (Standings\StandingsCalculator::calculateWith()).
      *
      * @return array<string, int>
      */
