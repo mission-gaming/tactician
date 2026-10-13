@@ -942,7 +942,12 @@ entry on the engine fingerprint.
   - record the results first (an event that is never played gets an
     awarded result), which is what a results-driven stage does anyway;
   - pair early on purpose with `pairNextRoundOnIncompleteResults()`, which
-    gives the round `pairNextRound()` used to give and marks it;
+    gives the round `pairNextRound()` used to give and marks it. Once that
+    round is recorded, the result that was missing is supplied with the
+    history (`StageState::fromHistory()`): `withAdditionalResults()` adds
+    to the last recorded round only, and its refusal of a result of an
+    earlier recorded round now says so and names that way (the reason
+    `EventNotInRound` and the context are the ones it had);
   - build the engine with `resultsFree: true` where the rounds are to have
     no results at all, as the whole-schedule preset does. A state stamped
     by an engine without the mode is refused by one with it

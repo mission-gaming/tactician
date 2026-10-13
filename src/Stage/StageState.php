@@ -467,6 +467,13 @@ final readonly class StageState
      * engines report such rounds as partially resolved until the missing
      * results arrive here.
      *
+     * Only the last recorded round is reached. A result of a round before
+     * it is refused, and the refusal says where it goes: a state can await
+     * one there when the round after it was paired early
+     * (SwissPairingEngine::pairNextRoundOnIncompleteResults()), and it is
+     * then supplied with the history (fromHistory() takes the results of
+     * any round).
+     *
      * @param array<Result> $results
      * @throws InvalidConfigurationException When no round is recorded (reason `NoRoundRecorded`) or
      *                                       a result belongs to a different round or to an event
@@ -483,6 +490,24 @@ final readonly class StageState
                 [],
                 reason: InvalidConfigurationReason::NoRoundRecorded
             );
+        }
+
+        $recordedRounds = [];
+        foreach ($this->roundsPlayed as $pairing) {
+            $recordedRounds[$pairing->getRoundNumber()] = true;
+        }
+        foreach ($results as $result) {
+            $resultRound = $result->getEvent()->getRound()?->getNumber();
+            if ($resultRound !== null && $resultRound !== $lastRound->getRoundNumber() && isset($recordedRounds[$resultRound])) {
+                throw new InvalidConfigurationException(
+                    "Result belongs to a different round than the last recorded one: round {$resultRound} is recorded, and results"
+                        . " are added to the last recorded round only (round {$lastRound->getRoundNumber()}). Supply the result with"
+                        . ' the history (StageState::fromHistory() takes the results of any round), or rebuild the state from its'
+                        . ' rounds with the result in its place.',
+                    ['pairing_round' => $lastRound->getRoundNumber(), 'result_round' => $resultRound],
+                    reason: InvalidConfigurationReason::EventNotInRound
+                );
+            }
         }
 
         $this->assertResultsBelongTo($lastRound, $results);

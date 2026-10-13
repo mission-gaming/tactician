@@ -887,6 +887,17 @@ describe('a Swiss round paired before the results are in', function (): void {
             ->and(fn(): StageState => $state->withAdditionalResults([$late]))
             ->toThrow(InvalidConfigurationException::class, 'different round');
 
+        // The refusal says which round the verb reaches and where the
+        // result goes, with the reason and the context it always had
+        try {
+            $state->withAdditionalResults([$late]);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::EventNotInRound)
+                ->and($exception->getContext())->toBe(['pairing_round' => 2, 'result_round' => 1])
+                ->and($exception->getConfigurationIssue())->toContain('added to the last recorded round only (round 2)')
+                ->and($exception->getConfigurationIssue())->toContain('StageState::fromHistory()');
+        }
+
         $caughtUp = StageState::fromHistory($this->entrants, $state->getRoundsPlayed(), [...$state->getResults(), $late]);
 
         expect($this->engine->getReadiness($caughtUp)->isReady())->toBeTrue()
