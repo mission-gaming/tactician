@@ -2373,11 +2373,34 @@ With pools of one size no method is needed. One that was chosen is still
 applied, and where every compared entrant has played the same number of
 events the three give the same order. The selector counts entries, not
 events: it does not see that pools of one size played different numbers of
-events (a pool with events still to play, pools of different leg counts),
-so check completeness before you select, and choose `PerEvent` where the
-numbers of events differ by design. `DiscardLowest` recalculates a table,
-which takes the calculator: `combining()` hands it to the outcome, and an
-outcome built by hand takes it as its last constructor argument.
+events (a pool with events still to play, pools of different leg counts, a
+pool in which an entrant sat a round out or withdrew), so check
+completeness before you select, and choose `PerEvent` where the numbers of
+events differ by design. `DiscardLowest` recalculates a table, which takes
+the calculator: `combining()` hands it to the outcome, and an outcome built
+by hand takes it as its last constructor argument.
+
+Two things to know before choosing `PerEvent` for a calculator with
+tiebreakers, and before comparing pools that had byes:
+
+- **`PerEvent` divides a tiebreaker value once, by the entrant's own
+  events.** That is right for a value that adds something up over the
+  entrant's events, as `WinsTiebreaker` does. It is not enough for
+  `BuchholzTiebreaker` and `SonnebornBergerTiebreaker`, which add up the
+  ranking values of opponents: those values have themselves been collected
+  over more events in a larger pool, so after the division the entrant of
+  the larger pool is still ahead for no reason but the size of its pool.
+  And a tiebreaker of your own that is already a ratio is divided as well,
+  which a ratio should not be. Give `combining()` a calculator without
+  such a tiebreaker (the pools' own tables may keep it), or choose
+  `DiscardLowest`, which calculates every tiebreaker again from the
+  results that are left.
+- **A bye credited in a pool's table is not in the figures compared.** The
+  combined table is calculated from the results alone. Where a pool's own
+  table counts a bye as a win (`StandingsCalculator::withByesCredited()`,
+  as the table of a Swiss stage does), that credit decides who holds the
+  rank in the pool, and the holders are then compared by what they scored
+  in the events they played.
 
 **A selection that results do not decide is refused**, exactly as a
 `RankRangeSelector` refuses one, with an `UndecidedSelectionException`:

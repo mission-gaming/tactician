@@ -30,7 +30,10 @@ use Override;
  * from every result of the stage: a tiebreaker that has a meaning only
  * among entrants who met each other (a head-to-head measure) has none
  * between entrants of different pools, so give combining() a calculator
- * without it; the pools' own tables may still use it.
+ * without it; the pools' own tables may still use it. The combined table
+ * is calculated from the results alone: a bye credited in a pool's own
+ * table (StandingsCalculator::withByesCredited()) decides who holds the
+ * rank there and is not in the figures the holders are compared by.
  *
  * **Pools of unequal size need a comparison method.** Pools are unequal
  * when their tables do not have the same number of entries; the entrants

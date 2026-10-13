@@ -420,6 +420,59 @@ describe('the best of a rank across pools', function (): void {
             ->and(bestOfRankIds(BestOfRankSelector::ofRank(2, 1)->select($withWins)))->toBe(['y2']);
     });
 
+    it('reads who holds the rank from a pool table with a bye credited, and compares the holders by their results alone', function (): void {
+        $calculator = new StandingsCalculator();
+        $pool = function (string $label, array $scores, array $byes) use ($calculator): StageOutcome {
+            $members = [];
+            foreach ([1, 2, 3] as $number) {
+                $members[$number] = new Participant("{$label}{$number}", strtoupper("{$label}{$number}"));
+            }
+            $results = [];
+            foreach ($scores as [$first, $second, $firstScore, $secondScore]) {
+                $results[] = new Result(
+                    new Event([$members[$first], $members[$second]]),
+                    match ($firstScore <=> $secondScore) {
+                        1 => $members[$first],
+                        -1 => $members[$second],
+                        default => null,
+                    },
+                    [$members[$first]->getId() => $firstScore, $members[$second]->getId() => $secondScore]
+                );
+            }
+            $entrants = array_values($members);
+
+            return new StageOutcome(
+                $calculator->withByesCredited($calculator->calculate($entrants, $results), $byes),
+                $results,
+                $byes,
+                entrants: $entrants
+            );
+        };
+
+        // Pool p after two of its three rounds: p1 has beaten both, and p3
+        // sat out a round, which its table counts as a win. Pool q is
+        // complete: q2 drew with q3 and has the better score difference
+        $outcome = StageOutcome::combining([
+            'p' => $pool('p', [[1, 2, 1, 0], [1, 3, 1, 0]], ['p3' => 1]),
+            'q' => $pool('q', [[1, 2, 1, 0], [1, 3, 2, 0], [2, 3, 0, 0]], []),
+        ], $calculator);
+
+        $second = function (string $label) use ($outcome): array {
+            $entry = array_values($outcome->getPool($label)?->getStandings()->getEntries() ?? [])[1];
+            $combined = $outcome->getStandings()->getEntryFor($entry->getParticipant());
+
+            return [$entry->getParticipant()->getId(), $entry->getRankingValue(), $entry->getByes(), $combined?->getRankingValue(), $combined?->getPlayed()];
+        };
+
+        // p3 is second in its pool by the bye, with 3 points there and
+        // none in the combined table, which is calculated from results
+        expect($second('p'))->toBe(['p3', 3.0, 1, 0.0, 1])
+            ->and($second('q'))->toBe(['q2', 1.0, 0, 1.0, 2])
+            // 1 point from results against none: the bye is not compared
+            ->and(bestOfRankIds(BestOfRankSelector::ofRank(2, 1)->select($outcome)))->toBe(['q2'])
+            ->and(bestOfRankIds(BestOfRankSelector::ofRank(2, 2)->comparedBy(PoolComparison::PerEvent)->select($outcome)))->toBe(['q2', 'p3']);
+    });
+
     it('refuses pools whose tables carry different tiebreakers', function (): void {
         $x = new Participant('x', 'X');
         $y = new Participant('y', 'Y');

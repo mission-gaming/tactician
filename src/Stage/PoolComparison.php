@@ -38,9 +38,18 @@ enum PoolComparison: string
      * Every figure divided by the number of events the entrant has played
      * (StandingEntry::getPlayed()): the ranking value, each tiebreaker
      * value, the score difference and scores-for. An entrant that has
-     * played no event has 0 for each. A tiebreaker whose value does not
-     * grow with the number of events is divided all the same, so leave such
-     * a tiebreaker out of the calculator that orders the combined table.
+     * played no event has 0 for each.
+     *
+     * A tiebreaker value is divided once, by the entrant's own events,
+     * whatever it measures. That puts a value that adds up over the
+     * entrant's events on one footing (WinsTiebreaker). It does not do so
+     * for a value that adds up the ranking values of opponents
+     * (BuchholzTiebreaker, SonnebornBergerTiebreaker): those have been
+     * collected over more events in a larger pool, so the entrant of the
+     * larger pool stays ahead after the division. A value that is already
+     * a ratio is divided as well. Leave such a tiebreaker out of the
+     * calculator that orders the combined table, or use DiscardLowest,
+     * which calculates every tiebreaker again.
      */
     case PerEvent = 'per-event';
 
