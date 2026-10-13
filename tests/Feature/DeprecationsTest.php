@@ -2,22 +2,41 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
+use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
+use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\EliminationPlan;
+use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\StageOutcome;
+use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
+use MissionGaming\Tactician\Stage\TieDecision;
+use MissionGaming\Tactician\Stage\TieResolution;
 use MissionGaming\Tactician\Tests\Support\DeprecatedCall;
 use MissionGaming\Tactician\Tests\Support\DeprecatedCallProbe;
 use MissionGaming\Tactician\Tests\Support\DocumentationSnippets;
+use MissionGaming\Tactician\Tests\Support\TieWinnerDeprecation;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 
 // The deprecated symbols of the library are a pinned set: deprecating one
 // more, or removing one, changes the list below on purpose and in the same
 // change as the "Deprecations" section of docs/USAGE.md and the changelog.
+//
+// One of them is a constant and the others are methods; what is said of a
+// method below holds for the constant with "use" for "call". The constant
+// names a metadata key, and the key is deprecated with it. A key is no
+// symbol, so nothing here can find it by reflection: the last group of this
+// file pins what reading it does.
 //
 // Each deprecated method says so twice. The `@deprecated` docblock tag is
 // what an IDE and PHPStan read, on every PHP version. The native
@@ -38,12 +57,23 @@ use PHPUnit\Framework\AssertionFailedError;
 
 $root = dirname(__DIR__, 2);
 
-/** The version every deprecation here dates from. */
-const DEPRECATED_SINCE = '0.2.2';
-
 /**
- * Every deprecated symbol of the library.
+ * Every deprecated symbol of the library, and the version its deprecation
+ * dates from. A method is written with its parentheses, a constant without.
  */
+const DEPRECATED_SINCE = [
+    'MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics::identifyConstraintConflicts()' => '0.2.2',
+    'MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics::suggestConstraintAdjustments()' => '0.2.2',
+    'MissionGaming\Tactician\Exceptions\SchedulingException::constraintViolation()' => '0.2.2',
+    'MissionGaming\Tactician\Exceptions\SchedulingException::invalidParticipantCount()' => '0.2.2',
+    'MissionGaming\Tactician\Exceptions\SchedulingException::invalidSchedule()' => '0.2.2',
+    'MissionGaming\Tactician\Scheduling\SchedulingContext::getTotalLegs()' => '0.2.2',
+    'MissionGaming\Tactician\Stage\TieDecision::TIE_WINNER_KEY' => '0.3.0',
+    'MissionGaming\Tactician\Validation\ScheduleValidator::generateConstraintSuggestions()' => '0.2.2',
+    'MissionGaming\Tactician\Validation\ScheduleValidator::generateDiagnosticReport()' => '0.2.2',
+];
+
+/** Every deprecated symbol of the library. */
 const DEPRECATED_SYMBOLS = [
     'MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics::identifyConstraintConflicts()',
     'MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics::suggestConstraintAdjustments()',
@@ -51,6 +81,7 @@ const DEPRECATED_SYMBOLS = [
     'MissionGaming\Tactician\Exceptions\SchedulingException::invalidParticipantCount()',
     'MissionGaming\Tactician\Exceptions\SchedulingException::invalidSchedule()',
     'MissionGaming\Tactician\Scheduling\SchedulingContext::getTotalLegs()',
+    'MissionGaming\Tactician\Stage\TieDecision::TIE_WINNER_KEY',
     'MissionGaming\Tactician\Validation\ScheduleValidator::generateConstraintSuggestions()',
     'MissionGaming\Tactician\Validation\ScheduleValidator::generateDiagnosticReport()',
 ];
@@ -182,11 +213,81 @@ $callsIn = function (string $php, array $methods): array {
     return $calls;
 };
 
-/** @return list<string> The bare method names of the pinned symbols */
+/** @return list<string> The bare method names of the pinned symbols that are methods */
 $deprecatedMethodNames = fn(): array => array_values(array_unique(array_map(
     static fn(string $symbol): string => substr($symbol, (int) strrpos($symbol, ':') + 1, -2),
-    DEPRECATED_SYMBOLS
+    array_values(array_filter(DEPRECATED_SYMBOLS, static fn(string $symbol): bool => str_ends_with($symbol, '()')))
 )));
+
+/**
+ * The uses a piece of PHP source makes of a class constant with one of the
+ * given names (`::NAME` that is not a call), and the string literals it
+ * holds that are one of the given strings, read from the tokens: a name or
+ * a string in a comment or a docblock is neither.
+ *
+ * @param list<string> $constants
+ * @param list<string> $strings
+ *
+ * @return list<string> One "NAME on line N" or "'string' on line N" per use
+ */
+$constantUsesIn = function (string $php, array $constants, array $strings = []): array {
+    $tokens = array_values(array_filter(
+        PhpToken::tokenize($php),
+        static fn(PhpToken $token): bool => !$token->is([T_WHITESPACE, T_COMMENT, T_DOC_COMMENT]),
+    ));
+    $uses = [];
+
+    foreach ($tokens as $index => $token) {
+        if ($token->id === T_CONSTANT_ENCAPSED_STRING && in_array(substr($token->text, 1, -1), $strings, true)) {
+            $uses[] = "{$token->text} on line {$token->line}";
+        }
+
+        if ($token->id !== T_STRING || !in_array($token->text, $constants, true)) {
+            continue;
+        }
+
+        $before = $tokens[$index - 1] ?? null;
+        $after = $tokens[$index + 1] ?? null;
+
+        if ($before !== null && $before->is(T_DOUBLE_COLON) && $after?->text !== '(') {
+            $uses[] = "{$token->text} on line {$token->line}";
+        }
+    }
+
+    return $uses;
+};
+
+/**
+ * The fenced `php` blocks of every Markdown file of the repository that
+ * documents the library, as [document, code] pairs. The "Deprecations"
+ * section of the usage guide is left out: it is the one place that shows
+ * what a deprecated thing was, in order to say what replaces it. The
+ * changelog is left out for the same reason.
+ *
+ * @return list<array{string, string}>
+ */
+$markdownPhpBlocks = function () use ($root): array {
+    $documents = ['AGENTS.md', 'README.md', 'examples/README.md'];
+    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root . '/docs', FilesystemIterator::SKIP_DOTS));
+    foreach ($iterator as $file) {
+        if ($file instanceof SplFileInfo && $file->getExtension() === 'md') {
+            $documents[] = substr($file->getPathname(), strlen($root) + 1);
+        }
+    }
+    sort($documents);
+
+    $blocks = [];
+    foreach ($documents as $document) {
+        $text = (string) preg_replace('/^## Deprecations\n.*?(?=^## |\z)/ms', '', (string) file_get_contents($root . '/' . $document));
+        preg_match_all('/^```php\n(.*?)^```/ms', $text, $matches);
+
+        foreach ($matches[1] as $block) {
+            $blocks[] = [$document, str_starts_with(ltrim($block), '<?php') ? $block : "<?php\n" . $block];
+        }
+    }
+
+    return $blocks;
+};
 
 describe('the deprecated symbols', function () use ($root, $phpFiles, $deprecated): void {
     it('are exactly the pinned set', function () use ($deprecated): void {
@@ -215,11 +316,17 @@ describe('the deprecated symbols', function () use ($root, $phpFiles, $deprecate
             ->and($tags)->toBe(count(DEPRECATED_SYMBOLS));
     });
 
+    it('each have the version their deprecation dates from', function (): void {
+        expect(array_keys(DEPRECATED_SINCE))->toBe(DEPRECATED_SYMBOLS);
+    });
+
     it('each say since when, and that removal is at 1.0.0, in the docblock', function () use ($deprecated): void {
         foreach ($deprecated() as $symbol => $facts) {
+            $since = DEPRECATED_SINCE[$symbol] ?? 'a version this test does not pin';
+
             expect($facts['docblock'])->toMatch(
-                '/@deprecated since ' . preg_quote(DEPRECATED_SINCE, '/') . ', removed in 1\.0\.0\. \S/',
-                "{$symbol} must say \"@deprecated since " . DEPRECATED_SINCE . ', removed in 1.0.0." and then why and what to use instead.'
+                '/@deprecated since ' . preg_quote($since, '/') . ', removed in 1\.0\.0\. \S/',
+                "{$symbol} must say \"@deprecated since " . $since . ', removed in 1.0.0." and then why and what to use instead.'
             );
 
             // Why, and the replacement or that there is none
@@ -234,14 +341,27 @@ describe('the deprecated symbols', function () use ($root, $phpFiles, $deprecate
             $arguments = $facts['attribute'] ?? [];
 
             expect(array_keys($arguments))->toBe(['message', 'since'], "{$symbol} must name both arguments of the attribute.")
-                ->and($arguments['since'] ?? null)->toBe(DEPRECATED_SINCE)
+                ->and($arguments['since'] ?? null)->toBe(DEPRECATED_SINCE[$symbol] ?? null)
                 ->and($arguments['message'] ?? null)->toBeString()
                 ->and((string) ($arguments['message'] ?? ''))->toMatch('/instead|no replacement/');
         }
     });
 
-    it('each exist as a public method PHP reports as deprecated where it can', function (): void {
+    it('each exist as a public method or constant PHP reports as deprecated where it can', function (): void {
         foreach (DEPRECATED_SYMBOLS as $symbol) {
+            if (!str_ends_with($symbol, '()')) {
+                [$class, $constant] = explode('::', $symbol);
+                $reflection = new ReflectionClassConstant($class, $constant);
+
+                // Reflection reports a deprecated constant only from PHP
+                // 8.4 (ReflectionClassConstant::isDeprecated()); the
+                // attribute it acts on is there on every version
+                expect($reflection->isPublic())->toBeTrue()
+                    ->and($reflection->getAttributes('Deprecated'))->toHaveCount(1);
+
+                continue;
+            }
+
             [$class, $method] = explode('::', substr($symbol, 0, -2));
             $reflection = new ReflectionMethod($class, $method);
 
@@ -331,6 +451,50 @@ describe('a deprecated method is called by nothing that ships or is documented',
     });
 });
 
+describe('the deprecated constant is used by nothing that ships or is documented', function () use ($root, $phpFiles, $constantUsesIn, $markdownPhpBlocks): void {
+    // The library reads the metadata key under a constant of its own
+    // (TieResolution), because a use of the deprecated one emits a notice
+    // from PHP 8.4. The examples and the documentation record a decider.
+    it('in src/ and examples/', function () use ($root, $phpFiles, $constantUsesIn): void {
+        $uses = [];
+        foreach ([...$phpFiles('src'), ...$phpFiles('examples')] as $file) {
+            foreach ($constantUsesIn((string) file_get_contents($root . '/' . $file), ['TIE_WINNER_KEY']) as $use) {
+                $uses[] = "{$file}: {$use}";
+            }
+        }
+
+        expect($uses)->toBe([]);
+    });
+
+    it('nor is the key it names written out, in examples/ and in the php blocks of every Markdown file', function () use ($root, $phpFiles, $constantUsesIn, $markdownPhpBlocks): void {
+        $uses = [];
+        foreach ($phpFiles('examples') as $file) {
+            foreach ($constantUsesIn((string) file_get_contents($root . '/' . $file), ['TIE_WINNER_KEY'], [TieWinnerDeprecation::KEY]) as $use) {
+                $uses[] = "{$file}: {$use}";
+            }
+        }
+
+        $blocks = $markdownPhpBlocks();
+        foreach ($blocks as [$document, $code]) {
+            foreach ($constantUsesIn($code, ['TIE_WINNER_KEY'], [TieWinnerDeprecation::KEY]) as $use) {
+                $uses[] = "{$document}: {$use}";
+            }
+        }
+
+        expect(count($blocks))->toBeGreaterThan(50)
+            ->and($uses)->toBe([]);
+    });
+
+    it('finds a use when there is one', function () use ($constantUsesIn): void {
+        expect($constantUsesIn('<?php $key = TieDecision::TIE_WINNER_KEY;', ['TIE_WINNER_KEY']))->toBe(['TIE_WINNER_KEY on line 1'])
+            ->and($constantUsesIn("<?php\n\$metadata = ['tie_winner' => 'p1'];", ['TIE_WINNER_KEY'], ['tie_winner']))->toBe(["'tie_winner' on line 2"])
+            // A declaration, a mention and a method of the name are not uses
+            ->and($constantUsesIn('<?php class C { public const TIE_WINNER_KEY = 1; }', ['TIE_WINNER_KEY']))->toBe([])
+            ->and($constantUsesIn('<?php // TieDecision::TIE_WINNER_KEY and \'tie_winner\'', ['TIE_WINNER_KEY'], ['tie_winner']))->toBe([])
+            ->and($constantUsesIn('<?php $x = C::TIE_WINNER_KEY();', ['TIE_WINNER_KEY']))->toBe([]);
+    });
+});
+
 describe('the deprecations are documented', function () use ($root): void {
     it('lists every deprecated method, since when and until when, in the usage guide', function () use ($root): void {
         $guide = (string) file_get_contents($root . '/docs/USAGE.md');
@@ -341,8 +505,10 @@ describe('the deprecations are documented', function () use ($root): void {
 
         $section = $matches[1];
 
-        expect($section)->toContain('deprecated since `' . DEPRECATED_SINCE . '`')
-            ->and($section)->toContain('removed in `1.0.0`');
+        foreach (array_unique(DEPRECATED_SINCE) as $since) {
+            expect($section)->toContain('deprecated since `' . $since . '`');
+        }
+        expect($section)->toContain('removed in `1.0.0`');
 
         // One row of the table for each, and no row for anything else
         preg_match_all('/^\| `([^`]+)` \|/m', $section, $rows);
@@ -355,25 +521,27 @@ describe('the deprecations are documented', function () use ($root): void {
     it('names every deprecated method under Deprecated in the changelog of the release', function () use ($root): void {
         $changelog = (string) file_get_contents($root . '/CHANGELOG.md');
 
-        // Until the release is cut, the entries are under Unreleased
-        $section = null;
-        foreach ([DEPRECATED_SINCE, 'Unreleased'] as $version) {
-            if (preg_match('/^## \[' . preg_quote($version, '/') . '\][^\n]*\n(.*?)(?=^## \[)/ms', $changelog, $matches) === 1) {
-                $section = $matches[1];
+        foreach (array_unique(DEPRECATED_SINCE) as $since) {
+            // Until the release is cut, the entries are under Unreleased
+            $section = null;
+            foreach ([$since, 'Unreleased'] as $version) {
+                if (preg_match('/^## \[' . preg_quote($version, '/') . '\][^\n]*\n(.*?)(?=^## \[)/ms', $changelog, $matches) === 1) {
+                    $section = $matches[1];
 
-                break;
+                    break;
+                }
             }
-        }
 
-        if ($section === null || preg_match('/^### Deprecated\n(.*?)(?=^### |\z)/ms', $section, $matches) !== 1) {
-            Assert::fail('CHANGELOG.md has no "Deprecated" category for ' . DEPRECATED_SINCE . '.');
-        }
+            if ($section === null || preg_match('/^### Deprecated\n(.*?)(?=^### |\z)/ms', $section, $matches) !== 1) {
+                Assert::fail('CHANGELOG.md has no "Deprecated" category for ' . $since . '.');
+            }
 
-        foreach (DEPRECATED_SYMBOLS as $symbol) {
-            $method = substr($symbol, (int) strrpos($symbol, ':') + 1);
+            foreach (array_keys(DEPRECATED_SINCE, $since, true) as $symbol) {
+                $method = substr($symbol, (int) strrpos($symbol, ':') + 1);
 
-            // Written as `Class::method()` or as `method()`
-            expect($matches[1])->toMatch('/[`:]' . preg_quote($method, '/') . '`/', "CHANGELOG.md does not name {$method} under Deprecated.");
+                // Written as `Class::method()` or as `method()`
+                expect($matches[1])->toMatch('/[`:]' . preg_quote($method, '/') . '`/', "CHANGELOG.md does not name {$method} under Deprecated.");
+            }
         }
     });
 });
@@ -552,5 +720,172 @@ describe('DeprecatedCall', function (): void {
 
         expect(fn(): mixed => DeprecatedCall::to($context, 'getPlan'))
             ->toThrow(AssertionFailedError::class, 'getPlan() is not deprecated; call it directly.');
+    });
+});
+
+// The deprecated metadata key. Before the typed decider (DTO\Decider), who
+// advances from a level elimination tie was `tie_winner` metadata on a
+// result. The key is still read until 1.0.0. Reading it is no call of a
+// deprecated method, so no attribute can say so: the library raises the
+// notice itself, with trigger_error(), which also means it is raised on
+// every PHP version, PHP 8.3 included. These tests pin what is raised, when,
+// and how often; the tests of the key's behaviour are every use of
+// Tests\Support\TieWinnerDeprecation.
+describe("the deprecated 'tie_winner' metadata key", function () use ($root): void {
+    /**
+     * A four-entrant single-leg bracket whose two semifinals and final all
+     * finished level, each settled the way asked for.
+     *
+     * @return array{SingleEliminationEngine, StageState}
+     */
+    $levelBracket = function (bool $asMetadata): array {
+        $engine = new SingleEliminationEngine();
+        $state = StageState::start(array_map(
+            static fn(int $number): Participant => new Participant("p{$number}", "Participant {$number}"),
+            range(1, 4)
+        ));
+
+        $record = function (StageState $state) use ($engine, $asMetadata): StageState {
+            $pairing = $engine->pairNextRound($state);
+            $results = [];
+            foreach ($pairing->getEvents() as $event) {
+                $advances = $event->getParticipants()[1]->getId();
+                $results[] = $asMetadata
+                    ? new Result($event, null, [], [TieWinnerDeprecation::KEY => $advances])
+                    : new Result($event, null, [], [], null, new Decider([$advances]));
+            }
+
+            return $state->withRoundPlayed($pairing, $results);
+        };
+
+        if (!$asMetadata) {
+            return [$engine, $record($record($state))];
+        }
+
+        return [$engine, TieWinnerDeprecation::throughout(fn(): StageState => $record($record($state)))];
+    };
+
+    it('is named by a constant that is deprecated with it and still holds it', function (): void {
+        // Read by reflection: a use of the constant emits its own notice
+        expect((new ReflectionClassConstant(TieDecision::class, 'TIE_WINNER_KEY'))->getValue())->toBe('tie_winner')
+            ->and(TieWinnerDeprecation::KEY)->toBe('tie_winner');
+    });
+
+    it('says what is deprecated, since when, until when, and what to use instead', function (): void {
+        expect(TieResolution::TIE_WINNER_DEPRECATION)->toBe(
+            "The 'tie_winner' metadata of a result is deprecated since 0.3.0 and is no longer read from 1.0.0:"
+            . ' record who advances from a level tie as the decider of the result instead'
+            . ' (MissionGaming\Tactician\DTO\Decider, the sixth argument of Result)'
+        );
+    });
+
+    it('is raised as E_USER_DEPRECATED, on every PHP version, by a call that reads the key', function (): void {
+        $alice = new Participant('p1', 'Alice');
+        $bob = new Participant('p2', 'Bob');
+        $level = new Result(new Event([$alice, $bob], new Round(1)), null, [], [TieWinnerDeprecation::KEY => 'p2']);
+
+        $seen = [];
+        set_error_handler(
+            static function (int $level, string $message) use (&$seen): bool {
+                $seen[] = [$level, $message];
+
+                return true;
+            }
+        );
+
+        try {
+            $advancer = TieDecision::advancer([$level], $alice, $bob, 1);
+        } finally {
+            restore_error_handler();
+        }
+
+        // No version check: this is not the #[\Deprecated] attribute, which
+        // PHP 8.3 does not act on
+        expect($advancer)->toBe($bob)
+            ->and($seen)->toBe([[E_USER_DEPRECATED, TieResolution::TIE_WINNER_DEPRECATION]]);
+    });
+
+    it('is raised once by each call of an engine, however many ties of the bracket the key decided', function () use ($levelBracket): void {
+        // Three level ties in the state, and each call replays all of them,
+        // some more than once
+        [$engine, $state] = $levelBracket(true);
+
+        expect(TieWinnerDeprecation::once(fn(): bool => $engine->isComplete($state)))->toBeTrue()
+            ->and(TieWinnerDeprecation::once(fn(): ?StageOutcome => $engine->getOutcome($state)))->not->toBeNull()
+            ->and(fn() => TieWinnerDeprecation::once(fn() => $engine->pairNextRound($state)))
+            ->toThrow(InvalidConfigurationException::class, 'Bracket is complete');
+    });
+
+    it('is raised once by each call of the double elimination engine and of the selector', function (): void {
+        $engine = new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+        $state = StageState::start([new Participant('p1', 'One'), new Participant('p2', 'Two'), new Participant('p3', 'Three')]);
+
+        // Every tie level at a leg each, and the first-named of its first
+        // leg advances: no reset is needed
+        $rounds = TieWinnerDeprecation::throughout(function () use ($engine, &$state): int {
+            $rounds = 0;
+            while (!$engine->isComplete($state)) {
+                $pairing = $engine->pairNextRound($state);
+                $results = [];
+                foreach ($pairing->getEvents() as $event) {
+                    [$first, $second] = $event->getParticipants();
+                    $results[] = new Result(
+                        $event,
+                        $first,
+                        [],
+                        $event->getMetadataValue('tie_leg') === 2 ? [TieWinnerDeprecation::KEY => $second->getId()] : []
+                    );
+                }
+                $state = $state->withRoundPlayed($pairing, $results);
+                ++$rounds;
+            }
+
+            return $rounds;
+        });
+        expect($rounds)->toBeGreaterThan(2);
+
+        $outcome = TieWinnerDeprecation::once(fn(): ?StageOutcome => $engine->getOutcome($state));
+        assert($outcome instanceof StageOutcome);
+
+        expect(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::winners()->select($outcome)))->toHaveCount(1)
+            ->and(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::losers()->select($outcome)))->toHaveCount(1);
+    });
+
+    it('is not raised for a bracket that records the decider', function () use ($levelBracket): void {
+        [$engine, $state] = $levelBracket(false);
+        $outcome = $engine->getOutcome($state);
+        assert($outcome instanceof StageOutcome);
+
+        // The suite fails on a deprecation, so the calls above are the
+        // test already; the count says it in so many words
+        expect(TieWinnerDeprecation::countIn(function () use ($engine, $state, $outcome): void {
+            $engine->isComplete($state);
+            $engine->getOutcome($state);
+            MatchOutcomeSelector::winners()->select($outcome);
+        }))->toBe(0);
+    });
+
+    it('gives the bracket the decider gives', function () use ($levelBracket): void {
+        [$engine, $byDecider] = $levelBracket(false);
+        [, $byMetadata] = $levelBracket(true);
+
+        $table = static fn(?StageOutcome $outcome): array => array_map(
+            static fn($entry): array => [$entry->getParticipant()->getId(), $entry->getWins(), $entry->getDraws(), $entry->getLosses()],
+            array_values($outcome?->getStandings()->getEntries() ?? [])
+        );
+
+        expect($table(TieWinnerDeprecation::once(fn(): ?StageOutcome => $engine->getOutcome($byMetadata))))
+            ->toBe($table($engine->getOutcome($byDecider)))
+            ->and($table($engine->getOutcome($byDecider)))->toBe([['p3', 2, 0, 0], ['p4', 1, 0, 1], ['p1', 0, 0, 1], ['p2', 0, 0, 1]]);
+    });
+
+    it('is documented with the constant: the usage guide and the changelog say when the key stops being read', function () use ($root): void {
+        $guide = (string) preg_replace('/\s+/', ' ', (string) file_get_contents($root . '/docs/USAGE.md'));
+        $changelog = (string) preg_replace('/\s+/', ' ', (string) file_get_contents($root . '/CHANGELOG.md'));
+
+        expect($guide)->toContain('`tie_winner` metadata key')
+            ->and($guide)->toContain('is no longer read from `1.0.0`')
+            ->and($changelog)->toContain("`'tie_winner'` metadata")
+            ->and($changelog)->toContain('is no longer read from `1.0.0`');
     });
 });

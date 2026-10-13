@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Award;
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -909,7 +910,7 @@ describe('an elimination bracket with awarded results and adjustments', function
         ]);
         $decided = $state->withRoundPlayed($final, [
             new Result($firstLeg, $e1),
-            new Result($secondLeg, $e2, [], ['tie_winner' => 'e2'], new Award()),
+            new Result($secondLeg, $e2, [], [], new Award(), new Decider(['e2'])),
         ]);
 
         try {
@@ -932,7 +933,7 @@ describe('an elimination bracket with awarded results and adjustments', function
 
         $level = $state->withRoundPlayed($final, [new Result($final->getEvents()[0], award: new Award())]);
         $decided = $state->withRoundPlayed($final, [
-            new Result($final->getEvents()[0], null, [], ['tie_winner' => 'e1'], new Award('ruling')),
+            new Result($final->getEvents()[0], null, [], [], new Award('ruling'), new Decider(['e1'])),
         ]);
 
         expect(fn() => $engine->isComplete($level))->toThrow(InvalidConfigurationException::class);

@@ -32,8 +32,8 @@ of that form. `toJson()` and `jsonSerialize()` write the same array.
 
 **One version to an array.** A form held inside another is written without
 the key: the participants and events of a schedule, the round of an event,
-the rounds, results and adjustments of a stage state, the award of a
-result, the records of a repack outcome.
+the rounds, results and adjustments of a stage state, the award and the
+decider of a result, the records of a repack outcome.
 The array that is stored states one version, at its top, and what it holds
 is read under that version. A part serialized by itself, with its own
 `toArray()`, is the top of its own array and carries the key. A reader
@@ -43,9 +43,10 @@ an array put together by hand from separately serialized parts loads.
 **A missing version is version 1.** Version 1 of every form is the form
 0.3.0 writes: what 0.2.x wrote, which had no version key, and beside it
 the optional keys 0.3.0 added before the key existed (`strategy_seed` in
-round-robin options, `seed` in Swiss options, `ties` in a rank range
-selector, `third_place` in elimination options, `award` in a result and
-`adjustments` in a stage state). Each of those may be left out and is then read
+round-robin options, `seed` in Swiss options, `ties` and `comparison` in a
+rank range selector, `third_place` in elimination options, `award` and
+`decider` in a result and `adjustments` in a stage state). Each of those
+may be left out and is then read
 as 0.2.x behaved, so an array without the version key is read as version 1,
 under the rules of version 1, and data stored by 0.2.x keeps loading.
 `tests/Fixtures/stored-by-0.2/` holds every form as the 0.2.x tags wrote it,

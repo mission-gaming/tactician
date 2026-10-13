@@ -202,7 +202,7 @@ describe('a key the form does not have', function (): void {
 
         expect(fn(): object => $form['read']($mistyped, PlainDataForms::registry()))->toThrow(
             InvalidInputException::class,
-            "Unknown key in result data: 'winer' (the known keys are 'format_version', 'event', 'winner', 'scores', 'metadata', 'award')"
+            "Unknown key in result data: 'winer' (the known keys are 'format_version', 'event', 'winner', 'scores', 'metadata', 'award', 'decider')"
         );
     });
 });

@@ -46,8 +46,9 @@ anything else that competes.
 | **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events — round robin records them in the `byes` schedule metadata, and the Swiss/elimination engines report them on the round pairing. |
 | **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and a standings table calculated on its own, with no entrant list, uses it in its last fallback, between scores-for and the ID (see **Tied set**). No stage reads it. Wherever an entrant list exists, the position in that list decides what results do not: bracket placement, serpentine pool distribution, pot membership, the pairing order and the byes of a Swiss stage, the survivors of a re-seeded elimination round, the table of an engine's outcome and a rank selection. Put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
-| **Result** | The recorded outcome of an event: a winner or a draw, with optional per-participant scores. The event was played, unless the result is an **awarded result**. |
+| **Result** | The recorded outcome of an event: a winner or a draw, with optional per-participant scores. The event was played, unless the result is an **awarded result**. A result of a knockout tie that finished level may carry a **decider**. |
 | **Awarded result** | A result of an event that was not played, given to it by a decision of the application (`Result::isAwarded()`; the mark is an `Award` with an optional label and reason that the library never reads). It is a result in every respect: it counts for the winner it names, is the one result of its event, and settles what a result settles (who advances from a knockout tie). Two things are the caller's choice, on the standings calculator (`AwardedResultPolicy`): whether its scores count, and whether a tiebreaker computed between the tied participants only reads it. See [Awarded results](#awarded-results). |
+| **Decider** | The record of a decision made outside the results, where the results leave a knockout tie level (`DTO\Decider`, the `decider` argument of `Result`): the IDs of the participants who advance, as a list (one, for a tie between two), and an optional label and reason that the library never reads. The library records that the tie was decided and for whom, and never how. It holds no score and changes none: the result keeps the scores of the event as played. See [Recording a Level Event](#recording-a-level-event). |
 | **Adjustment** | An amount added to, or taken from, one participant's ranking value for a reason that is no event (`Adjustment`: a participant ID, a signed amount, an optional label and reason that the library never reads). The amount is on the scale of the ranking strategy, whatever that is: points under `WinDrawLossRanking`. A table shows it as a figure of its own beside what was earned and is ordered by the two together; a stage state carries the adjustments of its stage. See [Adjustments](#adjustments). |
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
@@ -59,8 +60,10 @@ anything else that competes.
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
 | **Pot** | One of the equal blocks a seeded list of entrants is cut into for a pot draw, in list order: the first block is pot 1, the next pot 2, and so on. A pot is not a pool: the members of a pool play each other and are ranked together, while a pot only limits who an entrant can draw. |
 | **Pot draw** | A format in which every round is drawn before any event is played (`PotDrawScheduler`): every entrant meets the same number of opponents from every pot, its own included, with no rematch, and is in every round. Often called "Swiss", but nothing is paired from results. See [Pot Draws](#pot-draws). |
-| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
-| **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as `tie_winner` metadata on the event's result, or on a leg's result. Ties are not legs: brackets have no legs concept. |
+| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`, `BestOfRankSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
+| **Best of a rank** | The best few of the entrants that hold one rank in their pools, compared with each other across the pools and listed best first (`BestOfRankSelector`): the two best of those placed third. See [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
+| **Pool comparison** | How entrants of pools of unequal size are compared (`PoolComparison`): by raw totals, per event played, or without the results against the lowest-placed entrants of the larger pools. The caller's choice; a selection across pools of unequal size is refused until it is made. Pools are unequal when their tables do not have the same number of entries. |
+| **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as the **decider** of the event's result, or of one leg's result. Ties are not legs: brackets have no legs concept. |
 | **Third-place tie** | An opt-in second tie in the last round of a single elimination bracket (`EliminationOptions(thirdPlace: true)`), between the two entrants who went out in the round before it. It decides places 3 and 4, which the bracket otherwise leaves to the records. It is in the same round as the final and has the same round label, so each event of that round carries which tie it belongs to (**bracket tie**). See [A third-place tie](#a-third-place-tie). |
 | **Bracket tie** | The typed statement of which tie of a bracket's last round an event belongs to (`BracketTie`: `Final` or `ThirdPlace`), written by the engine as a string under `bracket_tie` in the event's metadata and read back with `BracketTie::of()`. Present only on the events of the last round of a bracket with a third-place tie option. |
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
@@ -1750,7 +1753,7 @@ from the adjusted totals, and the table of the outcome shows each
 `withResultReplaced()` replaces the result of one event of the **last
 recorded round**, for a result that was entered wrongly. It corrects the
 record; it does not decide an event (an elimination event that finished
-level is decided by the `tie_winner` it is recorded with, see
+level is decided by the decider it is recorded with, see
 [Recording a Level Event](#recording-a-level-event)). The event is found by its round
 number, its participants in either order and its tie leg, so the state may
 have come back from storage. The replacement takes the place of the old
@@ -2325,8 +2328,9 @@ every bracket.
   `tie_leg` metadata). Whoever wins more legs advances; when the legs are
   level, the aggregate is **yours** to resolve — away goals, extra time,
   penalties are rules Tactician never owns — and you record the decision
-  as `TieDecision::TIE_WINNER_KEY` (`'tie_winner'`) metadata on one leg's
-  result. Per-leg results remain ordinary results: the records of the
+  as the decider of one leg's result (see
+  [Recording a Level Event](#recording-a-level-event)). Per-leg results
+  remain ordinary results: the records of the
   table count each leg as it was recorded, and the decision places the
   entrant it sent on above the one it did not.
 - `thirdPlace: true` adds a **third-place tie** to the last round of a
@@ -2412,13 +2416,13 @@ Rank 2: Heidi (5-2)
 Won the bracket: Alice
 ```
 
-**A two-legged tie decided by `tie_winner`.** Each leg is recorded as it
+**A two-legged tie settled by a decider.** Each leg is recorded as it
 was played, so two finalists who win a leg each have the same record. The
 decision is what the bracket went by, and the table follows the bracket:
 
 ```php
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
-use MissionGaming\Tactician\Stage\TieDecision;
 
 $twoLegged = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
 
@@ -2426,23 +2430,32 @@ $finalState = StageState::start([$alice, $heidi]);
 $finalTie = $twoLegged->pairNextRound($finalState);
 [$firstLeg, $secondLeg] = $finalTie->getEvents();
 
-// A leg each; under the application's rules Heidi advances
+// 2-1, then 0-1 the other way: a leg each. Under the application's rules
+// Heidi advances, and the decider on the second leg says so
 $finalState = $finalState->withRoundPlayed($finalTie, [
-    new Result($firstLeg, $alice),
-    new Result($secondLeg, $heidi, [], [TieDecision::TIE_WINNER_KEY => $heidi->getId()]),
+    new Result($firstLeg, $alice, [$alice->getId() => 2, $heidi->getId() => 1]),
+    new Result(
+        $secondLeg,
+        $heidi,
+        [$alice->getId() => 0, $heidi->getId() => 1],
+        decider: new Decider([$heidi->getId()], 'tie-break')
+    ),
 ]);
 
 $finalOutcome = $twoLegged->getOutcome($finalState);
+$heidiEntry = $finalOutcome->getStandings()->getEntries()[0];
 
-echo 'Rank 1: ' . $finalOutcome->getStandings()->getEntries()[0]->getParticipant()->getLabel() . "\n";
+echo 'Rank 1: ' . $heidiEntry->getParticipant()->getLabel() . "\n";
 echo 'Won the tie: ' . MatchOutcomeSelector::winners()->select($finalOutcome)[0]->getLabel() . "\n";
 echo count($finalOutcome->getStandings()->getTiedSets()) . " tied sets\n";
+echo "Scores: {$heidiEntry->getScoreFor()} for, {$heidiEntry->getScoreAgainst()} against\n";
 ```
 
 ```text
 Rank 1: Heidi
 Won the tie: Heidi
 0 tied sets
+Scores: 2 for, 2 against
 ```
 
 **A bye.** A bye is not an event, so it is no win in a record. A
@@ -2555,7 +2568,7 @@ mark on the events you record the round with, and do not use the key
 The third-place tie is a tie like the others. It is played over the same
 number of legs as the final (`legsPerTie: 2` gives it two events, each
 marked `'third-place'` beside its `tie_leg`), and one that finishes level
-is decided by the `tie_winner` decision recorded on its result (see
+is decided by the decider recorded on its result (see
 [Recording a Level Event](#recording-a-level-event)). The stage is complete
 when both ties of the last round are decided. With one of them decided and
 the other not, the round is partially resolved, and every call refuses the
@@ -2649,14 +2662,18 @@ rest of the bracket, and ties for the places below fourth.
 
 An elimination tie must send one participant on, and an event can still
 finish level. Who advances is then **your** decision, under rules Tactician
-never owns and never asks about. Record the event as the draw it was, and
-name the participant who advances as `TieDecision::TIE_WINNER_KEY`
-(`'tie_winner'`) metadata on its result, by ID. This is the key and the
-reading a level two-legged tie has, in both engines and in every round of
-them (the losers bracket, the grand final and its reset included).
+never owns and never asks about. Record the event as the draw it was, with
+the scores it was played to, and give its result a **decider**
+(`DTO\Decider`): the ID of the participant who advances, and optionally a
+label and a reason in your own words. The library stores the label and the
+reason and never reads them: it records that the tie was decided outside
+its results, and for whom, and never how. This is the reading a level
+two-legged tie has, in both engines and in every round of them (the losers
+bracket, the grand final and its reset, and a
+[third-place tie](#a-third-place-tie) included).
 
 ```php
-use MissionGaming\Tactician\Stage\TieDecision;
+use MissionGaming\Tactician\DTO\Decider;
 
 [$alice, $bob, $carol, $dave] = $participants;
 
@@ -2670,7 +2687,7 @@ $state = $state->withRoundPlayed($semifinals, [
         $aliceVsDave,
         null,
         ['alice' => 1, 'dave' => 1],
-        [TieDecision::TIE_WINNER_KEY => $dave->getId()]
+        decider: new Decider([$dave->getId()], 'tie-break', 'Level after the event')
     ),
     new Result($bobVsCarol, $bob, ['bob' => 2, 'carol' => 0]),
 ]);
@@ -2682,15 +2699,48 @@ foreach ($engine->pairNextRound($state)->getEvents() as $event) {
 ```
 
 The recorded result is not changed: `isDraw()` is true, `getWinner()` is
-null and the scores are the scores. To read who advanced from a result
-yourself, read the metadata key, or ask `TieDecision::advancer()`, which
-is the reading the engines and `MatchOutcomeSelector` use:
+null and the scores are the scores. The decider holds no score and changes
+none. Whatever your application keeps about its own tie-break (a count, a
+time) belongs in the result's `metadata`, where no score figure of the
+library reads it: scores-for, scores-against and the score difference of a
+table come from the scores of the events and from nothing else. To read who
+advanced from a result yourself, read its decider, or ask
+`TieDecision::advancer()`, which is the reading the engines and
+`MatchOutcomeSelector` use:
 
 ```php
+use MissionGaming\Tactician\Stage\TieDecision;
+
 $recorded = $state->getResults()[0];
 
 echo ($recorded->isDraw() ? 'drawn' : 'won') . ', '
     . TieDecision::advancer([$recorded], $alice, $dave, 1)?->getLabel() . " advances\n"; // drawn, Dave advances
+echo implode('-', $recorded->getScores()) . ', decided for '
+    . implode(', ', $recorded->getDecider()?->getParticipantIds() ?? [])
+    . " by {$recorded->getDecider()?->getLabel()}\n"; // 1-1, decided for dave by tie-break
+```
+
+The decider names its participants as a list, because nothing in the type
+assumes two sides. A tie of the bracket engines is between two and sends
+one of them on, so there the list holds exactly one ID.
+
+It is stored with the result. `Result::toArray()` writes it under `decider`
+(`participants`, `label`, `reason`) for a result that has one and writes no
+such key for any other, and a stage state keeps it through `toArray()` and
+JSON, so a state that holds decided ties is replayed as it was recorded:
+
+```php
+$restored = StageState::fromJson($state->toJson());
+[$level, $won] = $restored->toArray()['results'];
+
+echo json_encode($level['decider']), "\n";
+// {"participants":["dave"],"label":"tie-break","reason":"Level after the event"}
+echo json_encode($level['scores']), "\n";                                    // {"alice":1,"dave":1}
+echo array_key_exists('decider', $won) ? 'a decider' : 'no decider', "\n"; // no decider
+echo implode(' v ', array_map(
+    fn (Participant $p) => $p->getLabel(),
+    $engine->pairNextRound($restored)->getEvents()[0]->getParticipants()
+)) . "\n"; // Dave v Bob
 ```
 
 In the outcome's standings a level event that was decided this way counts
@@ -2708,11 +2758,11 @@ yourself counts the level event as a draw, and so does
 `StageOutcome::combining()`, which computes its combined table from the
 results of the outcomes it is given.
 
-A level event that names nobody is refused, and so is one that names a
-participant who is not in the event. The state itself accepts the result,
-because it does not know the format; the engine then rejects the state on
-every call (`isComplete()`, `pairNextRound()`, `getOutcome()`), with a
-message that names the key:
+A level event that names nobody leaves its tie unresolved. The state
+itself accepts the result, because it does not know the format; the engine
+then rejects the state on every call (`isComplete()`, `pairNextRound()`,
+`getOutcome()`) and says which tie: the reason is `UndecidedTie`, and the
+context of the exception holds the round and the two participants.
 
 ```php
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
@@ -2729,19 +2779,50 @@ try {
 } catch (InvalidConfigurationException $e) {
     echo "{$e->getReason()?->value}: {$e->getMessage()}\n";
     // undecided_tie: Invalid scheduler configuration: Elimination events cannot end in a draw
-    // (Alice vs Dave): the event is level, so record who advances as 'tie_winner' metadata on its result
+    // (Alice vs Dave): the event is level, so record who advances as the decider of its result
+    echo json_encode($e->getContext()), "\n"; // {"round":1,"participants":["alice","dave"]}
 }
 ```
 
-| The level event's result | Reason (`getReason()`) |
-|--------------------------|------------------------|
-| carries no `tie_winner`, or carries `null` | `UndecidedTie` |
-| names a participant who is not one of the two in the event (or a value that is not an ID) | `InvalidResult` |
+A decider settles a level tie and does nothing else, so one that says
+anything else is refused:
 
-The decision is read only when the results leave the tie level. On an
-event that has a winner, and on a two-legged tie that the leg wins decide,
-`tie_winner` is not read at all: it cannot overturn the result, and a value
-that names nobody in the tie goes unnoticed there.
+| What is recorded | What happens |
+|------------------|--------------|
+| A level tie, and no decider on any of its results | The engine refuses the state: `UndecidedTie` |
+| A decider that names a participant who is not in the event | `Result` refuses it when it is built, and when it is read from plain data (`InvalidInputException`) |
+| A decider on a tie that its results already decide: an event that has a winner, or a leg of a two-legged tie that the leg wins decide | The engine refuses the state: `InvalidResult`. A decider cannot confirm a result or overturn one |
+| A decider that names more than one participant of a tie between two | `InvalidResult` |
+| A decider on both legs of a two-legged tie | `InvalidResult`, whether the two agree or not: a tie has one decision |
+
+```php
+try {
+    $engine->pairNextRound(StageState::start([$alice, $bob, $carol, $dave])->withRoundPlayed($semifinals, [
+        // Alice won 2-1: there is nothing left to decide
+        new Result($aliceVsDave, $alice, ['alice' => 2, 'dave' => 1], decider: new Decider([$dave->getId()])),
+        new Result($bobVsCarol, $bob),
+    ]));
+    echo "Paired\n";
+} catch (InvalidConfigurationException $e) {
+    echo "{$e->getReason()?->value}\n"; // invalid_result
+}
+```
+
+**Two legs.** The decider goes on one result of the tie. Either leg's
+result is read, and the last leg played is the natural place: that is when
+the tie is known to be level. While a leg has no result the tie is
+incomplete and a decider on the other leg decides nothing yet. The
+[two-legged final above](#who-won-the-bracket) is the worked case: 2-1,
+then 0-1, and the decider on the second leg.
+
+**Elsewhere.** Only the elimination engines and `MatchOutcomeSelector` read
+a decider. A standings calculator, the Swiss engine and a round robin carry
+it with the result and do not read it: a drawn result is a draw there, with
+a decider or without.
+
+**Before 0.3.0** the decision was `tie_winner` metadata on the result. The
+key is deprecated and still read; see
+[The `tie_winner` metadata key](#the-tie_winner-metadata-key).
 
 Record the decision with the result, in the `withRoundPlayed()` call that
 records the round. `$state->withResultReplaced(...)` is not how a level
@@ -2750,7 +2831,7 @@ event is decided: it corrects a record that was entered wrongly (see
 that is stuck on a level event was recorded incompletely or wrongly, and
 the correction says which. If the event did finish level, the decision is
 what the record lacks: replace the result with the same draw, carrying
-`tie_winner`. If the draw was entered by mistake, replace it with the
+its decider. If the draw was entered by mistake, replace it with the
 result the event had. Do not replace a level event with a win it was not.
 
 ```php
@@ -2758,7 +2839,7 @@ $decided = $undecided->withResultReplaced(new Result(
     $aliceVsDave,
     null,
     ['alice' => 1, 'dave' => 1],
-    [TieDecision::TIE_WINNER_KEY => $alice->getId()]
+    decider: new Decider([$alice->getId()])
 ));
 
 [$final] = $engine->pairNextRound($decided)->getEvents();
@@ -2793,8 +2874,22 @@ An awarded result is read as any other result of the tie. In a two-legged
 tie it is a leg won, and every leg needs a result, so a tie that is not
 played at all takes an awarded result for each leg. An awarded result that
 names no winner leaves the tie level, like a draw, and the tie then needs
-its `tie_winner` decision as above. Awarding an event to both sides, or to
-neither, is not something a result can say.
+its decider as above. The awarded result can carry it: the award says that
+the event was not played, and the decider who goes on from the level tie.
+The two do not otherwise meet, so an awarded result that names a winner
+decides its tie and takes no decider, as a played one does. Awarding an
+event to both sides, or to neither, is not something a result can say.
+
+```php
+$notPlayed = StageState::start([$alice, $bob, $carol, $dave])->withRoundPlayed($semifinals, [
+    // Neither side is there. The event is awarded to nobody, and Dave goes on
+    new Result($aliceVsDave, award: new Award('double no-show'), decider: new Decider([$dave->getId()], 'drawn by lot')),
+    new Result($bobVsCarol, $bob, ['bob' => 2, 'carol' => 0]),
+]);
+
+[$final] = $engine->pairNextRound($notPlayed)->getEvents();
+echo implode(' v ', array_map(fn (Participant $p) => $p->getLabel(), $final->getParticipants())) . "\n"; // Dave v Bob
+```
 
 ## Pools, Progression, and Multi-Stage Tournaments
 
@@ -2815,6 +2910,22 @@ function playPool(\MissionGaming\Tactician\DTO\Schedule $schedule): array
             [$first, $second] = $event->getParticipants();
 
             return new \MissionGaming\Tactician\DTO\Result($event, strcmp($first->getLabel(), $second->getLabel()) < 0 ? $first : $second);
+        },
+        $schedule->getEvents()
+    );
+}
+
+/** @return list<\MissionGaming\Tactician\DTO\Result> */
+function playPoolByMargin(\MissionGaming\Tactician\DTO\Schedule $schedule, int $margin): array
+{
+    // The same winners, each by the given score to nil
+    return array_map(
+        static function (\MissionGaming\Tactician\DTO\Event $event) use ($margin): \MissionGaming\Tactician\DTO\Result {
+            [$first, $second] = $event->getParticipants();
+            $winner = strcmp($first->getLabel(), $second->getLabel()) < 0 ? $first : $second;
+            $loser = $winner === $first ? $second : $first;
+
+            return new \MissionGaming\Tactician\DTO\Result($event, $winner, [$winner->getId() => $margin, $loser->getId() => 0]);
         },
         $schedule->getEvents()
     );
@@ -2882,20 +2993,22 @@ one decision invites contradictory qualification — pick one ranking
 authority per decision):
 
 ```php
+use MissionGaming\Tactician\Stage\BestOfRankSelector;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 
 // Standings-based (rank slices):
 RankRangeSelector::topPerGroup(2);            // the classic qualifiers
 RankRangeSelector::perGroup(from: 3, to: 4);  // a losers' route
 RankRangeSelector::overall(from: 1, to: 8);   // best 8 across all pools
+BestOfRankSelector::ofRank(rank: 3, count: 2); // the 2 best of those placed third
 
 // Outcome-based (recorded match results - never points arithmetic):
 MatchOutcomeSelector::winners();              // knockout round -> next round
 MatchOutcomeSelector::losers();               // knockout round -> repechage
 ```
 
-Both selector classes are plain-data constructible
-(`fromArray()`/`toArray()`) with stable mode identifiers; the data does not
+The three selector classes are plain-data constructible
+(`fromArray()`/`toArray()`) with stable identifiers; the data does not
 say which class it belongs to, so store that beside it. Selectors are
 optional machinery, not a gate: a consumer computing its own qualification
 hands the next stage an ordered list directly, with no penalty.
@@ -3033,6 +3146,185 @@ Consumer-derived selections participate by declaring expected entrant
 counts (a transition without a selector); concurrent routes (winners
 forward, losers to a repechage) validate as separate chains from the same
 source.
+
+### The best of a rank across pools
+
+Some formats take the top of every pool and then the best few of those
+placed next: the top two of three pools and the two best of the entrants
+placed third. `RankRangeSelector::perGroup(3, 3)` returns the three
+entrants placed third in pool order; `BestOfRankSelector` ranks them
+against each other and returns the best, best first
+(`playPoolByMargin()` stands for your application: the same winners as
+`playPool()`, each by that score to nil):
+
+```php
+// Twelve entrants in three pools of four
+$field = array_map(
+    fn (string $name) => new Participant(strtolower($name), $name),
+    ['Ada', 'Ben', 'Cy', 'Di', 'Eli', 'Fay', 'Gus', 'Hal', 'Ian', 'Joy', 'Kit', 'Lou']
+);
+$margins = ['A' => 1, 'B' => 2, 'C' => 3];
+$stagePools = [];
+foreach (PoolDistributor::serpentine($field, pools: 3) as $label => $members) {
+    $results = playPoolByMargin($scheduler->schedule($members), $margins[$label]);
+    $stagePools[$label] = new StageOutcome($calculator->calculate($members, $results), $results, entrants: $members);
+}
+$stage = StageOutcome::combining($stagePools, $calculator, $field);
+
+// Third in their pools: Gus (3 points, score difference -1), Hal (3, -2), Ian (3, -3)
+$bestThirds = BestOfRankSelector::ofRank(rank: 3, count: 2)->select($stage);
+
+echo implode(', ', array_map(fn (Participant $p) => $p->getLabel(), $bestThirds)) . "\n"; // Gus, Hal
+```
+
+Who holds the rank in a pool is read from that pool's own table. The
+holders are then compared by the figures the **combined** table has for
+them (the table of the outcome `StageOutcome::combining()` builds), in the
+order a table is ordered by: ranking value, each tiebreaker of the
+calculator given to `combining()`, score difference, scores-for. A
+tiebreaker that means something only among entrants who met each other (a
+head-to-head measure) means nothing between entrants of different pools:
+keep it on the calculator of the pools' tables and give `combining()` a
+calculator without it. The selection is the same whatever order the pools,
+their entrants and their results were given in.
+
+**Pools of unequal size need a comparison method.** Pools are unequal when
+their tables do not have the same number of entries. Their entrants have
+then played different numbers of events, and what is compared changes who
+goes through, so the selector applies no method of its own: it refuses
+until one is chosen, with the reason `PoolComparisonRequired` and the pool
+sizes in the context.
+
+```php
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\PoolComparison;
+
+// The same stage without Lou: pool A has three entrants, who play two events each
+$poolA = [$field[0], $field[5], $field[6]];
+$resultsA = playPoolByMargin($scheduler->schedule($poolA), 1);
+$unequal = StageOutcome::combining(
+    ['A' => new StageOutcome($calculator->calculate($poolA, $resultsA), $resultsA, entrants: $poolA)] + $stagePools,
+    $calculator,
+    array_slice($field, 0, 11)
+);
+
+try {
+    BestOfRankSelector::ofRank(3, 2)->select($unequal);
+} catch (InvalidConfigurationException $e) {
+    echo "{$e->getReason()?->value}: " . json_encode($e->getContext()['pool_sizes']) . "\n";
+}
+```
+
+```text
+pool_comparison_required: {"A":3,"B":4,"C":4}
+```
+
+| `PoolComparison` | Plain data | What is compared |
+|------------------|------------|------------------|
+| `RawTotals` | `'raw-totals'` | The figures as the table has them. An entrant of a larger pool has had more events to collect them in |
+| `PerEvent` | `'per-event'` | Every figure divided by the events the entrant has played: ranking value, each tiebreaker value, score difference, scores-for. An entrant with no event played has 0 for each, and its adjustment, if it has one, for the ranking value |
+| `DiscardLowest` | `'discard-lowest'` | In every pool larger than the smallest, the entrants placed below the size of the smallest pool are left out with every result they are in, and the table is calculated again by the calculator of the outcome, with the adjustments of the entrants that are kept. Raw totals of that table are compared |
+
+```php
+$best = fn (PoolComparison $comparison): string => implode(', ', array_map(
+    fn (Participant $p) => $p->getLabel(),
+    BestOfRankSelector::ofRank(3, 2)->comparedBy($comparison)->select($unequal)
+));
+
+// Gus is third of three with no point from 2 events; Hal and Ian have 3 from 3
+echo $best(PoolComparison::RawTotals) . "\n";     // Hal, Ian
+echo $best(PoolComparison::PerEvent) . "\n";      // Hal, Ian: 1 point an event each
+// Without their wins over the entrant placed fourth, Hal and Ian have no
+// point either, and Gus has the best score difference of the three
+echo $best(PoolComparison::DiscardLowest) . "\n"; // Gus, Hal
+```
+
+With pools of one size no method is needed. One that was chosen is still
+applied, and where every compared entrant has played the same number of
+events the three give the same order. The selector counts entries, not
+events: it does not see that pools of one size played different numbers of
+events (a pool with events still to play, pools of different leg counts, a
+pool in which an entrant sat a round out or withdrew), so check
+completeness before you select, and choose `PerEvent` where the numbers of
+events differ by design. `DiscardLowest` recalculates a table, which takes
+the calculator: `combining()` hands it to the outcome, and an outcome built
+by hand takes it as its last constructor argument.
+
+Three things to know before choosing `PerEvent` for a calculator with
+tiebreakers, and before comparing pools that had byes, adjustments or
+awarded results:
+
+- **`PerEvent` divides a tiebreaker value once, by the entrant's own
+  events.** That is right for a value that adds something up over the
+  entrant's events, as `WinsTiebreaker` does. It is not enough for
+  `BuchholzTiebreaker` and `SonnebornBergerTiebreaker`, which add up the
+  ranking values of opponents: those values have themselves been collected
+  over more events in a larger pool, so after the division the entrant of
+  the larger pool is still ahead for no reason but the size of its pool.
+  And a tiebreaker of your own that is already a ratio is divided as well,
+  which a ratio should not be. Give `combining()` a calculator without
+  such a tiebreaker (the pools' own tables may keep it), or choose
+  `DiscardLowest`, which calculates every tiebreaker again from the
+  results that are left.
+- **A bye credited in a pool's table is not in the figures compared.** The
+  combined table is calculated from the results, and credits no bye. Where
+  a pool's own table counts a bye as a win
+  (`StandingsCalculator::withByesCredited()`, as the table of a Swiss stage
+  does), that credit decides who holds the rank in the pool, and the
+  holders are then compared by what they scored in the events they played.
+- **An [adjustment](#adjustments) is in the figures
+  compared, under every method, and an awarded result is a result.**
+  `combining()` carries the adjustment of a pool's table over to the
+  combined table, and the ranking value compared is the total a table is
+  ordered by: what was earned plus the adjustment. No other figure changes
+  with it. `RawTotals` compares that total. `PerEvent` divides it by the
+  events played, the adjustment with what was earned, so that three points
+  taken away weigh what three points not won weigh, and the methods still
+  agree where the entrants have played the same number of events; an
+  entrant that has played no event has nothing to divide by and is compared
+  by its adjustment as it stands (0 without one). `DiscardLowest`
+  calculates the table again from the results that are left and applies
+  the adjustment of every entrant that is kept again, whole: it comes from
+  no event, so no result that is left out takes any of it away, and an
+  entrant that is left out goes with its adjustment. An
+  [awarded result](#awarded-results) is one of the events played that
+  `PerEvent` divides by, and `DiscardLowest` keeps it or leaves it out with
+  the other results of the two entrants, counted as the calculator's
+  awarded result policy counts it.
+
+**A selection that results do not decide is refused**, exactly as a
+`RankRangeSelector` refuses one, with an `UndecidedSelectionException`:
+
+| What is undecided | The exception |
+|-------------------|---------------|
+| A pool has no result, or level entries of a pool hold the rank: who holds it is not decided | names the pool (`getPool()`) |
+| Holders that are level on every compared figure are on both sides of the cut (`TieAcrossSelection`) or are all selected (`TieWithinSelection`) | names the rank (`getRankAcrossPools()`); the places are places among the holders, best first, and the pool is null |
+| Under `DiscardLowest`, level entries of a larger pool are on both sides of the place below which its entrants are left out | names the pool; the ranks run from the selected rank to the size of the smallest pool |
+
+The same two choices go on regardless: `withTiesInsideSelectionAccepted()`
+and `withTableOrderAccepted()`. Level holders are then listed in the order
+of the outcome's entrant list, and in the order of its table when it has
+none. In plain data the selector is `['rank' => 3, 'count' => 2]`, with
+`comparison` and `ties` written when they were chosen and
+[`format_version`](#format-versions) written first; an unknown key is
+refused.
+
+**`RankRangeSelector::overall()` takes the same setting.** It reads the
+combined table, which ranks entrants of every pool together, so across
+pools of unequal size it refuses with `PoolComparisonRequired` until
+`comparedBy()` says how: `RawTotals` takes the table as it stands, and
+`PerEvent` puts it in the order of its figures per event played. It takes
+no `DiscardLowest` (the entrants left out would have no place in the table)
+and a per-group selection takes no method at all; both are refused with
+`IncompatibleOptions`.
+
+**The selector states its yield, and does not place for a bracket.**
+`getSelectionSize()` is the count, so composition validation checks a
+transition that uses it. The list is best first and nothing else: put
+after a per-group selection (`[...$topTwo, ...$bestThirds]`) it can pair an
+entrant with one of its own pool in the first round of a bracket, because
+where each has to go depends on which pools the selected entrants come
+from. Order the combined list yourself where that matters.
 
 ## Timeline Assignment
 
@@ -4348,16 +4640,16 @@ records with its reasons:
 
 - **The key is written once to an array, at its top.** The participants and
   events inside a schedule, the round inside an event, the rounds,
-  results and adjustments inside a stage state, the award inside a result
-  and the records inside a repack outcome carry none: they are read under the version of the array that holds them.
+  results and adjustments inside a stage state, the award and the decider
+  inside a result and the records inside a repack outcome carry none: they are read under the version of the array that holds them.
   A part serialized by itself (`$participant->toArray()`) is the top of its
   own array and has the key.
 - **An array without the key is version 1.** Version 1 is the form 0.2.x
   wrote, and beside it the optional keys 0.3.0 added (`strategy_seed` in
-  round-robin options, `seed` in Swiss options, `ties` in a rank range
-  selector, `third_place` in elimination options, `award` in a result,
-  `adjustments` in a stage state), each of which may be left out. So rows
-  stored by 0.2.x load
+  round-robin options, `seed` in Swiss options, `ties` and `comparison` in
+  a rank range selector, `third_place` in elimination options, `award` and
+  `decider` in a result, `adjustments` in a stage state), each of which may
+  be left out. So rows stored by 0.2.x load
   unchanged. There is nothing to migrate, and no need to add the key to
   stored data.
 - **A version the library does not know is refused**, as is a value below 1
@@ -4375,8 +4667,9 @@ records with its reasons:
   reading its rows. The exception is `PotDrawOptions::fromArray()` of 0.2.2
   and 0.2.3, which refuses the key: remove it from stored pot draw options
   before reading them with those releases. What 0.2.x has no key for it
-  does not see: it reads an awarded result as one that was played, and a
-  stage state without its adjustments.
+  does not see: it reads an awarded result as one that was played, a
+  stage state without its adjustments, and a level tie settled by a decider
+  as one that nobody settled.
 
 `format_version` is not the `v2` inside an engine fingerprint
 ([Recording Which Engine Pairs a State](#recording-which-engine-pairs-a-state))
@@ -4426,7 +4719,7 @@ fault of their array with:
   `InvalidConfigurationException` with the reason `UnknownOptionKey`. Its
   context lists the keys that are not known under `unknown` and the ones the
   form has under `known`.
-- **Data** (`Participant`, `Round`, `Event`, `Result`, `Award`, `Schedule`,
+- **Data** (`Participant`, `Round`, `Event`, `Result`, `Award`, `Decider`, `Schedule`,
   `RoundPairing`, `StageState`, `Adjustment`, `ScheduledEvent` and
   `ScheduledSchedule`,
   nested in one another or on their own) throws an `InvalidInputException`
@@ -4672,7 +4965,7 @@ parent type matches too.
 | `SchedulingException` (abstract) | `\Exception` | A scheduling failure. Its subclasses carry a diagnostic report (`getDiagnosticReport()`). |
 | `InvalidConfigurationException` | `SchedulingException` | A scheduler, engine, stage, timeline or grid is configured in a way that cannot work. `getReason()` says which mistake it was: see [Configuration Errors](#configuration-errors). |
 | `PinConflictException` | `InvalidConfigurationException` | A repack request pins one participant in two events at the same session and slot. It carries the two event IDs (`getEventIds()`). |
-| `UndecidedSelectionException` | `InvalidConfigurationException` | A `RankRangeSelector` is asked for ranks that results do not decide. It carries the IDs of the level participants (`getParticipantIds()`), the places they hold between them and the pool: see [Selections that results do not decide](#selections-that-results-do-not-decide). |
+| `UndecidedSelectionException` | `InvalidConfigurationException` | A `RankRangeSelector` or a `BestOfRankSelector` is asked for a selection that results do not decide. It carries the IDs of the level participants (`getParticipantIds()`), the places they hold between them and the pool, or, where the holders of one rank were compared across pools, that rank (`getRankAcrossPools()`): see [Selections that results do not decide](#selections-that-results-do-not-decide) and [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
 | `IncompleteScheduleException` | `SchedulingException` | Constraints leave a schedule that cannot be completed. |
 | `NoValidPairingException` | `SchedulingException` | No complete pairing exists for a Swiss round. |
 | `RepackViolationsException` | `SchedulingException` | A repack leaves violations and `RepackOptions(throwOnViolations: true)` asked for an exception instead of the outcome. |
@@ -4907,6 +5200,7 @@ identifier for logs and stored data):
 | `UnplayedStage` | `unplayed_stage` | A rank selection was asked of a table with no recorded result (`UndecidedSelectionException`) |
 | `TieAcrossSelection` | `tie_across_selection` | A rank selection takes only some of the entries that no result separates (`UndecidedSelectionException`) |
 | `TieWithinSelection` | `tie_within_selection` | Entries that no result separates are all selected, and the order they are selected in is not decided (`UndecidedSelectionException`) |
+| `PoolComparisonRequired` | `pool_comparison_required` | A selection that compares entrants of different pools was asked of pools of unequal size, with no comparison method chosen. The context lists the pool sizes (`pool_sizes`) |
 | `RoundOutOfSequence` | `round_out_of_sequence` | A round was recorded out of play order: its number is not above the last recorded one |
 | `EventNotInRound` | `event_not_in_round` | An event, or the event of a result, does not belong to the round it was recorded with (one with no round number at all is `EventWithoutRoundNumber`) |
 | `NoRoundRecorded` | `no_round_recorded` | Results were added or replaced in a stage with no recorded round |
@@ -5435,8 +5729,10 @@ An application that turns every notice into an exception will therefore see a
 call to one of these methods fail on PHP 8.4 or later where it passes on
 PHP 8.3. Nothing in the library calls a deprecated method.
 
-All of the following are deprecated since `0.2.2`. Namespaces are relative to
-`MissionGaming\Tactician`.
+The methods are all deprecated since `0.2.2`. Namespaces are relative to
+`MissionGaming\Tactician`. One constant and the metadata key it names are
+deprecated since `0.3.0`: see
+[The `tie_winner` metadata key](#the-tie_winner-metadata-key) below.
 
 | Deprecated | Use instead |
 |------------|-------------|
@@ -5509,6 +5805,182 @@ only:
   `['constraint' => $constraint]`, the reason `ConstraintViolation`.
 - `invalidSchedule($reason)`: the sentence `"Invalid schedule: {$reason}"`,
   the context `['reason' => $reason]`, the reason `InvalidSchedule`.
+
+### The `tie_winner` metadata key
+
+Before the typed [decider](#recording-a-level-event), who advances from a
+level elimination tie was recorded as `tie_winner` metadata on a result of
+the tie: the ID of the participant. The key is deprecated since `0.3.0`. It
+is still read, and decides what it decided before, wherever a level tie has
+no decider. It is no longer read from `1.0.0`: a level tie that carries
+only the key is then undecided, and the engine refuses its state
+(`UndecidedTie`).
+
+| Deprecated | Use instead |
+|------------|-------------|
+| `Stage\TieDecision::TIE_WINNER_KEY` | No constant replaces it: pass a `DTO\Decider` as the `decider` argument of `Result`. The constant, like the methods above, is removed in `1.0.0`. |
+
+The constant is marked as the methods are, with the docblock tag and the
+attribute. The key is a string in your data, which nothing can mark, so
+the library says it when it reads it:
+
+- A call that takes an advancer from the key emits one `E_USER_DEPRECATED`
+  notice: `isComplete()`, `pairNextRound()` and `getOutcome()` of the two
+  elimination engines, `MatchOutcomeSelector::select()` and
+  `TieDecision::advancer()`. It is one notice for the call, however many
+  ties of the bracket the key decided.
+- It is emitted on every PHP version, PHP 8.3 included, because it does not
+  come from the attribute.
+- A key that is not read emits nothing: on a result of a tie that its
+  results decide (where it never was read), in a result that is only
+  stored, loaded or counted in a table, and on a tie that carries a decider.
+
+Record the decider where you recorded the key:
+
+```php
+use MissionGaming\Tactician\DTO\Decider;
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\StageState;
+
+[$celtic, $athletic] = $field;
+$bracket = new SingleEliminationEngine();
+$final = $bracket->pairNextRound(StageState::start([$celtic, $athletic]));
+[$event] = $final->getEvents();
+$scores = ['celtic' => 1, 'athletic' => 1];
+
+// Was: new Result($event, null, $scores, ['tie_winner' => 'athletic'])
+$level = new Result($event, null, $scores, decider: new Decider(['athletic']));
+
+$decided = StageState::start([$celtic, $athletic])->withRoundPlayed($final, [$level]);
+echo $bracket->getOutcome($decided)?->getStandings()->getEntries()[0]->getParticipant()->getLabel(), "\n"; // Athletic Bilbao
+```
+
+Stored results keep loading, and keep deciding their ties until `1.0.0`.
+To move stored data over before then, give each level result that carries
+the key a `decider` in its place:
+
+```php
+// A stage state as an earlier release stored it: the level final carries the key
+$stored = StageState::start([$celtic, $athletic])
+    ->withRoundPlayed($final, [new Result($event, null, $scores, ['tie_winner' => 'athletic'])])
+    ->toArray();
+
+foreach ($stored['results'] as $index => $result) {
+    $advances = $result['metadata']['tie_winner'] ?? null;
+
+    // A single-leg event: level when it has no winner
+    if (is_string($advances) && $result['winner'] === null) {
+        $stored['results'][$index]['decider'] = ['participants' => [$advances]];
+        unset($stored['results'][$index]['metadata']['tie_winner']);
+    }
+}
+
+$migrated = StageState::fromArray($stored);
+echo json_encode($migrated->toArray()['results'][0]['decider']), "\n";
+// {"participants":["athletic"],"label":null,"reason":null}
+echo $bracket->getOutcome($migrated)?->getStandings()->getEntries()[0]->getParticipant()->getLabel(), "\n"; // Athletic Bilbao
+```
+
+A two-legged tie is level when its legs are, and a leg of it may have no
+winner in a tie that the other leg decides, so its results are read
+together: the results of one round between the same two participants are
+one tie. The tie takes a decider when no leg was won or each side won one,
+on its last leg, from the first leg that carries the key (the one that was
+read). The key is removed from every result of a tie that has all its
+results, the ties the legs decide included, where it was never read. With
+`$legsPerTie` at 1 the same loop moves single events over.
+
+```php
+use MissionGaming\Tactician\Scheduling\EliminationOptions;
+
+[, , $livorno, $redstar] = $field;
+
+// Two-legged semifinals as an earlier release stored them. Celtic and Red
+// Star won a leg each, and the key on the second leg sends Red Star on.
+// Athletic won both legs, so the key on its second leg was never read
+$twoLegged = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+$semifinals = $twoLegged->pairNextRound(StageState::start($field));
+[$firstLeg, $secondLeg, $otherFirstLeg, $otherSecondLeg] = $semifinals->getEvents();
+$storedLegs = StageState::start($field)
+    ->withRoundPlayed($semifinals, [
+        new Result($firstLeg, $celtic, ['celtic' => 2, 'redstar' => 1]),
+        new Result($secondLeg, $redstar, ['celtic' => 0, 'redstar' => 1], ['tie_winner' => 'redstar']),
+        new Result($otherFirstLeg, $athletic),
+        new Result($otherSecondLeg, $athletic, [], ['tie_winner' => 'livorno']),
+    ])
+    ->toArray();
+
+$legsPerTie = 2;
+
+// The results of one tie: one round and the same two participants
+$ties = [];
+foreach ($storedLegs['results'] as $index => $result) {
+    $pair = $result['event']['participants'];
+    sort($pair);
+    $ties[$result['event']['round']['number'] . ' ' . implode(' ', $pair)][] = $index;
+}
+
+foreach ($ties as $indexes) {
+    if (count($indexes) < $legsPerTie) {
+        continue; // A leg has no result yet: leave the key, which is read when it has one
+    }
+
+    // In leg order, whatever order the results were recorded in
+    usort($indexes, fn (int $a, int $b): int => ($storedLegs['results'][$a]['event']['metadata']['tie_leg'] ?? 1)
+        <=> ($storedLegs['results'][$b]['event']['metadata']['tie_leg'] ?? 1));
+
+    $legWins = [];
+    $advances = null;
+    foreach ($indexes as $index) {
+        $result = $storedLegs['results'][$index];
+        if ($result['winner'] !== null) {
+            $legWins[$result['winner']] = ($legWins[$result['winner']] ?? 0) + 1;
+        }
+
+        // The first leg that carries the key is the one that was read
+        $advances ??= $result['metadata']['tie_winner'] ?? null;
+        unset($storedLegs['results'][$index]['metadata']['tie_winner']);
+    }
+
+    // Level: no leg won, or a leg each. Otherwise the legs decide
+    $level = $legWins === [] || array_values($legWins) === [1, 1];
+    if ($level && is_string($advances)) {
+        $storedLegs['results'][end($indexes)]['decider'] = ['participants' => [$advances]];
+    }
+}
+
+$migratedLegs = StageState::fromArray($storedLegs);
+foreach ($migratedLegs->getResults() as $result) {
+    echo json_encode($result->getMetadata()), ' ', json_encode($result->getDecider()?->getParticipantIds()), "\n";
+}
+// [] null
+// [] ["redstar"]
+// [] null
+// [] null
+
+[$finalFirstLeg] = $twoLegged->pairNextRound($migratedLegs)->getEvents();
+echo implode(' v ', array_map(fn (Participant $p) => $p->getLabel(), $finalFirstLeg->getParticipants())), "\n";
+// Red Star FC v Athletic Bilbao
+```
+
+Two things differ between the key and the decider, and both matter when
+you move data over:
+
+- **A decider on a tie that its results decide is refused**
+  (`InvalidResult`), where the key was not read and went unnoticed. Give a
+  decider to the ties that are level and to no others: an event without a
+  winner, as above, and a two-legged tie whose legs are level (a leg each,
+  or both drawn), on one of its legs. Remove the key from every other
+  result.
+- **A decider must name a participant of the event**, and `Result` refuses
+  one that does not when it is built. The key could hold any value, and a
+  wrong one was refused only when the engine read it.
+
+While you change over you can write both. Where a tie carries a decider
+the decider is what is read, and a key beside it that names the same
+participant raises nothing. One that names another participant is refused
+(`InvalidResult`): the library does not choose between two answers.
 
 ---
 

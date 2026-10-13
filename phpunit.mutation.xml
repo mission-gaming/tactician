@@ -51,6 +51,7 @@
             <file>./tests/Feature/RepackScenarioTest.php</file>
             <file>./tests/Feature/RoundRobinIntegrationTest.php</file>
             <file>./tests/Feature/SeedsDecideTest.php</file>
+            <file>./tests/Feature/TypedTieDeciderTest.php</file>
             <file>./tests/Feature/UncoveredPathsTest.php</file>
         </testsuite>
     </testsuites>

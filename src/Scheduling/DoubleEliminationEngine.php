@@ -39,9 +39,12 @@ use Override;
  * Stages are strictly sequenced and each playable stage takes the next
  * round number. Ties are played over one event or two mirrored legs
  * (legsPerTie); one that finishes level, in either bracket, the grand
- * final or its reset, is decided by the tie decision recorded on its
- * result (see TieDecision), and not advancing from it is the loss that
- * drops or eliminates the other participant. Re-seeding and the
+ * final or its reset, is decided by the decider recorded on a result of
+ * the tie (DTO\Decider; see TieDecision), and not advancing from it is the
+ * loss that drops or eliminates the other participant. A level tie without
+ * one is refused with the reason `UndecidedTie` and, in the context of the
+ * exception, its round and its two participants: the grand final and its
+ * reset are the same two, in two rounds. Re-seeding and the
  * third-place tie are single-elimination preset parameters and are
  * rejected here: the losers final already decides third place.
  *
@@ -157,8 +160,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      *                                       event or is recorded twice, a stage is partially
      *                                       resolved (record the missing results via
      *                                       StageState::withAdditionalResults()), a completed tie
-     *                                       is level without a usable tie decision, or the
-     *                                       bracket is complete
+     *                                       is level without a decider (`UndecidedTie`) or
+     *                                       carries a decider TieDecision refuses
+     *                                       (`InvalidResult`), or the bracket is complete
      */
     #[Override]
     public function pairNextRound(StageState $state): RoundPairing
@@ -260,6 +264,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $resultIndex = $this->indexResults($state->getResults());
         $roundNumber = 0;
         $levelAdvancers = [];
+        // One deprecation for the replay, however many ties the deprecated
+        // 'tie_winner' metadata decides in it
+        $tieWinnerDeprecationRaised = false;
 
         // Who went out, and after how many of the stages that put an
         // entrant out: a loss in the winners bracket only drops an entrant,
@@ -283,7 +290,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         ];
 
         // Winners round 1
-        $stage = $this->resolveStage($slots, $this->winnersStageName(1, $winnersRounds), $roundNumber, $resultIndex, $levelAdvancers);
+        $stage = $this->resolveStage($slots, $this->winnersStageName(1, $winnersRounds), $roundNumber, $resultIndex, $levelAdvancers, $tieWinnerDeprecationRaised);
         if ($stage['pending'] !== null) {
             return $unfinished($stage['pending']);
         }
@@ -299,7 +306,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 $this->losersStageName($losersStructuralRound, $winnersRounds),
                 $roundNumber,
                 $resultIndex,
-                $levelAdvancers
+                $levelAdvancers,
+                $tieWinnerDeprecationRaised
             );
             if ($stage['pending'] !== null) {
                 return $unfinished($stage['pending']);
@@ -314,7 +322,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                     $this->winnersStageName($winnersRound, $winnersRounds),
                     $roundNumber,
                     $resultIndex,
-                    $levelAdvancers
+                    $levelAdvancers,
+                    $tieWinnerDeprecationRaised
                 );
                 if ($stage['pending'] !== null) {
                     return $unfinished($stage['pending']);
@@ -339,7 +348,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                     $this->losersStageName($losersStructuralRound, $winnersRounds),
                     $roundNumber,
                     $resultIndex,
-                    $levelAdvancers
+                    $levelAdvancers,
+                    $tieWinnerDeprecationRaised
                 );
                 if ($stage['pending'] !== null) {
                     return $unfinished($stage['pending']);
@@ -354,7 +364,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                         $this->losersStageName($losersStructuralRound, $winnersRounds),
                         $roundNumber,
                         $resultIndex,
-                        $levelAdvancers
+                        $levelAdvancers,
+                        $tieWinnerDeprecationRaised
                     );
                     if ($stage['pending'] !== null) {
                         return $unfinished($stage['pending']);
@@ -381,7 +392,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             'grand final',
             $roundNumber,
             $resultIndex,
-            $levelAdvancers
+            $levelAdvancers,
+            $tieWinnerDeprecationRaised
         );
         if ($stage['pending'] !== null) {
             return $unfinished($stage['pending']);
@@ -402,7 +414,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 'grand final reset',
                 $roundNumber,
                 $resultIndex,
-                $levelAdvancers
+                $levelAdvancers,
+                $tieWinnerDeprecationRaised
             );
             if ($stage['pending'] !== null) {
                 return $unfinished($stage['pending']);
@@ -437,6 +450,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * @param array<string, \MissionGaming\Tactician\DTO\Result> $resultIndex
      * @param array<string, Participant> $levelAdvancers Collects who advanced from each level
      *                                                   single-leg event (see resultsForStandings())
+     * @param bool $tieWinnerDeprecationRaised Whether this replay has raised the deprecation of
+     *                                         the 'tie_winner' metadata key (see lookupAdvancer())
      * @return array{pending: RoundPairing|null, winners: array<Participant|null>, losers: array<Participant|null>}
      *
      * @throws InvalidConfigurationException When the stage is partially resolved or a tie is broken
@@ -446,7 +461,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         string $stageName,
         int &$roundNumber,
         array $resultIndex,
-        array &$levelAdvancers
+        array &$levelAdvancers,
+        bool &$tieWinnerDeprecationRaised
     ): array {
         $pairs = array_chunk($slots, 2);
 
@@ -462,7 +478,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
             $resolved = 0;
             foreach ($playable as $pair) {
-                if ($this->lookupAdvancer($resultIndex, $roundNumber, $pair[0], $pair[1], $this->options->legsPerTie) !== null) {
+                if ($this->lookupAdvancer($resultIndex, $roundNumber, $pair[0], $pair[1], $this->options->legsPerTie, $tieWinnerDeprecationRaised) !== null) {
                     ++$resolved;
                 }
             }
@@ -490,7 +506,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         foreach ($pairs as $pair) {
             [$first, $second] = [$pair[0], $pair[1] ?? null];
             if ($first !== null && $second !== null) {
-                $advancer = $this->lookupAdvancer($resultIndex, $roundNumber, $first, $second, $this->options->legsPerTie);
+                $advancer = $this->lookupAdvancer($resultIndex, $roundNumber, $first, $second, $this->options->legsPerTie, $tieWinnerDeprecationRaised);
                 $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $roundNumber, $first, $second, $this->options->legsPerTie, $advancer);
                 $winners[] = $advancer;
                 $losers[] = $advancer?->getId() === $first->getId() ? $second : $first;
