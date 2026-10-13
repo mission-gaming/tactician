@@ -1123,6 +1123,26 @@ entry on the engine fingerprint.
     roles, so the default has none to give. Name
     `RoundParityRoleAssignment` for such a schedule, with
     `backtracking: true` so that its roles are searched.
+  - **A limit on roles written as a closure or a class of your own can
+    fail where it completed.** The scheduler knows what the library's two
+    role limits read and goes straight back to the event that matters; a
+    constraint of yours does not say, so the search goes back one event at
+    a time and reaches its bound in a league of ordinary size. Measured
+    with a closure that does what `ConsecutiveRoleConstraint::homeAway(2)`
+    does, two mirrored legs, default options: 0.2.x completed every field
+    of even size measured from 6 to 40 in milliseconds, because round parity keeps
+    that limit where the legs meet; 0.3.0 completes 6, 8 and 10
+    participants and fails for 12, 16, 20, 24, 32 and 40, after 1 to 13
+    seconds, saying that the search stopped at a bound. Over four legs the
+    failure took 20 seconds with 16 participants, two and a half minutes
+    with 24 and more than four minutes with 32 and 40: the search itself
+    stays within its allowance, and the time goes into the failure
+    analysis of every rotated order, which a constraint the library does
+    not know has always had and which only a failing schedule pays. What to change: use the library's
+    constraint where it says the same (`ConsecutiveRoleConstraint`,
+    `RoleBalanceConstraint`), which is found for those fields; or name
+    `RoundParityRoleAssignment`, under which such a schedule is generated
+    exactly as it was.
   - A `RoleBalanceConstraint` limit that the default roles need is lower:
     1 for a single leg of a field of even size and 2 for one of odd size,
     where round parity needs 3 and 4. Repeated legs of balanced roles are
