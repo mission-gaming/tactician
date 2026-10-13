@@ -1213,6 +1213,47 @@ describe('the default, balanced where possible', function (): void {
         'in a constraint set of the caller\'s' => [true],
     ]);
 
+    // One of the library's own role limits inside a constraint set of the
+    // caller's. In a ConstraintSet itself the search of roles reasons about
+    // the limit and finds balanced roles that keep it over two mirrored
+    // legs. A subclass may answer anything, so the same limit is one more
+    // constraint of unknown reach there: the roles of round parity keep
+    // it, and with that schedule in hand the search for balanced roles ends
+    // at the first event the set rejects in its context and accepts with
+    // no event before it. The schedule is the one of round parity, marked,
+    // and the set is asked little more than round parity asks it.
+    it('falls back under one of the library\'s own limits where the constraint set is the caller\'s', function (int $size): void {
+        $field = roleSweepField($size);
+        $known = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build();
+        $asked = 0;
+        $unknown = new RoleSweepConstraintSetOfTheCallers([
+            new ConsecutiveRoleConstraint(
+                2,
+                static function (Event $event, Participant $participant) use (&$asked): string {
+                    ++$asked;
+
+                    return $event->getParticipants()[0]->getId() === $participant->getId() ? 'home' : 'away';
+                },
+                'Two in a row'
+            ),
+        ]);
+        $options = static fn(?RoleAssignmentInterface $roleAssignment): RoundRobinOptions => new RoundRobinOptions(2, null, false, $roleAssignment);
+
+        $underRoundParity = (new RoundRobinScheduler($unknown))->schedule($field, $options(new RoundParityRoleAssignment()));
+        $askedUnderRoundParity = $asked;
+        $asked = 0;
+        $inTheCallersSet = (new RoundRobinScheduler($unknown))->schedule($field, $options(null));
+        $askedUnderTheDefault = $asked;
+        $inAConstraintSet = (new RoundRobinScheduler($known))->schedule($field, $options(null));
+
+        expect(RoleFallback::of($inAConstraintSet))->toBeNull()
+            ->and(roleSweepFaults($inAConstraintSet, $field, 2, 'mirrored', RoleScheduleOracle::streakRule(2)))->toBe([])
+            ->and(RoleFallback::of($inTheCallersSet))->toBe(RoleFallback::BalancedRolesRejected)
+            ->and(roleSweepWithoutTheMark($inTheCallersSet))->toBe($underRoundParity->toArray())
+            ->and($askedUnderRoundParity)->toBeGreaterThan(0)
+            ->and($askedUnderTheDefault)->toBeLessThan(3 * $askedUnderRoundParity);
+    })->with([8, 12]);
+
     // A caller who names the balanced role assignment has asked for
     // balanced roles and nothing else: the same league is refused, as it
     // was, and the failure says that a bound stopped the search.
@@ -1255,6 +1296,120 @@ describe('the default, balanced where possible', function (): void {
             ->and(RoleFallback::of(Schedule::fromArray($schedule->toArray())))->toBe(RoleFallback::BalancedRolesRejected)
             ->and(roleSweepOutcome($constraints, $field, 1, new MirroredLegStrategy(), false, new BalancedRoleAssignment()))->toBeString();
     });
+
+    // Roles pinned as a closure, and many of them: every pairing of some
+    // of the participants is held to the way round that round parity has
+    // it, so round parity completes at once and the schedule is in hand.
+    // The pass that fixes seatings then solves such a rule exactly, one
+    // pass over the events for each seating fixed, and with a schedule in
+    // hand the whole is held to
+    // RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND
+    // events put to the constraints.
+    //
+    // Few pinned pairings are solved within that, and the schedule is the
+    // balanced one the strict role assignment gives. Many are not: the
+    // bound ends the passes, the schedule is the one of round parity with
+    // the mark that says the balanced roles were rejected and not that
+    // none exist, and the strict role assignment, which has its full
+    // bounds, does find balanced roles there. What the closure is asked is
+    // counted: round parity's events, the balanced roles of the first
+    // layout, the bound, and the rotated order that was under way when it
+    // was reached, with what is asked once more about a rejected event.
+    it('holds the search for balanced roles to its bound of events once a schedule is in hand', function (
+        int $size,
+        int $pinnedParticipants,
+        ?RoleFallback $reason
+    ): void {
+        $field = roleSweepField($size);
+        $roundParity = new RoundRobinOptions(1, null, false, new RoundParityRoleAssignment());
+        $pinned = [];
+        foreach (RoleScheduleOracle::read((new RoundRobinScheduler())->schedule($field, $roundParity)->getEvents()) as [, $first, $second]) {
+            if ((int) substr($first, 1) <= $pinnedParticipants || (int) substr($second, 1) <= $pinnedParticipants) {
+                $pinned[$first . ' v ' . $second] = true;
+            }
+        }
+
+        $asked = 0;
+        $constraints = ConstraintSet::create()->custom(
+            static function (Event $event) use (&$asked, $pinned): bool {
+                ++$asked;
+                [$first, $second] = $event->getParticipants();
+
+                return !isset($pinned[$second->getId() . ' v ' . $first->getId()]);
+            },
+            'Pairings the way round that round parity has them'
+        )->build();
+
+        $underRoundParity = (new RoundRobinScheduler($constraints))->schedule($field, $roundParity);
+        $askedUnderRoundParity = $asked;
+        $asked = 0;
+        $schedule = (new RoundRobinScheduler($constraints))->schedule($field);
+        $askedUnderTheDefault = $asked;
+        $strict = roleSweepOutcome($constraints, $field, 1, new MirroredLegStrategy(), false, new BalancedRoleAssignment());
+
+        $eventsOfALeg = intdiv($size * ($size - 1), 2);
+        expect($askedUnderRoundParity)->toBe($eventsOfALeg)
+            ->and(RoleFallback::of($schedule))->toBe($reason)
+            // Balanced roles exist in both, and the strict role assignment finds them
+            ->and($strict)->toBeInstanceOf(Schedule::class)
+            ->and($askedUnderTheDefault)->toBeLessThan(
+                $askedUnderRoundParity + $eventsOfALeg + RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND + 2 * $eventsOfALeg
+            );
+
+        if ($reason === null) {
+            expect($schedule->toArray())->toBe($strict instanceof Schedule ? $strict->toArray() : null)
+                ->and(RoleCounts::worstEndImbalance($schedule->getEvents()))->toBeLessThanOrEqual(1);
+
+            return;
+        }
+
+        expect(roleSweepWithoutTheMark($schedule))->toBe($underRoundParity->toArray());
+    })->with([
+        'few pinned pairings: balanced within the bound' => [12, 4, null],
+        'many pinned pairings: the bound ends the passes' => [20, 6, RoleFallback::BalancedRolesRejected],
+    ]);
+
+    // The smallest field. A leg of two participants is one event, and it
+    // is balanced whichever of them is first-named, so a schedule of two
+    // never carries the mark: where the rule names one of them second, the
+    // balanced roles as given are rejected in the first layout, the roles
+    // of round parity complete in the second, and the search for balanced
+    // roles that follows comes to the same schedule and returns it without
+    // a mark. Mirrored legs name each of the two first in turn, which the
+    // rule refuses with any roles: the failure is the one of round parity.
+    it('never marks a schedule of two participants, whose every leg is balanced', function (string $neverFirst): void {
+        $field = roleSweepField(2);
+        $constraints = ConstraintSet::create()->custom(
+            static fn(Event $event): bool => $event->getParticipants()[0]->getId() !== $neverFirst,
+            "{$neverFirst} is second-named"
+        )->build();
+        $other = $neverFirst === 'p1' ? 'p2' : 'p1';
+        $completed = 0;
+
+        foreach ([1, 2, 3] as $legs) {
+            foreach ([new MirroredLegStrategy(), new RepeatedLegStrategy(), new ShuffledLegStrategy(seed: 4)] as $strategy) {
+                $underTheDefault = roleSweepOutcome($constraints, $field, $legs, $strategy, false, null);
+                $underRoundParity = roleSweepOutcome($constraints, $field, $legs, $strategy, false, new RoundParityRoleAssignment());
+
+                if ($legs > 1 && $strategy instanceof MirroredLegStrategy) {
+                    expect($underTheDefault)->toBeString()->toBe($underRoundParity);
+
+                    continue;
+                }
+
+                assert($underTheDefault instanceof Schedule && $underRoundParity instanceof Schedule);
+                expect(RoleFallback::of($underTheDefault))->toBeNull()
+                    ->and($underTheDefault->toArray())->toBe($underRoundParity->toArray())
+                    ->and(RoleScheduleOracle::read($underTheDefault->getEvents()))->toBe(array_map(
+                        static fn(int $round): array => [$round, $other, $neverFirst],
+                        range(1, $legs)
+                    ));
+                ++$completed;
+            }
+        }
+
+        expect($completed)->toBe(7);
+    })->with(['p1', 'p2']);
 
     // The two reasons of a fall-back under constraints the search of roles
     // reasons about exactly: every choice was tried, or a bound stopped the
@@ -1327,6 +1482,73 @@ describe('the default, balanced where possible', function (): void {
         'four participants: every choice tried' => [4, false, RoleFallback::NoBalancedRoles, 'no choice of them has a schedule the constraints accept'],
         'four participants, with backtracking: every choice tried' => [4, true, RoleFallback::NoBalancedRoles, 'so the configuration is unsatisfiable with this leg strategy and this role assignment'],
         'six participants: a bound' => [6, false, RoleFallback::SearchStoppedAtBound, 'the search stopped at a bound'],
+    ]);
+
+    // The same kind of rule over several legs that are drawn. In a field
+    // of five round parity names the last participant second in three of
+    // its four events of a leg, and the rule holds it to those roles
+    // against every opponent, in every leg: no balanced first leg keeps
+    // it, in any layout, and the search goes through all of them before
+    // round parity is tried. The later legs are then the leg strategy's
+    // draws, searched where the rule rejects them, and the schedule is the
+    // one RoundParityRoleAssignment gives for that seed of the strategy,
+    // the drawn roles included; the strict role assignment fails.
+    it('falls back to the schedule of round parity under shuffled legs drawn from a seed, where every choice of balanced roles was tried', function (
+        int $legs,
+        int $strategySeed
+    ): void {
+        $field = roleSweepField(5);
+        $chosen = 'p5';
+        $roundParity = new RoundParityRoleAssignment();
+        /** @var array<string, bool> $chosenIsFirstAgainst */
+        $chosenIsFirstAgainst = [];
+        foreach (RoleScheduleOracle::read((new RoundRobinScheduler())->schedule($field, new RoundRobinOptions(1, null, false, $roundParity))->getEvents()) as [, $first, $second]) {
+            if ($first === $chosen) {
+                $chosenIsFirstAgainst[$second] = true;
+            } elseif ($second === $chosen) {
+                $chosenIsFirstAgainst[$first] = false;
+            }
+        }
+
+        $constraints = ConstraintSet::create()->add(new ConsecutiveRoleConstraint(
+            3,
+            static function (Event $event, Participant $participant) use ($chosen, $chosenIsFirstAgainst): string {
+                [$first, $second] = $event->getParticipants();
+                $round = (string) $event->getRound()?->getNumber();
+                if ($participant->getId() === $chosen) {
+                    return "the chosen participant, round {$round}";
+                }
+                if ($first->getId() !== $chosen && $second->getId() !== $chosen) {
+                    return 'elsewhere';
+                }
+
+                return $chosenIsFirstAgainst[$participant->getId()] === ($first->getId() === $chosen)
+                    ? "as round parity has it, round {$round}"
+                    : 'elsewhere';
+            },
+            'The roles round parity gives one participant'
+        ))->build();
+        $options = static fn(?RoleAssignmentInterface $roleAssignment): RoundRobinOptions => new RoundRobinOptions(
+            $legs,
+            new ShuffledLegStrategy(seed: $strategySeed),
+            false,
+            $roleAssignment
+        );
+
+        $underRoundParity = (new RoundRobinScheduler($constraints))->schedule($field, $options($roundParity));
+        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options(null));
+
+        expect($chosenIsFirstAgainst)->toHaveCount(4)
+            ->and(array_filter($chosenIsFirstAgainst))->toHaveCount(1)
+            ->and(RoleFallback::of($schedule))->toBe(RoleFallback::NoBalancedRoles)
+            ->and(roleSweepWithoutTheMark($schedule))->toBe($underRoundParity->toArray())
+            ->and(roleSweepOutcome($constraints, $field, $legs, new ShuffledLegStrategy(seed: $strategySeed), false, new BalancedRoleAssignment()))
+            ->toBeString()
+            ->toContain('no choice of them has a schedule the constraints accept');
+    })->with([
+        'two legs' => [2, 1],
+        'three legs' => [3, 5],
+        'two legs, other draws' => [2, 9],
     ]);
 
     // A failure of the default is the failure of round parity in every
