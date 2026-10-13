@@ -1992,7 +1992,12 @@ winners are half of them, rounded up for a bye, and losers half, rounded
 down. That is the arithmetic of a chain whose stages are single knockout
 rounds, as declared above. It is not what the selector returns from the
 outcome of a whole bracket played by one of the elimination engines, which
-is the one winner (or loser) of the final.
+is the one winner (or loser) of the final. The validator cannot see which
+of the two a stage is, so say it on the transition that leaves a whole
+bracket: `new StageTransition('next', 8, MatchOutcomeSelector::winners(),
+afterWholeBracket: true)` is counted as a selection of 1. A stage needs 2
+entrants, so that transition is always reported, which is the point: the
+winner of a bracket alone cannot fill the next stage.
 
 Consumer-derived selections participate by declaring expected entrant
 counts (a transition without a selector); concurrent routes (winners

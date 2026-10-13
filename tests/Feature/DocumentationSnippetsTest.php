@@ -1250,6 +1250,10 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     ));
                 }
                 assert(count(MatchOutcomeSelector::winners()->select($knockout->getOutcome($knockoutState))) === 1);
+                // "say it on the transition that leaves a whole bracket ... counted as a selection of 1"
+                assert($validator->validateChain(16, [
+                    new StageTransition('next', 8, MatchOutcomeSelector::winners(), afterWholeBracket: true),
+                ]) === ["Stage 'next' expects 8 entrants but its selection yields 1 from the previous stage's 16."]);
                 PHP,
         ],
         'skill tiers never skip a tier' => [

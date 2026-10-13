@@ -191,6 +191,18 @@ heading **Output change (fix)**.
   where `CallableConstraint` casts its predicate's answer. Both now cast:
   0, null, an empty string and an empty array reject the event. A
   validator that returns a bool is read as before (#121, item 7).
+- **`CompositionValidator::validateChain()` can be told that a stage plays
+  a whole bracket.** It counted every `MatchOutcomeSelector` as the
+  hand-off after one knockout round, half the previous stage's entrants,
+  and nothing could tell it otherwise: after a whole bracket of 16 the
+  selector returns the 1 winner of the final and the validator computed 8.
+  The validator runs nothing, so the shape of the stage is declared:
+  `StageTransition` has a fourth, optional constructor parameter and public
+  property, `bool $afterWholeBracket = false`. With it true, a
+  match-outcome selection is counted as 1 participant, which the validator
+  reports against the entrants the next stage declares. A transition that
+  does not pass it is counted as before, so no chain that validated
+  changes its answer (#121, item 8).
 
 ## [0.2.3] - 2026-10-13
 

@@ -25,10 +25,17 @@ final readonly class StageTransition
      * @param int $expectedEntrants The entrant count the destination stage declares
      * @param ProgressionSelector|null $selector How entrants derive from the previous stage;
      *                                           null for consumer-derived selections
+     * @param bool $afterWholeBracket Whether the previous stage plays a whole elimination
+     *                                bracket, down to its final, and not one knockout round.
+     *                                The validator runs nothing and cannot see it. It matters
+     *                                for a MatchOutcomeSelector only, which reads the last
+     *                                round of the stage: after a whole bracket that is the
+     *                                final, and the selection is one participant
      */
     public function __construct(
         public string $label,
         public int $expectedEntrants,
-        public ?ProgressionSelector $selector = null
+        public ?ProgressionSelector $selector = null,
+        public bool $afterWholeBracket = false
     ) {}
 }
