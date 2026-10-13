@@ -9,9 +9,11 @@ namespace MissionGaming\Tactician\Exceptions;
  * can branch on ({@see RejectedDecisionException::getReason()}).
  *
  * A decision orders one whole set of entries that results leave level, and
- * nothing else. Each case is one way of not being that. Where a decision
- * fails in more than one way, the first case in the order below is
- * reported.
+ * nothing else. Each case is one way of not being that. Where the decisions
+ * given together fail in more than one way, the first case in the order
+ * below is reported, whichever decision breaks it and whatever order they
+ * were given in. (A selector that reads several tables holds the decisions
+ * to them one table at a time, in the order it states.)
  *
  * The backing strings are stable identifiers for logs and for caller-side
  * dispatch. New cases may be added in any release, so a `match` over the

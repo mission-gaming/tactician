@@ -298,14 +298,21 @@ final class SelectionTies
             }
         }
 
+        // Every decision is held to the first rule before any is held to the
+        // next, as DecidedOrder does it: the reason does not depend on the
+        // order the decisions are given in
         foreach ($decisions as $decision) {
-            $ids = $decision->getParticipantIds();
-
-            $unknown = array_values(array_filter($ids, static fn(string $id): bool => !isset($poolOf[$id])));
+            $unknown = array_values(array_filter(
+                $decision->getParticipantIds(),
+                static fn(string $id): bool => !isset($poolOf[$id])
+            ));
             if ($unknown !== []) {
                 throw new RejectedDecisionException(RejectedDecisionReason::UnknownParticipant, $decision, $unknown);
             }
+        }
 
+        foreach ($decisions as $decision) {
+            $ids = $decision->getParticipantIds();
             $pool = $poolOf[$ids[0]];
             $elsewhere = array_values(array_filter($ids, static fn(string $id): bool => $poolOf[$id] !== $pool));
             if ($elsewhere === []) {

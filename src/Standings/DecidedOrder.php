@@ -27,8 +27,12 @@ final class DecidedOrder
      * The groups with every decided group in the order of its decision,
      * and the decision of each decided group.
      *
-     * The result does not depend on the order the decisions are given in.
-     * Nothing is applied when a decision is rejected.
+     * The result does not depend on the order the decisions are given in,
+     * and neither does the reason for a rejection: the rules are held to
+     * every decision one rule at a time, in the order of the cases of
+     * RejectedDecisionReason, so a list in which one decision names an
+     * unknown participant is rejected for that whichever decision comes
+     * first. Nothing is applied when a decision is rejected.
      *
      * @param list<list<StandingEntry>> $groups The order as groups of level entries, best first
      * @param array<Decider> $decisions One for each group to settle
@@ -49,15 +53,21 @@ final class DecidedOrder
             }
         }
 
-        $named = [];
-        $decided = [];
+        // One rule at a time over every decision, so that the reason reported
+        // is the first rule any of them breaks, whatever order they are in
         foreach ($decisions as $decision) {
-            $ids = $decision->getParticipantIds();
-
-            $unknown = array_values(array_filter($ids, static fn(string $id): bool => !isset($groupOf[$id])));
+            $unknown = array_values(array_filter(
+                $decision->getParticipantIds(),
+                static fn(string $id): bool => !isset($groupOf[$id])
+            ));
             if ($unknown !== []) {
                 throw new RejectedDecisionException(RejectedDecisionReason::UnknownParticipant, $decision, $unknown, $pool, $rankAcrossPools);
             }
+        }
+
+        $named = [];
+        foreach ($decisions as $decision) {
+            $ids = $decision->getParticipantIds();
 
             $repeated = array_values(array_filter($ids, static fn(string $id): bool => isset($named[$id])));
             if ($repeated !== []) {
@@ -66,6 +76,10 @@ final class DecidedOrder
             foreach ($ids as $id) {
                 $named[$id] = true;
             }
+        }
+
+        foreach ($decisions as $decision) {
+            $ids = $decision->getParticipantIds();
 
             $index = $groupOf[$ids[0]];
             $apart = array_values(array_filter($ids, static fn(string $id): bool => $groupOf[$id] !== $index));
@@ -78,6 +92,12 @@ final class DecidedOrder
                     $rankAcrossPools
                 );
             }
+        }
+
+        $decided = [];
+        foreach ($decisions as $decision) {
+            $ids = $decision->getParticipantIds();
+            $index = $groupOf[$ids[0]];
 
             $members = [];
             foreach ($groups[$index] as $entry) {
