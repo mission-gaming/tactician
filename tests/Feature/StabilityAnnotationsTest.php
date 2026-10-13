@@ -166,6 +166,7 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
             'Stage\EngineFingerprint',
             'Stage\PairKey',
             'Timeline\DateTimeString',
+            'Timeline\IntervalArithmetic',
             'Timeline\ZonedTime',
             'Validation\ScheduleValidator',
             'Validation\ValidatesScheduleCompleteness',

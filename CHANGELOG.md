@@ -15,6 +15,96 @@ heading **Output change (fix)**.
 
 ### Output change (fix)
 
+- **Every slot time is computed from the start, not from the slot before
+  it.** `TimelineDefinition::getSlotTime()` added the round interval once
+  per round, each addition from the round before, so whatever one round was
+  adjusted by stayed in every later round. Round N is now the start plus
+  N−1 round intervals taken as one step, and a slot is its round's first
+  slot plus its slot intervals taken as one step.
+  `SessionGrid::getSlotTime()` and `positionOf()` compute a slot from its
+  session's start the same way. Four things change:
+
+  - *Months keep the day, or the month end.* An interval of months or years
+    from the 29th, 30th or 31st keeps that day of the month, and a month too
+    short for it gives its last day.
+
+    | `P1M` from 31 January 2026, rounds 1 to 5 | |
+    |---|---|
+    | Before | 31 Jan, 3 Mar, 3 Apr, 3 May, 3 Jun |
+    | After | 31 Jan, 28 Feb, 31 Mar, 30 Apr, 31 May |
+
+  - *A local time the clocks skip moves one round.* A weekly 01:30 in
+    `Europe/London` from 15 March 2026 was 01:30, 01:30, 02:30 (29 March has
+    no 01:30), then 02:30 in every later round. It is now 01:30, 01:30,
+    02:30, 01:30, 01:30. The slots of a session grid a day apart behave the
+    same.
+  - *An interval with months and days is multiplied out first.* Round N of
+    `P1M7D` is the start plus N−1 months, plus 7 × (N−1) days. From 1
+    January 2026 round 12 was 18 February 2027 and is now 16 February 2027;
+    rounds 2 and 3 (8 February, 15 March) are as before. The same holds for
+    an interval with a date part and a time part (`P1DT12H`) in a timezone
+    that changes its clocks: the days are counted in local time and the
+    hours as elapsed time, each once from the start.
+  - *A local time that occurs twice is the first of the two.* For an
+    interval of days, weeks, months or years, a round at a local time the
+    clocks repeat (01:30 on the night they go back) is the earlier of the
+    two instants, whatever season the start is in. Adding round by round
+    gave the one PHP takes, which goes by the round before: the first
+    where the timezone database marks that round as daylight-saving time,
+    the second where it does not. In most timezones the round before is on
+    summer time and marked so, and the first was taken as it is now. Two
+    cases took the second and now take the first:
+
+    - *The round before is on winter time*, which takes an interval long
+      enough to step over the whole summer: `P8M` from 25 February 2026 at
+      01:30 in `Europe/London` gave the second 01:30 (01:30 UTC) on 25
+      October and now gives the first (00:30 UTC), and `P1Y` from 6
+      November 2023 at 01:30 in `America/New_York` gave 06:30 UTC on 6
+      November 2044 and now gives 05:30 UTC. An interval of days or weeks
+      that long (`P34W`) is the same.
+    - *The timezone database marks winter time, not summer time, as the
+      daylight-saving one*, as it does today for `Europe/Dublin`,
+      `Africa/Casablanca` and `Africa/El_Aaiun`. There an interval of any
+      length took the second: a weekly 01:30 in `Europe/Dublin` from 18
+      October 2026 was at 01:30 UTC on 25 October and is now at 00:30 UTC,
+      as it is in `Europe/London`.
+
+    An interval that also has hours, minutes or seconds takes the one PHP
+    takes: the first where the timezone database marks the start as
+    daylight-saving time, the second where it does not.
+
+  Who is affected: a timeline whose round interval has months or years and
+  whose start is on the 29th, 30th or 31st; a timeline or a grid with an
+  interval of days, weeks or months whose local time of day falls in the
+  hour a clock change skips; a timeline whose one interval mixes months
+  with days, or days with hours in a timezone with clock changes; and a
+  timeline or a grid with an interval of days or longer whose local time
+  of day falls in the hour a clock change repeats, where the interval
+  steps over the whole summer or the timezone is one of the three named
+  above. What to
+  check: kickoffs stored from such a timeline no longer equal what
+  `getSlotTime()` and `TimelineAssigner` return, so assign again before
+  comparing. For such a grid (slots a day or more apart, one of them in a
+  skipped hour) the kickoffs of a repack's assignments move with the
+  slots, and `RepackOutcome::fingerprint()`, which covers the kickoffs,
+  differs from one stored before. Nothing else changes: an interval of days, weeks, hours or
+  minutes at a time of day that exists on every date, and an interval of
+  months from the 1st to the 28th, give the kickoffs they gave, and no
+  golden fixture changed. An interval made by
+  `DateInterval::createFromDateString()` has no multiple and is still added
+  one step at a time, `createFromDateString('1 month')` included: PHP does
+  not show the parts of such an interval, so from 31 January it still
+  gives 3 March, 3 April. Write `new DateInterval('P1M')` for month ends.
+- **`PairingSpacingMetric` no longer assumes that rounds start at 1.** It
+  took the highest round number for the length of the schedule, so the same
+  schedule numbered from a later round measured worse: a mirrored two-leg
+  round robin of four in rounds 1 to 6 measured 0.0, and in rounds 11 to 16
+  it measured 5.0. The length is now the rounds the schedule spans, highest
+  minus lowest plus one, and both measure 0.0. Who is affected: anyone
+  scoring a schedule whose lowest round number is above 1 (a later leg or
+  stage scored by itself), and `ScheduleScorer`/`ScheduleOptimizer` totals
+  that include this metric for one. A schedule whose first round is 1
+  measures as before.
 - **Mirrored legs alternate: `MirroredLegStrategy` reverses the roles in the
   even-numbered legs only.** It reversed them in every leg after the first,
   so a pair that met three times was split 1:2 and a pair that met four
@@ -135,6 +225,9 @@ heading **Output change (fix)**.
   that name, and not `seed`, because it seeds the leg strategy only: the
   order of the participant list is still shuffled by the `Randomizer` given
   to the scheduler, or not at all.
+- **`InvalidConfigurationReason::OverlappingTime`** (`overlapping_time`), the
+  reason of the two overlap rejections under Changed. A `match` over every
+  case of the enum needs an arm for it.
 
 ### Changed
 
@@ -179,6 +272,78 @@ heading **Output change (fix)**.
   What to change: build the strategy from a seed when the options are to be
   stored. For a strategy built from a seed the array has one more key,
   `strategy_seed`; for the two other strategies it is unchanged.
+- **A timeline whose rounds overlap is rejected.** Nothing checked that the
+  slots of a round come before the next round's first slot, so the same
+  resource and the same participants could be given two events at one
+  kickoff. `new TimelineDefinition(...)` and `TimelineDefinition::fromArray()`
+  now throw an `InvalidConfigurationException` (`OverlappingTime`) when the
+  first round's last slot is at or after the second round's first slot, and
+  `TimelineAssigner::assign()` and `assignRound()` throw the same for any
+  round they assign whose last slot is at or after the next round's first
+  (a short month or a clock change can shorten a later round). Before and
+  after: hourly rounds (`PT1H`) of two slots an hour apart were built, and
+  round 1 slot 1 and round 2 slot 0 were both 19:00; the definition is now
+  refused. Who is affected: a timeline with more than one slot per round
+  whose slots span the round interval or more. What to check: make the
+  round interval longer than (slots − 1) × slot interval; stored
+  configuration of such a timeline no longer loads. The assigner compares
+  every slot the timeline declares for the round, filled or not, with the
+  first slot of the round after it, whether or not the schedule has that
+  round: a timeline is valid for a round or not, whatever is placed on it.
+- **A session grid whose sessions overlap is rejected.** `SessionGrid`
+  checked only that session starts ascend. The constructor and
+  `fromArray()` now throw an `InvalidConfigurationException`
+  (`OverlappingTime`) when the last slot of a session is at or after the
+  start of the next session, slot-count overrides applied. Before and after:
+  sessions at 20:00 and 20:25 with two slots 25 minutes apart were accepted,
+  two positions were at 20:25, and a repack placed one participant in both
+  and reported no double booking; the grid is now refused. Who is affected: an
+  instant-based grid whose sessions run into one another. What to check:
+  space the session starts, or lower the slot count of the earlier session
+  with an override; `positionOf()` given an instant no longer has two
+  positions to choose between. A shape-only grid has no instants and is not
+  checked, and the last session can still run as deep as it needs to. A
+  grid whose sessions are interleaved without sharing an instant (sessions
+  at 20:00 and 21:00 with four slots 25 minutes apart, the last of them at
+  21:15) is refused too: its positions are not in time order.
+- **Two slots of one round, or of one session, at the same time are
+  rejected.** The slots of a round and of a session must be at rising
+  times, and a round of one slot must be before the next round. An interval
+  written as an ISO 8601 duration gives that, so this does not affect
+  `new DateInterval('PT1H')` or plain data (the one exception is an
+  interval of days across a calendar day a timezone skipped, as
+  `Pacific/Apia` skipped 30 December 2011: the slot of the skipped day and
+  the slot of the day after are one instant). It affects an interval
+  that `DateTimeImmutable::diff()` returned, whose hours PHP adds as local
+  time: with slots one such hour apart from 00:30 in `Europe/London` on 29
+  March 2026, the slots are 00:30, 02:30 (there is no 01:30) and 02:30.
+  Adding slot by slot gave 00:30, 02:30, 03:30, so this is a case the
+  change above made, and it is refused where it would be a silent double
+  booking: by `new TimelineDefinition()` for the first round, by
+  `TimelineAssigner::assign()` and `assignRound()` for the round they
+  assign, and by `new SessionGrid()` for any session, all with
+  `OverlappingTime`. What to check: write the interval as a duration
+  (`PT1H`), which is elapsed time and gives 00:30, 02:30, 03:30.
+- **A round or a slot too far from its start is refused.** Slot times are
+  now multiplied out, and PHP adds an interval too large for its timestamps
+  without an error and returns a date that has wrapped round.
+  `TimelineDefinition::getSlotTime()` and the constructors throw an
+  `InvalidConfigurationException` (`ValueOutOfRange`) for a time more than
+  10^14 days (some 270 billion years) from the start it is counted from.
+  Nothing that returned a time before is affected: such a round was never
+  reached, one addition per round.
+- **`TimelineAssigner::assignRound()` applies the assigner's rules.** It
+  ignored them: an assigner built with a `BlackoutRule` refused a kickoff
+  inside the window from `assign()` and scheduled it from `assignRound()`.
+  It now throws the `InvalidConfigurationException` (`TimeRuleViolation`)
+  that `assign()` throws, with every violation in the context. The rules
+  are shown the round's events only, because the assigner keeps nothing
+  between calls: a blackout is judged in full, and a minimum rest only
+  within the round. Who is affected: code that passes rules to the
+  constructor and calls `assignRound()`. What to check: a round that broke a
+  rule now throws where it returned events; to judge rest between rounds,
+  keep validating the accumulated `ScheduledSchedule` with the rule's
+  `validate()`, as before.
 - Tooling only; no output and no public signature changes. The development
   tools are raised to Rector 2.7 and PHPStan 2.3 (`rector/rector: ^2.7`,
   `phpstan/phpstan: ^2.3`, `phpstan/phpstan-strict-rules: ^2.1`; the lock
