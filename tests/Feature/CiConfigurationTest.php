@@ -658,7 +658,7 @@ it('reports a mutation score for every shard once a week, in jobs that enforce n
         ->toContain("        \$root . '/vendor/bin/pest',\n")
         ->toContain("        '--configuration=phpunit.mutation.xml', '--mutate', '--everything', '--covered-only', '--path=src/Scheduling,src/Repack/Internal', '--parallel',\n")
         // What the caller gives after `--`, last: a path there replaces the two
-        ->toContain("        ...array_slice(\$argv, 1),\n");
+        ->toContain("        ...array_slice(\$arguments, 1),\n");
     expect(substr_count($runner, '--path='))->toBe(2, 'The options, and the example in the comment at the top')
         ->and($runner)->not->toContain('--processes');
     expect(is_file($root . '/phpunit.mutation.xml'))->toBeTrue();

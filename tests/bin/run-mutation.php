@@ -30,6 +30,7 @@ use MissionGaming\Tactician\Tests\Support\MutationMemoryLimit;
 require dirname(__DIR__) . '/Support/MutationMemoryLimit.php';
 
 $root = dirname(__DIR__, 2);
+$arguments = array_values(array_filter((array) ($_SERVER['argv'] ?? []), is_string(...)));
 
 $environment = getenv();
 $scan = MutationMemoryLimit::scanDirectories($root, $root . '/' . MutationMemoryLimit::INI_DIRECTORY, getenv('PHP_INI_SCAN_DIR'));
@@ -42,7 +43,7 @@ $process = proc_open(
         PHP_BINARY,
         $root . '/vendor/bin/pest',
         '--configuration=phpunit.mutation.xml', '--mutate', '--everything', '--covered-only', '--path=src/Scheduling,src/Repack/Internal', '--parallel',
-        ...array_slice($argv, 1),
+        ...array_slice($arguments, 1),
     ],
     [STDIN, STDOUT, STDERR],
     $pipes,
