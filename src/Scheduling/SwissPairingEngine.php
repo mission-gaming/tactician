@@ -207,7 +207,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             $this->table($state)->getEntries(),
             fn($entry) => isset($activeIds[$entry->getParticipant()->getId()])
         ));
-        $orderedParticipants = $this->orderForPairing($activeEntries, $state->getAllSeenParticipants());
+        $orderedParticipants = $this->orderForPairing($activeEntries, $participants);
 
         // Repeat avoidance and home balancing read the recorded pairings,
         // not the results, so rounds recorded without results still count.
@@ -301,7 +301,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             $state->getByeCounts(),
             $state->getLastRound(),
             [],
-            $state->getAllSeenParticipants()
+            $this->entrants($state)
         );
     }
 
@@ -314,15 +314,15 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * meaningful under a win/draw/loss ranking: anything else fails loudly
      * rather than guessing what a win is worth on an unknown scale. Last,
      * entries that no result separates are put in the order of the
-     * participant list: the active participants as listed, then those who
-     * have withdrawn. No seed attribute, label or ID decides an order.
+     * entrant list (see entrants()). No seed attribute or label decides an
+     * order, and no ID decides one between two active participants.
      *
      * @throws InvalidConfigurationException When a bye is recorded and the ranking strategy is not
      *                                       a WinDrawLossRanking
      */
     private function table(StageState $state): Standings
     {
-        $entrants = $state->getAllSeenParticipants();
+        $entrants = $this->entrants($state);
 
         return $this->standingsCalculator
             ->withByesCredited(
@@ -330,6 +330,30 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
                 $state->getByeCounts()
             )
             ->withTiedSetsOrderedBy($entrants);
+    }
+
+    /**
+     * The entrant list of the stage: the active participants in the order
+     * of the state's list, then those who have withdrawn.
+     *
+     * A withdrawn participant has no position any more: the state keeps it
+     * only in the rounds and results that name it. The withdrawn are
+     * therefore listed in the order of their IDs (the total order the
+     * standings calculator falls back on), so that the list is the same
+     * whatever order the recorded events and results are in.
+     *
+     * @return list<Participant>
+     */
+    private function entrants(StageState $state): array
+    {
+        $active = array_values($state->getParticipants());
+        $withdrawn = array_slice(array_values($state->getAllSeenParticipants()), count($active));
+        usort(
+            $withdrawn,
+            static fn(Participant $first, Participant $second): int => EntryOrder::compareIds($first->getId(), $second->getId())
+        );
+
+        return [...$active, ...$withdrawn];
     }
 
     /**

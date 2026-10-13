@@ -308,6 +308,37 @@ describe('Swiss pairing order', function (): void {
             $outcome->getStandings()->getEntries()
         )))->toBe(['p1', 'p3', 'p4', 'p5', 'p6', 'p2']);
     });
+
+    // A withdrawn participant has no position any more. Two of them that no
+    // result separates are in the order of their IDs, and not in the order
+    // the recorded events happen to name them in: an application that
+    // rebuilds a state from its own rows records the same round with its
+    // events in whatever order the rows came back.
+    it('orders level withdrawn participants the same whatever order the recorded events are in', function (int $dressing): void {
+        $field = positionField(6, $dressing);
+        $engine = new SwissPairingEngine(plannedRounds: 1);
+        $pairing = $engine->pairNextRound(StageState::start($field));
+
+        $tables = [];
+        foreach ([$pairing->getEvents(), array_reverse($pairing->getEvents())] as $events) {
+            $state = StageState::start($field)
+                ->withRoundPlayed(new RoundPairing(1, null, $events), [])
+                ->withoutParticipant($field[3])
+                ->withoutParticipant($field[0]);
+
+            $outcome = $engine->getOutcome($state);
+            assert($outcome !== null);
+
+            expect(positionIds($outcome->getEntrants()))->toBe(['p2', 'p3', 'p5', 'p6', 'p1', 'p4']);
+            $tables[] = positionIds(array_map(
+                fn(StandingEntry $entry): Participant => $entry->getParticipant(),
+                $outcome->getStandings()->getEntries()
+            ));
+        }
+
+        expect($tables[0])->toBe(['p2', 'p3', 'p5', 'p6', 'p1', 'p4'])
+            ->and($tables[1])->toBe($tables[0]);
+    })->with([[1], [2], [3]]);
 });
 
 describe('a bye in a Swiss stage', function (): void {

@@ -47,7 +47,9 @@ does.** That covers:
 
 The entrant list of an engine is the participant list of its `StageState`:
 the active participants in the order the stage was started with, then those
-who have withdrawn. `StageOutcome` carries the list
+who have withdrawn, in the order of their IDs (the state keeps no position
+for them, and the order its recorded events name them in is not one).
+`StageOutcome` carries the list
 (`StageOutcome::getEntrants()`), so that a selector reads the same order the
 table was put in. One method applies the rule, to any table:
 `Standings::withTiedSetsOrderedBy()` reorders the entries of each tied set
@@ -98,7 +100,8 @@ Two consequences of "the table of a stage" belong to the same decision:
   array, including the IDs for which 0002 recorded an exception.
 - A withdrawn participant is no longer in the list at its old position: in
   the table of the stage it stands after the active participants it is
-  level with.
+  level with, and two withdrawn participants who are level are in the
+  order of their IDs.
 - An outcome built by hand has no entrant list unless it is given one, and
   its table is then in the calculator's fallback order.
 - The order is part of the output. The pairings of a stage in progress can

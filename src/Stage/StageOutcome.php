@@ -151,7 +151,8 @@ final readonly class StageOutcome
      * The entrant list of the stage, position 1 first, or an empty list
      * when the outcome was built without one. For an engine's outcome it is
      * every participant the stage has seen: the active list in its order,
-     * then those withdrawn.
+     * then those withdrawn, who have no position any more, in the order of
+     * their IDs.
      *
      * @return list<Participant>
      */

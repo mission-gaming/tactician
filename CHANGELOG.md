@@ -96,7 +96,11 @@ entry on the engine fingerprint.
   ```
 
   No golden fixture changed: the fixtures and the examples list their
-  participants in the order of their seeds and labels.
+  participants in the order of their seeds and labels. A participant who
+  has withdrawn has no position in the list any more: in the table of the
+  stage it stands after the active participants it is level with, and
+  withdrawn participants who are level with each other are in the order of
+  their IDs, whatever order the recorded events name them in.
 - **A Swiss bye counts in the outcome's table as it counts for pairing.**
   The engine credited a bye as a win when it ordered a round and as nothing
   in the table of `getOutcome()`, so a participant who sat out a round
