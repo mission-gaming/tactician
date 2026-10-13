@@ -740,6 +740,49 @@ entry on the engine fingerprint.
   legs for the last round that differs from the rest of the bracket, and
   ties for the places below fourth. The usage guide has it under "A
   third-place tie".
+- **The best of a rank across pools: `BestOfRankSelector`.**
+  `BestOfRankSelector::ofRank(rank: 3, count: 2)` returns the two best of
+  the entrants placed third in their pools, best first: the selection
+  behind "the top two of each pool and the two best third-placed". Who
+  holds the rank is read from each pool's own table; the holders are
+  compared by the figures the combined table of the outcome has for them
+  (ranking value, each tiebreaker of the calculator given to
+  `StageOutcome::combining()`, score difference, scores-for). It has
+  `fromArray()`/`toArray()` (`rank`, `count`, and `comparison` and `ties`
+  when chosen, after `format_version`; an unknown key is refused), states
+  its count as its
+  selection size for `CompositionValidator`, and refuses an undecided
+  selection as `RankRangeSelector` does, with the same two choices to go
+  on (`withTiesInsideSelectionAccepted()`, `withTableOrderAccepted()`). The
+  list is best first and is not placed for a bracket (#94).
+- **`PoolComparison`, the method pools of unequal size are compared by**,
+  an enum with three cases: `RawTotals` (`raw-totals`), `PerEvent`
+  (`per-event`: every figure divided by the events the entrant has played)
+  and `DiscardLowest` (`discard-lowest`: the entrants placed below the size
+  of the smallest pool are left out of each larger pool with their results,
+  and the table is calculated again). `BestOfRankSelector::comparedBy()`
+  takes any of them and `RankRangeSelector::comparedBy()` the first two,
+  for an overall selection; in plain data it is the key `comparison`,
+  written only when a method was chosen. No method is applied by default:
+  see **Changed** for what that means for `overall()`. An adjustment is
+  compared under every method, as part of the ranking value a table is
+  ordered by: `PerEvent` divides that total by the events played (an
+  entrant that has played none is compared by its adjustment as it
+  stands), and `DiscardLowest` applies the adjustments of the entrants it
+  keeps to the table it calculates again. An awarded result is a result
+  under every method.
+- **What the selection across pools adds to existing types.**
+  `StageOutcome` takes the calculator its table was calculated with as a
+  seventh constructor argument (`calculator`, default none) and returns it
+  with `getCalculator()`; `StageOutcome::combining()` passes on the one it
+  is given, and `DiscardLowest` needs it.
+  `UndecidedSelectionException` has an eighth constructor parameter,
+  `rankAcrossPools` (default null), and `getRankAcrossPools()`: the rank
+  whose holders were compared, when the tie is among them; its context then
+  holds the key `rank_across_pools`, and has the six keys it had otherwise.
+  One case of `InvalidConfigurationReason`, `PoolComparisonRequired`
+  (`pool_comparison_required`). New example:
+  `examples/26-best-next-placed-qualifiers.php`.
 
 ### Changed
 
@@ -754,6 +797,28 @@ entry on the engine fingerprint.
   on `tie_winner` is not, and should branch on the reason. Golden fixture:
   `examples/24-recording-bracket-results.txt` (that one line; the example
   now records a decider and prints the results it printed).
+- **Breaking: an overall rank selection across pools of unequal size is
+  refused until a comparison method is chosen.**
+  `RankRangeSelector::overall()` reads the combined table of a pooled
+  outcome, which compares raw totals: across pools of 4 and 3 entrants, 9
+  points from 3 events ranked level with 9 from 2, silently. `select()` now
+  throws an `InvalidConfigurationException` with the reason
+  `PoolComparisonRequired` for an outcome whose pools do not have the same
+  number of entries, with the pool sizes in the context (`pool_sizes`),
+  whatever the tie policy of the selector. Who is affected: every use of
+  `overall()` on a pooled outcome with pools of unequal size. Migration:
+  `RankRangeSelector::overall(1, 8)->comparedBy(PoolComparison::RawTotals)`
+  (`'comparison' => 'raw-totals'` in plain data) selects exactly what the
+  selector selected before; `PoolComparison::PerEvent` compares per event
+  played instead. Before: `RankRangeSelector::overall(1, 8)->select($outcome)`
+  returned eight entrants for pools of 4, 4 and 3. After: it throws, and
+  with `->comparedBy(PoolComparison::RawTotals)` it returns the same eight.
+  Unchanged: an outcome without pools, pools of one size, and every
+  per-group selection (#94). ADR 0006
+  (`docs/adr/0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md`)
+  records the decision, what counts as unequal (the number of entries of
+  the pools' tables, not the events played) and what a comparison per
+  event does and does not do with tiebreaker values.
 - **Breaking: every array a `toArray()` returns starts with
   `format_version`, and a version the library does not know is refused.**
   No serialized form said which release's rules it was written under, so
@@ -764,8 +829,9 @@ entry on the engine fingerprint.
   `EliminationOptions`, `RepackOptions`), `WinDrawLossRanking`,
   `AwardedResultPolicy`, `TimelineDefinition`, `SessionGrid`,
   `BlackoutRule`, `MinimumRestRule`, `RankRangeSelector`,
-  `MatchOutcomeSelector`, `Participant`, `Round`, `Event`, `Result`,
-  `Award`, `Schedule`, `RoundPairing`, `StageState`, `Adjustment`,
+  `BestOfRankSelector`, `MatchOutcomeSelector`, `Participant`, `Round`,
+  `Event`, `Result`, `Award`, `Schedule`, `RoundPairing`, `StageState`,
+  `Adjustment`,
   `ScheduledEvent`, `ScheduledSchedule`, `RepackOutcome`, `SlotAssignment`,
   `UnplacedEvent` and the five repack violations. Every form is at version
   1 (#53). ADR 0005 (`docs/adr/0005-serialized-forms-carry-a-format-version.md`)
@@ -778,8 +844,8 @@ entry on the engine fingerprint.
   - **Data stored by 0.2.x loads unchanged.** An array without the key is
     read as version 1, which is the form 0.2.x wrote and, beside it, the
     optional keys this release adds (`strategy_seed`, `seed` in Swiss
-    options, `ties` in a rank range selector, `award` in a result,
-    `adjustments` in a stage state). Nothing is to be
+    options, `ties` and `comparison` in a rank range selector, `award` in a
+    result, `adjustments` in a stage state). Nothing is to be
     migrated and the key need not be added to stored rows.
     `tests/Fixtures/stored-by-0.2/` holds a schedule and a stage state as
     v0.2.0 wrote them and 124 values of every form that is read as v0.2.3
@@ -811,9 +877,9 @@ entry on the engine fingerprint.
 
   Rolling back: an array written by 0.3.0 is still read by 0.2.x, which
   cannot check the version and ignores the key, as it ignores every key it
-  does not know (`strategy_seed`, `seed` in Swiss options and `ties` in a
-  rank range selector, and before 0.2.2 `role_assignment` and
-  `engine_fingerprint`, are read as left out; so are `award` and
+  does not know (`strategy_seed`, `seed` in Swiss options, and `ties` and
+  `comparison` in a rank range selector, and before 0.2.2 `role_assignment`
+  and `engine_fingerprint`, are read as left out; so are `award` and
   `adjustments`, which means 0.2.x reads an awarded result as one that was
   played and a stage state without its adjustments). The one exception is
   `PotDrawOptions::fromArray()` of 0.2.2 and 0.2.3, which refused unknown
@@ -952,7 +1018,8 @@ entry on the engine fingerprint.
     `RepackOptions`, `WinDrawLossRanking`, `AwardedResultPolicy`,
     `TimelineDefinition`,
     `SessionGrid`, `BlackoutRule` (the rule and each of its windows),
-    `MinimumRestRule`, `RankRangeSelector` and `MatchOutcomeSelector`.
+    `MinimumRestRule`, `RankRangeSelector`, `BestOfRankSelector` and
+    `MatchOutcomeSelector`.
     `PotDrawOptions` already did; its message is now `Unknown key in pot
     draw options: '<key>'` where it was `Unknown pot draw option`, and its
     reason and context are unchanged.
