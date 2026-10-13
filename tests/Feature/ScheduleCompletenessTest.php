@@ -892,8 +892,10 @@ function mirroredRoundsAsPrinted(Schedule $schedule, array $rounds): array
 //   to be refused now, and from one with a randomizer one is.
 it('gives the third leg of four participants as the 0.3.0 changelog prints it, before and after', function (): void {
     $participants = completenessParticipants(4);
+    // The roles the entry prints are those of the round-parity role
+    // assignment, the default when it was written
     $schedule = static fn(LegStrategyInterface $strategy, int $legs): Schedule => (new RoundRobinScheduler())
-        ->schedule($participants, new RoundRobinOptions(legs: $legs, strategy: $strategy));
+        ->schedule($participants, new RoundRobinOptions(legs: $legs, strategy: $strategy, roleAssignment: new RoundParityRoleAssignment()));
 
     $after = $schedule(new MirroredLegStrategy(), 3);
     $before = $schedule(everyLaterLegReversed(), 3);

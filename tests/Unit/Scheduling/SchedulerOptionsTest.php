@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
@@ -9,6 +10,7 @@ use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentContext;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
@@ -160,13 +162,20 @@ describe('RoundRobinOptions', function (): void {
         (new RoundRobinOptions(legs: 2, strategy: $custom))->toArray();
     })->throws(InvalidConfigurationException::class);
 
-    it('defaults to the round-parity role assignment', function (): void {
-        expect((new RoundRobinOptions())->roleAssignment)->toBeInstanceOf(RoundParityRoleAssignment::class);
-        expect(RoundRobinOptions::fromArray([])->roleAssignment)->toBeInstanceOf(RoundParityRoleAssignment::class);
+    // Balanced since 0.3.0. Options that name no role assignment follow the
+    // default of the release that reads them, whether they are built in
+    // code or from plain data, so a payload stored without the key by 0.2.x
+    // gets the balanced roles too (the changelog says so).
+    it('defaults to the balanced role assignment', function (): void {
+        expect((new RoundRobinOptions())->roleAssignment)->toBeInstanceOf(BalancedRoleAssignment::class);
+        expect(RoundRobinOptions::fromArray([])->roleAssignment)->toBeInstanceOf(BalancedRoleAssignment::class);
 
         // A payload written before the option existed
         expect(RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'repeated', 'backtracking' => true])->roleAssignment)
-            ->toBeInstanceOf(RoundParityRoleAssignment::class);
+            ->toBeInstanceOf(BalancedRoleAssignment::class);
+        // And one written by toArray() for options that named none
+        expect(RoundRobinOptions::fromArray((new RoundRobinOptions(legs: 2))->toArray())->roleAssignment)
+            ->toBeInstanceOf(BalancedRoleAssignment::class);
     });
 
     it('maps stable identifiers to the built-in role assignments', function (): void {
@@ -190,9 +199,10 @@ describe('RoundRobinOptions', function (): void {
         'a null role assignment' => [['role_assignment' => null]],
     ]);
 
-    // The default is to change in 0.3. A caller that names today's default
-    // to keep it must still have named it after a round trip through plain
-    // data, or the stored configuration would follow the new default.
+    // The default changed in 0.3.0. A caller that named the default of
+    // 0.2.x to keep it must still have named it after a round trip through
+    // plain data, or the stored configuration would follow the new default;
+    // and one that names the new default keeps saying so.
     it('keeps a role assignment that was named, the default included', function (): void {
         $pinned = ['format_version' => 1, 'legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'round_parity'];
 
@@ -216,9 +226,15 @@ describe('RoundRobinOptions', function (): void {
     it('refuses to serialize a custom role assignment', function (): void {
         $custom = new class implements RoleAssignmentInterface {
             #[Override]
-            public function assignRoles(array $rounds): array
+            public function assignRoles(array $rounds, RoleAssignmentContext $context): array
             {
                 return $rounds;
+            }
+
+            #[Override]
+            public function rule(): ?ConstraintInterface
+            {
+                return null;
             }
         };
 

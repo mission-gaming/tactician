@@ -20,7 +20,9 @@ use Override;
  * Options for round-robin scheduling: how many legs, how pairings vary
  * across them, and which participant of a pairing is first-named.
  *
- * Defaults to a single mirrored leg with round-parity roles. The
+ * Defaults to a single mirrored leg with balanced roles (up to 0.2.x the
+ * roles of the default alternated with round parity; name
+ * RoundParityRoleAssignment, or 'round_parity', to keep those). The
  * identifiers accepted by fromArray() are stable: 'mirrored', 'repeated',
  * and 'shuffled' for the leg strategy, 'round_parity' and 'balanced' for
  * the role assignment. The shuffled strategy draws, so in plain data it
@@ -65,10 +67,12 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      *                           the constraints (bounded by a count of pairing attempts, and
      *                           deterministic for a given field order; greedy always runs first).
      *                           The search is over how the pairings of the first leg fall into
-     *                           rounds and over the roles of every leg; without it the roles of
-     *                           the first leg are the role assignment's and are not searched
+     *                           rounds and over the roles of every leg; without it the pairings
+     *                           and rounds are the circle method's, and the roles of the first
+     *                           leg are searched only within the rule the role assignment states
      * @param RoleAssignmentInterface|null $roleAssignment Which participant of each pairing is first-named
-     *                                                     (default: round parity, the roles the generator proposes)
+     *                                                     (default: balanced, each participant's two role
+     *                                                     counts at most 1 apart in every leg)
      * @throws InvalidConfigurationException When legs is not a positive integer
      */
     public function __construct(
@@ -87,7 +91,7 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         }
 
         $this->strategy = $strategy ?? new MirroredLegStrategy();
-        $this->roleAssignment = $roleAssignment ?? new RoundParityRoleAssignment();
+        $this->roleAssignment = $roleAssignment ?? new BalancedRoleAssignment();
         $this->roleAssignmentNamed = $roleAssignment !== null;
     }
 
@@ -98,6 +102,12 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * draws, ['legs' => 2, 'strategy' => 'shuffled', 'strategy_seed' => 7].
      * A key this class does not have is refused, so that a misspelt option
      * is not silently read as its default.
+     *
+     * An array without the `role_assignment` key names no role assignment
+     * and gets the default of the release that reads it: balanced roles
+     * from 0.3.0, round-parity roles before. Options stored without the key
+     * therefore give other roles when a schedule is generated from them
+     * again; store 'round_parity' to hold a configuration to the old ones.
      *
      * Every key is optional but one: `strategy_seed` is required with
      * 'shuffled' and refused with any other strategy. It is the integer

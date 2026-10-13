@@ -136,6 +136,20 @@ function roleSweepRules(int $roundsPerLeg, int $legs): array
             ConstraintSet::create()->custom($pinned, 'Pinned role')->build(),
             RoleScheduleOracle::fixedRoleRule('p1', 'p2', $laterRounds),
         ],
+        // "p2 is first-named whenever it meets p1", in every leg: the rule
+        // of issue #51 that the balanced roles break in the first leg
+        // already, although other balanced roles keep it
+        'p2 first-named against p1 in every leg' => [
+            ConstraintSet::create()->custom(
+                static function (Event $event): bool {
+                    $pair = $event->getParticipants();
+
+                    return !($pair[0]->getId() === 'p1' && $pair[1]->getId() === 'p2');
+                },
+                'Pinned role'
+            )->build(),
+            RoleScheduleOracle::pinnedRule('p2', 'p1'),
+        ],
         'streak 2 and p1 first-named against p2 after leg 1' => [
             ConstraintSet::create()
                 ->add(ConsecutiveRoleConstraint::homeAway(2))
@@ -175,13 +189,19 @@ function roleSweepRoleAssignments(): array
  * the first leg and its roles: the second leg has the meeting of p1 and p2
  * in the roles of the first leg reversed and the third has it in the roles
  * of the first leg, so p1 is first-named in one of the two only, and the
- * rule asks for both.
+ * rule asks for both. The role pinned in every leg is broken by two
+ * mirrored legs already: the second has the meeting reversed.
  *
  * @param 'mirrored'|'repeated'|'shuffled' $strategy
  */
 function roleSweepMirroredLegsBreakThePin(string $ruleName, string $strategy, int $legs): bool
 {
-    return $strategy === 'mirrored' && $legs >= 3 && str_contains($ruleName, 'p1 first-named against p2');
+    if ($strategy !== 'mirrored') {
+        return false;
+    }
+
+    return ($legs >= 3 && str_contains($ruleName, 'p1 first-named against p2'))
+        || ($legs >= 2 && str_contains($ruleName, 'in every leg'));
 }
 
 /**
@@ -268,22 +288,31 @@ function roleSweepFaults(Schedule $schedule, array $field, int $legs, string $st
 }
 
 describe('roles over several legs, without backtracking', function (): void {
-    // The roles of the first leg are the role assignment's and are not
-    // searched. A schedule exists when, for one of the participant orders
-    // the scheduler tries, that first leg keeps the rule and the later legs
-    // have roles that keep it: the one set of roles a mirrored or repeated
-    // leg has, or any roles for a shuffled leg.
+    // The pairings and their rounds are the circle method's, for each of
+    // the participant orders the scheduler tries. What may be searched in
+    // such a layout depends on the role assignment:
+    //
+    // - round parity states no rule, so the roles of the first leg are the
+    //   ones it gives and are not searched. A schedule exists when that
+    //   first leg keeps the rule and the later legs have roles that keep
+    //   it: the one set of roles a mirrored or repeated leg has, or any
+    //   roles for a shuffled leg;
+    // - balanced, the default, states its rule, so the roles of the first
+    //   leg are searched within it. A schedule exists when some choice of
+    //   roles for the first leg leaves it balanced and keeps the rule, with
+    //   later legs that keep it (issue #51: a balanced leg that satisfies
+    //   the constraints is found, not only the one the circle rule gives).
     //
     // Three to five participants run every case. Six and seven run the
-    // shuffled legs only, over two and three legs: a field that size is
-    // there for the search, which has events between the two it goes back
-    // and forth between, and without backtracking only the later legs of a
-    // strategy of preferences are searched. A mirrored or repeated leg ends
-    // at its first rejected event whatever the size of the field, and a
-    // fourth leg is searched as the third is. The whole sweep of six and
-    // seven (the three strategies, two to four legs) passed as well, in
-    // 2.0 s and 5.9 s where these cases take 0.2 s and 1.1 s; almost all of
-    // it is the scheduler describing its refusals.
+    // shuffled legs only, over two and three legs, under round parity: a
+    // field that size is there for the search of the later legs, which has
+    // events between the two it goes back and forth between. The whole
+    // sweep of six and seven under round parity (the three strategies, two
+    // to four legs) passed as well, in 2.0 s and 5.9 s where these cases
+    // take 0.2 s and 1.1 s; almost all of it is the scheduler describing
+    // its refusals. Under the balanced role assignment six pass too (17 s,
+    // most of it the oracle going through the 2^15 choices of roles of a
+    // first leg for each case that has no schedule).
     it('finds a schedule exactly when one exists', function (int $size): void {
         $field = roleSweepField($size);
         $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
@@ -293,6 +322,11 @@ describe('roles over several legs, without backtracking', function (): void {
         $refused = 0;
 
         foreach (roleSweepRoleAssignments() as $roleName => $roleAssignment) {
+            $firstLegIsSearched = $roleName === 'balanced';
+            if ($firstLegIsSearched && !$everyCase) {
+                continue;
+            }
+
             // The first leg of every participant order the scheduler tries
             $firstLegs = [];
             for ($rotation = 0; $rotation < $size; ++$rotation) {
@@ -311,9 +345,16 @@ describe('roles over several legs, without backtracking', function (): void {
 
                         $case = "{$size} participants, {$legs} legs, {$strategyName}, {$roleName}, {$ruleName}";
 
+                        // Under the balanced role assignment every event
+                        // of the first leg may be reversed, as long as the
+                        // leg ends balanced
+                        $whole = $firstLegIsSearched
+                            ? RoleScheduleOracle::every($breaks, RoleScheduleOracle::balancedFirstLegRule($size, $roundsPerLeg))
+                            : $breaks;
+
                         $exists = false;
                         foreach ($firstLegs as $firstLeg) {
-                            if (RoleScheduleOracle::rolesExist($firstLeg, $roundsPerLeg, $legs, $strategy, false, $breaks)) {
+                            if (RoleScheduleOracle::rolesExist($firstLeg, $roundsPerLeg, $legs, $strategy, $firstLegIsSearched, $whole)) {
                                 $exists = true;
                                 break;
                             }
@@ -335,7 +376,7 @@ describe('roles over several legs, without backtracking', function (): void {
                         if (!$exists) {
                             $wrong[] = "{$case}: no schedule exists, and the scheduler returned one";
                         }
-                        foreach (roleSweepFaults($schedule, $field, $legs, $strategy, $breaks) as $fault) {
+                        foreach (roleSweepFaults($schedule, $field, $legs, $strategy, $whole) as $fault) {
                             $wrong[] = "{$case}: {$fault}";
                         }
                     }
@@ -348,6 +389,57 @@ describe('roles over several legs, without backtracking', function (): void {
             ->and($found)->toBeGreaterThan(0)
             ->and($refused)->toBeGreaterThan(0);
     })->with([3, 4, 5, 6, 7])->skip(roleSweepIsUnderCoverage(), ROLE_SWEEP_NOT_UNDER_COVERAGE);
+
+    // The same question for a single leg, which the sweep above leaves out
+    // (its rules are about what happens where two legs meet).
+    it('finds a single leg exactly when a balanced one exists, with the default options', function (int $size): void {
+        $field = roleSweepField($size);
+        $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
+        $balanced = RoleScheduleOracle::balancedFirstLegRule($size, $roundsPerLeg);
+        $wrong = [];
+        $found = 0;
+        $refused = 0;
+
+        $firstLegs = [];
+        for ($rotation = 0; $rotation < $size; ++$rotation) {
+            $rotated = [...array_slice($field, $rotation), ...array_slice($field, 0, $rotation)];
+            $firstLegs[] = RoleScheduleOracle::read((new RoundRobinScheduler())->schedule($rotated));
+        }
+
+        foreach (roleSweepRules($roundsPerLeg, 2) as $ruleName => [$constraints, $breaks]) {
+            $case = "{$size} participants, {$ruleName}";
+            $whole = RoleScheduleOracle::every($breaks, $balanced);
+
+            $exists = false;
+            foreach ($firstLegs as $firstLeg) {
+                if (RoleScheduleOracle::rolesExist($firstLeg, $roundsPerLeg, 1, 'mirrored', true, $whole)) {
+                    $exists = true;
+                    break;
+                }
+            }
+
+            try {
+                $schedule = (new RoundRobinScheduler($constraints))->schedule($field);
+            } catch (IncompleteScheduleException $failure) {
+                ++$refused;
+                if ($exists) {
+                    $wrong[] = "{$case}: a schedule exists, and the scheduler said: {$failure->getMessage()}";
+                }
+
+                continue;
+            }
+
+            ++$found;
+            if (!$exists) {
+                $wrong[] = "{$case}: no schedule exists, and the scheduler returned one";
+            }
+            foreach (roleSweepFaults($schedule, $field, 1, 'mirrored', $whole) as $fault) {
+                $wrong[] = "{$case}: {$fault}";
+            }
+        }
+
+        expect($wrong)->toBe([])->and($found)->toBeGreaterThan(0)->and($refused)->toBeGreaterThan(0);
+    })->with([4, 5, 6, 7, 8]);
 });
 
 describe('roles over several legs, with backtracking', function (): void {
@@ -355,7 +447,15 @@ describe('roles over several legs, with backtracking', function (): void {
     // and its roles. A schedule exists when some leg, with some roles, has
     // later legs under the leg strategy that keep the rule. With the
     // round-parity role assignment, which keeps the roles it is handed,
-    // that is everything the scheduler may return.
+    // that is everything the scheduler may return. With the balanced role
+    // assignment, the default, the first leg must also be balanced, and
+    // that is the whole of the difference: a schedule exists when some leg
+    // has roles that leave it balanced and keep the rule in every leg, and
+    // the scheduler returns one exactly then (issue #51). Until it searched
+    // the roles within the rule of the role assignment it missed 20 of the
+    // satisfiable cases of a sweep of 2,988, all of three participants with
+    // a pinned role: it balanced the first leg it found, had that rejected,
+    // and stopped.
     //
     // Four and five participants run here, four over two to four legs and
     // five over two and three. Five over four legs hold as well, with no
@@ -367,26 +467,35 @@ describe('roles over several legs, with backtracking', function (): void {
     // bound, and take more than five minutes (five and six participants
     // both have 720 ways to play a leg, and both sides go through them for
     // every case that has no schedule); add 6 to the list to run them.
-    it('finds a schedule exactly when one exists, or says that a bound stopped it', function (int $size): void {
+    it('finds a schedule exactly when one exists, or says that a bound stopped it', function (int $size, string $roleName): void {
         $field = roleSweepField($size);
         $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $field);
         $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
+        $roleAssignment = roleSweepRoleAssignments()[$roleName];
         $wrong = [];
         $found = 0;
         $proven = 0;
         $stopped = [];
 
-        for ($legs = 2; $legs <= ($size <= 4 ? 4 : 3); ++$legs) {
-            foreach (roleSweepRules($roundsPerLeg, $legs) as $ruleName => [$constraints, $breaks]) {
+        for ($legs = 1; $legs <= ($size <= 4 ? 4 : 3); ++$legs) {
+            foreach (roleSweepRules($roundsPerLeg, max(2, $legs)) as $ruleName => [$constraints, $breaks]) {
                 foreach (roleSweepStrategies() as $strategyName => [$strategy, $makeStrategy]) {
-                    $case = "{$size} participants, {$legs} legs, {$strategyName}, {$ruleName}";
+                    if ($legs === 1 && $strategyName !== 'mirrored') {
+                        // One leg has no leg strategy to tell apart
+                        continue;
+                    }
 
-                    $exists = roleSweepSomeLegHasRoles($ids, $roundsPerLeg, $legs, $strategy, $ruleName, $breaks);
+                    $case = "{$size} participants, {$legs} legs, {$strategyName}, {$roleName}, {$ruleName}";
+                    $whole = $roleName === 'balanced'
+                        ? RoleScheduleOracle::every($breaks, RoleScheduleOracle::balancedFirstLegRule($size, $roundsPerLeg))
+                        : $breaks;
+
+                    $exists = roleSweepSomeLegHasRoles($ids, $roundsPerLeg, $legs, $strategy, $ruleName, $whole);
                     if ($exists && roleSweepMirroredLegsBreakThePin($ruleName, $strategy, $legs)) {
                         $wrong[] = "{$case}: the oracle finds a schedule, and mirrored legs cannot keep the pinned role";
                     }
 
-                    $options = new RoundRobinOptions($legs, $makeStrategy(), true);
+                    $options = new RoundRobinOptions($legs, $makeStrategy(), true, $roleAssignment);
                     try {
                         $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options);
                     } catch (IncompleteScheduleException $failure) {
@@ -409,7 +518,7 @@ describe('roles over several legs, with backtracking', function (): void {
                     if (!$exists) {
                         $wrong[] = "{$case}: no schedule exists, and the scheduler returned one";
                     }
-                    foreach (roleSweepFaults($schedule, $field, $legs, $strategy, $breaks) as $fault) {
+                    foreach (roleSweepFaults($schedule, $field, $legs, $strategy, $whole) as $fault) {
                         $wrong[] = "{$case}: {$fault}";
                     }
                 }
@@ -422,96 +531,45 @@ describe('roles over several legs, with backtracking', function (): void {
             ->and($stopped)->toBe([])
             ->and($found)->toBeGreaterThan(0)
             ->and($proven)->toBeGreaterThan(0);
-    })->with([4, 5])->skip(roleSweepIsUnderCoverage(), ROLE_SWEEP_NOT_UNDER_COVERAGE);
-
-    // The balanced role assignment changes roles the search chose, so a
-    // schedule of the oracle may be one it does not keep, and "exists" is
-    // not the whole question (issue #51). What holds: a schedule that is
-    // returned is right and its first leg is balanced, and "unsatisfiable"
-    // is said only when no schedule exists under any roles.
-    //
-    // With five participants the two cases of three mirrored legs under
-    // the pinned role are left out. No schedule exists for them
-    // (roleSweepMirroredLegsBreakThePin()), so there are no roles for the
-    // role assignment to keep or to change, and all this test could find
-    // is a schedule that breaks the rule. They passed here too, the
-    // scheduler proving both unsatisfiable in 1.9 s of the 2.4 s this
-    // sweep of five then took; the sweep above still runs them with the
-    // round-parity role assignment, and this one with four participants.
-    it('returns only balanced schedules that keep the rule under the balanced role assignment', function (int $size): void {
-        $field = roleSweepField($size);
-        $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $field);
-        $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
-        $wrong = [];
-        $found = 0;
-
-        for ($legs = 2; $legs <= 3; ++$legs) {
-            foreach (roleSweepRules($roundsPerLeg, $legs) as $ruleName => [$constraints, $breaks]) {
-                foreach (roleSweepStrategies() as $strategyName => [$strategy, $makeStrategy]) {
-                    if ($size > 4 && roleSweepMirroredLegsBreakThePin($ruleName, $strategy, $legs)) {
-                        continue;
-                    }
-
-                    $case = "{$size} participants, {$legs} legs, {$strategyName}, {$ruleName}";
-                    $options = new RoundRobinOptions($legs, $makeStrategy(), true, new BalancedRoleAssignment());
-
-                    try {
-                        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options);
-                    } catch (IncompleteScheduleException $failure) {
-                        if (!str_contains($failure->getMessage(), 'unsatisfiable')) {
-                            continue;
-                        }
-
-                        if (roleSweepSomeLegHasRoles($ids, $roundsPerLeg, $legs, $strategy, $ruleName, $breaks)) {
-                            $wrong[] = "{$case}: a schedule exists, and the scheduler said: {$failure->getMessage()}";
-                        }
-
-                        continue;
-                    }
-
-                    ++$found;
-                    foreach (roleSweepFaults($schedule, $field, $legs, $strategy, $breaks) as $fault) {
-                        $wrong[] = "{$case}: {$fault}";
-                    }
-                    $legOne = RoleCounts::leg($schedule->getEvents(), 1, $roundsPerLeg);
-                    if (RoleCounts::worstEndImbalance($legOne) > ($size % 2 === 0 ? 1 : 0)) {
-                        $wrong[] = "{$case}: the first leg is not balanced";
-                    }
-                }
-            }
-        }
-
-        expect($wrong)->toBe([])->and($found)->toBeGreaterThan(0);
-    })->with([4, 5]);
+    })
+        ->with([3, 4, 5])
+        ->with(['round parity', 'balanced'])
+        ->skip(roleSweepIsUnderCoverage(), ROLE_SWEEP_NOT_UNDER_COVERAGE);
 
     // A schedule that only the search completes is still a function of the
-    // seed: the draws are the roles the search tries first.
+    // seed: the draws are the roles the search tries first. Under round
+    // parity such schedules are common; under the balanced role assignment
+    // the roles of the first leg are searched without backtracking, so few
+    // are left for it, and the test holds whichever there are.
     it('gives the same schedule for the same seed when only the search completes it', function (int $size): void {
         $field = roleSweepField($size);
         $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
         $searched = 0;
 
-        for ($legs = 2; $legs <= 3; ++$legs) {
-            foreach (roleSweepRules($roundsPerLeg, $legs) as $ruleName => [$constraints]) {
-                foreach ([1, 2, 3] as $seed) {
-                    $schedules = [];
-                    foreach ([false, true, true] as $backtracking) {
-                        try {
-                            $schedules[] = (new RoundRobinScheduler($constraints))
-                                ->schedule($field, new RoundRobinOptions($legs, new ShuffledLegStrategy(seed: $seed), $backtracking))
-                                ->toJson();
-                        } catch (IncompleteScheduleException) {
-                            $schedules[] = null;
+        foreach (roleSweepRoleAssignments() as $roleName => $roleAssignment) {
+            for ($legs = 2; $legs <= 3; ++$legs) {
+                foreach (roleSweepRules($roundsPerLeg, $legs) as $ruleName => [$constraints]) {
+                    foreach ([1, 2, 3] as $seed) {
+                        $schedules = [];
+                        foreach ([false, true, true] as $backtracking) {
+                            try {
+                                $schedules[] = (new RoundRobinScheduler($constraints))
+                                    ->schedule($field, new RoundRobinOptions($legs, new ShuffledLegStrategy(seed: $seed), $backtracking, $roleAssignment))
+                                    ->toJson();
+                            } catch (IncompleteScheduleException) {
+                                $schedules[] = null;
+                            }
                         }
-                    }
 
-                    expect($schedules[2])->toBe($schedules[1], "{$size} participants, {$legs} legs, seed {$seed}, {$ruleName}");
-                    if ($schedules[0] === null && $schedules[1] !== null) {
-                        ++$searched;
-                    } elseif ($schedules[0] !== null) {
-                        // Greedy runs first: backtracking changes nothing
-                        // where it was not needed
-                        expect($schedules[1])->toBe($schedules[0]);
+                        $case = "{$size} participants, {$legs} legs, seed {$seed}, {$roleName}, {$ruleName}";
+                        expect($schedules[2])->toBe($schedules[1], $case);
+                        if ($schedules[0] === null && $schedules[1] !== null) {
+                            ++$searched;
+                        } elseif ($schedules[0] !== null) {
+                            // What succeeds without backtracking is not
+                            // changed by it
+                            expect($schedules[1])->toBe($schedules[0], $case);
+                        }
                     }
                 }
             }
@@ -541,12 +599,21 @@ describe('roles over several legs of a larger field', function (): void {
     // tests/Unit/Scheduling/RoundRobinRoleSearchTest.php, which counts the
     // first legs tried; that a schedule found from it is returned is not
     // held by a test. Add [20, true] to the list to run it.
+    //
+    // The role assignment is round parity, which states no rule: its roles
+    // are searched with backtracking only. (The balanced roles of the
+    // default keep this limit over two repeated legs as they are.)
     it('repeats a first leg whose roles the search chose', function (int $size, bool $keepsTheCircleLayout): void {
         $field = roleSweepField($size);
         $constraints = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build();
-        $options = static fn(bool $backtracking): RoundRobinOptions => new RoundRobinOptions(2, new RepeatedLegStrategy(), $backtracking);
+        $options = static fn(bool $backtracking): RoundRobinOptions => new RoundRobinOptions(
+            2,
+            new RepeatedLegStrategy(),
+            $backtracking,
+            new RoundParityRoleAssignment()
+        );
 
-        // The default roles, played twice, break the limit, and the
+        // The round-parity roles, played twice, break the limit, and the
         // scheduler says so: without backtracking it does not search the
         // roles of the first leg
         $twice = (new RoundRobinScheduler())->schedule($field, $options(false));
@@ -561,6 +628,49 @@ describe('roles over several legs of a larger field', function (): void {
             // exactly where only roles were searched
             ->and(RoleCounts::structure($schedule) === RoleCounts::structure($twice))->toBe($keepsTheCircleLayout);
     })->with([[8, false], [10, true], [13, true]]);
+
+    // The home-and-away league: two mirrored legs and a limit on how often
+    // a role repeats, with the options as they come. The balanced roles the
+    // circle rule gives break the limit where the two legs meet (three in a
+    // row in a field of even size, four in some fields of odd size), which
+    // the round-parity roles of 0.2.x did not in a field of even size. So
+    // the default must find other balanced roles for the first leg, without
+    // backtracking, or a league that 0.2.x scheduled would fail under it
+    // (issue #51). It finds them in the layout of the circle method, which
+    // is the one it searches: the pairings and their rounds are those of
+    // the schedule without the constraint, and only roles differ.
+    it('mirrors a balanced first leg whose roles the scheduler searched, with the default options', function (
+        int $size,
+        int $limit,
+        int $legs
+    ): void {
+        $field = roleSweepField($size);
+        $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
+        $constraints = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway($limit))->build();
+        $options = new RoundRobinOptions($legs);
+
+        $unconstrained = (new RoundRobinScheduler())->schedule($field, $options);
+        expect(RoleCounts::worstStreak($unconstrained))->toBeGreaterThan($limit);
+
+        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options);
+
+        expect(roleSweepFaults($schedule, $field, $legs, 'mirrored', RoleScheduleOracle::streakRule($limit)))->toBe([])
+            ->and(RoleCounts::structure($schedule))->toBe(RoleCounts::structure($unconstrained))
+            ->and($schedule->getMetadata())->toBe($unconstrained->getMetadata())
+            ->and(RoleCounts::worstEndImbalance(RoleCounts::leg($schedule, 1, $roundsPerLeg)))->toBe($size % 2 === 0 ? 1 : 0)
+            // The whole schedule: level over an even number of mirrored
+            // legs, and as one leg leaves it over an odd number
+            ->and(RoleCounts::worstEndImbalance($schedule))->toBe($legs % 2 === 0 ? 0 : ($size % 2 === 0 ? 1 : 0));
+    })->with([
+        'six, two in a row' => [6, 2, 2],
+        'eight, two in a row' => [8, 2, 2],
+        'twelve, two in a row' => [12, 2, 2],
+        'twenty, two in a row' => [20, 2, 2],
+        'twelve, two in a row, four legs' => [12, 2, 4],
+        'nine, three in a row' => [9, 3, 2],
+        'thirteen, three in a row' => [13, 3, 2],
+        'thirteen, three in a row, three legs' => [13, 3, 3],
+    ]);
 
     it('shuffles the later legs of a league within a limit of two in a row', function (int $size, int $legs): void {
         $field = roleSweepField($size);

@@ -19,7 +19,7 @@ All participants must have unique IDs
 duplicate_participant_ids
 
 == A constraint that rejects everything ==
-MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 0 events, expected 6. Constraints may be preventing complete schedule generation.
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 0 events, expected 6. Constraints may be preventing complete schedule generation. The roles of the first leg were then searched within what MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment keeps, in each of the 4 layouts tried, and no choice of them has a schedule the constraints accept. The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.
 
 == How far generation got ==
 Expected events: 6
@@ -39,7 +39,7 @@ Missing Events: 6 (100.0%)
 
 === CONSTRAINT VIOLATIONS ===
 • Reject everything: 6 violations
-  Most affected participants: delta (3), gamma (3), alpha (3)
+  Most affected participants: gamma (3), delta (3), alpha (3)
   Affected rounds: 1 (2), 2 (2), 3 (2)
 
 === BLOCKED PAIRINGS ===
@@ -65,6 +65,6 @@ A round numbered zero: MissionGaming\Tactician\Exceptions\InvalidInputException
 
 == A valid request ==
 meta: algorithm=round-robin participant_count=4 legs=1 rounds_per_leg=3 total_rounds=3 expected_event_count=6 byes=[]
-R1: alpha-delta beta-gamma
-R2: beta-alpha delta-gamma
-R3: alpha-gamma delta-beta
+R1: delta-alpha beta-gamma
+R2: alpha-beta gamma-delta
+R3: gamma-alpha delta-beta

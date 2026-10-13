@@ -24,10 +24,12 @@ use Override;
  * The roles are a rule: an event of a later leg in the other role would
  * not be a repeat, so the scheduler never reverses one to satisfy a
  * constraint. What a constraint on roles can change is the first leg,
- * which every later leg repeats. Its roles are the role assignment's, and
- * the scheduler searches them only with
- * `RoundRobinOptions(backtracking: true)`; without it, roles that break a
- * constraint when they are repeated fail the schedule.
+ * which every later leg repeats. Its roles are the role assignment's. The
+ * scheduler searches them within the rule the role assignment states (the
+ * balanced role assignment of the default states one: the first leg stays
+ * balanced), and freely with `RoundRobinOptions(backtracking: true)`; under
+ * a role assignment that states none, and without backtracking, roles that
+ * break a constraint when they are repeated fail the schedule.
  *
  * @api
  */

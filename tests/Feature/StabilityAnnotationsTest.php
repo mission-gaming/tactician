@@ -157,6 +157,9 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
 
         expect($internal)->toBe([
             'Diagnostics\SchedulingDiagnostics',
+            // New in 0.3.0 and never public: the rule BalancedRoleAssignment
+            // states, handed out as a ConstraintInterface
+            'RoleAssignment\LegBalanceRule',
             'Scheduling\BacktrackingRoundRobinGenerator',
             'Scheduling\ConstraintPurity',
             'Scheduling\EliminationBracketSupport',

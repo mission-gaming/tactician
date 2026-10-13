@@ -277,10 +277,10 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         }
     })->with([
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
-        'role constraints over shuffled and repeated legs' => [
+        'role constraints over shuffled, mirrored and repeated legs' => [
             'docs/USAGE.md',
             '$repeatedLeague = $twoInARow->schedule(',
-            ["56 events\nWithout backtracking: no schedule\n56 events\n"],
+            ["56 events\n56 events\nRound parity, without backtracking: no schedule\n56 events\n"],
             [],
         ],
         'format versions' => [
@@ -999,7 +999,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         'quality score and report' => [
             'docs/USAGE.md',
             '$report = $scorer->report($schedule);',
-            "assert(\$score === 4.5);\nassert(\$report === ['Role Balance' => 1.5, 'Pairing Spacing' => 0.0]);",
+            "assert(\$score === 3.0);\nassert(\$report === ['Role Balance' => 1.0, 'Pairing Spacing' => 0.0]);",
         ],
         'optimizer samples' => [
             'docs/USAGE.md',
@@ -1072,43 +1072,120 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($plain->schedule($participants)->toJson() === $plain->schedule($participants)->toJson());
                 PHP,
         ],
-        // Where the repeated legs fail is what the roles of today reach, not a promise:
-        // issue #51 (balanced roles by default) changes it. That mirrored legs hold is
-        // one: they alternate, so every two of them end level.
-        // The table under "Role-Based Constraints", at the two smallest sizes repeated
-        // legs fail for and two more
-        'where a role balance limit of 3 or 4 holds and where it fails' => [
+        // The table under "Role-Based Constraints": what the running totals reach with
+        // the roles as each role assignment gives them, counted in the events of the
+        // schedule without a constraint, and that a limit at the figure completes while
+        // the round-parity roles fail one below theirs. The sizes are the two smallest
+        // that repeated legs of round-parity roles fail for, and two more.
+        'what the running role totals reach, and where a limit on them holds' => [
             'docs/USAGE.md',
             '$balanceConstraint = RoleBalanceConstraint::homeAway(3);',
             <<<'PHP'
-                $completes = static function (int $size, \MissionGaming\Tactician\Scheduling\RoundRobinOptions $options): bool {
+                $field = static function (int $size): array {
                     $field = [];
                     for ($i = 1; $i <= $size; ++$i) {
                         $field[] = new \MissionGaming\Tactician\DTO\Participant("p{$i}", "P{$i}");
                     }
-                    $limit = ConstraintSet::create()->add(RoleBalanceConstraint::homeAway($size % 2 === 0 ? 3 : 4))->build();
 
+                    return $field;
+                };
+                $reached = static function (int $size, \MissionGaming\Tactician\Scheduling\RoundRobinOptions $options) use ($field): int {
+                    $difference = [];
+                    $worst = 0;
+                    foreach ((new \MissionGaming\Tactician\Scheduling\RoundRobinScheduler())->schedule($field($size), $options) as $event) {
+                        [$first, $second] = $event->getParticipants();
+                        $difference[$first->getId()] = ($difference[$first->getId()] ?? 0) + 1;
+                        $difference[$second->getId()] = ($difference[$second->getId()] ?? 0) - 1;
+                        $worst = max($worst, abs($difference[$first->getId()]), abs($difference[$second->getId()]));
+                    }
+
+                    return $worst;
+                };
+                $completes = static function (int $size, int $limit, \MissionGaming\Tactician\Scheduling\RoundRobinOptions $options) use ($field): bool {
                     try {
-                        (new \MissionGaming\Tactician\Scheduling\RoundRobinScheduler($limit))->schedule($field, $options);
+                        (new \MissionGaming\Tactician\Scheduling\RoundRobinScheduler(
+                            ConstraintSet::create()->add(RoleBalanceConstraint::homeAway($limit))->build()
+                        ))->schedule($field($size), $options);
                     } catch (\MissionGaming\Tactician\Exceptions\IncompleteScheduleException) {
                         return false;
                     }
 
                     return true;
                 };
-                $repeated = new \MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy();
+                $options = static fn (int $legs, string $strategy, bool $parity): \MissionGaming\Tactician\Scheduling\RoundRobinOptions => new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(
+                    $legs,
+                    $strategy === 'repeated' ? new \MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy() : new \MissionGaming\Tactician\LegStrategies\MirroredLegStrategy(),
+                    false,
+                    $parity ? new \MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment() : null
+                );
+
                 foreach ([4, 6, 7, 12] as $size) {
-                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions()));
-                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 2)));
-                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 3)));
-                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 4)));
-                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 5)));
-                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 6)));
-                    assert(!$completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 2, strategy: $repeated)));
-                    assert(!$completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 3, strategy: $repeated)));
+                    $even = $size % 2 === 0;
+
+                    // Balanced roles, the default
+                    assert($reached($size, $options(1, 'mirrored', false)) === ($even ? 1 : 2));
+                    assert($completes($size, $even ? 1 : 2, $options(1, 'mirrored', false)));
+                    foreach ([2, 3, 4, 5, 6] as $legs) {
+                        assert($reached($size, $options($legs, 'mirrored', false)) === 2);
+                        assert($reached($size, $options($legs, 'repeated', false)) === ($even ? $legs : 2));
+                    }
+                    assert($completes($size, 2, $options(2, 'mirrored', false)));
+                    assert($completes($size, 2, $options(4, 'mirrored', false)));
+                    assert($completes($size, 2, $options(2, 'repeated', false)));
+
+                    // Round-parity roles
+                    assert($reached($size, $options(1, 'mirrored', true)) === ($even ? 3 : 4));
+                    foreach ([2, 3, 4, 5, 6] as $legs) {
+                        assert($reached($size, $options($legs, 'mirrored', true)) === ($even ? 3 : 4));
+                    }
+                    assert($completes($size, $even ? 3 : 4, $options(1, 'mirrored', true)));
+                    assert($completes($size, $even ? 3 : 4, $options(4, 'mirrored', true)));
+                    assert(!$completes($size, $even ? 3 : 4, $options(2, 'repeated', true)));
+                    assert(!$completes($size, $even ? 3 : 4, $options(3, 'repeated', true)));
                 }
-                // "three repeated legs fail for every size from 3"
-                assert(!$completes(3, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 3, strategy: $repeated)));
+                // "for three legs of every size from 3"
+                assert(!$completes(3, 4, $options(3, 'repeated', true)));
+
+                // "three repeated legs of a field of even size ... break a limit of 2 whatever
+                // the roles": after each leg every participant is one apart, the same way
+                assert(!$completes(4, 2, $options(3, 'repeated', false)));
+                assert(!$completes(6, 2, $options(3, 'repeated', false)));
+                PHP,
+        ],
+        // "The league the default returns has the pairings and rounds of the league
+        // without the constraint, and a first leg that is balanced: only roles were
+        // looked for"
+        'the home-and-away league under a limit of two in a row' => [
+            'docs/USAGE.md',
+            '$homeAndAway = $twoInARow->schedule($league, new RoundRobinOptions(legs: 2));',
+            <<<'PHP'
+                $plainLeague = (new RoundRobinScheduler())->schedule($league, new RoundRobinOptions(legs: 2));
+                $layout = static fn ($schedule): array => array_map(static function ($event): string {
+                    $ids = array_map(static fn ($participant): string => $participant->getId(), $event->getParticipants());
+                    sort($ids);
+
+                    return $event->getRound()?->getNumber() . ': ' . implode(' + ', $ids);
+                }, $schedule->getEvents());
+                assert($layout($homeAndAway) === $layout($plainLeague));
+                // The roles the default starts from break the limit, so they are not these
+                assert($homeAndAway->toJson() !== $plainLeague->toJson());
+
+                $difference = [];
+                $run = [];
+                $last = [];
+                foreach ($homeAndAway as $event) {
+                    foreach ($event->getParticipants() as $role => $participant) {
+                        $id = $participant->getId();
+                        $run[$id] = ($last[$id] ?? null) === $role ? $run[$id] + 1 : 1;
+                        $last[$id] = $role;
+                        assert($run[$id] <= 2);
+                        if ($event->getRound()?->getNumber() <= 7) {
+                            $difference[$id] = ($difference[$id] ?? 0) + ($role === 0 ? 1 : -1);
+                        }
+                    }
+                }
+                // Seven events each in a leg: one apart is balanced
+                assert(array_values(array_unique(array_map('abs', $difference))) === [1]);
                 PHP,
         ],
         // "In a single leg no pair meets twice, so there it rejects nothing"

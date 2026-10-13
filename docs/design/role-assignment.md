@@ -1,7 +1,9 @@
 # Design note: Role Assignment
 
-**Status: IMPLEMENTED** as an opt-in (`RoundRobinOptions(roleAssignment:
-new BalancedRoleAssignment())`). It becomes the default in 0.3.
+**Status: IMPLEMENTED.** `BalancedRoleAssignment` shipped as an opt-in in
+0.2.2 (`RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())`)
+and is the default since 0.3.0. [The default](#the-default) records that
+decision, the bar it had to meet, and what was built to meet it.
 
 The usage guide states what a caller can rely on
 ([Role Assignment](../USAGE.md#role-assignment)). This note records why the
@@ -40,26 +42,23 @@ odd size it plays an even number, so 0 apart is possible.
   A role assignment cannot move a pairing to another round, so the plan, the
   byes and every constraint that does not read roles are unaffected by it.
 - **Before the constraints.** The roles of a leg are decided before any
-  constraint sees an event, and each event is then checked as before. A role
-  constraint that the assigned roles break fails generation loudly. The
-  scheduler does not try other roles for the role assignment's leg:
-  constraints are hard filters, and a schedule that silently had other roles
-  than the ones asked for would be worse than a failure. (Since 0.3.0 it
-  does change a role where the contract of whoever decided it leaves it
-  free, which is the draw of a shuffled later leg, and the first leg of a
-  backtracking search as far as the role assignment keeps the result:
-  [backtracking-generation.md](backtracking-generation.md#roles-across-legs).
-  The roles a role assignment gives the first leg without backtracking are
-  not among them.) The cost is real and is accepted here: a role
-  assignment does not see the constraints, so a constraint that fixes the
-  role of one pairing can reject the balanced roles although other balanced
-  roles would satisfy it, and the scheduler does not look for them. Of the
-  729 ways to fix the roles of some of the six pairings of four participants,
-  143 fail with the balanced roles, with backtracking on, although a balanced
-  schedule that satisfies them exists; 67 of those succeed with the default
-  roles and no backtracking. A role assignment that is handed the constraints
-  could close that gap. It would need a wider method than `assignRoles()`,
-  which is one reason the namespace is experimental.
+  constraint sees an event, and each event is then checked as before.
+  Constraints are hard filters, and a schedule that silently had other
+  roles than the ones asked for would be worse than a failure: so a role is
+  changed only where the contract of whoever decided it leaves it free
+  ([backtracking-generation.md](backtracking-generation.md#roles-across-legs)).
+  In 0.2.2 that left the first leg of a role assignment untouched, at a cost
+  that was real and was accepted then: a role assignment did not see the
+  constraints, so a constraint that fixes the role of one pairing could
+  reject the balanced roles although other balanced roles would satisfy it,
+  and the scheduler did not look for them. Of the 729 ways to fix the roles
+  of some of the six pairings of four participants, 143 failed with the
+  balanced roles, with backtracking on, although a balanced schedule that
+  satisfies them exists; 67 of those succeeded with the round-parity roles
+  and no backtracking. That gap is what stood between the balanced roles
+  and the default, and 0.3.0 closes it without giving the principle up: the
+  role assignment says which roles it keeps, and the scheduler looks among
+  those ([The default](#the-default)).
 - **Leg strategies keep their meaning.** The role assignment decides the base
   roles of every leg the circle method lays out; the leg strategy then
   mirrors, repeats or shuffles them exactly as it did. When this was decided,
@@ -69,18 +68,18 @@ odd size it plays an even number, so 0 apart is possible.
   reversed), which was a change to the leg strategy and none to the role
   assignment: an even number of mirrored legs is balanced, and an odd number
   is one apart in a field of even size.
-- **A searched leg is balanced or refused.** The backtracking search chooses
-  roles while it satisfies the constraints, so its leg is consistent and may
-  be far from balanced. The role assignment is asked about that leg too. A
-  leg it changes is replayed against the constraints, and a rejection is an
-  `IncompleteScheduleException`. Keeping the search's roles instead would
-  have returned an unbalanced schedule to a caller who asked for a balanced
-  one, with nothing to say so. The same holds for a first leg whose roles
-  the search changes afterwards, to make the later legs fit: it is put to
-  the role assignment again and returned only when the role assignment
-  keeps it as it is. There the search goes on to the next first leg instead
-  of failing, and the failure, if none is kept, says that roles exist which
-  the role assignment would change.
+- **A searched leg is one the role assignment keeps, or it is not
+  returned.** The backtracking search chooses roles while it satisfies the
+  constraints, so its leg is consistent and may be far from balanced.
+  Keeping the search's roles would return an unbalanced schedule to a
+  caller who asked for a balanced one, with nothing to say so. Since 0.3.0
+  the roles of every first leg the search finds are searched within the
+  rule of the role assignment, so a balanced leg that the constraints accept
+  is found where the layout has one, and a layout without one sends the
+  search on to the next. (In 0.2.2 the role assignment was asked about the
+  leg afterwards, its changes were replayed against the constraints, and a
+  rejection ended the search with an `IncompleteScheduleException`; that is
+  still what happens under a role assignment that states no rule.)
 
 ## The circle rule
 
@@ -167,8 +166,135 @@ repair ends with every participant at most 1 apart, which is 0 apart for one
 that plays an even number of events. The mirror image handles a participant
 that is second-named too often.
 
-The repair says nothing about streaks, and it does not know the constraints.
-That is the reason for the replay described above.
+The repair says nothing about streaks.
+
+### Around fixed seatings
+
+The same repair serves a leg in which some seatings may not be reversed,
+because the scheduler found that a constraint rejects them the other way
+round (`RoleAssignmentContext::isFixed()`): a chain then uses free seatings
+only. Without fixed seatings a chain always exists. With them it may not,
+and then no balanced leg exists at all. Take the set the chains from an
+out-of-balance start reach through free seatings. No member is out of
+balance the other way, or a chain would end there. Every free seating
+between the set and the rest already names the outside participant first
+(or second, for a start with too many second-named roles), and a fixed one
+cannot change, so no choice of roles for the free seatings gives the set a
+smaller sum of differences than it has; and that sum is too large for a
+balanced leg, in which the members of a set sum to at most their number
+where each plays an odd number of events and to exactly zero where each
+plays an even number. So the repair is exact: it finds a balanced leg around
+the fixed seatings whenever there is one. This is the orientation problem a
+flow computation solves; reversing a chain is an augmenting path, and the
+argument above is the cut that shows there is none left.
+
+The circle rule is left out when a seating is fixed, since it decides every
+seating. A leg that cannot be balanced comes back with the fixed seatings as
+given and is not used: the scheduler holds every leg to the rule the role
+assignment states.
+
+## The default
+
+**Decision (0.3.0, issue #51): `BalancedRoleAssignment` is the default.**
+`RoundParityRoleAssignment` stays, and naming it gives the roles of 0.2.x.
+
+### The bar
+
+The balanced roles were held back in 0.2.2 for one reason, the gap recorded
+under "Before the constraints". A downstream consumer passes no constraints
+today and will, so the bar for the default was set as: with a constraint
+that fixes or limits roles, generation succeeds whenever a balanced
+assignment satisfying the constraints exists, for every leg strategy, and
+fails loudly, naming the constraint, only when none exists; the 729 cases of
+four participants have none that fails while a balanced leg exists; and the
+role assignment receives what it needs for that, since the interface was
+experimental and could still change.
+
+### What was built
+
+- **The interface says more, in both directions.** `assignRoles()` takes a
+  `RoleAssignmentContext`: the leg, the number of legs, and the seatings
+  the constraints have fixed. An object, so that more can be told later
+  without breaking an implementer again. And the role assignment states,
+  with `rule()`, what it holds a first leg to, as a constraint on one event
+  (`LegBalanceRule` for the balanced one: no participant has a role more
+  often in the leg than half its events rounded up), or null.
+- **The constraints are not handed over.** The issue offered "the leg and
+  the constraints, or a way to ask whether a seating is allowed". Neither
+  was taken as it stands. Whether a seating is allowed is a question about a
+  schedule, not about a leg: under mirrored or repeated legs the event that
+  a constraint rejects may be in the third leg, and under shuffled legs it
+  depends on draws that are made once. The scheduler already had the
+  machinery that puts whole schedules to the constraints in order
+  (`LegRoleSearch`), with its bounds and its account of what a failure
+  showed. So the scheduler asks the constraints, and tells the role
+  assignment what it learned (the fixed seatings); and the role assignment
+  tells the scheduler what it would keep (the rule), so that a search of
+  roles stays inside it.
+- **Two steps, for two kinds of constraint.** A rule that fixes the roles
+  of single pairings is the plain case and is not a search: the scheduler
+  fixes each seating a constraint of unknown reach rejects and asks again,
+  and the repair above balances the leg around them or shows that no
+  balanced leg has those roles. One pass over the events for each seating
+  fixed. A limit on streaks or on the role totals turns on the roles before
+  an event, so no seating is "fixed" by it; there the roles of the first leg
+  are searched, each choice held to the rule, from the roles the role
+  assignment gave. The balance rule reads the two participants' own events
+  only, so the search goes straight back to an event that matters
+  ([backtracking-generation.md](backtracking-generation.md#going-back)).
+- **Where it runs.** After the rotated orders have all failed with the
+  roles as given, in each of those layouts again, without backtracking
+  being asked for; and with backtracking, for every first leg the search
+  finds. The rotations come first so that a schedule a rotated order
+  completes is the schedule it was. A role assignment without a rule is
+  treated as before in every respect, which is how the round-parity roles
+  of 0.2.x stay byte for byte what they were, failures included.
+
+### What was measured
+
+- The 729 cases: no case fails while a balanced leg exists, with and
+  without backtracking (`tests/Feature/RoleAssignmentTest.php`).
+- Against an exhaustive oracle (`tests/Support/RoleScheduleOracle.php`),
+  fields of three to five (and to eight for a single leg), one to four
+  legs, the three leg strategies, limits on streaks and on totals, pinned
+  roles and combinations: with backtracking, a schedule is returned exactly
+  when some way to play the first leg has balanced roles that keep the rule
+  in every leg, and every failure says "unsatisfiable"; without it, exactly
+  when one of the circle layouts tried has such roles
+  (`tests/Feature/RoleConstraintsAcrossLegsTest.php`). The 20 cases of three
+  participants with a pinned role that the search of 0.2.x-era roles missed
+  under the balanced role assignment are among them.
+- Against the round-parity default of 0.2.x, over role limits (streaks of 1
+  to 4, totals 1 to 4 apart), 3 to 16 participants, one to four legs and the
+  three leg strategies, 1,120 configurations: none that completed before
+  fails, and 438 that failed complete. Over pinned roles in fields of 3 to
+  8: the configurations that completed before and fail now are those whose
+  rule leaves no balanced leg at all (three participants, one of them named
+  first in both of its events).
+
+### What it costs, and what is short
+
+- A schedule without constraints pays for the circle rule and nothing
+  else. A constrained schedule that the roles as given complete pays
+  nothing more than it did.
+- A constrained schedule that fails pays for the search: one allowance of
+  20,000 rejected roles and 200,000 events put to the constraints for all
+  the layouts of a call. Where a failed rotation would have had its failure
+  analysed only to be thrown away, and the constraints are the library's
+  own role limits, the analysis is built once, after the search.
+- The search is bounded, and beyond its bound it does not know. Two
+  mirrored legs under a limit of two in a row: found for every field of
+  even size from 6 to 16 and for 5 to 11 participants of odd size; stopped
+  at the bound for 13 and 15. It says so, and does not say that no roles
+  exist.
+- Without backtracking only the circle layouts are searched. A limit that
+  no balanced roles keep there, and that another way to play the leg would
+  keep, needs `backtracking: true`.
+- A constraint of unknown reach that rejects a seating both ways round is
+  not proof that no roles exist, since it may read anything. The search
+  that follows goes back one event at a time for such a rejection, and for
+  a rule that truly leaves no schedule (a role pinned in every leg, over
+  two mirrored legs) it ends at its bound, not with a proof.
 
 ## What is not promised
 
@@ -177,10 +303,18 @@ That is the reason for the replay described above.
   participant whose repeat sits at the edge of the leg can then play three
   in a row in a field of even size and four in a field of odd size (measured
   for 3 to 30 participants; four is reached with 5, 9, 13 and so on). For
-  two mirrored legs the default role assignment scores better on
+  two mirrored legs the round-parity role assignment scores better on
   `RoleStreakMetric` for that reason in every field of even size from 6
   participants up, and with 5 participants. Both end balanced; only the
-  balanced one is balanced at the halfway point.
+  balanced one is balanced at the halfway point. The circle rule could not
+  be changed to avoid it without giving up the running difference of 1: the
+  role against the fixed seat is the one free choice a rotating participant
+  has, the running difference decides it one way, and the boundary of two
+  mirrored legs wants it the other way for the two participants who meet
+  the fixed seat in the last two rounds. So the rule stays, and a schedule
+  that must not repeat a role three times says so with a
+  `ConsecutiveRoleConstraint`: the scheduler then reverses those two
+  seatings, which is the balanced leg its search finds.
 
 A scheduler with a `Randomizer` is no longer among them. Up to 0.2.x it
 shuffled the participant order of the first leg only and laid the later legs

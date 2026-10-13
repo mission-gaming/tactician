@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\RoleAssignment;
 
+use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use Override;
@@ -37,7 +38,20 @@ use Override;
  *    towards balance and changes no participant between them.
  *
  * Only step 2 says anything about streaks. It needs no randomness, and the
- * same rounds always give the same answer.
+ * same rounds and context always give the same answer.
+ *
+ * Under constraints the scheduler may fix seatings: it found that the
+ * constraints reject them the other way round, and says so in the context.
+ * A fixed seating is returned as given. Step 2 is then left out, because
+ * the circle rule decides every seating, and step 3 reverses chains that
+ * hold no fixed seating. That finds a balanced leg whenever one exists that
+ * keeps the fixed seatings: where a participant is out of balance and no
+ * such chain leaves it, no orientation of the seatings that are free
+ * balances the leg (the argument is on `chainFrom()`). The leg then comes
+ * back out of balance, with the fixed seatings as given, and the scheduler,
+ * which holds every leg to `rule()`, does not use it.
+ *
+ * This is the default of `RoundRobinOptions`.
  *
  * @experimental
  */
@@ -45,25 +59,43 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
 {
     /**
      * The leg with every participant's two role counts at most 1 apart, by
-     * the first of the three steps of the class docblock that achieves it.
+     * the first of the three steps of the class docblock that achieves it,
+     * or out of balance when the fixed seatings of the context allow no
+     * balanced leg.
      *
      * The rounds and seatings come back in the order given, each seating
-     * as given or reversed; a bye seating comes back as given. The same
-     * rounds always give the same answer.
+     * as given or reversed; a bye seating and a fixed seating come back as
+     * given. The same rounds and context always give the same answer, and
+     * the leg number of the context is not read: every leg is decided by
+     * the same rule.
      */
     #[Override]
-    public function assignRoles(array $rounds): array
+    public function assignRoles(array $rounds, RoleAssignmentContext $context): array
     {
         if ($this->isBalanced($rounds)) {
             return $rounds;
         }
 
-        $byCircleRule = $this->applyCircleRule($rounds);
-        if ($this->isBalanced($byCircleRule)) {
-            return $byCircleRule;
+        if (!$context->hasFixedSeatings()) {
+            $byCircleRule = $this->applyCircleRule($rounds);
+            if ($this->isBalanced($byCircleRule)) {
+                return $byCircleRule;
+            }
         }
 
-        return $this->repair($rounds);
+        return $this->repair($rounds, $context);
+    }
+
+    /**
+     * The rule of a balanced leg, one event at a time: an event is refused
+     * when it would give one of its participants a role more often than
+     * half the events of a leg, rounded up. A leg that is whole holds no
+     * refused event exactly when `assignRoles()` returns it unchanged.
+     */
+    #[Override]
+    public function rule(): ConstraintInterface
+    {
+        return new LegBalanceRule();
     }
 
     /**
@@ -202,7 +234,7 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
 
     /**
      * Reverse chains of pairings until no participant is 2 or more out of
-     * balance.
+     * balance, or until one that is has no chain left.
      *
      * Each pass takes 2 off the difference of the participant it starts
      * from, which lowers the amount by which that participant exceeds a
@@ -212,7 +244,7 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
      * @param list<list<array{0: Participant|null, 1: Participant|null}>> $rounds
      * @return list<list<array{0: Participant|null, 1: Participant|null}>>
      */
-    private function repair(array $rounds): array
+    private function repair(array $rounds, RoleAssignmentContext $context): array
     {
         while (true) {
             $differences = $this->differences($rounds);
@@ -230,27 +262,47 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
                 return $rounds;
             }
 
-            $rounds = $this->reverseSeatings($rounds, $this->chainFrom($rounds, $differences, $start));
+            $chain = $this->chainFrom($rounds, $differences, $start, $context);
+            if ($chain === null) {
+                // The fixed seatings leave no balanced leg
+                return $rounds;
+            }
+
+            $rounds = $this->reverseSeatings($rounds, $chain);
         }
     }
 
     /**
      * The shortest chain of pairings from a participant that is out of
      * balance to one that is out of balance the other way, each pairing
-     * entered through the role the start has too many of.
+     * entered through the role the start has too many of, and none of them
+     * a fixed seating. Null when the fixed seatings leave no such chain.
      *
-     * Such a chain exists. Take the set of participants that chains from a
-     * start with too many first-named roles can reach: every pairing between
-     * the set and the rest names the participant outside it first, so the
-     * differences inside the set sum to zero or less, and with the start at
-     * 2 or more some other member is below zero. The mirror image holds for
-     * a start with too many second-named roles.
+     * Without fixed seatings such a chain exists. Take the set of
+     * participants that chains from a start with too many first-named roles
+     * can reach: every pairing between the set and the rest names the
+     * participant outside it first, so the differences inside the set sum
+     * to zero or less, and with the start at 2 or more some other member is
+     * below zero. The mirror image holds for a start with too many
+     * second-named roles.
+     *
+     * With fixed seatings, no chain means no balanced leg. In the set the
+     * chains reach, no member is below zero and the start is at 2 or more.
+     * Every free pairing between the set and the rest already names the
+     * outside participant first, and a fixed one cannot change, so no
+     * orientation of the free pairings gives the set a smaller sum than it
+     * has. That sum is too large for a balanced leg: in a leg where each
+     * participant plays an even number of events every difference is even,
+     * the members are at 0 or more and the start at 2 or more, where a
+     * balanced set sums to 0; where each plays an odd number every
+     * difference is odd, the members are at 1 or more and the start at 3
+     * or more, where a balanced set sums to at most its size.
      *
      * @param list<list<array{0: Participant|null, 1: Participant|null}>> $rounds
      * @param array<string, int> $differences
-     * @return array<string, true> The seatings of the chain, as "round:position" keys
+     * @return array<string, true>|null The seatings of the chain, as "round:position" keys
      */
-    private function chainFrom(array $rounds, array $differences, string $start): array
+    private function chainFrom(array $rounds, array $differences, string $start, RoleAssignmentContext $context): ?array
     {
         $startIsFirstTooOften = $differences[$start] > 0;
 
@@ -258,7 +310,7 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
         $steps = [];
         foreach ($rounds as $index => $seatings) {
             foreach ($seatings as $position => [$first, $second]) {
-                if ($first === null || $second === null) {
+                if ($first === null || $second === null || $context->isFixed($index, $position)) {
                     continue;
                 }
 
@@ -293,6 +345,10 @@ final readonly class BalancedRoleAssignment implements RoleAssignmentInterface
 
                 $queue[] = $neighbour;
             }
+        }
+
+        if ($context->hasFixedSeatings()) {
+            return null;
         }
 
         // Not reached: the differences of a leg sum to zero, so a participant

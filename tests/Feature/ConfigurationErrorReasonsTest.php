@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -15,6 +16,7 @@ use MissionGaming\Tactician\Repack\PinnedEvent;
 use MissionGaming\Tactician\Repack\RepackOptions;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentContext;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
@@ -330,9 +332,15 @@ describe('the reason of a configuration error', function (): void {
         'a custom role assignment serialized to plain data' => [
             fn() => (new RoundRobinOptions(roleAssignment: new class implements RoleAssignmentInterface {
                 #[Override]
-                public function assignRoles(array $rounds): array
+                public function assignRoles(array $rounds, RoleAssignmentContext $context): array
                 {
                     return $rounds;
+                }
+
+                #[Override]
+                public function rule(): ?ConstraintInterface
+                {
+                    return null;
                 }
             }))->toArray(),
             InvalidConfigurationReason::NotSerializable,
@@ -342,9 +350,15 @@ describe('the reason of a configuration error', function (): void {
                 [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C')],
                 new RoundRobinOptions(roleAssignment: new class implements RoleAssignmentInterface {
                     #[Override]
-                    public function assignRoles(array $rounds): array
+                    public function assignRoles(array $rounds, RoleAssignmentContext $context): array
                     {
                         return array_slice($rounds, 1);
+                    }
+
+                    #[Override]
+                    public function rule(): ?ConstraintInterface
+                    {
+                        return null;
                     }
                 })
             ),

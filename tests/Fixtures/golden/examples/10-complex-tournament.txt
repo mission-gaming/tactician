@@ -36,17 +36,17 @@ Earliest round with S-tier against B-tier: 3
 
 == Schedule with the constraints ==
 meta: algorithm=round-robin participant_count=8 legs=2 rounds_per_leg=7 total_rounds=14 expected_event_count=56 byes=[]
-R1: t1-tsm g2-fnatic cloud9-thieves geng-mad
-R2: g2-t1 tsm-cloud9 fnatic-geng thieves-mad
-R3: t1-cloud9 geng-g2 mad-tsm thieves-fnatic
-R4: geng-t1 cloud9-mad g2-thieves tsm-fnatic
-R5: t1-mad thieves-geng fnatic-cloud9 tsm-g2
-R6: thieves-t1 mad-fnatic geng-tsm cloud9-g2
-R7: t1-fnatic tsm-thieves g2-mad cloud9-geng
-R8: tsm-t1 fnatic-g2 thieves-cloud9 mad-geng
-R9: t1-g2 cloud9-tsm geng-fnatic mad-thieves
-R10: cloud9-t1 g2-geng tsm-mad fnatic-thieves
-R11: t1-geng mad-cloud9 thieves-g2 fnatic-tsm
-R12: mad-t1 geng-thieves cloud9-fnatic g2-tsm
-R13: t1-thieves fnatic-mad tsm-geng g2-cloud9
-R14: fnatic-t1 thieves-tsm mad-g2 geng-cloud9
+R1: tsm-t1 g2-fnatic thieves-cloud9 geng-mad
+R2: t1-g2 cloud9-tsm fnatic-geng mad-thieves
+R3: cloud9-t1 geng-g2 tsm-mad thieves-fnatic
+R4: t1-geng mad-cloud9 g2-thieves fnatic-tsm
+R5: mad-t1 thieves-geng cloud9-fnatic tsm-g2
+R6: t1-thieves fnatic-mad geng-tsm g2-cloud9
+R7: fnatic-t1 tsm-thieves mad-g2 cloud9-geng
+R8: t1-tsm fnatic-g2 cloud9-thieves mad-geng
+R9: g2-t1 tsm-cloud9 geng-fnatic thieves-mad
+R10: t1-cloud9 g2-geng mad-tsm fnatic-thieves
+R11: geng-t1 cloud9-mad thieves-g2 tsm-fnatic
+R12: t1-mad geng-thieves fnatic-cloud9 g2-tsm
+R13: thieves-t1 mad-fnatic tsm-geng cloud9-g2
+R14: t1-fnatic thieves-tsm g2-mad geng-cloud9

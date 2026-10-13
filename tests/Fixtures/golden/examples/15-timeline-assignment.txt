@@ -10,36 +10,36 @@
 # Review it, then regenerate with `composer golden-update`.
 
 == Season calendar ==
-R1: cel-cla @ 2026-08-01T17:00:00Z on North Pitch
+R1: cla-cel @ 2026-08-01T17:00:00Z on North Pitch
 R1: ath-ray @ 2026-08-01T17:00:00Z on South Pitch
-R1: liv-red @ 2026-08-01T19:00:00Z on North Pitch
-R2: ath-cel @ 2026-08-08T17:00:00Z on North Pitch
-R2: cla-liv @ 2026-08-08T17:00:00Z on South Pitch
+R1: red-liv @ 2026-08-01T19:00:00Z on North Pitch
+R2: cel-ath @ 2026-08-08T17:00:00Z on North Pitch
+R2: liv-cla @ 2026-08-08T17:00:00Z on South Pitch
 R2: ray-red @ 2026-08-08T19:00:00Z on North Pitch
-R3: cel-liv @ 2026-08-15T17:00:00Z on North Pitch
+R3: liv-cel @ 2026-08-15T17:00:00Z on North Pitch
 R3: red-ath @ 2026-08-15T17:00:00Z on South Pitch
-R3: ray-cla @ 2026-08-15T19:00:00Z on North Pitch
-R4: red-cel @ 2026-08-22T17:00:00Z on North Pitch
-R4: liv-ray @ 2026-08-22T17:00:00Z on South Pitch
+R3: cla-ray @ 2026-08-15T19:00:00Z on North Pitch
+R4: cel-red @ 2026-08-22T17:00:00Z on North Pitch
+R4: ray-liv @ 2026-08-22T17:00:00Z on South Pitch
 R4: ath-cla @ 2026-08-22T19:00:00Z on North Pitch
-R5: cel-ray @ 2026-08-29T17:00:00Z on North Pitch
+R5: ray-cel @ 2026-08-29T17:00:00Z on North Pitch
 R5: cla-red @ 2026-08-29T17:00:00Z on South Pitch
-R5: ath-liv @ 2026-08-29T19:00:00Z on North Pitch
-R6: cla-cel @ 2026-09-05T17:00:00Z on North Pitch
+R5: liv-ath @ 2026-08-29T19:00:00Z on North Pitch
+R6: cel-cla @ 2026-09-05T17:00:00Z on North Pitch
 R6: ray-ath @ 2026-09-05T17:00:00Z on South Pitch
-R6: red-liv @ 2026-09-05T19:00:00Z on North Pitch
-R7: cel-ath @ 2026-09-12T17:00:00Z on North Pitch
-R7: liv-cla @ 2026-09-12T17:00:00Z on South Pitch
+R6: liv-red @ 2026-09-05T19:00:00Z on North Pitch
+R7: ath-cel @ 2026-09-12T17:00:00Z on North Pitch
+R7: cla-liv @ 2026-09-12T17:00:00Z on South Pitch
 R7: red-ray @ 2026-09-12T19:00:00Z on North Pitch
-R8: liv-cel @ 2026-09-19T17:00:00Z on North Pitch
+R8: cel-liv @ 2026-09-19T17:00:00Z on North Pitch
 R8: ath-red @ 2026-09-19T17:00:00Z on South Pitch
-R8: cla-ray @ 2026-09-19T19:00:00Z on North Pitch
-R9: cel-red @ 2026-09-26T17:00:00Z on North Pitch
-R9: ray-liv @ 2026-09-26T17:00:00Z on South Pitch
+R8: ray-cla @ 2026-09-19T19:00:00Z on North Pitch
+R9: red-cel @ 2026-09-26T17:00:00Z on North Pitch
+R9: liv-ray @ 2026-09-26T17:00:00Z on South Pitch
 R9: cla-ath @ 2026-09-26T19:00:00Z on North Pitch
-R10: ray-cel @ 2026-10-03T17:00:00Z on North Pitch
+R10: cel-ray @ 2026-10-03T17:00:00Z on North Pitch
 R10: red-cla @ 2026-10-03T17:00:00Z on South Pitch
-R10: liv-ath @ 2026-10-03T19:00:00Z on North Pitch
+R10: ath-liv @ 2026-10-03T19:00:00Z on North Pitch
 
 == Scheduled events restored from JSON ==
 30

@@ -40,25 +40,25 @@ England:
 
 == Opening round, with cities from the metadata ==
 -
-  First named: Celtic FC
-  City: Glasgow
-  Second named: Clapton Community FC
-  Their city: London
+  First named: Clapton Community FC
+  City: London
+  Second named: Celtic FC
+  Their city: Glasgow
 -
   First named: Athletic Bilbao
   City: Bilbao
   Second named: FC St. Pauli
   Their city: Hamburg
 -
-  First named: AS Livorno
-  City: Livorno
-  Second named: Rayo Vallecano
-  Their city: Madrid
+  First named: Rayo Vallecano
+  City: Madrid
+  Second named: AS Livorno
+  Their city: Livorno
 
 == Schedule ==
 meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
-R1: celtic-clapton athletic-stpauli livorno-rayo
-R2: athletic-celtic clapton-livorno stpauli-rayo
-R3: celtic-livorno rayo-athletic stpauli-clapton
-R4: rayo-celtic livorno-stpauli athletic-clapton
-R5: celtic-stpauli clapton-rayo athletic-livorno
+R1: clapton-celtic athletic-stpauli rayo-livorno
+R2: celtic-athletic livorno-clapton stpauli-rayo
+R3: livorno-celtic rayo-athletic clapton-stpauli
+R4: celtic-rayo stpauli-livorno athletic-clapton
+R5: stpauli-celtic clapton-rayo livorno-athletic

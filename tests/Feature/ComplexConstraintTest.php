@@ -16,6 +16,9 @@ use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
@@ -280,10 +283,15 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
     // The schedule that shows it: the two mirrored legs the library itself
     // generates under the same constraints. Its second leg is the pairings
     // of the first in the same rounds with roles of its own, which is one
-    // of the 2^28 role choices the shuffled strategy draws from.
+    // of the 2^28 role choices the shuffled strategy draws from. The roles
+    // of the first leg are the round-parity ones, which two mirrored legs of
+    // eight keep the limit with as they are, so the witness has the first
+    // leg of the shuffled schedule.
     it('is satisfiable: a schedule exists, and its second leg is one the shuffled strategy may draw', function (): void {
-        $witness = (new RoundRobinScheduler($this->constraints))
-            ->schedule($this->field, new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy()));
+        $witness = (new RoundRobinScheduler($this->constraints))->schedule(
+            $this->field,
+            new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy(), roleAssignment: new RoundParityRoleAssignment())
+        );
 
         // Checked in the events, not taken from the scheduler's word
         expect(RoundRobinAudit::faults($witness, $this->field, 2))->toBe([])
@@ -291,7 +299,11 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
 
         $shuffled = (new RoundRobinScheduler())->schedule(
             $this->field,
-            new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937(1))))
+            new RoundRobinOptions(
+                legs: 2,
+                strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937(1))),
+                roleAssignment: new RoundParityRoleAssignment()
+            )
         );
 
         expect(RoleCounts::structure($witness))->toBe(RoleCounts::structure($shuffled))
@@ -302,26 +314,30 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
     // event is a preference: where the constraints reject it, the scheduler
     // takes the other role, and searches the roles of the later legs when
     // they reject both. The pairings, their rounds and the first leg are
-    // those of the same field without constraints.
-    it('schedules the two legs with roles the constraints accept', function (): void {
-        $schedule = (new RoundRobinScheduler($this->constraints))->schedule(
-            $this->field,
-            new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937(1))))
+    // those of the same field without constraints, under either role
+    // assignment: the roles of the later legs are enough here, so the first
+    // leg, which is searched only when they are not, is not touched.
+    it('schedules the two legs with roles the constraints accept', function (?RoleAssignmentInterface $roleAssignment): void {
+        $options = static fn(): RoundRobinOptions => new RoundRobinOptions(
+            legs: 2,
+            strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937(1))),
+            roleAssignment: $roleAssignment
         );
+        $schedule = (new RoundRobinScheduler($this->constraints))->schedule($this->field, $options());
 
         expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([])
             ->and(RoleCounts::worstStreak($schedule))->toBeLessThanOrEqual(2);
 
-        $unconstrained = (new RoundRobinScheduler())->schedule(
-            $this->field,
-            new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937(1))))
-        );
+        $unconstrained = (new RoundRobinScheduler())->schedule($this->field, $options());
 
         expect(RoleCounts::structure($schedule))->toBe(RoleCounts::structure($unconstrained))
             ->and(RoleCounts::leg($schedule, 1, 7))->toEqual(RoleCounts::leg($unconstrained, 1, 7))
             // The draws alone break the limit, so roles were changed for it
             ->and(RoleCounts::worstStreak($unconstrained))->toBeGreaterThan(2);
-    });
+    })->with([
+        'round parity' => [new RoundParityRoleAssignment()],
+        'the balanced role assignment of the default' => [null],
+    ]);
 
     // Every seed of the issue's forty, held to the limit and to its seed:
     // the same seed gives the same schedule from a new strategy.
@@ -348,8 +364,9 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
 
 // The same limit over two repeated legs of eight. A repeated leg has the
 // roles of the first, so nothing in the second leg is free: what can change
-// is the first leg, and its roles are the role assignment's unless the
-// caller turns the backtracking search on.
+// is the first leg. Under round parity, which states no rule, its roles are
+// the role assignment's unless the caller turns the backtracking search on.
+// The balanced roles of the default keep the limit as they are.
 describe('a limit of two same-role events in a row over two repeated legs of eight', function (): void {
     beforeEach(function (): void {
         $this->field = array_values(complexConstraintField(array_map(
@@ -359,13 +376,17 @@ describe('a limit of two same-role events in a row over two repeated legs of eig
         $this->constraints = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build();
     });
 
-    // The count: the first leg of the default roles keeps the limit by
+    // The count: the first leg of the round-parity roles keeps the limit by
     // itself, and played twice it does not. The participant order does not
     // matter to that, so no rotation helps.
-    it('fails without backtracking, because the roles of the first leg are not searched', function (): void {
-        $single = (new RoundRobinScheduler($this->constraints))->schedule($this->field);
-        $twice = (new RoundRobinScheduler())
-            ->schedule($this->field, new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy()));
+    it('fails under round parity without backtracking, because the roles of the first leg are not searched', function (): void {
+        $parity = static fn(int $legs): RoundRobinOptions => new RoundRobinOptions(
+            legs: $legs,
+            strategy: new RepeatedLegStrategy(),
+            roleAssignment: new RoundParityRoleAssignment()
+        );
+        $single = (new RoundRobinScheduler($this->constraints))->schedule($this->field, $parity(1));
+        $twice = (new RoundRobinScheduler())->schedule($this->field, $parity(2));
 
         expect(RoleCounts::worstStreak($single))->toBe(2)
             ->and(RoleCounts::leg($twice, 1, 7))->toEqual($single->getEvents())
@@ -373,22 +394,36 @@ describe('a limit of two same-role events in a row over two repeated legs of eig
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($this->constraints))
-                ->schedule($this->field, new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy()));
+            (new RoundRobinScheduler($this->constraints))->schedule($this->field, $parity(2));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
 
         expect($failure)->toBeInstanceOf(IncompleteScheduleException::class)
             ->and($failure?->getMessage())->toContain('leg 2')
+            ->toContain('The roles of leg 1 were not searched: RoundRobinOptions(backtracking: true) searches them.')
             ->and($failure?->getActualEventCount())->toBeGreaterThanOrEqual(28)->toBeLessThan(56)
             ->and($failure?->getViolationCollector()->hasViolations())->toBeTrue();
+    });
+
+    // The balanced roles of eight repeat a role at most twice in a leg and
+    // do not run on from the last round into the first, so two repeated
+    // legs keep the limit as the role assignment gives them: the schedule
+    // is the one without the constraint.
+    it('schedules the two legs with the options as they come', function (): void {
+        $options = new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy());
+
+        $schedule = (new RoundRobinScheduler($this->constraints))->schedule($this->field, $options);
+
+        expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([])
+            ->and(RoleCounts::worstStreak($schedule))->toBe(2)
+            ->and($schedule->toJson())->toBe((new RoundRobinScheduler())->schedule($this->field, $options)->toJson());
     });
 
     it('schedules the two legs with backtracking, the second with the roles of the first', function (): void {
         $schedule = (new RoundRobinScheduler($this->constraints))->schedule(
             $this->field,
-            new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy(), backtracking: true)
+            new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy(), backtracking: true, roleAssignment: new RoundParityRoleAssignment())
         );
 
         expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([])
@@ -438,18 +473,29 @@ describe('a pairing with no round open to it in the second of two shuffled legs 
             ->build();
     });
 
-    it('fails loudly without backtracking, naming the constraint and what was not searched', function (): void {
+    // Under round parity the roles of the first leg are not searched, and
+    // the failure says so. Under the balanced role assignment of the
+    // default they are, within what it keeps, and the failure says what
+    // that search came to: here it cannot show that no roles exist, since a
+    // closure tells it nothing about what it reads, so it stops at a bound.
+    it('fails loudly without backtracking, naming the constraint and what was not searched', function (
+        ?RoleAssignmentInterface $roleAssignment,
+        string $aboutTheFirstLeg
+    ): void {
         $failure = null;
         try {
-            (new RoundRobinScheduler($this->constraints))
-                ->schedule($this->field, new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 1)));
+            (new RoundRobinScheduler($this->constraints))->schedule(
+                $this->field,
+                new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 1), roleAssignment: $roleAssignment)
+            );
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
 
         expect($failure)->toBeInstanceOf(IncompleteScheduleException::class)
             ->and($failure?->getMessage())->toContain('the constraints reject every choice of roles for the events of leg 2')
-            ->toContain('the roles of leg 1 were not searched')
+            ->toContain($aboutTheFirstLeg)
+            ->toContain('RoundRobinOptions(backtracking: true) searches them.')
             ->and($failure?->getExpectedEventCount())->toBe(56)
             ->and($failure?->getActualEventCount())->toBeGreaterThanOrEqual(28)->toBeLessThan(56)
             ->and($failure?->getAnalysis())->not->toBeNull();
@@ -464,7 +510,17 @@ describe('a pairing with no round open to it in the second of two shuffled legs 
         sort($rejected);
 
         expect($rejected)->toBe(['Closed rounds: team-a v team-b', 'Closed rounds: team-b v team-a']);
-    });
+    })->with([
+        'round parity' => [
+            new RoundParityRoleAssignment(),
+            'in this layout. The pairings, their rounds and the roles of leg 1 were not searched: ',
+        ],
+        'the balanced role assignment of the default' => [
+            null,
+            'in this layout, with the roles leg 1 has in it. The roles of the first leg were then searched within what '
+                . BalancedRoleAssignment::class . ' keeps, and the search stopped at a bound (20000 rejected roles, or 200000 events put to the constraints, over all the layouts).',
+        ],
+    ]);
 
     it('fails loudly with backtracking, and never returns part of a schedule', function (): void {
         $failure = null;

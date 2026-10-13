@@ -16,19 +16,19 @@ Pairs: 15
 
 == Two legs with at least 5 rounds between meetings ==
 meta: algorithm=round-robin participant_count=6 legs=2 rounds_per_leg=5 total_rounds=10 expected_event_count=30 byes=[]
-R1: hawks-wolves bolts-phoenixes eagles-runners
-R2: bolts-hawks wolves-eagles phoenixes-runners
-R3: hawks-eagles runners-bolts phoenixes-wolves
-R4: runners-hawks eagles-phoenixes bolts-wolves
-R5: hawks-phoenixes wolves-runners bolts-eagles
-R6: wolves-hawks phoenixes-bolts runners-eagles
-R7: hawks-bolts eagles-wolves runners-phoenixes
-R8: eagles-hawks bolts-runners wolves-phoenixes
-R9: hawks-runners phoenixes-eagles wolves-bolts
-R10: phoenixes-hawks runners-wolves eagles-bolts
+R1: wolves-hawks bolts-phoenixes runners-eagles
+R2: hawks-bolts eagles-wolves phoenixes-runners
+R3: eagles-hawks runners-bolts wolves-phoenixes
+R4: hawks-runners phoenixes-eagles bolts-wolves
+R5: phoenixes-hawks wolves-runners eagles-bolts
+R6: hawks-wolves phoenixes-bolts eagles-runners
+R7: bolts-hawks wolves-eagles runners-phoenixes
+R8: hawks-eagles bolts-runners phoenixes-wolves
+R9: runners-hawks eagles-phoenixes wolves-bolts
+R10: hawks-phoenixes runners-wolves bolts-eagles
 
 == Asking for at least 6 rounds ==
-MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 2. Generated 0 events, expected 15. Constraints may be preventing complete schedule generation.
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 2. Generated 0 events, expected 15. Constraints may be preventing complete schedule generation. No choice of roles for the first leg changes that: in each of the 6 layouts tried the constraints reject an event for who meets whom and when, whichever participant is first-named. The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.
 
 == Events when asking for 6 rounds ==
 Generated before it failed: 15

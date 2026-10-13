@@ -12,11 +12,11 @@
 == Scores (lower is better) ==
 -
   Metric: Role Balance
-  First sample: 2
-  Best of 25: 0.666667
+  First sample: 2.666667
+  Best of 25: 0
 -
   Metric: Role Streaks
-  First sample: 1.833333
+  First sample: 2.666667
   Best of 25: 1.166667
 -
   Metric: Pairing Spacing
@@ -24,8 +24,8 @@
   Best of 25: 0
 -
   Metric: Weighted score
-  First sample: 9.666667
-  Best of 25: 4.333333
+  First sample: 13.333333
+  Best of 25: 2.333333
 
 == Sampling ==
 Candidates generated: 25
@@ -33,13 +33,13 @@ Candidates that failed: 0
 
 == The schedule kept ==
 meta: algorithm=round-robin participant_count=6 legs=2 rounds_per_leg=5 total_rounds=10 expected_event_count=30 byes=[]
-R1: p2-p1 p3-p5 p6-p4
-R2: p3-p2 p1-p6 p5-p4
-R3: p2-p6 p4-p3 p5-p1
-R4: p4-p2 p6-p5 p3-p1
-R5: p2-p5 p1-p4 p3-p6
-R6: p2-p1 p5-p3 p6-p4
-R7: p2-p3 p1-p6 p4-p5
-R8: p6-p2 p3-p4 p1-p5
-R9: p4-p2 p5-p6 p3-p1
-R10: p5-p2 p1-p4 p6-p3
+R1: p5-p6 p2-p3 p1-p4
+R2: p6-p2 p4-p5 p3-p1
+R3: p4-p6 p1-p2 p5-p3
+R4: p6-p1 p3-p4 p2-p5
+R5: p3-p6 p5-p1 p4-p2
+R6: p6-p5 p2-p3 p1-p4
+R7: p6-p2 p4-p5 p3-p1
+R8: p6-p4 p1-p2 p5-p3
+R9: p1-p6 p4-p3 p2-p5
+R10: p3-p6 p5-p1 p2-p4

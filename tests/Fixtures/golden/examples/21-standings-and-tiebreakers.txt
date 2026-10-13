@@ -10,11 +10,11 @@
 # Review it, then regenerate with `composer golden-update`.
 
 == Results ==
-- R1: ajax-dynamo => ajax (1-0)
+- R1: dynamo-ajax => ajax (0-1)
 - R1: boca-celtic => boca (1-0)
-- R2: boca-ajax => ajax (1-2)
-- R2: dynamo-celtic => draw (1-1)
-- R3: ajax-celtic => celtic (0-3)
+- R2: ajax-boca => ajax (2-1)
+- R2: celtic-dynamo => draw (1-1)
+- R3: celtic-ajax => celtic (3-0)
 - R3: dynamo-boca => boca (0-2)
 
 == Table without tiebreakers ==

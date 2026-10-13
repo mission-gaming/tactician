@@ -36,10 +36,12 @@ use Override;
  * not be mirrored, so the scheduler never reverses one to satisfy a
  * constraint. What a constraint on roles can change is the first leg,
  * which every later leg follows: reversed in the even-numbered legs, as
- * it is in the odd-numbered ones. Its roles are the role assignment's, and
- * the scheduler searches them only with
- * `RoundRobinOptions(backtracking: true)`; without it, roles that break a
- * constraint in a later leg fail the schedule.
+ * it is in the odd-numbered ones. Its roles are the role assignment's. The
+ * scheduler searches them within the rule the role assignment states
+ * (the balanced role assignment of the default states one: the first leg
+ * stays balanced), and freely with `RoundRobinOptions(backtracking: true)`;
+ * under a role assignment that states none, and without backtracking,
+ * roles that break a constraint in a later leg fail the schedule.
  *
  * @api
  */
