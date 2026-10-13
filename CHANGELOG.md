@@ -145,12 +145,15 @@ heading **Output change (fix)**.
   goes on, and the process writes a line to `build/mutation-memory.log`. The
   summary of a run says how many changes ended that way and in which source
   files, and leaves them out of the share that a failing test noticed, as it
-  does for the changes that ran into the time limit. The limit is installed
-  by `tests/mutation-memory.php`, which Composer's autoloader now loads in a
-  development checkout (`autoload-dev.files`) and which does nothing outside
-  a mutation run; run `composer install` once in an existing checkout, which
-  writes the autoloader again. None of these changes shows a defect in the library:
-  each removes the bound of a loop that is bounded as written.
+  does for the changes that ran into the time limit. The limit comes with
+  `composer mutation`: the command now runs `tests/bin/run-mutation.php`,
+  which adds a directory to `PHP_INI_SCAN_DIR` (a value of your own is kept)
+  so that PHP runs `tests/mutation-memory.php` before the script of every
+  process of the run. Composer's autoloader does not load that file, and
+  `composer.json`'s autoload sections are unchanged. A run started as
+  `vendor/bin/pest --mutate` has no limit, as before, and its summary says
+  so. None of these changes shows a defect in the library: each removes the
+  bound of a loop that is bounded as written.
 
 ## [0.2.3] - 2026-10-13
 

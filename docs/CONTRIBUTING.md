@@ -202,20 +202,39 @@ run of the same source: the tests of a change run in random order and stop
 at the first failure, so a change that one test fails on and another runs
 out of memory on can end either way (one change of `IntervalPlacement`
 does; the same holds for the time limit).
-The limit is set by `tests/mutation-memory.php`, which Composer's autoloader
-loads in a development checkout (`autoload-dev.files`): it sets the limit in
-the test processes of a change only, whatever `memory_limit` PHP is
-configured with, removes the log of the run before in the process that
-starts a run, and does nothing in any other process. After you pull the
-change that added it, run `composer install` once, which writes the
-autoloader again, or your runs have no limit. The environment variable
-`TACTICIAN_MUTATION_MEMORY_LIMIT`
-replaces the limit (`512M`, `2G`), and `TACTICIAN_MUTATION_MEMORY_LOG` names
-another file for the log; give that file to the summary script as its fourth
-argument. A change that
-ends there is not a defect of the library: a search that is unbounded once
-its bound is removed is as designed. A search that is unbounded for some
-input of the unchanged code would be one.
+
+The limit comes with `composer mutation`, and with nothing else. The command
+runs `tests/bin/run-mutation.php`, which writes a one-line PHP configuration
+file to `build/mutation-ini/` and starts Pest with that directory added to
+the environment variable `PHP_INI_SCAN_DIR`. The file names
+`tests/mutation-memory.php` as `auto_prepend_file`, so PHP runs it before
+the script of every process of the run: in the test process of a change it
+sets the limit, whatever `memory_limit` PHP is configured with, in the
+process that starts the run it starts the log afresh, and in any other it
+does nothing. Three things follow:
+
+- A run started in another way, `vendor/bin/pest --mutate` typed directly,
+  has no limit and writes no log, as before there was one. The summary
+  script says so for such a run ("The test processes of this run had no
+  memory limit"), where a run that had the limit says how many changes
+  ended there, or that none did. Delete a `build/mutation-memory.log` that
+  an earlier run left before you summarise a run of that kind: nothing in
+  it removes the file.
+- A `PHP_INI_SCAN_DIR` of your own is kept: the directory is added after
+  what the variable holds, and when it is not set, after the directory PHP
+  was built with. A file of yours that sets `auto_prepend_file` loses to
+  this one for the run.
+- It is used on Linux (the CI runners) and on macOS. Nothing in it is
+  particular to them, but it has not been run on Windows. Where the
+  configuration file cannot be written, the run goes on without the limit
+  and its summary says that it had none.
+
+The environment variable `TACTICIAN_MUTATION_MEMORY_LIMIT` replaces the
+limit (`512M`, `2G`), and `TACTICIAN_MUTATION_MEMORY_LOG` names another file
+for the log; give that file to the summary script as its fourth argument. A
+change that ends at the limit is not a defect of the library: a search that
+is unbounded once its bound is removed is as designed. A search that is
+unbounded for some input of the unchanged code would be one.
 
 It is not part of the gate and it enforces no minimum. A run over both
 directories takes hours, because every one of some 3,400 changes starts a
