@@ -132,6 +132,22 @@ final readonly class TimelineDefinition
             );
         }
 
+        if ($slotInterval !== null && $slotsPerRound > 1 && $this->slotTime(1, $slotsPerRound - 1) >= $this->slotTime(2, 0)) {
+            throw new InvalidConfigurationException(
+                'The slots of a round must all be before the next round starts: '
+                    . "{$slotsPerRound} slots " . self::formatInterval($slotInterval)
+                    . ' apart do not fit in a round interval of ' . self::formatInterval($roundInterval),
+                [
+                    'round_interval' => self::formatInterval($roundInterval),
+                    'slot_interval' => self::formatInterval($slotInterval),
+                    'slots_per_round' => $slotsPerRound,
+                    'last_slot_of_round_1' => $this->slotTime(1, $slotsPerRound - 1)->format('Y-m-d H:i:s'),
+                    'first_slot_of_round_2' => $this->slotTime(2, 0)->format('Y-m-d H:i:s'),
+                ],
+                reason: InvalidConfigurationReason::OverlappingTime
+            );
+        }
+
         foreach ($resources as $resource) {
             if (!is_string($resource) || $resource === '') {
                 throw new InvalidConfigurationException(

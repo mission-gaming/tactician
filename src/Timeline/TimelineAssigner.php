@@ -26,18 +26,25 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  * per slot), and schedules carrying round-less events (which the
  * round-grouped view would silently drop), fail with diagnostics.
  *
+ * A round whose slots do not all come before the first slot of the next
+ * round fails too: the next round would start, on the same resources and
+ * with the same participants, while this one is still being played. The
+ * definition checks its first two rounds when it is built, and the
+ * assigner every round it assigns, because the length of a month or a
+ * clock change can make a later round shorter than the first.
+ *
  * Not checked unless a rule checks it: that a participant is in one event
- * of a slot only, and that the slots of one round end before the next
- * round starts. MinimumRestRule reports the first.
+ * of a slot only. MinimumRestRule reports it.
  *
  * @experimental
  */
 final readonly class TimelineAssigner
 {
     /**
-     * @param array<TimelineRule> $rules Time-aware rules every whole-schedule assignment
-     *                                   (assign()) must satisfy; assignRound() does not
-     *                                   consult them. Violations are reported in this order
+     * @param array<TimelineRule> $rules Time-aware rules every assignment must satisfy:
+     *                                   assign() judges the whole schedule by them and
+     *                                   assignRound() the round it is given. Violations
+     *                                   are reported in this order
      *
      * @throws InvalidConfigurationException When an entry is not a TimelineRule
      */
@@ -73,7 +80,9 @@ final readonly class TimelineAssigner
      *
      * @throws InvalidConfigurationException When the schedule carries round-less events,
      *                                       a round has more events than the timeline has
-     *                                       slots, or a time-aware rule is violated
+     *                                       slots, the slots of a round run up to or past
+     *                                       the next round's first slot, or a time-aware
+     *                                       rule is violated
      */
     public function assign(Schedule $schedule, TimelineDefinition $timeline): ScheduledSchedule
     {
@@ -98,7 +107,47 @@ final readonly class TimelineAssigner
         }
 
         $scheduled = new ScheduledSchedule($scheduledEvents);
+        $this->applyRules($scheduled);
 
+        return $scheduled;
+    }
+
+    /**
+     * Assign kickoff times to one round of a results-driven stage.
+     *
+     * The engine bridge: pair the round, assign its times, play it,
+     * record it — the timeline definition stays the same object across
+     * the stage's rounds. The round's time comes from the pairing's round
+     * number. Byes get no entry.
+     *
+     * The assigner's rules are applied to the round, and the round fails
+     * loudly with every violation, as assign() does. A rule sees this
+     * round's events and no others, because the assigner keeps nothing
+     * between calls: a blackout window is judged in full, and a minimum
+     * rest only between the events of this round. To judge rest between
+     * rounds, collect the rounds assigned so far into a ScheduledSchedule
+     * and call the rule's validate() on it.
+     *
+     * @return array<ScheduledEvent> In slot order, the pairing's events in their order
+     *
+     * @throws InvalidConfigurationException When the round has more events than the timeline has
+     *                                       slots, its slots run up to or past the next
+     *                                       round's first slot, or a time-aware rule is
+     *                                       violated
+     */
+    public function assignRound(RoundPairing $pairing, TimelineDefinition $timeline): array
+    {
+        return $this->assignEvents($pairing->getEvents(), $pairing->getRoundNumber(), $timeline);
+    }
+
+    /**
+     * Judge assigned events by every rule, and fail with all the
+     * violations at once.
+     *
+     * @throws InvalidConfigurationException When a rule is violated
+     */
+    private function applyRules(ScheduledSchedule $scheduled): void
+    {
         $violations = [];
         foreach ($this->rules as $rule) {
             foreach ($rule->validate($scheduled) as $violation) {
@@ -114,27 +163,6 @@ final readonly class TimelineAssigner
                 reason: InvalidConfigurationReason::TimeRuleViolation
             );
         }
-
-        return $scheduled;
-    }
-
-    /**
-     * Assign kickoff times to one round of a results-driven stage.
-     *
-     * The engine bridge: pair the round, assign its times, play it,
-     * record it — the timeline definition stays the same object across
-     * the stage's rounds. The round's time comes from the pairing's round
-     * number. Byes get no entry. The assigner's rules are not applied
-     * here, because a rule judges a whole timeline: collect the rounds into
-     * a ScheduledSchedule and call each rule's validate() on it.
-     *
-     * @return array<ScheduledEvent> In slot order, the pairing's events in their order
-     *
-     * @throws InvalidConfigurationException When the round has more events than the timeline has slots
-     */
-    public function assignRound(RoundPairing $pairing, TimelineDefinition $timeline): array
-    {
-        return $this->assignEvents($pairing->getEvents(), $pairing->getRoundNumber(), $timeline);
     }
 
     /**
@@ -144,7 +172,8 @@ final readonly class TimelineAssigner
      * @param array<\MissionGaming\Tactician\DTO\Event> $events In schedule order
      * @return array<ScheduledEvent>
      *
-     * @throws InvalidConfigurationException When the round overflows the timeline's capacity
+     * @throws InvalidConfigurationException When the round overflows the timeline's capacity, or
+     *                                       its slots run up to or past the next round's first
      */
     private function assignEvents(array $events, int $roundNumber, TimelineDefinition $timeline): array
     {
@@ -163,6 +192,26 @@ final readonly class TimelineAssigner
                 ],
                 reason: InvalidConfigurationReason::TimelineCapacityExceeded
             );
+        }
+
+        // A round of one slot cannot run into the next: the round interval
+        // moves time forward
+        if ($events !== [] && $timeline->getSlotsPerRound() > 1) {
+            $lastSlot = $timeline->getSlotTime($roundNumber, $timeline->getSlotsPerRound() - 1);
+            $nextRound = $timeline->getSlotTime($roundNumber + 1);
+            if ($lastSlot >= $nextRound) {
+                throw new InvalidConfigurationException(
+                    "Round {$roundNumber} is still being played when round " . ($roundNumber + 1) . ' starts: its last slot is at '
+                        . $lastSlot->format('Y-m-d H:i:s') . ' UTC and the next round starts at ' . $nextRound->format('Y-m-d H:i:s') . ' UTC',
+                    [
+                        'round' => $roundNumber,
+                        'slots_per_round' => $timeline->getSlotsPerRound(),
+                        'last_slot' => $lastSlot->format(DATE_ATOM),
+                        'next_round_start' => $nextRound->format(DATE_ATOM),
+                    ],
+                    reason: InvalidConfigurationReason::OverlappingTime
+                );
+            }
         }
 
         $scheduledEvents = [];

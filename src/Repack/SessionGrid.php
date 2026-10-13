@@ -261,6 +261,34 @@ final readonly class SessionGrid
             $slotCounts[$session] = $slots;
         }
 
+        // A session that is still running when the next one starts puts two
+        // positions at one instant, or out of grid order: the repacker
+        // would hold a participant in both and report nothing
+        if ($slotInterval instanceof DateInterval) {
+            foreach ($starts as $session => $start) {
+                $next = $starts[$session + 1] ?? null;
+                if ($next === null || $slotCounts[$session] === 1) {
+                    continue;
+                }
+
+                $lastSlot = IntervalArithmetic::advance($start, $slotInterval, $slotCounts[$session] - 1);
+                if ($lastSlot >= $next) {
+                    throw new InvalidConfigurationException(
+                        "Session {$session} must end before session " . ($session + 1) . ' starts: its last slot is at '
+                            . $lastSlot->format('Y-m-d H:i:s') . ' and the next session starts at ' . $next->format('Y-m-d H:i:s'),
+                        [
+                            'session' => $session,
+                            'slots' => $slotCounts[$session],
+                            'slot_interval' => TimelineDefinition::formatInterval($slotInterval),
+                            'last_slot' => $lastSlot->format('Y-m-d H:i:s'),
+                            'next_session_start' => $next->format('Y-m-d H:i:s'),
+                        ],
+                        reason: InvalidConfigurationReason::OverlappingTime
+                    );
+                }
+            }
+        }
+
         $this->sessionStarts = $starts;
         $this->slotInterval = $slotInterval;
         $this->slotCounts = $slotCounts;

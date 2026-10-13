@@ -270,6 +270,13 @@ enum InvalidConfigurationReason: string
      */
     case NonAdvancingTime = 'non_advancing_time';
 
+    /**
+     * The slots of one round of a timeline, or of one session of a grid,
+     * run up to or past the first slot of the next, so two positions that
+     * are meant to follow one another can be at the same time.
+     */
+    case OverlappingTime = 'overlapping_time';
+
     /** The assigned timeline breaks one or more of the time rules given. */
     case TimeRuleViolation = 'time_rule_violation';
 
