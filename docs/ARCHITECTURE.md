@@ -111,7 +111,7 @@ Legs belong to round robin. No other format has them: `SwissPlan`,
 `EliminationPlan` and `PotDrawPlan` report `getLegs()` as null, and the
 timeline, repack, quality and standings components have no leg concept.
 - **LegStrategyInterface**: Two methods. `planLegs()` returns a `LegPlanContribution`; `generateEventForLeg()` is handed the two participants of one seating of a leg and returns the event for it, which is where a strategy decides the roles of that leg
-- **MirroredLegStrategy**: Every leg after the first has the two participants of each seating in the other order
+- **MirroredLegStrategy**: Every even-numbered leg has the two participants of each seating in the other order, and every odd-numbered leg has them as they are laid out, so the legs alternate
 - **RepeatedLegStrategy**: Every leg has the seatings as they are laid out
 - **ShuffledLegStrategy**: Every leg after the first has each seating in a random order, drawn from the integer seed or from the `Randomizer` it was given, and it is refused without either. With a seed its draws start again from that seed whenever `planLegs()` is called, which the scheduler does at the start of every `schedule()` call, so the roles are the same on every call
 - **LegPlanContribution**: What a strategy states about itself (role mirroring, randomization, unsatisfiable reasons, warnings). A non-empty list of unsatisfiable reasons fails plan construction with an `InvalidConfigurationException` (`UnsatisfiableLegStrategy`); none of the three built-in strategies returns one, so this is an extension point for a strategy of the caller's. The three built-in strategies do not read the `ConstraintSet` that `planLegs()` receives
