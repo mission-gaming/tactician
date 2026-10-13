@@ -76,11 +76,14 @@ use Random\Randomizer;
  * - the schedule is repeatable only from a randomizer seeded the same; the
  *   scheduler draws from it on every call, so one scheduler asked twice
  *   gives two different schedules;
- * - only the first leg is shuffled. The later legs are laid out from the
- *   participant list as given, so they are not the first leg mirrored or
- *   repeated pairing by pairing: a pairing can fall in another round of
- *   its leg, and under MirroredLegStrategy it can have the same roles in
- *   two legs. Every pair still meets once in every leg.
+ * - every leg follows from the shuffled order. The first leg is its circle
+ *   layout, and each later leg has the pairings of the first leg in the
+ *   same rounds of the leg, in the roles the leg strategy derives from the
+ *   first leg's, as in a schedule without a randomizer. (Up to 0.2.x the
+ *   later legs were laid out from the list as given, so that a pairing
+ *   could fall in another round of its leg, have the same roles in two
+ *   mirrored legs, and be played in the last round of one leg and the
+ *   first round of the next.)
  *
  * @api
  */
@@ -113,12 +116,23 @@ class RoundRobinScheduler implements SchedulerInterface
     private int $pairingsWithoutEvent = 0;
 
     /**
+     * The first leg of the layout being generated, as the circle method
+     * laid it out and before any role assignment: the rounds of seatings,
+     * the bye seating included. Every later leg of the layout is derived
+     * from it, so that a leg laid out from a shuffled field is followed by
+     * legs of the same pairings in the same rounds.
+     *
+     * @var list<list<array{0: Participant|null, 1: Participant|null}>>
+     */
+    private array $firstLegLayout = [];
+
+    /**
      * @param ConstraintSet|null $constraints Asked about every event before it is added, with a
      *                                        context of the events generated so far; null for
      *                                        no constraints, which cannot fail on a pairing
      * @param Randomizer|null $randomizer Shuffles the participant list before the first leg is
-     *                                    laid out (see the class docblock for what that does to
-     *                                    later legs); null for the list order as given. It is
+     *                                    laid out, and every later leg derives from that first
+     *                                    leg; null for the list order as given. It is
      *                                    not passed on: a leg strategy that draws has a seed
      *                                    or a randomizer of its own
      */
@@ -1034,11 +1048,7 @@ class RoundRobinScheduler implements SchedulerInterface
         RoleAssignmentInterface $roleAssignment,
         array $legOneEvents
     ): array {
-        $participantList = array_values($participants);
-        if (count($participantList) % 2 !== 0) {
-            $participantList[] = null; // null represents "bye"
-        }
-        $layout = $this->circleLayout($participantList);
+        $layout = $this->firstLegLayout;
         $roundsPerLeg = $plan->getRoundsPerLeg();
         $legs = $plan->getLegs();
 
@@ -1178,14 +1188,11 @@ class RoundRobinScheduler implements SchedulerInterface
         $legEvents = [];
         $roundOffset = ($leg - 1) * $plan->getRoundsPerLeg();
 
-        $participantList = array_values($participants);
-        if (count($participantList) % 2 !== 0) {
-            $participantList[] = null; // null represents "bye"
-        }
-
-        // The role assignment decides the leg's roles as it does for the
-        // first leg; the leg strategy then derives this leg's roles from them.
-        $rounds = $this->assignedRoles($roleAssignment, $this->circleLayout($participantList));
+        // The leg has the layout of the first leg, whatever order of the
+        // field that was laid out from. The role assignment decides its
+        // roles as it does for the first leg; the leg strategy then derives
+        // this leg's roles from them.
+        $rounds = $this->assignedRoles($roleAssignment, $this->firstLegLayout);
 
         foreach ($rounds as $index => $seatings) {
             $globalRound = $index + 1 + $roundOffset;
@@ -1489,7 +1496,8 @@ class RoundRobinScheduler implements SchedulerInterface
 
         // Lay the leg out with the circle method and let the role assignment
         // decide the roles before any constraint sees an event
-        $rounds = $this->assignedRoles($roleAssignment, $this->circleLayout($participantList));
+        $this->firstLegLayout = $this->circleLayout($participantList);
+        $rounds = $this->assignedRoles($roleAssignment, $this->firstLegLayout);
 
         foreach ($rounds as $index => $seatings) {
             $round = $index + 1;

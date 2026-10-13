@@ -181,9 +181,10 @@ That is the reason for the replay described above.
   `RoleStreakMetric` for that reason in every field of even size from 6
   participants up, and with 5 participants. Both end balanced; only the
   balanced one is balanced at the halfway point.
-- **A scheduler with a `Randomizer`, over several legs.** The scheduler
-  shuffles the participant order of the first leg only and lays the later
-  legs out from the order as given. That predates role assignments and is
-  unchanged. Each leg is balanced on its own, so a field of odd size is
-  exactly balanced over any number of legs, and a field of even size is at
-  most one apart per leg.
+
+A scheduler with a `Randomizer` is no longer among them. Up to 0.2.x it
+shuffled the participant order of the first leg only and laid the later legs
+out from the order as given, so its legs were balanced each on its own and
+nothing more could be said of the whole. Since 0.3.0 every later leg derives
+from the first leg, with a `Randomizer` as without, and what the usage guide
+states about several legs holds for both.

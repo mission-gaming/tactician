@@ -14,12 +14,12 @@ use Override;
  * Strategy that keeps the roles of each pairing as the leg has them, in
  * every leg.
  *
- * In a schedule from a scheduler without a randomizer every leg is then
- * the first leg again: the same pairings in the same rounds of the leg,
- * with the same roles, so a participant that is first-named against an
- * opponent is first-named in all their meetings. A scheduler with a
- * randomizer shuffles the participant order for the first leg only, so its
- * later legs are not the first leg repeated pairing by pairing.
+ * Every leg is then the first leg again: the same pairings in the same
+ * rounds of the leg, with the same roles, so a participant that is
+ * first-named against an opponent is first-named in all their meetings.
+ * That holds for a scheduler with a randomizer too, whose first leg is laid
+ * out from the shuffled order (up to 0.2.x its later legs were laid out
+ * from the order as given, and were not the first leg repeated).
  *
  * The roles are a rule: an event of a later leg in the other role would
  * not be a repeat, so the scheduler never reverses one to satisfy a

@@ -19,8 +19,8 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * completed schedule would balance out.
  *
  * Which limits RoundRobinScheduler can satisfy depends on the legs and the
- * options. With the default round-parity roles and no randomizer, the
- * running imbalance of a single leg never exceeds 3 in a field of even size
+ * options. With the default round-parity roles, with a randomizer and
+ * without, the running imbalance of a single leg never exceeds 3 in a field of even size
  * and 4 in a field of odd size (the bye shifts one participant's parity).
  * A limit at or above that bound is therefore satisfied by a single leg,
  * and by any number of mirrored legs: every even-numbered leg undoes the
@@ -33,8 +33,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *   the drift of the first (up to 6 and 8 after two legs);
  * - by the roles the shuffled leg strategy draws for later legs. The
  *   scheduler changes a drawn role that breaks the limit, so the schedule
- *   keeps the limit where roles for the later legs exist that do;
- * - by a multi-leg schedule from a scheduler that was given a randomizer.
+ *   keeps the limit where roles for the later legs exist that do.
  *
  * `BalancedRoleAssignment` gives each participant role counts at most 1
  * apart within every leg, and is the option to reach for when balance

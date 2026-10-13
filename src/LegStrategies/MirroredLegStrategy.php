@@ -27,11 +27,10 @@ use Override;
  * Up to 0.2.x every leg after the first was reversed, so three legs or
  * more split a pair 1:2, 1:3 and so on. One and two legs are as they were.
  *
- * What is reversed is the pairing as the scheduler lays the leg out. In a
- * schedule from a scheduler without a randomizer that is the first leg's
- * pairing, in the same round of the leg. A scheduler with a randomizer
- * shuffles the participant order for the first leg only, so its later legs
- * are not the first leg reversed pairing by pairing.
+ * What is reversed is the first leg's pairing, in the same round of the
+ * leg. That holds for a scheduler with a randomizer too, whose first leg is
+ * laid out from the shuffled order (up to 0.2.x its later legs were laid
+ * out from the order as given, and were not the first leg reversed).
  *
  * The roles are a rule: an event of a later leg in the other role would
  * not be mirrored, so the scheduler never reverses one to satisfy a

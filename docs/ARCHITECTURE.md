@@ -257,13 +257,13 @@ orders, whichever of the two decided between them
    fixed, the others rotate, and seat *i* meets seat *n − 1 − i*. A field
    of odd size gets a bye seat. The roles proposed alternate with the
    parity of the round within the leg. With a `Randomizer` the participant
-   order of the first leg is shuffled first; later legs are laid out from
-   the order as given.
+   order is shuffled first. The first leg is the one leg that is laid out:
+   every later leg has its seatings, in the same rounds of the leg.
 3. **Roles.** The configured `RoleAssignmentInterface` is handed the leg
    and returns it with seatings unchanged or reversed; the scheduler
    refuses any other answer.
 4. **Legs after the first.** The leg strategy turns each seating of the
-   layout into the event of that leg.
+   first leg's layout into the event of that leg.
 5. **Constraints.** Each event is put to the constraint set against a
    context holding the events accepted so far. A rejected event is dropped
    and recorded as a violation; generation of the leg goes on, and a leg

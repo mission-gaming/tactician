@@ -457,15 +457,20 @@ $constraints = ConstraintSet::create()
 
 `RoleBalanceConstraint` is checked on the running totals, so a limit has to
 be at least what the roles of the schedule reach on the way. With the
-default role assignment (see [Role Assignment](#role-assignment)) and a
-scheduler without a `Randomizer`:
+default role assignment (see [Role Assignment](#role-assignment)):
 
 | Schedule | A limit of 3 (field of even size) or 4 (field of odd size) |
 |----------|-------------------------------------------------------------|
-| One leg | Holds, for 2 to 30 participants (also with a `Randomizer`) |
+| One leg | Holds, for 2 to 30 participants |
 | Two to six mirrored legs | Holds, for 2 to 30 participants: every even-numbered leg undoes the leg before it |
 | Two repeated legs | Fails for 4 participants and for every size from 6 to 30; three repeated legs fail for every size from 3 to 30 |
-| Two mirrored legs from a scheduler with a `Randomizer` | Can fail, depending on the seed: the later legs are not the first leg mirrored |
+
+The table holds for a scheduler with a `Randomizer` as well. Its schedule is
+the schedule of the shuffled order: the first leg is laid out from that
+order and every later leg derives from the first, so the roles reach what
+they reach without a `Randomizer`, for other participants. (Up to 0.2.x the
+later legs were laid out from the order as given, and two mirrored legs
+could then break the limit, depending on the seed.)
 
 A limit the roles break fails generation with an
 `IncompleteScheduleException`. The scheduler looks for other roles only
@@ -866,19 +871,17 @@ no leg strategy changes its meaning. With `BalancedRoleAssignment`, for 1 to
 | `RepeatedLegStrategy` | Every leg is within the limit of a single leg | As many apart as there are legs: every leg has the roles of leg 1 | 0 apart | Every meeting the same way |
 | `ShuffledLegStrategy` | Leg 1 is within the limit of a single leg | No limit: the roles of the later legs are random | No limit | Random after leg 1 |
 
-Two things the table does not promise:
+The table holds for a scheduler that has a `Randomizer` too. The scheduler
+shuffles the participant order, lays the first leg out from it, and derives
+every later leg from that first leg: the same pairings in the same rounds of
+the leg, in the roles the leg strategy gives them. (Up to 0.2.x it laid the
+later legs out from the order as given, so they were not the first leg
+mirrored or repeated: about half the pairings of two mirrored legs had the
+same participant first-named in both, and a pair could meet in the last
+round of one leg and the first round of the next.)
 
-- **A schedule from a scheduler that has a `Randomizer`.** The scheduler
-  shuffles the participant order for the first leg only. It lays the later
-  legs out from the order as given, so they are not the first leg mirrored or
-  repeated pairing by pairing. Each leg is still within the limit of a single
-  leg: the whole schedule is 0 apart in a field of odd size, and at most as
-  many apart as there are legs in a field of even size. Mirrored legs after
-  the first alternate among themselves, so with `MirroredLegStrategy` that is
-  at most 1 apart for an odd number of legs and 2 for an even number, and a
-  pairing can be split two apart over an even number of legs. The columns
-  "Whole schedule, even field" and "Each pairing" are for a scheduler without
-  a `Randomizer`.
+One thing the table does not promise:
+
 - **Streaks across two legs.** The limit of two in a row holds inside a leg.
   Where one leg ends and the next begins, a role can repeat more often. What
   follows is for two mirrored legs and holds for any larger number of them,

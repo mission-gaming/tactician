@@ -344,16 +344,12 @@ entry on the engine fingerprint.
       the old roles with the new for both constraints at every limit from 1
       to 5, in fields of 2 to 8, over three and four legs and with either
       role assignment.
-    - **With a `Randomizer`**, a configuration can also fail where it
-      succeeded. The scheduler lays the second and third legs out from the
-      same order, so the third leg used to repeat the second and now meets
-      it as two mirrored legs of a scheduler without a `Randomizer` meet,
-      and a role can repeat more often there. Five participants over three
-      legs with `ConsecutiveRoleConstraint::homeAway(3)` and the default
-      roles completed in 0.2.x and now throw an
-      `IncompleteScheduleException`, for every seed tried. Generate such a
-      configuration again before relying on it: it fails loudly if the
-      limit no longer holds.
+    - **With a `Randomizer`**, the later legs change for another reason
+      as well, which the next entry describes: they now derive from the
+      first leg. A role limit is then answered as it is without a
+      `Randomizer`, which can refuse a configuration that 0.2.x completed.
+      Generate such a configuration again before relying on it: it fails
+      loudly if the limit no longer holds.
   - To keep the old roles, pass a leg strategy of your own that reverses
     every leg after the first. `LegStrategyInterface` has two methods:
     `generateEventForLeg()` returns the pairing as given for leg 1 and
@@ -365,15 +361,15 @@ entry on the engine fingerprint.
     even-numbered legs" from this release; the library carries it and acts
     on nothing in it.
 
-  With a scheduler that holds a `Randomizer`, only the first leg is laid
-  out from the shuffled field, as before, so the later legs are not the
-  first leg reversed. They alternate among themselves: leg 3 is leg 2
-  reversed. A pair is then one apart over an odd number of legs and level or
-  two apart over an even number.
+  With a scheduler that holds a `Randomizer` the alternation is the same
+  from this release: every later leg derives from the first leg (the next
+  entry), so leg 3 has the roles of leg 1 there too.
 
   Six golden fixtures change, in their sections for three and four legs and
   in the rounds of the third leg only (their sections for one and two legs
-  are unchanged): `round-robin/mirrored-unseeded.txt`,
+  are unchanged by this entry; the four of a scheduler with a `Randomizer`
+  change in every leg after the first by the next one):
+  `round-robin/mirrored-unseeded.txt`,
   `round-robin/mirrored-seed-1.txt`, `round-robin/mirrored-seed-42.txt`,
   `round-robin/mirrored-seed-1337.txt`,
   `round-robin/balanced-mirrored-unseeded.txt` and
@@ -385,6 +381,108 @@ entry on the engine fingerprint.
   tables under "Role-Based Constraints" and "Legs after the first" in the
   usage guide, the architecture document, the roadmap's limitations and the
   role assignment design note.
+- **A round-robin scheduler with a `Randomizer` derives every later leg
+  from its first leg.** `new RoundRobinScheduler($constraints, $randomizer)`
+  shuffled the participant order for the first leg only and laid every
+  later leg out from the order as given. The later legs were therefore a
+  round robin of their own: a pairing fell in another round of its leg, a
+  mirrored leg did not reverse the first, and a repeated leg did not repeat
+  it. Measured over two mirrored legs of 4 to 14 participants and five
+  seeds each, 49.8% of the pairings had the same participant first-named in
+  both legs, 20 of the 55 schedules had a pair that met in the last round
+  of one leg and the first round of the next, and over four legs 54 of 55
+  had a pairing split 3:1 or 4:0. Now the first leg is laid out from the
+  shuffled order and every later leg has its pairings in the same rounds of
+  the leg, in the roles the leg strategy derives from the first leg's, as a
+  scheduler without a `Randomizer` always did, and as a backtracking search
+  did with one (#51). The three figures are 0%, none and none.
+
+  **Who is affected.** Every round robin of two or more legs from a
+  scheduler that holds a `Randomizer`: every field size from 2, every leg
+  count from 2, each of the three leg strategies, either role assignment,
+  with or without constraints, and whatever the seed. A `ScheduleOptimizer`
+  whose generator builds such a scheduler is included. Not affected, byte
+  for byte: a schedule of one leg, with or without a `Randomizer`; every
+  schedule from a scheduler without one, whatever its leg strategy
+  (a `ShuffledLegStrategy` with a seed or a randomizer of its own
+  included); and a schedule that only a backtracking search completes.
+
+  **What changes.** The first leg is the leg the same seed always gave.
+  From the second leg on, each event is the first-leg event of its pairing
+  one leg later: reversed in the even-numbered legs of
+  `MirroredLegStrategy`, as it is under `RepeatedLegStrategy`, and with a
+  drawn role under `ShuffledLegStrategy` (the draws are the same, one for
+  each event in order; the pairings they apply to are the first leg's). The
+  byes of a field of odd size follow: a participant sits out the same round
+  of every leg. A field of two changes too, where the seed shuffles the
+  order: its one pairing was not reversed in the second mirrored leg. The
+  number of events, the round numbers and the metadata do not change.
+  Before and after for four participants `1` to `4`, two mirrored legs,
+  `Mt19937` seed 1 and round-parity roles (rounds 1 to 3, the first leg,
+  are the same in both):
+
+  ```
+            before        after
+  R1:       4-2 1-3       4-2 1-3
+  R2:       1-4 2-3       1-4 2-3
+  R3:       4-3 2-1       4-3 2-1
+  R4:       4-1 3-2       2-4 3-1
+  R5:       1-2 3-4       4-1 3-2
+  R6:       3-1 2-4       3-4 1-2
+  ```
+
+  Before, 1 met 4 in rounds 2 and 4 and 2 met 3 in the same two; after,
+  every pair meets again three rounds on, with the roles reversed.
+
+  **What to check (migration).**
+  - A stored schedule of two or more legs that came from a scheduler with
+    a `Randomizer` is not regenerated identically from the same seed. Keep
+    the stored events if they are published. Anything that compares a
+    fresh schedule with a stored one, or with its hash, sees a difference
+    from the first round of the second leg on.
+  - Role constraints (`ConsecutiveRoleConstraint`, `RoleBalanceConstraint`)
+    over several legs are now answered as they are without a `Randomizer`,
+    whatever the seed, because the schedule is the schedule of the list as
+    given under other names. A limit that only held because the legs were
+    unrelated is refused: five participants over two mirrored legs under
+    `ConsecutiveRoleConstraint::homeAway(3)` with round-parity roles
+    completed in 0.2.x for the seeds 1 to 5 and now throw an
+    `IncompleteScheduleException`, as they always did without a
+    `Randomizer` (the two legs meet in a run of four). A limit that the
+    unrelated legs broke by chance now holds: a role balance limit of 3 (4
+    in a field of odd size) over any number of mirrored legs, for one.
+  - `MinimumRestPeriodsConstraint` sees a pair's meetings exactly one leg
+    apart, as it does without a `Randomizer`: a minimum up to the number of
+    rounds in a leg always holds, and a larger one never does.
+  - There is no option that gives the old later legs back: they were not a
+    choice. For a schedule without constraints they can be put together
+    from two calls, which is what 0.2.x did: the first leg of the scheduler
+    with the `Randomizer` (`legs: 1`), followed by the legs after the first
+    of a scheduler without one for the same options. That was compared
+    with 0.2.x for 2 to 14 participants, two to four legs, the three leg
+    strategies, both role assignments and five seeds, and held for all
+    1,755 schedules. Under constraints the old schedule also depended on
+    which rotated orders were rejected, and nothing reproduces it.
+
+  Eight golden fixtures change, in every section of two legs or more and
+  in the rounds after the first leg only (each first leg, and each section
+  of one leg, is unchanged): `round-robin/mirrored-seed-1.txt`,
+  `round-robin/mirrored-seed-42.txt`, `round-robin/mirrored-seed-1337.txt`,
+  `round-robin/repeated-seed-1.txt`, `round-robin/repeated-seed-42.txt`,
+  `round-robin/repeated-seed-1337.txt`,
+  `round-robin/balanced-mirrored-seed-42.txt`, and
+  `examples/17-schedule-optimization.txt`, whose 25 candidates each come
+  from a scheduler with a `Randomizer` over two legs: the schedule it keeps
+  and its scores change, and its spacing metric reads 0 for every
+  candidate, because the two meetings of a pair are now always a leg
+  apart.
+
+  The documents that described the old behaviour are corrected with it: the
+  docblocks of `RoundRobinScheduler`, `MirroredLegStrategy`,
+  `RepeatedLegStrategy`, `RoleBalanceConstraint` and
+  `MinimumRestPeriodsConstraint`, the sections "Role-Based Constraints" and
+  "Legs after the first" of the usage guide, the architecture document, the
+  roadmap's limitations and the role assignment design note.
 - **`SlotAssignment::toArray()` writes a kickoff that is not in UTC as the
   instant it is.** The kickoff was formatted as it was held and a `Z` was
   put after it, so an assignment built by hand with 20:15 in London was
