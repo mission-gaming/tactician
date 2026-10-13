@@ -16,7 +16,9 @@ use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
+use MissionGaming\Tactician\Stage\BestOfRankSelector;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\PoolComparison;
 use MissionGaming\Tactician\Stage\PoolDistributor;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
@@ -209,9 +211,22 @@ describe('position decides where results do not', function (): void {
             }
             $combined = StageOutcome::combining($outcomes, $calculator, $field);
 
+            // Pools of unequal size are compared by a method the caller
+            // names: raw totals are the table as it stands
             return [
                 positionIds(RankRangeSelector::topPerGroup(2)->withTableOrderAccepted()->select($combined)),
-                positionIds(RankRangeSelector::overall(1, $pools)->withTableOrderAccepted()->select($combined)),
+                positionIds(
+                    RankRangeSelector::overall(1, $pools)
+                        ->comparedBy(PoolComparison::RawTotals)
+                        ->withTableOrderAccepted()
+                        ->select($combined)
+                ),
+                positionIds(
+                    BestOfRankSelector::ofRank(2, 2)
+                        ->comparedBy(PoolComparison::RawTotals)
+                        ->withTableOrderAccepted()
+                        ->select($combined)
+                ),
             ];
         };
 
@@ -237,6 +252,18 @@ describe('position decides where results do not', function (): void {
         if ($size % $pools === 0) {
             expect($select(1)[1])->toBe(array_map(fn(int $position): string => "p{$position}", range(1, $pools)));
         }
+
+        // The best two of the entrants listed second in their pools: an
+        // entrant of a larger pool has a draw more, and after that the
+        // position in the list of the whole stage decides, whichever pool
+        // an entrant is in and whatever it is called
+        $field = positionField($size, 1);
+        $seconds = [];
+        foreach (PoolDistributor::serpentine($field, $pools) as $pool) {
+            $seconds[] = [-count($pool), array_search($pool[1], $field, true), $pool[1]->getId()];
+        }
+        sort($seconds);
+        expect($select(1)[2])->toBe([$seconds[0][2], $seconds[1][2]]);
     })->with([[8, 2], [12, 3], [16, 4], [13, 3]]);
 });
 

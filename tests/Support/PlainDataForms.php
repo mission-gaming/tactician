@@ -35,7 +35,9 @@ use MissionGaming\Tactician\Scheduling\PotDrawOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\BestOfRankSelector;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\PoolComparison;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
@@ -218,21 +220,49 @@ final class PlainDataForms
             'rank range selector' => [
                 'class' => RankRangeSelector::class,
                 'kind' => self::CONFIGURATION,
-                'keys' => ['mode', 'from', 'to', 'ties'],
-                'sample' => ['mode' => 'per-group', 'from' => 2, 'to' => 3, 'ties' => 'accept-inside-selection'],
+                'keys' => ['mode', 'from', 'to', 'ties', 'comparison'],
+                // An overall selection: a per-group one takes no comparison
+                'sample' => ['mode' => 'overall', 'from' => 2, 'to' => 3, 'ties' => 'accept-inside-selection', 'comparison' => 'per-event'],
                 'read' => static fn(array $data, array $registry): object => RankRangeSelector::fromArray(self::stringKeyed($data)),
                 'generate' => static function (Randomizer $random, array $field): object {
                     $from = $random->getInt(1, 8);
                     $to = $from + $random->getInt(0, 8);
 
-                    $selector = match ($random->getInt(0, 2)) {
+                    // An overall selection with no comparison method writes
+                    // no `comparison` key; one that was given either of the
+                    // two it takes writes it
+                    $selector = match ($random->getInt(0, 4)) {
                         0 => RankRangeSelector::overall($from, $to),
-                        1 => RankRangeSelector::perGroup($from, $to),
+                        1 => RankRangeSelector::overall($from, $to)->comparedBy(PoolComparison::RawTotals),
+                        2 => RankRangeSelector::overall($from, $to)->comparedBy(PoolComparison::PerEvent),
+                        3 => RankRangeSelector::perGroup($from, $to),
                         default => RankRangeSelector::topPerGroup($to),
                     };
 
                     // A selector that refuses an undecided order writes no
                     // `ties` key; the other two write theirs
+                    return match ($random->getInt(0, 2)) {
+                        0 => $selector,
+                        1 => $selector->withTiesInsideSelectionAccepted(),
+                        default => $selector->withTableOrderAccepted(),
+                    };
+                },
+            ],
+            'best-of-rank selector' => [
+                'class' => BestOfRankSelector::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['rank', 'count', 'comparison', 'ties'],
+                'sample' => ['rank' => 3, 'count' => 2, 'comparison' => 'discard-lowest', 'ties' => 'accept-table-order'],
+                'read' => static fn(array $data, array $registry): object => BestOfRankSelector::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $selector = BestOfRankSelector::ofRank($random->getInt(1, 8), $random->getInt(1, 8));
+
+                    // No method chosen writes no `comparison` key
+                    $compared = $random->getInt(0, 3);
+                    if ($compared > 0) {
+                        $selector = $selector->comparedBy(PoolComparison::cases()[$compared - 1]);
+                    }
+
                     return match ($random->getInt(0, 2)) {
                         0 => $selector,
                         1 => $selector->withTiesInsideSelectionAccepted(),
@@ -515,7 +545,7 @@ final class PlainDataForms
      */
     public static function addedInZeroThree(): array
     {
-        return [Award::class, Adjustment::class, AwardedResultPolicy::class];
+        return [Award::class, Adjustment::class, AwardedResultPolicy::class, BestOfRankSelector::class];
     }
 
     /**

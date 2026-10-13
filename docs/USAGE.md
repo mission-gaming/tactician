@@ -59,7 +59,9 @@ anything else that competes.
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
 | **Pot** | One of the equal blocks a seeded list of entrants is cut into for a pot draw, in list order: the first block is pot 1, the next pot 2, and so on. A pot is not a pool: the members of a pool play each other and are ranked together, while a pot only limits who an entrant can draw. |
 | **Pot draw** | A format in which every round is drawn before any event is played (`PotDrawScheduler`): every entrant meets the same number of opponents from every pot, its own included, with no rematch, and is in every round. Often called "Swiss", but nothing is paired from results. See [Pot Draws](#pot-draws). |
-| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
+| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`, `BestOfRankSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
+| **Best of a rank** | The best few of the entrants that hold one rank in their pools, compared with each other across the pools and listed best first (`BestOfRankSelector`): the two best of those placed third. See [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
+| **Pool comparison** | How entrants of pools of unequal size are compared (`PoolComparison`): by raw totals, per event played, or without the results against the lowest-placed entrants of the larger pools. The caller's choice; a selection across pools of unequal size is refused until it is made. Pools are unequal when their tables do not have the same number of entries. |
 | **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as `tie_winner` metadata on the event's result, or on a leg's result. Ties are not legs: brackets have no legs concept. |
 | **Third-place tie** | An opt-in second tie in the last round of a single elimination bracket (`EliminationOptions(thirdPlace: true)`), between the two entrants who went out in the round before it. It decides places 3 and 4, which the bracket otherwise leaves to the records. It is in the same round as the final and has the same round label, so each event of that round carries which tie it belongs to (**bracket tie**). See [A third-place tie](#a-third-place-tie). |
 | **Bracket tie** | The typed statement of which tie of a bracket's last round an event belongs to (`BracketTie`: `Final` or `ThirdPlace`), written by the engine as a string under `bracket_tie` in the event's metadata and read back with `BracketTie::of()`. Present only on the events of the last round of a bracket with a third-place tie option. |
@@ -2679,6 +2681,22 @@ function playPool(\MissionGaming\Tactician\DTO\Schedule $schedule): array
         $schedule->getEvents()
     );
 }
+
+/** @return list<\MissionGaming\Tactician\DTO\Result> */
+function playPoolByMargin(\MissionGaming\Tactician\DTO\Schedule $schedule, int $margin): array
+{
+    // The same winners, each by the given score to nil
+    return array_map(
+        static function (\MissionGaming\Tactician\DTO\Event $event) use ($margin): \MissionGaming\Tactician\DTO\Result {
+            [$first, $second] = $event->getParticipants();
+            $winner = strcmp($first->getLabel(), $second->getLabel()) < 0 ? $first : $second;
+            $loser = $winner === $first ? $second : $first;
+
+            return new \MissionGaming\Tactician\DTO\Result($event, $winner, [$winner->getId() => $margin, $loser->getId() => 0]);
+        },
+        $schedule->getEvents()
+    );
+}
 -->
 
 ```php
@@ -2742,20 +2760,22 @@ one decision invites contradictory qualification — pick one ranking
 authority per decision):
 
 ```php
+use MissionGaming\Tactician\Stage\BestOfRankSelector;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 
 // Standings-based (rank slices):
 RankRangeSelector::topPerGroup(2);            // the classic qualifiers
 RankRangeSelector::perGroup(from: 3, to: 4);  // a losers' route
 RankRangeSelector::overall(from: 1, to: 8);   // best 8 across all pools
+BestOfRankSelector::ofRank(rank: 3, count: 2); // the 2 best of those placed third
 
 // Outcome-based (recorded match results - never points arithmetic):
 MatchOutcomeSelector::winners();              // knockout round -> next round
 MatchOutcomeSelector::losers();               // knockout round -> repechage
 ```
 
-Both selector classes are plain-data constructible
-(`fromArray()`/`toArray()`) with stable mode identifiers; the data does not
+The three selector classes are plain-data constructible
+(`fromArray()`/`toArray()`) with stable identifiers; the data does not
 say which class it belongs to, so store that beside it. Selectors are
 optional machinery, not a gate: a consumer computing its own qualification
 hands the next stage an ordered list directly, with no penalty.
@@ -2893,6 +2913,185 @@ Consumer-derived selections participate by declaring expected entrant
 counts (a transition without a selector); concurrent routes (winners
 forward, losers to a repechage) validate as separate chains from the same
 source.
+
+### The best of a rank across pools
+
+Some formats take the top of every pool and then the best few of those
+placed next: the top two of three pools and the two best of the entrants
+placed third. `RankRangeSelector::perGroup(3, 3)` returns the three
+entrants placed third in pool order; `BestOfRankSelector` ranks them
+against each other and returns the best, best first
+(`playPoolByMargin()` stands for your application: the same winners as
+`playPool()`, each by that score to nil):
+
+```php
+// Twelve entrants in three pools of four
+$field = array_map(
+    fn (string $name) => new Participant(strtolower($name), $name),
+    ['Ada', 'Ben', 'Cy', 'Di', 'Eli', 'Fay', 'Gus', 'Hal', 'Ian', 'Joy', 'Kit', 'Lou']
+);
+$margins = ['A' => 1, 'B' => 2, 'C' => 3];
+$stagePools = [];
+foreach (PoolDistributor::serpentine($field, pools: 3) as $label => $members) {
+    $results = playPoolByMargin($scheduler->schedule($members), $margins[$label]);
+    $stagePools[$label] = new StageOutcome($calculator->calculate($members, $results), $results, entrants: $members);
+}
+$stage = StageOutcome::combining($stagePools, $calculator, $field);
+
+// Third in their pools: Gus (3 points, score difference -1), Hal (3, -2), Ian (3, -3)
+$bestThirds = BestOfRankSelector::ofRank(rank: 3, count: 2)->select($stage);
+
+echo implode(', ', array_map(fn (Participant $p) => $p->getLabel(), $bestThirds)) . "\n"; // Gus, Hal
+```
+
+Who holds the rank in a pool is read from that pool's own table. The
+holders are then compared by the figures the **combined** table has for
+them (the table of the outcome `StageOutcome::combining()` builds), in the
+order a table is ordered by: ranking value, each tiebreaker of the
+calculator given to `combining()`, score difference, scores-for. A
+tiebreaker that means something only among entrants who met each other (a
+head-to-head measure) means nothing between entrants of different pools:
+keep it on the calculator of the pools' tables and give `combining()` a
+calculator without it. The selection is the same whatever order the pools,
+their entrants and their results were given in.
+
+**Pools of unequal size need a comparison method.** Pools are unequal when
+their tables do not have the same number of entries. Their entrants have
+then played different numbers of events, and what is compared changes who
+goes through, so the selector applies no method of its own: it refuses
+until one is chosen, with the reason `PoolComparisonRequired` and the pool
+sizes in the context.
+
+```php
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\PoolComparison;
+
+// The same stage without Lou: pool A has three entrants, who play two events each
+$poolA = [$field[0], $field[5], $field[6]];
+$resultsA = playPoolByMargin($scheduler->schedule($poolA), 1);
+$unequal = StageOutcome::combining(
+    ['A' => new StageOutcome($calculator->calculate($poolA, $resultsA), $resultsA, entrants: $poolA)] + $stagePools,
+    $calculator,
+    array_slice($field, 0, 11)
+);
+
+try {
+    BestOfRankSelector::ofRank(3, 2)->select($unequal);
+} catch (InvalidConfigurationException $e) {
+    echo "{$e->getReason()?->value}: " . json_encode($e->getContext()['pool_sizes']) . "\n";
+}
+```
+
+```text
+pool_comparison_required: {"A":3,"B":4,"C":4}
+```
+
+| `PoolComparison` | Plain data | What is compared |
+|------------------|------------|------------------|
+| `RawTotals` | `'raw-totals'` | The figures as the table has them. An entrant of a larger pool has had more events to collect them in |
+| `PerEvent` | `'per-event'` | Every figure divided by the events the entrant has played: ranking value, each tiebreaker value, score difference, scores-for. An entrant with no event played has 0 for each, and its adjustment, if it has one, for the ranking value |
+| `DiscardLowest` | `'discard-lowest'` | In every pool larger than the smallest, the entrants placed below the size of the smallest pool are left out with every result they are in, and the table is calculated again by the calculator of the outcome, with the adjustments of the entrants that are kept. Raw totals of that table are compared |
+
+```php
+$best = fn (PoolComparison $comparison): string => implode(', ', array_map(
+    fn (Participant $p) => $p->getLabel(),
+    BestOfRankSelector::ofRank(3, 2)->comparedBy($comparison)->select($unequal)
+));
+
+// Gus is third of three with no point from 2 events; Hal and Ian have 3 from 3
+echo $best(PoolComparison::RawTotals) . "\n";     // Hal, Ian
+echo $best(PoolComparison::PerEvent) . "\n";      // Hal, Ian: 1 point an event each
+// Without their wins over the entrant placed fourth, Hal and Ian have no
+// point either, and Gus has the best score difference of the three
+echo $best(PoolComparison::DiscardLowest) . "\n"; // Gus, Hal
+```
+
+With pools of one size no method is needed. One that was chosen is still
+applied, and where every compared entrant has played the same number of
+events the three give the same order. The selector counts entries, not
+events: it does not see that pools of one size played different numbers of
+events (a pool with events still to play, pools of different leg counts, a
+pool in which an entrant sat a round out or withdrew), so check
+completeness before you select, and choose `PerEvent` where the numbers of
+events differ by design. `DiscardLowest` recalculates a table, which takes
+the calculator: `combining()` hands it to the outcome, and an outcome built
+by hand takes it as its last constructor argument.
+
+Three things to know before choosing `PerEvent` for a calculator with
+tiebreakers, and before comparing pools that had byes, adjustments or
+awarded results:
+
+- **`PerEvent` divides a tiebreaker value once, by the entrant's own
+  events.** That is right for a value that adds something up over the
+  entrant's events, as `WinsTiebreaker` does. It is not enough for
+  `BuchholzTiebreaker` and `SonnebornBergerTiebreaker`, which add up the
+  ranking values of opponents: those values have themselves been collected
+  over more events in a larger pool, so after the division the entrant of
+  the larger pool is still ahead for no reason but the size of its pool.
+  And a tiebreaker of your own that is already a ratio is divided as well,
+  which a ratio should not be. Give `combining()` a calculator without
+  such a tiebreaker (the pools' own tables may keep it), or choose
+  `DiscardLowest`, which calculates every tiebreaker again from the
+  results that are left.
+- **A bye credited in a pool's table is not in the figures compared.** The
+  combined table is calculated from the results, and credits no bye. Where
+  a pool's own table counts a bye as a win
+  (`StandingsCalculator::withByesCredited()`, as the table of a Swiss stage
+  does), that credit decides who holds the rank in the pool, and the
+  holders are then compared by what they scored in the events they played.
+- **An [adjustment](#adjustments) is in the figures
+  compared, under every method, and an awarded result is a result.**
+  `combining()` carries the adjustment of a pool's table over to the
+  combined table, and the ranking value compared is the total a table is
+  ordered by: what was earned plus the adjustment. No other figure changes
+  with it. `RawTotals` compares that total. `PerEvent` divides it by the
+  events played, the adjustment with what was earned, so that three points
+  taken away weigh what three points not won weigh, and the methods still
+  agree where the entrants have played the same number of events; an
+  entrant that has played no event has nothing to divide by and is compared
+  by its adjustment as it stands (0 without one). `DiscardLowest`
+  calculates the table again from the results that are left and applies
+  the adjustment of every entrant that is kept again, whole: it comes from
+  no event, so no result that is left out takes any of it away, and an
+  entrant that is left out goes with its adjustment. An
+  [awarded result](#awarded-results) is one of the events played that
+  `PerEvent` divides by, and `DiscardLowest` keeps it or leaves it out with
+  the other results of the two entrants, counted as the calculator's
+  awarded result policy counts it.
+
+**A selection that results do not decide is refused**, exactly as a
+`RankRangeSelector` refuses one, with an `UndecidedSelectionException`:
+
+| What is undecided | The exception |
+|-------------------|---------------|
+| A pool has no result, or level entries of a pool hold the rank: who holds it is not decided | names the pool (`getPool()`) |
+| Holders that are level on every compared figure are on both sides of the cut (`TieAcrossSelection`) or are all selected (`TieWithinSelection`) | names the rank (`getRankAcrossPools()`); the places are places among the holders, best first, and the pool is null |
+| Under `DiscardLowest`, level entries of a larger pool are on both sides of the place below which its entrants are left out | names the pool; the ranks run from the selected rank to the size of the smallest pool |
+
+The same two choices go on regardless: `withTiesInsideSelectionAccepted()`
+and `withTableOrderAccepted()`. Level holders are then listed in the order
+of the outcome's entrant list, and in the order of its table when it has
+none. In plain data the selector is `['rank' => 3, 'count' => 2]`, with
+`comparison` and `ties` written when they were chosen and
+[`format_version`](#format-versions) written first; an unknown key is
+refused.
+
+**`RankRangeSelector::overall()` takes the same setting.** It reads the
+combined table, which ranks entrants of every pool together, so across
+pools of unequal size it refuses with `PoolComparisonRequired` until
+`comparedBy()` says how: `RawTotals` takes the table as it stands, and
+`PerEvent` puts it in the order of its figures per event played. It takes
+no `DiscardLowest` (the entrants left out would have no place in the table)
+and a per-group selection takes no method at all; both are refused with
+`IncompatibleOptions`.
+
+**The selector states its yield, and does not place for a bracket.**
+`getSelectionSize()` is the count, so composition validation checks a
+transition that uses it. The list is best first and nothing else: put
+after a per-group selection (`[...$topTwo, ...$bestThirds]`) it can pair an
+entrant with one of its own pool in the first round of a bracket, because
+where each has to go depends on which pools the selected entrants come
+from. Order the combined list yourself where that matters.
 
 ## Timeline Assignment
 
@@ -4213,10 +4412,10 @@ records with its reasons:
   own array and has the key.
 - **An array without the key is version 1.** Version 1 is the form 0.2.x
   wrote, and beside it the optional keys 0.3.0 added (`strategy_seed` in
-  round-robin options, `seed` in Swiss options, `ties` in a rank range
-  selector, `third_place` in elimination options, `award` in a result,
-  `adjustments` in a stage state), each of which may be left out. So rows
-  stored by 0.2.x load
+  round-robin options, `seed` in Swiss options, `ties` and `comparison` in
+  a rank range selector, `third_place` in elimination options, `award` in a
+  result, `adjustments` in a stage state), each of which may be left out. So
+  rows stored by 0.2.x load
   unchanged. There is nothing to migrate, and no need to add the key to
   stored data.
 - **A version the library does not know is refused**, as is a value below 1
@@ -4531,7 +4730,7 @@ parent type matches too.
 | `SchedulingException` (abstract) | `\Exception` | A scheduling failure. Its subclasses carry a diagnostic report (`getDiagnosticReport()`). |
 | `InvalidConfigurationException` | `SchedulingException` | A scheduler, engine, stage, timeline or grid is configured in a way that cannot work. `getReason()` says which mistake it was: see [Configuration Errors](#configuration-errors). |
 | `PinConflictException` | `InvalidConfigurationException` | A repack request pins one participant in two events at the same session and slot. It carries the two event IDs (`getEventIds()`). |
-| `UndecidedSelectionException` | `InvalidConfigurationException` | A `RankRangeSelector` is asked for ranks that results do not decide. It carries the IDs of the level participants (`getParticipantIds()`), the places they hold between them and the pool: see [Selections that results do not decide](#selections-that-results-do-not-decide). |
+| `UndecidedSelectionException` | `InvalidConfigurationException` | A `RankRangeSelector` or a `BestOfRankSelector` is asked for a selection that results do not decide. It carries the IDs of the level participants (`getParticipantIds()`), the places they hold between them and the pool, or, where the holders of one rank were compared across pools, that rank (`getRankAcrossPools()`): see [Selections that results do not decide](#selections-that-results-do-not-decide) and [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
 | `IncompleteScheduleException` | `SchedulingException` | Constraints leave a schedule that cannot be completed. |
 | `NoValidPairingException` | `SchedulingException` | No complete pairing exists for a Swiss round. |
 | `RepackViolationsException` | `SchedulingException` | A repack leaves violations and `RepackOptions(throwOnViolations: true)` asked for an exception instead of the outcome. |
@@ -4766,6 +4965,7 @@ identifier for logs and stored data):
 | `UnplayedStage` | `unplayed_stage` | A rank selection was asked of a table with no recorded result (`UndecidedSelectionException`) |
 | `TieAcrossSelection` | `tie_across_selection` | A rank selection takes only some of the entries that no result separates (`UndecidedSelectionException`) |
 | `TieWithinSelection` | `tie_within_selection` | Entries that no result separates are all selected, and the order they are selected in is not decided (`UndecidedSelectionException`) |
+| `PoolComparisonRequired` | `pool_comparison_required` | A selection that compares entrants of different pools was asked of pools of unequal size, with no comparison method chosen. The context lists the pool sizes (`pool_sizes`) |
 | `RoundOutOfSequence` | `round_out_of_sequence` | A round was recorded out of play order: its number is not above the last recorded one |
 | `EventNotInRound` | `event_not_in_round` | An event, or the event of a result, does not belong to the round it was recorded with (one with no round number at all is `EventWithoutRoundNumber`) |
 | `NoRoundRecorded` | `no_round_recorded` | Results were added or replaced in a stage with no recorded round |

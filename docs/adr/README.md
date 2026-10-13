@@ -15,6 +15,7 @@ there is not repeated here.
 | [0003](0003-multi-participant-events-are-a-2-0-goal.md) | Multi-participant events are a goal for 2.0 |
 | [0004](0004-position-decides-where-results-do-not.md) | Position decides where results do not |
 | [0005](0005-serialized-forms-carry-a-format-version.md) | Serialized forms carry a format version |
+| [0006](0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md) | Pools of unequal size are compared by a method the caller names |
 
 ## Adding a record
 

@@ -655,6 +655,24 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Dave, Carol, Bob, Alice\n"],
             [],
         ],
+        'the two best of the entrants placed third' => [
+            'docs/USAGE.md',
+            'BestOfRankSelector::ofRank(rank: 3, count: 2)->select($stage);',
+            ["Gus, Hal\n"],
+            [],
+        ],
+        'pools of unequal size refused with their sizes until a method is chosen' => [
+            'docs/USAGE.md',
+            'BestOfRankSelector::ofRank(3, 2)->select($unequal);',
+            ["pool_comparison_required: {\"A\":3,\"B\":4,\"C\":4}\n"],
+            [],
+        ],
+        'the best two of pools of unequal size under each comparison method' => [
+            'docs/USAGE.md',
+            '$best = fn (PoolComparison $comparison): string',
+            ["Hal, Ian\nHal, Ian\nGus, Hal\n"],
+            [],
+        ],
         'a week in days keeps the time of day, a week in hours does not' => [
             'docs/USAGE.md',
             "foreach (['P7D', 'PT168H'] as \$roundInterval)",
@@ -913,6 +931,67 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 PHP,
         ],
         'composition chain telescopes' => ['docs/USAGE.md', '->validateChain(16, [', 'assert($violations === []);'],
+        // "Third in their pools: Gus (3 points, score difference -1), Hal (3, -2), Ian (3, -3)", the
+        // comments on the pool of three, and the prose after it: the yield, the plain-data form, what
+        // overall() does with the same pools, and the pair a plain concatenation puts in round 1
+        'the records the best of a rank are chosen from, and what the section says of the selector' => [
+            'docs/USAGE.md',
+            '$best = fn (PoolComparison $comparison): string',
+            <<<'PHP'
+                $third = static function (StageOutcome $stage, string $pool): array {
+                    $entry = array_values($stage->getPool($pool)->getStandings()->getEntries())[2];
+
+                    return [$entry->getParticipant()->getLabel(), $entry->getRankingValue(), $entry->getPlayed(), $entry->getScoreDifference()];
+                };
+                assert($third($stage, 'A') === ['Gus', 3.0, 3, -1.0]);
+                assert($third($stage, 'B') === ['Hal', 3.0, 3, -2.0]);
+                assert($third($stage, 'C') === ['Ian', 3.0, 3, -3.0]);
+                assert($third($unequal, 'A') === ['Gus', 0.0, 2, -2.0]);
+
+                $selector = BestOfRankSelector::ofRank(3, 2)->comparedBy(PoolComparison::DiscardLowest);
+                assert($selector->getSelectionSize() === 2);
+                assert(BestOfRankSelector::ofRank(3, 2)->toArray() === ['format_version' => 1, 'rank' => 3, 'count' => 2]);
+                assert($selector->withTableOrderAccepted()->toArray() === ['format_version' => 1, 'rank' => 3, 'count' => 2, 'comparison' => 'discard-lowest', 'ties' => 'accept-table-order']);
+                try {
+                    BestOfRankSelector::fromArray(['rank' => 3, 'count' => 2, 'method' => 'per-event']);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason()?->value === 'unknown_option_key');
+                }
+
+                // overall() takes the same setting
+                $reasons = [];
+                foreach ([
+                    fn () => RankRangeSelector::overall(1, 4)->select($unequal),
+                    fn () => RankRangeSelector::overall(1, 4)->comparedBy(PoolComparison::DiscardLowest),
+                    fn () => RankRangeSelector::topPerGroup(2)->comparedBy(PoolComparison::RawTotals),
+                ] as $refused) {
+                    try {
+                        $refused();
+                        $reasons[] = null;
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        $reasons[] = $e->getReason()?->value;
+                    }
+                }
+                assert($reasons === ['pool_comparison_required', 'incompatible_options', 'incompatible_options']);
+                // The winners of the pools are level on 9 points from 3 events, or 6 from 2 in pool A
+                $labels = fn (array $list): array => array_map(fn ($p) => $p->getLabel(), $list);
+                assert($labels(RankRangeSelector::overall(1, 2)->comparedBy(PoolComparison::RawTotals)->select($unequal)) === ['Cy', 'Ben']);
+
+                // Appended to the top two, the best thirds are not placed. Here the order happens to keep
+                // the pools apart (Ada of pool A meets Hal of pool B, Ben of pool B meets Gus of pool A)...
+                $firstRound = fn (array $entrants): array => array_map(
+                    fn ($event) => $labels($event->getParticipants()),
+                    (new SingleEliminationEngine())->pairNextRound(StageState::start($entrants))->getEvents()
+                );
+                $placed = $firstRound([...RankRangeSelector::topPerGroup(2)->select($stage), ...$bestThirds]);
+                assert(in_array(['Ada', 'Hal'], $placed, true) && in_array(['Ben', 'Gus'], $placed, true));
+                // ...and with Hal and Ian selected it does not: Ben meets Hal, of his own pool
+                $byRawTotals = BestOfRankSelector::ofRank(3, 2)->comparedBy(PoolComparison::RawTotals)->select($unequal);
+                assert($labels($byRawTotals) === ['Hal', 'Ian']);
+                assert(in_array(['Ben', 'Hal'], $firstRound([...RankRangeSelector::topPerGroup(2)->select($unequal), ...$byRawTotals]), true));
+                PHP,
+        ],
         // "what it writes reads back to the same slot times ... refused by toArray() with the reason NotSerializable"
         'a timeline definition written as plain data' => [
             'docs/USAGE.md',

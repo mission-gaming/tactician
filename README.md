@@ -48,7 +48,10 @@ the last one, which is about the library as a whole.
 - **Group stages and multi-stage tournaments**, composed from serpentine pools
   and progression selectors. A selection by rank keeps the entrants of one
   pool apart in the bracket it feeds, and is refused where results do not
-  decide who holds a selected place. A declared chain of stages can be
+  decide who holds a selected place. The best few of one rank across the
+  pools (the two best of those placed third) are selected too, by a
+  comparison the caller names where the pools are not of one size. A
+  declared chain of stages can be
   checked for matching entrant counts before any event exists. [Pools, progression, and multi-stage tournaments](docs/USAGE.md#pools-progression-and-multi-stage-tournaments)
 - **Position decides**: every stage takes its entrants from the order of the
   list it is given, and where results leave two of them level, that order
@@ -239,7 +242,7 @@ $table = $outcome->getStandings();
 Single and double elimination (`SingleEliminationEngine`,
 `DoubleEliminationEngine`) drive through the same loop, and group stages
 compose from pools and progression selectors (`PoolDistributor`,
-`RankRangeSelector`, `MatchOutcomeSelector`) — see the
+`RankRangeSelector`, `BestOfRankSelector`, `MatchOutcomeSelector`) — see the
 [usage guide](docs/USAGE.md). Stage state and schedules serialize to JSON
 (`StageState::toJson()`, `$schedule->toJson()`), so platforms persist
 between rounds instead of re-deriving.
