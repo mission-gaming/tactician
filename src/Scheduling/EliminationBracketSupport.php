@@ -399,14 +399,17 @@ trait EliminationBracketSupport
     /**
      * The ties a recorded round holds: its two-participant events, put
      * together by the two they are between, in the order the round first
-     * names each. An event of any other size is no tie of a bracket and is
-     * read by nothing.
+     * names each. The two of a tie are in the order of its first leg,
+     * whichever leg the round names first: a history may supply the events
+     * in any order. An event of any other size is no tie of a bracket and
+     * is read by nothing.
      *
      * @return array<string, array{participants: array{Participant, Participant}, events: list<Event>, thirdPlace: bool}>
      */
     private function recordedTies(?RoundPairing $recorded): array
     {
         $ties = [];
+        $namedByLeg = [];
         foreach ($recorded?->getEvents() ?? [] as $event) {
             $participants = array_values($event->getParticipants());
             if (count($participants) !== 2) {
@@ -414,7 +417,12 @@ trait EliminationBracketSupport
             }
 
             $key = 'tie ' . PairKey::of($participants[0]->getId(), $participants[1]->getId());
+            $leg = is_int($event->getMetadataValue('tie_leg')) ? $event->getMetadataValue('tie_leg') : 1;
             $ties[$key] ??= ['participants' => [$participants[0], $participants[1]], 'events' => [], 'thirdPlace' => false];
+            if ($leg < ($namedByLeg[$key] ??= $leg)) {
+                $namedByLeg[$key] = $leg;
+                $ties[$key]['participants'] = [$participants[0], $participants[1]];
+            }
             $ties[$key]['events'][] = $event;
             $ties[$key]['thirdPlace'] = $ties[$key]['thirdPlace'] || BracketTie::of($event) === BracketTie::ThirdPlace;
         }

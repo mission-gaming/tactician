@@ -767,7 +767,8 @@ describe('a bracket tie that is level and awaits its decider', function (): void
     // the final before the third-place tie, and not the order the rows of
     // the application came back in.
     it('is the tie the refusal names whatever order the events of the round are in', function (string $name, int $recordedRounds): void {
-        $engine = historyEngines()[$name];
+        $engine = historyEngines()[$name]
+            ?? new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2, thirdPlace: true));
         $entrants = historyField(4);
         $rng = new Randomizer(new Mt19937(3));
         $state = StageState::start($entrants);
@@ -781,6 +782,12 @@ describe('a bracket tie that is level and awaits its decider', function (): void
         $events = $last->getEvents();
         $drawn = array_map(static fn(Event $event): Result => new Result($event), $events);
         [$one, $two] = $events[0]->getParticipants();
+        if (!isset(historyEngines()[$name])) {
+            // The final has a winner in both legs; the third-place tie is level
+            $final = array_slice($events, 0, 2);
+            $drawn = [new Result($final[0], $one), new Result($final[1], $one), ...array_slice($drawn, 2)];
+            [$one, $two] = $events[2]->getParticipants();
+        }
 
         $contexts = [];
         foreach ([$events, array_reverse($events)] as $supplied) {
@@ -816,6 +823,9 @@ describe('a bracket tie that is level and awaits its decider', function (): void
         ['double elimination', 0],
         // The last round of a field of 4: the final, then the third-place tie
         ['single elimination with a third-place tie', 1],
+        // The third-place tie alone awaits its decider, and its second leg
+        // is supplied first: the two are named in the order of its first leg
+        ['a third-place tie over two legs, the final decided', 1],
     ]);
 
     // The contract is one for every stage of a double elimination bracket:

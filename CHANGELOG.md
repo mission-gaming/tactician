@@ -1074,8 +1074,9 @@ entry on the engine fingerprint.
   with the reason `UndecidedTie`, the round and the two participants, and
   throws it before the `UnresolvedRoundException` where the round awaits a
   result as well. Where two ties of the round await a decision it names the
-  first in bracket order, the final before the third-place tie, whatever
-  order the events of the round are recorded in. `getReadiness()` lists the
+  first in bracket order, the final before the third-place tie, and its two
+  participants in the order of its first leg, whatever order the events of
+  the round are recorded in. `getReadiness()` lists the
   events of such ties
   (`PairingReadiness::getUndecidedEvents()`), `getRecordedRounds()` lists
   them for their round (`RecordedRound::getUndecidedEvents()`), and
