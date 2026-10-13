@@ -411,11 +411,13 @@ have (none is allowed), and add the others with
 result the event already has. A request that is sent twice therefore
 records the result twice. A bracket engine then refuses the state on
 every call (reason `DuplicateResult`) until `withResultReplaced()` has
-put one result in the place of the two. A Swiss engine reading a state
-that came back from JSON does not notice, and counts the event twice in
-its table. Before adding a result, look in `getResults()` for one on the
-same round and participants (and the same `tie_leg`), and use
-`withResultReplaced()` when there is one.
+put one result in the place of the two. A Swiss engine refuses it too,
+when it reads its table (`InvalidInputException`), and does so whether or
+not the state has been through JSON since: the two results are recognised
+by their round, participants and `tie_leg`, not by the event object.
+Before adding a result, look in `getResults()` for one on the same round
+and participants (and the same `tie_leg`), and use `withResultReplaced()`
+when there is one.
 
 Two requests that pair the same round at the same time are a race the
 library cannot see. Take a lock on the stage for the read, the step and

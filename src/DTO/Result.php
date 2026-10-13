@@ -24,8 +24,10 @@ readonly class Result
      * The winner and the scores are not checked against each other, and
      * scores need not cover every participant of the event.
      *
-     * @param Event $event The event that was played. Pass the object the scheduler or engine
-     *                     produced: the standings calculator tells events apart by object
+     * @param Event $event The event that was played. Pass the event the scheduler or engine
+     *                     produced, or one equal to it: an event is recognised by its round
+     *                     number, its participants and its tie leg, and one with no round by
+     *                     the object alone
      * @param Participant|null $winner The winning participant, or null for a draw
      * @param array<int|string, int|float> $scores Optional numeric scores keyed by participant ID
      *                                             (numeric-string IDs become int keys in PHP)

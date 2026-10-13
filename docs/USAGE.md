@@ -884,12 +884,25 @@ construction via `WinDrawLossRanking::fromArray(['win' => 3, 'draw' => 1,
 'loss' => 0])` for config-driven platforms. `SonnebornBergerTiebreaker` is
 also available. Ties beyond the configured tiebreakers fall back to score
 difference, score for, seed (a participant without one after those that have
-one), natural-order label comparison, and finally the ID. Each event may
-have at most one result: the calculator throws an `InvalidInputException`
-for two results that hold the same `Event` object. It recognises an event by
-the object and does not compare events, so two `Event` objects for one match
-(one of them rebuilt from stored data, say) are counted as two matches; pass
-it one result per match.
+one), natural-order label comparison, and finally the ID.
+
+Each event may have at most one result, and the calculator throws an
+`InvalidInputException` for two results of one event. Two results are of one
+event when they hold the same `Event` object, or when their events carry the
+same round number, the same participants in either order and the same tie
+leg (the `tie_leg` metadata of a two-legged tie; an event without it is leg
+1). The second rule is the one that holds for stored data: a result recorded
+twice comes back from JSON as two `Event` objects that are equal, and it is
+refused as it was before it was stored. Two things follow:
+
+- An event with no round has nothing but the object to tell it from another
+  meeting of the same participants, so two such events are two events
+  played.
+- One table over results that share round numbers (two seasons, or two
+  stages that each count their rounds from 1) refuses the first pair that
+  met in the same round of both. Calculate a table for each and combine
+  them, or give the events round numbers that continue from one to the
+  next.
 
 ### Tied sets
 

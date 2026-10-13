@@ -995,15 +995,31 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
-        // Records a known defect (issue #53: duplicate results are detected by object
-        // identity); the first assertion changes when it is fixed.
-        // "two Event objects for one match ... are counted as two matches"
-        'the calculator recognises an event by the object' => [
+        // "Two results are of one event when they hold the same Event object, or when
+        // their events carry the same round number, the same participants in either
+        // order and the same tie leg", and "two such events [with no round] are two
+        // events played". Until issue #53 was fixed the second case below was counted
+        // as two matches.
+        'the calculator recognises an event by what it says, and one with no round by the object' => [
             'docs/USAGE.md',
             '$standings = $calculator->calculate($participants, $results);',
             <<<'PHP'
                 $twice = $calculator->calculate([$alice, $bob], [new Result(new Event([$alice, $bob]), $alice), new Result(new Event([$alice, $bob]), $alice)]);
                 assert($twice->getEntries()[0]->getPlayed() === 2);
+                try {
+                    $calculator->calculate([$alice, $bob], [
+                        new Result(new Event([$alice, $bob], new \MissionGaming\Tactician\DTO\Round(1)), $alice),
+                        new Result(new Event([$bob, $alice], new \MissionGaming\Tactician\DTO\Round(1)), $alice),
+                    ]);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidInputException $refused) {
+                    assert(str_ends_with($refused->getMessage(), '(round 1, ' . $bob->getId() . ' vs ' . $alice->getId() . ')'));
+                }
+                $legs = $calculator->calculate([$alice, $bob], [
+                    new Result(new Event([$alice, $bob], new \MissionGaming\Tactician\DTO\Round(1), ['tie_leg' => 1]), $alice),
+                    new Result(new Event([$bob, $alice], new \MissionGaming\Tactician\DTO\Round(1), ['tie_leg' => 2]), $alice),
+                ]);
+                assert($legs->getEntries()[0]->getPlayed() === 2);
                 try {
                     $calculator->calculate([$alice, $bob], [new Result($eventOne, $alice), new Result($eventOne, $bob)]);
                     assert(false);

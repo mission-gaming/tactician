@@ -121,6 +121,36 @@ heading **Output change (fix)**.
   returned a state. After: it throws, reason `RoundOutOfSequence`. Both
   methods declare one more `@throws`, which code analysed with checked
   exceptions sees (#53).
+- **Breaking: `StandingsCalculator::calculate()` recognises two results of
+  one event by what the events say, and no longer by the object alone.** It
+  refused two results that held the same `Event` object and counted any
+  two that did not. An `Event` object does not survive storage, so a result
+  recorded twice (the same request sent twice, say) was refused on the live
+  state and counted twice once the state had been through `toJson()` and
+  `fromJson()`: one match gave two wins, and a Swiss stage paired its next
+  round from that table. Two results are now of one event when they hold
+  the same object, or when their events carry the same round number, the
+  same participants in either order and the same tie leg (the `tie_leg`
+  metadata; an event without it is leg 1), which is how `StageState` and
+  the bracket engines already recognise an event. Both are refused with
+  the `InvalidInputException` the calculator already threw; its message
+  now ends with the round and the participants where the event has a
+  round. The Swiss engine, which pairs from the table, refuses such a
+  state before and after storage alike, and `withResultReplaced()` repairs
+  it, also in a state that came back from JSON. An event with no round has
+  nothing but the object to tell it from another meeting of the same
+  participants, so two such events are still two events played. Who is
+  affected: code that passes one `calculate()` call results that share
+  round numbers between the same participants and are in fact different
+  events, which the library's own generators and engines never produce
+  within one schedule or one stage: an all-time table over two seasons
+  generated alike, or over two stages that each count their rounds from 1.
+  What to change: calculate a table for each and combine them, give the
+  later events round numbers that continue from the earlier ones, or give
+  events of one round that are two meetings a `tie_leg` each. Before:
+  `calculate($field, [...$seasonOne, ...$seasonTwo])` returned a table.
+  After: it throws at the first pair that met in the same round of both
+  (#53).
 - **Breaking: every `fromArray()` refuses a key its form does not have.**
   A key that was not known used to be ignored, so a misspelt key was read
   as the key left out: `RoundRobinOptions::fromArray(['legs' => 2,
