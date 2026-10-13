@@ -195,6 +195,41 @@ describe('SlotAssignment without a kickoff', function (): void {
     });
 });
 
+describe('SlotAssignment built by hand with a kickoff that is not in UTC', function (): void {
+    // The string ends in Z, which says UTC. The local time was written
+    // before it without conversion, so the instant stated was another one.
+    it('writes the instant in UTC', function (string $local, string $zone, string $written): void {
+        $assignment = new SlotAssignment('e1', 0, 0, new DateTimeImmutable($local, new DateTimeZone($zone)));
+
+        expect($assignment->toArray()['kickoff'])->toBe($written)
+            ->and(new DateTimeImmutable($written) == $assignment->getKickoff())->toBeTrue();
+    })->with([
+        'a zone ahead of UTC' => ['2026-08-12 20:15:00', 'Europe/London', '2026-08-12T19:15:00Z'],
+        'a zone behind UTC, across midnight' => ['2026-08-12 20:15:00', 'America/New_York', '2026-08-13T00:15:00Z'],
+        'a fixed offset' => ['2026-08-12 20:15:00', '+05:30', '2026-08-12T14:45:00Z'],
+        'UTC' => ['2026-08-12 20:15:00', 'UTC', '2026-08-12T20:15:00Z'],
+    ]);
+
+    it('gives one fingerprint to one instant, whatever zone it was given in', function (): void {
+        $outcome = fn(string $local, string $zone): RepackOutcome => new RepackOutcome(
+            [new SlotAssignment('e1', 0, 0, new DateTimeImmutable($local, new DateTimeZone($zone)))],
+            [],
+            []
+        );
+
+        expect($outcome('2026-08-12 20:15:00', 'Europe/London')->fingerprint())
+            ->toBe($outcome('2026-08-12 19:15:00', 'UTC')->fingerprint())
+            ->and($outcome('2026-08-12 20:15:00', 'Europe/London')->fingerprint())
+            ->not->toBe($outcome('2026-08-12 20:15:00', 'UTC')->fingerprint());
+    });
+
+    it('returns the kickoff as it was given', function (): void {
+        $kickoff = new DateTimeImmutable('2026-08-12 20:15:00', new DateTimeZone('Europe/London'));
+
+        expect((new SlotAssignment('e1', 0, 0, $kickoff))->getKickoff())->toBe($kickoff);
+    });
+});
+
 describe('RepackOutcome::fingerprint()', function (): void {
     // The expected values below were computed by an implementation of the
     // documented scheme written apart from the library's, from the

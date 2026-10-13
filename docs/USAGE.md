@@ -2911,8 +2911,8 @@ hand, in a test for example.
 | `getSession()` | The 0-based session |
 | `getSlot()` | The 0-based slot within the session |
 | `hasKickoff()` | False when the grid is shape-only |
-| `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, and writes it out with a `Z` without converting it: pass UTC); throws an `UnavailableValueException` when there is none |
-| `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null |
+| `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, in the timezone it was given in); throws an `UnavailableValueException` when there is none |
+| `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in |
 
 #### `UnplacedEvent`
 

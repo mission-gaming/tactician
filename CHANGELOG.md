@@ -13,6 +13,21 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Output change (fix)
+
+- **`SlotAssignment::toArray()` writes a kickoff that is not in UTC as the
+  instant it is.** The kickoff was formatted as it was held and a `Z` was
+  put after it, so an assignment built by hand with 20:15 in London was
+  written `...T20:15:00Z`, an hour away from the instant it holds, and
+  `RepackOutcome::fingerprint()` covered that string. The kickoff is now
+  converted to UTC before it is written (`...T19:15:00Z` in August), and
+  two outcomes that hold one instant in two timezones have one
+  fingerprint. `getKickoff()` still returns the object it was given. The
+  repacker always builds its assignments in UTC, so nothing it returns,
+  and no fingerprint of an outcome it returned, changes; only an
+  assignment constructed by hand with a kickoff in another timezone is
+  written differently (#121, item 9).
+
 ### Added
 
 - **`ShuffledLegStrategy` takes an integer seed, and
