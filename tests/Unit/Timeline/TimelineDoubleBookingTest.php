@@ -10,6 +10,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Stage\RoundPairing;
+use MissionGaming\Tactician\Tests\Support\UncheckedEvent;
 use MissionGaming\Tactician\Timeline\MinimumRestRule;
 use MissionGaming\Tactician\Timeline\TimelineAssigner;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
@@ -207,11 +208,13 @@ describe('a participant in two events of one round at different times', function
 });
 
 describe('a participant listed twice in one event', function (): void {
-    // One event is one place: the participant is not in two events
+    // One event is one place: the participant is not in two events. An
+    // Event refuses such a list when it is built, and a class that extends
+    // it can still answer with one
     it('is not a double booking', function (): void {
         $alice = new Participant('a', 'Alice');
         $schedule = new Schedule([
-            new Event([$alice, $alice], new Round(1)),
+            new UncheckedEvent([$alice, $alice], new Round(1)),
             new Event([new Participant('b', 'Bob'), new Participant('c', 'Carol')], new Round(1)),
         ]);
 

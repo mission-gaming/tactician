@@ -140,16 +140,21 @@ final class GoldenText
                 . ', kickoff ' . $data['kickoff'];
         }
 
+        // The records as the outcome writes them. The outcome states the
+        // format version once, so they carry none, and the text is the
+        // fields of each record and nothing else.
+        $written = $outcome->toArray();
+
         $lines[] = 'unplaced: ' . count($outcome->getUnplaced());
-        foreach ($outcome->getUnplaced() as $unplaced) {
-            $data = $unplaced->toArray();
+        foreach ($outcome->getUnplaced() as $index => $unplaced) {
+            $data = $written['unplaced'][$index] ?? [];
             unset($data['event_id']);
             $lines[] = '  ' . $unplaced->getEventId() . ' => ' . self::fields($data);
         }
 
         $lines[] = 'violations: ' . count($outcome->getViolations());
-        foreach ($outcome->getViolations() as $violation) {
-            $data = $violation->toArray();
+        foreach ($outcome->getViolations() as $index => $violation) {
+            $data = $written['violations'][$index] ?? [];
             unset($data['kind']);
             $lines[] = '  ' . $violation->getKind()->value . ' ' . self::fields($data);
         }

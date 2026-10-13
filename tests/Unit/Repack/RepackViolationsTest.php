@@ -24,6 +24,7 @@ describe('Repack violation DTOs', function (): void {
         expect($violation->getSlot())->toBe(3);
         expect($violation->getEventIds())->toBe(['e1', 'e2']);
         expect($violation->toArray())->toBe([
+            'format_version' => 1,
             'kind' => 'participant_double_booked',
             'participant' => 'p1',
             'session' => 2,
@@ -39,6 +40,7 @@ describe('Repack violation DTOs', function (): void {
         expect($violation->getGapSlots())->toBe(2);
         expect($violation->getOccupiedSlots())->toBe([0, 3]);
         expect($violation->toArray())->toBe([
+            'format_version' => 1,
             'kind' => 'contiguity_broken',
             'participant' => 'p1',
             'session' => 1,
@@ -53,6 +55,7 @@ describe('Repack violation DTOs', function (): void {
         expect($violation->getKind())->toBe(ViolationKind::LateStart);
         expect($violation->getFirstSlot())->toBe(2);
         expect($violation->toArray())->toBe([
+            'format_version' => 1,
             'kind' => 'late_start',
             'participant' => 'p1',
             'session' => 0,
@@ -64,6 +67,7 @@ describe('Repack violation DTOs', function (): void {
         $scoped = new CapacityExceeded(new Participant('p1', 'P1'), 15, 12);
         expect($scoped->getShortfall())->toBe(3);
         expect($scoped->toArray())->toBe([
+            'format_version' => 1,
             'kind' => 'capacity_exceeded',
             'participant' => 'p1',
             'demand' => 15,
@@ -83,12 +87,14 @@ describe('Repack violation DTOs', function (): void {
 
         expect($violation->getKind())->toBe(ViolationKind::EventUnplaced);
         expect($violation->toArray())->toBe([
+            'format_version' => 1,
             'kind' => 'event_unplaced',
             'event_id' => 'e9',
             'reason' => 'participant_over_capacity',
             'participant' => 'p1',
         ]);
         expect($unplaced->toArray())->toBe([
+            'format_version' => 1,
             'event_id' => 'e9',
             'reason' => 'participant_over_capacity',
             'participant' => 'p1',

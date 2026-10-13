@@ -236,6 +236,7 @@ describe('the reason of a configuration error', function (): void {
             'UnsatisfiableLegStrategy' => 'unsatisfiable_leg_strategy',
             'InvalidRoleAssignment' => 'invalid_role_assignment',
             'UnknownOptionKey' => 'unknown_option_key',
+            'UnsupportedFormatVersion' => 'unsupported_format_version',
             'OddParticipantCount' => 'odd_participant_count',
             'UnequalPots' => 'unequal_pots',
             'TooManyOpponentsPerPot' => 'too_many_opponents_per_pot',
@@ -364,6 +365,18 @@ describe('the reason of a configuration error', function (): void {
         'a pot draw option nobody knows' => [
             fn() => PotDrawOptions::fromArray(['pots' => 4, 'rounds' => 8]),
             InvalidConfigurationReason::UnknownOptionKey,
+        ],
+        'a round-robin option nobody knows' => [
+            fn() => RoundRobinOptions::fromArray(['legs' => 2, 'stratgy' => 'repeated']),
+            InvalidConfigurationReason::UnknownOptionKey,
+        ],
+        'options written by a later release' => [
+            fn() => RoundRobinOptions::fromArray(['format_version' => 2, 'legs' => 2]),
+            InvalidConfigurationReason::UnsupportedFormatVersion,
+        ],
+        'a format version that is not an integer' => [
+            fn() => SessionGrid::fromArray(['format_version' => '1', 'session_count' => 2]),
+            InvalidConfigurationReason::UnsupportedFormatVersion,
         ],
         'zero pots' => [
             fn() => new PotDrawOptions(pots: 0),

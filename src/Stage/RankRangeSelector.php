@@ -8,6 +8,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UndecidedSelectionException;
+use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use Override;
@@ -221,18 +222,24 @@ final readonly class RankRangeSelector implements ProgressionSelector
      * 'accept-inside-selection' or 'accept-table-order'. `comparison` is
      * the method an overall selection compares pools of unequal size by,
      * 'raw-totals' or 'per-event' (comparedBy()), and left out or null for
-     * none chosen. Other keys are ignored.
+     * none chosen. Any other key is refused, so that a misspelt `from` is
+     * not silently read as 1.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the mode is missing or unknown, or `ties` or
-     *                                       `comparison` is unknown (reason `UnknownIdentifier`),
-     *                                       a bound is not an integer or `comparison` is not a
-     *                                       string (`WrongValueType`), the range is not
-     *                                       1 <= from <= to (`ValueOutOfRange`), or the mode
-     *                                       does not take the comparison (`IncompatibleOptions`)
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), the mode is missing or unknown,
+     *                                       or `ties` or `comparison` is unknown
+     *                                       (`UnknownIdentifier`), a bound is not an integer or
+     *                                       `comparison` is not a string (`WrongValueType`), the
+     *                                       range is not 1 <= from <= to (`ValueOutOfRange`), or
+     *                                       the mode does not take the comparison
+     *                                       (`IncompatibleOptions`)
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, ['mode', 'from', 'to', 'ties', 'comparison'], 'a rank range selector');
+
         $mode = $config['mode'] ?? null;
         if (!in_array($mode, [self::MODE_OVERALL, self::MODE_PER_GROUP], true)) {
             throw new InvalidConfigurationException(
@@ -261,19 +268,25 @@ final readonly class RankRangeSelector implements ProgressionSelector
     }
 
     /**
-     * The plain-data form fromArray() accepts: the mode ('overall' or
-     * 'per-group') and the two 1-based, inclusive bounds. topPerGroup(n)
-     * is written as per-group 1..n. The key `ties` is written only for a
-     * selector that accepts an undecided order ('accept-inside-selection'
-     * or 'accept-table-order'), and the key `comparison` only for one that
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then the mode ('overall' or 'per-group')
+     * and the two 1-based, inclusive bounds. topPerGroup(n) is written as
+     * per-group 1..n. The key `ties` is written only for a selector that
+     * accepts an undecided order ('accept-inside-selection' or
+     * 'accept-table-order'), and the key `comparison` only for one that
      * was given a method to compare pools by; a selector with neither has
-     * the three keys it has always had.
+     * no such key.
      *
-     * @return array{mode: string, from: int, to: int, ties?: string, comparison?: string}
+     * @return array{format_version: int, mode: string, from: int, to: int, ties?: string, comparison?: string}
      */
     public function toArray(): array
     {
-        $data = ['mode' => $this->mode, 'from' => $this->from, 'to' => $this->to];
+        $data = [
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'mode' => $this->mode,
+            'from' => $this->from,
+            'to' => $this->to,
+        ];
         if ($this->ties !== self::TIES_REFUSED) {
             $data['ties'] = $this->ties;
         }

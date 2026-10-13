@@ -257,6 +257,13 @@ release is recorded in the [changelog](CHANGELOG.md).
   notice, so an application that turns notices into exceptions can see such
   a call fail after a patch update. The library never calls a deprecated
   method itself.
+- **Serialized forms are versioned.** Every array a `toArray()` returns
+  states the version of its form under `format_version`. A form changes
+  only in a minor release, with its next version number and a changelog
+  entry, and the earlier versions stay readable until a major release; data
+  stored by 0.2.x, which wrote no version, is read as version 1.
+  [ADR 0005](docs/adr/0005-serialized-forms-carry-a-format-version.md)
+  records the rule.
 - **Generated output is pinned.** Golden fixtures in
   [`tests/Fixtures/golden/`](tests/Fixtures/golden/) pin generated schedules,
   bracket pairings, repack assignments, and the JSON wire shapes for a set of
@@ -296,6 +303,8 @@ before `1.0.0`):
 - `Validation`
 - `Diagnostics`
 - `RoleAssignment`
+- `Serialization`, which holds no public type: its one class,
+  `Serialization\PlainData`, is internal
 
 Anything not listed as stable is experimental, including the rest of
 `Scheduling`. `Repack\Internal` is internal: it is not public API and carries

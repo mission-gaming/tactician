@@ -289,8 +289,8 @@ describe('a pre-drawn Swiss schedule', function (): void {
 describe('SwissOptions', function (): void {
     it('has no seed unless one is given, and writes the key only then', function (): void {
         expect((new SwissOptions(4))->seed)->toBeNull()
-            ->and((new SwissOptions(4))->toArray())->toBe(['rounds' => 4])
-            ->and((new SwissOptions(4, 0))->toArray())->toBe(['rounds' => 4, 'seed' => 0])
+            ->and((new SwissOptions(4))->toArray())->toBe(['format_version' => 1, 'rounds' => 4])
+            ->and((new SwissOptions(4, 0))->toArray())->toBe(['format_version' => 1, 'rounds' => 4, 'seed' => 0])
             ->and(SwissOptions::fromArray(['rounds' => 4, 'seed' => -7])->seed)->toBe(-7)
             ->and(SwissOptions::fromArray(['rounds' => 4, 'seed' => null])->seed)->toBeNull()
             ->and(SwissOptions::fromArray(['rounds' => 4])->seed)->toBeNull();
