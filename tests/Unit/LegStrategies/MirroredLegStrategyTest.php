@@ -42,21 +42,34 @@ describe('MirroredLegStrategy', function (): void {
         expect($event->getRound()?->getNumber())->toBe(4);
     });
 
-    it('reverses participant order for any leg greater than 1', function (): void {
+    // The legs alternate: a pair that meets over several legs has its
+    // meetings split as evenly as their number allows. Before 0.3.0 every
+    // leg after the first was reversed.
+    it('keeps the order in every odd-numbered leg and reverses it in every even-numbered one', function (): void {
         $strategy = new MirroredLegStrategy();
 
         $participant1 = new Participant('team-a', 'Team A');
         $participant2 = new Participant('team-b', 'Team B');
-        $participants = [$participant1, $participant2];
 
-        $context = roundRobinContext([$participant1, $participant2], [], legs: 3, currentLeg: 3);
+        $orders = [];
+        for ($leg = 1; $leg <= 6; ++$leg) {
+            $context = roundRobinContext([$participant1, $participant2], [], legs: 6, currentLeg: $leg);
 
-        $event = $strategy->generateEventForLeg($participants, 3, 7, $context);
+            $event = $strategy->generateEventForLeg([$participant1, $participant2], $leg, $leg, $context);
 
-        expect($event)->not->toBeNull();
-        assert($event !== null);
-        expect($event->getParticipants())->toBe([$participant2, $participant1]); // Should be reversed
-        expect($event->getRound()?->getNumber())->toBe(7);
+            assert($event !== null);
+            expect($event->getRound()?->getNumber())->toBe($leg);
+            $orders[$leg] = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+        }
+
+        expect($orders)->toBe([
+            1 => ['team-a', 'team-b'],
+            2 => ['team-b', 'team-a'],
+            3 => ['team-a', 'team-b'],
+            4 => ['team-b', 'team-a'],
+            5 => ['team-a', 'team-b'],
+            6 => ['team-b', 'team-a'],
+        ]);
     });
 
     it('returns null for non-2-participant events', function (): void {
