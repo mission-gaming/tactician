@@ -138,11 +138,9 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
      * A limit on consecutive events as the first-named participant (home)
      * or as any other (away), named `Home/Away consecutive limit (N)`.
      *
-     * Known limitation: the participant is looked up in each event as the
-     * same object, not by ID. The schedulers pass the same objects, so
-     * generation is not affected, but a copy of a participant (one rebuilt
-     * with `Participant::fromArray()`, for example) is not found in the
-     * events of the original and counts as away in all of them.
+     * The participant is found in each event by its ID, so a copy of a
+     * participant (one rebuilt with `Participant::fromArray()`, for
+     * example) has the roles of the original.
      *
      * @throws InvalidInputException When the limit is below 1
      */
@@ -150,9 +148,24 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     {
         return new self(
             $maxConsecutive,
-            fn(Event $event, Participant $participant) => array_search($participant, $event->getParticipants(), true) === 0 ? 'home' : 'away',
+            static fn(Event $event, Participant $participant) => self::positionIn($event, $participant) === 0 ? 'home' : 'away',
             "Home/Away consecutive limit ({$maxConsecutive})"
         );
+    }
+
+    /**
+     * The index of the participant with this ID in the event's participant
+     * list, or false when the event does not hold it.
+     */
+    private static function positionIn(Event $event, Participant $participant): int|false
+    {
+        foreach (array_values($event->getParticipants()) as $position => $eventParticipant) {
+            if ($eventParticipant->getId() === $participant->getId()) {
+                return $position;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -161,7 +174,7 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
      * limit (N)`. For events of two participants it is the same rule as
      * {@see self::homeAway()}; with more, each position is a role of its own.
      *
-     * The participant is looked up as the same object, as in homeAway().
+     * The participant is found by its ID, as in homeAway().
      *
      * @throws InvalidInputException When the limit is below 1
      */
@@ -169,7 +182,7 @@ readonly class ConsecutiveRoleConstraint implements ConstraintInterface
     {
         return new self(
             $maxConsecutive,
-            fn(Event $event, Participant $participant) => array_search($participant, $event->getParticipants(), true),
+            static fn(Event $event, Participant $participant) => self::positionIn($event, $participant),
             "Position consecutive limit ({$maxConsecutive})"
         );
     }

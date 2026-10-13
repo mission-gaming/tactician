@@ -26,6 +26,31 @@ describe('SeedProtectionConstraint', function (): void {
         expect($constraint->isSatisfied(new Event([$participants[0], $participants[1]], new Round(4)), $context))->toBeTrue();
     });
 
+    // A participant is who its ID says it is. An event built from copies
+    // of the participants (a schedule read back from storage) holds the top
+    // seeds the originals are.
+    it('recognises the top seeds by their IDs, not as the same objects', function (): void {
+        $participants = [
+            new Participant('seed1', 'Seed 1', 1),
+            new Participant('seed2', 'Seed 2', 2),
+            new Participant('seed3', 'Seed 3', 3),
+            new Participant('seed4', 'Seed 4', 4),
+        ];
+        $copies = array_map(
+            fn(Participant $participant): Participant => Participant::fromArray($participant->toArray()),
+            $participants
+        );
+
+        $constraint = new SeedProtectionConstraint(2, 0.5);
+        $context = roundRobinContext($participants, [], legs: 2);
+
+        expect($copies[0])->not->toBe($participants[0])
+            ->and($constraint->isSatisfied(new Event([$copies[0], $copies[1]], new Round(2)), $context))->toBeFalse()
+            ->and($constraint->isSatisfied(new Event([$participants[0], $copies[1]], new Round(2)), $context))->toBeFalse()
+            // One top seed against a participant who is not one is accepted
+            ->and($constraint->isSatisfied(new Event([$copies[0], $copies[2]], new Round(2)), $context))->toBeTrue();
+    });
+
     it('uses the plan bye-aware rounds per leg for odd fields', function (): void {
         $participants = [];
         for ($i = 1; $i <= 5; ++$i) {
