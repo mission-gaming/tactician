@@ -1706,7 +1706,14 @@ entry on the engine fingerprint.
     so does one that fails because of who meets whom and when under
     `NoRepeatPairings`, `MinimumRestPeriodsConstraint` or
     `SeedProtectionConstraint`: those read no role, and no search is made
-    for them.
+    for them. Under `ShuffledLegStrategy` such a failure does take longer
+    than it did: every rotated order is laid out for the balanced roles and
+    again for the roles of round parity, so that the draws, and with them
+    the failure, are those of `RoundParityRoleAssignment`. Measured over
+    two shuffled legs: 35 ms for 23 with 16 participants and 141 for 89
+    with 24 where a pair may not meet again within more rounds than a leg
+    has, and 65 for 57 and 410 for 361 where the top two seeds are
+    protected in every round.
   - **A schedule balanced by a search costs more than its round-parity
     schedule did.** Where the balanced roles as
     given break a constraint, every rotated participant order is tried with
