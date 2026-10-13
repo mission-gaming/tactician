@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
@@ -50,12 +51,20 @@ function placementField(int $count): array
  * are drawn one by one, so a tie can be won 2-0, won with a drawn leg, or
  * finish level and go to a tie decision that the generator also draws.
  *
+ * A tie between two entrants who are both out already is a placement tie
+ * (the third-place tie of a single elimination bracket): the books know it
+ * by that alone, and never by what the engine says of an event.
+ *
  * @param list<Participant> $field
- * @return array{outcome: StageOutcome, tiers: list<list<string>>, lost: array<string, int>}
- *                                                                                         The tiers are the ids of each
- *                                                                                         placement tier, best first; lost
- *                                                                                         is how many ties each entrant did
- *                                                                                         not advance from
+ * @return array{outcome: StageOutcome, tiers: list<list<string>>, lost: array<string, int>, rounds: list<list<string>>, placementTies: list<array{string, string}>}
+ *                                                                                                                                                             The tiers are the ids of each
+ *                                                                                                                                                             placement tier, best first; lost
+ *                                                                                                                                                             is how many ties each entrant did
+ *                                                                                                                                                             not advance from; rounds is the
+ *                                                                                                                                                             events of each round as `a v b`;
+ *                                                                                                                                                             a placement tie is the id of the
+ *                                                                                                                                                             entrant who advanced from it and
+ *                                                                                                                                                             of the other
  * @throws InvalidConfigurationException When the engine refuses the recorded state
  * @throws NoValidPairingException Never: a bracket engine does not throw it
  */
@@ -68,10 +77,11 @@ function playForPlacement(StageEngineInterface $engine, array $field, int $seed,
     /** @var array<string, int> $wentOutIn The round of the tie that put each entrant out */
     $wentOutIn = [];
     $lastAdvancer = null;
-    $rounds = 0;
+    $placementTies = [];
+    $rounds = [];
 
     while (!$engine->isComplete($state)) {
-        expect(++$rounds)->toBeLessThanOrEqual(4 * count($field) + 4, 'The bracket does not come to an end.');
+        expect(count($rounds))->toBeLessThan(4 * count($field) + 4, 'The bracket does not come to an end.');
         $pairing = $engine->pairNextRound($state);
 
         $results = [];
@@ -112,12 +122,26 @@ function playForPlacement(StageEngineInterface $engine, array $field, int $seed,
             }
 
             $other = $advancer->getId() === $first->getId() ? $second : $first;
+
+            // A tie between two entrants who are both out puts nobody
+            // out: it decides which of the two is placed above the other
+            if (isset($wentOutIn[$first->getId()], $wentOutIn[$second->getId()])) {
+                ++$lost[$other->getId()];
+                $placementTies[] = [$advancer->getId(), $other->getId()];
+
+                continue;
+            }
+
             if (++$lost[$other->getId()] >= $lossesToGoOut) {
                 $wentOutIn[$other->getId()] = $pairing->getRoundNumber();
             }
             $lastAdvancer = $advancer;
         }
 
+        $rounds[] = array_values(array_map(
+            fn(Event $event): string => implode(' v ', array_map(fn(Participant $participant): string => $participant->getId(), $event->getParticipants())),
+            $pairing->getEvents()
+        ));
         $state = $state->withRoundPlayed($pairing, $results);
     }
 
@@ -131,7 +155,8 @@ function playForPlacement(StageEngineInterface $engine, array $field, int $seed,
     assert($lastRound !== null);
     foreach ($lastRound->getEvents() as $event) {
         foreach ($event->getParticipants() as $participant) {
-            if ($participant->getId() !== $lastAdvancer->getId()) {
+            // The entrants of a placement tie went out in an earlier round
+            if ($participant->getId() !== $lastAdvancer->getId() && !isset($wentOutIn[$participant->getId()])) {
                 $wentOutIn[$participant->getId()] = $lastRound->getRoundNumber();
             }
         }
@@ -147,10 +172,24 @@ function playForPlacement(StageEngineInterface $engine, array $field, int $seed,
     $tiers = [[$lastAdvancer->getId()]];
     foreach ($byRound as $ids) {
         sort($ids, SORT_STRING);
+
+        // A placement tie cuts the tier of its two entrants in two, the
+        // one who advanced from it first. It is a tie between the only
+        // two entrants of a tier, or the books and the bracket disagree
+        foreach ($placementTies as $placementTie) {
+            $sorted = $placementTie;
+            sort($sorted, SORT_STRING);
+            if (array_intersect($sorted, $ids) !== []) {
+                expect($ids)->toBe($sorted, 'A placement tie between entrants who do not make up a tier.');
+                $tiers[] = [$placementTie[0]];
+                $ids = [$placementTie[1]];
+            }
+        }
+
         $tiers[] = $ids;
     }
 
-    return ['outcome' => $outcome, 'tiers' => $tiers, 'lost' => $lost];
+    return ['outcome' => $outcome, 'tiers' => $tiers, 'lost' => $lost, 'rounds' => $rounds, 'placementTies' => $placementTies];
 }
 
 /**
@@ -262,6 +301,93 @@ describe('the table of an elimination outcome', function (): void {
         }
 
         expect($brackets)->toBe(1240);
+    })->with([['fixed path'], ['re-seeded'], ['two legs'], ['two legs, re-seeded']]);
+
+    // 30 field sizes and 40 seeds: 1,200 brackets for each variant, each
+    // played a second time without the option. A field of two is refused.
+    it('gives places 3 and 4 to the two entrants of the third-place tie, and changes no other place', function (string $variant): void {
+        [$legs, $reseed] = match ($variant) {
+            'fixed path' => [1, false],
+            're-seeded' => [1, true],
+            'two legs' => [2, false],
+            'two legs, re-seeded' => [2, true],
+            default => throw new UnexpectedValueException($variant),
+        };
+        $engine = new SingleEliminationEngine(new EliminationOptions($legs, $reseed, true, true));
+        $engineWithout = new SingleEliminationEngine(new EliminationOptions($legs, $reseed));
+        $brackets = 0;
+        $decidedAgainstTheRecords = 0;
+
+        for ($size = 3; $size <= 32; ++$size) {
+            $field = placementField($size);
+            $bracketRounds = (int) ceil(log($size, 2));
+
+            for ($seed = 1; $seed <= 40; ++$seed) {
+                $played = playForPlacement($engine, $field, $seed * 100 + $size, $legs, 1);
+                $context = "{$variant}, n={$size}, seed {$seed}";
+
+                expectPlacementTable($played['outcome'], $field, $played['tiers'], $context);
+
+                // One tie between two entrants who were out, in every
+                // field but that of three, and it is in the last round
+                expect($played['placementTies'])->toHaveCount($size === 3 ? 0 : 1, $context)
+                    ->and($played['rounds'])->toHaveCount($bracketRounds, $context);
+
+                // The first four places are a tier each (three, in a
+                // field of three), and no tied set reaches them
+                $sizes = array_map(count(...), $played['tiers']);
+                $decided = min(4, $size);
+                expect(count($sizes))->toBe($bracketRounds + ($size === 3 ? 1 : 2), $context)
+                    ->and(array_sum($sizes))->toBe($size, $context)
+                    ->and(array_slice($sizes, 0, $decided))->toBe(array_fill(0, $decided, 1), $context);
+
+                $standings = $played['outcome']->getStandings();
+                $entries = array_values($standings->getEntries());
+                foreach ($played['placementTies'] as [$advancerId, $otherId]) {
+                    expect($entries[2]->getParticipant()->getId())->toBe($advancerId, $context)
+                        ->and($entries[3]->getParticipant()->getId())->toBe($otherId, $context);
+
+                    // The tie decides, not the records: the sweep counts
+                    // the brackets in which the entrant placed fourth has
+                    // the better record of the two
+                    $decidedAgainstTheRecords += $entries[3]->getRankingValue() > $entries[2]->getRankingValue() ? 1 : 0;
+                }
+                expect(array_map(
+                    fn(Participant $participant): string => $participant->getId(),
+                    RankRangeSelector::overall(1, $decided)->select($played['outcome'])
+                ))->toBe(array_map(
+                    fn(StandingEntry $entry): string => $entry->getParticipant()->getId(),
+                    array_slice($entries, 0, $decided)
+                ), $context);
+
+                // The same seed without the option plays the same bracket:
+                // every round is the same, the last one lacks the tie, and
+                // the placement is the same with places 3 and 4 in one tier
+                $without = playForPlacement($engineWithout, $field, $seed * 100 + $size, $legs, 1);
+                $lastRound = $played['rounds'][$bracketRounds - 1];
+                $lastRoundWithout = $without['rounds'][$bracketRounds - 1];
+                $merged = $played['tiers'];
+                if ($size > 3) {
+                    $thirdAndFourth = [...$merged[2], ...$merged[3]];
+                    sort($thirdAndFourth, SORT_STRING);
+                    array_splice($merged, 2, 2, [$thirdAndFourth]);
+                }
+
+                expect($without['rounds'])->toHaveCount($bracketRounds, $context)
+                    ->and(array_slice($played['rounds'], 0, -1))->toBe(array_slice($without['rounds'], 0, -1), $context)
+                    ->and(array_slice($lastRound, 0, $legs))->toBe($lastRoundWithout, $context)
+                    ->and($lastRound)->toHaveCount($size === 3 ? $legs : 2 * $legs, $context)
+                    ->and($without['placementTies'])->toBe([], $context)
+                    ->and($merged)->toBe($without['tiers'], $context);
+                ++$brackets;
+            }
+        }
+
+        expect($brackets)->toBe(1200);
+        if ($legs === 2) {
+            // Two legs give records the tie decision goes against
+            expect($decidedAgainstTheRecords)->toBeGreaterThan(0);
+        }
     })->with([['fixed path'], ['re-seeded'], ['two legs'], ['two legs, re-seeded']]);
 
     // 32 field sizes and 60 seeds: 1,920 brackets for each variant.

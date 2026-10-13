@@ -28,7 +28,10 @@ readonly class Event
      * @param Round|null $round The round the event is played in; null for an event not yet in a round
      * @param array<string, mixed> $metadata Free-form data. The library reads one key, 'tie_leg',
      *                                       which the elimination engines set on the two events
-     *                                       of a two-legged tie
+     *                                       of a two-legged tie. The single elimination engine
+     *                                       also sets 'bracket_tie' on the events of the last
+     *                                       round of a bracket with a third-place tie, which
+     *                                       only Stage\BracketTie::of() reads
      *
      * @throws InvalidInputException When fewer than 2 participants are provided
      */

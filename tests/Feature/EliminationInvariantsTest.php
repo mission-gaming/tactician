@@ -10,12 +10,16 @@ use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Tests\Support\AwkwardIds;
+use PHPUnit\Framework\Assert;
+use PHPUnit\Framework\AssertionFailedError;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -313,6 +317,368 @@ it('resolves double elimination the same way whatever the ids are', function (
     ->with(AwkwardIds::dataset())
     ->with([[2], [3], [4], [5], [6]])
     ->with([[42], [1337]]);
+
+// Third-place sweeps. With the option, the last round of a single
+// elimination bracket holds a second tie, between the two entrants who went
+// out in the round before it. Whatever the results, the bracket is the
+// bracket it is without the option, with that one tie more, and the two ties
+// of the last round decide places 1 to 4. The books below are kept from the
+// rounds as they were played: who is in which tie is never asked of the
+// engine, whose marks on the events are compared with them.
+
+/**
+ * Play a single elimination bracket to the end, tie by tie. Who advances
+ * from each tie is drawn from a seeded randomizer, and so is how: a
+ * single-leg tie is won, or finishes level and names who advances; the
+ * legs of a two-legged tie are each won by either side or drawn, and a
+ * tie they leave level names who advances on its last leg.
+ *
+ * Every round is checked as it is paired: no entrant is in two ties, a tie
+ * has as many events as it has legs, and all of them carry the same mark.
+ * The state goes through JSON after every round.
+ *
+ * @param array<Participant> $field
+ * @return array{state: StageState, ties: list<array{round: int, first: string, second: string, advancer: string, mark: BracketTie|null}>}
+ *                                                                                                                                 The ties in the order they were paired
+ * @throws InvalidConfigurationException When the engine rejects the recorded state
+ * @throws JsonConversionException When the state does not survive JSON
+ */
+function playBracketTieByTie(SingleEliminationEngine $engine, array $field, int $seed, int $legsPerTie): array
+{
+    $randomizer = new Randomizer(new Mt19937($seed));
+    $state = StageState::start($field)->withEngineFingerprint($engine->getFingerprint());
+    $ties = [];
+    $rounds = 0;
+
+    while (!$engine->isComplete($state)) {
+        expect(++$rounds)->toBeLessThanOrEqual(count($field), 'The bracket does not come to an end.');
+        expect($engine->getOutcome($state))->toBeNull();
+
+        $pairing = $engine->pairNextRound($state);
+        expect($pairing->getEvents())->not->toBeEmpty();
+
+        $legsByTie = [];
+        foreach ($pairing->getEvents() as $event) {
+            $ids = array_map(fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+            sort($ids, SORT_STRING);
+            $legsByTie[implode(' ', $ids)][] = $event;
+        }
+
+        $tiesOf = [];
+        $results = [];
+        foreach ($legsByTie as $legs) {
+            [$first, $second] = $legs[0]->getParticipants();
+            $tiesOf[$first->getId()] = ($tiesOf[$first->getId()] ?? 0) + 1;
+            $tiesOf[$second->getId()] = ($tiesOf[$second->getId()] ?? 0) + 1;
+
+            $marks = array_map(BracketTie::of(...), $legs);
+            expect($legs)->toHaveCount($legsPerTie);
+            foreach ($marks as $mark) {
+                expect($mark)->toBe($marks[0]);
+            }
+
+            $legWins = [$first->getId() => 0, $second->getId() => 0];
+            $legWinners = [];
+            foreach ($legs as $leg) {
+                $winner = [$first, $second, null][$randomizer->getInt(0, 2)];
+                $legWinners[] = $winner;
+                if ($winner !== null) {
+                    ++$legWins[$winner->getId()];
+                }
+            }
+
+            $level = $legWins[$first->getId()] === $legWins[$second->getId()];
+            $advancer = match (true) {
+                $level => $randomizer->getInt(0, 1) === 0 ? $first : $second,
+                $legWins[$first->getId()] > $legWins[$second->getId()] => $first,
+                default => $second,
+            };
+
+            foreach ($legs as $index => $leg) {
+                $results[] = new Result(
+                    $leg,
+                    $legWinners[$index],
+                    [],
+                    $level && $index === count($legs) - 1 ? [TieDecision::TIE_WINNER_KEY => $advancer->getId()] : []
+                );
+            }
+
+            $ties[] = [
+                'round' => $pairing->getRoundNumber(),
+                'first' => $first->getId(),
+                'second' => $second->getId(),
+                'advancer' => $advancer->getId(),
+                'mark' => $marks[0],
+            ];
+        }
+
+        // Every entrant is in at most one tie of a round
+        expect(array_unique(array_values($tiesOf)))->toBe([1]);
+        foreach ($pairing->getByes() as $bye) {
+            expect($tiesOf)->not->toHaveKey($bye->getId());
+        }
+
+        $state = StageState::fromJson($state->withRoundPlayed($pairing, $results)->toJson());
+    }
+
+    return ['state' => $state, 'ties' => $ties];
+}
+
+/**
+ * Run one check for every field size and seed of a sweep, and name the
+ * case in the message of a failure. The sweeps below run inside one test
+ * for each variant: a test for every case would be several hundred more.
+ *
+ * @param list<int> $fieldSizes
+ * @param list<int> $seeds
+ * @param Closure(int, int): void $check Given the field size and the seed
+ * @return int The number of cases checked
+ * @throws AssertionFailedError When a case fails, or throws anything
+ */
+function sweepThirdPlaceCases(string $variant, array $fieldSizes, array $seeds, Closure $check): int
+{
+    $cases = 0;
+    foreach ($fieldSizes as $fieldSize) {
+        foreach ($seeds as $seed) {
+            try {
+                $check($fieldSize, $seed);
+            } catch (Throwable $failure) {
+                Assert::fail("{$variant}, n={$fieldSize}, seed {$seed}: " . $failure::class . ': ' . $failure->getMessage());
+            }
+            ++$cases;
+        }
+    }
+
+    return $cases;
+}
+
+/**
+ * What must hold of one bracket played with the third-place option.
+ *
+ * @throws InvalidConfigurationException When the engine rejects the recorded state
+ * @throws JsonConversionException When the state does not survive JSON
+ */
+function expectThirdPlaceBracket(EliminationOptions $options, int $fieldSize, int $seed): void
+{
+    $engine = new SingleEliminationEngine($options);
+    $field = invariantField($fieldSize);
+    $legs = $options->legsPerTie;
+
+    ['state' => $state, 'ties' => $ties] = playBracketTieByTie($engine, $field, $seed, $legs);
+
+    // The stage completes, in the rounds of the bracket without the tie,
+    // with the events its plan says it has: one tie more than n-1 where
+    // two entrants went out before the last round
+    $lastRound = (int) ceil(log($fieldSize, 2));
+    $hasThirdPlaceTie = $fieldSize >= 4;
+    $outcome = $engine->getOutcome($state);
+    assert($outcome !== null);
+
+    expect($engine->isComplete($state))->toBeTrue()
+        ->and($state->getLastRound()?->getRoundNumber())->toBe($lastRound)
+        ->and($state->getLastRound()?->getLabel())->toBe('final')
+        ->and($ties)->toHaveCount($fieldSize - 1 + ($hasThirdPlaceTie ? 1 : 0))
+        ->and($outcome->getResults())->toHaveCount($legs * count($ties))
+        ->and($engine->getPlan($state)->getExpectedEventCount())->toBe($legs * count($ties))
+        ->and($engine->getPlan($state)->hasThirdPlaceTie())->toBe($hasThirdPlaceTie)
+        ->and($engine->getPlan($state)->getTotalRounds())->toBe($lastRound);
+
+    // The books: an entrant is out once it did not advance from a tie, and
+    // the one tie between two entrants who are both out is the third-place
+    // tie
+    $wentOutIn = [];
+    $final = null;
+    $thirdPlace = null;
+    foreach ($ties as $tie) {
+        $other = $tie['advancer'] === $tie['first'] ? $tie['second'] : $tie['first'];
+
+        if (isset($wentOutIn[$tie['first']], $wentOutIn[$tie['second']])) {
+            expect($thirdPlace)->toBeNull('A second tie between entrants who were out.')
+                ->and($tie['round'])->toBe($lastRound)
+                ->and($tie['mark'])->toBe(BracketTie::ThirdPlace);
+            $thirdPlace = [$tie['advancer'], $other];
+
+            continue;
+        }
+
+        // In every other tie both entrants are still in the bracket
+        expect($wentOutIn)->not->toHaveKey($tie['first'])
+            ->and($wentOutIn)->not->toHaveKey($tie['second']);
+
+        if ($tie['round'] === $lastRound) {
+            expect($final)->toBeNull('A second final.')
+                ->and($tie['mark'])->toBe(BracketTie::Final);
+            $final = [$tie['advancer'], $other];
+        } else {
+            // No event before the last round says it is one of its ties
+            expect($tie['mark'])->toBeNull();
+        }
+
+        $wentOutIn[$other] = $tie['round'];
+    }
+
+    assert($final !== null);
+    expect($thirdPlace !== null)->toBe($hasThirdPlaceTie);
+
+    // The four entrants of the last round: the two who went out in the
+    // round before it are in the third-place tie, and nobody else is
+    $outBeforeTheLastRound = array_keys(array_filter($wentOutIn, fn(int $round): bool => $round === $lastRound - 1));
+    $inThirdPlaceTie = $thirdPlace ?? [];
+    sort($outBeforeTheLastRound, SORT_STRING);
+    sort($inThirdPlaceTie, SORT_STRING);
+    expect($outBeforeTheLastRound)->toHaveCount($hasThirdPlaceTie ? 2 : 1)
+        ->and($inThirdPlaceTie)->toBe($hasThirdPlaceTie ? $outBeforeTheLastRound : []);
+
+    // Places 1 to 4 follow the two ties, each alone in its tier; in a field
+    // of three the one entrant who went out before the final is third
+    $placed = [...$final, ...($thirdPlace ?? $outBeforeTheLastRound)];
+    $standings = $outcome->getStandings();
+    $table = array_map(fn($entry): string => $entry->getParticipant()->getId(), array_values($standings->getEntries()));
+
+    expect(array_slice($table, 0, count($placed)))->toBe($placed)
+        ->and(array_slice($standings->getTiers(), 0, count($placed)))->toBe(array_keys($placed))
+        ->and(array_map(
+            fn(Participant $participant): string => $participant->getId(),
+            RankRangeSelector::overall(1, count($placed))->select($outcome)
+        ))->toBe($placed);
+    foreach ($standings->getTiedSets() as $tiedSet) {
+        expect($tiedSet->getFirstPosition())->toBeGreaterThan(count($placed));
+    }
+
+    // The outcome selectors read one participant from each tie of the
+    // last round, the final's first
+    $ids = fn(array $participants): array => array_map(fn(Participant $participant): string => $participant->getId(), $participants);
+    expect($ids(MatchOutcomeSelector::winners()->select($outcome)))
+        ->toBe($thirdPlace === null ? [$final[0]] : [$final[0], $thirdPlace[0]])
+        ->and($ids(MatchOutcomeSelector::losers()->select($outcome)))
+        ->toBe($thirdPlace === null ? [$final[1]] : [$final[1], $thirdPlace[1]]);
+
+    // The marks are stored with the events: the state went through JSON
+    // after every round
+    $marks = [];
+    foreach ($state->getLastRound()?->getEvents() ?? [] as $event) {
+        $marks[] = BracketTie::of($event);
+    }
+    expect($marks)->toBe([
+        ...array_fill(0, $legs, BracketTie::Final),
+        ...array_fill(0, $hasThirdPlaceTie ? $legs : 0, BracketTie::ThirdPlace),
+    ]);
+
+    // A single-leg tie that finished level counts as won by whoever
+    // advanced, the third-place tie included: nobody has a draw, and the
+    // entrant placed fourth did not advance from two ties
+    if ($legs === 1) {
+        foreach ($standings->getEntries() as $entry) {
+            $id = $entry->getParticipant()->getId();
+            expect($entry->getDraws())->toBe(0)
+                ->and($entry->getLosses())->toBe(match (true) {
+                    $id === $final[0] => 0,
+                    $thirdPlace !== null && $id === $thirdPlace[1] => 2,
+                    default => 1,
+                });
+        }
+    }
+}
+
+/**
+ * The options of a variant of the third-place sweeps, with the tie or
+ * without it.
+ *
+ * @throws InvalidConfigurationException Never: every variant is a valid configuration
+ * @throws UnexpectedValueException When the variant is not one of the four
+ */
+function thirdPlaceSweepOptions(string $variant, bool $thirdPlace): EliminationOptions
+{
+    return match ($variant) {
+        'fixed path' => new EliminationOptions(thirdPlace: $thirdPlace),
+        're-seeded' => new EliminationOptions(reseedEachRound: true, thirdPlace: $thirdPlace),
+        'two legs' => new EliminationOptions(legsPerTie: 2, thirdPlace: $thirdPlace),
+        'two legs, re-seeded' => new EliminationOptions(legsPerTie: 2, reseedEachRound: true, thirdPlace: $thirdPlace),
+        default => throw new UnexpectedValueException($variant),
+    };
+}
+
+// 11 field sizes and 3 seeds: 33 brackets for each variant.
+it('plays the third-place tie between the two entrants who went out before the last round, whatever the outcomes', function (
+    string $variant
+): void {
+    $options = thirdPlaceSweepOptions($variant, true);
+
+    expect(sweepThirdPlaceCases(
+        $variant,
+        [3, 4, 5, 6, 7, 8, 9, 12, 16, 17, 32],
+        [42, 1337, 20260],
+        fn(int $fieldSize, int $seed) => expectThirdPlaceBracket($options, $fieldSize, $seed)
+    ))->toBe(33);
+})->with([['fixed path'], ['re-seeded'], ['two legs'], ['two legs, re-seeded']]);
+
+// 10 field sizes and 2 seeds: 20 brackets for each variant, each played
+// with the option and without it.
+it('pairs every round as the bracket without a third-place tie does, and adds one tie to the last', function (
+    string $variant
+): void {
+    $optionsWithout = thirdPlaceSweepOptions($variant, false);
+    $optionsWith = thirdPlaceSweepOptions($variant, true);
+    $legs = $optionsWith->legsPerTie;
+
+    $check = function (int $fieldSize, int $seed) use ($optionsWithout, $optionsWith, $legs): void {
+        $field = invariantField($fieldSize);
+
+        // The draws of the two brackets are the same up to the final,
+        // which is paired before the third-place tie: the same seed plays
+        // the same bracket
+        $without = playBracketTieByTie(new SingleEliminationEngine($optionsWithout), $field, $seed, $legs);
+        $with = playBracketTieByTie(new SingleEliminationEngine($optionsWith), $field, $seed, $legs);
+
+        $unmarked = fn(array $tie): array => [$tie['round'], $tie['first'], $tie['second'], $tie['advancer']];
+        $tiesWithout = array_map($unmarked, $without['ties']);
+        $tiesWith = array_map($unmarked, $with['ties']);
+
+        expect(array_slice($tiesWith, 0, count($tiesWithout)))->toBe($tiesWithout)
+            ->and(count($tiesWith) - count($tiesWithout))->toBe($fieldSize >= 4 ? 1 : 0);
+
+        // Without the option no event says which tie it is, in any round
+        foreach ($without['ties'] as $tie) {
+            expect($tie['mark'])->toBeNull();
+        }
+        foreach ($without['state']->getResults() as $result) {
+            expect($result->getEvent()->hasMetadata(BracketTie::METADATA_KEY))->toBeFalse();
+        }
+
+        // The byes are the byes of the bracket without the tie
+        expect($with['state']->getByeCounts())->toBe($without['state']->getByeCounts());
+    };
+
+    expect(sweepThirdPlaceCases($variant, [3, 4, 5, 6, 7, 8, 9, 12, 16, 17], [42, 1337], $check))->toBe(20);
+})->with([['fixed path'], ['re-seeded'], ['two legs'], ['two legs, re-seeded']]);
+
+// 4 field sizes and 2 seeds: 8 brackets for each set of ids and variant.
+it('resolves a bracket with a third-place tie the same way whatever the ids are', function (array $ids): void {
+    foreach (['fixed path', 're-seeded', 'two legs'] as $variant) {
+        $options = thirdPlaceSweepOptions($variant, true);
+        $engine = new SingleEliminationEngine($options);
+
+        $check = function (int $fieldSize, int $seed) use ($ids, $options, $engine): void {
+            $field = AwkwardIds::participants($ids, $fieldSize);
+
+            [$played, $state] = playBracketBySeat($engine, $field, $seed, $options->legsPerTie);
+
+            $outcome = $engine->getOutcome($state);
+            assert($outcome !== null);
+            expect($outcome->getResults())->toHaveCount($options->legsPerTie * ($fieldSize - 1 + ($fieldSize >= 4 ? 1 : 0)));
+
+            // No two ties of a round share a pairing.
+            foreach ($state->getRoundsPlayed() as $pairing) {
+                $counts = AwkwardIds::pairingCounts($pairing->getEvents());
+                expect(array_values(array_unique($counts)))->toBe([$options->legsPerTie]);
+            }
+
+            expect($played)->toBe(playBracketBySeat($engine, invariantField($fieldSize), $seed, $options->legsPerTie)[0]);
+        };
+
+        expect(sweepThirdPlaceCases($variant, [3, 4, 5, 6], [42, 1337], $check))->toBe(8);
+    }
+})->with(AwkwardIds::dataset());
 
 // Level-event sweeps. A single-leg event may finish level; the application
 // then records who advances as 'tie_winner' metadata on the event's result.

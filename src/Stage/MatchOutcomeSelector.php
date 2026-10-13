@@ -102,6 +102,13 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      * of a bracket, winners mode gives the one participant who took the
      * title, also where the standings rank another participant first.
      *
+     * The last round of a single elimination bracket with a third-place
+     * tie holds two ties, the final first, so the selection has two
+     * participants: in winners mode the one who took the title and then
+     * the one placed third, in losers mode the ones placed second and
+     * fourth. The first participant is the one a bracket without the tie
+     * gives. BracketTie::of() says which tie an event of the round is.
+     *
      * Only the final round is read, from the outcome's results for that
      * round's events; the standings are not consulted. Every tie of the
      * round must be complete, and one that finished level must carry its

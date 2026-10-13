@@ -706,6 +706,19 @@ describe('the reason of a configuration error', function (): void {
             fn() => new DoubleEliminationEngine(new EliminationOptions(reseedEachRound: true)),
             InvalidConfigurationReason::IncompatibleOptions,
         ],
+        'a third-place tie asked of a double elimination' => [
+            fn() => new DoubleEliminationEngine(new EliminationOptions(thirdPlace: true)),
+            InvalidConfigurationReason::IncompatibleOptions,
+        ],
+        'a third-place tie asked of a bracket of two' => [
+            fn() => (new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)))
+                ->pairNextRound(StageState::start(configurationErrorField(2))),
+            InvalidConfigurationReason::TooFewParticipants,
+        ],
+        'a third-place option given as a string' => [
+            fn() => EliminationOptions::fromArray(['third_place' => 'yes']),
+            InvalidConfigurationReason::WrongValueType,
+        ],
         'no pools' => [
             fn() => PoolDistributor::serpentine([new Participant('a', 'A'), new Participant('b', 'B')], 0),
             InvalidConfigurationReason::ValueOutOfRange,
