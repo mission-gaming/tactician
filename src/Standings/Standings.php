@@ -26,8 +26,9 @@ readonly class Standings implements IteratorAggregate, Countable
     /**
      * The entries are kept as given and are not sorted.
      *
-     * @param array<StandingEntry> $entries Entries ordered best-first. Pass a list (keys 0,
-     *                                      1, ...): getPosition() reads a position from the key
+     * @param array<StandingEntry> $entries Entries ordered best-first. The order of the array
+     *                                      is the order of the table; its keys decide nothing
+     *                                      (getEntries() returns them as given)
      */
     public function __construct(private array $entries) {}
 
@@ -60,14 +61,18 @@ readonly class Standings implements IteratorAggregate, Countable
      * The 1-based position of the participant with this ID, or null when the
      * table has no entry for it.
      *
-     * Positions are never shared: two entries that no result separates have
-     * consecutive positions (see getTiedSets()).
+     * The position is the entry's place in the order of the table, as
+     * getTiedSets() and iteration count it; the array keys the table was
+     * built with are not read. Positions are never shared: two entries that
+     * no result separates have consecutive positions (see getTiedSets()).
      */
     public function getPosition(Participant $participant): ?int
     {
-        foreach ($this->entries as $index => $entry) {
+        $position = 0;
+        foreach ($this->entries as $entry) {
+            ++$position;
             if ($entry->getParticipant()->getId() === $participant->getId()) {
-                return $index + 1;
+                return $position;
             }
         }
 

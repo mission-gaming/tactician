@@ -262,25 +262,32 @@ final readonly class TimelineDefinition
     /**
      * Serialize back to the plain-data form fromArray() accepts.
      *
-     * The start is written as local time in its own timezone, to the
-     * second (`2026-08-01 19:00:00`), with that timezone's name beside it;
-     * a fraction of a second is not written. `slot_interval` and
-     * `resources` are left out when there is none. The intervals are
-     * written by formatInterval(), with what that leaves out.
+     * The start is written as local time in its own timezone
+     * (`2026-08-01 19:00:00`), with that timezone's name beside it; a
+     * fraction of a second is written after the seconds when the start has
+     * one (`2026-08-01 19:00:00.250000`). `slot_interval` and `resources`
+     * are left out when there is none. The intervals are written by
+     * writeInterval(), which refuses one that would not read back as the
+     * same interval: a definition that is written reads back to the same
+     * slot times.
      *
      * @return array{start: string, timezone: string, round_interval: string, slots_per_round: int, slot_interval?: string, resources?: array<string>}
+     *
+     * @throws InvalidConfigurationException When an interval has no ISO 8601 duration that reads
+     *                                       back as the same interval (reason `NotSerializable`);
+     *                                       writeInterval() lists which
      */
     public function toArray(): array
     {
         $data = [
-            'start' => $this->start->format('Y-m-d H:i:s'),
+            'start' => ZonedTime::write($this->start),
             'timezone' => $this->start->getTimezone()->getName(),
-            'round_interval' => self::formatInterval($this->roundInterval),
+            'round_interval' => self::writeInterval($this->roundInterval, 'round_interval'),
             'slots_per_round' => $this->slotsPerRound,
         ];
 
         if ($this->slotInterval !== null) {
-            $data['slot_interval'] = self::formatInterval($this->slotInterval);
+            $data['slot_interval'] = self::writeInterval($this->slotInterval, 'slot_interval');
         }
 
         if ($this->resources !== []) {
@@ -472,21 +479,37 @@ final readonly class TimelineDefinition
     }
 
     /**
-     * Format an interval as an ISO 8601 duration that parseInterval() reads
-     * back: the non-zero parts of years, months, days, hours, minutes and
-     * seconds, in that order, and `PT0S` when all are zero.
+     * Describe an interval as an ISO 8601 duration: the non-zero parts of
+     * years, months, days, hours, minutes and seconds, in that order, and
+     * `PT0S` when all are zero.
      *
      * The parts are written as the interval holds them and not carried over
      * (`PT90M` stays `PT90M`); weeks are written as days (`P1W` is `P7D`),
-     * which is how PHP holds them. Not written: the sign of an inverted
-     * interval, a fraction of a second, and the total number of days of an
-     * interval that `DateTimeImmutable::diff()` returned, and the relative
-     * part of one made by `DateInterval::createFromDateString()` (`next
-     * weekday` is written `PT0S`). An interval with any of those does not
-     * come back as it was.
+     * which is how PHP holds them. For an interval built from an ISO 8601
+     * duration that is the duration, and parseInterval() reads it back.
+     *
+     * The method describes every interval, because errors quote it, and an
+     * interval can hold what a duration PHP reads cannot. Those parts are
+     * shown and not left out, in a form parseInterval() refuses: the sign of
+     * an inverted interval (`-P7D`), a fraction of a second (`PT1.5S`), and,
+     * for an interval made by `DateInterval::createFromDateString()` from
+     * anything but amounts of time (`1 week`, `25 minutes`), the relative
+     * date string itself (`next weekday`). A part that is negative is
+     * written with its sign (`P8DT-1H`), which parseInterval() refuses too.
+     * Two things are not shown: PHP adds the hours, minutes and seconds of
+     * an interval from `createFromDateString()` or from `diff()` as local
+     * time, and `PT2H` looks the same for it; and an interval made from
+     * amounts of time in a string is added one step at a time, where the
+     * duration shown is not. To write an interval as plain data use
+     * writeInterval(), which refuses all of these.
      */
     public static function formatInterval(DateInterval $interval): string
     {
+        $relative = IntervalArithmetic::relativeDateString($interval);
+        if ($relative !== null && !self::isAmountsOnly($relative)) {
+            return $relative;
+        }
+
         $date = '';
         if ($interval->y !== 0) {
             $date .= $interval->y . 'Y';
@@ -505,14 +528,103 @@ final readonly class TimelineDefinition
         if ($interval->i !== 0) {
             $time .= $interval->i . 'M';
         }
-        if ($interval->s !== 0) {
+        // The fraction is held in microseconds at most; `==` because PHP
+        // holds it as a float and 0.0 is also -0.0
+        $microseconds = min(999_999, (int) round(abs($interval->f) * 1_000_000));
+        if ($microseconds !== 0) {
+            $time .= $interval->s . '.' . rtrim(sprintf('%06d', $microseconds), '0') . 'S';
+        } elseif ($interval->s !== 0) {
             $time .= $interval->s . 'S';
         }
+
+        $sign = $interval->invert === 1 ? '-' : '';
 
         if ($date === '' && $time === '') {
             return 'PT0S';
         }
 
-        return 'P' . $date . ($time !== '' ? 'T' . $time : '');
+        return $sign . 'P' . $date . ($time !== '' ? 'T' . $time : '');
+    }
+
+    /**
+     * Write an interval for plain data: the ISO 8601 duration
+     * formatInterval() gives, where parseInterval() reads that back as an
+     * interval that gives a timeline or a grid the slot times this one
+     * gives. Any other interval is refused, and never written as a duration
+     * that means something else.
+     *
+     * Refused:
+     *
+     * - an interval made by `DateInterval::createFromDateString()`, whatever
+     *   the string. One that is more than amounts of time (`next weekday`,
+     *   `3 weekdays`, `last day of next month`) has no duration at all. One
+     *   that is amounts of time alone (`1 week`, `1 month`, `25 minutes`)
+     *   has one, and it is another interval: PHP does not show the parts of
+     *   an interval made from a string, so the timeline and the grid add it
+     *   one step at a time, each step from the one before, and its hours,
+     *   minutes and seconds as local time, where a duration read back is
+     *   added as all its steps at once from the start and its hours as
+     *   elapsed time. `1 month` from 31 January is 3 March and then 3
+     *   April; `P1M` is 28 February and then 31 March;
+     * - an inverted interval, and one with a negative part (hours set to
+     *   -1): a duration PHP reads has no sign;
+     * - an interval with a fraction of a second;
+     * - an interval from `DateTimeImmutable::diff()` that has hours,
+     *   minutes or seconds. PHP adds those as local time, and the hours of a
+     *   duration read back are elapsed time: across a daylight-saving change
+     *   the two are an hour apart. An interval from `diff()` of whole days,
+     *   months and years is written, because those are calendar steps in
+     *   both.
+     *
+     * Refusing to write an interval does not refuse to use it: a timeline or
+     * a grid built with one gives its slot times as before. To have plain
+     * data, build the interval from an ISO 8601 duration
+     * (`new DateInterval('PT25M')`).
+     *
+     * @param string $key The configuration key the interval is written under, for the error
+     *
+     * @throws InvalidConfigurationException When the interval has no duration that reads back as
+     *                                       the same interval (reason `NotSerializable`)
+     */
+    public static function writeInterval(DateInterval $interval, string $key): string
+    {
+        $relative = IntervalArithmetic::relativeDateString($interval);
+        $hasTime = $interval->h !== 0 || $interval->i !== 0 || $interval->s !== 0;
+        $hasNegativePart = min($interval->y, $interval->m, $interval->d, $interval->h, $interval->i, $interval->s) < 0;
+
+        $why = match (true) {
+            $relative !== null && !self::isAmountsOnly($relative) => 'it was made from a relative date string, which a duration cannot state',
+            $relative !== null => 'it was made from a relative date string: such an interval is added one step at a time and as local time, and a duration read back is not',
+            $interval->invert === 1 => 'it is negative, and a duration PHP reads has no sign',
+            $hasNegativePart => 'it has a negative part, which a duration PHP reads cannot hold',
+            round(abs($interval->f) * 1_000_000) >= 1.0 => 'it has a fraction of a second, which a duration PHP reads cannot hold',
+            $hasTime && $interval->days !== false => 'PHP adds its hours, minutes and seconds as local time, and those of a duration read back as elapsed time',
+            default => null,
+        };
+
+        if ($why !== null) {
+            throw new InvalidConfigurationException(
+                "{$key} cannot be written as an ISO 8601 duration: {$why}",
+                [$key => self::formatInterval($interval)],
+                reason: InvalidConfigurationReason::NotSerializable
+            );
+        }
+
+        return self::formatInterval($interval);
+    }
+
+    /**
+     * Whether a relative date string is nothing but amounts of time: a
+     * number and a unit, any number of times. Such a string has no part
+     * that the years, months, days, hours, minutes and seconds of the
+     * interval do not show. A weekday, `next`, `last`, `ago`, a sign and a
+     * unit not listed here are not amounts.
+     */
+    private static function isAmountsOnly(string $dateString): bool
+    {
+        return preg_match(
+            '/^(?:\s*\+?\d+\s*(?:years?|months?|weeks?|days?|hours?|minutes?|mins?|seconds?|secs?)\b)+\s*$/i',
+            $dateString
+        ) === 1;
     }
 }
