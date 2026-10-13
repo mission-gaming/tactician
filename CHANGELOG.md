@@ -22,7 +22,7 @@ heading **Output change (fix)**.
   N−1 round intervals taken as one step, and a slot is its round's first
   slot plus its slot intervals taken as one step.
   `SessionGrid::getSlotTime()` and `positionOf()` compute a slot from its
-  session's start the same way. Three things change:
+  session's start the same way. Four things change:
 
   - *Months keep the day, or the month end.* An interval of months or years
     from the 29th, 30th or 31st keeps that day of the month, and a month too
@@ -45,20 +45,38 @@ heading **Output change (fix)**.
     an interval with a date part and a time part (`P1DT12H`) in a timezone
     that changes its clocks: the days are counted in local time and the
     hours as elapsed time, each once from the start.
+  - *A local time that occurs twice is the first of the two.* For an
+    interval of days, weeks, months or years, a round at a local time the
+    clocks repeat (01:30 on the night they go back) is the earlier of the
+    two instants, whatever season the start is in. Adding round by round
+    gave the one at the offset of the round before, which was the first as
+    well, except where the round before was already on winter time. That
+    takes a yearly interval: `P1Y` from 6 November 2023 at 01:30 in
+    `America/New_York` gave the second 01:30 (06:30 UTC) on 6 November
+    2044 and now gives the first (05:30 UTC). An interval that also has
+    hours, minutes or seconds takes the one PHP takes, the one at the
+    start's own offset from UTC.
 
   Who is affected: a timeline whose round interval has months or years and
   whose start is on the 29th, 30th or 31st; a timeline or a grid with an
   interval of days, weeks or months whose local time of day falls in the
-  hour a clock change skips; and a timeline whose one interval mixes months
-  with days, or days with hours in a timezone with clock changes. What to
+  hour a clock change skips; a timeline whose one interval mixes months
+  with days, or days with hours in a timezone with clock changes; and a
+  timeline with an interval of years whose local time of day falls in the
+  hour a clock change repeats. What to
   check: kickoffs stored from such a timeline no longer equal what
   `getSlotTime()` and `TimelineAssigner` return, so assign again before
-  comparing. Nothing else changes: an interval of days, weeks, hours or
+  comparing. For such a grid (slots a day or more apart, one of them in a
+  skipped hour) the kickoffs of a repack's assignments move with the
+  slots, and `RepackOutcome::fingerprint()`, which covers the kickoffs,
+  differs from one stored before. Nothing else changes: an interval of days, weeks, hours or
   minutes at a time of day that exists on every date, and an interval of
   months from the 1st to the 28th, give the kickoffs they gave, and no
   golden fixture changed. An interval made by
   `DateInterval::createFromDateString()` has no multiple and is still added
-  one step at a time.
+  one step at a time, `createFromDateString('1 month')` included: PHP does
+  not show the parts of such an interval, so from 31 January it still
+  gives 3 March, 3 April. Write `new DateInterval('P1M')` for month ends.
 - **`PairingSpacingMetric` no longer assumes that rounds start at 1.** It
   took the highest round number for the length of the schedule, so the same
   schedule numbered from a later round measured worse: a mirrored two-leg
@@ -94,7 +112,8 @@ heading **Output change (fix)**.
   order of the participant list is still shuffled by the `Randomizer` given
   to the scheduler, or not at all.
 - **`InvalidConfigurationReason::OverlappingTime`** (`overlapping_time`), the
-  reason of the two rejections under Changed.
+  reason of the two overlap rejections under Changed. A `match` over every
+  case of the enum needs an arm for it.
 
 ### Changed
 
@@ -153,7 +172,10 @@ heading **Output change (fix)**.
   refused. Who is affected: a timeline with more than one slot per round
   whose slots span the round interval or more. What to check: make the
   round interval longer than (slots − 1) × slot interval; stored
-  configuration of such a timeline no longer loads.
+  configuration of such a timeline no longer loads. The assigner compares
+  every slot the timeline declares for the round, filled or not, with the
+  first slot of the round after it, whether or not the schedule has that
+  round: a timeline is valid for a round or not, whatever is placed on it.
 - **A session grid whose sessions overlap is rejected.** `SessionGrid`
   checked only that session starts ascend. The constructor and
   `fromArray()` now throw an `InvalidConfigurationException`
@@ -161,12 +183,38 @@ heading **Output change (fix)**.
   start of the next session, slot-count overrides applied. Before and after:
   sessions at 20:00 and 20:25 with two slots 25 minutes apart were accepted,
   two positions were at 20:25, and a repack placed one participant in both
-  with no violation; the grid is now refused. Who is affected: an
+  and reported no double booking; the grid is now refused. Who is affected: an
   instant-based grid whose sessions run into one another. What to check:
   space the session starts, or lower the slot count of the earlier session
   with an override; `positionOf()` given an instant no longer has two
   positions to choose between. A shape-only grid has no instants and is not
-  checked, and the last session can still run as deep as it needs to.
+  checked, and the last session can still run as deep as it needs to. A
+  grid whose sessions are interleaved without sharing an instant (sessions
+  at 20:00 and 21:00 with four slots 25 minutes apart, the last of them at
+  21:15) is refused too: its positions are not in time order.
+- **Two slots of one round, or of one session, at the same time are
+  rejected.** The slots of a round and of a session must be at rising
+  times, and a round of one slot must be before the next round. An interval
+  written as an ISO 8601 duration always gives that, so this does not
+  affect `new DateInterval('PT1H')` or plain data. It affects an interval
+  that `DateTimeImmutable::diff()` returned, whose hours PHP adds as local
+  time: with slots one such hour apart from 00:30 in `Europe/London` on 29
+  March 2026, the slots are 00:30, 02:30 (there is no 01:30) and 02:30.
+  Adding slot by slot gave 00:30, 02:30, 03:30, so this is a case the
+  change above made, and it is refused where it would be a silent double
+  booking: by `new TimelineDefinition()` for the first round, by
+  `TimelineAssigner::assign()` and `assignRound()` for the round they
+  assign, and by `new SessionGrid()` for any session, all with
+  `OverlappingTime`. What to check: write the interval as a duration
+  (`PT1H`), which is elapsed time and gives 00:30, 02:30, 03:30.
+- **A round or a slot too far from its start is refused.** Slot times are
+  now multiplied out, and PHP adds an interval too large for its timestamps
+  without an error and returns a date that has wrapped round.
+  `TimelineDefinition::getSlotTime()` and the constructors throw an
+  `InvalidConfigurationException` (`ValueOutOfRange`) for a time more than
+  10^14 days (some 270 billion years) from the start it is counted from.
+  Nothing that returned a time before is affected: such a round was never
+  reached, one addition per round.
 - **`TimelineAssigner::assignRound()` applies the assigner's rules.** It
   ignored them: an assigner built with a `BlackoutRule` refused a kickoff
   inside the window from `assign()` and scheduled it from `assignRound()`.

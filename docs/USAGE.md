@@ -2061,7 +2061,11 @@ The rules of the mechanism:
   the example below this list). One case keeps neither: a kickoff that
   falls in the hour the clocks skip (01:30 in London on the night they go
   forward) is moved an hour later by PHP, for that round alone: the round
-  a week later is at 01:30 again.
+  a week later is at 01:30 again. A local time that occurs twice (01:30 on
+  the night the clocks go back) is the first of the two, whatever season
+  the start is in. That is so for an interval of days or longer; one that
+  also has hours, minutes or seconds (`P1DT12H`) takes the one PHP takes,
+  which is the one at the start's own offset from UTC.
 - **Months keep the day, or the month end.** An interval written in months
   or years keeps the start's day of the month, and a month that is too
   short for that day gives its last day: `P1M` from 31 January is 28
@@ -2069,13 +2073,29 @@ The rules of the mechanism:
   the end of February and the 30th of every other month. Where an interval
   has months and days (`P1M7D`), round N is the start plus N−1 times the
   months, and then N−1 times the days.
-- **A round ends before the next one starts.** The last slot of a round
-  must be before the first slot of the next round. Hourly rounds of two
-  slots an hour apart are refused (`OverlappingTime`): the second slot of
-  one round and the first slot of the next would be the same kickoff on
-  the same resources. The definition checks its first two rounds when it
-  is built; the assigner checks every round it assigns, because a short
-  month or a clock change can make a later round shorter than the first.
+- **These rules are for an ISO 8601 duration.** That is what
+  `new DateInterval('P1M')` and `round_interval` in plain data give. Two
+  other kinds of `DateInterval` differ, as PHP treats them differently. One
+  made by `DateInterval::createFromDateString()` does not show its parts,
+  so it has no multiple and is added one step at a time, each step from the
+  one before: `createFromDateString('1 month')` from 31 January is still 3
+  March, 3 April, 3 May. Write `new DateInterval('P1M')` for month ends.
+  One returned by `diff()` has its hours, minutes and seconds added as
+  local time, not as elapsed time.
+- **A round ends before the next one starts.** The slots of a round are at
+  rising times, and the last of them must be before the first slot of the
+  next round. Hourly rounds of two slots an hour apart are refused
+  (`OverlappingTime`): the second slot of one round and the first slot of
+  the next would be the same kickoff on the same resources. The definition
+  checks its first two rounds when it is built; the assigner checks every
+  round it assigns, because a short month or a clock change can make a
+  later round shorter than the first. The assigner checks the slots the
+  timeline declares for the round, whether or not the round fills them,
+  and against the round after it whether or not the schedule has one.
+- **A round too far away is refused.** A round whose time is more than
+  some 270 billion years from the start, which is past what PHP's
+  timestamps hold, fails with the reason `ValueOutOfRange`; PHP would
+  return a date that has wrapped round.
 - **Deterministic filling.** A round's events fill its slots in schedule
   order against slot time order — the same schedule and timeline always
   produce the same kickoffs.
@@ -2319,11 +2339,13 @@ grid with sessions at 20:00 and 20:25 and two slots 25 minutes apart is
 refused when it is built (`InvalidConfigurationException`, reason
 `OverlappingTime`): the second slot of the first session and the first
 slot of the second would be the same instant, and a participant could be
-placed in both with no violation reported. The check reads each session's
+placed in both with no double booking reported. The check reads each session's
 own slot count, overrides applied, and nothing follows the last session,
-so that one can run as deep as it needs to. A shape-only grid has no
-instants and is not checked. Every slot time is computed from its
-session's start, never from the slot before it.
+so that one can run as deep as it needs to. The slots of one session must
+be at rising instants as well, which they are for a slot interval written
+as an ISO 8601 duration. A shape-only grid has no instants and is not
+checked. Every slot time is computed from its session's start, never from
+the slot before it.
 
 Events carry an opaque caller-supplied id — the library never invents
 one, never parses it, and orders results by nothing else. The same pair
@@ -2517,8 +2539,8 @@ var_dump($grid->hasInstants());                              // bool(true)
 ```
 
 The instants are compared, so the timezone the argument is written in
-does not matter. No two positions share an instant, because the sessions
-of a grid do not overlap.
+does not matter. No two positions share an instant: a grid in which two
+would is refused when it is built.
 
 ### Unbounded Capacity
 
@@ -3618,7 +3640,7 @@ identifier for logs and stored data):
 | `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed, or the datetime is relative to the current time, has no date or no year, or does not mean what it writes |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
-| `OverlappingTime` | `overlapping_time` | The slots of one round of a timeline, or of one session of a grid, run up to or past the first slot of the next |
+| `OverlappingTime` | `overlapping_time` | The slots of one round of a timeline, or of one session of a grid, run up to or past the first slot of the next, or two slots of one round or session are not at rising times |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
 | `TimelineCapacityExceeded` | `timeline_capacity_exceeded` | A round has more events than the timeline has places for |
 | `ConstraintViolation` | `constraint_violation` | Built by `SchedulingException::constraintViolation()`, which is [deprecated](#deprecations) |

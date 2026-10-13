@@ -43,6 +43,17 @@ Settled decisions beyond the sketch:
   minutes or seconds is elapsed time: `PT168H` is not `P7D`, and lands an
   hour off after the change. The note first recorded this as "wall-clock
   interval arithmetic" without the distinction.
+- **A repeated local time is the first of the two** (0.3.0): PHP reads a
+  local time that occurs twice by the offset of the time it adds to, so
+  one step from a start on winter time lands on the second 01:30 of the
+  night the clocks go back, and one step from a start on summer time on
+  the first. Round-by-round addition gave the first, the round before
+  being on summer time. For an interval with no time part,
+  `IntervalArithmetic` takes the first always, so that the kickoff does
+  not depend on the season the stage starts in. An interval with a time
+  part is left to PHP: its date part and its time part cannot be told
+  apart after the addition, and for an interval from `diff()` they cannot
+  be added separately without changing what PHP gives.
 - **Rounds do not overlap** (0.3.0): the last slot of a round must be
   before the first slot of the next round, or the same resources and the
   same participants are booked for two kickoffs at once. The definition
@@ -50,7 +61,19 @@ Settled decisions beyond the sketch:
   the assigner checks every round it assigns, since a short month or a
   clock change can shorten a later round. Events have no duration in the
   model, so "ends" means the last kickoff, and a kickoff equal to the
-  next round's first is an overlap.
+  next round's first is an overlap. The slots within a round must rise
+  too, and a round of one slot is checked against the next like any
+  other: an interval PHP adds as local time (one that `diff()` returned)
+  puts two steps at one instant where the clocks skip an hour, now that
+  each step is taken from the start. The check is of the slots a round
+  declares, not of the ones it fills, so that a timeline is valid or not
+  whatever is placed on it.
+- **A round has a furthest time** (0.3.0): the steps are multiplied out,
+  and PHP adds an interval too large for its timestamps without an error
+  and returns a date that has wrapped round. `IntervalArithmetic` refuses
+  a result more than 10^14 days from its anchor (`ValueOutOfRange`). The
+  first implementation never reached such a round: it added once per
+  round.
 - **No check of who plays.** The sketch below lists "a participant assigned
   overlapping slots" among the things that fail loudly. The assigner does
   not check it: it validates capacity and round numbers. A
