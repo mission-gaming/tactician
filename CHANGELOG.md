@@ -561,8 +561,15 @@ entry on the engine fingerprint.
   `RankRangeSelector::overall(1, 8)->comparedBy(PoolComparison::RawTotals)`
   (`'comparison' => 'raw-totals'` in plain data) selects exactly what the
   selector selected before; `PoolComparison::PerEvent` compares per event
-  played instead. Unchanged: an outcome without pools, pools of one size,
-  and every per-group selection (#94).
+  played instead. Before: `RankRangeSelector::overall(1, 8)->select($outcome)`
+  returned eight entrants for pools of 4, 4 and 3. After: it throws, and
+  with `->comparedBy(PoolComparison::RawTotals)` it returns the same eight.
+  Unchanged: an outcome without pools, pools of one size, and every
+  per-group selection (#94). ADR 0006
+  (`docs/adr/0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md`)
+  records the decision, what counts as unequal (the number of entries of
+  the pools' tables, not the events played) and what a comparison per
+  event does and does not do with tiebreaker values.
 - **Breaking: every array a `toArray()` returns starts with
   `format_version`, and a version the library does not know is refused.**
   No serialized form said which release's rules it was written under, so
