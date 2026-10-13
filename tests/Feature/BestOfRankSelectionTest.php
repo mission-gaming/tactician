@@ -762,15 +762,15 @@ describe('a best-of-rank selector as plain data', function (): void {
         $plain = BestOfRankSelector::ofRank(3, 2);
         $full = $plain->comparedBy(PoolComparison::DiscardLowest)->withTiesInsideSelectionAccepted();
 
-        expect($plain->toArray())->toBe(['rank' => 3, 'count' => 2])
-            ->and($plain->comparedBy(PoolComparison::PerEvent)->toArray())->toBe(['rank' => 3, 'count' => 2, 'comparison' => 'per-event'])
-            ->and($plain->withTableOrderAccepted()->toArray())->toBe(['rank' => 3, 'count' => 2, 'ties' => 'accept-table-order'])
-            ->and($full->toArray())->toBe(['rank' => 3, 'count' => 2, 'comparison' => 'discard-lowest', 'ties' => 'accept-inside-selection'])
+        expect($plain->toArray())->toBe(['format_version' => 1, 'rank' => 3, 'count' => 2])
+            ->and($plain->comparedBy(PoolComparison::PerEvent)->toArray())->toBe(['format_version' => 1, 'rank' => 3, 'count' => 2, 'comparison' => 'per-event'])
+            ->and($plain->withTableOrderAccepted()->toArray())->toBe(['format_version' => 1, 'rank' => 3, 'count' => 2, 'ties' => 'accept-table-order'])
+            ->and($full->toArray())->toBe(['format_version' => 1, 'rank' => 3, 'count' => 2, 'comparison' => 'discard-lowest', 'ties' => 'accept-inside-selection'])
             ->and(BestOfRankSelector::fromArray($full->toArray())->toArray())->toBe($full->toArray())
             ->and(BestOfRankSelector::fromArray(['rank' => 3, 'count' => 2, 'comparison' => null, 'ties' => 'refuse'])->toArray())
-            ->toBe(['rank' => 3, 'count' => 2])
+            ->toBe(['format_version' => 1, 'rank' => 3, 'count' => 2])
             // The selector a method was called on is not changed
-            ->and($plain->toArray())->toBe(['rank' => 3, 'count' => 2]);
+            ->and($plain->toArray())->toBe(['format_version' => 1, 'rank' => 3, 'count' => 2]);
     });
 
     it('keeps the backing strings of the comparison methods', function (): void {
@@ -808,7 +808,7 @@ describe('a best-of-rank selector as plain data', function (): void {
     it('names the key it does not know and the ones it does', function (): void {
         $refusal = bestOfRankRefusal(fn() => BestOfRankSelector::fromArray(['rank' => 3, 'count' => 2, 'mode' => 'best']));
 
-        expect($refusal->getContext())->toBe(['unknown' => ['mode'], 'known' => ['rank', 'count', 'comparison', 'ties']]);
+        expect($refusal->getContext())->toBe(['unknown' => ['mode'], 'known' => ['format_version', 'rank', 'count', 'comparison', 'ties']]);
     });
 });
 
@@ -961,11 +961,11 @@ describe('an overall rank selection across pools of unequal size', function (): 
         $selector = RankRangeSelector::overall(1, 4)->comparedBy(PoolComparison::PerEvent);
         $accepting = $selector->withTiesInsideSelectionAccepted();
 
-        expect($selector->toArray())->toBe(['mode' => 'overall', 'from' => 1, 'to' => 4, 'comparison' => 'per-event'])
+        expect($selector->toArray())->toBe(['format_version' => 1, 'mode' => 'overall', 'from' => 1, 'to' => 4, 'comparison' => 'per-event'])
             ->and($accepting->toArray())
-            ->toBe(['mode' => 'overall', 'from' => 1, 'to' => 4, 'ties' => 'accept-inside-selection', 'comparison' => 'per-event'])
+            ->toBe(['format_version' => 1, 'mode' => 'overall', 'from' => 1, 'to' => 4, 'ties' => 'accept-inside-selection', 'comparison' => 'per-event'])
             ->and(RankRangeSelector::fromArray($accepting->toArray())->toArray())->toBe($accepting->toArray())
-            ->and(RankRangeSelector::overall(1, 4)->toArray())->toBe(['mode' => 'overall', 'from' => 1, 'to' => 4])
+            ->and(RankRangeSelector::overall(1, 4)->toArray())->toBe(['format_version' => 1, 'mode' => 'overall', 'from' => 1, 'to' => 4])
             ->and(bestOfRankIds(RankRangeSelector::fromArray($selector->toArray())->select($this->outcome)))
             ->toBe(bestOfRankIds($selector->select($this->outcome)));
     });

@@ -42,8 +42,8 @@ an array put together by hand from separately serialized parts loads.
 **A missing version is version 1.** Version 1 of every form is the form
 0.3.0 writes: what 0.2.x wrote, which had no version key, and beside it
 the optional keys 0.3.0 added before the key existed (`strategy_seed` in
-round-robin options, `seed` in Swiss options and `ties` in a rank range
-selector). Each of those may be left out and is then read
+round-robin options, `seed` in Swiss options, and `ties` and `comparison`
+in a rank range selector). Each of those may be left out and is then read
 as 0.2.x behaved, so an array without the version key is read as version 1,
 under the rules of version 1, and data stored by 0.2.x keeps loading.
 `tests/Fixtures/stored-by-0.2/` holds every form as the 0.2.x tags wrote it,

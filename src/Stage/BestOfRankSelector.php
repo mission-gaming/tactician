@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UndecidedSelectionException;
+use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use Override;
@@ -74,8 +75,6 @@ use Override;
  */
 final readonly class BestOfRankSelector implements ProgressionSelector
 {
-    private const array KEYS = ['rank', 'count', 'comparison', 'ties'];
-
     /**
      * @param int $rank The 1-based rank whose holders are compared
      * @param int $count How many of them are selected
@@ -161,8 +160,10 @@ final readonly class BestOfRankSelector implements ProgressionSelector
      * `comparison` is not silently read as none.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`),
-     *                                       `rank` or `count` is not an integer or `comparison`
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), `rank` or `count` is not an
+     *                                       integer or `comparison`
      *                                       is not a string (`WrongValueType`), `comparison` or
      *                                       `ties` is not a known identifier (`UnknownIdentifier`),
      *                                       or the rank or the count is below 1
@@ -170,14 +171,7 @@ final readonly class BestOfRankSelector implements ProgressionSelector
      */
     public static function fromArray(array $config): self
     {
-        $unknown = array_values(array_diff(array_keys($config), self::KEYS));
-        if ($unknown !== []) {
-            throw new InvalidConfigurationException(
-                sprintf("Unknown key in a best-of-rank selector: '%s'", implode("', '", $unknown)),
-                ['unknown' => $unknown, 'known' => self::KEYS],
-                reason: InvalidConfigurationReason::UnknownOptionKey
-            );
-        }
+        PlainData::checkOptions($config, ['rank', 'count', 'comparison', 'ties'], 'a best-of-rank selector');
 
         $rank = $config['rank'] ?? null;
         $count = $config['count'] ?? null;
@@ -197,15 +191,16 @@ final readonly class BestOfRankSelector implements ProgressionSelector
     }
 
     /**
-     * The plain-data form fromArray() accepts: the 1-based rank and the
-     * count. `comparison` is written only when a method was chosen, and
-     * `ties` only for a selector that accepts an undecided order.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then the 1-based rank and the count.
+     * `comparison` is written only when a method was chosen, and `ties`
+     * only for a selector that accepts an undecided order.
      *
-     * @return array{rank: int, count: int, comparison?: string, ties?: string}
+     * @return array{format_version: int, rank: int, count: int, comparison?: string, ties?: string}
      */
     public function toArray(): array
     {
-        $data = ['rank' => $this->rank, 'count' => $this->count];
+        $data = [PlainData::VERSION_KEY => PlainData::VERSION, 'rank' => $this->rank, 'count' => $this->count];
         if ($this->comparison !== null) {
             $data['comparison'] = $this->comparison->value;
         }

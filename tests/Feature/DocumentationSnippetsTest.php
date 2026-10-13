@@ -865,8 +865,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
 
                 $selector = BestOfRankSelector::ofRank(3, 2)->comparedBy(PoolComparison::DiscardLowest);
                 assert($selector->getSelectionSize() === 2);
-                assert(BestOfRankSelector::ofRank(3, 2)->toArray() === ['rank' => 3, 'count' => 2]);
-                assert($selector->withTableOrderAccepted()->toArray() === ['rank' => 3, 'count' => 2, 'comparison' => 'discard-lowest', 'ties' => 'accept-table-order']);
+                assert(BestOfRankSelector::ofRank(3, 2)->toArray() === ['format_version' => 1, 'rank' => 3, 'count' => 2]);
+                assert($selector->withTableOrderAccepted()->toArray() === ['format_version' => 1, 'rank' => 3, 'count' => 2, 'comparison' => 'discard-lowest', 'ties' => 'accept-table-order']);
                 try {
                     BestOfRankSelector::fromArray(['rank' => 3, 'count' => 2, 'method' => 'per-event']);
                     assert(false);

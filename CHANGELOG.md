@@ -517,7 +517,8 @@ entry on the engine fingerprint.
   (ranking value, each tiebreaker of the calculator given to
   `StageOutcome::combining()`, score difference, scores-for). It has
   `fromArray()`/`toArray()` (`rank`, `count`, and `comparison` and `ties`
-  when chosen; an unknown key is refused), states its count as its
+  when chosen, after `format_version`; an unknown key is refused), states
+  its count as its
   selection size for `CompositionValidator`, and refuses an undecided
   selection as `RankRangeSelector` does, with the same two choices to go
   on (`withTiesInsideSelectionAccepted()`, `withTableOrderAccepted()`). The
@@ -571,8 +572,9 @@ entry on the engine fingerprint.
   (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`,
   `EliminationOptions`, `RepackOptions`), `WinDrawLossRanking`,
   `TimelineDefinition`, `SessionGrid`, `BlackoutRule`, `MinimumRestRule`,
-  `RankRangeSelector`, `MatchOutcomeSelector`, `Participant`, `Round`,
-  `Event`, `Result`, `Schedule`, `RoundPairing`, `StageState`,
+  `RankRangeSelector`, `BestOfRankSelector`, `MatchOutcomeSelector`,
+  `Participant`, `Round`, `Event`, `Result`, `Schedule`, `RoundPairing`,
+  `StageState`,
   `ScheduledEvent`, `ScheduledSchedule`, `RepackOutcome`, `SlotAssignment`,
   `UnplacedEvent` and the five repack violations. Every form is at version
   1 (#53). ADR 0005 (`docs/adr/0005-serialized-forms-carry-a-format-version.md`)
@@ -585,7 +587,8 @@ entry on the engine fingerprint.
   - **Data stored by 0.2.x loads unchanged.** An array without the key is
     read as version 1, which is the form 0.2.x wrote and, beside it, the
     optional keys this release adds (`strategy_seed`, `seed` in Swiss
-    options, `ties` in a rank range selector). Nothing is to be
+    options, `ties` and `comparison` in a rank range selector). Nothing is
+    to be
     migrated and the key need not be added to stored rows.
     `tests/Fixtures/stored-by-0.2/` holds a schedule and a stage state as
     v0.2.0 wrote them and 124 values of every form that is read as v0.2.3
@@ -617,8 +620,8 @@ entry on the engine fingerprint.
 
   Rolling back: an array written by 0.3.0 is still read by 0.2.x, which
   cannot check the version and ignores the key, as it ignores every key it
-  does not know (`strategy_seed`, `seed` in Swiss options and `ties` in a
-  rank range selector, and before 0.2.2 `role_assignment` and
+  does not know (`strategy_seed`, `seed` in Swiss options, and `ties` and
+  `comparison` in a rank range selector, and before 0.2.2 `role_assignment` and
   `engine_fingerprint`, are read as left out). The one exception is
   `PotDrawOptions::fromArray()` of 0.2.2 and 0.2.3, which refused unknown
   keys already and refuses `format_version` (`Unknown pot draw option`):
@@ -755,7 +758,8 @@ entry on the engine fingerprint.
     `RoundRobinOptions`, `SwissOptions`, `EliminationOptions`,
     `RepackOptions`, `WinDrawLossRanking`, `TimelineDefinition`,
     `SessionGrid`, `BlackoutRule` (the rule and each of its windows),
-    `MinimumRestRule`, `RankRangeSelector` and `MatchOutcomeSelector`.
+    `MinimumRestRule`, `RankRangeSelector`, `BestOfRankSelector` and
+    `MatchOutcomeSelector`.
     `PotDrawOptions` already did; its message is now `Unknown key in pot
     draw options: '<key>'` where it was `Unknown pot draw option`, and its
     reason and context are unchanged.

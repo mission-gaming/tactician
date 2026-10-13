@@ -2392,7 +2392,8 @@ The same two choices go on regardless: `withTiesInsideSelectionAccepted()`
 and `withTableOrderAccepted()`. Level holders are then listed in the order
 of the outcome's entrant list, and in the order of its table when it has
 none. In plain data the selector is `['rank' => 3, 'count' => 2]`, with
-`comparison` and `ties` written when they were chosen; an unknown key is
+`comparison` and `ties` written when they were chosen and
+[`format_version`](#format-versions) written first; an unknown key is
 refused.
 
 **`RankRangeSelector::overall()` takes the same setting.** It reads the
@@ -3727,8 +3728,8 @@ records with its reasons:
   own array and has the key.
 - **An array without the key is version 1.** Version 1 is the form 0.2.x
   wrote, and beside it the optional keys 0.3.0 added (`strategy_seed` in
-  round-robin options, `seed` in Swiss options, `ties` in a rank range
-  selector), each of which may be left out. So rows stored by 0.2.x load
+  round-robin options, `seed` in Swiss options, `ties` and `comparison` in
+  a rank range selector), each of which may be left out. So rows stored by 0.2.x load
   unchanged. There is nothing to migrate, and no need to add the key to
   stored data.
 - **A version the library does not know is refused**, as is a value below 1
