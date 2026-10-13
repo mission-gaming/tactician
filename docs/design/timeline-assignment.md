@@ -83,7 +83,13 @@ Settled decisions beyond the sketch:
   and returns a date that has wrapped round. `IntervalArithmetic` refuses
   a result more than 10^14 days from its anchor (`ValueOutOfRange`). The
   first implementation never reached such a round: it added once per
-  round.
+  round. A fraction of a second is multiplied as whole microseconds, with
+  its whole seconds carried, because the float PHP shows it as loses a
+  microsecond when multiplied and the microseconds of many steps leave
+  PHP's range long before the seconds do. The limit is on the distance
+  from the anchor, so it does not guard a start that is itself near the
+  end of PHP's range, and an interval made from a relative string is not
+  under it: that one is still added once per step.
 - **No check of who plays.** The sketch below lists "a participant assigned
   overlapping slots" among the things that fail loudly. The assigner does
   not check it: it validates capacity and round numbers. A

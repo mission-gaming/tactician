@@ -384,6 +384,51 @@ describe('Slot times computed from the anchor', function (): void {
         expect($local)->toBe(['28 Dec 10:00', '29 Dec 10:00', '31 Dec 10:00', '31 Dec 10:00', '1 Jan 10:00']);
     });
 
+    it('multiplies a fraction of a second exactly, and carries its whole seconds', function (): void {
+        // PHP holds the fraction as whole microseconds and shows it as a
+        // float: three steps of 0.29 seconds multiplied as floats are
+        // 0.869999. Every step count here is compared with the interval
+        // added once per step, which is what the fraction always gave
+        $start = new DateTimeImmutable('2026-01-31 19:00:00', new DateTimeZone('UTC'));
+        $checked = 0;
+        foreach ([0.29, 0.07, 0.1, 0.57, 0.000001, 0.123456, 0.999999, 0.5, 1.5] as $fraction) {
+            foreach (['PT0S', 'PT1S', 'PT59M'] as $duration) {
+                $interval = new DateInterval($duration);
+                $interval->f = $fraction;
+                $timeline = new TimelineDefinition($start, $interval);
+
+                foreach ([2, 3, 4, 8, 101, 4322] as $round) {
+                    expect($timeline->getSlotTime($round)->format('Y-m-d H:i:s.u'))
+                        ->toBe(anchoredIteratedAddition($start, $interval, $round - 1)->format('Y-m-d H:i:s.u'), "{$duration} and {$fraction}, round {$round}");
+                    ++$checked;
+                }
+            }
+        }
+        expect($checked)->toBe(162);
+
+        $third = new DateInterval('PT0S');
+        $third->f = 0.29;
+        expect((new TimelineDefinition($start, $third))->getSlotTime(4)->format('s.u'))->toBe('00.870000');
+
+        // The microseconds of many steps are more than PHP's integers hold
+        // long before the seconds are: they are carried, not wrapped round
+        $quarter = new DateInterval('PT0S');
+        $quarter->f = 0.25;
+        $far = (new TimelineDefinition($start, $quarter))->getSlotTime(4_000_000_000_000_000_001);
+        expect($far->getTimestamp() - $start->getTimestamp())->toBe(1_000_000_000_000_000_000);
+
+        // And a fraction counts towards the furthest time there is
+        $second = new DateInterval('PT0S');
+        $second->f = 0.999999;
+        $reason = null;
+        try {
+            (new TimelineDefinition($start, $second))->getSlotTime(PHP_INT_MAX);
+        } catch (InvalidConfigurationException $exception) {
+            $reason = $exception->getReason();
+        }
+        expect($reason)->toBe(InvalidConfigurationReason::ValueOutOfRange);
+    });
+
     it('reads the months and days of an interval from diff(), and not its count of days', function (): void {
         // 31 January to 3 March 2026 is "one month and three days" to
         // diff(), which also records 31 days in all. The timeline takes the

@@ -46,7 +46,10 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  *
  * The steps multiplied out must stay in the range PHP's own arithmetic is
  * exact in ({@see self::MAX_DAYS}); past it the result would be a wrong
- * date and no error, so it is refused.
+ * date and no error, so it is refused. A fraction of a second is
+ * multiplied as whole microseconds, which is how PHP holds it, and its
+ * whole seconds are carried. An interval made from a relative string is
+ * not under the limit: it is added once per step, however many there are.
  *
  * @internal Not public API: the arithmetic behind
  *           TimelineDefinition::getSlotTime() and SessionGrid::getSlotTime(),
@@ -93,6 +96,7 @@ final class IntervalArithmetic
             + abs($interval->h) / 24.0
             + abs($interval->i) / 1440.0
             + abs($interval->s) / 86400.0
+            + abs($interval->f) / 86400.0
         );
         if ($span > self::MAX_DAYS) {
             throw new InvalidConfigurationException(
@@ -114,8 +118,11 @@ final class IntervalArithmetic
         $scaled->d = $interval->d * $steps + $sign * $monthDays;
         $scaled->h = $interval->h * $steps;
         $scaled->i = $interval->i * $steps;
-        $scaled->s = $interval->s * $steps;
-        $scaled->f = $interval->f * $steps;
+        [$wholeSeconds, $microseconds] = self::fractionMultiplied($interval, $steps);
+        $scaled->s = $interval->s * $steps + $wholeSeconds;
+        // PHP cuts the fraction it is given down to whole microseconds, so
+        // it is given the middle of the microsecond that is meant
+        $scaled->f = $microseconds === 0 ? 0.0 : ($microseconds + ($microseconds > 0 ? 0.5 : -0.5)) / 1_000_000;
 
         $result = $anchor->add($scaled);
 
@@ -161,6 +168,36 @@ final class IntervalArithmetic
         $earlier = $time->add($back);
 
         return $earlier->getOffset() - $time->getOffset() === $putBack ? $earlier : $time;
+    }
+
+    /**
+     * The interval's fraction of a second, multiplied by the steps, as
+     * whole seconds and the microseconds left over.
+     *
+     * PHP holds the fraction as a whole number of microseconds and shows it
+     * as a float. Multiplied as a float it loses a microsecond (three steps
+     * of 0.29 seconds are 0.869999), and as microseconds it leaves PHP's
+     * range long before the seconds do, so it is multiplied as integers
+     * and its whole seconds are carried.
+     *
+     * @param int $steps 1 or more, and already known to keep the whole interval in range
+     *
+     * @return array{int, int} Whole seconds, then microseconds between -999999 and 999999
+     */
+    private static function fractionMultiplied(DateInterval $interval, int $steps): array
+    {
+        $perStep = (int) round($interval->f * 1_000_000);
+        $seconds = intdiv($perStep, 1_000_000);
+        $microseconds = $perStep % 1_000_000;
+
+        // The steps in two parts, so that no product is larger than the
+        // seconds the result is away from the anchor
+        $rest = $microseconds * ($steps % 1_000_000);
+
+        return [
+            $seconds * $steps + $microseconds * intdiv($steps, 1_000_000) + intdiv($rest, 1_000_000),
+            $rest % 1_000_000,
+        ];
     }
 
     /**
