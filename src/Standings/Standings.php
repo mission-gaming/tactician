@@ -114,6 +114,53 @@ readonly class Standings implements IteratorAggregate, Countable
     }
 
     /**
+     * The 1-based rank of the participant with this ID, or null when the
+     * table has no entry for it.
+     *
+     * A rank is shared where results do not decide: every entry of a tied
+     * set (getTiedSets()) has the rank of the set's first position, and
+     * the entry after the set has the rank of its own position. Three
+     * entries level behind a leader are ranked 1, 2, 2, 2, and the next is
+     * ranked 5. An entry in no tied set has its position as its rank.
+     *
+     * Positions are never shared (getPosition()); ranks say which
+     * positions the results do decide. The rank of a tied set stays the
+     * same when its entries are put in another order
+     * (withTiedSetsOrderedBy()).
+     */
+    public function getRank(Participant $participant): ?int
+    {
+        $position = $this->getPosition($participant);
+
+        return $position === null ? null : $this->getRanks()[$position - 1];
+    }
+
+    /**
+     * The rank of each entry, in table order: shared by the entries of a
+     * tied set, as getRank() describes. A list as long as the table, never
+     * falling, in which a number that is in it n times is followed by one
+     * at least n higher.
+     *
+     * @return list<int>
+     */
+    public function getRanks(): array
+    {
+        $shared = [];
+        foreach ($this->getTiedSets() as $tiedSet) {
+            for ($position = $tiedSet->getFirstPosition(); $position <= $tiedSet->getLastPosition(); ++$position) {
+                $shared[$position] = $tiedSet->getFirstPosition();
+            }
+        }
+
+        $ranks = [];
+        for ($position = 1, $last = count($this->entries); $position <= $last; ++$position) {
+            $ranks[] = $shared[$position] ?? $position;
+        }
+
+        return $ranks;
+    }
+
+    /**
      * The tied sets of the table: each group of adjacent entries that no
      * result separates, with the positions it spans, in table order.
      *
