@@ -76,17 +76,24 @@ trait EliminationBracketSupport
      * Emit the events for one tie: a single event, or two mirrored legs
      * annotated with 'tie_leg' metadata so leg results stay distinguishable.
      *
+     * @param array<string, mixed> $metadata What every event of the tie carries beside its leg;
+     *                                       none by default
      * @return array<Event>
      */
-    private function buildTieEvents(Participant $first, Participant $second, Round $round, int $legsPerTie): array
-    {
+    private function buildTieEvents(
+        Participant $first,
+        Participant $second,
+        Round $round,
+        int $legsPerTie,
+        array $metadata = []
+    ): array {
         if ($legsPerTie === 1) {
-            return [new Event([$first, $second], $round)];
+            return [new Event([$first, $second], $round, $metadata)];
         }
 
         return [
-            new Event([$first, $second], $round, ['tie_leg' => 1]),
-            new Event([$second, $first], $round, ['tie_leg' => 2]),
+            new Event([$first, $second], $round, ['tie_leg' => 1] + $metadata),
+            new Event([$second, $first], $round, ['tie_leg' => 2] + $metadata),
         ];
     }
 

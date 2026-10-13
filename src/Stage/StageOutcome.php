@@ -204,7 +204,9 @@ final readonly class StageOutcome
      * playing any round (or is a pooled combination).
      *
      * For a bracket this is the round that decided the title: the final,
-     * or in double elimination the grand final or its reset. It is the
+     * or in double elimination the grand final or its reset. In a single
+     * elimination bracket with a third-place tie the round holds that tie
+     * as well, after the final (see BracketTie). It is the
      * last round recorded on the state, so a round recorded after the
      * final takes its place.
      */

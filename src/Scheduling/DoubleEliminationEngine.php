@@ -41,8 +41,9 @@ use Override;
  * (legsPerTie); one that finishes level, in either bracket, the grand
  * final or its reset, is decided by the tie decision recorded on its
  * result (see TieDecision), and not advancing from it is the loss that
- * drops or eliminates the other participant. Re-seeding is a
- * single-elimination preset parameter and is rejected here.
+ * drops or eliminates the other participant. Re-seeding and the
+ * third-place tie are single-elimination preset parameters and are
+ * rejected here: the losers final already decides third place.
  *
  * There is deliberately no champion accessor. The participant who
  * advances from the last round played (the grand final, or its reset) is
@@ -65,12 +66,22 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      *                                                 and orders the entrants who went out at the
      *                                                 same stage; it pairs nothing
      *
-     * @throws InvalidConfigurationException When reseedEachRound is requested
+     * @throws InvalidConfigurationException When reseedEachRound or thirdPlace is requested
+     *                                       (reason `IncompatibleOptions`)
      */
     public function __construct(
         private EliminationOptions $options = new EliminationOptions(),
         private StandingsCalculator $standingsCalculator = new StandingsCalculator()
     ) {
+        if ($options->thirdPlace) {
+            throw new InvalidConfigurationException(
+                'A third-place tie is a single-elimination preset parameter: the losers bracket of double elimination'
+                    . ' already decides third place, which is the entrant who goes out in the losers final',
+                [],
+                reason: InvalidConfigurationReason::IncompatibleOptions
+            );
+        }
+
         if ($options->reseedEachRound) {
             throw new InvalidConfigurationException(
                 'Re-seeding conflicts with the fixed dropper choreography of double elimination; it is a single-elimination preset parameter',
@@ -88,8 +99,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * it when not at the default: legsPerTie (default 1) and
      * grandFinalReset (default true).
      *
-     * Not part of it: reseedEachRound, which this engine rejects, and the
-     * standings calculator, which orders the outcome and pairs nothing.
+     * Not part of it: reseedEachRound and thirdPlace, which this engine
+     * rejects, and the standings calculator, which orders the outcome and
+     * pairs nothing.
      */
     #[Override]
     public function getFingerprint(): string

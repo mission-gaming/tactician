@@ -1,0 +1,74 @@
+# Single elimination with a third-place tie (EliminationOptions(thirdPlace:
+# true)), driven round by round to completion.
+# Entrants are "1".."n" in list order (position is the seeding). Each
+# section names the rule that decides every event. `R<round> [<label>]:
+# a-b c-d | byes: e f` lists the round's events in generated order,
+# first-named participant first, then the participants advancing without
+# playing; `standings:` is the final ranking as id(wins-losses).
+#
+# A difference from this file is a change to generated output. It must be
+# explained in the changelog; regenerate with `composer golden-update`.
+#
+# The last round lists the final and then the third-place tie; each of
+# its events carries which tie it is as `bracket_tie` metadata. A field
+# of three has no third-place tie.
+
+== n=3 thirdPlace, first-named wins ==
+R1 [semifinal]: 2-3 | byes: 1
+R2 [final]: 1-2{"bracket_tie":"final"}
+standings: 1(1-0) 2(1-1) 3(0-1)
+
+== n=4 thirdPlace, first-named wins ==
+R1 [semifinal]: 1-4 2-3
+R2 [final]: 1-2{"bracket_tie":"final"} 4-3{"bracket_tie":"third-place"}
+standings: 1(2-0) 2(1-1) 4(1-1) 3(0-2)
+
+== n=5 thirdPlace, first-named wins ==
+R1 [quarterfinal]: 4-5 | byes: 1 2 3
+R2 [semifinal]: 1-4 2-3
+R3 [final]: 1-2{"bracket_tie":"final"} 4-3{"bracket_tie":"third-place"}
+standings: 1(2-0) 2(1-1) 4(2-1) 3(0-2) 5(0-1)
+
+== n=8 thirdPlace, first-named wins ==
+R1 [quarterfinal]: 1-8 4-5 2-7 3-6
+R2 [semifinal]: 1-4 2-3
+R3 [final]: 1-2{"bracket_tie":"final"} 4-3{"bracket_tie":"third-place"}
+standings: 1(3-0) 2(2-1) 4(2-1) 3(1-2) 5(0-1) 6(0-1) 7(0-1) 8(0-1)
+
+== n=12 thirdPlace, first-named wins ==
+R1 [round of 16]: 8-9 5-12 7-10 6-11 | byes: 1 4 2 3
+R2 [quarterfinal]: 1-8 4-5 2-7 3-6
+R3 [semifinal]: 1-4 2-3
+R4 [final]: 1-2{"bracket_tie":"final"} 4-3{"bracket_tie":"third-place"}
+standings: 1(3-0) 2(2-1) 4(2-1) 3(1-2) 5(1-1) 6(1-1) 7(1-1) 8(1-1) 9(0-1) 10(0-1) 11(0-1) 12(0-1)
+
+== n=8 thirdPlace, last-named wins ==
+R1 [quarterfinal]: 1-8 4-5 2-7 3-6
+R2 [semifinal]: 8-5 7-6
+R3 [final]: 5-6{"bracket_tie":"final"} 8-7{"bracket_tie":"third-place"}
+standings: 6(3-0) 5(2-1) 7(2-1) 8(1-2) 1(0-1) 2(0-1) 3(0-1) 4(0-1)
+
+== n=8 thirdPlace reseedEachRound, first-named wins ==
+R1 [quarterfinal]: 1-8 4-5 2-7 3-6
+R2 [semifinal]: 1-4 2-3
+R3 [final]: 1-2{"bracket_tie":"final"} 3-4{"bracket_tie":"third-place"}
+standings: 1(3-0) 2(2-1) 3(2-1) 4(1-2) 5(0-1) 6(0-1) 7(0-1) 8(0-1)
+
+== n=8 thirdPlace reseedEachRound, last-named wins ==
+R1 [quarterfinal]: 1-8 4-5 2-7 3-6
+R2 [semifinal]: 5-8 6-7
+R3 [final]: 7-8{"bracket_tie":"final"} 5-6{"bracket_tie":"third-place"}
+standings: 8(3-0) 7(2-1) 6(2-1) 5(1-2) 1(0-1) 2(0-1) 3(0-1) 4(0-1)
+
+== n=12 thirdPlace reseedEachRound, last-named wins ==
+R1 [round of 16]: 8-9 5-12 7-10 6-11 | byes: 1 4 2 3
+R2 [quarterfinal]: 1-12 4-9 2-11 3-10
+R3 [semifinal]: 9-12 10-11
+R4 [final]: 11-12{"bracket_tie":"final"} 9-10{"bracket_tie":"third-place"}
+standings: 12(4-0) 11(3-1) 10(3-1) 9(2-2) 1(0-1) 2(0-1) 3(0-1) 4(0-1) 5(0-1) 6(0-1) 7(0-1) 8(0-1)
+
+== n=5 thirdPlace legsPerTie=2, the first-named of leg 1 wins both legs ==
+R1 [quarterfinal]: 4-5{"tie_leg":1} 5-4{"tie_leg":2} | byes: 1 2 3
+R2 [semifinal]: 1-4{"tie_leg":1} 4-1{"tie_leg":2} 2-3{"tie_leg":1} 3-2{"tie_leg":2}
+R3 [final]: 1-2{"tie_leg":1,"bracket_tie":"final"} 2-1{"tie_leg":2,"bracket_tie":"final"} 4-3{"tie_leg":1,"bracket_tie":"third-place"} 3-4{"tie_leg":2,"bracket_tie":"third-place"}
+standings: 1(4-0) 2(2-2) 4(4-2) 3(0-4) 5(0-2)

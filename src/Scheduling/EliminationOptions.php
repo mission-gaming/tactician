@@ -21,6 +21,11 @@ use MissionGaming\Tactician\Serialization\PlainData;
  *   cut.
  * - grandFinalReset: double elimination's reset match when the losers
  *   champion wins the grand final.
+ * - thirdPlace: a third-place tie in the last round of a single
+ *   elimination bracket, between the two entrants who went out in the
+ *   round before it, so that the bracket decides places 3 and 4 (off by
+ *   default; see SingleEliminationEngine). Single elimination only: a
+ *   double elimination bracket decides those places in its losers bracket.
  *
  * @experimental
  */
@@ -28,15 +33,17 @@ final readonly class EliminationOptions
 {
     /**
      * The options are not checked against an engine here: the double
-     * elimination engine refuses reseedEachRound when it is constructed,
-     * and the single elimination engine does not read grandFinalReset.
+     * elimination engine refuses reseedEachRound and thirdPlace when it is
+     * constructed, and the single elimination engine does not read
+     * grandFinalReset.
      *
      * @throws InvalidConfigurationException When legsPerTie is not 1 or 2
      */
     public function __construct(
         public int $legsPerTie = 1,
         public bool $reseedEachRound = false,
-        public bool $grandFinalReset = true
+        public bool $grandFinalReset = true,
+        public bool $thirdPlace = false
     ) {
         if ($legsPerTie !== 1 && $legsPerTie !== 2) {
             throw new InvalidConfigurationException(
@@ -49,11 +56,13 @@ final readonly class EliminationOptions
 
     /**
      * Build from plain configuration data:
-     * ['legs_per_tie' => 2, 'reseed_each_round' => false, 'grand_final_reset' => true].
+     * ['legs_per_tie' => 2, 'reseed_each_round' => false, 'grand_final_reset' => true, 'third_place' => true].
      *
      * Every key is optional and takes the constructor's default when it is
-     * left out. A key this class does not have is refused, so that a
-     * misspelt option is not silently read as its default.
+     * left out: data stored before an option existed is read with that
+     * option at its default, so an array without `third_place` is a bracket
+     * without a third-place tie. A key this class does not have is refused,
+     * so that a misspelt option is not silently read as its default.
      *
      * @param array<string, mixed> $config
      * @throws InvalidConfigurationException When the format version is not one this release reads
@@ -66,7 +75,7 @@ final readonly class EliminationOptions
     {
         PlainData::checkOptions(
             $config,
-            ['legs_per_tie', 'reseed_each_round', 'grand_final_reset'],
+            ['legs_per_tie', 'reseed_each_round', 'grand_final_reset', 'third_place'],
             'elimination options'
         );
 
@@ -89,22 +98,43 @@ final readonly class EliminationOptions
             );
         }
 
-        return new self($legsPerTie, $reseedEachRound, $grandFinalReset);
+        $thirdPlace = $config['third_place'] ?? false;
+        if (!is_bool($thirdPlace)) {
+            throw new InvalidConfigurationException(
+                'third_place must be a boolean',
+                ['third_place' => $thirdPlace],
+                reason: InvalidConfigurationReason::WrongValueType
+            );
+        }
+
+        return new self($legsPerTie, $reseedEachRound, $grandFinalReset, $thirdPlace);
     }
 
     /**
      * The plain-data form fromArray() accepts: `format_version`, the
-     * version of this form (1), then all three options, always.
+     * version of this form (1), then the first three options, always, and
+     * `third_place` when the option is on.
      *
-     * @return array{format_version: int, legs_per_tie: int, reseed_each_round: bool, grand_final_reset: bool}
+     * The key is left out when the option is off, so the form of options
+     * without a third-place tie has the keys it had before the option
+     * existed. It is one of the optional keys of version 1 of this form,
+     * as `seed` is in Swiss options.
+     *
+     * @return array{format_version: int, legs_per_tie: int, reseed_each_round: bool, grand_final_reset: bool, third_place?: true}
      */
     public function toArray(): array
     {
-        return [
+        $data = [
             PlainData::VERSION_KEY => PlainData::VERSION,
             'legs_per_tie' => $this->legsPerTie,
             'reseed_each_round' => $this->reseedEachRound,
             'grand_final_reset' => $this->grandFinalReset,
         ];
+
+        if ($this->thirdPlace) {
+            $data['third_place'] = true;
+        }
+
+        return $data;
     }
 }

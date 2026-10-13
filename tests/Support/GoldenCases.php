@@ -127,6 +127,9 @@ final class GoldenCases
         $cases['swiss.txt'] = self::swiss(...);
         $cases['pot-draw.txt'] = self::potDraw(...);
         $cases['single-elimination.txt'] = self::singleElimination(...);
+        // The opt-in third-place tie. The file above names no such option,
+        // so it pins the brackets without one.
+        $cases['single-elimination-third-place.txt'] = self::singleEliminationThirdPlace(...);
         $cases['double-elimination.txt'] = self::doubleElimination(...);
         $cases['repack/scenario.txt'] = self::repackScenario(...);
         $cases['repack/round-robin.txt'] = self::repackRoundRobin(...);
@@ -435,6 +438,54 @@ final class GoldenCases
         return GoldenText::document([
             'Single elimination, driven round by round to completion.',
             ...self::bracketHeader(),
+        ], $sections);
+    }
+
+    /**
+     * Single elimination with the third-place option: the sections of the
+     * file without it that have a round before the last, under the same
+     * rules, and a field of three and of four, the two smallest the option
+     * accepts.
+     *
+     * @throws InvalidConfigurationException
+     * @throws JsonException
+     * @throws NoValidPairingException
+     */
+    private static function singleEliminationThirdPlace(): string
+    {
+        $firstNamed = self::firstNamedWins(...);
+        $lastNamed = self::lastNamedWins(...);
+        $fixed = new EliminationOptions(thirdPlace: true);
+        $reseeded = new EliminationOptions(reseedEachRound: true, thirdPlace: true);
+
+        $sections = [];
+        foreach ([3, 4, ...self::ELIMINATION_SIZES] as $size) {
+            $sections["n={$size} thirdPlace, first-named wins"]
+                = self::bracket(new SingleEliminationEngine($fixed), $size, $firstNamed);
+        }
+
+        $sections['n=8 thirdPlace, last-named wins'] = self::bracket(new SingleEliminationEngine($fixed), 8, $lastNamed);
+        $sections['n=8 thirdPlace reseedEachRound, first-named wins']
+            = self::bracket(new SingleEliminationEngine($reseeded), 8, $firstNamed);
+        $sections['n=8 thirdPlace reseedEachRound, last-named wins']
+            = self::bracket(new SingleEliminationEngine($reseeded), 8, $lastNamed);
+        $sections['n=12 thirdPlace reseedEachRound, last-named wins']
+            = self::bracket(new SingleEliminationEngine($reseeded), 12, $lastNamed);
+
+        $sections['n=5 thirdPlace legsPerTie=2, the first-named of leg 1 wins both legs'] = self::bracket(
+            new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2, thirdPlace: true)),
+            5,
+            self::tieFirstNamedWins(...)
+        );
+
+        return GoldenText::document([
+            'Single elimination with a third-place tie (EliminationOptions(thirdPlace:',
+            'true)), driven round by round to completion.',
+            ...self::bracketHeader(),
+            '',
+            'The last round lists the final and then the third-place tie; each of',
+            'its events carries which tie it is as `bracket_tie` metadata. A field',
+            'of three has no third-place tie.',
         ], $sections);
     }
 
