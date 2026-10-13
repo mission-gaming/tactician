@@ -113,7 +113,15 @@ state as they are and derives only the round that does not exist yet.
   was not. Recording when each was made would remove that, and would add
   keys to the stored form.
 - The refusal issue #154 describes is gone: an adjustment recorded at any
-  point of a re-seeded bracket leaves every recorded round as it was.
+  point of a re-seeded bracket leaves every recorded tie as it was. One
+  thing a recorded round of a re-seeded bracket does not hold is still
+  taken from the ranking, and so from every adjustment the state holds
+  today: whom an entrant would have met who had withdrawn before the round
+  was paired, for which the round has no event. An adjustment recorded
+  after such a round can change who is read as having gone out in it, and
+  with that the table and the round paired next. A bracket on a fixed path
+  has its slots from the recorded ties and is not affected. Recording when
+  an adjustment was made would remove this with the wrong manual flag.
 - A bracket's recorded round is no longer offered again by
   `pairNextRound()`: a round that is recorded with none of its results is
   an unfinished round like any other. Read it from the state.

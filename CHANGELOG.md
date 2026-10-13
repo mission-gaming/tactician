@@ -704,6 +704,21 @@ entry on the engine fingerprint.
     the derivation. Until a state says when an adjustment was made, read
     `isManual()` of a stage that holds adjustments as "differs from what
     the engine would pair today".
+
+    **Known limit, in a re-seeded bracket an entrant has withdrawn from.**
+    A recorded round holds no event for a tie an entrant had withdrawn from
+    before it was paired, so the round does not say whom that entrant would
+    have met. The engine takes it from the ranking of that round as it
+    stands today, with every adjustment. An adjustment recorded after such
+    a round can therefore change the reading and not only the derivation:
+    the withdrawn entrant can be read as still in the bracket, which moves
+    it in the table and can change the round paired next (its label, and
+    with enough adjustments its events). A bracket on a fixed path is not
+    affected, nor is a re-seeded bracket nobody has withdrawn from, or one
+    that holds no adjustment recorded after a round. This too is what is
+    left of #154: until a state says when an adjustment was made, record
+    the adjustments of a re-seeded bracket before its first round, or do
+    not withdraw an entrant from one that holds adjustments.
   - A new example, `examples/27-stage-from-application-rows.php`, resolves
     a knockout from fixture rows on every request. The usage guide has the
     whole of it under "Stages Resolved from Your Own Rows".

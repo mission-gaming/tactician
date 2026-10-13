@@ -1625,6 +1625,17 @@ counts the adjustments made since, so a round of a re-seeded bracket, or of
 a Swiss stage, that was paired before an adjustment can be reported as
 paired by hand when it was not.
 
+There is one limit, in a re-seeded bracket an entrant has withdrawn from. A
+round holds no event for a tie an entrant had withdrawn from before it was
+paired, so whom that entrant would have met is taken from the ranking of
+the round as it stands today, with every adjustment. An adjustment recorded
+after such a round can change how the round is read: the withdrawn entrant
+can be read as still in the bracket, which moves it in the table and can
+change the round that is paired next. Until a state says when an adjustment
+was made, record the adjustments of a re-seeded bracket before its first
+round, or do not combine later adjustments with a withdrawal there. A
+bracket on a fixed path is not affected.
+
 A combined pool table (`StageOutcome::combining()`) keeps the adjustment
 each pool entry shows.
 

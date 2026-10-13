@@ -828,6 +828,13 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * RecordedRound::getDerivation() shows: such a round can be reported
      * as manual when it was not.
      *
+     * One thing is still read from this ranking for a recorded round: the
+     * slots, and with them whom an entrant would have met who had
+     * withdrawn before the round was paired (the round holds no event for
+     * that tie). An adjustment made after such a round can change who is
+     * read as having gone out in it. Nothing recorded says otherwise until
+     * an adjustment carries the round it was made after.
+     *
      * @param array<Participant> $survivors
      * @param array<string, Participant> $levelAdvancers
      * @param array<int|string, int> $byes Byes of the earlier rounds, by participant ID
