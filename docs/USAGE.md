@@ -3062,7 +3062,12 @@ The derivation is there to be shown. It is worked out from the state as it
 stands now, and two things a state holds carry no round: an adjustment
 counts in it whenever it was made, and an entrant who has withdrawn is read
 as having been in the stage for every round that names it. A round paired
-before an adjustment can therefore be reported as manual when it was not.
+before an adjustment can therefore be reported as manual when it was not:
+in a re-seeded bracket, and in a Swiss stage, where every round after the
+first is paired from the table. Read `isManual()` of a stage that holds
+adjustments as "differs from what the engine would pair today", and keep
+a mark of your own beside a round an organiser drew where the difference
+matters.
 
 ### Withdrawals from a Bracket
 

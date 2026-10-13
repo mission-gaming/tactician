@@ -617,12 +617,18 @@ entry on the engine fingerprint.
     version 1 of their forms: an array without them is read as before, and
     a state that needs neither is written with the keys it always had, so
     no golden wire fixture changed and data stored by 0.2.x loads as it did.
-  - Issue #154 is closed by this: an adjustment recorded at any point of a
-    re-seeded bracket leaves every recorded round as it was, where the
-    engine used to refuse the state (`RecordedRoundMismatch`). What the
-    engine would pair today in the place of a recorded round still counts
-    every adjustment, so such a round can be reported as manual when it
-    was not.
+  - The refusal issue #154 describes is gone: an adjustment recorded at any
+    point of a re-seeded bracket leaves every recorded round as it was,
+    where the engine used to refuse the state (`RecordedRoundMismatch`).
+    The issue stays open for what is left of it. An adjustment carries no
+    round, so what an engine would pair today in the place of a recorded
+    round (`RecordedRound::getDerivation()`, and with it `isManual()`)
+    counts every adjustment the state holds: a round paired before an
+    adjustment can be reported as manual when it was the engine's own, in
+    a re-seeded bracket and in a Swiss stage alike. Nothing is paired from
+    the derivation. Until a state says when an adjustment was made, read
+    `isManual()` of a stage that holds adjustments as "differs from what
+    the engine would pair today".
   - A new example, `examples/27-stage-from-application-rows.php`, resolves
     a knockout from fixture rows on every request. The usage guide has the
     whole of it under "Stages Resolved from Your Own Rows".
