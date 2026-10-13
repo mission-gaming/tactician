@@ -101,11 +101,11 @@ the last one, which is about the library as a whole.
 
 - **Deterministic**: the library never reads the clock and uses no global
   random function. Randomness comes from a `Random\Randomizer` you pass in, and
-  a freshly seeded one gives the same output for the same input
-  (`ShuffledLegStrategy` creates an unseeded one when you give it none). A
-  scheduler that holds a randomizer draws from it on every call, so its second
-  call continues the sequence and returns a different schedule. A pot draw
-  takes an integer seed in its options and builds its own seeded one.
+  a freshly seeded one gives the same output for the same input. Nothing in
+  the library makes an unseeded one. A scheduler that holds a randomizer draws
+  from it on every call, so its second call continues the sequence and returns
+  a different schedule. A pot draw and the shuffled leg strategy also take an
+  integer seed, which is plain data and gives the same output on every call.
   [Deterministic randomization](docs/USAGE.md#deterministic-randomization)
 - **Serialization**: `Schedule`, `StageState` and `ScheduledSchedule`
   round-trip JSON, and the value objects convert to and from arrays.
