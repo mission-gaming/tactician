@@ -272,7 +272,11 @@ heading **Output change (fix)**.
     read as version 1, which is the form 0.2.x wrote. Nothing is to be
     migrated and the key need not be added to stored rows.
     `tests/Fixtures/stored-by-0.2/` holds a schedule and a stage state as
-    v0.2.0 wrote them, and a test reads them on every run.
+    v0.2.0 wrote them and 124 values of every form that is read as v0.2.3
+    wrote them, and a test reads them on every run. What 0.2.x wrote and
+    0.3.0 does not read is in two other entries of this section: `'strategy'
+    => 'shuffled'` without a seed, and a timeline whose slots overrun its
+    round.
   - A `format_version` above 1, below 1 or not an integer is refused:
     configuration with an `InvalidConfigurationException` whose reason is
     the new `InvalidConfigurationReason::UnsupportedFormatVersion`
