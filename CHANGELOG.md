@@ -179,6 +179,46 @@ heading **Output change (fix)**.
   What to change: build the strategy from a seed when the options are to be
   stored. For a strategy built from a seed the array has one more key,
   `strategy_seed`; for the two other strategies it is unchanged.
+- Tooling only; no output and no public signature changes. The development
+  tools are raised to Rector 2.7 and PHPStan 2.3 (`rector/rector: ^2.7`,
+  `phpstan/phpstan: ^2.3`, `phpstan/phpstan-strict-rules: ^2.1`; the lock
+  file holds Rector 2.7.0, PHPStan 2.3.1 and
+  `phpstan/phpstan-strict-rules` 2.1.0), and Rector runs with its
+  parallel workers again. Rector 2.7.0 writes a cache entry to a temporary
+  file and renames it, so a worker can no longer load an entry that another
+  has half written; `->withoutParallel()` is removed from `rector.php`, and
+  the Rector step of the gate takes about half as long. The test that
+  required the one-process setting is replaced by one that fails when
+  `composer.json` allows a Rector earlier than 2.7, and another does the
+  same for strict rules earlier than 2.1
+  (`tests/Feature/GateConfigurationTest.php`). What the new versions found
+  is fixed in the code, with nothing added to a baseline or to
+  `ignoreErrors`:
+  - Rector's new `TernaryToNullsafeCoalesceRector` asked for one expression
+    in `Timeline\ZonedTime` and one in a test helper
+    (`tests/Support/ThrowSites.php`) to change from
+    `$x !== null ? $x->y() : $z` to `$x?->y() ?? $z`. In both, what is read
+    from `$x` is never `null`, so the two forms give the same value. The
+    test helper reads a property, where PHPStan 2.3 in turn reports the
+    `?->` as unnecessary on the left of `??` (`nullsafe.neverNull`); it is
+    written `$x->y ?? $z`, which both tools accept.
+  - PHPStan 2.3 reported that an offset might not exist (12 findings) in the
+    oracle of `tests/Feature/StandingsTiedSetsInvariantsTest.php`, which
+    counted into `$record[$id]['wins']` and the like. The oracle now reads a
+    participant's whole line, changes it and writes it back; it computes the
+    same figures.
+  - Nothing was changed for `foreach.valueOverwrite`, which PHPStan 2.3
+    reports at two loops in `src/` (`Repack\Internal\SessionPacker`,
+    `Scheduling\DoubleEliminationEngine`) with the strict rules 2.0.12 and
+    not with 2.1.0. Each loop names its value variable as an earlier loop
+    that has ended named its own, and nothing reads the variable between
+    the two; 2.1.0 reports the overwrite only of a variable that was
+    assigned before the loop and is read after it. That is why the
+    constraint on the strict rules is raised: with `^2.0` an install could
+    hold a version that reports the two loops.
+
+  The scheduled workflow's `Unlocked dependencies` jobs, which install the
+  newest versions and had been failing on these findings, pass again.
 
 ### Fixed
 
