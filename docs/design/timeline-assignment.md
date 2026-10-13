@@ -25,6 +25,16 @@ Settled decisions beyond the sketch:
   one event per slot only; the third cut added resources (below).
 - **Deterministic filling**: a round's events fill its slots in schedule
   order against slot time order.
+- **Every slot is computed from the start** (changed in 0.3.0): round N is
+  the start plus N−1 round intervals taken as one step, and a slot is its
+  round's first slot plus its slot intervals taken as one step. The first
+  implementation added the interval once per round, each addition from
+  the round before, so one round's adjustment carried into every later
+  round: `P1M` from 31 January went to 3 March and stayed on the 3rd, and
+  a weekly 01:30 that met the hour the clocks skip was 02:30 from then
+  on. Months now keep the start's day of the month, or the last day of a
+  month too short for it, and a skipped local time moves the one round
+  that lands on it.
 - **Intervals are added in the definition's timezone**, as PHP adds a
   `DateInterval` to a zoned time; kickoffs are then emitted in UTC
   (`timezone-explicit in, UTC-normalized out`). An interval in days, weeks
@@ -33,6 +43,53 @@ Settled decisions beyond the sketch:
   minutes or seconds is elapsed time: `PT168H` is not `P7D`, and lands an
   hour off after the change. The note first recorded this as "wall-clock
   interval arithmetic" without the distinction.
+- **A repeated local time is the first of the two** (0.3.0): PHP reads a
+  local time that occurs twice by the time it adds to: the first where
+  the timezone database marks that time as daylight-saving time, the
+  second where it does not. So one step from a start on winter time lands
+  on the second 01:30 of the night the clocks go back, and one step from
+  a start on summer time on the first. Round-by-round addition gave the
+  first in most cases, the round before being on summer time, but not in
+  all: an interval long enough to step over the summer has the round
+  before on winter time, and for `Europe/Dublin`, `Africa/Casablanca` and
+  `Africa/El_Aaiun` the database marks winter time as the daylight-saving
+  one, so that a weekly 01:30 in Dublin took the second where the same
+  kickoff in London took the first. For an interval with no time part,
+  `IntervalArithmetic` takes the first always, so that the kickoff
+  depends neither on the season the stage starts in nor on how a timezone
+  is recorded; the changelog lists the two cases as output changes. An
+  interval with a time
+  part is left to PHP: its date part and its time part cannot be told
+  apart after the addition, and for an interval from `diff()` they cannot
+  be added separately without changing what PHP gives.
+- **Rounds do not overlap** (0.3.0): the last slot of a round must be
+  before the first slot of the next round, or the same resources and the
+  same participants are booked for two kickoffs at once. The definition
+  refuses a first round that runs into the second when it is built, and
+  the assigner checks every round it assigns, since a short month or a
+  clock change can shorten a later round. Events have no duration in the
+  model, so "ends" means the last kickoff, and a kickoff equal to the
+  next round's first is an overlap. The slots within a round must rise
+  too, and a round of one slot is checked against the next like any
+  other: an interval PHP adds as local time (one that `diff()` returned)
+  puts two steps at one instant where the clocks skip an hour, now that
+  each step is taken from the start (an interval of days written as a
+  duration does the same across a calendar day a timezone skipped, as
+  `Pacific/Apia` skipped 30 December 2011). The check is of the slots a round
+  declares, not of the ones it fills, so that a timeline is valid or not
+  whatever is placed on it.
+- **A round has a furthest time** (0.3.0): the steps are multiplied out,
+  and PHP adds an interval too large for its timestamps without an error
+  and returns a date that has wrapped round. `IntervalArithmetic` refuses
+  a result more than 10^14 days from its anchor (`ValueOutOfRange`). The
+  first implementation never reached such a round: it added once per
+  round. A fraction of a second is multiplied as whole microseconds, with
+  its whole seconds carried, because the float PHP shows it as loses a
+  microsecond when multiplied and the microseconds of many steps leave
+  PHP's range long before the seconds do. The limit is on the distance
+  from the anchor, so it does not guard a start that is itself near the
+  end of PHP's range, and an interval made from a relative string is not
+  under it: that one is still added once per step.
 - **No check of who plays.** The sketch below lists "a participant assigned
   overlapping slots" among the things that fail loudly. The assigner does
   not check it: it validates capacity and round numbers. A
@@ -67,7 +124,11 @@ Settled decisions beyond the sketch:
   authoritative like the definition itself). The assigner optionally
   carries rules and fails assignment loudly with every violation in the
   diagnostics; rules are also usable standalone against any accumulated
-  `ScheduledSchedule` (the round-by-round engine path). These are
+  `ScheduledSchedule` (the round-by-round engine path).
+  `assignRound()` applies the assigner's rules to the round it is given
+  (0.3.0; it ignored them before): a blackout is judged in full there,
+  and rest only within the round, because the assigner keeps no state
+  between calls. These are
   deliberately *not* `ConstraintInterface` implementations — generation
   constraints filter pairings during a search; timeline rules judge an
   already-determined mapping.
