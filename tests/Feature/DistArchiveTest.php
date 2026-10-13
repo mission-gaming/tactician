@@ -409,6 +409,33 @@ it('keeps every path composer.json loads at runtime in the dist archive', functi
     );
 });
 
+// `autoload-dev` may name directories the archive does not carry (`psr-4`,
+// `classmap`): Composer registers a missing directory and nothing is loaded
+// from it. A `files` entry is another matter: Composer requires each one as
+// the autoloader starts, in every process. Whoever unpacks a release archive
+// and installs it as a project of its own (development autoloading is the
+// default of `composer install`) would then get a `vendor/autoload.php` that
+// ends with "Failed opening required" before any of their code runs.
+it('lists no file in autoload-dev that the dist archive does not carry', function () use ($root): void {
+    $skip = distArchiveSkipReason($root);
+
+    if ($skip !== null) {
+        $this->markTestSkipped($skip);
+    }
+
+    $composer = json_decode(distArchiveGitOutput($root, ['show', 'HEAD:composer.json']), true);
+    Assert::assertIsArray($composer);
+    Assert::assertIsArray($composer['autoload-dev'] ?? null, 'composer.json has no autoload-dev section');
+
+    $archived = array_keys(distArchiveEntries(distArchiveGitOutput($root, ['archive', '--format=tar', 'HEAD'])));
+
+    Assert::assertSame(
+        [],
+        array_values(array_diff((array) ($composer['autoload-dev']['files'] ?? []), $archived)),
+        'autoload-dev requires files that the dist archive does not carry, so the autoloader of an unpacked archive would fail.'
+    );
+});
+
 it('ignores no tracked file', function () use ($root): void {
     $skip = distArchiveSkipReason($root);
 
