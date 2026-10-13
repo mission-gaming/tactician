@@ -231,10 +231,10 @@ through and what it found in them, and the shard is then to be split. Read
 the summaries when you change generation or repack logic: an untested
 change in the lines you touched is a test to write.
 
-The scores have not been confirmed in CI yet. The workflow runs on the
-default branch only, so its first run is started by hand there after the
-change that adds it is merged; the size of the shards rests on one local
-measurement until then.
+The weekly run is of the default branch. A maintainer can start the
+workflow for another branch, to see what a change to the tests or to the
+workflow does before it is merged:
+`gh workflow run "Mutation testing" --ref <branch>`.
 
 The run does not use the whole suite. Every change starts a test process
 of its own, so the tests are the ones named in `phpunit.mutation.xml`: the
