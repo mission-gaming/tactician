@@ -356,6 +356,55 @@ describe('a leg strategy that yields no event', function (): void {
         ],
     ]);
 
+    // The suggestions of the report said "Try relaxing constraint
+    // requirements" and "Use fewer or less restrictive constraints" to a
+    // scheduler that has none. The exception does not know what the
+    // scheduler has, only that no rejection was recorded, so it says that
+    // and names the other cause.
+    it('does not tell a scheduler with no constraints to relax them', function (bool $backtracking): void {
+        $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
+
+        $failure = null;
+        try {
+            (new RoundRobinScheduler())->schedule(
+                $participants,
+                new RoundRobinOptions(legs: 2, strategy: uncoveredPathsSilentLegStrategy(['a']), backtracking: $backtracking)
+            );
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        $report = (string) $failure?->getDiagnosticReport();
+        $suggestions = substr($report, (int) strpos($report, '=== SUGGESTIONS ==='));
+
+        expect($suggestions)->toBe(implode("\n", [
+            '=== SUGGESTIONS ===',
+            '• No constraint rejection was recorded: if the scheduler has constraints, try relaxing them and review their combinations for conflicts',
+            '• If the scheduler has a leg strategy of its own, check that it returns an event for every pairing in every leg',
+            '• Test with a simpler configuration first',
+        ]));
+    })->with(['greedy generation' => [false], 'backtracking allowed' => [true]]);
+
+    it('keeps the suggestions about constraints when a rejection was recorded', function (): void {
+        $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
+        $constraints = ConstraintSet::create()->custom(
+            fn(Event $event, SchedulingContext $context): bool => ($event->getRound()?->getNumber() ?? 0) < 4,
+            'One leg only'
+        )->build();
+
+        $failure = null;
+        try {
+            (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: 2));
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        expect((string) $failure?->getDiagnosticReport())
+            ->toContain('• Review CallableConstraint settings for compatibility')
+            ->toContain('• Use fewer or less restrictive constraints')
+            ->not->toContain('No constraint rejection was recorded');
+    });
+
     it('names both causes when the strategy gives no event for some pairings and a constraint rejects others', function (): void {
         $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
         // Rejects b against c from round 4 on, which is the second leg

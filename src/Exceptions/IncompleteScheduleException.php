@@ -137,7 +137,10 @@ class IncompleteScheduleException extends SchedulingException
      * The algorithm, the participant, round, leg and event counts, the
      * recorded rejections grouped by constraint with the participants most
      * affected and every round affected, the blocked pairings and the attribution of the
-     * analysis when there is one, and suggestions. A rejection recorded
+     * analysis when there is one, and suggestions. The suggestions speak
+     * of the constraints that rejected an event; when no rejection was
+     * recorded they do not take it that the scheduler has constraints. A
+     * rejection recorded
      * without a round (null or 0) is counted for its constraint and its
      * participants and is in no affected round.
      */
@@ -309,14 +312,20 @@ class IncompleteScheduleException extends SchedulingException
         }
 
         if ($suggestions === []) {
-            $suggestions[] = '• Try relaxing constraint requirements';
+            // No rejection was recorded. The exception does not know why:
+            // the scheduler may have no constraints at all (a leg strategy
+            // that returned no event leaves a leg short without one), or be
+            // one that does not record what its constraints reject. So the
+            // advice about constraints is conditional, and the other cause
+            // is named.
+            $suggestions[] = '• No constraint rejection was recorded: if the scheduler has constraints, try relaxing them and review their combinations for conflicts';
             $suggestions[] = $hasLegs
-                ? '• Increase the number of participants or legs'
+                ? '• If the scheduler has a leg strategy of its own, check that it returns an event for every pairing in every leg'
                 : '• Increase the number of participants or rounds';
-            $suggestions[] = '• Review constraint combinations for conflicts';
+        } else {
+            $suggestions[] = '• Use fewer or less restrictive constraints';
         }
 
-        $suggestions[] = '• Use fewer or less restrictive constraints';
         $suggestions[] = '• Test with a simpler configuration first';
 
         return implode("\n", $suggestions);

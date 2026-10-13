@@ -650,7 +650,14 @@ heading **Output change (fix)**.
   message. In `getDiagnosticReport()`, a rejection recorded without a round
   was listed under "Affected rounds" as round 0; it is left out there, as
   `ConstraintViolationCollector::getAffectedRounds()` leaves it out. The
-  texts are for people and are not a contract (#121, item 14).
+  suggestions at the end of the report told a scheduler with no constraints
+  to "Try relaxing constraint requirements" and to "Use fewer or less
+  restrictive constraints". When no rejection was recorded they now say
+  so, give the advice about constraints as a condition ("if the scheduler
+  has constraints"), and, for a stage with legs, say to check that a leg
+  strategy of the caller's returns an event for every pairing. A report
+  with a recorded rejection has the suggestions it had. The texts are for
+  people and are not a contract (#121, item 14).
 
 - **A shard of the `Mutation testing` workflow is no longer ended by a
   runner shutdown before it reports.** Tooling only: nothing a consumer
