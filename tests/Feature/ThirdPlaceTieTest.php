@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -22,7 +23,6 @@ use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\StageTransition;
-use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Standings\StandingEntry;
 
 // The third-place tie of a single elimination bracket, case by case. The
@@ -470,10 +470,15 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         expect($engine->isComplete($oneLeg))->toBeFalse()
             ->and($engine->getReadiness($oneLeg)->getUnresolvedEvents())->toBe([$thirdSecondLeg]);
 
-        // A leg each, and no decision: refused, as a level tie is
+        // A leg each, and no decision: the tie awaits it, as a level tie
+        // does, and the bracket is not complete with the final decided
         $level = $oneLeg->withAdditionalResults([new Result($thirdSecondLeg, $p3)]);
+        expect($engine->isComplete($level))->toBeFalse()
+            ->and($engine->getOutcome($level))->toBeNull()
+            ->and($engine->getReadiness($level)->getUndecidedEvents())->toBe([$thirdFirstLeg, $thirdSecondLeg])
+            ->and($engine->getReadiness($level)->getUnresolvedEvents())->toBe([]);
         try {
-            $engine->isComplete($level);
+            $engine->pairNextRound($level);
             $this->fail('A level third-place tie without a decision was accepted.');
         } catch (InvalidConfigurationException $exception) {
             expect($exception->getReason())->toBe(InvalidConfigurationReason::UndecidedTie);
@@ -481,7 +486,7 @@ describe('the third-place tie of a single elimination bracket', function (): voi
 
         // The decision sends p3 on: third, above p4, whose record is the same
         $decided = $oneLeg->withAdditionalResults([
-            new Result($thirdSecondLeg, $p3, [], [TieDecision::TIE_WINNER_KEY => 'p3']),
+            new Result($thirdSecondLeg, $p3, [], [], null, new Decider(['p3'])),
         ]);
         $outcome = $engine->getOutcome($decided);
         assert($outcome !== null);
@@ -509,8 +514,11 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         $finalResult = new Result($final, $final->getParticipants()[0]);
 
         $undecided = $state->withRoundPlayed($last, [$finalResult, new Result($thirdPlace, null, ['p4' => 1, 'p3' => 1])]);
+        expect($this->engine->getOutcome($undecided))->toBeNull()
+            ->and($this->engine->isComplete($undecided))->toBeFalse()
+            ->and($this->engine->getReadiness($undecided)->getUndecidedEvents())->toBe([$thirdPlace]);
         try {
-            $this->engine->getOutcome($undecided);
+            $this->engine->pairNextRound($undecided);
             $this->fail('A drawn third-place tie without a decision was accepted.');
         } catch (InvalidConfigurationException $exception) {
             expect($exception->getReason())->toBe(InvalidConfigurationReason::UndecidedTie);
@@ -518,7 +526,7 @@ describe('the third-place tie of a single elimination bracket', function (): voi
 
         $decided = $state->withRoundPlayed($last, [
             $finalResult,
-            new Result($thirdPlace, null, ['p4' => 1, 'p3' => 1], [TieDecision::TIE_WINNER_KEY => 'p3']),
+            new Result($thirdPlace, null, ['p4' => 1, 'p3' => 1], [], null, new Decider(['p3'])),
         ]);
         $outcome = $this->engine->getOutcome($decided);
         assert($outcome !== null);

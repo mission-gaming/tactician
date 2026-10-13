@@ -16,9 +16,9 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  *
  * A walk stops in one of three ways, and exactly one is true afterwards:
  * at a round that is not recorded and has a tie to play (`$pending` is
- * that round), at a recorded round that still awaits results
- * (`$awaitingRound` and `$unresolved`), or at the end of the bracket
- * (neither is set).
+ * that round), at a recorded round that still awaits a result or the
+ * decision of a level tie (`$awaitingRound`, with `$unresolved` and
+ * `$undecided`), or at the end of the bracket (neither is set).
  *
  * It is filled in by the walk and is not kept: an engine holds no state.
  *
@@ -46,8 +46,33 @@ final class BracketReading
     /** The next round to pair, when the walk stopped at one. */
     public ?RoundPairing $pending = null;
 
-    /** The recorded round that awaits results, when the walk stopped at one. */
+    /** The recorded round that awaits results or a decision, when the walk stopped at one. */
     public ?int $awaitingRound = null;
+
+    /**
+     * The events of that round whose tie has every result, is level and
+     * awaits its decider.
+     *
+     * @var list<Event>
+     */
+    public array $undecided = [];
+
+    /**
+     * What is to be said of the first tie the walk found level without a
+     * decider: the message and the context (the round and the two
+     * participants of the tie) of the refusal pairNextRound() gives for
+     * the round.
+     *
+     * @var array{issue: string, context: array<string, mixed>}|null
+     */
+    public ?array $undecidedTie = null;
+
+    /**
+     * Whether this walk has raised the deprecation of the 'tie_winner'
+     * metadata key: it is raised once for a call of the engine, however
+     * many ties the key decides.
+     */
+    public bool $tieWinnerDeprecationRaised = false;
 
     /**
      * The events of that round that await a result.

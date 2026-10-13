@@ -18,7 +18,6 @@ use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\ViolationKind;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
-use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Tests\Support\CiEnvironment;
@@ -1044,7 +1043,8 @@ $demonstrations = [
 
         // The level event stays a draw in the record, and the participant it names is the one in the final
         expect($level->isDraw())->toBeTrue()
-            ->and($level->getMetadataValue(TieDecision::TIE_WINNER_KEY))->toBe('dia')
+            ->and($level->getDecider()?->getParticipantIds())->toBe(['dia'])
+            ->and($level->getScores())->toBe(['ana' => 1, 'dia' => 1])
             ->and($results['The level semifinal'])->toBe(['Recorded as a draw' => true, 'Recorded winner' => null, 'Who advanced' => 'Dia'])
             ->and(examplePair($final->getEvent()))->toContain('dia');
 

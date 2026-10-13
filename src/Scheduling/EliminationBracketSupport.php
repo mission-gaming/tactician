@@ -15,7 +15,7 @@ use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
-use MissionGaming\Tactician\Stage\TieDecision;
+use MissionGaming\Tactician\Stage\TieResolution;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\EntryOrder;
 use MissionGaming\Tactician\Standings\StandingEntry;
@@ -156,17 +156,30 @@ trait EliminationBracketSupport
      * Resolve who advances from the tie between two slots, or null while
      * legs are missing results.
      *
-     * @param array<string, Result> $resultIndex
+     * A level tie with no decision is reported with its round beside its
+     * participants: two entrants can meet more than once in a bracket (the
+     * grand final and its reset), so the pair alone does not say which tie.
      *
-     * @throws InvalidConfigurationException When a completed tie is level and carries no
-     *                                       usable tie decision (see TieDecision)
+     * The deprecation of the 'tie_winner' metadata key is raised here, the
+     * first time a replay takes an advancer from it and never again in the
+     * same replay: the caller owns the flag and starts it at false for each
+     * call of the engine.
+     *
+     * @param array<string, Result> $resultIndex
+     * @param bool $tieWinnerDeprecationRaised Whether this replay has raised the deprecation
+     *
+     * @throws InvalidConfigurationException When a completed tie is level and carries no decider
+     *                                       (`UndecidedTie`, which settleTie() reads as a tie
+     *                                       that awaits its decision), or a result or a decider
+     *                                       is one TieDecision refuses (`InvalidResult`)
      */
     private function lookupAdvancer(
         array $resultIndex,
         int $round,
         Participant $first,
         Participant $second,
-        int $legsPerTie
+        int $legsPerTie,
+        bool &$tieWinnerDeprecationRaised
     ): ?Participant {
         $legResults = [];
         for ($leg = 1; $leg <= $legsPerTie; ++$leg) {
@@ -176,7 +189,26 @@ trait EliminationBracketSupport
             }
         }
 
-        return TieDecision::advancer($legResults, $first, $second, $legsPerTie);
+        try {
+            $resolution = TieResolution::of($legResults, $first, $second, $legsPerTie);
+        } catch (InvalidConfigurationException $exception) {
+            if ($exception->getReason() !== InvalidConfigurationReason::UndecidedTie) {
+                throw $exception;
+            }
+
+            throw new InvalidConfigurationException(
+                $exception->getConfigurationIssue(),
+                ['round' => $round] + $exception->getContext(),
+                reason: InvalidConfigurationReason::UndecidedTie
+            );
+        }
+
+        if ($resolution->readTieWinnerMetadata && !$tieWinnerDeprecationRaised) {
+            $tieWinnerDeprecationRaised = true;
+            TieResolution::raiseTieWinnerDeprecation();
+        }
+
+        return $resolution->advancer;
     }
 
     /**
@@ -213,7 +245,7 @@ trait EliminationBracketSupport
 
             $decided[] = $advancer === null
                 ? $result
-                : new Result($event, $advancer, $result->getScores(), $result->getMetadata(), $result->getAward());
+                : new Result($event, $advancer, $result->getScores(), $result->getMetadata(), $result->getAward(), $result->getDecider());
         }
 
         return $decided;
@@ -434,6 +466,13 @@ trait EliminationBracketSupport
      * tie an entrant has withdrawn from is uncontested: the other entrant
      * goes on without it being played. A tie that neither decides is open.
      *
+     * A tie that has every result, is level and carries no decider is open
+     * too: it awaits the application's decision as another tie awaits a
+     * result, and is marked as undecided. What the refusal says is kept on
+     * the reading for pairNextRound() to throw. Where an entrant of
+     * such a tie has withdrawn, the withdrawal gives the tie away as it
+     * does any tie the results do not decide.
+     *
      * Where both have withdrawn, one of them may have gone on before it
      * left: the state does not say when an entrant withdrew, and the
      * recorded rounds do. The one that a later recorded round names went
@@ -441,9 +480,10 @@ trait EliminationBracketSupport
      * did.
      *
      * @param array<string, Participant> $levelAdvancers
-     * @return array{winner: Participant|null, losers: list<Participant>, open: bool, uncontested: bool}
+     * @return array{winner: Participant|null, losers: list<Participant>, open: bool, uncontested: bool, undecided: bool}
      *
-     * @throws InvalidConfigurationException When a completed tie is level without a usable tie decision
+     * @throws InvalidConfigurationException When a result of the tie names a winner outside it, or
+     *                                       its decider is one TieDecision refuses (`InvalidResult`)
      */
     private function settleTie(
         BracketReading $reading,
@@ -453,7 +493,25 @@ trait EliminationBracketSupport
         int $legsPerTie,
         array &$levelAdvancers
     ): array {
-        $advancer = $this->lookupAdvancer($reading->resultIndex, $round, $first, $second, $legsPerTie);
+        $undecided = null;
+        try {
+            $advancer = $this->lookupAdvancer(
+                $reading->resultIndex,
+                $round,
+                $first,
+                $second,
+                $legsPerTie,
+                $reading->tieWinnerDeprecationRaised
+            );
+        } catch (InvalidConfigurationException $exception) {
+            if ($exception->getReason() !== InvalidConfigurationReason::UndecidedTie) {
+                throw $exception;
+            }
+
+            $advancer = null;
+            $undecided = $exception;
+        }
+
         if ($advancer instanceof Participant) {
             $this->noteLevelAdvancer($levelAdvancers, $reading->resultIndex, $round, $first, $second, $legsPerTie, $advancer);
 
@@ -462,20 +520,31 @@ trait EliminationBracketSupport
                 'losers' => [$advancer->getId() === $first->getId() ? $second : $first],
                 'open' => false,
                 'uncontested' => false,
+                'undecided' => false,
             ];
         }
 
         $firstOut = isset($reading->withdrawn[$first->getId()]);
         $secondOut = isset($reading->withdrawn[$second->getId()]);
         if (!$firstOut && !$secondOut) {
-            return ['winner' => null, 'losers' => [], 'open' => true, 'uncontested' => false];
+            if ($undecided instanceof InvalidConfigurationException) {
+                $reading->undecidedTie ??= ['issue' => $undecided->getConfigurationIssue(), 'context' => $undecided->getContext()];
+            }
+
+            return [
+                'winner' => null,
+                'losers' => [],
+                'open' => true,
+                'uncontested' => false,
+                'undecided' => $undecided instanceof InvalidConfigurationException,
+            ];
         }
 
         if ($firstOut && $secondOut) {
             $firstWentOn = ($reading->lastNamedIn[$first->getId()] ?? 0) > $reading->number;
             $secondWentOn = ($reading->lastNamedIn[$second->getId()] ?? 0) > $reading->number;
             if ($firstWentOn === $secondWentOn) {
-                return ['winner' => null, 'losers' => [$first, $second], 'open' => false, 'uncontested' => true];
+                return ['winner' => null, 'losers' => [$first, $second], 'open' => false, 'uncontested' => true, 'undecided' => false];
             }
 
             $firstOut = !$firstWentOn;
@@ -486,6 +555,7 @@ trait EliminationBracketSupport
             'losers' => [$firstOut ? $first : $second],
             'open' => false,
             'uncontested' => true,
+            'undecided' => false,
         ];
     }
 
@@ -510,10 +580,13 @@ trait EliminationBracketSupport
      * @param int $round The number the round's results carry
      * @param array{Participant, Participant}|null $extraTie A tie of the round that stands in no slot
      *                                                       (the third-place tie)
-     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, unplayed: list<Participant>, unresolved: list<Event>, uncontested: list<Event>}
-     *                                                                                                                                                                                                                                                                              `unplayed` lists who went on without a tie being played
+     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, unplayed: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
+     *                                                                                                                                                                                                                                                                              `unplayed` lists who went on without a tie being played;
+     *                                                                                                                                                                                                                                                                              `unresolved` the events that await a result, and
+     *                                                                                                                                                                                                                                                                              `undecided` the events of the ties that have every
+     *                                                                                                                                                                                                                                                                              result, are level and await a decider
      *
-     * @throws InvalidConfigurationException When a completed tie is level without a usable tie decision
+     * @throws InvalidConfigurationException When a result names a winner outside its tie, or a decider is one TieDecision refuses
      */
     private function readRound(
         BracketReading $reading,
@@ -555,6 +628,7 @@ trait EliminationBracketSupport
         $unplayed = [];
         $unresolved = [];
         $uncontested = [];
+        $undecided = [];
         $sequence = 0;
 
         // The ties the bracket has in the round are read first, so that an
@@ -599,6 +673,9 @@ trait EliminationBracketSupport
 
             foreach ($tie['events'] as $event) {
                 if (isset($reading->resultIndex[$this->legKey($round, $first, $second, $event->getMetadataValue('tie_leg'))])) {
+                    if ($settled['undecided']) {
+                        $undecided[] = $event;
+                    }
                     continue;
                 }
                 if ($settled['open']) {
@@ -703,6 +780,7 @@ trait EliminationBracketSupport
             'unplayed' => $unplayed,
             'unresolved' => $unresolved,
             'uncontested' => $uncontested,
+            'undecided' => $undecided,
         ];
     }
 

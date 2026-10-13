@@ -48,7 +48,7 @@ document the shipped shapes.
 - **Rank 1 is the winner because the table is the placement.** Sections 4
   and 8 say the winner of a bracket is derivable as rank 1 of the
   standings. A table of wins and losses alone does not give that (double
-  elimination, a two-legged tie decided by `tie_winner` and a bye each
+  elimination, a two-legged tie settled by a tie decision and a bye each
   break it), so since 0.3.0 the table of an elimination outcome is ordered
   by the bracket first, in tiers, and by the records inside a tier
   ([usage guide](../USAGE.md#who-won-the-bracket)).

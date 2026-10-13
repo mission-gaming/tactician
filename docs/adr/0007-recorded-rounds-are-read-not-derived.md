@@ -71,7 +71,15 @@ state as they are and derives only the round that does not exist yet.
    without an exception. This holds for the Swiss engine too, which is the
    one behaviour change: it no longer pairs past an unfinished round unless
    it is asked to (`pairNextRoundOnIncompleteResults()`, which marks the
-   round) or is in results-free mode.
+   round) or is in results-free mode. A bracket tie that has every result,
+   finished level and carries no decider is the same kind of thing, a
+   round that awaits a fact, and is read the same way: the bracket is not
+   complete, `getReadiness()` lists the events of the tie apart from those
+   that await a result (`getUndecidedEvents()`), and `pairNextRound()`
+   keeps the refusal it had (`UndecidedTie`, with the round and the two
+   participants). A state that says something no decision can mend (two
+   results of one event, a decider on a tie its results decide) is still
+   refused by every call.
 4. **Pairing without results is a mode, and part of the fingerprint.**
    `SwissPairingEngine(resultsFree: true)` is the engine the whole-schedule
    preset drives. The option is in the fingerprint when it is on and absent

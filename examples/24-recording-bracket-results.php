@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/support/Example.php';
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Examples\Example;
@@ -50,12 +51,13 @@ $semifinals = $engine->pairNextRound($state);
 
 // Ana and Dia finish level at 1-1. A bracket must send one of them on, and
 // who that is belongs to the application's rules (here, a shoot-out that Dia
-// won). The result is recorded as the draw it was, with the participant who
-// advances named by id under the 'tie_winner' key.
+// won). The result is recorded as the draw it was, with a decider that names
+// the participant who advances by id. The label is the application's own
+// word for how it decided; the library stores it and never reads it.
 //
 // The other semifinal is entered as a win for Cai. That is a mistake: Bea won.
 $state = $state->withRoundPlayed($semifinals, [
-    new Result($anaVsDia, null, ['ana' => 1, 'dia' => 1], [TieDecision::TIE_WINNER_KEY => $dia->getId()]),
+    new Result($anaVsDia, null, ['ana' => 1, 'dia' => 1], decider: new Decider([$dia->getId()], 'shoot-out')),
     new Result($beaVsCai, $cai, ['bea' => 2, 'cai' => 0]),
 ]);
 $database['bracket'] = $state->toJson();
@@ -91,8 +93,9 @@ if ($outcome === null) {
 // Who took the title is read from the results of the final round
 $titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];
 
-// The level semifinal is still a draw in the record; advancer() is how the
-// engines read who went on
+// The level semifinal is still a draw in the record, at the score it was
+// played to, and its decider came back from storage with it; advancer() is
+// how the engines read who went on
 $levelResult = $state->getResults()[0];
 $advanced = TieDecision::advancer([$levelResult], $ana, $dia, 1);
 
@@ -110,7 +113,8 @@ try {
 }
 
 // 2. A level event recorded without naming who advances. The state accepts
-//    the result, because it does not know the format; the engine refuses it.
+//    the result, because it does not know the format; the tie then awaits
+//    its decider, and the engine refuses the round after it.
 $undecided = StageState::start($entrants)->withRoundPlayed($semifinals, [
     new Result($anaVsDia, null, ['ana' => 1, 'dia' => 1]),
     new Result($beaVsCai, $bea, ['bea' => 2, 'cai' => 0]),
@@ -134,7 +138,7 @@ try {
 
 return Example::present(__FILE__, 'Recording the results of a bracket', 'A four-entrant bracket kept as stamped JSON between requests. One semifinal finishes level and the application names who advances; the other is entered wrongly and corrected before the final is paired; an engine with another configuration is refused the stored state.', [
     'Semifinals, as first recorded' => [
-        new Result($anaVsDia, null, ['ana' => 1, 'dia' => 1], [TieDecision::TIE_WINNER_KEY => $dia->getId()]),
+        new Result($anaVsDia, null, ['ana' => 1, 'dia' => 1], decider: new Decider([$dia->getId()], 'shoot-out')),
         new Result($beaVsCai, $cai, ['bea' => 2, 'cai' => 0]),
     ],
     'The level semifinal' => [

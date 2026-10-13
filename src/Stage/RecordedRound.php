@@ -30,13 +30,16 @@ final readonly class RecordedRound
      * @param array<Event> $unresolvedEvents The events of the round that await a result
      * @param array<Event> $uncontestedEvents The events of the round that await none because an
      *                                        entrant of their tie has withdrawn
+     * @param array<Event> $undecidedEvents The events of the ties of the round that have every
+     *                                      result, are level and await their decider
      */
     public function __construct(
         private RoundPairing $pairing,
         private ?RoundPairing $derivation,
         private bool $manual,
         private array $unresolvedEvents = [],
-        private array $uncontestedEvents = []
+        private array $uncontestedEvents = [],
+        private array $undecidedEvents = []
     ) {}
 
     /**
@@ -110,11 +113,26 @@ final readonly class RecordedRound
     }
 
     /**
-     * Whether no event of the round awaits a result.
+     * The events of the ties of the round that have every result, finished
+     * level and carry no decider (DTO\Decider), in the order of the round:
+     * the round awaits the application's decision of each as it awaits a
+     * result. Both legs of a two-legged tie are listed. Only a bracket has
+     * them; empty otherwise.
+     *
+     * @return list<Event>
+     */
+    public function getUndecidedEvents(): array
+    {
+        return array_values($this->undecidedEvents);
+    }
+
+    /**
+     * Whether the round awaits nothing: no event of it awaits a result,
+     * and no tie of it the decision of a level result.
      */
     public function isResolved(): bool
     {
-        return $this->unresolvedEvents === [];
+        return $this->unresolvedEvents === [] && $this->undecidedEvents === [];
     }
 
     /**

@@ -17,10 +17,12 @@ use MissionGaming\Tactician\Standings\Standings;
  * a StageEngineInterface.
  *
  * None of the three methods throws for a round that has some or none of
- * its results. Each throws what every call of the engine throws for a
- * state it cannot read at all: one stamped with another engine's
- * fingerprint, one with too few participants, and, in a bracket, a tie
- * that is level without a decision or an event with two results.
+ * its results, or for a bracket tie that finished level and awaits its
+ * decider. Each throws what every call of the engine throws for a state it
+ * cannot read at all: one stamped with another engine's fingerprint, one
+ * with too few participants, and, in a bracket, an event with two results,
+ * a result that names a winner outside its tie, or a decider that
+ * TieDecision refuses.
  *
  * @experimental
  */
@@ -30,9 +32,15 @@ interface HistoryReadingEngine
      * Whether the next round can be paired now and, when it cannot, the
      * events that await a result.
      *
-     * The answer agrees with pairNextRound(): ready means it pairs a
-     * round, awaiting results means it throws an UnresolvedRoundException
-     * with the same events, and complete means isComplete() is true.
+     * The answer agrees with pairNextRound(): awaiting results means it
+     * throws an UnresolvedRoundException with the same events, or, where a
+     * tie awaits its decider (PairingReadiness::getUndecidedEvents()), an
+     * InvalidConfigurationException with the reason `UndecidedTie`; and
+     * complete means isComplete() is true. Ready means that nothing
+     * recorded stands in the way of the next round: a bracket engine then
+     * pairs it. The Swiss engine can still find that no pairing exists
+     * (NoValidPairingException), which only the search tells, and refuses
+     * a table it cannot build as getStandings() does.
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the state cannot be read at all
      */

@@ -17,7 +17,11 @@ use MissionGaming\Tactician\DTO\Event;
  *   pairNextRound() gives the round with the number getRoundNumber() says;
  * - it awaits results: getUnresolvedEvents() lists the events, and
  *   pairNextRound() refuses with an UnresolvedRoundException that carries
- *   the same list;
+ *   the same list. A bracket can await a decision as well: a tie that has
+ *   every result, finished level and carries no decider.
+ *   getUndecidedEvents() lists the events of such ties, and
+ *   pairNextRound() refuses with the reason `UndecidedTie` while there is
+ *   one;
  * - it is complete: there is no further round.
  *
  * Asking is how an application avoids catching an exception for a round
@@ -29,12 +33,14 @@ final readonly class PairingReadiness
 {
     /**
      * @param list<Event> $unresolvedEvents
+     * @param list<Event> $undecidedEvents
      */
     private function __construct(
         private bool $ready,
         private bool $complete,
         private ?int $roundNumber,
-        private array $unresolvedEvents
+        private array $unresolvedEvents,
+        private array $undecidedEvents = []
     ) {}
 
     /**
@@ -49,14 +55,16 @@ final readonly class PairingReadiness
 
     /**
      * The next round cannot be paired yet: a recorded round has events
-     * that await a result.
+     * that await a result, or ties that are level and await their decider.
      *
      * @param int $roundNumber The earliest recorded round with such an event
-     * @param array<Event> $unresolvedEvents The events, in play order
+     * @param array<Event> $unresolvedEvents The events that await a result, in play order
+     * @param array<Event> $undecidedEvents The events of the ties that have every result, are
+     *                                      level and carry no decider, in play order
      */
-    public static function awaitingResults(int $roundNumber, array $unresolvedEvents): self
+    public static function awaitingResults(int $roundNumber, array $unresolvedEvents, array $undecidedEvents = []): self
     {
-        return new self(false, false, $roundNumber, array_values($unresolvedEvents));
+        return new self(false, false, $roundNumber, array_values($unresolvedEvents), array_values($undecidedEvents));
     }
 
     /**
@@ -85,7 +93,9 @@ final readonly class PairingReadiness
     }
 
     /**
-     * Whether the stage is waiting for results of a recorded round.
+     * Whether the stage is waiting for a recorded round: for results of it
+     * (getUnresolvedEvents()), for the decision of a tie of it that
+     * finished level (getUndecidedEvents()), or for both.
      */
     public function isAwaitingResults(): bool
     {
@@ -95,8 +105,8 @@ final readonly class PairingReadiness
     /**
      * The round the answer is about: the number the next round will carry
      * when the stage is ready, the earliest recorded round that has an
-     * event awaiting a result when it is not, and null when the stage is
-     * complete.
+     * event awaiting a result or a tie awaiting its decision when it is
+     * not, and null when the stage is complete.
      */
     public function getRoundNumber(): ?int
     {
@@ -113,5 +123,21 @@ final readonly class PairingReadiness
     public function getUnresolvedEvents(): array
     {
         return $this->unresolvedEvents;
+    }
+
+    /**
+     * The events of the ties that have every result, finished level and
+     * carry no decider, in play order: the objects the state holds. Each
+     * awaits the application's decision, which is recorded as the decider
+     * of a result of the tie (DTO\Decider; StageState::withResultReplaced()
+     * puts it on a result that is already recorded). Both legs of a
+     * two-legged tie are listed. Empty when the stage awaits no decision,
+     * and always for a Swiss stage, which has no ties.
+     *
+     * @return list<Event>
+     */
+    public function getUndecidedEvents(): array
+    {
+        return $this->undecidedEvents;
     }
 }

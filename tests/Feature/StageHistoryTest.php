@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -563,6 +564,149 @@ describe('a round with some of its results, or none', function (): void {
             ->and([$complete->isReady(), $complete->isAwaitingResults(), $complete->isComplete(), $complete->getRoundNumber(), $complete->getUnresolvedEvents()])
             ->toBe([false, false, true, null, []]);
     });
+});
+
+// A tie that has every result and finished level awaits the application's
+// decision (DTO\Decider). That is a round that awaits a fact, like one that
+// awaits a result: it is read, and only the next round is refused.
+describe('a bracket tie that is level and awaits its decider', function (): void {
+    it('is read without an exception, is listed apart from the events that await a result, and refuses only the next round', function (
+        string $name,
+        int $legs
+    ): void {
+        $engine = historyEngines()[$name];
+        $entrants = historyField(4);
+        $first = $engine->pairNextRound(StageState::start($entrants));
+        $events = $first->getEvents();
+        $level = array_slice($events, 0, $legs);
+        $other = array_slice($events, $legs);
+
+        // The first tie is level in every leg, and nobody has decided it;
+        // the second tie has no result yet
+        $drawn = array_map(static fn(Event $event): Result => new Result($event), $level);
+        $state = StageState::fromHistory($entrants, [$first], $drawn);
+        $readiness = $engine->getReadiness($state);
+        $read = $engine->getRecordedRounds($state)[0];
+
+        expect($engine->isComplete($state))->toBeFalse()
+            ->and($engine->getOutcome($state))->toBeNull()
+            ->and($engine->getStandings($state)->getEntries())->toHaveCount(4)
+            ->and($readiness->isReady())->toBeFalse()
+            ->and($readiness->isAwaitingResults())->toBeTrue()
+            ->and($readiness->getRoundNumber())->toBe(1)
+            ->and($readiness->getUndecidedEvents())->toBe($level)
+            ->and($readiness->getUnresolvedEvents())->toBe($other)
+            ->and($read->getUndecidedEvents())->toBe($level)
+            ->and($read->getUnresolvedEvents())->toBe($other)
+            ->and($read->isResolved())->toBeFalse()
+            ->and($read->isManual())->toBeFalse();
+
+        // The decision is what is missing, so that is what the refusal
+        // says, also while the round awaits a result as well
+        [$one, $two] = $level[0]->getParticipants();
+        try {
+            $engine->pairNextRound($state);
+            $this->fail('The round after an undecided tie was paired.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception)->not->toBeInstanceOf(UnresolvedRoundException::class)
+                ->and($exception->getReason())->toBe(InvalidConfigurationReason::UndecidedTie)
+                ->and($exception->getContext())->toBe(['round' => 1, 'participants' => [$one->getId(), $two->getId()]]);
+        }
+
+        // With the other tie played the round awaits the decision alone
+        $rng = new Randomizer(new Mt19937(11));
+        $played = historyResults(new RoundPairing(1, null, $other), $rng);
+        $state = StageState::fromHistory($entrants, [$first], [...$drawn, ...$played]);
+
+        expect($engine->isComplete($state))->toBeFalse()
+            ->and($engine->getReadiness($state)->getUndecidedEvents())->toBe($level)
+            ->and($engine->getReadiness($state)->getUnresolvedEvents())->toBe([])
+            ->and(fn() => $engine->pairNextRound($state))->toThrow(InvalidConfigurationException::class);
+
+        // Decided on whichever leg, and with the results in any order: the
+        // round is finished and the entrant the decider names goes on
+        $nextRounds = [];
+        foreach (array_keys($level) as $deciding) {
+            $decided = [];
+            foreach ($level as $leg => $event) {
+                $decided[] = new Result($event, null, [], [], null, $leg === $deciding ? new Decider([$two->getId()]) : null);
+            }
+            $state = StageState::fromHistory($entrants, [$first], $rng->shuffleArray([...$decided, ...$played]));
+            $next = $engine->pairNextRound($state);
+            $nextRounds[] = $next->toArray();
+            $named = [...historyIds($next->getByes())];
+            foreach ($next->getEvents() as $event) {
+                $named = [...$named, ...historyIds($event->getParticipants())];
+            }
+
+            expect($engine->getReadiness($state)->isReady())->toBeTrue()
+                ->and($engine->getRecordedRounds($state)[0]->isResolved())->toBeTrue()
+                ->and($engine->getRecordedRounds($state)[0]->getUndecidedEvents())->toBe([])
+                // In a double elimination bracket the losers round is next,
+                // and holds the entrant who did not advance
+                ->and($named)->toContain($engine instanceof DoubleEliminationEngine ? $one->getId() : $two->getId());
+        }
+
+        expect(array_unique($nextRounds, SORT_REGULAR))->toHaveCount(1);
+    })->with([
+        ['single elimination', 1],
+        ['single elimination over two legs', 2],
+        ['single elimination, re-seeded', 1],
+        ['single elimination with a third-place tie', 1],
+        ['double elimination', 1],
+        ['double elimination over two legs', 2],
+    ]);
+
+    it('is given away by an entrant of it who withdraws, like any tie the results do not decide', function (string $name): void {
+        $engine = historyEngines()[$name];
+        [$h1, , , $h4] = $entrants = historyField(4);
+        $first = $engine->pairNextRound(StageState::start($entrants));
+        [$h1VsH4, $h2VsH3] = $first->getEvents();
+        $results = [new Result($h1VsH4), new Result($h2VsH3, $h2VsH3->getParticipants()[0])];
+
+        $waiting = StageState::fromHistory($entrants, [$first], $results);
+        $withdrawn = StageState::fromHistory($entrants, [$first], $results, [$h4]);
+        $read = $engine->getRecordedRounds($withdrawn)[0];
+        $next = $engine->pairNextRound($withdrawn);
+        $named = [...historyIds($next->getByes())];
+        foreach ($next->getEvents() as $event) {
+            $named = [...$named, ...historyIds($event->getParticipants())];
+        }
+
+        expect($engine->getReadiness($waiting)->getUndecidedEvents())->toBe([$h1VsH4])
+            ->and($engine->getReadiness($withdrawn)->isReady())->toBeTrue()
+            ->and($read->getUndecidedEvents())->toBe([])
+            ->and($read->isResolved())->toBeTrue()
+            ->and($named)->toContain($h1->getId())
+            ->and(in_array($h4->getId(), $named, true))->toBeFalse();
+    })->with(['single elimination', 'double elimination']);
+
+    it('is still refused by every call where what is recorded cannot be read: a decider on a tie its results decide', function (string $name): void {
+        $engine = historyEngines()[$name];
+        [$h1, , , $h4] = $entrants = historyField(4);
+        $first = $engine->pairNextRound(StageState::start($entrants));
+        $state = StageState::fromHistory(
+            $entrants,
+            [$first],
+            [new Result($first->getEvents()[0], $h1, [], [], null, new Decider([$h4->getId()]))]
+        );
+
+        foreach ([
+            fn() => $engine->isComplete($state),
+            fn() => $engine->getOutcome($state),
+            fn() => $engine->getReadiness($state),
+            fn() => $engine->getRecordedRounds($state),
+            fn() => $engine->getStandings($state),
+            fn() => $engine->pairNextRound($state),
+        ] as $call) {
+            try {
+                $call();
+                $this->fail('A decider that overturns a result was read.');
+            } catch (InvalidConfigurationException $exception) {
+                expect($exception->getReason())->toBe(InvalidConfigurationReason::InvalidResult);
+            }
+        }
+    })->with(['single elimination', 'double elimination']);
 });
 
 describe('a Swiss round paired before the results are in', function (): void {

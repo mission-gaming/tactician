@@ -517,8 +517,8 @@ $this->entityManager->wrapInTransaction(function () use ($stageId): void {
 
 A bracket must send one participant on from every tie. When an event
 finishes level, who advances is decided by the application under its own
-rules. Record the result as the draw it was and name the participant who
-advances, by ID, under `TieDecision::TIE_WINNER_KEY`:
+rules. Record the result as the draw it was and give it a `Decider` that
+names the participant who advances, by ID:
 
 *From `examples/24-recording-bracket-results.php`:*
 
@@ -526,33 +526,46 @@ advances, by ID, under `TieDecision::TIE_WINNER_KEY`:
 ```php
 // Ana and Dia finish level at 1-1. A bracket must send one of them on, and
 // who that is belongs to the application's rules (here, a shoot-out that Dia
-// won). The result is recorded as the draw it was, with the participant who
-// advances named by id under the 'tie_winner' key.
+// won). The result is recorded as the draw it was, with a decider that names
+// the participant who advances by id. The label is the application's own
+// word for how it decided; the library stores it and never reads it.
 //
 // The other semifinal is entered as a win for Cai. That is a mistake: Bea won.
 $state = $state->withRoundPlayed($semifinals, [
-    new Result($anaVsDia, null, ['ana' => 1, 'dia' => 1], [TieDecision::TIE_WINNER_KEY => $dia->getId()]),
+    new Result($anaVsDia, null, ['ana' => 1, 'dia' => 1], decider: new Decider([$dia->getId()], 'shoot-out')),
     new Result($beaVsCai, $cai, ['bea' => 2, 'cai' => 0]),
 ]);
 $database['bracket'] = $state->toJson();
 ```
 
-- The value is the participant's ID as the string `getId()` returns. An
-  integer primary key that was not cast names nobody: `7` is not `'7'`,
-  and the engine refuses it as it refuses a participant from outside the
-  event.
-- The result stays a draw: `isDraw()` is true and `getWinner()` is null.
+- The decider takes the participant's ID as the string `getId()` returns.
+  An integer primary key that was not cast is refused when the decider is
+  built (`InvalidInputException`), and so is the ID of a participant who
+  is not in the event when the result is built.
+- The label and the reason are yours: the library stores them with the
+  result, hands them back and never reads them. Keep the method there, or
+  in a column of your own; the library never needs it.
+- The result stays a draw at the score it was played to: `isDraw()` is
+  true, `getWinner()` is null and no score changes.
+  `$result->getDecider()` gives the decider back, and
   `TieDecision::advancer()` reads who went on.
+- The decider is stored with the state, under `decider` in the result's
+  array, and comes back from `StageState::fromJson()`.
 - The engine's own table counts the event as a win for the participant
   who advanced.
-- The key is read only when the results leave the tie level. It cannot
-  overturn a result that has a winner.
-- A level event that names nobody is refused by the engine with the
-  reason `UndecidedTie`, and one that names somebody outside the event
-  with `InvalidResult`. Show the first to the operator as "choose who
-  advances".
+- A decider settles a level tie and nothing else: one on an event that has
+  a winner is refused by the engine with the reason `InvalidResult`.
+- A level event with no decider awaits one: the bracket is not complete,
+  `getReadiness()` lists the event under `getUndecidedEvents()`, and
+  `pairNextRound()` refuses with the reason `UndecidedTie`; the context
+  of the exception holds the round and the two participants. Show it to
+  the operator as "choose who advances".
 - A two-legged tie (`EliminationOptions(legsPerTie: 2)`) that is level
-  after both legs is decided the same way, on either leg's result.
+  after both legs is decided the same way, by a decider on one leg's
+  result: the second, where it is recorded when the tie ends.
+- Before 0.3.0 the decision was `tie_winner` metadata on the result. That
+  key is deprecated and still read until 1.0.0
+  ([Deprecations](../USAGE.md#the-tie_winner-metadata-key)).
 
 ### Correcting a result
 
@@ -590,8 +603,9 @@ yours to cancel. An event with no result yet is refused with
 // Who took the title is read from the results of the final round
 $titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];
 
-// The level semifinal is still a draw in the record; advancer() is how the
-// engines read who went on
+// The level semifinal is still a draw in the record, at the score it was
+// played to, and its decider came back from storage with it; advancer() is
+// how the engines read who went on
 $levelResult = $state->getResults()[0];
 $advanced = TieDecision::advancer([$levelResult], $ana, $dia, 1);
 ```

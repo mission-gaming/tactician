@@ -180,7 +180,11 @@ enum InvalidConfigurationReason: string
 
     /**
      * A tie that must produce a winner has none: it ended level, or it has
-     * no complete result, and no tie decision names a winner.
+     * no complete result, and no tie decision names a winner. A bracket
+     * engine gives it when the next round is asked for while a recorded
+     * tie is level and awaits its decider (reading such a bracket throws
+     * nothing; see `Stage\PairingReadiness::getUndecidedEvents()`), and
+     * `MatchOutcomeSelector` when it is asked to read such a round.
      */
     case UndecidedTie = 'undecided_tie';
 

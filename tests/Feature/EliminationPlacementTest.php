@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -15,7 +16,6 @@ use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
-use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
@@ -115,10 +115,10 @@ function playForPlacement(StageEngineInterface $engine, array $field, int $seed,
 
             foreach ($tieResults as $index => [$leg, $winner]) {
                 // The decision of a level tie is recorded on its last leg
-                $metadata = $level && $index === count($tieResults) - 1
-                    ? [TieDecision::TIE_WINNER_KEY => $advancer->getId()]
-                    : [];
-                $results[] = new Result($leg, $winner, [], $metadata);
+                $decider = $level && $index === count($tieResults) - 1
+                    ? new Decider([$advancer->getId()])
+                    : null;
+                $results[] = new Result($leg, $winner, [], [], null, $decider);
             }
 
             $other = $advancer->getId() === $first->getId() ? $second : $first;
@@ -520,7 +520,7 @@ describe('the table of an elimination outcome', function (): void {
         [$firstLeg, $secondLeg] = $final->getEvents();
         $state = $state->withRoundPlayed($final, [
             new Result($firstLeg, $alice),
-            new Result($secondLeg, $heidi, [], [TieDecision::TIE_WINNER_KEY => 'heidi']),
+            new Result($secondLeg, $heidi, [], [], null, new Decider(['heidi'])),
         ]);
 
         $outcome = $engine->getOutcome($state);

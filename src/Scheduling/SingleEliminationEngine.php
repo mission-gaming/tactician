@@ -48,9 +48,14 @@ use Override;
  *
  * Ties are played over one event or two mirrored legs (legsPerTie). A tie
  * that finishes level - a drawn single event, or two legs that do not
- * decide - is the application's to decide and is recorded as a tie
- * decision on the result (see TieDecision); a level tie without one is
- * refused by every call.
+ * decide - is the application's to decide and is recorded as the decider
+ * of a result of the tie (DTO\Decider; see TieDecision for the reading). A
+ * level tie without one awaits that decision as another tie awaits a
+ * result: the bracket is not complete, reading it throws nothing,
+ * getReadiness() lists the events of the tie
+ * (PairingReadiness::getUndecidedEvents()), and pairNextRound() refuses
+ * with the reason `UndecidedTie` and, in the context of the exception, the
+ * round of the tie and its two participants.
  *
  * A third-place tie (thirdPlace, off by default) makes the bracket decide
  * places 3 and 4: the last round then holds two ties, the final and a tie
@@ -70,7 +75,8 @@ use Override;
  * the winner it names advances from a single-leg tie, and in a two-legged
  * tie it is a leg won, so a tie that is not played at all is settled by
  * an awarded result for each leg. One that names no winner leaves the tie
- * level, like a draw, and the tie decision is then needed. Adjustments
+ * level, like a draw, and the decider is then needed, which the awarded
+ * result may carry. Adjustments
  * recorded on the state (StageState::withAdjustment()) are in the ranking
  * values of every table the engine builds: they order the entrants a round
  * put out together and the survivors of a re-seeded round, and never
@@ -208,13 +214,17 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * @throws UnresolvedRoundException When the last recorded round has a tie without a complete
      *                                  result (reason `RoundPartiallyResolved`; record the
      *                                  missing results via StageState::withAdditionalResults())
-     * @throws InvalidConfigurationException When the state has fewer than 2 entrants, or
+     * @throws InvalidConfigurationException When a tie of the last recorded round has every result,
+     *                                       is level and carries no decider (`UndecidedTie`, with
+     *                                       the round and the two participants in the context;
+     *                                       it is thrown before the exception above where the
+     *                                       round has both), the state has fewer than 2 entrants, or
      *                                       fewer than 3 with the third-place option
      *                                       (`TooFewParticipants`), or is
      *                                       stamped with another engine's fingerprint, a result
      *                                       has no round number, is not of a two-participant
-     *                                       event or is recorded twice, a completed tie
-     *                                       is level without a usable tie decision, a recorded
+     *                                       event or is recorded twice, a tie carries a decider
+     *                                       TieDecision refuses (`InvalidResult`), a recorded
      *                                       round holds a third-place tie where this engine
      *                                       plays none (reason `RecordedRoundMismatch`), a re-seeded
      *                                       bracket has a bye and a ranking strategy that is not
@@ -228,6 +238,14 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         if ($reading->pending instanceof RoundPairing) {
             return $reading->pending;
+        }
+
+        if ($reading->undecidedTie !== null) {
+            throw new InvalidConfigurationException(
+                $reading->undecidedTie['issue'],
+                $reading->undecidedTie['context'],
+                reason: InvalidConfigurationReason::UndecidedTie
+            );
         }
 
         if ($reading->awaitingRound !== null) {
@@ -246,8 +264,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * result for each of its ties, or needs none because an entrant of the
      * tie has withdrawn. A bracket with a third-place tie is complete when
      * that tie is decided as well. A round that has some of its results,
-     * or none, is a bracket that is not complete, and nothing is thrown
-     * for it.
+     * or none, or a tie that is level and awaits its decider, is a bracket
+     * that is not complete, and nothing is thrown for it.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed: every case
      *                                       pairNextRound() names but the unfinished round and
@@ -272,7 +290,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         return match (true) {
             $reading->pending instanceof RoundPairing => PairingReadiness::ready($reading->pending->getRoundNumber()),
-            $reading->awaitingRound !== null => PairingReadiness::awaitingResults($reading->awaitingRound, $reading->unresolved),
+            $reading->awaitingRound !== null => PairingReadiness::awaitingResults($reading->awaitingRound, $reading->unresolved, $reading->undecided),
             default => PairingReadiness::complete(),
         };
     }
@@ -493,7 +511,14 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             );
 
             if ($claimed && $recorded instanceof RoundPairing) {
-                $reading->rounds[] = new RecordedRound($recorded, $derivation, $read['manual'], $read['unresolved'], $read['uncontested']);
+                $reading->rounds[] = new RecordedRound(
+                    $recorded,
+                    $derivation,
+                    $read['manual'],
+                    $read['unresolved'],
+                    $read['uncontested'],
+                    $read['undecided']
+                );
             }
 
             $wentOutInPreviousRound = [];
@@ -510,9 +535,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $thirdPlaceAdvancer = $read['extra']['winner'];
             }
 
-            if ($read['unresolved'] !== []) {
+            if ($read['unresolved'] !== [] || $read['undecided'] !== []) {
                 $reading->awaitingRound = $reading->number;
                 $reading->unresolved = $read['unresolved'];
+                $reading->undecided = $read['undecided'];
                 break;
             }
 

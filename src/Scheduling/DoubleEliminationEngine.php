@@ -43,9 +43,15 @@ use Override;
  * Stages are strictly sequenced and each playable stage takes the next
  * round number. Ties are played over one event or two mirrored legs
  * (legsPerTie); one that finishes level, in either bracket, the grand
- * final or its reset, is decided by the tie decision recorded on its
- * result (see TieDecision), and not advancing from it is the loss that
- * drops or eliminates the other participant. Re-seeding and the
+ * final or its reset, is decided by the decider recorded on a result of
+ * the tie (DTO\Decider; see TieDecision), and not advancing from it is the
+ * loss that drops or eliminates the other participant. A level tie without
+ * one awaits that decision as another tie awaits a result: the bracket is
+ * not complete, reading it throws nothing, getReadiness() lists the events
+ * of the tie (PairingReadiness::getUndecidedEvents()), and pairNextRound()
+ * refuses with the reason `UndecidedTie` and, in the context of the
+ * exception, its round and its two participants: the grand final and its
+ * reset are the same two, in two rounds. Re-seeding and the
  * third-place tie are single-elimination preset parameters and are
  * rejected here: the losers final already decides third place.
  *
@@ -173,11 +179,15 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * @throws UnresolvedRoundException When the last recorded stage has a tie without a complete
      *                                  result (reason `RoundPartiallyResolved`; record the
      *                                  missing results via StageState::withAdditionalResults())
-     * @throws InvalidConfigurationException When the state has fewer than 2 entrants or is
+     * @throws InvalidConfigurationException When a tie of the last recorded stage has every result,
+     *                                       is level and carries no decider (`UndecidedTie`, with
+     *                                       the round and the two participants in the context;
+     *                                       it is thrown before the exception above where the
+     *                                       stage has both), the state has fewer than 2 entrants or is
      *                                       stamped with another engine's fingerprint, a result
      *                                       has no round number, is not of a two-participant
-     *                                       event or is recorded twice, a completed tie
-     *                                       is level without a usable tie decision, a recorded
+     *                                       event or is recorded twice, a tie carries a decider
+     *                                       TieDecision refuses (`InvalidResult`), a recorded
      *                                       stage leaves another number of entrants in the
      *                                       bracket than the stage has places for (reason
      *                                       `RecordedRoundMismatch`), or the bracket is complete
@@ -189,6 +199,14 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         if ($reading->pending instanceof RoundPairing) {
             return $reading->pending;
+        }
+
+        if ($reading->undecidedTie !== null) {
+            throw new InvalidConfigurationException(
+                $reading->undecidedTie['issue'],
+                $reading->undecidedTie['context'],
+                reason: InvalidConfigurationReason::UndecidedTie
+            );
         }
 
         if ($reading->awaitingRound !== null) {
@@ -206,8 +224,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * Whether the title is decided: the grand final has a result and no
      * reset is due, or the reset has one. No reset is due when the winners
      * champion won the grand final or grandFinalReset is off. A stage
-     * that has some of its results, or none, is a bracket that is not
-     * complete, and nothing is thrown for it.
+     * that has some of its results, or none, or a tie that is level and
+     * awaits its decider, is a bracket that is not complete, and nothing is
+     * thrown for it.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed: every case
      *                                       pairNextRound() names but the unfinished stage and
@@ -232,7 +251,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
 
         return match (true) {
             $reading->pending instanceof RoundPairing => PairingReadiness::ready($reading->pending->getRoundNumber()),
-            $reading->awaitingRound !== null => PairingReadiness::awaitingResults($reading->awaitingRound, $reading->unresolved),
+            $reading->awaitingRound !== null => PairingReadiness::awaitingResults($reading->awaitingRound, $reading->unresolved, $reading->undecided),
             default => PairingReadiness::complete(),
         };
     }
@@ -570,11 +589,19 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 );
             }
 
-            $reading->rounds[] = new RecordedRound($recorded, $derivation, $read['manual'], $read['unresolved'], $read['uncontested']);
+            $reading->rounds[] = new RecordedRound(
+                $recorded,
+                $derivation,
+                $read['manual'],
+                $read['unresolved'],
+                $read['uncontested'],
+                $read['undecided']
+            );
 
-            if ($read['unresolved'] !== []) {
+            if ($read['unresolved'] !== [] || $read['undecided'] !== []) {
                 $reading->awaitingRound = $reading->number;
                 $reading->unresolved = $read['unresolved'];
+                $reading->undecided = $read['undecided'];
 
                 return $stopped;
             }

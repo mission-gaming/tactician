@@ -1039,8 +1039,10 @@ final readonly class StageState
      * stamped (see withEngineFingerprint()), and the `adjustments` key only
      * when an adjustment is recorded (see withAdjustment()), so a state
      * with neither has the keys it has always had after the version. A
-     * result carries an `award` key only when it is awarded, and a round a
-     * `paired_on_incomplete_results` key only when it carries that mark.
+     * result carries an `award` key only when it is awarded and a
+     * `decider` key only when it carries the decision of a level tie, and
+     * a round a `paired_on_incomplete_results` key only when it carries
+     * that mark.
      * The `entrants` key, the IDs of the entrant list in its order (see
      * getEntrants()), is present only when an entrant has withdrawn from
      * the live stage and kept its place: `active` is then that list
@@ -1056,7 +1058,7 @@ final readonly class StageState
      * the other, as the scheme did in 0.3.0 while this form stayed at
      * version 1.
      *
-     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}}>, engine_fingerprint?: string, adjustments?: list<array{participant: string, amount: float, label: string|null, reason: string|null}>, entrants?: list<string>}
+     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}, decider?: array{participants: list<string>, label: string|null, reason: string|null}}>, engine_fingerprint?: string, adjustments?: list<array{participant: string, amount: float, label: string|null, reason: string|null}>, entrants?: list<string>}
      */
     public function toArray(): array
     {

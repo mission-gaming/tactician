@@ -9,6 +9,7 @@ use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
 use MissionGaming\Tactician\DTO\Award;
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -107,6 +108,7 @@ final class PlainDataForms
             ['id' => 'c', 'label' => 'Carol', 'seed' => null, 'metadata' => []],
         ];
         $award = ['label' => 'no-show', 'reason' => 'Bob did not arrive'];
+        $decider = ['participants' => ['b'], 'label' => 'drawn by lot', 'reason' => 'The event finished level'];
         $adjustment = ['participant' => 'b', 'amount' => -3.0, 'label' => 'deduction', 'reason' => 'a late entry'];
         $window = ['from' => '2026-11-09 00:00', 'to' => '2026-11-17 00:00', 'timezone' => 'Europe/London', 'label' => 'break'];
 
@@ -425,13 +427,14 @@ final class PlainDataForms
             'result' => [
                 'class' => Result::class,
                 'kind' => self::DATA,
-                'keys' => ['event', 'winner', 'scores', 'metadata', 'award'],
+                'keys' => ['event', 'winner', 'scores', 'metadata', 'award', 'decider'],
                 'sample' => [
                     'event' => $event,
                     'winner' => 'a',
                     'scores' => ['a' => 2, 'b' => 1],
                     'metadata' => ['note' => 'x'],
                     'award' => $award,
+                    'decider' => $decider,
                 ],
                 'read' => static fn(array $data, array $registry): object => Result::fromArray(self::stringKeyed($data), $registry),
                 'generate' => static fn(Randomizer $random, array $field): object => self::result($random, self::event($random, $field)),
@@ -443,6 +446,14 @@ final class PlainDataForms
                 'sample' => $award,
                 'read' => static fn(array $data, array $registry): object => Award::fromArray($data),
                 'generate' => static fn(Randomizer $random, array $field): object => self::award($random),
+            ],
+            'decider' => [
+                'class' => Decider::class,
+                'kind' => self::DATA,
+                'keys' => ['participants', 'label', 'reason'],
+                'sample' => $decider,
+                'read' => static fn(array $data, array $registry): object => Decider::fromArray($data),
+                'generate' => static fn(Randomizer $random, array $field): object => self::decider($random, array_values($field)),
             ],
             'adjustment' => [
                 'class' => Adjustment::class,
@@ -553,7 +564,7 @@ final class PlainDataForms
      */
     public static function addedInZeroThree(): array
     {
-        return [Award::class, Adjustment::class, AwardedResultPolicy::class, BestOfRankSelector::class];
+        return [Award::class, Decider::class, Adjustment::class, AwardedResultPolicy::class, BestOfRankSelector::class];
     }
 
     /**
@@ -792,6 +803,26 @@ final class PlainDataForms
     }
 
     /**
+     * A decider for one or more of the participants given, in a drawn
+     * order, with a label, a reason, both or neither. Most name one
+     * participant, as the decider of a tie between two does; one in four
+     * names every participant given, which the type allows.
+     *
+     * @param list<Participant> $participants
+     */
+    private static function decider(Randomizer $random, array $participants): Decider
+    {
+        $order = $random->shuffleArray($participants);
+        $named = $random->getInt(0, 3) === 0 ? $order : [$order[0]];
+
+        return new Decider(
+            array_map(static fn(Participant $participant): string => $participant->getId(), $named),
+            [null, '', 'drawn by lot', 'é 日本'][$random->getInt(0, 3)],
+            [null, 'The event finished level', ''][$random->getInt(0, 2)]
+        );
+    }
+
+    /**
      * An adjustment for one of the field: a whole amount, a fraction, a
      * zero, an amount JSON writes with an exponent, of either sign.
      *
@@ -811,7 +842,8 @@ final class PlainDataForms
 
     /**
      * A result of the event: a win for either side or a draw, with scores
-     * or without, one in four of them awarded.
+     * or without, one in four of them awarded and one in four of them with
+     * a decider for participants of the event.
      */
     private static function result(Randomizer $random, Event $event): Result
     {
@@ -826,7 +858,8 @@ final class PlainDataForms
                 default => [$second->getId() => $random->getInt(0, 20) / 4 + 0.125],
             },
             self::metadata($random),
-            $random->getInt(0, 3) === 0 ? self::award($random) : null
+            $random->getInt(0, 3) === 0 ? self::award($random) : null,
+            $random->getInt(0, 3) === 0 ? self::decider($random, [$first, $second]) : null
         );
     }
 
