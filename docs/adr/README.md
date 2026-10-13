@@ -14,6 +14,7 @@ there is not repeated here.
 | [0002](0002-standings-order-is-total.md) | Standings order is total (superseded by 0004) |
 | [0003](0003-multi-participant-events-are-a-2-0-goal.md) | Multi-participant events are a goal for 2.0 |
 | [0004](0004-position-decides-where-results-do-not.md) | Position decides where results do not |
+| [0005](0005-serialized-forms-carry-a-format-version.md) | Serialized forms carry a format version |
 
 ## Adding a record
 

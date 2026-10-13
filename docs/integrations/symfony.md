@@ -114,13 +114,15 @@ the rounds before is a **stage engine** and is the subject of the
 
 The options of a format are plain data (`RoundRobinOptions::fromArray()`,
 `toArray()`, with stable string identifiers), so a row of your own
-settings table can hold them. One thing to know when you do that:
-`PotDrawOptions::fromArray()` rejects a key it does not know, and the
-`fromArray()` of `RoundRobinOptions`, `SwissOptions`,
-`EliminationOptions`, `RepackOptions`, `SessionGrid` and
-`TimelineDefinition` ignores one. There a misspelt key (`'legz' => 2`)
-gives the default silently, so check the keys in your own configuration
-code. And `'strategy' => 'shuffled'` in plain data needs a
+settings table can hold them. Two things to know when you do that. Every
+`fromArray()` refuses a key it does not know (`InvalidConfigurationException`,
+reason `UnknownOptionKey`): a misspelt key (`'legz' => 2`) fails loudly and
+is not read as the default, and a row cannot be passed whole with its `id`
+and timestamps in it, so pass the library's keys only. And what
+`toArray()` writes starts with `format_version`, the version of the form;
+store it with the rest. A row stored before that key existed still loads,
+as version 1 (see [Format Versions](../USAGE.md#format-versions)). Also,
+`'strategy' => 'shuffled'` in plain data needs a
 `'strategy_seed'` beside it, an integer: the roles it draws are then the
 same on every call, and `fromArray()` refuses the strategy without one.
 
@@ -295,7 +297,11 @@ There are two ways, and both give the engine the same thing.
 - **Store `StageState::toJson()`** in a column of the stage's row and
   read it back with `StageState::fromJson()`. This is the simple way and
   the one the examples use. You still copy each round's events into your
-  own match entities to show them and to collect results.
+  own match entities to show them and to collect results. The JSON starts
+  with `format_version`; a state stored by a release that wrote none
+  loads as version 1, and one written by a later release that changed
+  the form is refused and not guessed at
+  ([Format Versions](../USAGE.md#format-versions)).
 - **Rebuild the state from your own rows** on each request:
   `StageState::start($participants)`, then `withRoundPlayed()` once for
   every round you hold, each with a `RoundPairing` you construct
@@ -406,11 +412,13 @@ have (none is allowed), and add the others with
 result the event already has. A request that is sent twice therefore
 records the result twice. A bracket engine then refuses the state on
 every call (reason `DuplicateResult`) until `withResultReplaced()` has
-put one result in the place of the two. A Swiss engine reading a state
-that came back from JSON does not notice, and counts the event twice in
-its table. Before adding a result, look in `getResults()` for one on the
-same round and participants (and the same `tie_leg`), and use
-`withResultReplaced()` when there is one.
+put one result in the place of the two. A Swiss engine refuses it too,
+when it reads its table (`InvalidInputException`), and does so whether or
+not the state has been through JSON since: the two results are recognised
+by their round, participants and `tie_leg`, not by the event object.
+Before adding a result, look in `getResults()` for one on the same round
+and participants (and the same `tie_leg`), and use `withResultReplaced()`
+when there is one.
 
 Two requests that pair the same round at the same time are a race the
 library cannot see. Take a lock on the stage for the read, the step and

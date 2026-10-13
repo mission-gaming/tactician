@@ -15,6 +15,7 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
@@ -373,6 +374,20 @@ describe('TacticianException', function (): void {
                 try {
                     $restore($variant);
                 } catch (InvalidInputException) {
+                    ++$rejected;
+                } catch (InvalidConfigurationException $refused) {
+                    // A stage state whose pieces are each well formed and
+                    // whose history no verb would have recorded: a round
+                    // number changed under its events, a round numbered
+                    // below 1, a result moved to a round that is not
+                    // recorded. It is refused with the reason the verb
+                    // gives.
+                    expect($refused->getReason())->toBeIn([
+                        InvalidConfigurationReason::ValueOutOfRange,
+                        InvalidConfigurationReason::RoundOutOfSequence,
+                        InvalidConfigurationReason::EventNotInRound,
+                        InvalidConfigurationReason::EventWithoutRoundNumber,
+                    ], implode('.', $path));
                     ++$rejected;
                 } catch (Throwable $escaped) {
                     $this->fail(sprintf(

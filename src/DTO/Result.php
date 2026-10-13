@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The outcome of a played event: who won, or that nobody did, and
@@ -23,8 +24,10 @@ readonly class Result
      * The winner and the scores are not checked against each other, and
      * scores need not cover every participant of the event.
      *
-     * @param Event $event The event that was played. Pass the object the scheduler or engine
-     *                     produced: the standings calculator tells events apart by object
+     * @param Event $event The event that was played. Pass the event the scheduler or engine
+     *                     produced, or one equal to it: an event is recognised by its round
+     *                     number, its participants and its tie leg, and one with no round by
+     *                     the object alone
      * @param Participant|null $winner The winning participant, or null for a draw
      * @param array<int|string, int|float> $scores Optional numeric scores keyed by participant ID
      *                                             (numeric-string IDs become int keys in PHP)
@@ -146,14 +149,20 @@ readonly class Result
      * Convert this result to a serializable array.
      *
      * The event is embedded in its own array form (participants referenced
-     * by ID); pair with a participant registry to rehydrate.
+     * by ID); pair with a participant registry to rehydrate. The first key
+     * is `format_version`, the version of this form (1); the event is
+     * written without one.
      *
-     * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}
+     * @return array{format_version: int, event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
+        $event = $this->event->toArray();
+        unset($event[PlainData::VERSION_KEY]);
+
         return [
-            'event' => $this->event->toArray(),
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'event' => $event,
             'winner' => $this->winner?->getId(),
             'scores' => $this->scores,
             'metadata' => $this->metadata,
@@ -166,17 +175,22 @@ readonly class Result
      * The event is rebuilt from the data, so the result holds a new Event
      * object that is equal to the original and is not the same object. A
      * missing 'winner' is a draw; missing 'scores' and 'metadata' are empty.
+     * Any other key is refused, so that a misspelt 'winner' is not silently
+     * read as a draw.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
      *
-     * @throws InvalidInputException When a field has the wrong type, a score is not an int
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, a field has the wrong type, a score is not an int
      *                               or a float, a participant ID is not in the registry,
      *                               or the winner or a score names a participant who is
      *                               not in the event
      */
     public static function fromArray(array $data, array $participantsById): self
     {
+        PlainData::checkFields($data, ['event', 'winner', 'scores', 'metadata'], 'result data');
+
         $eventData = $data['event'] ?? null;
         if (!is_array($eventData)) {
             throw new InvalidInputException('Result data requires an event array');

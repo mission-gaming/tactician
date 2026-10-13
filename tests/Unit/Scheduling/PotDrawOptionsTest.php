@@ -48,13 +48,18 @@ describe('PotDrawOptions', function (): void {
     it('serializes to the plain data it is built from', function (): void {
         $data = ['pots' => 4, 'opponents_per_pot' => 2, 'seed' => -7];
 
-        expect((new PotDrawOptions(4, 2, -7))->toArray())->toBe($data)
-            ->and(PotDrawOptions::fromArray($data)->toArray())->toBe($data);
+        // What is written says which version of the form it is; what is
+        // read may leave that out
+        $written = ['format_version' => 1, ...$data];
+
+        expect((new PotDrawOptions(4, 2, -7))->toArray())->toBe($written)
+            ->and(PotDrawOptions::fromArray($data)->toArray())->toBe($written)
+            ->and(PotDrawOptions::fromArray($written)->toArray())->toBe($written);
     });
 
     it('takes the default for a key that is left out', function (): void {
         expect(PotDrawOptions::fromArray(['pots' => 3])->toArray())
-            ->toBe(['pots' => 3, 'opponents_per_pot' => 1, 'seed' => 0]);
+            ->toBe(['format_version' => 1, 'pots' => 3, 'opponents_per_pot' => 1, 'seed' => 0]);
     });
 
     it('throws on an unknown key', function (array $config, array $unknown): void {
@@ -63,7 +68,7 @@ describe('PotDrawOptions', function (): void {
         expect($refusal->getReason())->toBe(InvalidConfigurationReason::UnknownOptionKey)
             ->and($refusal->getContext())->toBe([
                 'unknown' => $unknown,
-                'known' => ['pots', 'opponents_per_pot', 'seed'],
+                'known' => ['format_version', 'pots', 'opponents_per_pot', 'seed'],
             ]);
     })->with([
         'a misspelt key' => [['pots' => 4, 'opponents_per_pots' => 2], ['opponents_per_pots']],

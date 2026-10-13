@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * Options for schedule repacking.
@@ -120,15 +121,25 @@ final readonly class RepackOptions
      *
      * Every key is optional and defaults to the value shown, which is the
      * constructor's default; a key given as null is read as not given. A
-     * key the method does not know is ignored.
+     * key the method does not know is refused, so that a misspelt option is
+     * not silently read as its default.
      *
      * @param array<string, mixed> $config
      *
-     * @throws InvalidConfigurationException When a value is of the wrong type, or is one
-     *                                       the constructor rejects
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`),
+     *                                       a value is of the wrong type, or is one the
+     *                                       constructor rejects
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions(
+            $config,
+            ['consolidation_weight', 'early_fill_weight', 'step_budget', 'throw_on_violations'],
+            'repack options'
+        );
+
         $consolidationWeight = $config['consolidation_weight'] ?? 3;
         $earlyFillWeight = $config['early_fill_weight'] ?? 1;
         $stepBudget = $config['step_budget'] ?? 200_000;
@@ -158,14 +169,16 @@ final readonly class RepackOptions
     }
 
     /**
-     * Serialize back to the plain configuration data fromArray() accepts,
-     * all four keys always present.
+     * Serialize back to the plain configuration data fromArray() accepts:
+     * `format_version`, the version of this form (1), then all four
+     * options, always present.
      *
-     * @return array{consolidation_weight: int, early_fill_weight: int, step_budget: int, throw_on_violations: bool}
+     * @return array{format_version: int, consolidation_weight: int, early_fill_weight: int, step_budget: int, throw_on_violations: bool}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'consolidation_weight' => $this->consolidationWeight,
             'early_fill_weight' => $this->earlyFillWeight,
             'step_budget' => $this->stepBudget,

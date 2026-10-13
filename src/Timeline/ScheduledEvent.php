@@ -10,6 +10,7 @@ use Exception;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * An event decorated with its assigned kickoff time.
@@ -72,14 +73,19 @@ final readonly class ScheduledEvent
      * Convert to a serializable array; the kickoff is an ISO 8601 UTC
      * string to the second (`2026-08-01T18:00:00Z`; a fraction of a second
      * is not written), the event in its own array form (participants by
-     * ID).
+     * ID). The first key is `format_version`, the version of this form
+     * (1); the event is written without one.
      *
-     * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}
+     * @return array{format_version: int, event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}
      */
     public function toArray(): array
     {
+        $event = $this->event->toArray();
+        unset($event[PlainData::VERSION_KEY]);
+
         return [
-            'event' => $this->event->toArray(),
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'event' => $event,
             'kickoff' => $this->kickoff->format('Y-m-d\TH:i:s\Z'),
             'resource' => $this->resource,
         ];
@@ -93,8 +99,10 @@ final readonly class ScheduledEvent
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
-     * @throws InvalidInputException When fields are malformed or a participant ID is unknown, or
-     *                               the kickoff does not state an instant by itself (the form
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown (`event`, `kickoff` and `resource` are
+     *                               the keys), fields are malformed or a participant ID is
+     *                               unknown, or the kickoff does not state an instant by itself (the form
      *                               `toArray()` writes does; `now`, `tomorrow`, an empty
      *                               string, a time of day without a date or a date that does
      *                               not exist does not). A kickoff without a zone is read as
@@ -102,6 +110,8 @@ final readonly class ScheduledEvent
      */
     public static function fromArray(array $data, array $participantsById): self
     {
+        PlainData::checkFields($data, ['event', 'kickoff', 'resource'], 'scheduled event data');
+
         $eventData = $data['event'] ?? null;
         if (!is_array($eventData)) {
             throw new InvalidInputException('Scheduled event data requires an event array');

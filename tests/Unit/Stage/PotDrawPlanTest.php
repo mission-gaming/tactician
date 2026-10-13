@@ -12,6 +12,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\PairwisePlan;
 use MissionGaming\Tactician\Stage\PotDrawPlan;
 use MissionGaming\Tactician\Stage\StagePlan;
+use MissionGaming\Tactician\Tests\Support\UncheckedEvent;
 use MissionGaming\Tactician\Validation\ConstraintViolationCollector;
 use MissionGaming\Tactician\Validation\ScheduleValidator;
 
@@ -48,7 +49,7 @@ function potPlanSchedule(array $rounds, array $field): Schedule
     foreach ($rounds as $number => $pairs) {
         foreach ($pairs as $pair) {
             [$first, $second] = explode('-', $pair);
-            $events[] = new Event(
+            $events[] = UncheckedEvent::orEvent(
                 [$byId[$first] ?? new Participant($first, $first), $byId[$second] ?? new Participant($second, $second)],
                 new Round($number)
             );

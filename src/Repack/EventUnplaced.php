@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -67,13 +68,16 @@ final readonly class EventUnplaced implements RepackViolation
     /**
      * Serialize to plain data; the reason as its backing string, the
      * participant by its ID or null.
+     * The first key is `format_version`, the version of this form (1);
+     * a repack outcome writes its records without it.
      *
-     * @return array{kind: string, event_id: string, reason: string, participant: string|null}
+     * @return array{format_version: int, kind: string, event_id: string, reason: string, participant: string|null}
      */
     #[Override]
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'kind' => $this->getKind()->value,
             'event_id' => $this->eventId,
             'reason' => $this->reason->value,

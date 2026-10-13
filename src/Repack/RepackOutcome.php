@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Repack\Internal\CanonicalEncoding;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The product of a repack: the schedule and every compromise in it, as
@@ -385,23 +386,43 @@ final readonly class RepackOutcome
      * always produces the same array, whatever order its lists were in.
      * isBudgetExhausted() is not part of it.
      *
-     * @return array{assignments: array<array{event_id: string, session: int, slot: int, kickoff: string|null}>, unplaced: array<array{event_id: string, reason: string, participant: string|null}>, violations: array<array<string, mixed>>}
+     * The first key is `format_version`, the version of this form (1). It
+     * is written once, here: the records inside are written without the
+     * one their own toArray() carries. It is another thing than the `v1`
+     * of fingerprint(), which is the version of the fingerprint scheme;
+     * the fingerprint covers the keys that scheme names and never this
+     * one, so the two change independently.
+     *
+     * @return array{format_version: int, assignments: array<array{event_id: string, session: int, slot: int, kickoff: string|null}>, unplaced: array<array{event_id: string, reason: string, participant: string|null}>, violations: array<array<string, mixed>>}
      */
     public function toArray(): array
     {
+        $assignments = [];
+        foreach ($this->assignments as $key => $assignment) {
+            $record = $assignment->toArray();
+            unset($record[PlainData::VERSION_KEY]);
+            $assignments[$key] = $record;
+        }
+
+        $unplaced = [];
+        foreach ($this->unplaced as $key => $unplacedEvent) {
+            $record = $unplacedEvent->toArray();
+            unset($record[PlainData::VERSION_KEY]);
+            $unplaced[$key] = $record;
+        }
+
+        $violations = [];
+        foreach ($this->violations as $key => $violation) {
+            $record = $violation->toArray();
+            unset($record[PlainData::VERSION_KEY]);
+            $violations[$key] = $record;
+        }
+
         return [
-            'assignments' => array_map(
-                static fn(SlotAssignment $assignment): array => $assignment->toArray(),
-                $this->assignments
-            ),
-            'unplaced' => array_map(
-                static fn(UnplacedEvent $unplaced): array => $unplaced->toArray(),
-                $this->unplaced
-            ),
-            'violations' => array_map(
-                static fn(RepackViolation $violation): array => $violation->toArray(),
-                $this->violations
-            ),
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'assignments' => $assignments,
+            'unplaced' => $unplaced,
+            'violations' => $violations,
         ];
     }
 

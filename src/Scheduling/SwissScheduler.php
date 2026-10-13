@@ -97,7 +97,8 @@ class SwissScheduler implements SchedulerInterface
      * 'participant_count', 'rounds', 'total_rounds' and
      * 'expected_event_count'.
      *
-     * @param array<Participant> $participants At least 2, with unique IDs
+     * @param array<Participant> $participants At least 2, with unique IDs; the schedule keeps the list, in this
+     *                                         order, as its entrants (Schedule::getEntrants())
      * @param SchedulerOptions|null $options SwissOptions, or null for 3 rounds. The rounds may not
      *                                       exceed the number of participants minus 1: beyond that
      *                                       a repeat pairing cannot be avoided
@@ -168,7 +169,7 @@ class SwissScheduler implements SchedulerInterface
             'total_rounds' => $plan->getTotalRounds(),
             'expected_event_count' => $plan->getExpectedEventCount(),
             'byes' => $byes,
-        ]);
+        ], $participants);
 
         $this->validateGeneratedSchedule($schedule, $participants, $plan);
 

@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Tests\Support\UncheckedEvent;
 
 describe('NoRepeatPairings', function (): void {
     beforeEach(function (): void {
@@ -103,15 +104,16 @@ describe('NoRepeatPairings', function (): void {
         expect((new NoRepeatPairings())->getName())->toBe('No Repeat Pairings');
     });
 
-    // A degenerate event pairing a participant with themselves can never
+    // Event refuses a participant paired with itself. An event of another
+    // class can still answer with one, and such a degenerate event can never
     // count as a repeat meeting
     it('ignores self-pairings when checking repeats', function (): void {
         $constraint = new NoRepeatPairings();
         $context = roundRobinContext($this->participants, [
-            new Event([$this->alice, $this->alice], new Round(1)),
+            new UncheckedEvent([$this->alice, $this->alice], new Round(1)),
         ]);
 
-        expect($constraint->isSatisfied(new Event([$this->alice, $this->alice], new Round(2)), $context))
+        expect($constraint->isSatisfied(new UncheckedEvent([$this->alice, $this->alice], new Round(2)), $context))
             ->toBeTrue();
     });
 });
