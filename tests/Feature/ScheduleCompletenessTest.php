@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
@@ -440,6 +441,111 @@ it('repeats the schedule of a seeded shuffled strategy when the first layouts ar
         ->and((new RoundRobinScheduler($constraints()))->schedule($participants, RoundRobinOptions::fromArray($data))->toJson())
         ->toBe($first->toJson());
 })->with([[1], [2], [3], [2026]]);
+
+// One strategy object is what a caller who builds the options once has: it
+// serves every call, of every scheduler the options are handed to. The
+// draws of one call must leave nothing behind for the next, whether that
+// call went through rejected layouts, or failed after it had drawn.
+it('repeats the schedule of one seeded shuffled strategy object across calls, schedulers and a failed call', function (
+    int $legs,
+    int $seed
+): void {
+    $participants = [];
+    for ($i = 1; $i <= 6; ++$i) {
+        $participants[] = new Participant("p{$i}", "Player {$i}", $i);
+    }
+    $constraints = fn(): ConstraintSet => ConstraintSet::create()->add(new SeedProtectionConstraint(2, 0.25))->build();
+    $fresh = fn(): RoundRobinOptions => new RoundRobinOptions(legs: $legs, strategy: new ShuffledLegStrategy(seed: $seed));
+
+    $plain = (new RoundRobinScheduler())->schedule($participants, $fresh())->toJson();
+    $constrained = (new RoundRobinScheduler($constraints()))->schedule($participants, $fresh())->toJson();
+
+    // The premise: the constraint sends the scheduler past the first layout
+    expect($constrained)->not->toBe($plain);
+
+    $shared = $fresh();
+    $one = new RoundRobinScheduler($constraints());
+    $other = new RoundRobinScheduler();
+
+    expect($one->schedule($participants, $shared)->toJson())->toBe($constrained)
+        ->and($one->schedule($participants, $shared)->toJson())->toBe($constrained)
+        ->and($other->schedule($participants, $shared)->toJson())->toBe($plain)
+        ->and($one->schedule($participants, $shared)->toJson())->toBe($constrained)
+        ->and($other->schedule($participants, $shared)->toJson())->toBe($plain);
+
+    // A call that fails in the last round has drawn the roles of every
+    // later leg before it fails, in every layout it tried
+    $lastRound = 5 * $legs;
+    $failing = new RoundRobinScheduler(
+        ConstraintSet::create()
+            ->custom(static fn(Event $event): bool => $event->getRound()?->getNumber() !== $lastRound, 'No last round')
+            ->build()
+    );
+
+    expect(fn(): Schedule => $failing->schedule($participants, $shared))->toThrow(IncompleteScheduleException::class)
+        ->and($other->schedule($participants, $shared)->toJson())->toBe($plain)
+        ->and($one->schedule($participants, $shared)->toJson())->toBe($constrained);
+})
+    ->with([[2], [3]])
+    ->with([[1], [2026]]);
+
+// The backtracking search lays out the first leg when no rotation can, and
+// the strategy is then asked for the later legs after every rotation has
+// asked and failed. The schedule is still the one the seed names.
+it('repeats the schedule of a seeded shuffled strategy that the backtracking search completes', function (
+    int $participantCount,
+    int $legs,
+    int $seed
+): void {
+    $participants = completenessParticipants($participantCount);
+    $ids = array_map(fn(Participant $participant): string => $participant->getId(), $participants);
+    $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
+
+    // The first participant meets the others in list order, one per round
+    // of each leg: satisfiable, and out of reach of every rotation
+    $constraints = fn(): ConstraintSet => ConstraintSet::create()->custom(
+        static function (Event $event) use ($ids, $roundsPerLeg): bool {
+            $seats = array_map(
+                fn(Participant $participant) => array_search($participant->getId(), $ids, true),
+                $event->getParticipants()
+            );
+            $round = $event->getRound()?->getNumber();
+            if ($round === null || !in_array(0, $seats, true)) {
+                return true;
+            }
+
+            return max($seats) === (($round - 1) % $roundsPerLeg) + 1;
+        },
+        'Fixture Placement'
+    )->build();
+    $data = ['legs' => $legs, 'strategy' => 'shuffled', 'strategy_seed' => $seed];
+
+    // The premise: without the search there is no schedule
+    expect(fn(): Schedule => (new RoundRobinScheduler($constraints()))->schedule($participants, RoundRobinOptions::fromArray($data)))
+        ->toThrow(IncompleteScheduleException::class);
+
+    $data['backtracking'] = true;
+    $run = fn(): Schedule => (new RoundRobinScheduler($constraints()))->schedule($participants, RoundRobinOptions::fromArray($data));
+    $first = $run();
+
+    $scheduler = new RoundRobinScheduler($constraints());
+    $options = RoundRobinOptions::fromArray($data);
+
+    expect(RoundRobinAudit::faults($first, $participants, $legs))->toBe([])
+        ->and($run()->toJson())->toBe($first->toJson())
+        ->and($scheduler->schedule($participants, $options)->toJson())->toBe($first->toJson())
+        ->and($scheduler->schedule($participants, $options)->toJson())->toBe($first->toJson());
+
+    // A seed that the searched schedule did not read would pass the above
+    $otherSeed = (new RoundRobinScheduler($constraints()))->schedule(
+        $participants,
+        RoundRobinOptions::fromArray(['strategy_seed' => $seed + 1] + $data)
+    );
+    expect($otherSeed->toJson())->not->toBe($first->toJson());
+})
+    ->with([[5], [6]])
+    ->with([[2], [3]])
+    ->with([[7], [2026]]);
 
 // A seed is not a randomizer the caller built from it by another name only:
 // the two must draw the same roles, so that moving from one to the other
