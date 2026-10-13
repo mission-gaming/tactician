@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Stage;
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\RejectedDecisionException;
 use MissionGaming\Tactician\Exceptions\UndecidedSelectionException;
 use MissionGaming\Tactician\Serialization\PlainData;
+use MissionGaming\Tactician\Standings\DecidedOrder;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use Override;
@@ -55,6 +58,13 @@ use Override;
  * position in that list decides where results do not. A tie that touches
  * none of the selected ranks is never refused.
  *
+ * **The third way on is to settle the tie.** The application decides the
+ * order of the level entries by its own rule and gives it to the selector
+ * as a decision (withDecisions()): the selection then reads that order,
+ * and selection() says which of the selected places a decision settled.
+ * A decision orders level entries only and never overrides a result. It
+ * does not lift the refusal of a table with no result.
+ *
  * What the selector can see is the table. It recognises a pool with no
  * result at all; it cannot know that a pool with some results has events
  * still to play, so check that before selecting
@@ -80,13 +90,15 @@ final readonly class RankRangeSelector implements ProgressionSelector
      *                                                                     decide an order
      * @param PoolComparison|null $comparison How an overall selection compares pools of unequal
      *                                        size; null for none chosen
+     * @param list<Decider> $decisions The decisions that settle level entries of the tables read
      */
     private function __construct(
         private string $mode,
         private int $from,
         private int $to,
         private string $ties = self::TIES_REFUSED,
-        private ?PoolComparison $comparison = null
+        private ?PoolComparison $comparison = null,
+        private array $decisions = []
     ) {}
 
     /**
@@ -148,7 +160,7 @@ final readonly class RankRangeSelector implements ProgressionSelector
             );
         }
 
-        return new self($this->mode, $this->from, $this->to, $this->ties, $comparison);
+        return new self($this->mode, $this->from, $this->to, $this->ties, $comparison, $this->decisions);
     }
 
     /**
@@ -195,7 +207,7 @@ final readonly class RankRangeSelector implements ProgressionSelector
      */
     public function withTiesInsideSelectionAccepted(): self
     {
-        return new self($this->mode, $this->from, $this->to, self::TIES_INSIDE_ACCEPTED, $this->comparison);
+        return new self($this->mode, $this->from, $this->to, self::TIES_INSIDE_ACCEPTED, $this->comparison, $this->decisions);
     }
 
     /**
@@ -211,7 +223,51 @@ final readonly class RankRangeSelector implements ProgressionSelector
      */
     public function withTableOrderAccepted(): self
     {
-        return new self($this->mode, $this->from, $this->to, self::TABLE_ORDER_ACCEPTED, $this->comparison);
+        return new self($this->mode, $this->from, $this->to, self::TABLE_ORDER_ACCEPTED, $this->comparison, $this->decisions);
+    }
+
+    /**
+     * The same selection with decisions that settle the order of level
+     * entries, in place of any the selector had; an empty list for none.
+     *
+     * A decision is a `DTO\Decider`: the IDs of the level participants,
+     * best first, with an optional label and reason that the library
+     * stores and never reads. select() applies each decision to the order
+     * it is for before it reads a rank from it:
+     *
+     * - a per-group selection reads each pool's table, and a decision is
+     *   for the table of the pool its participants are in, where it orders
+     *   one whole tied set (Standings::withDecisions() has the rules);
+     * - an overall selection reads the outcome's own table, and a decision
+     *   orders one whole tied set of it. With a comparison per event played
+     *   (PoolComparison::PerEvent) a decision orders one whole group of
+     *   entries that are level on their figures per event, which is what
+     *   that selection refuses.
+     *
+     * A set that a decision settled is not refused, whichever tie policy
+     * the selector has; every other undecided order is refused or accepted
+     * as before. A decision for a tie that touches no selected rank is
+     * applied and changes nothing in the list. One that fits no order the
+     * selection reads is rejected by select(), and nothing is selected.
+     *
+     * A table the outcome was built with can carry decisions of its own
+     * (Standings::withDecisions()); they count as given here.
+     *
+     * @param array<Decider> $decisions One for each set of level entries to settle, in any order
+     *
+     * @throws InvalidConfigurationException When an entry of the list is not a Decider (reason
+     *                                       `WrongValueType`)
+     */
+    public function withDecisions(array $decisions): self
+    {
+        return new self(
+            $this->mode,
+            $this->from,
+            $this->to,
+            $this->ties,
+            $this->comparison,
+            SelectionTies::decisions($decisions, 'rank range')
+        );
     }
 
     /**
@@ -222,23 +278,25 @@ final readonly class RankRangeSelector implements ProgressionSelector
      * 'accept-inside-selection' or 'accept-table-order'. `comparison` is
      * the method an overall selection compares pools of unequal size by,
      * 'raw-totals' or 'per-event' (comparedBy()), and left out or null for
-     * none chosen. Any other key is refused, so that a misspelt `from` is
-     * not silently read as 1.
+     * none chosen. `decisions` is a list of deciders in their array form
+     * (withDecisions()), and left out or null for none. Any other key is
+     * refused, so that a misspelt `from` is not silently read as 1.
      *
      * @param array<string, mixed> $config
      * @throws InvalidConfigurationException When the format version is not one this release reads
      *                                       (reason `UnsupportedFormatVersion`), a key is unknown
      *                                       (`UnknownOptionKey`), the mode is missing or unknown,
      *                                       or `ties` or `comparison` is unknown
-     *                                       (`UnknownIdentifier`), a bound is not an integer or
-     *                                       `comparison` is not a string (`WrongValueType`), the
+     *                                       (`UnknownIdentifier`), a bound is not an integer,
+     *                                       `comparison` is not a string or `decisions` is not a
+     *                                       list of decider arrays (`WrongValueType`), the
      *                                       range is not 1 <= from <= to (`ValueOutOfRange`), or
      *                                       the mode does not take the comparison
      *                                       (`IncompatibleOptions`)
      */
     public static function fromArray(array $config): self
     {
-        PlainData::checkOptions($config, ['mode', 'from', 'to', 'ties', 'comparison'], 'a rank range selector');
+        PlainData::checkOptions($config, ['mode', 'from', 'to', 'ties', 'comparison', 'decisions'], 'a rank range selector');
 
         $mode = $config['mode'] ?? null;
         if (!in_array($mode, [self::MODE_OVERALL, self::MODE_PER_GROUP], true)) {
@@ -263,8 +321,13 @@ final readonly class RankRangeSelector implements ProgressionSelector
 
         $selector = self::ofRange($mode, $from, $to, $ties);
         $comparison = CrossPoolRanking::comparisonFrom($config['comparison'] ?? null, 'rank range');
+        if ($comparison instanceof PoolComparison) {
+            $selector = $selector->comparedBy($comparison);
+        }
 
-        return $comparison === null ? $selector : $selector->comparedBy($comparison);
+        $decisions = SelectionTies::decisionsFrom($config['decisions'] ?? null, 'rank range');
+
+        return $decisions === [] ? $selector : $selector->withDecisions($decisions);
     }
 
     /**
@@ -273,11 +336,13 @@ final readonly class RankRangeSelector implements ProgressionSelector
      * and the two 1-based, inclusive bounds. topPerGroup(n) is written as
      * per-group 1..n. The key `ties` is written only for a selector that
      * accepts an undecided order ('accept-inside-selection' or
-     * 'accept-table-order'), and the key `comparison` only for one that
-     * was given a method to compare pools by; a selector with neither has
-     * no such key.
+     * 'accept-table-order'), the key `comparison` only for one that was
+     * given a method to compare pools by, and the key `decisions` only for
+     * one that was given decisions, each written as the array of a decider
+     * without a format version of its own; a selector with none of them
+     * has no such key.
      *
-     * @return array{format_version: int, mode: string, from: int, to: int, ties?: string, comparison?: string}
+     * @return array{format_version: int, mode: string, from: int, to: int, ties?: string, comparison?: string, decisions?: list<array<string, mixed>>}
      */
     public function toArray(): array
     {
@@ -292,6 +357,9 @@ final readonly class RankRangeSelector implements ProgressionSelector
         }
         if ($this->comparison !== null) {
             $data['comparison'] = $this->comparison->value;
+        }
+        if ($this->decisions !== []) {
+            $data['decisions'] = SelectionTies::decisionsData($this->decisions);
         }
 
         return $data;
@@ -321,8 +389,10 @@ final readonly class RankRangeSelector implements ProgressionSelector
      * depends on the number of pools and of ranks alone.
      *
      * A selection that results do not decide is refused unless the
-     * selector accepts it; the class docblock says when, and what an
-     * accepted selection returns.
+     * selector accepts it or was given a decision that settles it; the
+     * class docblock says when, and what an accepted selection returns.
+     * The list is that of selection(), which also says which places a
+     * decision settled.
      *
      * @return array<Participant>
      * @throws InvalidConfigurationException When per-group mode is given an outcome without pools,
@@ -335,9 +405,31 @@ final readonly class RankRangeSelector implements ProgressionSelector
      * @throws UndecidedSelectionException When results do not decide the selection and the selector
      *                                     does not accept that (`UnplayedStage`,
      *                                     `TieAcrossSelection`, `TieWithinSelection`)
+     * @throws RejectedDecisionException When a decision the selector was given does not order one
+     *                                   whole set of level entries of an order the selection reads
      */
     #[Override]
     public function select(StageOutcome $outcome): array
+    {
+        return $this->selection($outcome)->getParticipants();
+    }
+
+    /**
+     * The selection with its marks: the participants select() returns, in
+     * the same order, and for each of them the decision that settled the
+     * place it was selected at, when one did (RankSelection).
+     *
+     * A place is marked when a decision put the participant there: one
+     * given to this selector (withDecisions()) or one the table carried.
+     * A participant that results placed is not marked, and neither is one
+     * of an undecided order that the selector accepted, which the entrant
+     * list or the table order placed.
+     *
+     * @throws InvalidConfigurationException As select()
+     * @throws UndecidedSelectionException As select()
+     * @throws RejectedDecisionException As select()
+     */
+    public function selection(StageOutcome $outcome): RankSelection
     {
         if ($this->mode === self::MODE_OVERALL) {
             $available = count($outcome->getStandings());
@@ -356,16 +448,16 @@ final readonly class RankRangeSelector implements ProgressionSelector
                 }
             }
 
-            $entries = $outcome->hasPools() && $this->comparison === PoolComparison::PerEvent
+            ['entries' => $entries, 'marks' => $marks] = $outcome->hasPools() && $this->comparison === PoolComparison::PerEvent
                 ? $this->decidedEntriesPerEvent($outcome)
-                : $this->decidedEntries($outcome, null);
+                : $this->decidedEntries($outcome, null, $this->decisions);
 
             $selected = [];
             for ($rank = $this->from; $rank <= $this->to; ++$rank) {
                 $selected[] = $entries[$rank - 1];
             }
 
-            return $selected;
+            return self::marked($selected, $marks);
         }
 
         if (!$outcome->hasPools()) {
@@ -393,9 +485,14 @@ final readonly class RankRangeSelector implements ProgressionSelector
             );
         }
 
+        $decisions = SelectionTies::byPool($outcome, $this->decisions, null)['pools'];
+
         $entriesByPool = [];
+        $marks = [];
         foreach ($outcome->getPools() as $label => $poolOutcome) {
-            $entriesByPool[] = $this->decidedEntries($poolOutcome, (string) $label);
+            $decided = $this->decidedEntries($poolOutcome, (string) $label, $decisions[(string) $label] ?? []);
+            $entriesByPool[] = $decided['entries'];
+            $marks += $decided['marks'];
         }
 
         // Block by block: every pool's first selected rank, then every
@@ -408,7 +505,7 @@ final readonly class RankRangeSelector implements ProgressionSelector
             }
         }
 
-        return $selected;
+        return self::marked($selected, $marks);
     }
 
     /**
@@ -424,15 +521,40 @@ final readonly class RankRangeSelector implements ProgressionSelector
     }
 
     /**
-     * The participants of one table in the order a selection reads them,
-     * after refusing what the selector does not accept.
+     * The selection of the given participants, each with the decisions
+     * that settled its place.
      *
-     * @return list<Participant>
-     * @throws UndecidedSelectionException When results do not decide the selected ranks
+     * @param list<Participant> $selected
+     * @param array<string, list<Decider>> $marks By participant ID, for any participant of the
+     *                                            tables read
      */
-    private function decidedEntries(StageOutcome $outcome, ?string $pool): array
+    private static function marked(array $selected, array $marks): RankSelection
     {
-        $standings = $outcome->getStandings();
+        $kept = [];
+        foreach ($selected as $participant) {
+            if (isset($marks[$participant->getId()])) {
+                $kept[$participant->getId()] = $marks[$participant->getId()];
+            }
+        }
+
+        return new RankSelection($selected, $kept);
+    }
+
+    /**
+     * The participants of one table in the order a selection reads them,
+     * after applying the decisions for it and refusing what the selector
+     * does not accept, and the decision that settled each one's place.
+     *
+     * @param list<Decider> $decisions The decisions for this table
+     * @return array{entries: list<Participant>, marks: array<string, list<Decider>>}
+     * @throws UndecidedSelectionException When results do not decide the selected ranks
+     * @throws RejectedDecisionException When a decision does not order one whole tied set of the table
+     */
+    private function decidedEntries(StageOutcome $outcome, ?string $pool, array $decisions): array
+    {
+        $standings = $pool === null
+            ? $outcome->getStandings()->withDecisions($decisions)
+            : SelectionTies::decidedTable($outcome->getStandings(), $decisions, $pool);
 
         SelectionTies::requireTableDecided(
             $standings,
@@ -443,21 +565,26 @@ final readonly class RankRangeSelector implements ProgressionSelector
             $this->ties
         );
 
-        return array_values(array_map(
+        $entries = array_values(array_map(
             static fn(StandingEntry $entry): Participant => $entry->getParticipant(),
             $standings->getEntries()
         ));
+
+        return ['entries' => $entries, 'marks' => SelectionTies::marksIn($standings, $entries)];
     }
 
     /**
      * The participants of a pooled outcome's table in the order of their
-     * figures per event played, after refusing what the selector does not
-     * accept.
+     * figures per event played, after applying the decisions and refusing
+     * what the selector does not accept, and the decision that settled
+     * each one's place.
      *
-     * @return list<Participant>
+     * @return array{entries: list<Participant>, marks: array<string, list<Decider>>}
      * @throws InvalidConfigurationException When the table has tiers, which a comparison per
      *                                       event would cross (reason `IncompatibleOutcome`)
      * @throws UndecidedSelectionException When results do not decide the selected ranks
+     * @throws RejectedDecisionException When a decision does not order one whole group of entries
+     *                                   that are level per event played
      */
     private function decidedEntriesPerEvent(StageOutcome $outcome): array
     {
@@ -485,12 +612,25 @@ final readonly class RankRangeSelector implements ProgressionSelector
             );
         }
 
-        $groups = CrossPoolRanking::levelGroups($standings->getEntries(), true, CrossPoolRanking::positionsIn($outcome));
-        SelectionTies::requireOrderDecided($groups, $this->from, $this->to, $this->ties, null);
-
-        return array_map(
-            static fn(StandingEntry $entry): Participant => $entry->getParticipant(),
-            array_merge(...$groups)
+        $settled = DecidedOrder::apply(
+            CrossPoolRanking::levelGroups($standings->getEntries(), true, CrossPoolRanking::positionsIn($outcome)),
+            $this->decisions
         );
+        SelectionTies::requireOrderDecided($settled['groups'], $this->from, $this->to, $this->ties, null, $settled['decided']);
+
+        $marks = [];
+        foreach ($settled['decided'] as $index => $decision) {
+            foreach ($settled['groups'][$index] as $entry) {
+                $marks[$entry->getParticipant()->getId()] = [$decision];
+            }
+        }
+
+        return [
+            'entries' => array_map(
+                static fn(StandingEntry $entry): Participant => $entry->getParticipant(),
+                array_merge(...$settled['groups'])
+            ),
+            'marks' => $marks,
+        ];
     }
 }
