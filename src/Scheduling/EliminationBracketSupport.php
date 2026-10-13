@@ -468,10 +468,10 @@ trait EliminationBracketSupport
      *
      * A tie that has every result, is level and carries no decider is open
      * too: it awaits the application's decision as another tie awaits a
-     * result, and is marked as undecided. What the refusal says is kept on
-     * the reading for pairNextRound() to throw. Where an entrant of
-     * such a tie has withdrawn, the withdrawal gives the tie away as it
-     * does any tie the results do not decide.
+     * result, and is marked as undecided. What the refusal says is given
+     * back as `refusal`, for readRound() to keep the one pairNextRound()
+     * throws. Where an entrant of such a tie has withdrawn, the withdrawal
+     * gives the tie away as it does any tie the results do not decide.
      *
      * Where both have withdrawn, one of them may have gone on before it
      * left: the state does not say when an entrant withdrew, and the
@@ -480,7 +480,7 @@ trait EliminationBracketSupport
      * did.
      *
      * @param array<string, Participant> $levelAdvancers
-     * @return array{winner: Participant|null, losers: list<Participant>, open: bool, uncontested: bool, undecided: bool}
+     * @return array{winner: Participant|null, losers: list<Participant>, open: bool, uncontested: bool, undecided: bool, refusal: array{issue: string, context: array<string, mixed>}|null}
      *
      * @throws InvalidConfigurationException When a result of the tie names a winner outside it, or
      *                                       its decider is one TieDecision refuses (`InvalidResult`)
@@ -521,22 +521,22 @@ trait EliminationBracketSupport
                 'open' => false,
                 'uncontested' => false,
                 'undecided' => false,
+                'refusal' => null,
             ];
         }
 
         $firstOut = isset($reading->withdrawn[$first->getId()]);
         $secondOut = isset($reading->withdrawn[$second->getId()]);
         if (!$firstOut && !$secondOut) {
-            if ($undecided instanceof InvalidConfigurationException) {
-                $reading->undecidedTie ??= ['issue' => $undecided->getConfigurationIssue(), 'context' => $undecided->getContext()];
-            }
-
             return [
                 'winner' => null,
                 'losers' => [],
                 'open' => true,
                 'uncontested' => false,
                 'undecided' => $undecided instanceof InvalidConfigurationException,
+                'refusal' => $undecided instanceof InvalidConfigurationException
+                    ? ['issue' => $undecided->getConfigurationIssue(), 'context' => $undecided->getContext()]
+                    : null,
             ];
         }
 
@@ -544,7 +544,7 @@ trait EliminationBracketSupport
             $firstWentOn = ($reading->lastNamedIn[$first->getId()] ?? 0) > $reading->number;
             $secondWentOn = ($reading->lastNamedIn[$second->getId()] ?? 0) > $reading->number;
             if ($firstWentOn === $secondWentOn) {
-                return ['winner' => null, 'losers' => [$first, $second], 'open' => false, 'uncontested' => true, 'undecided' => false];
+                return ['winner' => null, 'losers' => [$first, $second], 'open' => false, 'uncontested' => true, 'undecided' => false, 'refusal' => null];
             }
 
             $firstOut = !$firstWentOn;
@@ -556,6 +556,7 @@ trait EliminationBracketSupport
             'open' => false,
             'uncontested' => true,
             'undecided' => false,
+            'refusal' => null,
         ];
     }
 
@@ -629,6 +630,7 @@ trait EliminationBracketSupport
         $unresolved = [];
         $uncontested = [];
         $undecided = [];
+        $refusals = [];
         $sequence = 0;
 
         // The ties the bracket has in the round are read first, so that an
@@ -670,6 +672,18 @@ trait EliminationBracketSupport
             }
 
             $settled = $this->settleTie($reading, $round, $first, $second, $legsPerTie, $reading->levelAdvancers);
+            if ($settled['refusal'] !== null) {
+                // The tie pairNextRound() names is the first of the bracket
+                // and not the first of the recorded events, which a history
+                // may supply in any order: the tie that stands in no slot
+                // (the third-place tie) comes after those that do.
+                $refusals[] = [
+                    $key === $extraKey || $tie['thirdPlace'] ? 1 : 0,
+                    min($position[$first->getId()] ?? PHP_INT_MAX, $position[$second->getId()] ?? PHP_INT_MAX),
+                    count($refusals),
+                    $settled['refusal'],
+                ];
+            }
 
             foreach ($tie['events'] as $event) {
                 if (isset($reading->resultIndex[$this->legKey($round, $first, $second, $event->getMetadataValue('tie_leg'))])) {
@@ -752,6 +766,11 @@ trait EliminationBracketSupport
             // undecided otherwise.
             $settled = $this->settleTie($reading, $round, $extraTie[0], $extraTie[1], $legsPerTie, $reading->levelAdvancers);
             $extra = $settled['open'] ? null : $settled;
+        }
+
+        if ($refusals !== []) {
+            usort($refusals, static fn(array $one, array $other): int => [$one[0], $one[1], $one[2]] <=> [$other[0], $other[1], $other[2]]);
+            $reading->undecidedTie ??= $refusals[0][3];
         }
 
         $manual = false;

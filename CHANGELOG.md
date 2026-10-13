@@ -978,7 +978,10 @@ entry on the engine fingerprint.
   `pairNextRound()` throws what it threw, an `InvalidConfigurationException`
   with the reason `UndecidedTie`, the round and the two participants, and
   throws it before the `UnresolvedRoundException` where the round awaits a
-  result as well. `getReadiness()` lists the events of such ties
+  result as well. Where two ties of the round await a decision it names the
+  first in bracket order, the final before the third-place tie, whatever
+  order the events of the round are recorded in. `getReadiness()` lists the
+  events of such ties
   (`PairingReadiness::getUndecidedEvents()`), `getRecordedRounds()` lists
   them for their round (`RecordedRound::getUndecidedEvents()`), and
   `getStandings()` gives the table, in which the level event is a draw. An

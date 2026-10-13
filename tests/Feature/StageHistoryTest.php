@@ -707,6 +707,62 @@ describe('a bracket tie that is level and awaits its decider', function (): void
             ->and(in_array($h4->getId(), $named, true))->toBeFalse();
     })->with(['single elimination', 'double elimination']);
 
+    // Two ties of a round can await a decision at once. Which of them the
+    // refusal names is the bracket's to say, the first in bracket order and
+    // the final before the third-place tie, and not the order the rows of
+    // the application came back in.
+    it('is the tie the refusal names whatever order the events of the round are in', function (string $name, int $recordedRounds): void {
+        $engine = historyEngines()[$name];
+        $entrants = historyField(4);
+        $rng = new Randomizer(new Mt19937(3));
+        $state = StageState::start($entrants);
+        for ($round = 1; $round <= $recordedRounds; ++$round) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, historyResults($pairing, $rng));
+        }
+
+        // Every tie of the round is level in every leg, and none is decided
+        $last = $engine->pairNextRound($state);
+        $events = $last->getEvents();
+        $drawn = array_map(static fn(Event $event): Result => new Result($event), $events);
+        [$one, $two] = $events[0]->getParticipants();
+
+        $contexts = [];
+        foreach ([$events, array_reverse($events)] as $supplied) {
+            $history = StageState::fromHistory(
+                $entrants,
+                [...$state->getRoundsPlayed(), new RoundPairing($last->getRoundNumber(), $last->getLabel(), $supplied, $last->getByes())],
+                [...$state->getResults(), ...$drawn]
+            );
+
+            try {
+                $engine->pairNextRound($history);
+                $this->fail('The round after an undecided tie was paired.');
+            } catch (InvalidConfigurationException $exception) {
+                expect($exception->getReason())->toBe(InvalidConfigurationReason::UndecidedTie);
+                $contexts[] = $exception->getContext();
+            }
+        }
+
+        $ties = array_unique(array_map(static function (Event $event): string {
+            $ids = historyIds($event->getParticipants());
+            sort($ids);
+
+            return implode(' v ', $ids);
+        }, $events));
+
+        $first = ['round' => $last->getRoundNumber(), 'participants' => [$one->getId(), $two->getId()]];
+
+        expect($ties)->toHaveCount(2)
+            ->and($contexts)->toBe([$first, $first]);
+    })->with([
+        ['single elimination', 0],
+        ['single elimination over two legs', 0],
+        ['double elimination', 0],
+        // The last round of a field of 4: the final, then the third-place tie
+        ['single elimination with a third-place tie', 1],
+    ]);
+
     it('is still refused by every call where what is recorded cannot be read: a decider on a tie its results decide', function (string $name): void {
         $engine = historyEngines()[$name];
         [$h1, , , $h4] = $entrants = historyField(4);

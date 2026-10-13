@@ -58,8 +58,9 @@ final class BracketReading
     public array $undecided = [];
 
     /**
-     * What is to be said of the first tie the walk found level without a
-     * decider: the message and the context (the round and the two
+     * What is to be said of the first tie of the round that is level
+     * without a decider, in bracket order and whatever the order of the
+     * recorded events: the message and the context (the round and the two
      * participants of the tie) of the refusal pairNextRound() gives for
      * the round.
      *
