@@ -24,7 +24,11 @@ interface RepackViolation
 
     /**
      * Serialize to plain data. Every implementation includes a 'kind' key
-     * carrying the ViolationKind backing string.
+     * carrying the ViolationKind backing string. The library's own
+     * violations write `format_version`, the version of their form, as the
+     * first key; RepackOutcome::toArray() leaves that key out of the
+     * records it holds, an implementation of yours included, because the
+     * outcome states one version for the whole array.
      *
      * @return array<string, mixed>
      */

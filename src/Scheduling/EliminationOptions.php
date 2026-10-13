@@ -56,7 +56,9 @@ final readonly class EliminationOptions
      * misspelt option is not silently read as its default.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), a
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), a
      *                                       value has the wrong type, or legs_per_tie is not 1
      *                                       or 2
      */
@@ -91,13 +93,15 @@ final readonly class EliminationOptions
     }
 
     /**
-     * The plain-data form fromArray() accepts: all three keys, always.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then all three options, always.
      *
-     * @return array{legs_per_tie: int, reseed_each_round: bool, grand_final_reset: bool}
+     * @return array{format_version: int, legs_per_tie: int, reseed_each_round: bool, grand_final_reset: bool}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'legs_per_tie' => $this->legsPerTie,
             'reseed_each_round' => $this->reseedEachRound,
             'grand_final_reset' => $this->grandFinalReset,

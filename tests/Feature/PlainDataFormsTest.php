@@ -7,13 +7,18 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Tests\Support\PlainDataForms;
 
-// The rule: a `fromArray()` refuses an array that holds a key its form does
-// not have. A misspelt option used to be read as its default, and a misspelt
-// field of stored data as the field left out, with nothing to say so.
+// Two rules that every `fromArray()` holds to, checked for every form at
+// once. The forms are listed in Tests\Support\PlainDataForms, each with a
+// sample that holds every key it reads.
 //
-// The forms are listed in Tests\Support\PlainDataForms, each with a sample
-// that holds every key it reads. The tests below mistype every one of those
-// keys in every way the helper knows and expect each array to be refused.
+// A key the form does not have is refused. A misspelt option used to be read
+// as its default, and a misspelt field of stored data as the field left out,
+// with nothing to say so. The tests mistype every key of every sample in
+// every way the helper knows and expect each array to be refused.
+//
+// An array says which version of its form it is written in, under
+// `format_version`; without the key it is version 1, and a version the
+// release does not know is refused (ADR 0004).
 
 /**
  * What reading an array ends in: the value, or the exception.
@@ -32,13 +37,13 @@ function plainDataOutcome(Closure $read): array
 }
 
 /**
- * The classes under `src/` that declare a `fromArray()` method.
+ * The classes under `src/` that declare the method.
  *
  * @return list<string>
  *
  * @throws UnexpectedValueException When `src/` cannot be read
  */
-function classesWithFromArray(): array
+function classesDeclaring(string $method): array
 {
     $root = dirname(__DIR__, 2) . '/src';
     $classes = [];
@@ -50,11 +55,11 @@ function classesWithFromArray(): array
         }
 
         $source = (string) file_get_contents($file->getPathname());
-        if (preg_match('/^\s*(?:abstract\s+)?(?:final\s+)?(?:readonly\s+)?class\s+\w+/m', $source) !== 1) {
-            // An interface declares the method and reads nothing
+        if (preg_match('/^(?:abstract\s+)?(?:final\s+)?(?:readonly\s+)?class\s+\w+/m', $source) !== 1) {
+            // An interface declares the method and neither reads nor writes
             continue;
         }
-        if (preg_match('/function\s+fromArray\s*\(/', $source) === 1) {
+        if (preg_match('/function\s+' . $method . '\s*\(/', $source) === 1) {
             $relative = substr($file->getPathname(), strlen($root) + 1, -4);
             $classes[] = 'MissionGaming\\Tactician\\' . str_replace('/', '\\', $relative);
         }
@@ -72,14 +77,24 @@ describe('the forms read from plain data', function (): void {
         )));
         sort($listed);
 
-        expect($listed)->toBe(classesWithFromArray())
+        expect($listed)->toBe(classesDeclaring('fromArray'))
             ->and(count($listed))->toBeGreaterThan(15);
+    });
+
+    it('are all listed, with the forms that are only written, for every toArray() in src/', function (): void {
+        $listed = array_values(array_unique([
+            ...array_map(static fn(array $form): string => $form['class'], array_values(PlainDataForms::all())),
+            ...array_map(static fn(array $form): string => $form['class'], array_values(PlainDataForms::writtenOnly())),
+        ]));
+        sort($listed);
+
+        expect($listed)->toBe(classesDeclaring('toArray'));
     });
 
     it('have a sample that is read, and that holds every key of the form', function (string $name): void {
         $form = PlainDataForms::all()[$name];
 
-        $outcome = plainDataOutcome(fn(): mixed => $form['read']($form['sample']));
+        $outcome = plainDataOutcome(fn(): object => $form['read']($form['sample'], PlainDataForms::registry()));
 
         expect($outcome)->toHaveKey('value')
             ->and(array_diff(array_keys($form['sample']), $form['keys']))->toBe([]);
@@ -98,18 +113,19 @@ describe('the forms read from plain data', function (): void {
 describe('a key the form does not have', function (): void {
     it('is refused, however a known key is mistyped', function (string $name): void {
         $form = PlainDataForms::all()[$name];
+        $known = ['format_version', ...$form['keys']];
         $checked = 0;
 
         foreach (array_keys($form['sample']) as $key) {
-            foreach (PlainDataForms::typosOf($key, $form['keys']) as $typo) {
+            foreach (PlainDataForms::typosOf($key, $known) as $typo) {
                 $mistyped = PlainDataForms::withKeyRenamed($form['sample'], $key, $typo);
 
                 try {
-                    $form['read']($mistyped);
+                    $form['read']($mistyped, PlainDataForms::registry());
                 } catch (InvalidConfigurationException $exception) {
                     expect($form['kind'])->toBe(PlainDataForms::CONFIGURATION, "'{$typo}' for '{$key}'")
                         ->and($exception->getReason())->toBe(InvalidConfigurationReason::UnknownOptionKey, "'{$typo}' for '{$key}'")
-                        ->and($exception->getContext())->toBe(['unknown' => [$typo], 'known' => $form['keys']])
+                        ->and($exception->getContext())->toBe(['unknown' => [$typo], 'known' => $known])
                         ->and($exception->getMessage())->toContain("'{$typo}'");
                     ++$checked;
 
@@ -118,8 +134,8 @@ describe('a key the form does not have', function (): void {
                     expect($form['kind'])->toBe(PlainDataForms::DATA, "'{$typo}' for '{$key}'")
                         ->and($exception->getMessage())->toContain('Unknown key in ')
                         ->and($exception->getMessage())->toContain("'{$typo}'");
-                    foreach ($form['keys'] as $known) {
-                        expect($exception->getMessage())->toContain("'{$known}'");
+                    foreach ($known as $knownKey) {
+                        expect($exception->getMessage())->toContain("'{$knownKey}'");
                     }
                     ++$checked;
 
@@ -137,7 +153,7 @@ describe('a key the form does not have', function (): void {
     it('is refused beside a full set of known keys', function (string $name): void {
         $form = PlainDataForms::all()[$name];
 
-        $outcome = plainDataOutcome(fn(): mixed => $form['read']([...$form['sample'], 'notes' => 'ours']));
+        $outcome = plainDataOutcome(fn(): object => $form['read']([...$form['sample'], 'notes' => 'ours'], PlainDataForms::registry()));
 
         expect($outcome)->toHaveKey('error')
             ->and($outcome['message'] ?? '')->toContain("'notes'");
@@ -154,11 +170,11 @@ describe('a key the form does not have', function (): void {
         $inParticipant = $schedule;
         $inParticipant['participants'][0] = ['id' => 'a', 'label' => 'Alice', 'seeding' => 1];
 
-        $read = PlainDataForms::all()['schedule']['read'];
+        $read = fn(array $data): object => PlainDataForms::all()['schedule']['read']($data, []);
 
-        expect(fn(): mixed => $read($inEvent))->toThrow(InvalidInputException::class, "Unknown key in event data: 'rond'")
-            ->and(fn(): mixed => $read($inRound))->toThrow(InvalidInputException::class, "Unknown key in round data: 'label'")
-            ->and(fn(): mixed => $read($inParticipant))->toThrow(InvalidInputException::class, "Unknown key in participant data: 'seeding'");
+        expect(fn(): object => $read($inEvent))->toThrow(InvalidInputException::class, "Unknown key in event data: 'rond'")
+            ->and(fn(): object => $read($inRound))->toThrow(InvalidInputException::class, "Unknown key in round data: 'label'")
+            ->and(fn(): object => $read($inParticipant))->toThrow(InvalidInputException::class, "Unknown key in participant data: 'seeding'");
     });
 
     // The defect as it was reported: a misspelt strategy gave the defaults
@@ -166,7 +182,7 @@ describe('a key the form does not have', function (): void {
         $read = PlainDataForms::all()['round-robin options']['read'];
 
         try {
-            $read(['legs' => 2, 'stratgy' => 'repeated']);
+            $read(['legs' => 2, 'stratgy' => 'repeated'], []);
         } catch (InvalidConfigurationException $exception) {
             expect($exception->getReason())->toBe(InvalidConfigurationReason::UnknownOptionKey)
                 ->and($exception->getConfigurationIssue())->toBe("Unknown key in round-robin options: 'stratgy'")
@@ -184,9 +200,9 @@ describe('a key the form does not have', function (): void {
         $form = PlainDataForms::all()['result'];
         $mistyped = PlainDataForms::withKeyRenamed($form['sample'], 'winner', 'winer');
 
-        expect(fn(): mixed => $form['read']($mistyped))->toThrow(
+        expect(fn(): object => $form['read']($mistyped, PlainDataForms::registry()))->toThrow(
             InvalidInputException::class,
-            "Unknown key in result data: 'winer' (the known keys are 'event', 'winner', 'scores', 'metadata')"
+            "Unknown key in result data: 'winer' (the known keys are 'format_version', 'event', 'winner', 'scores', 'metadata')"
         );
     });
 });
@@ -219,8 +235,8 @@ describe('a known key given as null', function (): void {
             $without = $sample;
             unset($without[$key]);
 
-            expect(plainDataOutcome(fn(): mixed => $form['read']([...$sample, $key => null])))
-                ->toEqual(plainDataOutcome(fn(): mixed => $form['read']($without)), "{$name}: {$key}");
+            expect(plainDataOutcome(fn(): object => $form['read']([...$sample, $key => null], PlainDataForms::registry())))
+                ->toEqual(plainDataOutcome(fn(): object => $form['read']($without, PlainDataForms::registry())), "{$name}: {$key}");
             ++$compared;
         }
 
@@ -231,10 +247,79 @@ describe('a known key given as null', function (): void {
         foreach ($refusesNull as $name => $keys) {
             $form = PlainDataForms::all()[$name];
             foreach ($keys as $key) {
-                $outcome = plainDataOutcome(fn(): mixed => $form['read']([...$form['sample'], $key => null]));
+                $outcome = plainDataOutcome(fn(): object => $form['read']([...$form['sample'], $key => null], PlainDataForms::registry()));
 
                 expect($outcome)->toHaveKey('error', InvalidConfigurationException::class);
             }
         }
+    });
+});
+
+describe('the format version of an array that is read', function (): void {
+    it('may be left out, and the array is then version 1', function (string $name): void {
+        $form = PlainDataForms::all()[$name];
+        $read = fn(array $data): object => $form['read']($data, PlainDataForms::registry());
+
+        expect($read(['format_version' => 1, ...$form['sample']]))->toEqual($read($form['sample']));
+    })->with(fn(): array => array_keys(PlainDataForms::all()));
+
+    it('is refused when it is not a version this release reads', function (string $name, mixed $version, string $fault): void {
+        $form = PlainDataForms::all()[$name];
+
+        try {
+            $form['read'](['format_version' => $version, ...$form['sample']], PlainDataForms::registry());
+        } catch (InvalidConfigurationException $exception) {
+            expect($form['kind'])->toBe(PlainDataForms::CONFIGURATION)
+                ->and($exception->getReason())->toBe(InvalidConfigurationReason::UnsupportedFormatVersion)
+                ->and($exception->getContext())->toBe(['format_version' => $version, 'newest_supported' => 1])
+                ->and($exception->getConfigurationIssue())->toContain($fault)
+                ->and($exception->getConfigurationIssue())->toContain('this version of the library reads version 1');
+
+            return;
+        } catch (InvalidInputException $exception) {
+            expect($form['kind'])->toBe(PlainDataForms::DATA)
+                ->and($exception->getMessage())->toContain($fault)
+                ->and($exception->getMessage())->toContain('this version of the library reads version 1');
+
+            return;
+        }
+
+        $this->fail("{$name} read an array of format version " . var_export($version, true) . '.');
+    })->with(fn(): array => array_keys(PlainDataForms::all()))->with([
+        'the next version' => [2, 'Unsupported format version 2 in '],
+        'a far later version' => [PHP_INT_MAX, 'The data was written by a later release'],
+        'zero' => [0, 'format versions start at 1'],
+        'a negative number' => [-1, 'format versions start at 1'],
+        'a numeric string' => ['1', 'must be an integer, string given'],
+        'a float' => [1.0, 'must be an integer, float given'],
+        'null' => [null, 'must be an integer, null given'],
+        'true' => [true, 'must be an integer, bool given'],
+    ]);
+
+    // A later release may add keys. The version is what the reader is told
+    // about, not the keys it does not know.
+    it('is reported before a key the form does not have', function (): void {
+        $read = PlainDataForms::all()['schedule']['read'];
+
+        expect(fn(): object => $read(['format_version' => 2, 'entrants' => [], 'events' => []], []))->toThrow(
+            InvalidInputException::class,
+            'Unsupported format version 2 in schedule data: this version of the library reads version 1.'
+            . ' The data was written by a later release; upgrade the library to read it'
+        );
+    });
+
+    it('is accepted on a form nested in another, where an array was put together by hand', function (): void {
+        $form = PlainDataForms::all()['schedule'];
+        $sample = $form['sample'];
+        assert(is_array($sample['events']) && is_array($sample['events'][0]) && is_array($sample['participants']) && is_array($sample['participants'][0]));
+
+        $byHand = $sample;
+        $byHand['participants'][0] = ['format_version' => 1, ...$sample['participants'][0]];
+        $byHand['events'][0] = ['format_version' => 1, ...$sample['events'][0]];
+        $later = $sample;
+        $later['events'][0] = ['format_version' => 3, ...$sample['events'][0]];
+
+        expect($form['read']($byHand, []))->toEqual($form['read']($sample, []))
+            ->and(fn(): object => $form['read']($later, []))->toThrow(InvalidInputException::class, 'Unsupported format version 3 in event data');
     });
 });

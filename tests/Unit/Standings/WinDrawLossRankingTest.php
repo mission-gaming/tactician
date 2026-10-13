@@ -53,10 +53,10 @@ describe('WinDrawLossRanking', function (): void {
 
     it('provides the sport conventions as named constructors', function (): void {
         $football = WinDrawLossRanking::threeOneZero();
-        expect($football->toArray())->toBe(['win' => 3.0, 'draw' => 1.0, 'loss' => 0.0]);
+        expect($football->toArray())->toBe(['format_version' => 1, 'win' => 3.0, 'draw' => 1.0, 'loss' => 0.0]);
 
         $chess = WinDrawLossRanking::oneHalfZero();
-        expect($chess->toArray())->toBe(['win' => 1.0, 'draw' => 0.5, 'loss' => 0.0]);
+        expect($chess->toArray())->toBe(['format_version' => 1, 'win' => 1.0, 'draw' => 0.5, 'loss' => 0.0]);
     });
 
     it('round-trips through plain configuration data', function (): void {
@@ -70,7 +70,7 @@ describe('WinDrawLossRanking', function (): void {
     it('builds from partial configuration with 3/1/0 defaults', function (): void {
         $ranking = WinDrawLossRanking::fromArray(['win' => 2]);
 
-        expect($ranking->toArray())->toBe(['win' => 2.0, 'draw' => 1.0, 'loss' => 0.0]);
+        expect($ranking->toArray())->toBe(['format_version' => 1, 'win' => 2.0, 'draw' => 1.0, 'loss' => 0.0]);
     });
 
     it('rejects non-numeric configuration values', function (): void {

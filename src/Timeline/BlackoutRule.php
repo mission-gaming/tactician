@@ -90,7 +90,9 @@ final readonly class BlackoutRule implements TimelineRule
      * read as none.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), the
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), the
      *                                       windows are malformed, or a bound does not state an
      *                                       instant by itself
      */
@@ -150,13 +152,15 @@ final readonly class BlackoutRule implements TimelineRule
      * timezone they were declared in is not. Every window has a label, the
      * default one where none was given. A fraction of a second is not
      * written, so a window that starts and ends within one second does not
-     * read back.
+     * read back. The first key is `format_version`, the version of this
+     * form (1); a window is a part of the rule and carries none.
      *
-     * @return array{windows: array<int, array{from: string, to: string, timezone: string, label: string}>}
+     * @return array{format_version: int, windows: array<int, array{from: string, to: string, timezone: string, label: string}>}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'windows' => array_map(fn(array $window) => [
                 'from' => $window['from']->format('Y-m-d H:i:s'),
                 'to' => $window['to']->format('Y-m-d H:i:s'),

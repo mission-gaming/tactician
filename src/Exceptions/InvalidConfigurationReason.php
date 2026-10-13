@@ -100,6 +100,15 @@ enum InvalidConfigurationReason: string
      */
     case UnknownOptionKey = 'unknown_option_key';
 
+    /**
+     * Plain-data configuration states a format version this release does
+     * not read: one higher than the newest it knows (the data was written
+     * by a later release), one below 1, or a value that is not an integer.
+     * The context holds the version under `format_version` and the newest
+     * one read under `newest_supported`.
+     */
+    case UnsupportedFormatVersion = 'unsupported_format_version';
+
     // Pot draws
 
     /**

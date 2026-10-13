@@ -95,9 +95,10 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
      * Convert to a serializable array: participants listed once, in the
      * order they first appear, and referenced by ID; kickoffs as ISO 8601
      * UTC strings to the second (`2026-08-01T18:00:00Z`); each event's
-     * resource, or null.
+     * resource, or null. The first key is `format_version`, the version of
+     * this form (1); the participants and the events inside carry none.
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}>}
+     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}>}
      */
     public function toArray(): array
     {
@@ -109,22 +110,31 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
             }
         }
 
+        $participants = [];
+        foreach ($participantsById as $participant) {
+            $data = $participant->toArray();
+            unset($data[PlainData::VERSION_KEY]);
+            $participants[] = $data;
+        }
+
+        $events = [];
+        foreach ($this->scheduledEvents as $key => $scheduledEvent) {
+            $data = $scheduledEvent->toArray();
+            unset($data[PlainData::VERSION_KEY]);
+            $events[$key] = $data;
+        }
+
         return [
-            'participants' => array_values(array_map(
-                fn(Participant $participant) => $participant->toArray(),
-                $participantsById
-            )),
-            'events' => array_map(
-                fn(ScheduledEvent $scheduledEvent) => $scheduledEvent->toArray(),
-                $this->scheduledEvents
-            ),
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'participants' => $participants,
+            'events' => $events,
         ];
     }
 
     /**
      * What `json_encode()` writes for the schedule: the array of toArray().
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}>}
+     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, kickoff: string, resource: string|null}>}
      */
     #[Override]
     public function jsonSerialize(): array
@@ -155,7 +165,8 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
      * date in full, as ScheduledEvent::fromArray() requires.
      *
      * @param array<string, mixed> $data
-     * @throws InvalidInputException When a key is unknown (`participants` and `events` are the
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown (`participants` and `events` are the
      *                               keys), the data is malformed, an event names a
      *                               participant the data does not list, or a kickoff does not
      *                               state an instant by itself

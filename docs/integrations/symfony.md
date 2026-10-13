@@ -117,13 +117,15 @@ the rounds before is a **stage engine** and is the subject of the
 
 The options of a format are plain data (`RoundRobinOptions::fromArray()`,
 `toArray()`, with stable string identifiers), so a row of your own
-settings table can hold them. One thing to know when you do that:
-`PotDrawOptions::fromArray()` rejects a key it does not know, and the
-`fromArray()` of `RoundRobinOptions`, `SwissOptions`,
-`EliminationOptions`, `RepackOptions`, `SessionGrid` and
-`TimelineDefinition` ignores one. There a misspelt key (`'legz' => 2`)
-gives the default silently, so check the keys in your own configuration
-code. And `'strategy' => 'shuffled'` in plain data needs a
+settings table can hold them. Two things to know when you do that. Every
+`fromArray()` refuses a key it does not know (`InvalidConfigurationException`,
+reason `UnknownOptionKey`): a misspelt key (`'legz' => 2`) fails loudly and
+is not read as the default, and a row cannot be passed whole with its `id`
+and timestamps in it, so pass the library's keys only. And what
+`toArray()` writes starts with `format_version`, the version of the form;
+store it with the rest. A row stored before that key existed still loads,
+as version 1 (see [Format Versions](../USAGE.md#format-versions)). Also,
+`'strategy' => 'shuffled'` in plain data needs a
 `'strategy_seed'` beside it, an integer: the roles it draws are then the
 same on every call, and `fromArray()` refuses the strategy without one.
 
@@ -298,7 +300,11 @@ There are two ways, and both give the engine the same thing.
 - **Store `StageState::toJson()`** in a column of the stage's row and
   read it back with `StageState::fromJson()`. This is the simple way and
   the one the examples use. You still copy each round's events into your
-  own match entities to show them and to collect results.
+  own match entities to show them and to collect results. The JSON starts
+  with `format_version`; a state stored by a release that wrote none
+  loads as version 1, and one written by a later release that changed
+  the form is refused and not guessed at
+  ([Format Versions](../USAGE.md#format-versions)).
 - **Rebuild the state from your own rows** on each request:
   `StageState::start($participants)`, then `withRoundPlayed()` once for
   every round you hold, each with a `RoundPairing` you construct

@@ -26,6 +26,15 @@ the participants by ID, because a result refers to them); `Schedule`
 additionally implements `JsonSerializable` with `toJson()`/`fromJson()`
 round-tripping.
 
+Every plain-data form in the library, these and the configuration and
+stage forms below, is read and written under two rules that one internal
+class holds (`Serialization\PlainData`). An array a `toArray()` returns
+starts with `format_version`, written once at the top and not on the forms
+nested in it; a `fromArray()` reads an array without the key as version 1,
+the form 0.2.x wrote, and refuses a version it does not know
+([ADR 0004](adr/0004-serialized-forms-carry-a-format-version.md)). And a
+`fromArray()` refuses a key its form does not have.
+
 ### Stage Model
 The **stage** is Tactician's unit of work — participants and typed options
 in, a schedule (or round-by-round pairings) out, and a uniform outcome when

@@ -100,10 +100,10 @@ describe('RankRangeSelector', function (): void {
 
     it('round-trips through plain configuration data', function (): void {
         $selector = RankRangeSelector::fromArray(['mode' => 'per-group', 'from' => 3, 'to' => 4]);
-        expect($selector->toArray())->toBe(['mode' => 'per-group', 'from' => 3, 'to' => 4]);
+        expect($selector->toArray())->toBe(['format_version' => 1, 'mode' => 'per-group', 'from' => 3, 'to' => 4]);
 
         expect(RankRangeSelector::overall(1, 8)->toArray())
-            ->toBe(['mode' => 'overall', 'from' => 1, 'to' => 8]);
+            ->toBe(['format_version' => 1, 'mode' => 'overall', 'from' => 1, 'to' => 8]);
     });
 
     it('rejects invalid configuration', function (): void {
@@ -204,8 +204,8 @@ describe('MatchOutcomeSelector', function (): void {
 
     it('reports no fixed size and round-trips through configuration', function (): void {
         expect(MatchOutcomeSelector::winners()->getSelectionSize())->toBeNull();
-        expect(MatchOutcomeSelector::winners()->toArray())->toBe(['mode' => 'winners']);
-        expect(MatchOutcomeSelector::fromArray(['mode' => 'losers'])->toArray())->toBe(['mode' => 'losers']);
+        expect(MatchOutcomeSelector::winners()->toArray())->toBe(['format_version' => 1, 'mode' => 'winners']);
+        expect(MatchOutcomeSelector::fromArray(['mode' => 'losers'])->toArray())->toBe(['format_version' => 1, 'mode' => 'losers']);
         expect(fn() => MatchOutcomeSelector::fromArray(['mode' => 'survivors']))
             ->toThrow(InvalidConfigurationException::class, 'mode');
     });

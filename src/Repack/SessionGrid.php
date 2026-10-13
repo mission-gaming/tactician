@@ -332,7 +332,9 @@ final readonly class SessionGrid
      *
      * @param array<string, mixed> $config
      *
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), a
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), a
      *                                       value is missing or malformed, or a session start
      *                                       does not state an instant by itself
      */
@@ -444,9 +446,10 @@ final readonly class SessionGrid
      * `timezone` and `slot_interval`. An unbounded capacity is the string
      * {@see self::UNBOUNDED}. `slots_per_session_overrides` lists the
      * sessions whose slot count is not the default, and is left out when
-     * there is none.
+     * there is none. The first key of both forms is `format_version`, the
+     * version of the form (1).
      *
-     * @return array{sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}|array{session_count: int, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}
+     * @return array{format_version: int, sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}|array{format_version: int, session_count: int, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}
      */
     public function toArray(): array
     {
@@ -459,6 +462,7 @@ final readonly class SessionGrid
 
         if ($this->slotInterval instanceof DateInterval) {
             $data = [
+                PlainData::VERSION_KEY => PlainData::VERSION,
                 'sessions' => array_map(
                     static fn(DateTimeImmutable $start): string => $start->format('Y-m-d H:i:s'),
                     $this->sessionStarts
@@ -470,6 +474,7 @@ final readonly class SessionGrid
             ];
         } else {
             $data = [
+                PlainData::VERSION_KEY => PlainData::VERSION,
                 'session_count' => count($this->slotCounts),
                 'slots_per_session' => $this->slotsPerSession,
                 'capacity_per_slot' => $this->capacityPerSlot ?? self::UNBOUNDED,

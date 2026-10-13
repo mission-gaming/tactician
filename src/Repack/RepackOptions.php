@@ -109,7 +109,9 @@ final readonly class RepackOptions
      *
      * @param array<string, mixed> $config
      *
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`),
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`),
      *                                       a value is of the wrong type, or is one the
      *                                       constructor rejects
      */
@@ -150,14 +152,16 @@ final readonly class RepackOptions
     }
 
     /**
-     * Serialize back to the plain configuration data fromArray() accepts,
-     * all four keys always present.
+     * Serialize back to the plain configuration data fromArray() accepts:
+     * `format_version`, the version of this form (1), then all four
+     * options, always present.
      *
-     * @return array{consolidation_weight: int, early_fill_weight: int, step_budget: int, throw_on_violations: bool}
+     * @return array{format_version: int, consolidation_weight: int, early_fill_weight: int, step_budget: int, throw_on_violations: bool}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'consolidation_weight' => $this->consolidationWeight,
             'early_fill_weight' => $this->earlyFillWeight,
             'step_budget' => $this->stepBudget,

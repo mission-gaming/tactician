@@ -120,18 +120,27 @@ readonly class Event
      * Convert this event to a serializable array.
      *
      * Participants are referenced by ID; pair with the participant list from
-     * Schedule::toArray() to rehydrate.
+     * Schedule::toArray() to rehydrate. The first key is `format_version`,
+     * the version of this form (1); the round is written without one, and
+     * so is the event itself where another form holds it.
      *
-     * @return array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}
+     * @return array{format_version: int, participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
+        $round = null;
+        if ($this->round instanceof Round) {
+            $round = $this->round->toArray();
+            unset($round[PlainData::VERSION_KEY]);
+        }
+
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'participants' => array_map(
                 fn(Participant $participant) => $participant->getId(),
                 $this->participants
             ),
-            'round' => $this->round?->toArray(),
+            'round' => $round,
             'metadata' => $this->metadata,
         ];
     }
@@ -147,7 +156,8 @@ readonly class Event
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
      *
-     * @throws InvalidInputException When a key is unknown, a field has the wrong type, a
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, a field has the wrong type, a
      *                               participant ID is not in the registry, fewer than 2
      *                               participants are listed, or the round number is not a
      *                               positive integer

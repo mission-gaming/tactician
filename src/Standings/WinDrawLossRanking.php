@@ -59,7 +59,9 @@ final readonly class WinDrawLossRanking implements RankingStrategy
      * as its default.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), or
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), or
      *                                       a value is neither an int nor a float (a numeric
      *                                       string is refused)
      */
@@ -84,13 +86,15 @@ final readonly class WinDrawLossRanking implements RankingStrategy
     }
 
     /**
-     * The plain-data form fromArray() accepts.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then the three values.
      *
-     * @return array{win: float, draw: float, loss: float}
+     * @return array{format_version: int, win: float, draw: float, loss: float}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'win' => $this->winValue,
             'draw' => $this->drawValue,
             'loss' => $this->lossValue,

@@ -92,16 +92,25 @@ final readonly class RoundPairing
      * Convert this pairing to a serializable array.
      *
      * Events and byes reference participants by ID; pair with a participant
-     * registry to rehydrate.
+     * registry to rehydrate. The first key is `format_version`, the
+     * version of this form (1); the events are written without one.
      *
-     * @return array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}
+     * @return array{format_version: int, round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}
      */
     public function toArray(): array
     {
+        $events = [];
+        foreach ($this->events as $key => $event) {
+            $data = $event->toArray();
+            unset($data[PlainData::VERSION_KEY]);
+            $events[$key] = $data;
+        }
+
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'round' => $this->roundNumber,
             'label' => $this->label,
-            'events' => array_map(fn(Event $event) => $event->toArray(), $this->events),
+            'events' => $events,
             'byes' => array_map(fn(Participant $participant) => $participant->getId(), $this->byes),
         ];
     }
@@ -114,7 +123,8 @@ final readonly class RoundPairing
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
-     * @throws InvalidInputException When a key is unknown, fields are malformed or a
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, fields are malformed or a
      *                               participant ID is unknown
      */
     public static function fromArray(array $data, array $participantsById): self

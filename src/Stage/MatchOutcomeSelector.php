@@ -65,7 +65,9 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      * refused.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), or
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), or
      *                                       the mode is missing or unknown (`UnknownIdentifier`)
      */
     public static function fromArray(array $config): self
@@ -85,14 +87,14 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     }
 
     /**
-     * The plain-data form fromArray() accepts: the mode, 'winners' or
-     * 'losers'.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then the mode, 'winners' or 'losers'.
      *
-     * @return array{mode: string}
+     * @return array{format_version: int, mode: string}
      */
     public function toArray(): array
     {
-        return ['mode' => $this->mode];
+        return [PlainData::VERSION_KEY => PlainData::VERSION, 'mode' => $this->mode];
     }
 
     /**

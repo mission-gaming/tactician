@@ -39,6 +39,60 @@ heading **Output change (fix)**.
 
 ### Changed
 
+- **Breaking: every array a `toArray()` returns starts with
+  `format_version`, and a version the library does not know is refused.**
+  No serialized form said which release's rules it was written under, so
+  the first change to a form would have left a reader unable to tell an
+  old array from a new one. Every form now states its version, an integer,
+  as the first key of the array: the options classes
+  (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`,
+  `EliminationOptions`, `RepackOptions`), `WinDrawLossRanking`,
+  `TimelineDefinition`, `SessionGrid`, `BlackoutRule`, `MinimumRestRule`,
+  `RankRangeSelector`, `MatchOutcomeSelector`, `Participant`, `Round`,
+  `Event`, `Result`, `Schedule`, `RoundPairing`, `StageState`,
+  `ScheduledEvent`, `ScheduledSchedule`, `RepackOutcome`, `SlotAssignment`,
+  `UnplacedEvent` and the five repack violations. Every form is at version
+  1 (#53). ADR 0004 (`docs/adr/0004-serialized-forms-carry-a-format-version.md`)
+  records the rule:
+  - The key is written once to an array, at its top. A form held in
+    another (the participants and events of a schedule, the round of an
+    event, the rounds and results of a stage state, the records of a repack
+    outcome) is written without it, so the size of a stored schedule grows
+    by one key and not by one key per event.
+  - **Data stored by 0.2.x loads unchanged.** An array without the key is
+    read as version 1, which is the form 0.2.x wrote. Nothing is to be
+    migrated and the key need not be added to stored rows.
+    `tests/Fixtures/stored-by-0.2/` holds a schedule and a stage state as
+    v0.2.0 wrote them, and a test reads them on every run.
+  - A `format_version` above 1, below 1 or not an integer is refused:
+    configuration with an `InvalidConfigurationException` whose reason is
+    the new `InvalidConfigurationReason::UnsupportedFormatVersion`
+    (`unsupported_format_version`; the context holds `format_version` and
+    `newest_supported`), data with an `InvalidInputException`.
+  - Forms are versioned one by one. A later release that changes a form
+    gives it the next number, says so here, and keeps reading the earlier
+    versions; a patch release never changes a form.
+  - It is not the `v1` of an engine fingerprint or of an outcome
+    fingerprint, which version those schemes. `RepackOutcome::fingerprint()`
+    does not cover the key, so no fingerprint changes.
+
+  Who is affected: code that compares a `toArray()` result or a `toJson()`
+  string with a literal, that validates it against a schema of its own, or
+  that iterates the keys of the array. What to change: expect the key.
+  Before: `$options->toArray() === ['rounds' => 5]`. After:
+  `$options->toArray() === ['format_version' => 1, 'rounds' => 5]`. Code
+  that reads single keys (`$schedule->toArray()['events']`) and code that
+  passes a stored array back to `fromArray()` needs no change. An array
+  written by 0.3.0 is still read by 0.2.x, which ignores the key.
+
+  Golden fixtures: `tests/Fixtures/golden/wire/schedule.json` and
+  `tests/Fixtures/golden/wire/stage-state.json` gain `"format_version":1`
+  as their first key and are otherwise byte for byte what they were;
+  `tests/Fixtures/golden/examples/18-stateless-web-flow.txt` reports each
+  stored state 19 bytes longer, the length of that key. No other fixture
+  changes: the repack fixtures and the examples that print violations
+  render the records as the outcome writes them, which carry no key of
+  their own.
 - **Breaking: every `fromArray()` refuses a key its form does not have.**
   A key that was not known used to be ignored, so a misspelt key was read
   as the key left out: `RoundRobinOptions::fromArray(['legs' => 2,

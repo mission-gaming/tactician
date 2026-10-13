@@ -256,7 +256,12 @@ class Schedule implements Iterator, Countable, JsonSerializable
      * values must be serializable by the consumer (e.g. JSON-safe when using
      * toJson()).
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
+     * The first key is `format_version`, the version of this form (1). It
+     * is written once, here: the participants and the events inside carry
+     * none. fromArray() reads an array without the key as version 1, the
+     * form the releases before 0.3.0 wrote.
+     *
+     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
@@ -268,12 +273,24 @@ class Schedule implements Iterator, Countable, JsonSerializable
             }
         }
 
+        $participants = [];
+        foreach ($participantsById as $participant) {
+            $data = $participant->toArray();
+            unset($data[PlainData::VERSION_KEY]);
+            $participants[] = $data;
+        }
+
+        $events = [];
+        foreach ($this->events as $event) {
+            $data = $event->toArray();
+            unset($data[PlainData::VERSION_KEY]);
+            $events[] = $data;
+        }
+
         return [
-            'participants' => array_values(array_map(
-                fn(Participant $participant) => $participant->toArray(),
-                $participantsById
-            )),
-            'events' => array_map(fn(Event $event) => $event->toArray(), $this->events),
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'participants' => $participants,
+            'events' => $events,
             'metadata' => $this->metadata,
         ];
     }
@@ -281,7 +298,7 @@ class Schedule implements Iterator, Countable, JsonSerializable
     /**
      * What json_encode() encodes: the array form of toArray().
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
+     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, metadata: array<string, mixed>}
      */
     #[Override]
     public function jsonSerialize(): array
@@ -318,7 +335,8 @@ class Schedule implements Iterator, Countable, JsonSerializable
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When a key is unknown, a field has the wrong type, a
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, a field has the wrong type, a
      *                               participant or an event is malformed, or an event
      *                               references a participant ID that is not listed
      */

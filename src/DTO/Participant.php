@@ -114,13 +114,17 @@ readonly class Participant
      * The plain-data form fromArray() accepts.
      *
      * The metadata is included as it is; whether it can be encoded (as
-     * JSON, say) is up to the values in it.
+     * JSON, say) is up to the values in it. The first key is
+     * `format_version`, the version of this form (1). A form that holds
+     * participants (a schedule, a stage state) writes them without it: one
+     * array has one version, at its top.
      *
-     * @return array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}
+     * @return array{format_version: int, id: string, label: string, seed: int|null, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'id' => $this->id,
             'label' => $this->label,
             'seed' => $this->seed,
@@ -137,7 +141,8 @@ readonly class Participant
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When a key is unknown, the ID is not a non-empty string,
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, the ID is not a non-empty string,
      *                               the label is not a string, the seed is neither an
      *                               integer nor null, or the metadata is not an array
      */

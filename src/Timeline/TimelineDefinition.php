@@ -154,7 +154,9 @@ final readonly class TimelineDefinition
      * silently read as 1.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), a
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), a
      *                                       value is missing or malformed, or the start does
      *                                       not state an instant by itself
      */
@@ -207,7 +209,9 @@ final readonly class TimelineDefinition
      * `resources` are left out when there is none. The intervals are
      * written by formatInterval(), with what that leaves out.
      *
-     * @return array{start: string, timezone: string, round_interval: string, slots_per_round: int, slot_interval?: string, resources?: array<string>}
+     * The first key is `format_version`, the version of this form (1).
+     *
+     * @return array{format_version: int, start: string, timezone: string, round_interval: string, slots_per_round: int, slot_interval?: string, resources?: array<string>}
      */
     public function toArray(): array
     {
@@ -226,7 +230,7 @@ final readonly class TimelineDefinition
             $data['resources'] = $this->resources;
         }
 
-        return $data;
+        return [PlainData::VERSION_KEY => PlainData::VERSION, ...$data];
     }
 
     /**

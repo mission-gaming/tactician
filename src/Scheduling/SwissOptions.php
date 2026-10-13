@@ -44,7 +44,9 @@ final readonly class SwissOptions implements SchedulerOptions
      * so that a misspelt option is not silently read as its default.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), or
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), or
      *                                       rounds is not an integer or is below 1
      */
     #[Override]
@@ -65,13 +67,14 @@ final readonly class SwissOptions implements SchedulerOptions
     }
 
     /**
-     * The plain-data form fromArray() accepts.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then `rounds`.
      *
-     * @return array{rounds: int}
+     * @return array{format_version: int, rounds: int}
      */
     #[Override]
     public function toArray(): array
     {
-        return ['rounds' => $this->rounds];
+        return [PlainData::VERSION_KEY => PlainData::VERSION, 'rounds' => $this->rounds];
     }
 }

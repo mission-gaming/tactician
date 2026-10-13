@@ -147,14 +147,20 @@ readonly class Result
      * Convert this result to a serializable array.
      *
      * The event is embedded in its own array form (participants referenced
-     * by ID); pair with a participant registry to rehydrate.
+     * by ID); pair with a participant registry to rehydrate. The first key
+     * is `format_version`, the version of this form (1); the event is
+     * written without one.
      *
-     * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}
+     * @return array{format_version: int, event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
+        $event = $this->event->toArray();
+        unset($event[PlainData::VERSION_KEY]);
+
         return [
-            'event' => $this->event->toArray(),
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'event' => $event,
             'winner' => $this->winner?->getId(),
             'scores' => $this->scores,
             'metadata' => $this->metadata,
@@ -173,7 +179,8 @@ readonly class Result
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
      *
-     * @throws InvalidInputException When a key is unknown, a field has the wrong type, a score is not an int
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, a field has the wrong type, a score is not an int
      *                               or a float, a participant ID is not in the registry,
      *                               or the winner or a score names a participant who is
      *                               not in the event

@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Repack;
 
 use DateTimeImmutable;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * One movable event's assigned position: (session, slot) on the grid,
@@ -95,12 +96,15 @@ final readonly class SlotAssignment
      * limitation: the kickoff is written as it is held and is not
      * converted, so the string is UTC only when the kickoff given was, as
      * the repacker's always is.
+     * The first key is `format_version`, the version of this form (1);
+     * a repack outcome writes its records without it.
      *
-     * @return array{event_id: string, session: int, slot: int, kickoff: string|null}
+     * @return array{format_version: int, event_id: string, session: int, slot: int, kickoff: string|null}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'event_id' => $this->eventId,
             'session' => $this->session,
             'slot' => $this->slot,

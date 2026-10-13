@@ -159,7 +159,7 @@ describe('RepackOutcome construction', function (): void {
     });
 
     it('keeps the budget flag out of the plain data', function (): void {
-        expect((new RepackOutcome([], [], [], true))->toArray())->toBe(['assignments' => [], 'unplaced' => [], 'violations' => []]);
+        expect((new RepackOutcome([], [], [], true))->toArray())->toBe(['format_version' => 1, 'assignments' => [], 'unplaced' => [], 'violations' => []]);
     });
 });
 
@@ -168,7 +168,7 @@ describe('SlotAssignment without a kickoff', function (): void {
         $assignment = new SlotAssignment('e1', 1, 2, null);
 
         expect($assignment->hasKickoff())->toBeFalse();
-        expect($assignment->toArray())->toBe(['event_id' => 'e1', 'session' => 1, 'slot' => 2, 'kickoff' => null]);
+        expect($assignment->toArray())->toBe(['format_version' => 1, 'event_id' => 'e1', 'session' => 1, 'slot' => 2, 'kickoff' => null]);
         // Unchecked, and not a configuration error: see UnavailableValueException
         expect(fn() => $assignment->getKickoff())->toThrow(
             UnavailableValueException::class,
@@ -191,7 +191,7 @@ describe('SlotAssignment without a kickoff', function (): void {
 
         expect($assignment->hasKickoff())->toBeTrue();
         expect($assignment->getKickoff())->toBe($kickoff);
-        expect($assignment->toArray())->toBe(['event_id' => 'e1', 'session' => 1, 'slot' => 2, 'kickoff' => '2026-08-12T19:00:00Z']);
+        expect($assignment->toArray())->toBe(['format_version' => 1, 'event_id' => 'e1', 'session' => 1, 'slot' => 2, 'kickoff' => '2026-08-12T19:00:00Z']);
     });
 });
 

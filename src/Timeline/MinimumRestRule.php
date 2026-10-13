@@ -54,7 +54,9 @@ final readonly class MinimumRestRule implements TimelineRule
      * TimelineDefinition::parseInterval(). Any other key is refused.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), or
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), or
      *                                       the duration is missing or malformed, or does not
      *                                       move time forward
      */
@@ -66,14 +68,18 @@ final readonly class MinimumRestRule implements TimelineRule
     }
 
     /**
-     * Serialize back to the plain-data form fromArray() accepts, the rest
+     * Serialize back to the plain-data form fromArray() accepts:
+     * `format_version`, the version of this form (1), then the rest,
      * written by TimelineDefinition::formatInterval().
      *
-     * @return array{rest: string}
+     * @return array{format_version: int, rest: string}
      */
     public function toArray(): array
     {
-        return ['rest' => TimelineDefinition::formatInterval($this->minimumRest)];
+        return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'rest' => TimelineDefinition::formatInterval($this->minimumRest),
+        ];
     }
 
     /**

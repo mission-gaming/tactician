@@ -110,13 +110,16 @@ readonly class Round implements \Stringable
     }
 
     /**
-     * The plain-data form fromArray() accepts.
+     * The plain-data form fromArray() accepts. The first key is
+     * `format_version`, the version of this form (1); an event writes its
+     * round without it.
      *
-     * @return array{number: int, metadata: array<string, mixed>}
+     * @return array{format_version: int, number: int, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'number' => $this->number,
             'metadata' => $this->metadata,
         ];
@@ -130,7 +133,8 @@ readonly class Round implements \Stringable
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When a key is unknown, the number is missing, not an
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, the number is missing, not an
      *                               integer or below 1, or the metadata is not an array
      */
     public static function fromArray(array $data): self

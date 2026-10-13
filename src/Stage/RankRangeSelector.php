@@ -92,7 +92,9 @@ final readonly class RankRangeSelector implements ProgressionSelector
      * `from` is not silently read as 1.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), the
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), the
      *                                       mode is missing or unknown (`UnknownIdentifier`), a
      *                                       bound is not an integer (`WrongValueType`), or the
      *                                       range is not 1 <= from <= to (`ValueOutOfRange`)
@@ -124,15 +126,21 @@ final readonly class RankRangeSelector implements ProgressionSelector
     }
 
     /**
-     * The plain-data form fromArray() accepts: the mode ('overall' or
-     * 'per-group') and the two 1-based, inclusive bounds. topPerGroup(n)
-     * is written as per-group 1..n.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then the mode ('overall' or 'per-group')
+     * and the two 1-based, inclusive bounds. topPerGroup(n) is written as
+     * per-group 1..n.
      *
-     * @return array{mode: string, from: int, to: int}
+     * @return array{format_version: int, mode: string, from: int, to: int}
      */
     public function toArray(): array
     {
-        return ['mode' => $this->mode, 'from' => $this->from, 'to' => $this->to];
+        return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'mode' => $this->mode,
+            'from' => $this->from,
+            'to' => $this->to,
+        ];
     }
 
     /**

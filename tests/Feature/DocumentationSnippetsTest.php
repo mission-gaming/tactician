@@ -277,12 +277,23 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         }
     })->with([
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'format versions' => [
+            'docs/USAGE.md',
+            "echo \$stored['format_version']",
+            [
+                "format_version, participants, events, metadata\n1\nparticipants, round, metadata\n"
+                . "{\"format_version\":1,\"rounds\":5}\n1\n"
+                . 'Unsupported format version 2 in schedule data: this version of the library reads version 1.'
+                . " The data was written by a later release; upgrade the library to read it\n",
+            ],
+            [],
+        ],
         'a key a form does not have' => [
             'docs/USAGE.md',
             "'stratgy' => 'repeated'",
             [
-                "unknown_option_key\nstratgy\nlegs, strategy, backtracking, strategy_seed, role_assignment\n"
-                . "Unknown key in participant data: 'seeding' (the known keys are 'id', 'label', 'seed', 'metadata')\n",
+                "unknown_option_key\nstratgy\nformat_version, legs, strategy, backtracking, strategy_seed, role_assignment\n"
+                . "Unknown key in participant data: 'seeding' (the known keys are 'format_version', 'id', 'label', 'seed', 'metadata')\n",
             ],
             [],
         ],
@@ -500,7 +511,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 . "e04: session 0, slot 2, ordinal 2\n"
                 . "{\"session\":1,\"slot\":2}\n"
                 . "null\n"
-                . "{\"session_count\":2,\"slots_per_session\":3,\"capacity_per_slot\":3,\"slots_per_session_overrides\":{\"1\":4}}\n",
+                . "{\"format_version\":1,\"session_count\":2,\"slots_per_session\":3,\"capacity_per_slot\":3,\"slots_per_session_overrides\":{\"1\":4}}\n",
             ],
             ['kickoff'],
         ],
@@ -609,12 +620,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         'options round trip' => [
             'docs/USAGE.md',
             '$options->toArray();',
-            "assert(\$options->toArray() === ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]);",
+            "assert(\$options->toArray() === ['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]);",
         ],
         'shuffled options round trip with their seed' => [
             'docs/USAGE.md',
             '$shuffledOptions->toArray();',
-            "assert(\$shuffledOptions->toArray() === ['legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false, 'strategy_seed' => 2026]);",
+            "assert(\$shuffledOptions->toArray() === ['format_version' => 1, 'legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false, 'strategy_seed' => 2026]);",
         ],
         'role balance of the two role assignments' => [
             'docs/USAGE.md',
@@ -624,7 +635,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         'balanced options round trip' => [
             'docs/USAGE.md',
             '$balancedOptions->toArray();',
-            "assert(\$balancedOptions->toArray() === ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);",
+            "assert(\$balancedOptions->toArray() === ['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);",
         ],
         // The custom role assignment of the document is honoured in every event
         'a custom role assignment names the better seed first' => [
@@ -664,8 +675,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$stored = $drawOptions->toArray();',
             <<<'PHP'
-                assert($stored === ['pots' => 4, 'opponents_per_pot' => 2, 'seed' => 2026]);
-                assert(PotDrawOptions::fromArray([])->toArray() === ['pots' => 1, 'opponents_per_pot' => 1, 'seed' => 0]);
+                assert($stored === ['format_version' => 1, 'pots' => 4, 'opponents_per_pot' => 2, 'seed' => 2026]);
+                assert(PotDrawOptions::fromArray([])->toArray() === ['format_version' => 1, 'pots' => 1, 'opponents_per_pot' => 1, 'seed' => 0]);
                 assert($plan->getPotOf($entrants[0]) === 1 && $plan->getPotOf($entrants[8]) === 1 && $plan->getPotOf($entrants[9]) === 2);
                 assert($plan->getPotMembers(1) === array_slice($entrants, 0, 9));
                 // Every entrant has four events in each role

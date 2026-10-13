@@ -566,10 +566,17 @@ final readonly class StageState
      * or results — so rehydration resolves all references.
      *
      * The `engine_fingerprint` key is present only when the state is
-     * stamped (see withEngineFingerprint()), so an unstamped state has the
-     * shape it has always had.
+     * stamped (see withEngineFingerprint()).
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}>, engine_fingerprint?: string}
+     * The first key is `format_version`, the version of this form (1). It
+     * says how the array is to be read and is written once, here: the
+     * participants, rounds and results inside carry none. It is another
+     * thing than the `v1` inside an engine fingerprint, which is the
+     * version of the scheme the stamp is written in; the stamp is one
+     * string value of this form, and either version can change without
+     * the other.
+     *
+     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}>, engine_fingerprint?: string}
      */
     public function toArray(): array
     {
@@ -594,17 +601,38 @@ final readonly class StageState
             }
         }
 
+        // One array has one version, at its top: what the state holds is
+        // written without the key.
+        $participants = [];
+        foreach ($registry as $participant) {
+            $form = $participant->toArray();
+            unset($form[PlainData::VERSION_KEY]);
+            $participants[] = $form;
+        }
+
+        $rounds = [];
+        foreach ($this->roundsPlayed as $key => $pairing) {
+            $form = $pairing->toArray();
+            unset($form[PlainData::VERSION_KEY]);
+            $rounds[$key] = $form;
+        }
+
+        $results = [];
+        foreach ($this->results as $key => $result) {
+            $form = $result->toArray();
+            unset($form[PlainData::VERSION_KEY]);
+            $results[$key] = $form;
+        }
+
         $data = [
-            'participants' => array_values(array_map(
-                fn(Participant $participant) => $participant->toArray(),
-                $registry
-            )),
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'participants' => $participants,
             'active' => array_map(
                 fn(Participant $participant) => $participant->getId(),
                 $this->participants
             ),
-            'rounds' => array_map(fn(RoundPairing $pairing) => $pairing->toArray(), $this->roundsPlayed),
-            'results' => array_map(fn(Result $result) => $result->toArray(), $this->results),
+            'rounds' => $rounds,
+            'results' => $results,
         ];
 
         if ($this->engineFingerprint !== null) {
@@ -619,7 +647,9 @@ final readonly class StageState
      *
      * The `engine_fingerprint` key is optional: data stored before the
      * stamp existed, or by a caller that does not stamp, loads as an
-     * unstamped state.
+     * unstamped state. So is `format_version`: data without it is read as
+     * version 1, the form the releases before 0.3.0 wrote. A version this
+     * release does not know is refused.
      *
      * The shape is checked, that the data holds no key but the five
      * toArray() writes, and that every ID resolves in the
