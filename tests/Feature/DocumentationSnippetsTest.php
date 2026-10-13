@@ -698,6 +698,37 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Zed, Yan\n"],
             [],
         ],
+        'a selection settled by a decision is the decided order, with its marks' => [
+            'docs/USAGE.md',
+            '->withDecisions([$decision])->selection($undecided);',
+            ["Bob (drawn)\nZed (drawn)\n"],
+            [],
+        ],
+        'the pool of four drawn 0-0, and the table in the decided order with its marks' => [
+            'docs/USAGE.md',
+            '$decided = $level->withDecisions([$decision]);',
+            [
+                "4 entries level in places 1 to 4\n"
+                . "1. p3 (drawn: Drawn by the committee)\n"
+                . "2. p1 (drawn: Drawn by the committee)\n"
+                . "3. p4 (drawn: Drawn by the committee)\n"
+                . "4. p2 (drawn: Drawn by the committee)\n",
+            ],
+            [],
+        ],
+        // The block is there to show the refusals
+        'a decision for part of a set and one for a participant the table does not have' => [
+            'docs/USAGE.md',
+            "foreach ([['p3', 'p1'], ['p3', 'p1', 'p4', 'p9']] as \$ids)",
+            ["part_of_level_set: p2, p4\nunknown_participant: p9\n"],
+            [],
+        ],
+        'a decision made stale by an adjustment, and the order to apply the two in' => [
+            'docs/USAGE.md',
+            "->withDecisions([new Decider(['p3', 'p4', 'p2'], 'drawn')]);",
+            ["stale\np3, p4, p2, p1\n"],
+            [],
+        ],
         'a table of a list in list order' => [
             'docs/USAGE.md',
             '->withTiedSetsOrderedBy($entrants);',

@@ -605,6 +605,81 @@ entry on the engine fingerprint.
   fixed seating is not used, and the scheduler goes on to search the roles
   within the rule. It is an object so that more can be told later without
   another change of the interface.
+- **A tie in a table can be settled by a decision the application
+  supplies.** Where every figure is level, the order has to come from
+  outside the results, and until now an application could only apply it to
+  the list it passed to the next stage. A table and the rank selectors now
+  take it as a decision: a `DTO\Decider` holding the IDs of the level
+  participants, best first, with an optional label and reason that the
+  library stores and never reads. It records that the order was decided
+  outside the results and never how (#99, ADR 0008).
+  - `Standings::withDecisions()` (new) returns the table with each named
+    tied set in the order of its decision, in the places the set held. The
+    table carries the decisions as the marks of those places:
+    `getDecisions()`, `getDecisionFor()` and `TiedSet::getDecision()` (all
+    new). The constructors of `Standings` and of `TiedSet` take the
+    decisions as a new last parameter, default none. A decided set is
+    still reported by `getTiedSets()`; its decision tells it from one that
+    is undecided.
+  - **A decision never overrides a result.** It orders one whole tied set
+    and nothing else, so no entry passes one it is not level with and none
+    leaves its tier. Anything else is rejected with a
+    `RejectedDecisionException` (new; it extends `\InvalidArgumentException`
+    and carries the marker interface), whose `getReason()` is a
+    `RejectedDecisionReason` (new): `UnknownParticipant`,
+    `SetAlreadyDecided` (two decisions for one set, or two that overlap),
+    `ParticipantsNotLevel` (a participant who is not tied, or the wrong
+    set) and `PartOfLevelSet`. A decision names every member of its set,
+    also where only the first places matter, so that a table has one order
+    whatever is read from it. Where the decisions given together break
+    more than one rule, the first of them in that order is reported,
+    whatever order the decisions are in.
+  - **Decisions are applied last.** `StandingsCalculator::withAdjustments()`
+    and `withByesCredited()` keep the decisions of a table where the change
+    leaves every decided set as it was and refuse the table where it does
+    not (reason `Stale`), so no order is shown as decided for a set the
+    decision was not made for. `Standings::withTiedSetsOrderedBy()`, and a
+    `StageOutcome` built with an entrant list, leave a decided set in the
+    order of its decision.
+  - `RankRangeSelector::withDecisions()` and
+    `BestOfRankSelector::withDecisions()` (new) apply decisions to the
+    orders a selection reads before it reads a rank: a pool's table, the
+    outcome's own table, and the two orders that no table holds, the
+    holders of one rank across pools and a pooled table compared per event
+    played. A set that a decision settled is not refused; an unplayed
+    table still is. This is the third way on from an
+    `UndecidedSelectionException`, beside the two that accept an undecided
+    order, and the one for a tie between two entrants who both go through
+    and take different slots of the next stage.
+  - `RankRangeSelector::selection()` and `BestOfRankSelector::selection()`
+    (new) return what `select()` returns as a `RankSelection` (new), which
+    says which selected places a decision settled and hands back the
+    decision with its label and reason (`isSettledByDecision()`,
+    `getDecisionsFor()`, `getDecisions()`). `select()` returns the list as
+    before. A best-of-rank selection that leaves out the lowest-placed of
+    a larger pool (`PoolComparison::DiscardLowest`) marks every selected
+    place with a decision that settled who is left out, because every
+    holder is compared without those entrants.
+  - `UndecidedSelectionException::isPerEvent()` (new, with a ninth
+    constructor parameter and the context key `per_event`) says that the
+    participants are level per event played and not as a tied set of the
+    table, so that the three kinds of tie can be told apart: one table, the
+    holders of a rank, the table per event played. The message of that
+    case now says "the standings per event played".
+  - Plain data: a decision is a `Decider` array (`participants`, `label`,
+    `reason`). The two rank selectors write the key `decisions`, a list of
+    such arrays without a format version of their own, only when they were
+    given any, and read it back; it is one more optional key of version 1
+    of their forms (ADR 0005). A stage state holds no decision, and no
+    engine reads one: a Swiss round and a re-seeded bracket round are
+    paired from the entrant list where results are level, as before.
+  - The combined table of `StageOutcome::combining()` is calculated
+    afresh and carries no decision of a pool's table; a tie in it takes a
+    decision of its own. A selection that orders entries itself (the
+    holders of a rank, a table per event played) reads the decisions given
+    to the selector and not those of the outcome's own table.
+  - With no decision supplied, every table, selection and array form is
+    what it was. Example: `examples/28-ties-settled-by-decision.php`.
 - **A typed decider for a knockout tie that finishes level.** A `Result`
   can carry the decision that settled its tie: `new Result($event, null,
   $scores, decider: new Decider([$participant->getId()], 'label',
