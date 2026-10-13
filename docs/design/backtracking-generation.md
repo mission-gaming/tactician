@@ -89,7 +89,7 @@ for.
 
 | Roles of | Decided by | Free? |
 |----------|-----------|-------|
-| A later leg, mirrored or repeated | The leg strategy, as a **rule**: the first-leg event reversed, or kept | No. Another role would not be a mirrored or a repeated leg |
+| A later leg, mirrored or repeated | The leg strategy, as a **rule**: the first-leg event, reversed in the even-numbered legs of a mirrored schedule and kept everywhere else | No. Another role would not be a mirrored or a repeated leg |
 | A later leg, shuffled | The leg strategy, as a **preference**: a draw | Yes: the reverse is a role it could have drawn |
 | The first leg, without backtracking | The role assignment | No. Constraints are hard filters on the roles that were asked for ([role-assignment.md](role-assignment.md)) |
 | The first leg, with backtracking | The search, which proposes; the role assignment, which is asked about the leg | Yes, as far as the role assignment keeps the result |
@@ -184,6 +184,18 @@ roles satisfy there.
 
 Without backtracking a failing schedule pays the bound once for every
 rotated order tried, before the failure analysis that follows a failure.
+Measured for two shuffled legs under a limit of two in a row, in a set
+that also holds a closure which leaves one pairing no round in the second
+leg (so that no roles exist, and every rotated order is searched one event
+at a time up to the bound): 14 seconds for 16 participants, where the same
+failure took 1.8 seconds before the roles were searched; 49 seconds for 24
+participants (17 before), and 103 seconds with four legs. With
+backtracking on, the search that follows adds 3 seconds to the 49. A
+closure alone, with no role constraint to read a history for every
+question, fails in under a second at 24 participants. The cost is a count
+of rejected roles times a number of rotated orders, so it is bounded and
+does not depend on the machine's clock; it is the price of trying every
+rotated order, which is where some of those schedules are found.
 
 Where the first leg has to change (repeated legs, measured with the default
 roles, one run each for 4 to 24 participants): under a limit of two in a
@@ -197,7 +209,12 @@ it is handed and changes as few as it must, from the last event back, which
 is a poor way to reach a leg whose roles differ in most places.
 
 A search that a bound stopped says so in the exception message, and does
-not say that no roles exist. "Unsatisfiable" is said only by a
+not say that no roles exist. A backtracking search that spent its budget
+says of how many first legs it went through every choice of roles and of
+how many a bound stopped it: three repeated legs of twelve under role
+counts at most 3 apart stop at a bound in both first legs tried, and one
+of the two, the circle layout, has roles that satisfy the limit (the
+balanced ones). "Unsatisfiable" is said only by a
 backtracking search that went through every round decomposition and every
 role without a bound stopping any part of it.
 

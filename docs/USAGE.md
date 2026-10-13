@@ -564,7 +564,7 @@ on what the leg strategy says its roles are:
 
 | Leg strategy | Its roles in a later leg | When a constraint rejects one |
 |--------------|--------------------------|-------------------------------|
-| `MirroredLegStrategy` | A **rule**: the roles of the pairing's first-leg event, reversed | The event is never given another role. Only other roles in the first leg can help, and those are searched with `backtracking: true` only |
+| `MirroredLegStrategy` | A **rule**: the roles of the pairing's first-leg event, reversed in the even-numbered legs | The event is never given another role. Only other roles in the first leg can help, and those are searched with `backtracking: true` only |
 | `RepeatedLegStrategy` | A **rule**: the roles of the pairing's first-leg event | The same |
 | `ShuffledLegStrategy` | A **preference**: a draw | The event is given the other role. When that is rejected too, the roles of earlier events of the later legs are changed until every event is accepted or every choice was tried. The first leg is not touched |
 
@@ -627,14 +627,28 @@ Both searches are bounded, and a failure says which case it is:
 - **Every choice was tried.** Without backtracking the message says that the
   constraints reject every choice of roles for the later legs in this
   layout, and that the pairings, their rounds and the roles of the first leg
-  were not searched. A backtracking search that went through every way to
+  were not searched; it names `RoundRobinOptions(backtracking: true)` as
+  the option that searches them. So does the failure of a repeated or
+  mirrored leg, when it was a `ConsecutiveRoleConstraint` or a
+  `RoleBalanceConstraint` that rejected one of its events (a custom
+  constraint does not say whether it reads roles, so nothing is advised
+  for one). A backtracking search that went through every way to
   play the first leg, with every choice of roles, says that the
   configuration is unsatisfiable with this leg strategy.
 - **A bound stopped the search.** A search of roles stops after 20,000
   rejected roles for one layout, and a backtracking search after its step
   budget of 200,000 steps ([Backtracking Generation](#backtracking-generation)),
   which the steps of its role searches count against. The message names the bound and says that
-  roles may exist beyond it; it does not say that none exist.
+  roles may exist beyond it; it does not say that none exist. A search the
+  budget stopped says of how many first legs it went through every choice
+  of roles, and of how many a bound stopped it.
+
+A schedule that fails pays for the search. Without backtracking the roles
+of shuffled later legs are searched once for every rotated participant
+order tried, up to 25, each up to the bound of rejected roles: 24
+participants and two shuffled legs under a limit of two in a row, with a
+custom constraint that leaves one pairing no round in the second leg, take
+49 seconds to fail (17 before the roles were searched).
 
 How far the search goes back when a role is rejected depends on the
 constraint set. For a set of `ConsecutiveRoleConstraint`,

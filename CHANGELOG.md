@@ -236,7 +236,13 @@ heading **Output change (fix)**.
     derives from each of the N round decompositions of the first leg it
     tried, whatever the roles of the first leg, so the configuration is
     unsatisfiable with this leg strategy"; the same finding with
-    "exhausted its step budget" when the budget ran out first; "…for N of
+    "exhausted its step budget" when the budget ran out first and the
+    search had been through every choice of roles of each first leg it
+    tried, and otherwise "exhausted its step budget … It tried M round
+    decompositions of the first leg: for N the constraints reject the later
+    legs …; for N the search for roles stopped at a bound (20000 rejected
+    roles, or the step budget)", which claims the first only of the first
+    legs it was shown for; "…for N of
     the M it tried the search for roles stopped at its bound of 20000
     rejected roles" when a role search was stopped; "…without finding a
     complete schedule that <role assignment> keeps" when roles exist that
@@ -247,8 +253,20 @@ heading **Output change (fix)**.
     events, expected M…" becomes "Failed to generate complete schedule for
     leg 2: the constraints reject every choice of roles for the events of
     leg 2 in this layout…", or "…the search for roles the constraints
-    accept stopped at its bound of 20000 rejected roles…". The message for
-    the mirrored and the repeated strategy is unchanged.
+    accept stopped at its bound of 20000 rejected roles…". Both end by
+    naming the option that searches what they did not:
+    "RoundRobinOptions(backtracking: true) searches them".
+  - Without it, for a strategy whose roles are rules (mirrored and
+    repeated legs, and a strategy of your own that says nothing), the
+    message of a later leg that ends short is what it was, with one
+    sentence added when a `ConsecutiveRoleConstraint` or a
+    `RoleBalanceConstraint` rejected one of its events: "A constraint on
+    roles (<name>) rejected an event of leg N in the roles <strategy> gives
+    it, which follow from the roles of leg 1 by a rule. The roles of leg 1
+    were not searched: RoundRobinOptions(backtracking: true) searches
+    them." Nothing is added when the rejection came from any other
+    constraint: a closure or a class of your own does not say whether it
+    reads roles.
   - `getActualEventCount()` of such a failure is the number of events in
     place when the search was furthest on, and the violation collector
     holds the event it could get no further than, once for each role the
@@ -259,6 +277,18 @@ heading **Output change (fix)**.
   milliseconds: up to 6 seconds measured for 16 to 24 participants and
   three or four legs that no roles satisfy). A configuration that
   succeeded takes what it took.
+- **A failing schedule of shuffled legs can take longer without
+  backtracking too.** Where it used to fail at the first event the
+  constraints rejected, the roles of the later legs are now searched, in
+  every rotated participant order the scheduler tries (up to 25), each up
+  to the bound of 20,000 rejected roles. That costs most with a constraint
+  set that holds a closure, a metadata rule or a class of your own, which
+  is searched one event at a time: 24 participants and two shuffled legs
+  under a limit of two in a row, beside a closure that closes the second
+  leg to one pairing, failed in 17 seconds before and fail in 49 now (103
+  with four legs); 16 participants in 1.8 seconds before and 14 now.
+  Every such search is bounded by a count and not by time, and the failure
+  names the bound when one stopped it.
 - **Constraints and leg strategies are asked more often in a search.** A
   backtracking search over several legs puts the events of each first leg
   it finds to the constraints again when it searches the roles, and asks a
