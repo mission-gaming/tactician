@@ -342,6 +342,27 @@ describe('TieDecision, the deprecated tie_winner metadata', function (): void {
         expect(TieWinnerDeprecation::once(fn() => TieDecision::advancer($legs, $this->alice, $this->bob, 2)))->toBe($this->alice);
     })->with([1, 2]);
 
+    // The key was read beside an award before the decider existed, and an
+    // awarded result is level or won as a played one is
+    it('still decides a tie that awarded results leave level, and says once that it is deprecated', function (): void {
+        $notPlayed = [new Result($this->single, null, [], [TieWinnerDeprecation::KEY => 'p2'], new Award('not played'))];
+        $aLegEach = [
+            new Result($this->leg1, $this->alice),
+            new Result($this->leg2, $this->bob, [], [TieWinnerDeprecation::KEY => 'p2'], new Award('no-show')),
+        ];
+        // The awarded leg makes it two legs to none: the key is not read
+        $wonOnLegs = [
+            new Result($this->leg1, $this->alice),
+            new Result($this->leg2, $this->alice, [], [TieWinnerDeprecation::KEY => 'p2'], new Award('no-show')),
+        ];
+
+        expect(TieWinnerDeprecation::once(fn() => TieDecision::advancer($notPlayed, $this->alice, $this->bob, 1)))->toBe($this->bob)
+            ->and(TieWinnerDeprecation::once(fn() => TieDecision::advancer($aLegEach, $this->alice, $this->bob, 2)))->toBe($this->bob)
+            ->and(TieWinnerDeprecation::countIn(function () use ($wonOnLegs): void {
+                expect(TieDecision::advancer($wonOnLegs, $this->alice, $this->bob, 2))->toBe($this->alice);
+            }))->toBe(0);
+    });
+
     it('gives the advancer the decider gives', function (int $legsPerTie, string $id): void {
         $events = $legsPerTie === 1 ? [$this->single] : [$this->leg1, $this->leg2];
         $last = count($events) - 1;
