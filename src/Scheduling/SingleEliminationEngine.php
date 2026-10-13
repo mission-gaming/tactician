@@ -64,9 +64,8 @@ use Override;
  *
  * There is deliberately no champion accessor. The participant who
  * advances from the final is rank 1 of the outcome's standings, which are
- * in bracket placement order (see getOutcome()), and is the first
- * participant MatchOutcomeSelector::winners() returns for the outcome's
- * final round.
+ * in bracket placement order (see getOutcome()), and is what
+ * MatchOutcomeSelector::winners() returns for the outcome's final round.
  *
  * @experimental
  */
@@ -96,7 +95,11 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * it when not at the default: legsPerTie (default 1), reseedEachRound
      * (default false) and thirdPlace (default false), so a state stamped
      * by an engine without a third-place tie is refused by one with it,
-     * and the other way round. A re-seeded bracket is paired from
+     * and the other way round. A state that carries no stamp is refused
+     * too once its last round is recorded, with the reason
+     * `RecordedRoundMismatch`: by an engine with the option when the
+     * round lacks the tie, and by one without it when the round holds an
+     * event marked as the tie. A re-seeded bracket is paired from
      * the table after every round, so there the rules of the standings
      * calculator are part of it as well, when they are not the default:
      * the ranking scale (the three values of a WinDrawLossRanking, default
@@ -179,7 +182,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                                       StageState::withAdditionalResults()), a completed tie
      *                                       is level without a usable tie decision, a recorded
      *                                       round pairs other participants than the bracket has
-     *                                       in it (reason `RecordedRoundMismatch`), a re-seeded
+     *                                       in it, or holds a third-place tie where this engine
+     *                                       plays none (reason `RecordedRoundMismatch`), a re-seeded
      *                                       bracket has a bye and a ranking strategy that is not
      *                                       a WinDrawLossRanking (`IncompatibleOptions`), or the
      *                                       bracket is complete
@@ -232,10 +236,11 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * from it is rank 3 and the other rank 4, each alone in its tier, and
      * the tiers of the earlier rounds follow. Its results count in the
      * records as those of every tie do. The outcome's final round then
-     * holds both ties, so MatchOutcomeSelector reads one participant from
-     * each, the final's first: winners() gives ranks 1 and 3, losers()
-     * ranks 2 and 4. A field of 3 with the option has the table it has
-     * without it.
+     * holds both ties. MatchOutcomeSelector reads the final and leaves the
+     * third-place tie out, which it knows by its mark: winners() gives
+     * rank 1 and losers() rank 2, as after a bracket without the tie, and
+     * ranks 3 and 4 are a rank selection. A field of 3 with the option has
+     * the table it has without it.
      *
      * Entrants who went out in the same round are ordered by the standings
      * calculator from their records (ranking value, tiebreakers, score
@@ -284,7 +289,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                                                                                                                         the one who advanced from the final
      *
      * @throws InvalidConfigurationException When a round is partially resolved, a tie is broken, a
-     *                                       recorded round is not the round the bracket has there,
+     *                                       recorded round is not the round the bracket has there
+     *                                       or holds a third-place tie this engine does not play,
      *                                       a bye cannot be credited, or the state is stamped with
      *                                       another engine's fingerprint
      */
@@ -296,6 +302,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         $this->validateParticipants($participants);
         $this->requireByesToBeCreditable(count($participants));
         $this->requireAThirdPlaceToDecide(count($participants));
+        $this->requireNoThirdPlaceTieRecorded($state);
 
         $resultIndex = $this->indexResults($state->getResults());
         $totalRounds = (int) log($this->bracketSize(count($participants)), 2);
@@ -474,6 +481,54 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             ['participant_count' => $participantCount, 'minimum_required' => EliminationPlan::THIRD_PLACE_MINIMUM],
             reason: InvalidConfigurationReason::TooFewParticipants
         );
+    }
+
+    /**
+     * Refuse, without the third-place option, a state that has a
+     * third-place tie recorded: an event marked BracketTie::ThirdPlace.
+     *
+     * This engine's last round has one tie, and it reads a recorded round
+     * by the ties it has itself. The third-place tie would pass as an
+     * event the application added: its results would count in the records,
+     * its two entrants would share a tier, and a last round with the final
+     * decided and that tie not would be a finished bracket. The mark is
+     * what tells the tie from such an event, so it is the one thing this
+     * engine reads of it; a recorded event without the mark is read by
+     * nothing, as before the option existed. A field of 3 has no such tie
+     * with the option either, and its state is read by both engines.
+     *
+     * @throws InvalidConfigurationException When the option is off and a recorded event is marked
+     *                                       as a third-place tie
+     */
+    private function requireNoThirdPlaceTieRecorded(StageState $state): void
+    {
+        if ($this->options->thirdPlace) {
+            return;
+        }
+
+        foreach ($state->getRoundsPlayed() as $recorded) {
+            foreach ($recorded->getEvents() as $event) {
+                if (BracketTie::of($event) !== BracketTie::ThirdPlace) {
+                    continue;
+                }
+
+                $round = $recorded->getRoundNumber();
+
+                throw new InvalidConfigurationException(
+                    "The recorded round {$round} holds a third-place tie, and this bracket has none: the state was"
+                        . ' paired by an engine with the third-place option. Read it with an engine that has the'
+                        . ' option (EliminationOptions::$thirdPlace), or rebuild the state from the rounds that stand.',
+                    [
+                        'round' => $round,
+                        'participants' => array_map(
+                            static fn(Participant $participant): string => $participant->getId(),
+                            array_values($event->getParticipants())
+                        ),
+                    ],
+                    reason: InvalidConfigurationReason::RecordedRoundMismatch
+                );
+            }
+        }
     }
 
     /**

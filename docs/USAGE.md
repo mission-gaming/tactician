@@ -1962,8 +1962,13 @@ serialized stage state, and an application that keeps one record per tie
 can store it as a column of its own. Only the events of the last round of
 a bracket with the option carry it: `BracketTie::of()` is `null` for every
 event of an earlier round and for every event of a bracket without the
-option. The engine writes the mark and never reads it: it knows a recorded
-tie by its round and its two participants, as it knows every other.
+option. The engine pairs and resolves the bracket without the mark: it
+knows a recorded tie by its round and its two participants, as it knows
+every other. The library reads the mark in two places, both named below:
+`MatchOutcomeSelector` leaves the third-place tie out of its selection, and
+an engine without the option refuses a state that holds one. So keep the
+mark on the events you record the round with, and do not use the key
+`bracket_tie` for data of your own.
 
 The third-place tie is a tie like the others. It is played over the same
 number of legs as the final (`legsPerTie: 2` gives it two events, each
@@ -1989,7 +1994,7 @@ foreach (array_values($fourOutcome->getStandings()->getEntries()) as $index => $
     echo ($index + 1) . ". {$entry->getParticipant()->getLabel()} ({$entry->getWins()}-{$entry->getLosses()})\n";
 }
 echo 'Third: ' . RankRangeSelector::overall(3, 3)->select($fourOutcome)[0]->getLabel() . "\n";
-echo 'Advanced from the last round: ' . implode(', ', array_map(
+echo 'Won the bracket: ' . implode(', ', array_map(
     fn (Participant $participant) => $participant->getLabel(),
     MatchOutcomeSelector::winners()->select($fourOutcome)
 )) . "\n";
@@ -2001,7 +2006,7 @@ echo 'Advanced from the last round: ' . implode(', ', array_map(
 3. Carol (1-1)
 4. Dave (0-2)
 Third: Carol
-Advanced from the last round: Bob, Carol
+Won the bracket: Bob
 ```
 
 The outcome gives places 1 to 4: the entrant who advanced from the final,
@@ -2009,12 +2014,18 @@ the other finalist, the entrant who advanced from the third-place tie, and
 the other one. Each of the four is alone in its tier, so no record moves
 one of them and a rank selection of any of those places is decided. The
 results of the third-place tie count in the records as those of every tie
-do. `MatchOutcomeSelector` reads the outcome's last round, which now holds
-two ties, and returns one participant for each in the order of the round:
-`winners()` gives the participants placed first and third, `losers()`
-those placed second and fourth. The first one is the participant a bracket
-without the tie gives, so `winners()->select($outcome)[0]` is still who won
-the bracket.
+do.
+
+`MatchOutcomeSelector` reads the outcome's last round, which now holds two
+ties, and leaves the third-place tie out: that tie places its two entrants
+and sends neither on. `winners()` is the one participant who won the
+bracket and `losers()` the other finalist, as after a bracket without the
+tie and in whatever order the round was recorded, and a
+`StageTransition` with `afterWholeBracket: true` still counts one. The
+places the tie decides are a rank selection (`overall(3, 3)`,
+`overall(1, 4)`). The selector knows the tie by its mark alone: a last
+round recorded with events that do not carry `bracket_tie` is read as any
+round is, one participant for each of its two ties in the recorded order.
 
 What the option does in each bracket:
 
@@ -2039,9 +2050,13 @@ bracket has one, and `getTotalRounds()` does not change. The option is part
 of the [engine fingerprint](#recording-which-engine-pairs-a-state) when it
 is on, so a state stamped by an engine with it is refused by an engine
 without it, and the other way round; with the option off the fingerprint is
-the one it was. A state that carries no stamp and whose last round was
-recorded without the third-place tie is refused by an engine with the
-option (`RecordedRoundMismatch`). In plain data the option is the key
+the one it was. A state that carries no stamp is refused as well once its
+last round is recorded (`RecordedRoundMismatch`): by an engine with the
+option when that round was recorded without the third-place tie, and by an
+engine without the option when the round holds an event marked
+`'third-place'`. Until then the state says nothing of the option, and
+either engine pairs its last round; a field of 3, which has no such tie, is
+read by both. In plain data the option is the key
 `third_place`: `EliminationOptions::toArray()` writes it only when the
 option is on, and an array without the key is a bracket without the tie.
 

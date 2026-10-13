@@ -13,12 +13,14 @@ use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\BracketTie;
+use MissionGaming\Tactician\Stage\CompositionValidator;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Stage\StageTransition;
 use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Standings\StandingEntry;
 
@@ -216,8 +218,11 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         expect(thirdPlaceTable($outcome))->toBe($table)
             ->and($outcome->getStandings()->getTiers())->toBe([0, 1, 2, 3])
             ->and($outcome->getStandings()->getTiedSets())->toBe([])
-            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe([$table[0], $table[2]])
-            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe([$table[1], $table[3]])
+            // The match-outcome selector reads the final and not the
+            // third-place tie, which sends nobody on: one participant,
+            // as after every bracket
+            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe([$table[0]])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe([$table[1]])
             ->and(thirdPlaceIds(RankRangeSelector::overall(3, 3)->select($outcome)))->toBe([$table[2]])
             ->and(thirdPlaceIds(RankRangeSelector::overall(1, 4)->select($outcome)))->toBe($table);
     })->with([
@@ -226,6 +231,82 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         'one of each' => [['p1', 'p3'], ['p1', 'p2', 'p3', 'p4']],
         'the other of each' => [['p2', 'p4'], ['p2', 'p1', 'p4', 'p3']],
     ]);
+
+    // A state built from an application's own storage lists the events of
+    // a round in the order the storage gives them. The selection is the
+    // final's, whichever tie the recorded round lists first.
+    it('selects the winner and the loser of the final whatever order the last round was recorded in', function (
+        int $legsPerTie,
+        int $size
+    ): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(legsPerTie: $legsPerTie, thirdPlace: true));
+        $state = StageState::start(thirdPlaceField($size));
+
+        // The second-named entrant of every tie wins each leg
+        $secondNamedWins = fn(RoundPairing $pairing): array => array_values(array_map(
+            fn(Event $event): Result => new Result($event, $event->getParticipants()[$event->getMetadataValue('tie_leg') === 2 ? 0 : 1]),
+            $pairing->getEvents()
+        ));
+
+        for ($round = 1; $round < (int) log($size, 2); ++$round) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, $secondNamedWins($pairing));
+        }
+        $last = $engine->pairNextRound($state);
+        [$first, $second] = array_values($last->getEvents()[0]->getParticipants());
+
+        foreach ([$last->getEvents(), array_reverse($last->getEvents())] as $recordedOrder) {
+            $recorded = new RoundPairing($last->getRoundNumber(), $last->getLabel(), $recordedOrder, $last->getByes());
+            $outcome = $engine->getOutcome($state->withRoundPlayed($recorded, array_reverse($secondNamedWins($last))));
+            assert($outcome !== null);
+
+            expect(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe([$second->getId()])
+                ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe([$first->getId()])
+                ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))
+                ->toBe(thirdPlaceIds(RankRangeSelector::overall(1, 1)->select($outcome)));
+        }
+    })->with([[1], [2]])->with([[4], [8], [16]]);
+
+    // The composition validator runs nothing and counts one participant
+    // from a match-outcome selection after a whole bracket. That count is
+    // right for a bracket with a third-place tie as for one without.
+    it('yields from a whole bracket the one participant the composition validator counts', function (): void {
+        $state = thirdPlaceState($this->engine, thirdPlaceField(8), [['p1', 'p2', 'p3', 'p4'], ['p1', 'p2'], ['p1', 'p3']]);
+        $outcome = $this->engine->getOutcome($state);
+        assert($outcome !== null);
+
+        $violations = (new CompositionValidator())->validateChain(8, [
+            new StageTransition('next', 2, MatchOutcomeSelector::winners(), afterWholeBracket: true),
+        ]);
+
+        expect($violations)->toBe(["Stage 'next' expects 2 entrants but its selection yields 1 from the previous stage's 8."])
+            ->and(MatchOutcomeSelector::winners()->select($outcome))->toHaveCount(1)
+            ->and(MatchOutcomeSelector::losers()->select($outcome))->toHaveCount(1);
+    });
+
+    // The selector knows the third-place tie by its mark and by nothing
+    // else. A round recorded with events that do not carry it is read as
+    // any round is: one participant for each tie, in the recorded order.
+    it('selects from both ties of a last round whose events were recorded without their marks', function (): void {
+        $state = thirdPlaceState($this->engine, thirdPlaceField(4), [['p1', 'p2']]);
+        $last = $this->engine->pairNextRound($state);
+
+        $unmarked = array_values(array_map(
+            fn(Event $event): Event => new Event($event->getParticipants(), $event->getRound()),
+            $last->getEvents()
+        ));
+        $state = $state->withRoundPlayed(
+            new RoundPairing($last->getRoundNumber(), $last->getLabel(), $unmarked, []),
+            [new Result($unmarked[0], $unmarked[0]->getParticipants()[0]), new Result($unmarked[1], $unmarked[1]->getParticipants()[0])]
+        );
+        $outcome = $this->engine->getOutcome($state);
+        assert($outcome !== null);
+
+        // The engine knows the ties by their participants, so the table is the same
+        expect(thirdPlaceTable($outcome))->toBe(['p1', 'p2', 'p4', 'p3'])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe(['p1', 'p4'])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p2', 'p3']);
+    });
 
     it('counts the result of the third-place tie in the records of its two entrants', function (): void {
         $field = thirdPlaceField(4);
@@ -398,8 +479,8 @@ describe('the third-place tie of a single elimination bracket', function (): voi
             ->and($outcome->getStandings()->getTiers())->toBe([0, 1, 2, 3])
             ->and($outcome->getStandings()->getTiedSets())->toBe([])
             ->and($outcome->getResults())->toHaveCount(8)
-            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe(['p1', 'p3'])
-            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p2', 'p4']);
+            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe(['p1'])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p2']);
 
         // The leg wins decide where they can: p4 wins one leg and draws the other
         $won = $oneLeg->withAdditionalResults([new Result($thirdSecondLeg)]);
@@ -502,6 +583,87 @@ describe('the third-place tie of a single elimination bracket', function (): voi
             expect($exception->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
                 ->and($exception->getContext()['round'] ?? null)->toBe(2);
         }
+    });
+
+    // The other way round. An engine without the option has one tie in its
+    // last round, and would read the third-place tie as an event of the
+    // application's own: its results would count in the records and its
+    // two entrants would share a tier. The mark says what the event is.
+    it('refuses, without the option, a state whose last round was recorded with the third-place tie', function (
+        string $call,
+        int $legsPerTie,
+        string $recorded
+    ): void {
+        $with = new SingleEliminationEngine(new EliminationOptions(legsPerTie: $legsPerTie, thirdPlace: true));
+        $without = new SingleEliminationEngine(new EliminationOptions(legsPerTie: $legsPerTie));
+
+        $state = StageState::start(thirdPlaceField(8));
+        while (!$with->isComplete($state)) {
+            $pairing = $with->pairNextRound($state);
+            $results = array_values(array_map(
+                fn(Event $event): Result => new Result($event, $event->getParticipants()[$event->getMetadataValue('tie_leg') === 2 ? 1 : 0]),
+                $pairing->getEvents()
+            ));
+            if ($pairing->getLabel() === 'final' && $recorded !== 'every result') {
+                // Paired and not played, or the final alone played: an engine
+                // without the option would take the second for a finished bracket
+                $results = $recorded === 'no result' ? [] : array_slice($results, 0, $legsPerTie);
+                $state = $state->withRoundPlayed($pairing, $results);
+                break;
+            }
+            $state = $state->withRoundPlayed($pairing, $results);
+        }
+        $state = StageState::fromJson($state->toJson());
+
+        try {
+            thirdPlaceCalls($without)[$call]($state);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
+                ->and($exception->getMessage())->toContain('third-place tie')
+                // The first-named win: p1 and p2 are in the final, and p4
+                // and p3, who went out in the semifinals, in the tie
+                ->and($exception->getContext())->toBe(['round' => 3, 'participants' => ['p4', 'p3']]);
+
+            return;
+        }
+
+        $this->fail("{$call}() read a last round with a third-place tie as the last round of a bracket without one.");
+    })->with([['isComplete'], ['pairNextRound'], ['getOutcome']])
+        ->with([[1], [2]])
+        ->with([['every result'], ['the final alone'], ['no result']]);
+
+    // Until its last round is recorded, a state says nothing of the option
+    // and either engine pairs that round; and a field of three has the same
+    // bracket with the option and without it
+    it('reads, without the option, a state that holds no third-place tie', function (): void {
+        $without = new SingleEliminationEngine();
+
+        $beforeLast = thirdPlaceState($this->engine, thirdPlaceField(8), [['p1', 'p2', 'p3', 'p4'], ['p1', 'p3']]);
+        expect(thirdPlaceEvents($without->pairNextRound($beforeLast)))->toBe(['p1 v p3'])
+            ->and(thirdPlaceEvents($this->engine->pairNextRound($beforeLast)))->toBe(['p1 v p3', 'p4 v p2']);
+
+        $three = thirdPlaceState($this->engine, thirdPlaceField(3), [['p2'], ['p1']]);
+        expect(array_map(BracketTie::of(...), $three->getLastRound()?->getEvents() ?? []))->toBe([BracketTie::Final])
+            ->and($without->isComplete($three))->toBeTrue()
+            ->and(thirdPlaceTable($without->getOutcome($three) ?? throw new LogicException('No outcome.')))->toBe(['p1', 'p2', 'p3']);
+    });
+
+    // What the main branch has always allowed: an event the application
+    // adds to a recorded round, which carries no mark, is read by nothing
+    it('still reads, without the option, a last round with an unmarked event of the application', function (): void {
+        $without = new SingleEliminationEngine();
+        $field = thirdPlaceField(4);
+        $state = thirdPlaceState($without, $field, [['p1', 'p2']]);
+        $final = $without->pairNextRound($state);
+        $own = new Event([$field[3], $field[2]], $final->getEvents()[0]->getRound());
+
+        $state = $state->withRoundPlayed(
+            new RoundPairing($final->getRoundNumber(), $final->getLabel(), [...$final->getEvents(), $own], []),
+            [new Result($final->getEvents()[0], $field[0])]
+        );
+
+        expect($without->isComplete($state))->toBeTrue()
+            ->and($without->getOutcome($state)?->getStandings()->getTiers())->toBe([0, 1, 2, 2]);
     });
 
     it('is part of the engine fingerprint, so a stamped state is not read by an engine without it', function (): void {

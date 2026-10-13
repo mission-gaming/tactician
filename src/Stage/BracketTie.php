@@ -23,6 +23,14 @@ use MissionGaming\Tactician\DTO\Event;
  * event of a bracket without the option, carries no mark. Both legs of a
  * two-legged tie carry the mark of their tie.
  *
+ * The engine pairs and resolves a bracket by rounds and participants and
+ * does not need the mark for it. The library reads the mark in two places,
+ * both for ThirdPlace: MatchOutcomeSelector leaves a tie marked so out of
+ * its selection, and a SingleEliminationEngine without the option refuses
+ * a state that holds an event marked so. Keep the mark on the events you
+ * record a round with (it is in Event::toArray()); the key is the
+ * library's, as `tie_leg` is, and is not one to use for data of your own.
+ *
  * The backing strings are stable identifiers for storage. New cases may be
  * added in a later release, so a `match` over a case needs a `default`
  * arm.

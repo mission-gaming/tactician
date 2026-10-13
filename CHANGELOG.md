@@ -527,9 +527,12 @@ entry on the engine fingerprint.
   round). The outcome's table then gives places 1 to 4, each in a tier of
   its own: the entrant who advanced from the final, the other finalist, the
   entrant who advanced from the third-place tie, the other one.
-  `MatchOutcomeSelector` reads one participant from each tie of the last
-  round, the final's first, so `winners()` gives the participants placed
-  first and third. On a fixed path the entrant who went out of the tie that
+  `MatchOutcomeSelector` reads the final and leaves the third-place tie
+  out, which it knows by the mark: `winners()` is the one participant who
+  won the bracket and `losers()` the other finalist, as after a bracket
+  without the tie and in whatever order the round was recorded, so a
+  `StageTransition` with `afterWholeBracket: true` still counts one, and
+  places 3 and 4 are a rank selection. On a fixed path the entrant who went out of the tie that
   fed the final's first-named side is first-named; a re-seeded bracket
   names the two in the order of the table it folds the final from.
   A field of 3 has one entrant who goes out before the final: no
@@ -543,7 +546,10 @@ entry on the engine fingerprint.
   and the constant `THIRD_PLACE_MINIMUM`; `getTotalRounds()` does not
   change. The option is part of the engine fingerprint when it is on
   (`;third-place=yes`), so a state stamped with it is refused by an engine
-  without it, and the other way round.
+  without it, and the other way round. A state without a stamp is refused
+  too once its last round is recorded (`RecordedRoundMismatch`): by an
+  engine with the option when the round lacks the tie, and by one without
+  it when the round holds an event marked `'third-place'`.
   With the option off nothing changes: every pairing, every event (none
   carries `bracket_tie`), every table and every fingerprint is what it was,
   and no existing golden fixture changed; the new fixture

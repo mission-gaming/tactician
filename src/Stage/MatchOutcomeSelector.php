@@ -108,11 +108,16 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      * title, also where the standings rank another participant first.
      *
      * The last round of a single elimination bracket with a third-place
-     * tie holds two ties, the final first, so the selection has two
-     * participants: in winners mode the one who took the title and then
-     * the one placed third, in losers mode the ones placed second and
-     * fourth. The first participant is the one a bracket without the tie
-     * gives. BracketTie::of() says which tie an event of the round is.
+     * tie holds two ties. The third-place tie places its two entrants and
+     * sends neither on, so it is not read in either mode: the selection
+     * is the final's, one participant, as after a bracket without the
+     * tie, and in whatever order the round lists its events. Places 3 and
+     * 4 are a rank selection (RankRangeSelector::overall(3, 3)). The tie
+     * is known by its mark and by nothing else: a tie one of whose events
+     * carries BracketTie::ThirdPlace under BracketTie::METADATA_KEY is
+     * left out, and it need not have a result. A round recorded with
+     * events that lost the mark is read as any round is, one participant
+     * for each of its two ties in the recorded order.
      *
      * Only the final round is read, from the outcome's results for that
      * round's events; the standings are not consulted. Every tie of the
@@ -163,6 +168,12 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
 
         $selected = [];
         foreach ($this->groupEventsByTie($finalRound->getEvents()) as $tieEvents) {
+            // A third-place tie places its two entrants and sends neither
+            // on: it is no part of the selection, wherever the round lists it
+            if ($this->isThirdPlaceTie($tieEvents)) {
+                continue;
+            }
+
             // An event keeps the keys it was given; the sides are its order
             [$first, $second] = array_values($tieEvents[0]->getParticipants());
 
@@ -230,6 +241,23 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
         }
 
         return array_values($ties);
+    }
+
+    /**
+     * Whether the tie is marked as the third-place tie of a bracket (see
+     * BracketTie): one of its events carries the mark.
+     *
+     * @param array<Event> $tieEvents
+     */
+    private function isThirdPlaceTie(array $tieEvents): bool
+    {
+        foreach ($tieEvents as $event) {
+            if (BracketTie::of($event) === BracketTie::ThirdPlace) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

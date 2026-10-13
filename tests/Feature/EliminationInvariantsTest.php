@@ -545,13 +545,11 @@ function expectThirdPlaceBracket(EliminationOptions $options, int $fieldSize, in
         expect($tiedSet->getFirstPosition())->toBeGreaterThan(count($placed));
     }
 
-    // The outcome selectors read one participant from each tie of the
-    // last round, the final's first
+    // The outcome selectors read the final and not the third-place tie,
+    // which sends nobody on: one participant, as after every bracket
     $ids = fn(array $participants): array => array_map(fn(Participant $participant): string => $participant->getId(), $participants);
-    expect($ids(MatchOutcomeSelector::winners()->select($outcome)))
-        ->toBe($thirdPlace === null ? [$final[0]] : [$final[0], $thirdPlace[0]])
-        ->and($ids(MatchOutcomeSelector::losers()->select($outcome)))
-        ->toBe($thirdPlace === null ? [$final[1]] : [$final[1], $thirdPlace[1]]);
+    expect($ids(MatchOutcomeSelector::winners()->select($outcome)))->toBe([$final[0]])
+        ->and($ids(MatchOutcomeSelector::losers()->select($outcome)))->toBe([$final[1]]);
 
     // The marks are stored with the events: the state went through JSON
     // after every round
