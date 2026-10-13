@@ -301,7 +301,7 @@ it('loads a coverage driver in the coverage job and the weekly mutation job only
     };
 
     expect($drivers($ci, 'test'))->toBe(['none'])
-        ->and($drivers($ci, 'coverage'))->toBe(['xdebug'])
+        ->and($drivers($ci, 'coverage'))->toBe(['pcov'])
         ->and($drivers($ci, 'audit'))->toBe(['none'])
         ->and($drivers($mutation, 'mutation'))->toBe(['xdebug'])
         ->and($drivers($scheduled, 'unlocked'))->toBe(['none'])
