@@ -575,23 +575,7 @@ final readonly class ScheduleRepacker
             $dropped[$eventIndexById[$planUnplaced->getEventId()]] = $planUnplaced;
         }
         sort($leftovers);
-        $stillLeft = [];
-        foreach ($leftovers as $eventIndex) {
-            $position = $this->firstFreePosition(
-                $eventIndex,
-                $edges,
-                $positions,
-                $pinSlots,
-                $pinCounts,
-                $slotCounts,
-                $capacityPerSlot
-            );
-            if ($position === null) {
-                $stillLeft[] = $eventIndex;
-                continue;
-            }
-            $positions[$eventIndex] = $position;
-        }
+        $stillLeft = $this->sweep($leftovers, $edges, $positions, $pinSlots, $pinCounts, $slotCounts, $capacityPerSlot);
 
         // Last resort, reached only when an event is still unplaced: move
         // placed events along alternating paths to open a position for
@@ -746,29 +730,43 @@ final readonly class ScheduleRepacker
     }
 
     /**
-     * The earliest position with capacity left and both participants
-     * free, or null when none exists on the whole grid.
+     * The final sweep: each event without a position, in the order given,
+     * takes the earliest position in grid order with capacity left and
+     * both participants free, and the ones no position holds are
+     * returned.
      *
+     * What every position holds is counted once and kept up to date as
+     * events are placed. It was counted afresh for every event, which
+     * made the sweep the slowest thing a repack with a small budget did:
+     * such a repack leaves most events to it, and the work grew with the
+     * events left over times the events placed.
+     *
+     * @param list<int> $leftovers Event indexes with no position, each once
      * @param array<int, array{int, int}> $edges
-     * @param array<int, array{int, int}> $positions
+     * @param array<int, array{int, int}> $positions Placed event index => [session, slot]; the events
+     *                                               the sweep places are added
      * @param array<int, array<int, array<int>>> $pinSlots
      * @param array<int, array<int, int>> $pinCounts
      * @param array<int, int> $slotCounts
      *
-     * @return array{int, int}|null
+     * @return list<int> The events no position holds, in the order given
      */
-    private function firstFreePosition(
-        int $eventIndex,
+    private function sweep(
+        array $leftovers,
         array $edges,
-        array $positions,
+        array &$positions,
         array $pinSlots,
         array $pinCounts,
         array $slotCounts,
         int $capacityPerSlot
-    ): ?array {
-        [$a, $b] = $edges[$eventIndex];
+    ): array {
+        if ($leftovers === []) {
+            return [];
+        }
 
+        /** @var array<int, array<int, int>> $occupancy Session => slot => movable events there */
         $occupancy = [];
+        /** @var array<int, array<int, array<int, true>>> $busy Session => slot => participants of those events */
         $busy = [];
         foreach ($positions as $otherIndex => [$session, $slot]) {
             $occupancy[$session][$slot] = ($occupancy[$session][$slot] ?? 0) + 1;
@@ -777,26 +775,35 @@ final readonly class ScheduleRepacker
             }
         }
 
-        foreach ($slotCounts as $session => $slotCount) {
-            for ($slot = 0; $slot < $slotCount; ++$slot) {
-                $used = ($occupancy[$session][$slot] ?? 0) + ($pinCounts[$session][$slot] ?? 0);
-                if ($used >= $capacityPerSlot) {
-                    continue;
-                }
-                if (isset($busy[$session][$slot][$a]) || isset($busy[$session][$slot][$b])) {
-                    continue;
-                }
-                if (
-                    in_array($slot, $pinSlots[$session][$a] ?? [], true)
-                    || in_array($slot, $pinSlots[$session][$b] ?? [], true)
-                ) {
-                    continue;
-                }
+        $stillLeft = [];
+        foreach ($leftovers as $eventIndex) {
+            [$a, $b] = $edges[$eventIndex];
+            foreach ($slotCounts as $session => $slotCount) {
+                for ($slot = 0; $slot < $slotCount; ++$slot) {
+                    $used = ($occupancy[$session][$slot] ?? 0) + ($pinCounts[$session][$slot] ?? 0);
+                    if ($used >= $capacityPerSlot) {
+                        continue;
+                    }
+                    if (isset($busy[$session][$slot][$a]) || isset($busy[$session][$slot][$b])) {
+                        continue;
+                    }
+                    if (
+                        in_array($slot, $pinSlots[$session][$a] ?? [], true)
+                        || in_array($slot, $pinSlots[$session][$b] ?? [], true)
+                    ) {
+                        continue;
+                    }
 
-                return [$session, $slot];
+                    $positions[$eventIndex] = [$session, $slot];
+                    $occupancy[$session][$slot] = ($occupancy[$session][$slot] ?? 0) + 1;
+                    $busy[$session][$slot][$a] = true;
+                    $busy[$session][$slot][$b] = true;
+                    continue 3;
+                }
             }
+            $stillLeft[] = $eventIndex;
         }
 
-        return null;
+        return $stillLeft;
     }
 }
