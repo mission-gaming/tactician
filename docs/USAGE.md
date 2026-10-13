@@ -59,6 +59,8 @@ anything else that competes.
 | **Pot draw** | A format in which every round is drawn before any event is played (`PotDrawScheduler`): every entrant meets the same number of opponents from every pot, its own included, with no rematch, and is in every round. Often called "Swiss", but nothing is paired from results. See [Pot Draws](#pot-draws). |
 | **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
 | **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as `tie_winner` metadata on the event's result, or on a leg's result. Ties are not legs: brackets have no legs concept. |
+| **Third-place tie** | An opt-in second tie in the last round of a single elimination bracket (`EliminationOptions(thirdPlace: true)`), between the two entrants who went out in the round before it. It decides places 3 and 4, which the bracket otherwise leaves to the records. It is in the same round as the final and has the same round label, so each event of that round carries which tie it belongs to (**bracket tie**). See [A third-place tie](#a-third-place-tie). |
+| **Bracket tie** | The typed statement of which tie of a bracket's last round an event belongs to (`BracketTie`: `Final` or `ThirdPlace`), written by the engine as a string under `bracket_tie` in the event's metadata and read back with `BracketTie::of()`. Present only on the events of the last round of a bracket with a third-place tie option. |
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
@@ -1269,8 +1271,8 @@ bracket on the release that started it.
 | Engine | Part of the fingerprint when not at the default | Not part of it |
 | --- | --- | --- |
 | `SwissPairingEngine` | The standings rules a round is paired from: the ranking scale (default 3/1/0), the tiebreakers in order (default none) | `plannedRounds`, the constraints, the randomizer |
-| `SingleEliminationEngine` | `legsPerTie` (default 1), `reseedEachRound` (default off); in a re-seeded bracket also the standings rules, as for Swiss | `grandFinalReset`; the standings calculator of a bracket on a fixed path |
-| `DoubleEliminationEngine` | `legsPerTie` (default 1), `grandFinalReset` (default on) | The standings calculator |
+| `SingleEliminationEngine` | `legsPerTie` (default 1), `reseedEachRound` (default off), `thirdPlace` (default off); in a re-seeded bracket also the standings rules, as for Swiss | `grandFinalReset`; the standings calculator of a bracket on a fixed path |
+| `DoubleEliminationEngine` | `legsPerTie` (default 1), `grandFinalReset` (default on) | The standings calculator; `reseedEachRound` and `thirdPlace`, which the engine refuses |
 
 ```php
 use MissionGaming\Tactician\Standings\StandingsCalculator;
@@ -1722,6 +1724,11 @@ every bracket.
   result. Per-leg results remain ordinary results: the records of the
   table count each leg as it was recorded, and the decision places the
   entrant it sent on above the one it did not.
+- `thirdPlace: true` adds a **third-place tie** to the last round of a
+  single elimination bracket, between the two entrants who went out in the
+  round before it, so that the bracket decides places 3 and 4 (see
+  [A third-place tie](#a-third-place-tie)). Off by default, and refused by
+  the double elimination engine.
 
 `DoubleEliminationEngine` adds a losers bracket and a grand final: everyone
 must lose twice to be eliminated, so when the losers champion wins the grand
@@ -1747,7 +1754,9 @@ The table is ordered by the bracket first and by the records second:
   (`Standings::getTiers()`): the winner alone, the other finalist alone,
   then the two of the semifinals, the four of the quarter-finals, and so
   on. In double elimination a tier is a round of the losers bracket, so the
-  places are 1, 2, 3, 4, then two, two, four, four.
+  places are 1, 2, 3, 4, then two, two, four, four. A
+  [third-place tie](#a-third-place-tie) puts the two of the semifinals in a
+  tier each, so the places of that bracket are 1, 2, 3, 4, then four.
 - Inside a tier the standings calculator orders the entrants from their
   records: ranking value, tiebreakers, score difference, scores-for.
 - Where that leaves two of them level, their position in the entrant list
@@ -1875,6 +1884,146 @@ one of them (`overall(3, 3)`) is refused, and so is one that takes both
 (`overall(1, 4)`), whose order is undecided, unless the selector is told to
 accept ties inside the selection (see
 [Selections that results do not decide](#selections-that-results-do-not-decide)).
+A bracket with a third-place tie decides those two places as well, and
+both selections are answered.
+
+### A third-place tie
+
+A single elimination bracket leaves places 3 and 4 open: the two entrants
+who went out in the semifinals share a tier, and only their records order
+them. `EliminationOptions(thirdPlace: true)` (`'third_place' => true` in
+plain data) makes the bracket decide them. Its last round then holds two
+ties: the final, and a **third-place tie** between the two entrants who
+went out in the round before it.
+
+```php
+use MissionGaming\Tactician\Stage\BracketTie;
+use MissionGaming\Tactician\Stage\RankRangeSelector;
+
+$withThirdPlace = new SingleEliminationEngine(new EliminationOptions(thirdPlace: true));
+
+[$alice, $bob, $carol, $dave] = $participants;
+$fourState = StageState::start([$alice, $bob, $carol, $dave]);
+
+// Semifinals: Alice v Dave and Bob v Carol. The first-named win
+$semifinalRound = $withThirdPlace->pairNextRound($fourState);
+$fourState = $fourState->withRoundPlayed($semifinalRound, array_map(
+    fn ($event) => new Result($event, $event->getParticipants()[0]),
+    $semifinalRound->getEvents()
+));
+
+$lastRound = $withThirdPlace->pairNextRound($fourState);
+
+echo "Round {$lastRound->getRoundNumber()}, {$lastRound->getLabel()}\n";
+foreach ($lastRound->getEvents() as $event) {
+    [$first, $second] = $event->getParticipants();
+    echo BracketTie::of($event)?->value . ": {$first->getLabel()} v {$second->getLabel()}\n";
+}
+```
+
+```text
+Round 2, final
+final: Alice v Bob
+third-place: Dave v Carol
+```
+
+Both ties are in one round, which keeps the label of the last round of
+every bracket (`'final'`), and the round lists the events of the final
+first. The label therefore does not tell the two ties apart. Each event of
+that round says which tie it belongs to: the engine writes the backing
+string of a `BracketTie` case (`'final'` or `'third-place'`) under
+`BracketTie::METADATA_KEY` (`'bracket_tie'`) in the event's metadata, and
+`BracketTie::of($event)` reads it back as the case. The metadata is plain
+data, so the mark is stored with the event, in `Event::toArray()` and in a
+serialized stage state, and an application that keeps one record per tie
+can store it as a column of its own. Only the events of the last round of
+a bracket with the option carry it: `BracketTie::of()` is `null` for every
+event of an earlier round and for every event of a bracket without the
+option. The engine writes the mark and never reads it: it knows a recorded
+tie by its round and its two participants, as it knows every other.
+
+The third-place tie is a tie like the others. It is played over the same
+number of legs as the final (`legsPerTie: 2` gives it two events, each
+marked `'third-place'` beside its `tie_leg`), and one that finishes level
+is decided by the `tie_winner` decision recorded on its result (see
+[Recording a Level Event](#recording-a-level-event)). The stage is complete
+when both ties of the last round are decided. With one of them decided and
+the other not, the round is partially resolved, and every call refuses the
+state (`RoundPartiallyResolved`) until the missing result is recorded with
+`$state->withAdditionalResults([...])`, as in every round of a bracket.
+
+```php
+[$final, $thirdPlaceTie] = $lastRound->getEvents();
+
+$fourState = $fourState->withRoundPlayed($lastRound, [
+    new Result($final, $bob),
+    new Result($thirdPlaceTie, $carol),
+]);
+
+$fourOutcome = $withThirdPlace->getOutcome($fourState);
+
+foreach (array_values($fourOutcome->getStandings()->getEntries()) as $index => $entry) {
+    echo ($index + 1) . ". {$entry->getParticipant()->getLabel()} ({$entry->getWins()}-{$entry->getLosses()})\n";
+}
+echo 'Third: ' . RankRangeSelector::overall(3, 3)->select($fourOutcome)[0]->getLabel() . "\n";
+echo 'Advanced from the last round: ' . implode(', ', array_map(
+    fn (Participant $participant) => $participant->getLabel(),
+    MatchOutcomeSelector::winners()->select($fourOutcome)
+)) . "\n";
+```
+
+```text
+1. Bob (2-0)
+2. Alice (1-1)
+3. Carol (1-1)
+4. Dave (0-2)
+Third: Carol
+Advanced from the last round: Bob, Carol
+```
+
+The outcome gives places 1 to 4: the entrant who advanced from the final,
+the other finalist, the entrant who advanced from the third-place tie, and
+the other one. Each of the four is alone in its tier, so no record moves
+one of them and a rank selection of any of those places is decided. The
+results of the third-place tie count in the records as those of every tie
+do. `MatchOutcomeSelector` reads the outcome's last round, which now holds
+two ties, and returns one participant for each in the order of the round:
+`winners()` gives the participants placed first and third, `losers()`
+those placed second and fourth. The first one is the participant a bracket
+without the tie gives, so `winners()->select($outcome)[0]` is still who won
+the bracket.
+
+What the option does in each bracket:
+
+| Bracket | With `thirdPlace: true` |
+|---------|-------------------------|
+| 4 entrants or more | The last round holds the final and the third-place tie. Byes are in the first round only, so the round before the last always has two ties and two entrants go out in it. |
+| 3 entrants | No third-place tie is played. The top entrant has a bye in the round before the last, so one entrant goes out in it and is third: the table is the table of the bracket without the option. The final is still marked `'final'`. |
+| 2 entrants | Refused on every call (`TooFewParticipants`): there is no third place to decide. |
+| Double elimination | Refused when the engine is constructed (`IncompatibleOptions`): the losers bracket already decides third place. |
+
+Which of the two entrants is first-named follows the final. On a fixed
+path the entrant who went out of the tie that fed the final's first-named
+side is first-named, so the tie mirrors the final (above, Alice came
+through the first semifinal and Dave went out of it). A bracket with
+`reseedEachRound` folds the final from the table of the earlier rounds, and
+names the two entrants of the third-place tie in the order of the same
+table, level entries in the order of the entrant list.
+
+The plan counts the tie: `getPlan($state)->getExpectedEventCount()` is one
+tie more than the bracket without it, `hasThirdPlaceTie()` says whether the
+bracket has one, and `getTotalRounds()` does not change. The option is part
+of the [engine fingerprint](#recording-which-engine-pairs-a-state) when it
+is on, so a state stamped by an engine with it is refused by an engine
+without it, and the other way round; with the option off the fingerprint is
+the one it was. A state that carries no stamp and whose last round was
+recorded without the third-place tie is refused by an engine with the
+option (`RecordedRoundMismatch`). In plain data the option is the key
+`third_place`: `EliminationOptions::toArray()` writes it only when the
+option is on, and an array without the key is a bracket without the tie.
+
+Not offered: a number of legs for the last round that differs from the
+rest of the bracket, and ties for the places below fourth.
 
 ### Recording a Level Event
 

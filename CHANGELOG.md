@@ -491,6 +491,53 @@ entry on the engine fingerprint.
   (`planned_rounds_played`) and `ParticipantDoubleBooked`
   (`participant_double_booked`). A `match` over the reason needs a
   `default` arm, as the enum has always said.
+- **A third-place tie for single elimination, opt-in (#93).**
+  `EliminationOptions` has a fourth constructor parameter and public
+  property, `thirdPlace` (`bool`, default `false`; `third_place` in
+  `fromArray()`). With it, the last round of a `SingleEliminationEngine`
+  bracket holds two ties: the final, and a tie between the two entrants who
+  went out in the round before it. The round keeps the label `final` and
+  lists the final's events first. Each event of that round says which tie
+  it belongs to through the new enum `Stage\BracketTie` (`Final`,
+  `ThirdPlace`): the engine writes the backing string (`'final'`,
+  `'third-place'`) under `BracketTie::METADATA_KEY` (`'bracket_tie'`) in
+  the event's metadata, where it is stored with the event, and
+  `BracketTie::of(Event $event): ?BracketTie` reads it back;
+  `BracketTie::winnerRank()` is 1 or 3. The third-place tie has the legs of
+  every tie of the bracket and is decided as they are, a level one through
+  its `tie_winner` decision, and the stage is complete when both ties are
+  decided (one of the two decided is `RoundPartiallyResolved`, as in every
+  round). The outcome's table then gives places 1 to 4, each in a tier of
+  its own: the entrant who advanced from the final, the other finalist, the
+  entrant who advanced from the third-place tie, the other one.
+  `MatchOutcomeSelector` reads one participant from each tie of the last
+  round, the final's first, so `winners()` gives the participants placed
+  first and third. On a fixed path the entrant who went out of the tie that
+  fed the final's first-named side is first-named; a re-seeded bracket
+  names the two in the order of the table it folds the final from.
+  A field of 3 has one entrant who goes out before the final: no
+  third-place tie is played, and that entrant is third, as without the
+  option. A field of 2 with the option is refused on every call
+  (`TooFewParticipants`), and so is the option by
+  `DoubleEliminationEngine` when it is constructed (`IncompatibleOptions`),
+  whose losers bracket decides third place. `EliminationPlan` takes
+  `thirdPlace` as a fourth constructor argument (default `false`), counts
+  the tie in `getExpectedEventCount()`, and has `hasThirdPlaceTie(): bool`
+  and the constant `THIRD_PLACE_MINIMUM`; `getTotalRounds()` does not
+  change. The option is part of the engine fingerprint when it is on
+  (`;third-place=yes`), so a state stamped with it is refused by an engine
+  without it, and the other way round.
+  With the option off nothing changes: every pairing, every event (none
+  carries `bracket_tie`), every table and every fingerprint is what it was,
+  and no existing golden fixture changed; the new fixture
+  `single-elimination-third-place.txt` pins the brackets with the option.
+  `EliminationOptions::toArray()` writes `third_place` only when the option
+  is on, so the plain-data form of options without it is unchanged too, and
+  an array stored without the key is read as a bracket without the tie.
+  Not offered: a number of
+  legs for the last round that differs from the rest of the bracket, and
+  ties for the places below fourth. The usage guide has it under "A
+  third-place tie".
 
 ### Changed
 

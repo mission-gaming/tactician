@@ -38,10 +38,12 @@ the last one, which is about the library as a whole.
   from a seed. This is the league-phase format that is often called "Swiss";
   nothing in it is paired from results. [Pot draws](docs/USAGE.md#pot-draws)
 - **Single and double elimination**: fold seeding by list position, byes, round
-  labels, one- or two-legged ties; re-seeding each round for single
-  elimination, and an optional grand-final reset for double elimination. An
-  event or a tie that finishes level is decided by naming who advances.
+  labels, one- or two-legged ties; re-seeding each round and an optional
+  third-place tie for single elimination, and an optional grand-final reset
+  for double elimination. An event or a tie that finishes level is decided
+  by naming who advances.
   [Elimination brackets](docs/USAGE.md#elimination-brackets),
+  [a third-place tie](docs/USAGE.md#a-third-place-tie),
   [recording a level event](docs/USAGE.md#recording-a-level-event)
 - **Group stages and multi-stage tournaments**, composed from serpentine pools
   and progression selectors. A selection by rank keeps the entrants of one
