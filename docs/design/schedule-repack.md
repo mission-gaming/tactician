@@ -1,8 +1,9 @@
 # Design note: Schedule Repacking
 
 **Status: IMPLEMENTED** in 0.2.0, with the additions under
-[API additions](#api-additions-022) in 0.2.2 and the fixes under
-[Placement fixes](#placement-fixes-023) in 0.2.3. It was built from an external
+[API additions](#api-additions-022) in 0.2.2, the fixes under
+[Placement fixes](#placement-fixes-023) in 0.2.3 and the changes under
+[Order and contiguity](#order-and-contiguity-030) in 0.3.0. It was built from an external
 brief (v2, the revision with an empty pinned set on the reference
 instance). This note doubles as the decisions log of that
 implementation: every judgement call made while building it is recorded
@@ -49,7 +50,9 @@ exists as a convenience.
    already public static), which `SessionGrid` reuses directly.
 4. **Event ids are strings** (like `Participant` ids). The fixture's
    integer ids are cast by the test/caller. Internal ordering is `strcmp`,
-   used only for determinism, never exposed as meaning.
+   used only for determinism, never exposed as meaning. **Replaced by
+   decision 37**: the internal order is made from the request, and
+   `strcmp` orders only what an outcome returns.
 5. **Pins consume capacity and colours but are not re-emitted**:
    `RepackOutcome::getAssignments()` contains movable events only. Corrupt
    pin input (two pins double-booking a participant, pins overflowing slot
@@ -136,7 +139,8 @@ exists as a convenience.
     orchestrator maps every event and participant id to a dense integer
     index at the boundary (index order = sorted-id order, so index
     tie-breaks are id tie-breaks) and the internal phases are purely
-    integer-keyed.
+    integer-keyed. **Amended by decision 37**: the indexes are still
+    dense integers, in an order that is no longer the id order.
 16. **Intervals, not prefixes.** The brief's Phase B sketch (participant
     with load d occupies slots 0..d−1) turned out too strict on the real
     instance: a session holding an odd number of participants can never
@@ -426,6 +430,141 @@ returned; the changelog lists what changed for the others.
     option to switch the step off, or to size its budget, was not added:
     a patch release adds nothing to the public signature.
 
+## Order and contiguity (0.3.0)
+
+Decisions made when two things were changed in a minor release (issue
+#49): the quality of a repack depended on how the caller named its
+events and participants, and the session of each event was chosen by the
+two weights before any slot was looked at, so a gap was reported where a
+placement without one existed. Almost every outcome changes. No public
+signature changed.
+
+37. **The internal order is made from the request, not from the ids.**
+    `StructuralOrder` orders the participants by their number of movable
+    events (more first), then by the positions they are pinned at, then
+    by the same facts about their opponents as far as that tells them
+    apart (colour refinement, with the number of events against each
+    opponent and the positions of the pins), and by id last. The events
+    are ordered by their two participants and by id only between events
+    of the same two. The issue asked for "degree, then id". That is not
+    enough: in a round robin with rounds played every participant has
+    the same degree and the same pinned positions, and on those requests
+    an order by degree and id gave different counts under other
+    participant ids (measured on round robins of 20 to 40 with five
+    rounds played). So where refinement leaves a class of several
+    participants, each of them is tried as the one to put first, and the
+    one whose choice gives the refined classes the smallest description
+    is taken; a class whose members can simply be exchanged (each has
+    the same events against every third participant, as in a complete
+    round robin) is put in id order without a trial. What this gives,
+    stated exactly: the outcome is a function of the request written in
+    that order, so two requests that differ only in their ids have the
+    same outcome up to the names whenever they are written alike, and
+    that is whenever the id only decided between participants a symmetry
+    of the request exchanges. Then the number of events at every
+    position, the unplaced counts by reason and the violations but for
+    their names are equal, and the schedules are equal participant for
+    participant up to such a symmetry (which of two like participants
+    gets which part of the schedule follows the ids; it cannot follow
+    anything else). It is not a canonical labelling, and no such thing is
+    claimed: two participants that differ but have equal descriptions
+    while the classes are still larger than one are ordered by id, and
+    past the work limit of the ordering (600,000 opponents looked at;
+    a round robin of 40 with five rounds played needs about 500,000,
+    and one with a single round played, where everybody is alike, twice
+    the limit) the classes left are put in id order. A full canonical
+    labelling (individualisation and refinement with a search over every
+    choice, pruned by the symmetries found) was rejected: on a request
+    where everybody is alike and no two can simply be exchanged, its
+    search tree without that pruning has a factorial number of leaves,
+    and with it the work is more than the repack it serves. An event id
+    decides only which of the events between the same two participants
+    is which, with no exception. What an outcome returns is ordered as
+    before: assignments and unplaced events by event id, violations by
+    kind and then participant id and session, over-capacity participants
+    by shortfall and then id (the audit and the orchestrator sort for
+    that, since the indexes no longer do). One tie changed: an event
+    dropped between two over-capacity participants of the same shortfall
+    names the one first in the structural order, not the lower id.
+38. **The events are split into rounds before any session is chosen.**
+    A round is a set of events that can share a slot. `RoundColouring`
+    lays the rounds on the grid's positions in grid order, around the
+    pins: it is a proper edge colouring onto positions, with the pinned
+    events already coloured. The planner then takes the events round by
+    round. Its greedy choice by the weights is the same code as before;
+    what changed is that the session it prefers is now one that packs,
+    because it is filled with whole rounds (every participant of a round
+    has an event in every slot) and not with everything a few
+    participants have between them, which is what an order by
+    participant gave. The number of rounds aimed at is the
+    fewest there can be (the most events any participant has, or the
+    events over the capacity if that is more). Each event first tries
+    those rounds, starting at the one its two indexes add up to: on a
+    complete round robin of an even number that is the circle method and
+    leaves nothing to search for. Several events between the same two
+    participants start in successive blocks of rounds, which makes a
+    round robin of several legs one circle per leg. What is left over is
+    placed by `LeftoverRecolourer`, first on those rounds alone and then
+    on the whole grid. Searching the first rounds alone before the rest
+    of the grid matters: without it an event that did not fit at once
+    went to a spare position at the end, and the rounds had holes (1,166
+    gap slots in the raw layout over 84 season-like requests, against
+    205 with it). The search has no step budget, only its own limit on
+    position checks, so the order of the events never depends on the
+    caller's budget. Cutting that limit to under a third for speed was
+    measured and rejected (191 gaps over the same 84 requests against
+    93).
+39. **The rounds are a schedule too, and it is returned when it is
+    better.** The planned schedule is compared with the rounds as they
+    were laid out: the rounds are returned when they leave fewer events
+    unplaced, or as many with fewer gap slots. That is where "contiguity
+    ahead of consolidation" is decided: the planned schedule is the
+    weights' choice, the rounds are made with no regard to them, and gap
+    slots decide between the two. On a tie the planned schedule stands,
+    so the weights still decide whenever they cost no gap. Late starts
+    are not compared: they are an objective like the weights. Passing
+    the rounds to the packer as a starting point for its fallback was
+    tried and dropped: the planner moves enough events between sessions
+    that the starting point no longer fits.
+40. **A schedule that still has a gap is searched for a better one.**
+    `GapSearch` is a depth-first search over placements, each event
+    tried where it is, then everywhere else, then (while no more events
+    are left out than were) nowhere, cut where the gap slots a
+    participant can no longer close reach the best found. It takes a
+    placement only with strictly fewer gap slots, as many events placed,
+    and no event left out that a free position holds, so
+    `no_slot_available` stays literally true. The events that have to do
+    with a gap are decided last, so the search changes them first: on a
+    large request it searches the neighbourhood of the gaps, and on a
+    small one every placement. It spends from the second budget and
+    stops after 200,000 position checks of its own (about a tenth of a
+    second; twice as many closed no further gap on the 84 season-like
+    requests). Against an exhaustive search
+    (`RepackBruteForce::fewestGapSlots()`), 3,000 random requests of up
+    to seven events and eight positions all came back with the fewest
+    gap slots any placement of as many events has; half of the limit
+    was enough for all of them. A local search by alternating
+    chains between any two positions was considered first and not
+    built: it cannot change which event is left out, and it stops at a
+    schedule one exchange cannot improve, which on small requests is
+    not the best one.
+41. **One session's exact search has a share of the budget.** A session
+    with no gap-free packing can keep its search going to the last step,
+    and every session after it was then packed greedily. The search of
+    a session now gets a quarter of the steps left when it starts.
+    A search its share stops is recorded as a search the budget stopped.
+42. **What did not get better.** Late starts are not an aim of any of
+    this, and the reference scenario has 10 where it had 7 (no gap
+    either way). Requests with many pins and sessions of unequal length
+    still end with gaps and a spent budget more often than not at 30 to
+    40 participants: the planner still decides sessions before slots,
+    and the rounds only make its choices better. One of the four repack
+    benchmarks is slower (71 ms to 157 ms): 0.2.3 packed that request
+    without a search, and laying out its rounds around ten pins costs
+    0.1 seconds. Putting the positions first throughout, and deciding
+    sessions from them, is the design this points to and was not
+    attempted here.
+
 ## Testing
 
 Per the brief: property tests over seeded random multigraphs (properness,
@@ -461,3 +600,23 @@ stops at its node limit, and checks that the step still places the most
 events there can be, worked out from an exhaustive b-matching; another
 checks that a request whose search ends at the step's position-check
 limit reports no exhausted budget and is unchanged by any larger budget.
+
+The 0.3.0 changes add three kinds of test. Relabelling: 40 random
+requests with pins, the small corpus and round robins with three rounds
+pinned are repacked under other participant and event ids, with the two
+participants of every event exchanged at random and the lists in another
+order, and must come back the same in everything that can be said without
+an id; where the request has ten participants or fewer, the test also
+finds every symmetry of the request by trial and requires the two
+schedules to be equal participant for participant under one of them. Every
+complete round robin of an even number from 6 to 40 must come back with no
+violation, and as the same schedule, under each of three event id schemes.
+Gaps: on the small corpus the gap slots reported must equal the fewest any
+placement of as many events has (`RepackBruteForce::fewestGapSlots()`, an
+exhaustive search with no bound on gaps); the four-event request of the
+issue and a complete round robin of six on one session of 5 to 30 slots
+must come back without a gap. The three new internal classes have unit
+tests of their own, among them that `StructuralOrder` writes a request the
+same way under any numbering of its participants, on named requests (a
+ring, two rings of different lengths, a round robin with a round taken out
+or pinned) and on 60 random ones.
