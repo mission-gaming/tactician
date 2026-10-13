@@ -134,6 +134,19 @@ heading **Output change (fix)**.
   After: the exception. To play a longer stage, build the engine with the
   new number of rounds; the planned rounds are not part of the engine's
   fingerprint, so the recorded state is still accepted (#121, item 1).
+- **Breaking: `Standings::getPosition()` counts the order of the table and
+  no longer reads the array keys.** A `Standings` built by hand from an
+  array with the keys 5 and 9 reported the positions 6 and 10, and one with
+  string keys raised a raw `TypeError`, while `getTiedSets()` and iteration
+  counted the same entries as 1 and 2. The position is now the entry's
+  place in the order of the array, from 1. A table from
+  `StandingsCalculator`, and any table built from a list, gives the
+  positions it gave before. Who is affected: code that constructs
+  `Standings` itself from an array that is not a list (the result of
+  `array_filter()` without `array_values()`, say) and reads `getPosition()`.
+  What to check: whether anything relied on the key. Before:
+  `new Standings([5 => $a, 9 => $b])->getPosition($b)` was 10. After: 2
+  (#121, item 3).
 
 ### Fixed
 
