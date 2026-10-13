@@ -231,21 +231,28 @@ final readonly class RepackOutcome
      * Whether the step budget (RepackOptions::$stepBudget) stopped a search
      * while this outcome was computed.
      *
-     * True means that at least one of the repacker's searches (the
-     * session-load improvement and parity repair, the exact packing of a
-     * session, the repair of a greedy packing, the last placement step that
-     * moves placed events to make room for unplaced ones) wanted another
-     * step and was refused, so the outcome is what was reached by then. The
-     * last placement step has a budget of its own, of the same size, and
-     * counts here as the others do. A larger budget
-     * may give a different outcome for the same request. It is not a
-     * promise of a better one: the instance may have no better packing,
-     * and the searches are heuristics.
+     * True means that the budget cut at least one of the repacker's
+     * searches short, so the outcome is what was reached by then. Either
+     * a search wanted another step and was refused (the session-load
+     * improvement and parity repair, the exact packing of a session, the
+     * repair of a greedy packing, the last placement step that moves
+     * placed events to make room for unplaced ones, the search for fewer
+     * gap slots; the last two have a budget of their own, of the same
+     * size, and count here as the others do). Or the budget was below
+     * the default, and a search that counts its own work (the laying out
+     * of the events before any session is chosen, the last placement
+     * step, the search for fewer gap slots, the search for the events
+     * two over-capacity participants share) reached the share of its
+     * work limit that such a budget leaves it. A larger budget may give
+     * a different outcome for the same request. It is not a promise of a
+     * better one: the instance may have no better packing, and the
+     * searches are heuristics.
      *
      * False means that no search was stopped by the budget, so a larger
      * budget gives the same outcome. It does not mean that the outcome is
-     * the best possible: the searches have limits of their own that the
-     * budget does not lift.
+     * the best possible: at the default budget and above the searches
+     * that count their own work stop at limits no budget lifts, and a
+     * search that stops there is not one the budget stopped.
      *
      * The flag says nothing about violations. An outcome can be clean with
      * the flag true (the fallback packed everything after the exact search

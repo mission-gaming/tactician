@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Repack\Internal\RoundColouring;
+use MissionGaming\Tactician\Repack\Internal\StepBudget;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -66,7 +67,7 @@ describe('RoundColouring', function (): void {
         $edges = roundRobinPairs($n);
         $slotCounts = array_fill(0, intdiv($n + 3, 4), 4);
 
-        $positions = RoundColouring::of($edges, [], [], $slotCounts, intdiv($n, 2));
+        $positions = RoundColouring::of($edges, [], [], $slotCounts, intdiv($n, 2), new StepBudget(PHP_INT_MAX));
 
         // n - 1 positions, the first in grid order, each with half the field
         expect($positions)->toHaveCount(count($edges))
@@ -80,7 +81,7 @@ describe('RoundColouring', function (): void {
     it('lays a round robin of two legs on twice as many rounds, each a whole round', function (int $n): void {
         $edges = roundRobinPairs($n, 2);
 
-        $positions = RoundColouring::of($edges, [], [], [2 * $n], intdiv($n, 2));
+        $positions = RoundColouring::of($edges, [], [], [2 * $n], intdiv($n, 2), new StepBudget(PHP_INT_MAX));
 
         expect(array_values(eventsPerPosition($positions)))->toBe(array_fill(0, 2 * ($n - 1), intdiv($n, 2)));
         assertRoundsAreProper($edges, $positions);
@@ -92,7 +93,7 @@ describe('RoundColouring', function (): void {
         // has no room at all, and three slots hold the six events
         $edges = roundRobinPairs(4);
 
-        $positions = RoundColouring::of($edges, [0 => [0 => [0], 1 => [0], 8 => [0], 9 => [0]]], [0 => [0 => 2]], [4], 2);
+        $positions = RoundColouring::of($edges, [0 => [0 => [0], 1 => [0], 8 => [0], 9 => [0]]], [0 => [0 => 2]], [4], 2, new StepBudget(PHP_INT_MAX));
 
         expect(eventsPerPosition($positions))->toBe(['0:1' => 2, '0:2' => 2, '0:3' => 2]);
         assertRoundsAreProper($edges, $positions);
@@ -101,7 +102,7 @@ describe('RoundColouring', function (): void {
     it('never puts an event where one of its participants is pinned', function (): void {
         // 0 is pinned at the first two slots of three, with room left in
         // both: its two events can only share the last slot with nobody
-        $positions = RoundColouring::of([[0, 1], [0, 2], [1, 2]], [0 => [0 => [0, 1]]], [0 => [0 => 1, 1 => 1]], [3], 3);
+        $positions = RoundColouring::of([[0, 1], [0, 2], [1, 2]], [0 => [0 => [0, 1]]], [0 => [0 => 1, 1 => 1]], [3], 3, new StepBudget(PHP_INT_MAX));
 
         expect($positions[2][1])->toBeLessThan(2)
             ->and(array_filter($positions, static fn(array $position): bool => $position === [0, 2]))->toHaveCount(1)
@@ -110,7 +111,7 @@ describe('RoundColouring', function (): void {
 
     it('gives no position to an event the grid cannot hold', function (): void {
         // Three events between the same two participants, two slots
-        $positions = RoundColouring::of([[0, 1], [0, 1], [0, 1]], [], [], [2], 1);
+        $positions = RoundColouring::of([[0, 1], [0, 1], [0, 1]], [], [], [2], 1, new StepBudget(PHP_INT_MAX));
 
         expect($positions)->toBe([0 => [0, 0], 1 => [0, 1]]);
     });
@@ -121,7 +122,7 @@ describe('RoundColouring', function (): void {
         // the first four positions
         $edges = roundRobinPairs(5);
 
-        $positions = RoundColouring::of($edges, [], [], [3, 3], 2);
+        $positions = RoundColouring::of($edges, [], [], [3, 3], 2, new StepBudget(PHP_INT_MAX));
 
         expect($positions)->toHaveCount(10)
             ->and(array_keys(eventsPerPosition($positions)))->toBe(['0:0', '0:1', '0:2', '1:0', '1:1']);
@@ -136,10 +137,34 @@ describe('RoundColouring', function (): void {
         // them are free and are not used
         $edges = [[0, 2], [0, 4], [1, 2], [1, 3], [1, 4], [2, 4]];
 
-        $positions = RoundColouring::of($edges, [], [], [12], 4);
+        $positions = RoundColouring::of($edges, [], [], [12], 4, new StepBudget(PHP_INT_MAX));
 
         expect($positions)->toHaveCount(6)
             ->and(array_keys(eventsPerPosition($positions)))->toBe(['0:0', '0:1', '0:2']);
+        assertRoundsAreProper($edges, $positions);
+    });
+
+    it('searches with the share of its work limit that a budget below the default leaves, and tells the budget when that stops it', function (): void {
+        // Five events on one session of three slots, three to a slot.
+        // Participant 5 has three of them, one for every slot. The first
+        // pass leaves one event over, and it takes a search to place it. At
+        // the default budget the search has its whole limit and the three
+        // slots hold all five. At a budget of one step it has fifteen
+        // position checks (one for every event and position), stops there,
+        // and the event has no round. The budget records a search it
+        // stopped, because a larger one gives other rounds
+        $edges = [[1, 4], [2, 3], [2, 5], [3, 5], [4, 5]];
+
+        $default = new StepBudget(PHP_INT_MAX, StepBudget::DEFAULT_STEPS);
+        $positions = RoundColouring::of($edges, [], [], [3], 3, $default);
+        expect($positions)->toHaveCount(5)
+            ->and($default->stoppedASearch())->toBeFalse();
+        assertRoundsAreProper($edges, $positions);
+
+        $oneStep = new StepBudget(PHP_INT_MAX, 1);
+        $positions = RoundColouring::of($edges, [], [], [3], 3, $oneStep);
+        expect($positions)->toHaveCount(4)
+            ->and($oneStep->stoppedASearch())->toBeTrue();
         assertRoundsAreProper($edges, $positions);
     });
 
@@ -158,7 +183,7 @@ describe('RoundColouring', function (): void {
         $pinSlots = [1 => [$pinned => [0]]];
         $pinCounts = [1 => [0 => 1]];
 
-        $positions = RoundColouring::of($edges, $pinSlots, $pinCounts, $slotCounts, $capacity);
+        $positions = RoundColouring::of($edges, $pinSlots, $pinCounts, $slotCounts, $capacity, new StepBudget(PHP_INT_MAX));
 
         assertRoundsAreProper($edges, $positions);
         foreach (eventsPerPosition($positions) as $position => $events) {
@@ -174,6 +199,6 @@ describe('RoundColouring', function (): void {
     })->with(range(1, 40));
 
     it('has nothing to lay out for no events', function (): void {
-        expect(RoundColouring::of([], [], [], [3], 2))->toBe([]);
+        expect(RoundColouring::of([], [], [], [3], 2, new StepBudget(PHP_INT_MAX)))->toBe([]);
     });
 });

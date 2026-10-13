@@ -106,6 +106,27 @@ describe('GapSearch', function (): void {
             ->and($budget->stoppedASearch())->toBeFalse();
     });
 
+    it('has the share of its limit that a budget below the default leaves, and tells the budget when that stops it', function (): void {
+        // The same request on steps that do not run out. At the default
+        // budget the search has its whole limit and closes the gap; at a
+        // budget of one step it has one position check, which the first
+        // event uses up, and a larger budget would have let it go on
+        [$edges, $positions] = gapInOneSession();
+        $before = $positions;
+
+        $default = new StepBudget(PHP_INT_MAX, StepBudget::DEFAULT_STEPS);
+        (new GapSearch($default))->improve($edges, $positions, [], [], [], [2, 4], 1);
+        expect(gapSlotsOf($edges, $positions))->toBe(0)
+            ->and($default->stoppedASearch())->toBeFalse();
+
+        $positions = $before;
+        $oneStep = new StepBudget(PHP_INT_MAX, 1);
+        $unplaced = (new GapSearch($oneStep))->improve($edges, $positions, [], [], [], [2, 4], 1);
+        expect($unplaced)->toBe([])
+            ->and($positions)->toBe($before)
+            ->and($oneStep->stoppedASearch())->toBeTrue();
+    });
+
     it('may change which event is left out, and never leaves out more', function (): void {
         // One session of three slots. Participant 0 has four events, one
         // more than there are slots, so one is left out: the one against

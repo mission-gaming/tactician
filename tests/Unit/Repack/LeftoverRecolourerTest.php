@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Repack\Internal\LeftoverRecolourer;
 use MissionGaming\Tactician\Repack\Internal\LoadPlanner;
 use MissionGaming\Tactician\Repack\Internal\StepBudget;
+use MissionGaming\Tactician\Repack\RepackOptions;
+use MissionGaming\Tactician\Repack\UnplacedEvent;
 
 /**
  * No participant is twice at one position, counting the pins, which also
@@ -353,6 +356,100 @@ describe('LeftoverRecolourer', function (): void {
         }
     });
 
+    it('has the share of its work limit that a budget below the default leaves, and tells the budget when that stops a search', function (): void {
+        // The exchange request above, on steps that do not run out. At the
+        // default budget the step has its whole limit of 500,000 position
+        // checks and the exchange places a third event. At a budget of one
+        // step it has eight (one for each of the four events at each of
+        // the two positions; its share of the whole limit would be two),
+        // the direct and path rounds use them up, and no exchange is
+        // searched for. A larger budget would have searched, so the budget
+        // records a search it stopped
+        $place = static function (StepBudget $budget): array {
+            $positions = [0 => [0, 0], 1 => [1, 0]];
+            $left = (new LeftoverRecolourer($budget))->place(
+                [[3, 1], [2, 3], [3, 0], [2, 1]],
+                $positions,
+                [2, 3],
+                [],
+                [],
+                [0 => 1, 1 => 1],
+                9
+            );
+
+            return [$left, $positions];
+        };
+
+        $default = new StepBudget(PHP_INT_MAX, StepBudget::DEFAULT_STEPS);
+        [$left, $positions] = $place($default);
+        expect($left)->toHaveCount(1)
+            ->and($positions)->toHaveCount(3)
+            ->and($default->stoppedASearch())->toBeFalse();
+
+        $oneStep = new StepBudget(PHP_INT_MAX, 1);
+        [$left, $positions] = $place($oneStep);
+        expect($left)->toBe([2, 3])
+            ->and($positions)->toBe([0 => [0, 0], 1 => [1, 0]])
+            ->and($oneStep->stoppedASearch())->toBeTrue();
+    });
+
+    it('keeps a position check for every event and position however small the budget is', function (): void {
+        // The alternating-path request above at a budget of one step. The
+        // budget's share of the limit is two position checks, which starts
+        // no path (the test of the work limit above). The step has nine all
+        // the same, one for each of three events at each of three
+        // positions, and that is enough for the path: the event is placed,
+        // and no search was stopped
+        $positions = [0 => [0, 0], 1 => [0, 1]];
+        $budget = new StepBudget(PHP_INT_MAX, 1);
+
+        $left = (new LeftoverRecolourer($budget))->place(
+            [[0, 2], [1, 3], [0, 1]],
+            $positions,
+            [2],
+            [0 => [0 => [2], 9 => [2]]],
+            [0 => [2 => 1]],
+            [0 => 3],
+            2
+        );
+
+        expect($left)->toBe([])
+            ->and($positions)->toHaveCount(3)
+            ->and($budget->stoppedASearch())->toBeFalse()
+            ->and(LeftoverRecolourer::WORK_PER_EVENT_AND_POSITION_AT_LEAST)->toBe(1)
+            ->and(LeftoverRecolourer::workLimitAtLeast(3, 3))->toBe(9)
+            ->and(LeftoverRecolourer::workLimitAtLeast(1_460, 78))->toBe(113_880)
+            // Never more than the limit the default budget gives
+            ->and(LeftoverRecolourer::workLimitAtLeast(10_000, 400))->toBe(3_000_000);
+    });
+
+    it('does not report its work limit for an event it would not have searched for anyway', function (): void {
+        // Participant 0 has four events for two slots (the request above
+        // that searches for no exchange), at a budget below the default and
+        // with a limit of two position checks, which the direct pass over
+        // the two events left passes. Neither gets a path, because
+        // participant 0 already plays in every slot, and that is asked
+        // before the limit: no larger budget would have searched, so
+        // nothing is recorded
+        $positions = [0 => [0, 0], 1 => [0, 1]];
+        $budget = new StepBudget(PHP_INT_MAX, 1);
+
+        $left = (new LeftoverRecolourer($budget, 2))->place(
+            [[0, 1], [0, 2], [0, 3], [0, 4]],
+            $positions,
+            [2, 3],
+            [],
+            [],
+            [0 => 2],
+            9,
+            2
+        );
+
+        expect($left)->toBe([2, 3])
+            ->and($positions)->toBe([0 => [0, 0], 1 => [0, 1]])
+            ->and($budget->stoppedASearch())->toBeFalse();
+    });
+
     it('searches for no exchange once its position checks pass the work limit', function (): void {
         // The exchange request above, which places a third event with the
         // default limit; its direct and path rounds alone pass a limit of 10
@@ -408,6 +505,69 @@ describe('LeftoverRecolourer', function (): void {
     });
 });
 
+describe('LoadPlanner', function (): void {
+    it('tells the last placement step how many events no placement can hold', function (): void {
+        // The first participant has seven events and five positions (five
+        // sessions of one slot), so two of them fit nowhere. The last
+        // placement step takes this number out of its ceiling, and so does
+        // not search for a place for the two that are dropped
+        $participants = [];
+        for ($i = 0; $i < 6; ++$i) {
+            $participants[] = new Participant("p{$i}", "P{$i}");
+        }
+        $edges = [[0, 2], [0, 5], [1, 3], [1, 4], [0, 1], [0, 5], [0, 2], [0, 5], [3, 5], [0, 3]];
+
+        $plan = (new LoadPlanner(new RepackOptions(), new StepBudget(1_000)))->plan(
+            $edges,
+            [1 => [3 => [0], 4 => [0]]],
+            [1 => [0 => 1]],
+            [1, 1, 1, 1, 1],
+            4,
+            ['m01', 'm02', 'm03', 'm04', 'm05', 'm06', 'm07', 'm08', 'm09', 'm10'],
+            $participants
+        );
+
+        expect($plan->leftOutAtLeast)->toBe(2)
+            ->and($plan->shortfalls)->toBe([0 => 2]);
+    });
+
+    it('searches for the events two over-capacity participants share on the share of the node limit its budget leaves', function (): void {
+        // One session of two slots. Participants 0 and 1 are short by one
+        // event and 2 by two (1 and 2 are each pinned at one slot against
+        // somebody from outside). Dropping the event between 0 and 1 covers
+        // two of the four; dropping one between 0 and 2 and the one between
+        // 1 and 2 covers all four, which the search finds at the default
+        // budget. At a budget of one step it has no node, drops the first,
+        // and the budget records a search it stopped
+        $participants = [];
+        for ($i = 0; $i < 5; ++$i) {
+            $participants[] = new Participant("p{$i}", "P{$i}");
+        }
+        $plan = static fn(StepBudget $budget): array => array_map(
+            static fn(UnplacedEvent $event): string => $event->getEventId(),
+            (new LoadPlanner(new RepackOptions(), $budget))->plan(
+                [[0, 1], [0, 2], [0, 2], [1, 2]],
+                [0 => [1 => [0], 3 => [0], 2 => [1], 4 => [1]]],
+                [0 => [0 => 1, 1 => 1]],
+                [2],
+                4,
+                ['a', 'b', 'c', 'd'],
+                $participants
+            )->unplaced
+        );
+
+        $default = new StepBudget(1_000, StepBudget::DEFAULT_STEPS);
+        expect($plan($default))->toBe(['b', 'd'])
+            ->and($default->stoppedASearch())->toBeFalse();
+
+        $oneStep = new StepBudget(1_000, 1);
+        $dropped = $plan($oneStep);
+        expect($dropped[0])->toBe('a')
+            ->and(count($dropped))->toBeGreaterThan(2)
+            ->and($oneStep->stoppedASearch())->toBeTrue();
+    });
+});
+
 describe('LoadPlanner::sharedDrops', function (): void {
     it('takes as many shared events as the shortfalls allow, not the first ones it meets', function (): void {
         // A path 0 - 1 - 2 - 3, each participant one event short. Taking
@@ -423,6 +583,40 @@ describe('LoadPlanner::sharedDrops', function (): void {
 
     it('ignores events with a participant that is not short', function (): void {
         expect(LoadPlanner::sharedDrops([0 => [0, 1], 1 => [1, 2]], [0 => 1, 2 => 1]))->toBe([]);
+    });
+
+    it('searches with the share of its node limit that a budget below the default leaves, and tells the budget when that stops it short', function (): void {
+        // Participants 0 and 1 are short by one event and 2 by two. The
+        // greedy start takes the event between 0 and 1, after which nothing
+        // else fits: one event. Leaving it out, an event between 0 and 2 and
+        // the one between 1 and 2 fit: two, which the search finds. At a
+        // budget of one step the search has no node (its share of 100,000
+        // rounds down to none), the greedy set stands, it is not known to
+        // be a largest one, and a larger budget would have found the other
+        $edges = [0 => [0, 1], 1 => [0, 2], 2 => [0, 2], 3 => [1, 2]];
+        $need = [0 => 1, 1 => 1, 2 => 2];
+
+        $default = new StepBudget(1, StepBudget::DEFAULT_STEPS);
+        expect(LoadPlanner::sharedDrops($edges, $need, $exact, $default))->toBe([1, 3])
+            ->and($exact)->toBeTrue()
+            ->and($default->stoppedASearch())->toBeFalse();
+
+        $oneStep = new StepBudget(1, 1);
+        expect(LoadPlanner::sharedDrops($edges, $need, $exact, $oneStep))->toBe([0])
+            ->and($exact)->toBeFalse()
+            ->and($oneStep->stoppedASearch())->toBeTrue();
+    });
+
+    it('does not report a node limit that stopped it with a set as large as any can be', function (): void {
+        // The path above at a budget of one step: the greedy start is
+        // already the two end events, no set is larger, and no longer
+        // search would have replaced it
+        $budget = new StepBudget(1, 1);
+
+        expect(LoadPlanner::sharedDrops([0 => [1, 2], 1 => [0, 1], 2 => [2, 3]], [0 => 1, 1 => 1, 2 => 1, 3 => 1], $exact, $budget))
+            ->toBe([1, 2])
+            ->and($exact)->toBeTrue()
+            ->and($budget->stoppedASearch())->toBeFalse();
     });
 
     it('finds a largest set on a cycle with a participant short by two', function (): void {

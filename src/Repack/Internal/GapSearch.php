@@ -34,10 +34,15 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * returned.
  *
  * Each node spends one step of the budget it is given, and the search
- * also stops after WORK_LIMIT position checks whatever the budget: a
- * limit of its own, like those of the last placement step, so that a
- * large request with a gap that cannot be closed costs a fixed amount of
- * work.
+ * also stops after a number of position checks: a limit of its own, like
+ * those of the last placement step, so that a large request with a gap
+ * that cannot be closed costs a bounded amount of work. The limit is
+ * WORK_LIMIT at the default step budget and at every larger one. A node
+ * looks at every position, so below the default the steps alone would
+ * not shorten the search in proportion, and the limit is then the same
+ * share of WORK_LIMIT as the budget is of the default
+ * (StepBudget::workLimit()); a search that smaller limit stops is
+ * reported to the budget as a search it stopped.
  *
  * Gap slots are counted as the audit counts them: per participant and
  * session, over the pinned and the movable slots together, and only
@@ -48,8 +53,9 @@ namespace MissionGaming\Tactician\Repack\Internal;
 final class GapSearch
 {
     /**
-     * How many position checks one search may make, whatever the step
-     * budget (a check is one look at whether an event fits a position).
+     * How many position checks one search may make at the default step
+     * budget and above (a check is one look at whether an event fits a
+     * position); a smaller budget leaves its share of them.
      * Counting checks and not nodes makes the limit about the same amount
      * of work on a grid of nine positions and on one of fifty: about a
      * tenth of a second on the machine it was measured on.
@@ -104,17 +110,24 @@ final class GapSearch
 
     private int $work = 0;
 
+    /** Position checks after which the search stops */
+    private readonly int $limit;
+
     private bool $stopped = false;
 
     /**
-     * @param int $workLimit Position checks after which the search stops; the
-     *                       repacker always passes WORK_LIMIT, and the unit tests
-     *                       pass a smaller one to see the search stop at it
+     * @param int|null $workLimit Position checks after which the search stops. The
+     *                            repacker passes none, and the limit is then the
+     *                            share of WORK_LIMIT the budget leaves
+     *                            (StepBudget::workLimit()); the unit tests pass a
+     *                            small one to see the search stop at it
      */
     public function __construct(
         private readonly StepBudget $budget,
-        private readonly int $workLimit = self::WORK_LIMIT
-    ) {}
+        ?int $workLimit = null
+    ) {
+        $this->limit = $workLimit ?? $budget->workLimit(self::WORK_LIMIT);
+    }
 
     /**
      * @param array<int, array{int, int}> $edges Event index => participant index pair
@@ -261,7 +274,15 @@ final class GapSearch
 
             return;
         }
-        if ($this->work > $this->workLimit || !$this->budget->consume()) {
+        if ($this->work > $this->limit) {
+            // A search cut short at its work limit: the budget records it
+            // when the limit is one it made smaller
+            $this->budget->stoppedAtWorkLimit();
+            $this->stopped = true;
+
+            return;
+        }
+        if (!$this->budget->consume()) {
             $this->stopped = true;
 
             return;

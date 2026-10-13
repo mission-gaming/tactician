@@ -35,14 +35,26 @@ use MissionGaming\Tactician\Serialization\PlainData;
  * repacker reports what is left rather than pretending, and the outcome
  * says so ({@see RepackOutcome::isBudgetExhausted()}).
  *
- * The budget does not bound everything, and a small one does not make a
- * large repack short. Ordering the participants and laying the events
- * out before any session is chosen spend no step, and stop at fixed
- * limits of their own, as do the last placement step and the search for
- * fewer gap slots whatever the budget; and planning a session of sixteen
- * slots or more costs work that is not counted in steps (it is bounded
- * instead: a session of more than twenty slots is not planned that way).
- * The usage guide ("The Step Budget") has the measured times.
+ * The budget governs the work that is not counted in steps as well.
+ * Laying the events out before any session is chosen, the last placement
+ * step, the search for fewer gap slots and the search for the events two
+ * over-capacity participants share each stop at a limit on their own
+ * work. At the default budget and above those limits are fixed, so a
+ * larger budget never changes what they do. Below the default each is
+ * the same share of its limit as the budget is of the default (a tenth
+ * of the default budget, a tenth of each limit), so a smaller budget
+ * shortens every search of a repack in proportion; a search cut short
+ * at such a smaller limit counts as one the budget stopped. What no
+ * budget shortens is the work that is not a search and grows with the
+ * request (reading it, the passes over the events, one look at every
+ * position for every event in the layout and the last placement step,
+ * the audit), ordering the participants, which is bounded by a limit of
+ * its own of about a tenth of a second and is left whole so that the
+ * ids of a request decide no more at a small budget than at a large
+ * one, and the planner's scoring of a session of sixteen slots or more,
+ * which is not counted in steps (it is bounded instead: a session of
+ * more than twenty slots is not planned that way). The usage guide
+ * ("The Step Budget") has the measured times.
  *
  * The weights are bounded so that the objective stays an integer. The
  * repacker scores a move as at most earlyFillWeight x (sessions - 1) +
@@ -75,7 +87,9 @@ final readonly class RepackOptions
      *                             (0 disables)
      * @param int $stepBudget Elementary search steps shared by the planning and
      *                        the packing, and as many again for the steps
-     *                        after the packing
+     *                        after the packing; below the default it also
+     *                        shortens, in proportion, the searches that
+     *                        count their own work
      * @param bool $throwOnViolations Throw RepackViolationsException instead of
      *                                returning an outcome carrying violations
      *

@@ -121,6 +121,58 @@ describe('StepBudget', function (): void {
 
         expect($budget->stoppedASearch())->toBeTrue();
     });
+
+    it('takes the default of the options as the budget at which every work limit is whole', function (): void {
+        // The limits were sized with the default budget, and a budget below
+        // it gets a share of them: the two numbers must not drift apart
+        expect(StepBudget::DEFAULT_STEPS)->toBe((new RepackOptions())->stepBudget);
+    });
+
+    it('gives a search its whole work limit at the default budget and above, and the same share as the budget below', function (int $callersBudget, int $whole, int $limit): void {
+        expect((new StepBudget(1_000, $callersBudget))->workLimit($whole))->toBe($limit);
+    })->with([
+        'the default budget' => [200_000, 3_000_000, 3_000_000],
+        'one step more than the default' => [200_001, 3_000_000, 3_000_000],
+        'the largest budget there is' => [PHP_INT_MAX, 3_000_000, 3_000_000],
+        'one step fewer than the default' => [199_999, 3_000_000, 2_999_985],
+        'a tenth of the default' => [20_000, 3_000_000, 300_000],
+        'a hundredth of the default' => [2_000, 500_000, 5_000],
+        'one step, rounded down' => [1, 500_000, 2],
+        'one step of the smallest limit' => [1, 200_000, 1],
+        'a share that rounds down to nothing' => [1, 199_999, 0],
+    ]);
+
+    it('gives every search its whole work limit when it is made without a budget of the caller', function (): void {
+        // How the unit tests of the searches make one: a few steps to spend
+        // are not a small budget of the caller
+        expect((new StepBudget(3))->workLimit(500_000))->toBe(500_000);
+    });
+
+    it('records a search stopped at a work limit the budget made smaller, and not one stopped at its whole limit', function (int $callersBudget, bool $recorded): void {
+        // At the whole limit no larger budget would have taken the search
+        // further, so the outcome is the one every larger budget gives
+        $budget = new StepBudget(1_000, $callersBudget);
+        $budget->stoppedAtWorkLimit();
+
+        expect($budget->stoppedASearch())->toBe($recorded);
+    })->with([
+        'one step' => [1, true],
+        'one step fewer than the default' => [199_999, true],
+        'the default budget' => [200_000, false],
+        'the largest budget there is' => [PHP_INT_MAX, false],
+    ]);
+
+    it('hands a share the same work limits, and takes back what the share recorded at one', function (): void {
+        $budget = new StepBudget(100, 20_000);
+
+        $share = $budget->share(4);
+        expect($share->workLimit(200_000))->toBe(20_000);
+
+        $share->stoppedAtWorkLimit();
+        $budget->returnShare($share, 25);
+
+        expect($budget->stoppedASearch())->toBeTrue();
+    });
 });
 
 // Each phase of the repacker spends from the budget; each must leave the

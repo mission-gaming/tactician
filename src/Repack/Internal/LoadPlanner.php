@@ -228,7 +228,7 @@ final class LoadPlanner
 
         // An event between two over-capacity participants counts towards
         // both shortfalls, so as many of those as can count twice go first
-        $shared = self::sharedDrops($this->edges, $need, $exact);
+        $shared = self::sharedDrops($this->edges, $need, $exact, $this->budget);
 
         // No placement leaves out fewer events than the shortfalls less
         // the largest set of shared drops. When the set found is known to
@@ -311,14 +311,24 @@ final class LoadPlanner
      * Exact by a depth-first search over the events in index order, each
      * taken before it is left out. The search starts from a greedy set,
      * replaces it only with a strictly larger one, and stops after
-     * SHARED_DROP_NODE_LIMIT nodes, a fixed number and not the step
-     * budget, so which events are dropped never depends on the budget;
-     * past the limit the largest set found so far is used, and it can be
-     * smaller than the largest there is: with a dozen over-capacity
-     * participants sharing some forty events the limit is reached, and
-     * the planner then drops more events than the shortfalls need. $exact
-     * says which case it was, so that nothing downstream relies on the
-     * set being a largest one when it may not be.
+     * SHARED_DROP_NODE_LIMIT nodes: a limit of its own and not steps of
+     * the budget, so which events are dropped is the same at the default
+     * step budget and at every larger one. Past the limit the largest set
+     * found so far is used, and it can be smaller than the largest there
+     * is: with a dozen over-capacity participants sharing some forty
+     * events the limit is reached, and the planner then drops more events
+     * than the shortfalls need. $exact says which case it was, so that
+     * nothing downstream relies on the set being a largest one when it
+     * may not be.
+     *
+     * Given a budget, the search has the share of the node limit that the
+     * caller's budget is of the default (StepBudget::workLimit()): on a
+     * large request in which every participant is over capacity the
+     * whole limit is some 50 milliseconds each time, which a small budget
+     * would not otherwise shorten. A search that a smaller limit stops
+     * short of a set as large as any can be is reported to the budget as
+     * a search it stopped; one that stops with such a set is not, because
+     * no longer search would have replaced it.
      *
      * The orchestrator asks the same question again, of the events left
      * unplaced at the end, when the last placement step has placed an
@@ -328,11 +338,13 @@ final class LoadPlanner
      *                                           index pair, indexes ascending
      * @param array<int, int> $need Over-capacity participant => shortfall
      * @param bool|null $exact Set to whether the set returned is known to be a largest one
+     * @param StepBudget|null $budget The budget the node limit follows and that records a search a
+     *                                smaller limit stopped; none for the whole limit
      * @param-out bool $exact
      *
      * @return list<int> Event indexes, ascending
      */
-    public static function sharedDrops(array $edges, array $need, ?bool &$exact = null): array
+    public static function sharedDrops(array $edges, array $need, ?bool &$exact = null, ?StepBudget $budget = null): array
     {
         $exact = true;
         $shared = [];
@@ -372,14 +384,15 @@ final class LoadPlanner
         }
         sort($best);
 
+        $nodeLimit = $budget?->workLimit(self::SHARED_DROP_NODE_LIMIT) ?? self::SHARED_DROP_NODE_LIMIT;
         $nodes = 0;
         $chosen = [];
         $left = $need;
-        $search = static function (int $at) use (&$search, &$best, &$chosen, &$left, &$nodes, $shared, $edges): void {
+        $search = static function (int $at) use (&$search, &$best, &$chosen, &$left, &$nodes, $shared, $edges, $nodeLimit): void {
             if (count($chosen) > count($best)) {
                 $best = $chosen;
             }
-            if ($at === count($shared) || ++$nodes > self::SHARED_DROP_NODE_LIMIT) {
+            if ($at === count($shared) || ++$nodes > $nodeLimit) {
                 return;
             }
 
@@ -412,7 +425,12 @@ final class LoadPlanner
         // end, or when it is as large as no set can exceed: half the sum,
         // over the participants, of the smaller of the shortfall and the
         // shared events
-        $exact = $nodes <= self::SHARED_DROP_NODE_LIMIT || count($best) === self::sharedDropCeiling($edges, $shared, $need);
+        $exact = $nodes <= $nodeLimit || count($best) === self::sharedDropCeiling($edges, $shared, $need);
+        if (!$exact && $nodeLimit < self::SHARED_DROP_NODE_LIMIT) {
+            // Cut short at a limit the budget made smaller, with a set a
+            // longer search might have replaced
+            $budget?->stoppedAtWorkLimit();
+        }
 
         return $best;
     }

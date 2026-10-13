@@ -40,10 +40,20 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * (LeftoverRecolourer: direct moves, alternating paths, exchanges), and
  * an event it cannot place either comes after every round.
  *
- * The search is given no step budget. Its own limit on position checks
- * (LeftoverRecolourer::workLimitFor()) bounds it instead, so the rounds,
- * and with them the order of the events, never depend on the caller's
- * budget.
+ * The search spends no step of the two budgets a repack has: it is
+ * bounded by its own limit on position checks
+ * (LeftoverRecolourer::workLimitFor()). At the default step budget and
+ * at every larger one that limit is whole, so the rounds, and with them
+ * the order of the events, are the same for all of them. Below the
+ * default the search has the share of the limit that the budget is of
+ * the default (StepBudget::workLimit()): this search was nearly all the
+ * time a repack with a small budget took, and a budget that did not
+ * shorten it bounded nothing. The rounds then depend on the budget, and
+ * a search the smaller limit stopped is recorded by the budget given
+ * here, which the repacker reads into RepackOutcome::isBudgetExhausted().
+ * With next to no budget the rounds are what the first pass and the
+ * direct moves make of the events: still an order made from the request
+ * alone.
  *
  * @internal
  */
@@ -55,6 +65,9 @@ final class RoundColouring
      * @param array<int, array<int, array<int>>> $pinSlots Session => participant => pinned slots
      * @param array<int, array<int, int>> $pinCounts Session => slot => pinned event count
      * @param array<int, int> $slotCounts Session => slot count
+     * @param StepBudget $budget The steps of the search (the repacker gives it steps that do not run
+     *                           out) and the share of its work limit; it records a search that a
+     *                           smaller limit stopped
      *
      * @return array<int, array{int, int}> Event index => [session, slot] of its round's position, in
      *                                     ascending event index order; an event the rounds could not
@@ -65,7 +78,8 @@ final class RoundColouring
         array $pinSlots,
         array $pinCounts,
         array $slotCounts,
-        int $capacityPerSlot
+        int $capacityPerSlot,
+        StepBudget $budget
     ): array {
         if ($edges === []) {
             return [];
@@ -153,7 +167,7 @@ final class RoundColouring
                 }
                 $before += $slotCount;
             }
-            $left = (new LeftoverRecolourer(new StepBudget(PHP_INT_MAX)))->place(
+            $left = (new LeftoverRecolourer($budget))->place(
                 $edges,
                 $positions,
                 $left,
@@ -164,7 +178,7 @@ final class RoundColouring
             );
         }
         if ($left !== []) {
-            (new LeftoverRecolourer(new StepBudget(PHP_INT_MAX)))->place(
+            (new LeftoverRecolourer($budget))->place(
                 $edges,
                 $positions,
                 $left,

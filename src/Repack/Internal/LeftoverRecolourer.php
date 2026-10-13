@@ -76,13 +76,22 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * WORK_LIMIT_AT_MOST (workLimitFor()). The ceiling cannot prove of every request
  * that nothing more fits, and where it cannot, the exchange search
  * would otherwise run to its limits on every round: seconds on requests
- * of a few hundred events that 0.2.2 repacked in milliseconds. The
- * limit is fixed for a request, like the others, so a larger budget
- * gives the same outcome and the budget flag is not set when it is
- * reached. Direct moves go on after it, so an event left unplaced as
- * NoSlotAvailable still has no position with room and both participants
- * free. On some requests it leaves an event unplaced that a longer
- * search would have placed.
+ * of a few hundred events that 0.2.2 repacked in milliseconds. That is
+ * the limit at the default step budget and at every larger one, where a
+ * larger budget gives the same outcome and the budget flag is not set
+ * when the limit is reached. A step is one node of a search and a node
+ * looks at every position, so steps alone do not bound the work in
+ * proportion to the budget; below the default budget the step has the
+ * same share of the limit as the budget is of the default
+ * (StepBudget::workLimit()), and never less than
+ * WORK_PER_EVENT_AND_POSITION_AT_LEAST for every event and position,
+ * which is about one search that fails and grows with the request as
+ * the passes that are not searches do. A search the smaller limit stops
+ * is reported to the budget as a search it stopped, because a larger
+ * budget would have let it go on. Direct moves go on after the limit, so
+ * an event left unplaced as NoSlotAvailable still has no position with
+ * room and both participants free. On some requests it leaves an event
+ * unplaced that a longer search would have placed.
  * A lifted event
  * tries the positions of its own session first, in slot order, and then
  * the rest of the grid in grid order, so the session loads the planner
@@ -112,9 +121,10 @@ final class LeftoverRecolourer
 
     /**
      * How many position checks the whole step may make before it starts
-     * no further search: a limit of the step's own, which the step budget
-     * does not lift (see the class docblock). About a sixth of a second
-     * on the machine it was measured on.
+     * no further search: a limit of the step's own, which no step budget
+     * lifts and one below the default makes smaller (see the class
+     * docblock). About a sixth of a second on the machine it was
+     * measured on.
      */
     public const int WORK_LIMIT = 500_000;
 
@@ -134,6 +144,22 @@ final class LeftoverRecolourer
     public const int WORK_PER_EVENT_AND_POSITION = 100;
 
     /**
+     * How many position checks the step may make for every event and
+     * position of the request however small the step budget is: one,
+     * which is about what a single search that fails costs. Without it a
+     * budget of a few steps left the round layout no search at all, and
+     * the layout is what the planner's order of events comes from: on
+     * seasons of 40 participants over two legs with rounds played, a
+     * budget of one step placed 14,339 of 16,184 events, fewer than
+     * release 0.2.3 at the same budget (14,849), and with it 15,517, for
+     * about a fifth more time. It is work in proportion to the request,
+     * like the passes that are not searches, so it is part of what no
+     * budget shortens. Two and four for every event and position placed
+     * a little more again for twice and four times the cost.
+     */
+    public const int WORK_PER_EVENT_AND_POSITION_AT_LEAST = 1;
+
+    /**
      * The most position checks the step makes on any request, however
      * large: without it a round robin of two legs among 40 participants
      * (1,460 events on some 75 positions) had four times this to spend
@@ -148,6 +174,9 @@ final class LeftoverRecolourer
 
     /** The work limit of the call of place() in progress */
     private int $limit = self::WORK_LIMIT;
+
+    /** Whether that limit is smaller than the one the default budget gives */
+    private bool $limitIsShortened = false;
 
     /** The ceiling of the last call of place() (see ceiling()) */
     private int $placedCeiling = 0;
@@ -192,8 +221,9 @@ final class LeftoverRecolourer
      * @param int|null $workLimit Position checks after which no further search
      *                            starts. The repacker passes none, and the limit
      *                            is then worked out from the request it is given
-     *                            (workLimitFor()); the unit tests pass a small one
-     *                            to see the step stop at it
+     *                            (workLimitFor()) and the budget
+     *                            (StepBudget::workLimit()); the unit tests pass a
+     *                            small one to see the step stop at it
      */
     public function __construct(
         private readonly StepBudget $budget,
@@ -204,14 +234,29 @@ final class LeftoverRecolourer
      * The position checks the step may make on a request of so many
      * events and positions: WORK_LIMIT, or WORK_PER_EVENT_AND_POSITION
      * for every event and position where that is more, and never more
-     * than WORK_LIMIT_AT_MOST. Fixed for a request, whatever the step
-     * budget.
+     * than WORK_LIMIT_AT_MOST. This is the limit at the default step
+     * budget and above; place() takes the share of it a smaller budget
+     * leaves, and no less than workLimitAtLeast().
      */
     public static function workLimitFor(int $events, int $positions): int
     {
         return min(
             self::WORK_LIMIT_AT_MOST,
             max(self::WORK_LIMIT, self::WORK_PER_EVENT_AND_POSITION * $events * $positions)
+        );
+    }
+
+    /**
+     * The position checks the step may make on a request of so many
+     * events and positions however small the step budget is:
+     * WORK_PER_EVENT_AND_POSITION_AT_LEAST for every event and position,
+     * and never more than the limit the default budget gives.
+     */
+    public static function workLimitAtLeast(int $events, int $positions): int
+    {
+        return min(
+            self::workLimitFor($events, $positions),
+            self::WORK_PER_EVENT_AND_POSITION_AT_LEAST * $events * $positions
         );
     }
 
@@ -245,7 +290,11 @@ final class LeftoverRecolourer
         $this->pinned = [];
         $this->positionOf = [];
         $this->work = 0;
-        $this->limit = $this->workLimit ?? self::workLimitFor(count($edges), (int) array_sum($slotCounts));
+        $positionCount = (int) array_sum($slotCounts);
+        $whole = self::workLimitFor(count($edges), $positionCount);
+        $this->limit = $this->workLimit
+            ?? max($this->budget->workLimit($whole), self::workLimitAtLeast(count($edges), $positionCount));
+        $this->limitIsShortened = $this->limit < $whole;
 
         /** @var array<int, array<int, int>> $indexOf */
         $indexOf = [];
@@ -512,7 +561,7 @@ final class LeftoverRecolourer
                     }
                     if (
                         ++$this->exchangeNodes > self::EXCHANGE_NODE_LIMIT
-                        || $this->work > $this->limit
+                        || $this->isPastWorkLimit()
                         || !$this->budget->consume()
                     ) {
                         return null;
@@ -585,7 +634,7 @@ final class LeftoverRecolourer
                 }
                 if (
                     ++$this->exchangeNodes > self::EXCHANGE_NODE_LIMIT
-                    || $this->work > $this->limit
+                    || $this->isPastWorkLimit()
                     || !$this->budget->consume()
                 ) {
                     return null;
@@ -665,7 +714,7 @@ final class LeftoverRecolourer
                 if (isset($this->occupant[$index][$start])) {
                     continue;
                 }
-                if ($this->work > $this->limit || !$this->budget->consume()) {
+                if ($this->isPastWorkLimit() || !$this->budget->consume()) {
                     return $remaining;
                 }
 
@@ -789,16 +838,15 @@ final class LeftoverRecolourer
      */
     private function insert(int $eventIndex, ?int $fromSession): bool
     {
-        if ($this->work > $this->limit) {
-            return false;
-        }
         if ($this->hasSaturatedParticipant($eventIndex)) {
             // A participant whose every unpinned position already holds one
             // of its events is in the way wherever the event goes, and the
-            // event of its that is lifted has nowhere to go: no path exists
+            // event of its that is lifted has nowhere to go: no path exists.
+            // Asked before the work limit, so that a limit is not reported
+            // as having stopped a search that was never going to be made
             return false;
         }
-        if (!$this->budget->consume()) {
+        if ($this->isPastWorkLimit() || !$this->budget->consume()) {
             return false;
         }
 
@@ -926,6 +974,25 @@ final class LeftoverRecolourer
         }
 
         return $blocking;
+    }
+
+    /**
+     * Whether the step has made its position checks, asked by a search
+     * that is about to start or go on: a true answer is a search cut
+     * short, and when the limit is smaller than the one the default
+     * budget gives, the budget is told
+     * (StepBudget::stoppedAtWorkLimit()).
+     */
+    private function isPastWorkLimit(): bool
+    {
+        if ($this->work <= $this->limit) {
+            return false;
+        }
+        if ($this->limitIsShortened) {
+            $this->budget->stoppedAtWorkLimit();
+        }
+
+        return true;
     }
 
     private function hasSaturatedParticipant(int $eventIndex): bool

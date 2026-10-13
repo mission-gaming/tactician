@@ -51,7 +51,12 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * caller's budget; past the limit no class is split further and no
  * further participant is tried, and the classes still left are put in id
  * order as they stand. The order of such a request does depend on its
- * ids, and so can its outcome.
+ * ids, and so can its outcome. That is why this limit, alone among the
+ * repacker's work limits, is not made smaller by a step budget below
+ * the default (StepBudget::workLimit()): a share of it would send
+ * requests back to their ids that the whole limit orders, and the ids
+ * would decide more at a small budget than at a large one. It costs at
+ * most about a tenth of a second whatever the request and the budget.
  *
  * @internal
  */

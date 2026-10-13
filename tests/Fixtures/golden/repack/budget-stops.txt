@@ -21,8 +21,8 @@ step budget 200000: stopped nothing, 28 assigned, 0 unplaced, 0 violations, fing
 == n=8, pinned: 25 movable, 3 pinned, 4 sessions, capacityPerSlot=2 ==
 step budget 1: stopped a search, 25 assigned, 0 unplaced, 19 violations, fingerprint v1:1afb10d7f462c9ec838ba863f40b16c2e9e99c8edb455b9c317e2e2069752f42
 step budget 30: stopped a search, 25 assigned, 0 unplaced, 19 violations, fingerprint v1:1afb10d7f462c9ec838ba863f40b16c2e9e99c8edb455b9c317e2e2069752f42
-step budget 1000: stopped a search, 25 assigned, 0 unplaced, 11 violations, fingerprint v1:5945a1ce3df5dc546956bca42b3593ef6f7af9c50fd5a7ccb1519b08565fc39f
-step budget 30000: stopped nothing, 25 assigned, 0 unplaced, 9 violations, fingerprint v1:35af6540af950017b1e3dddbf00021d72f8034db9717d248fdd29ae69f071f63
+step budget 1000: stopped a search, 25 assigned, 0 unplaced, 10 violations, fingerprint v1:52ab592b31e08a9d6c54d584da0d526e5f4ac98b17b0f4f50078bc2bbf37e99b
+step budget 30000: stopped a search, 25 assigned, 0 unplaced, 9 violations, fingerprint v1:35af6540af950017b1e3dddbf00021d72f8034db9717d248fdd29ae69f071f63
 step budget 200000: stopped nothing, 25 assigned, 0 unplaced, 9 violations, fingerprint v1:35af6540af950017b1e3dddbf00021d72f8034db9717d248fdd29ae69f071f63
 
 == n=12, tight: 66 movable, 0 pinned, 3 sessions, capacityPerSlot=6 ==
@@ -35,7 +35,7 @@ step budget 200000: stopped nothing, 66 assigned, 0 unplaced, 0 violations, fing
 == n=12, pinned: 63 movable, 3 pinned, 6 sessions, capacityPerSlot=3 ==
 step budget 1: stopped a search, 63 assigned, 0 unplaced, 36 violations, fingerprint v1:a816fed3c516a2720a6a40f15f848f55ccdf38e041d6fe32b6bd0543220237af
 step budget 30: stopped a search, 63 assigned, 0 unplaced, 36 violations, fingerprint v1:a816fed3c516a2720a6a40f15f848f55ccdf38e041d6fe32b6bd0543220237af
-step budget 1000: stopped a search, 63 assigned, 0 unplaced, 32 violations, fingerprint v1:0f03b456e2a43c28014dcec2bdb4212a252db749ad967a1c8b517d6cb2bf297b
+step budget 1000: stopped a search, 63 assigned, 0 unplaced, 33 violations, fingerprint v1:7d6d6731bc179cc883fbfa521f030abd9edce950bded4b79a28b9c177ecbac63
 step budget 30000: stopped a search, 63 assigned, 0 unplaced, 12 violations, fingerprint v1:352bd9688e2865d240a2364707247a8e83b79e30e8543b8d5890cfc809986b65
 step budget 200000: stopped a search, 63 assigned, 0 unplaced, 12 violations, fingerprint v1:352bd9688e2865d240a2364707247a8e83b79e30e8543b8d5890cfc809986b65
 

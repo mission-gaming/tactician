@@ -802,13 +802,23 @@ describe('Repack step budget flag', function (): void {
         $ample = $run(PHP_INT_MAX);
         expect($ample->isBudgetExhausted())->toBeFalse();
 
-        foreach ([1, 3, 10, 30, 100, 1_000, 10_000, 200_000] as $budget) {
-            $outcome = $run($budget);
+        // Below the default budget the searches that count their own work
+        // (the round layout, the last placement step, the search for fewer
+        // gap slots) have a share of their limits and no more, so that is
+        // where a false flag has most to answer for: most of these budgets
+        // are below it, one is the last below it, and two are above
+        $budgets = [1, 3, 10, 30, 100, 300, 1_000, 3_000, 10_000, 30_000, 100_000, 199_999, 200_000, 1_400_000];
+        $outcomes = array_map($run, $budgets);
 
+        foreach ($outcomes as $at => $outcome) {
             if (!$outcome->isBudgetExhausted()) {
-                // What the docblock promises of a false flag
+                // What the docblock promises of a false flag: every larger
+                // budget gives this outcome, and stops nothing either
                 expect($outcome->toArray())->toBe($ample->toArray());
-                expect($run($budget * 7)->toArray())->toBe($ample->toArray());
+                foreach (array_slice($outcomes, $at + 1) as $larger) {
+                    expect($larger->toArray())->toBe($outcome->toArray())
+                        ->and($larger->isBudgetExhausted())->toBeFalse();
+                }
             }
 
             // Whatever the budget, the hard guarantees hold
@@ -817,8 +827,116 @@ describe('Repack step budget flag', function (): void {
         }
 
         // A single step cannot carry any search of these instances through
-        expect($run(1)->isBudgetExhausted())->toBeTrue();
+        expect($outcomes[0]->isBudgetExhausted())->toBeTrue();
     })->with(range(1, 12));
+
+    it('says so when a budget below the default cuts short a search that counts its own work', function (): void {
+        // Participant 1 has nine events for six positions, three against
+        // each of three others, and 2 and 3 meet twice: eleven events on
+        // three sessions of two slots, three events to a slot. Eight is the
+        // most that can be placed, and the default budget places eight.
+        //
+        // A budget of 100 steps is more than the planning and the packing
+        // of this request spend, so no step is ever refused. What it does
+        // shorten is the laying out of the events before any session is
+        // chosen, which spends no step: that search has 250 position checks
+        // where it has 500,000 at the default, stops there, and the outcome
+        // is another one. The flag must say so. A budget of 1,000 steps is
+        // enough for every search to end, and gives the default's outcome
+        $p = [];
+        for ($i = 1; $i <= 4; ++$i) {
+            $p[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [];
+        foreach ([[1, 2], [1, 4], [2, 3], [1, 2], [1, 3], [2, 3], [1, 2], [1, 3], [1, 4], [1, 4], [1, 3]] as $k => [$a, $b]) {
+            $movable[] = new MovableEvent(sprintf('m%02d', $k), $p[$a], $p[$b]);
+        }
+        $repacker = new ScheduleRepacker();
+        $run = static fn(?int $budget): RepackOutcome => $repacker->repack(new RepackRequest(
+            $movable,
+            [],
+            SessionGrid::shapeOnly(3, 2, [], 3),
+            $budget === null ? new RepackOptions() : new RepackOptions(stepBudget: $budget)
+        ));
+
+        $default = $run(null);
+        expect($default->getAssignments())->toHaveCount(8)
+            ->and($default->isBudgetExhausted())->toBeFalse();
+
+        $short = $run(100);
+        expect($short->fingerprint())->not->toBe($default->fingerprint())
+            ->and($short->isBudgetExhausted())->toBeTrue();
+        assertProperness($short, $movable, []);
+
+        $enough = $run(1_000);
+        expect($enough->toArray())->toBe($default->toArray())
+            ->and($enough->isBudgetExhausted())->toBeFalse();
+    });
+
+    it('is false below the default budget only when a larger budget changes nothing, where the round layout has to search', function (int $n, int $pins): void {
+        // A complete round robin with some of its events pinned at
+        // scattered positions, on a grid with one position to spare: the
+        // first pass of the round layout leaves events over, and how far
+        // its search for them gets is what a budget below the default
+        // decides. These are the requests on which a budget's share of a
+        // work limit, and not its steps, is what stops a search
+        $rng = new Randomizer(new Mt19937(7 * $n + $pins));
+        $participants = [];
+        for ($i = 0; $i < $n; ++$i) {
+            $participants[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $pairs = [];
+        for ($a = 0; $a < $n; ++$a) {
+            for ($b = $a + 1; $b < $n; ++$b) {
+                $pairs[] = [$a, $b];
+            }
+        }
+        $pairs = $rng->shuffleArray($pairs);
+        $slots = 4;
+        $sessions = intdiv($n + $slots - 1, $slots);
+        $movable = [];
+        $pinned = [];
+        $taken = [];
+        $countAt = [];
+        foreach ($pairs as $k => [$a, $b]) {
+            $session = $rng->getInt(0, $sessions - 1);
+            $slot = $rng->getInt(0, $slots - 1);
+            $at = "{$session}:{$slot}";
+            if (
+                count($pinned) < $pins
+                && !isset($taken["{$at}:{$a}"])
+                && !isset($taken["{$at}:{$b}"])
+                && ($countAt[$at] ?? 0) < intdiv($n, 2)
+            ) {
+                $pinned[] = new PinnedEvent("x{$k}", $participants[$a], $participants[$b], $session, $slot);
+                $taken["{$at}:{$a}"] = true;
+                $taken["{$at}:{$b}"] = true;
+                $countAt[$at] = ($countAt[$at] ?? 0) + 1;
+                continue;
+            }
+            $movable[] = new MovableEvent("m{$k}", $participants[$a], $participants[$b]);
+        }
+        $grid = SessionGrid::shapeOnly($sessions, $slots, [], intdiv($n, 2));
+        $repacker = new ScheduleRepacker();
+        $budgets = [1, 30, 300, 1_000, 3_000, 10_000, 30_000, 100_000, 200_000, 400_000];
+        $outcomes = array_map(
+            static fn(int $budget): RepackOutcome => $repacker->repack(
+                new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
+            ),
+            $budgets
+        );
+
+        foreach ($outcomes as $at => $outcome) {
+            if (!$outcome->isBudgetExhausted()) {
+                foreach (array_slice($outcomes, $at + 1) as $larger) {
+                    expect($larger->toArray())->toBe($outcome->toArray())
+                        ->and($larger->isBudgetExhausted())->toBeFalse();
+                }
+            }
+            assertProperness($outcome, $movable, $pinned);
+            expect(count($outcome->getAssignments()) + count($outcome->getUnplaced()))->toBe(count($movable));
+        }
+    })->with([[8, 6], [8, 12], [10, 8], [10, 20], [12, 10], [12, 30]]);
 
     it('is true for some outcome that a larger budget would have changed', function (): void {
         // Without this the property above could hold with the flag stuck on
@@ -954,49 +1072,21 @@ describe('Repack step budget flag', function (): void {
             ->and($outcome->isBudgetExhausted())->toBeFalse();
     });
 
-    it('spends no budget on the last placement step when only the over-capacity drops are left over', function (): void {
-        // p1 has seven events for five positions, so two of them cannot
-        // be placed, and every other event is. Placing a dropped event
-        // would only leave out another of p1's, so there is nothing to
-        // search for, and a budget of 60 that the earlier phases do not
-        // use up (they spend 47) must not be reported as having stopped a
-        // search: a search for an exchange here spends 74 steps of the
-        // second budget. The positions are five sessions of one slot, so
-        // that no schedule of them has a gap and the search for fewer gap
-        // slots, which spends from the same second budget, has nothing to
-        // do. On one session of five slots, which this request was on
-        // before that search existed, it takes some 1,400 steps, and a
-        // budget large enough for it no longer notices the exchange search
-        $p = [];
-        for ($i = 1; $i <= 6; ++$i) {
-            $p[$i] = new Participant("p{$i}", "P{$i}");
-        }
-        $movable = [
-            new MovableEvent('m01', $p[1], $p[3]),
-            new MovableEvent('m02', $p[1], $p[6]),
-            new MovableEvent('m03', $p[2], $p[4]),
-            new MovableEvent('m04', $p[2], $p[5]),
-            new MovableEvent('m05', $p[2], $p[1]),
-            new MovableEvent('m06', $p[6], $p[1]),
-            new MovableEvent('m07', $p[1], $p[3]),
-            new MovableEvent('m08', $p[6], $p[1]),
-            new MovableEvent('m09', $p[6], $p[4]),
-            new MovableEvent('m10', $p[4], $p[1]),
-        ];
-        $pinned = [new PinnedEvent('x1', $p[5], $p[4], 1, 0)];
-
-        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
-            $movable,
-            $pinned,
-            SessionGrid::shapeOnly(5, 1, [], 4),
-            new RepackOptions(stepBudget: 60)
-        ));
-
-        expect($outcome->getAssignments())->toHaveCount(8)
-            ->and(array_map(static fn(UnplacedEvent $u): string => $u->getReason()->value, $outcome->getUnplaced()))
-            ->toBe(['participant_over_capacity', 'participant_over_capacity'])
-            ->and($outcome->isBudgetExhausted())->toBeFalse();
-    });
+    // That the last placement step searches for no exchange when only the
+    // over-capacity drops are left over was shown here by a budget flag: a
+    // budget of 60 steps on a request of ten events, which the earlier
+    // phases do not use up and a needless exchange search does. It cannot
+    // be shown that way any more. A budget below the default now shortens
+    // the round layout too, whose own search for the same drops is what
+    // the flag then reports, at every budget small enough to notice the
+    // exchange search (below 154 steps on that request; the exchange
+    // search takes 74). The two halves are held where they are made:
+    // "tells the last placement step how many events no placement can
+    // hold" (LoadPlanner) and "searches for no exchange when the events
+    // left over are as many as no placement can hold" (LeftoverRecolourer),
+    // both in tests/Unit/Repack/LeftoverRecolourerTest.php. That the
+    // repacker hands the one number to the other has no test: nothing an
+    // outcome says depends on it at any budget
 
     it('reports no exhausted budget when the last placement step ends at limits of its own', function (): void {
         // Four participants with 34 events on three sessions of six slots,
@@ -1663,7 +1753,7 @@ function reportedGapSlots(RepackOutcome $outcome): int
  *
  * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
  */
-function relabelledRequest(array $movable, array $pinned, SessionGrid $grid, int $seed): array
+function relabelledRequest(array $movable, array $pinned, SessionGrid $grid, int $seed, ?RepackOptions $options = null): array
 {
     $rng = new Randomizer(new Mt19937($seed));
 
@@ -1702,7 +1792,10 @@ function relabelledRequest(array $movable, array $pinned, SessionGrid $grid, int
         );
     }
 
-    return [new RepackRequest($rng->shuffleArray($newMovable), $rng->shuffleArray($newPinned), $grid), $oldByNew];
+    return [
+        new RepackRequest($rng->shuffleArray($newMovable), $rng->shuffleArray($newPinned), $grid, $options ?? new RepackOptions()),
+        $oldByNew,
+    ];
 }
 
 /**
@@ -1935,6 +2028,20 @@ describe('Repacking the same request under other ids', function (): void {
         }
     })->with(range(1, 40));
 
+    it('gives the same schedule under other ids at a budget below the default too', function (int $seed, int $budget): void {
+        // A small budget shortens searches and so changes the schedule. It
+        // does not change what the schedule is made from: the order of the
+        // participants is worked out in full whatever the budget, so the
+        // ids decide no more at one step than they do at the default
+        [$movable, $pinned, $grid] = randomRepackInstance($seed);
+        $options = new RepackOptions(stepBudget: $budget);
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+
+        [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, 1000 * $seed + $budget, $options);
+
+        expectSameRepack($outcome, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+    })->with(range(1, 12))->with([1, 100, 2_000, 20_000]);
+
     it('gives the same schedule on the small corpus, where pins, capacity and over-capacity drops decide it', function (string $name): void {
         [$movable, $pinned, $grid] = smallRepackCorpus()[$name];
         $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
@@ -1990,6 +2097,16 @@ describe('Repacking the same request under other ids', function (): void {
             [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, $shuffle);
 
             expectSameRepack($outcome, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+        }
+
+        // And at budgets below the default, where every search but the
+        // ordering of the participants is cut short
+        foreach ([1, 2_000, 20_000] as $budget) {
+            $options = new RepackOptions(stepBudget: $budget);
+            $short = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+            [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, $budget, $options);
+
+            expectSameRepack($short, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
         }
     })->with([8, 12, 16, 20]);
 

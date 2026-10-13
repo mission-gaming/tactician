@@ -66,8 +66,11 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * two that are not alike). Pure: no clock reads, no I/O, no persistence.
  * Bounded: every search spends from the options' step budget (the steps
  * after the packing from a budget of their own of the same size) or has
- * a fixed limit of its own, and the outcome says whether a budget stopped
- * one (RepackOutcome::isBudgetExhausted()).
+ * a limit of its own, which is fixed at the default budget and above and
+ * the budget's share of that below it, so that a smaller budget shortens
+ * every search; the order of the participants alone has a limit no
+ * budget changes. The outcome says whether a budget stopped a search
+ * (RepackOutcome::isBudgetExhausted()).
  *
  * A shape-only grid is repacked exactly as the instant-based grid of the
  * same shape is: positions are all the algorithm reads. The assignments
@@ -261,7 +264,18 @@ final readonly class ScheduleRepacker
             $firstPlaceOf[$session] = $positionCount;
             $positionCount += $slotCount;
         }
-        $roundPositions = RoundColouring::of($pairsInOrder, $pinSlots, $pinCounts, $slotCounts, $capacityPerSlot);
+        // The layout's search spends no step of the two budgets below. It
+        // has a work limit of its own, and the caller's budget decides how
+        // much of that limit it gets: all of it at the default and above
+        $layoutBudget = new StepBudget(PHP_INT_MAX, $options->stepBudget);
+        $roundPositions = RoundColouring::of(
+            $pairsInOrder,
+            $pinSlots,
+            $pinCounts,
+            $slotCounts,
+            $capacityPerSlot,
+            $layoutBudget
+        );
         $roundOf = [];
         foreach (array_keys($pairsInOrder) as $at) {
             $roundOf[$at] = isset($roundPositions[$at])
@@ -288,8 +302,8 @@ final readonly class ScheduleRepacker
         // Two budgets: one for the planning and the packing, and one of the
         // same size for the steps after them, so that a run whose earlier
         // searches spent the first still gets its last placement step
-        $budget = new StepBudget($options->stepBudget);
-        $recolourBudget = new StepBudget($options->stepBudget);
+        $budget = new StepBudget($options->stepBudget, $options->stepBudget);
+        $recolourBudget = new StepBudget($options->stepBudget, $options->stepBudget);
 
         // The planned schedule: sessions by the weights, then slots
         [$positions, $stillLeft, $dropped, $plan, $ceiling] = $this->planned(
@@ -401,7 +415,7 @@ final readonly class ScheduleRepacker
             }
         }
 
-        $unplaced = $this->label($stillLeft, $dropped, $plan->shortfalls, $edges, $eventIds, $participants);
+        $unplaced = $this->label($stillLeft, $dropped, $plan->shortfalls, $edges, $eventIds, $participants, $budget);
 
         usort(
             $unplaced,
@@ -473,7 +487,7 @@ final readonly class ScheduleRepacker
             $assignments,
             $unplaced,
             $violations,
-            $budget->stoppedASearch() || $recolourBudget->stoppedASearch()
+            $budget->stoppedASearch() || $recolourBudget->stoppedASearch() || $layoutBudget->stoppedASearch()
         );
 
         if ($options->throwOnViolations && !$outcome->isClean()) {
@@ -622,6 +636,7 @@ final readonly class ScheduleRepacker
      * @param array<int, array{int, int}> $edges
      * @param array<string> $eventIds
      * @param array<Participant> $participants
+     * @param StepBudget $budget The budget the planner's search for shared events follows here too
      *
      * @return list<UnplacedEvent> In ascending event id order
      */
@@ -631,7 +646,8 @@ final readonly class ScheduleRepacker
         array $shortfalls,
         array $edges,
         array $eventIds,
-        array $participants
+        array $participants,
+        StepBudget $budget
     ): array {
         $left = array_fill_keys($stillLeft, true);
         $dropsAllLeft = array_diff_key($dropped, $left) === [];
@@ -645,7 +661,7 @@ final readonly class ScheduleRepacker
             }
 
             $need = $shortfalls;
-            foreach (LoadPlanner::sharedDrops($candidates, $shortfalls) as $eventIndex) {
+            foreach (LoadPlanner::sharedDrops($candidates, $shortfalls, budget: $budget) as $eventIndex) {
                 [$a, $b] = $edges[$eventIndex];
                 $overCapacityFor[$eventIndex] = [$shortfalls[$b], $a] > [$shortfalls[$a], $b] ? $b : $a;
                 --$need[$a];
