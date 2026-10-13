@@ -90,7 +90,74 @@ state as they are and derives only the round that does not exist yet.
    (`getEntrants()`; before that, a withdrawal removes the entrant, as it
    always did). A bracket folds from that list, so a tie of a withdrawn
    entrant is not played and the other entrant advances.
-6. **`fromHistory()` records through the verbs and checks three rules
+6. **A state says when.** A round is paired from what is known at that
+   moment (ADR 0001), so reading it afterwards takes the same knowledge,
+   and two facts a state holds can come later than a round: an adjustment
+   and a withdrawal. Each is recorded with the number of the last round
+   that was recorded when it happened (`Adjustment::getAfterRound()`, 0
+   before the first round; `Stage\Withdrawal`, kept in the order the
+   withdrawals happened, `StageState::getWithdrawals()`). This is option 2
+   of issue #154. The verbs record it without being told, because a state
+   knows its rounds; a history states it (`Adjustment::madeAfterRound()`, a
+   `Withdrawal` among the withdrawals). An engine then reads a recorded
+   round N from the adjustments made after a round before N and from the
+   entrants who had not withdrawn after a round before N:
+   - a re-seeded bracket ranks the survivors of a recorded round from
+     those adjustments, and the round that is paired next from all of them;
+   - the derivation shown beside a recorded round, and with it
+     `isManual()`, is the round the engine pairs from that knowledge, in
+     all three engines;
+   - a pair of slots a bracket round holds no tie for is settled from who
+     had withdrawn when the round was paired, and from nobody who left
+     later;
+   - whether a recorded round is the round the bracket has next, or the
+     one after a round nobody played, is told by whether a tie could be
+     played at the time;
+   - where both entrants of a tie have withdrawn and its results are not
+     complete, the first of them to withdraw gave the tie to the other,
+     who went on. That holds whether the round holds the tie or not and
+     whenever the bracket is read: the answer for a history does not
+     depend on the moment an engine was asked.
+
+   The stored form has two optional keys for it, `after_round` in an
+   adjustment and `withdrawals` in a stage state, both of version 1 of
+   their forms (ADR 0005: 0.3.0 is not released, and the version of a form
+   is raised for a key added after a release, not before it).
+
+   **An absent round means that the time is not known, and nothing else.**
+   Data stored before the keys existed has none, and neither has a history
+   that does not state it. It loads. It is not read as "after the last
+   round" (which would make every round look like the engine's own) nor as
+   "before the first" (which is how the engines read an adjustment before,
+   and what issue #154 is about). The engines read what the recorded rounds
+   themselves show, and where that does not decide, they claim nothing:
+   - an adjustment without a round counts in every table and in the round
+     paired next, where the time makes no difference;
+   - beside a recorded round whose pairing it could have changed (every
+     round of a Swiss stage, every round after the first of a re-seeded
+     bracket) the engine gives no derivation and reports nothing as manual;
+   - a re-seeded bracket reads such a round where the order of the
+     survivors makes no difference to the reading, which is wherever every
+     survivor was still in the bracket when the round was paired (each is
+     in a tie of the round or went on). Where a survivor had withdrawn
+     before the round, what became of it depends on whom it was folded
+     with, and taking either answer can change the size of the next round:
+     the state is refused (`RecordedRoundMismatch`, with the round, the
+     adjusted participants and the withdrawn ones), on every call;
+   - a withdrawal without a round is read from the rounds: the entrant was
+     in the stage for every round that names it. Where both entrants of a
+     tie have withdrawn that way, the one a later recorded round names went
+     on, and where a later round names neither, or both, neither is read as
+     having gone on: they share the tier of the round, and a bracket that
+     ends with such a tie has nobody in its first tier.
+7. **The outcome of a bracket says who went on from its last tie.** The
+   results do not say it where a finalist withdrew: the final then has no
+   complete result, or no round at all. `StageOutcome::getSettledTies()`
+   carries the tie as the engine settled it (`Stage\SettledTie`), and
+   `MatchOutcomeSelector` reads that where an outcome has it and the
+   results where it has not, so a selection of the bracket winner and the
+   table agree.
+8. **`fromHistory()` records through the verbs and checks three rules
    more.** It orders the rounds and the results as the verbs would have
    recorded them and goes through the same private path as `fromArray()`,
    so there is one notion of a state. The three hard rules (round numbers
@@ -103,25 +170,36 @@ state as they are and derives only the round that does not exist yet.
 
 - An upgrade cannot disagree with rounds that exist. What a release changes
   is the next round it pairs.
-- A state does not say when an entrant withdrew or when an adjustment was
-  made. The reading needs neither: results decide a tie where they are
-  complete, and where both entrants of a tie have withdrawn, the one a later
-  recorded round names went on. The derivation shown beside a recorded
-  round does need them and does not have them: it counts every adjustment
-  and treats a withdrawn entrant as present in every round that names it,
-  so a round paired before an adjustment can be reported as manual when it
-  was not. Recording when each was made would remove that, and would add
-  keys to the stored form.
-- The refusal issue #154 describes is gone: an adjustment recorded at any
-  point of a re-seeded bracket leaves every recorded tie as it was. One
-  thing a recorded round of a re-seeded bracket does not hold is still
-  taken from the ranking, and so from every adjustment the state holds
-  today: whom an entrant would have met who had withdrawn before the round
-  was paired, for which the round has no event. An adjustment recorded
-  after such a round can change who is read as having gone out in it, and
-  with that the table and the round paired next. A bracket on a fixed path
-  has its slots from the recorded ties and is not affected. Recording when
-  an adjustment was made would remove this with the wrong manual flag.
+- Issue #154 is closed by its option 2. An adjustment recorded at any
+  point of a re-seeded bracket leaves every recorded round as it was, the
+  ties and what is read from the ranking alike: whom an entrant would have
+  met who had withdrawn before a round was paired, for which the round has
+  no event, is taken from the ranking of the time. A round an engine paired
+  is not reported as manual for what was recorded after it.
+- A state whose adjustments and withdrawals carry their rounds, which is
+  every state built by the verbs and every history that states them, is
+  read exactly. What is read without them is in the decision above, and it
+  is less: no derivation, one refusal, and two things about a withdrawal
+  that the rounds alone do not show (which of two withdrawn entrants of a
+  tie went on, and whether an entrant a round does not name had left
+  before it or had a bye in it that the round does not list).
+- **A round supplied without its byes is not refused.** A bye is a fact of
+  a round, and a history is to supply it. An engine can tell that a bye is
+  missing only while the entrant who had it is still in the stage (it is in
+  the round's slots, in no tie and not listed), and such an entrant is read
+  as having gone on anyway, so that refusal would catch nothing that is
+  misread. The case that is misread is the other one: the entrant has
+  withdrawn since, and a round that does not list it looks the same as a
+  round it had left before. Nothing in the round tells the two apart; the
+  round of the withdrawal does, and with it the round is read correctly
+  whether its byes are listed or not. So the fix is the withdrawal's round,
+  and the limit of a history without it is stated with the others.
+- `MatchOutcomeSelector::select()` no longer raises the deprecation of
+  `tie_winner` for the outcome of an engine: it reads the tie as settled,
+  and the engine raised the notice when it built the outcome.
+- `withAdjustment()` returns a state whose adjustment is another object
+  than the one given when that one stated no round, and a stored state
+  with adjustments or live withdrawals is two keys longer.
 - A bracket's recorded round is no longer offered again by
   `pairNextRound()`: a round that is recorded with none of its results is
   an unfinished round like any other. Read it from the state.
@@ -130,12 +208,15 @@ state as they are and derives only the round that does not exist yet.
   another tie of that round) is still read by nothing.
 - A round with no tie left to play, because of withdrawals, takes no round
   number unless it is recorded. Whether a recorded round is such a round is
-  told by whom it names: it is that round when it names both entrants of one
-  of the ties the bracket has there, as the tie itself or, in a round drawn
-  by hand, each against somebody else. The round after it cannot name both,
-  because one of the two had withdrawn before it was paired. A round drawn
-  by hand that names at most one entrant of every such tie is read as the
-  round after it, which pairs the same entrants.
+  told by the withdrawals' rounds: it is that round when one of its ties
+  could be played when it was paired. Where a withdrawal has no round, it
+  is told by whom the recorded round names: it is that round when it names
+  both entrants of one of the ties the bracket has there, as the tie itself
+  or, in a round drawn by hand, each against somebody else. The round after
+  it cannot name both, because one of the two had withdrawn before it was
+  paired. A round drawn by hand that names at most one entrant of every
+  such tie is then read as the round after it, which pairs the same
+  entrants.
 - Everyone a state has seen and no longer lists as active is read as
   withdrawn, also a participant whose place the state does not know (a state
   stored before the entrant list was kept): such a participant is never

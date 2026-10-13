@@ -862,6 +862,18 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["1 not played, 0 awaited\nAda v Bo\n"],
             [],
         ],
+        'the selector gives the finalist who stayed when the other withdrew before the final was paired' => [
+            'docs/USAGE.md',
+            '$finalistLeft = StageState::fromHistory(',
+            ["Ada\nBo\nAda\nsemifinal\n"],
+            ["\nfinal\n"],
+        ],
+        'the verbs record after which round an adjustment and a withdrawal happened, and rows that say it give the same state' => [
+            'docs/USAGE.md',
+            '$live = StageState::start([$ada, $bo, $cy, $di])',
+            ["di after round 0\nbo after round 1\nCy after round 1\nbool(true)\n"],
+            ['bool(false)'],
+        ],
     ]);
 
     it('prints one match per department in each of the two team-building rounds', function () use ($extracted, $autoload): void {

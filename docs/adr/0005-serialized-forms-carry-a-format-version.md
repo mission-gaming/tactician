@@ -46,11 +46,18 @@ an array put together by hand from separately serialized parts loads.
 the optional keys 0.3.0 added before the key existed (`strategy_seed` in
 round-robin options, `seed` in Swiss options, `ties`, `comparison` and
 `decisions` in a rank range selector, `third_place` in elimination options,
-`award` and `decider` in a result, `adjustments` and `entrants` in a stage
-state, `paired_on_incomplete_results` in a round pairing and `bye` in a
+`award` and `decider` in a result, `adjustments`, `entrants` and
+`withdrawals` in a stage state, `after_round` in an adjustment,
+`paired_on_incomplete_results` in a round pairing and `bye` in a
 win-draw-loss ranking). Each of those may be left out and is then read
 as 0.2.x behaved, so an array without the version key is read as version 1,
 under the rules of version 1, and data stored by 0.2.x keeps loading.
+Two of them say when something happened, and what leaving them out means
+is stated where it is decided
+([ADR 0007](0007-recorded-rounds-are-read-not-derived.md), "A state says
+when"): an adjustment without `after_round`, and a withdrawn entrant with
+no entry under `withdrawals`, are of unknown time, and are never read as
+made at a time that would suit.
 `tests/Fixtures/stored-by-0.2/` holds every form as the 0.2.x tags wrote it,
 and a test reads it on every run. From 0.3.0 on a key is not added to a
 form without the form taking its next version (see "Changing a form").
