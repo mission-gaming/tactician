@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
@@ -25,13 +26,15 @@ function contributionParticipants(int $count): array
 
 /**
  * @return array<string, LegStrategyInterface>
+ *
+ * @throws InvalidConfigurationException Never: the shuffled strategy is given a seed
  */
 function allLegStrategies(): array
 {
     return [
         'mirrored' => new MirroredLegStrategy(),
         'repeated' => new RepeatedLegStrategy(),
-        'shuffled' => new ShuffledLegStrategy(),
+        'shuffled' => new ShuffledLegStrategy(seed: 1),
     ];
 }
 
@@ -100,7 +103,7 @@ describe('LegStrategy event generation edges', function (): void {
         // Shuffled keeps the original order in leg 1 - randomization only
         // varies later legs
         $pair = [$participants[0], $participants[1]];
-        $shuffled = new ShuffledLegStrategy();
+        $shuffled = new ShuffledLegStrategy(seed: 1);
         expect($shuffled->generateEventForLeg($pair, 1, 1, $context)?->getParticipants())->toBe($pair);
     });
 });

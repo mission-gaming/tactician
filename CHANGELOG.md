@@ -112,6 +112,84 @@ heading **Output change (fix)**.
   usage guide, the architecture document, the roadmap's limitations and the
   role assignment design note.
 
+### Added
+
+- **`ShuffledLegStrategy` takes an integer seed, and
+  `RoundRobinOptions` reads and writes it as plain data.**
+  `new ShuffledLegStrategy(seed: 2026)` draws the roles of the later legs
+  from a `Random\Randomizer` it builds on the `Xoshiro256StarStar` engine
+  from that seed, and starts the draws again whenever `planLegs()` is
+  called, which the scheduler does once at the start of every `schedule()`
+  call. The same participants, options and seed therefore give the same
+  schedule on every call and in every process; the roles are those of a
+  strategy handed `new Randomizer(new Xoshiro256StarStar(2026))` and used
+  once, and the engine is part of the output for a seed. The restart is
+  made in `planLegs()` only, so a class that extends the strategy and
+  overrides that method calls the parent's; a clone of a strategy built
+  from a seed has draws of its own, which start at the seed. The seed is the
+  public property `ShuffledLegStrategy::$seed` (null for a strategy that
+  holds a randomizer). In plain data it is the key `strategy_seed`:
+  `RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'shuffled',
+  'strategy_seed' => 2026])`, and `toArray()` writes it back after
+  `backtracking` for a shuffled strategy built from a seed. The key has
+  that name, and not `seed`, because it seeds the leg strategy only: the
+  order of the participant list is still shuffled by the `Randomizer` given
+  to the scheduler, or not at all.
+
+### Changed
+
+- **Breaking: `ShuffledLegStrategy` is refused without a source of its
+  draws.** `new ShuffledLegStrategy()` used to make an unseeded
+  `Random\Randomizer` for every event, so a schedule with shuffled legs
+  differed from run to run whatever the scheduler was seeded with, and no
+  seed could repeat it. It now throws an `InvalidConfigurationException`
+  (reason `IncompatibleOptions`), as does a strategy given both a
+  randomizer and a seed. Nothing in the library makes an unseeded
+  randomizer any more. The constructor is
+  `__construct(?Randomizer $randomizer = null, ?int $seed = null)`: the
+  second parameter is new, and exactly one of the two must be given. A
+  strategy given a `Randomizer` draws exactly what it drew before, so no
+  schedule that was repeatable changes. Who is affected: code that calls
+  `new ShuffledLegStrategy()` with no argument, and a class that extends
+  the strategy and calls its constructor that way. What to change: pass a
+  seed (`new ShuffledLegStrategy(seed: $seed)`) for a schedule that repeats
+  on every call, or a seeded `Randomizer` as before; for roles that differ
+  from run to run, which is what the old default gave, pass
+  `new ShuffledLegStrategy(new Randomizer())`. Code analysed with checked
+  exceptions sees one more `@throws` on the constructor.
+- **Breaking: `RoundRobinOptions::fromArray()` refuses `'strategy' =>
+  'shuffled'` without a `strategy_seed`, and a `strategy_seed` with any
+  other strategy.** Both throw an `InvalidConfigurationException` with the
+  reason `IncompatibleOptions`; a `strategy_seed` that is neither an
+  integer nor null has the reason `WrongValueType`, and null is read as the
+  key left out. The first used to build the unseeded strategy above.
+  The second is refused, where an unknown key is ignored, because a seed
+  beside a strategy that draws nothing would decide nothing and
+  `toArray()` could not give it back. Who is affected: stored
+  configuration that says `'strategy' => 'shuffled'`. What to change: add
+  `'strategy_seed' => <integer>` to it; any integer will do, and keeping
+  it is what makes the schedule repeatable. Data for the mirrored and the
+  repeated strategy is read as before.
+- **Breaking: `RoundRobinOptions::toArray()` refuses a shuffled strategy
+  that holds a `Randomizer`**, with the reason `NotSerializable`. It used
+  to write `'strategy' => 'shuffled'` and drop the randomizer, and
+  `fromArray()` rebuilt the options with an unseeded strategy. The state of
+  a randomizer has no plain-data form. Who is affected: code that
+  serializes options built with `new ShuffledLegStrategy($randomizer)`.
+  What to change: build the strategy from a seed when the options are to be
+  stored. For a strategy built from a seed the array has one more key,
+  `strategy_seed`; for the two other strategies it is unchanged.
+
+### Fixed
+
+- **A schedule with shuffled legs can be repeated from its configuration.**
+  `RoundRobinOptions::fromArray(['strategy' => 'shuffled'])` could not seed
+  the strategy it built, so a scheduler with a seeded `Randomizer` gave a
+  different schedule on every run (#52). The seed above closes that: the
+  property tests now hold every leg strategy, at one to three legs and
+  every field size from 2 to 16, to the same schedule on every run from the
+  same plain data, with and without a seeded scheduler.
+
 ## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public

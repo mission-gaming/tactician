@@ -564,6 +564,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00\nPT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00\n"],
             [],
         ],
+        'shuffled legs from plain data repeat the schedule of their seed on every call' => [
+            'docs/USAGE.md',
+            '$shuffledOptions = RoundRobinOptions::fromArray(',
+            ["bool(true)\nbool(true)\n"],
+            ['bool(false)'],
+        ],
         'a seed repeats on a new scheduler and not on the second call of one' => [
             'docs/USAGE.md',
             '$seeded = fn (): RoundRobinScheduler',
@@ -595,6 +601,11 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$options->toArray();',
             "assert(\$options->toArray() === ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]);",
+        ],
+        'shuffled options round trip with their seed' => [
+            'docs/USAGE.md',
+            '$shuffledOptions->toArray();',
+            "assert(\$shuffledOptions->toArray() === ['legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false, 'strategy_seed' => 2026]);",
         ],
         'role balance of the two role assignments' => [
             'docs/USAGE.md',

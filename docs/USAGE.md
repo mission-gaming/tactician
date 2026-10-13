@@ -499,10 +499,10 @@ $repeatedSchedule = $scheduler->schedule(
 );
 
 // The same pairings in every leg, with the roles of each pairing drawn
-// at random in the legs after the first
+// at random in the legs after the first. The seed names the draw
 $shuffledSchedule = $scheduler->schedule(
     $participants,
-    new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy())
+    new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 2026))
 );
 ```
 
@@ -515,6 +515,15 @@ an odd number ends as a single leg does. (Up to 0.2.x every leg after the
 first was reversed, which split a pair 1:2 over three legs and 1:3 over
 four.)
 
+The shuffled strategy is the one that draws, so it is given what it draws
+from: an integer seed, as above, or a `Random\Randomizer`
+(`new ShuffledLegStrategy($randomizer)`). It is refused without either
+(`InvalidConfigurationException`, reason `IncompatibleOptions`), and with
+both. With a seed, the roles are the same on every call and in every
+process, whatever was scheduled before. With a randomizer, the strategy
+continues that randomizer's sequence on every call
+([Deterministic Randomization](#deterministic-randomization)).
+
 Options are plain-data constructible for config-driven platforms, with the
 stable strategy identifiers `mirrored`, `repeated`, and `shuffled` (and
 `round_parity` and `balanced` for the [role assignment](#role-assignment)):
@@ -523,6 +532,23 @@ stable strategy identifiers `mirrored`, `repeated`, and `shuffled` (and
 $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'mirrored']);
 $options->toArray(); // ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]
 ```
+
+In plain data the shuffled strategy comes with its seed, under the key
+`strategy_seed`. The key is required with `shuffled` and refused with the
+two strategies that draw nothing (reason `IncompatibleOptions` both ways),
+so stored options never name a seed that decides nothing:
+
+```php
+$shuffledOptions = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'shuffled', 'strategy_seed' => 2026]);
+$shuffledOptions->toArray(); // ['legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false, 'strategy_seed' => 2026]
+
+// The same data gives the schedule of the same seed, on every call
+var_dump($scheduler->schedule($participants, $shuffledOptions)->toJson() === $shuffledSchedule->toJson()); // bool(true)
+var_dump($scheduler->schedule($participants, $shuffledOptions)->toJson() === $shuffledSchedule->toJson()); // bool(true)
+```
+
+Options whose shuffled strategy holds a `Randomizer` have no plain-data
+form, and `toArray()` refuses them (reason `NotSerializable`).
 
 ### Backtracking Generation
 
@@ -3635,8 +3661,7 @@ unchanged, because the library does not raise them:
   `jsonSerialize()` method of an object placed in metadata.
 - **A failure of the random source**: `Random\RandomException` or
   `Random\BrokenRandomEngineError` from the `Random\Randomizer` passed to a
-  scheduler, engine or optimizer (or from the unseeded one
-  `ShuffledLegStrategy` creates when it is given none).
+  scheduler, engine, optimizer or leg strategy.
 - **PHP's `\Error` family**: a `\TypeError` for an argument of the wrong
   type, for example.
 
@@ -3792,12 +3817,20 @@ Three things to know beside that:
 
 - A scheduler without a `Randomizer` is deterministic and keeps no such
   state: every call returns the same schedule for the same input.
-- `ShuffledLegStrategy` has a randomizer of its own. Given none, it creates
-  an unseeded one for every event, and the schedule differs from run to
-  run even when the scheduler is seeded. `RoundRobinOptions::fromArray()`
-  with `'strategy' => 'shuffled'` builds the strategy that way, because a
-  randomizer has no plain-data form: for a repeatable shuffled schedule,
-  construct `new ShuffledLegStrategy($randomizer)` in code.
+- `ShuffledLegStrategy` does not draw from the scheduler's randomizer. It
+  has a source of its own, and is refused without one: nothing in the
+  library draws from an unseeded randomizer that the caller did not pass
+  in. Given an integer seed (`new ShuffledLegStrategy(seed: 2026)`, or
+  `'strategy' => 'shuffled', 'strategy_seed' => 2026` in the plain data of
+  `RoundRobinOptions::fromArray()`), it starts its draws again from that
+  seed at the start of every `schedule()` call, on a `Random\Randomizer`
+  it builds on the `Xoshiro256StarStar` engine, so the same seed gives the
+  same roles on every call. The seed is the strategy's alone: it does not
+  shuffle the participant list, which is the scheduler's randomizer's to
+  do. Given a `Randomizer`, the strategy holds it and the paragraph above
+  applies. For roles that differ from run to run, pass
+  `new ShuffledLegStrategy(new Randomizer())`, which says so in your own
+  code.
 - A pot draw takes its seed as an option and keeps no state between calls
   (see [The seed and determinism](#the-seed-and-determinism)).
 

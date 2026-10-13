@@ -66,6 +66,7 @@ function roleField(int $count): array
 
 /**
  * @throws UnexpectedValueException When the name is not one of the three built-in strategies
+ * @throws InvalidConfigurationException Never: the shuffled strategy is given a randomizer
  */
 function roleLegStrategy(string $name): LegStrategyInterface
 {

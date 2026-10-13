@@ -5,6 +5,7 @@ declare(strict_types=1);
 use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
+use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -28,6 +29,7 @@ use MissionGaming\Tactician\Tests\Support\AwkwardIds;
 use MissionGaming\Tactician\Tests\Support\RoleCounts;
 use MissionGaming\Tactician\Tests\Support\RoundRobinAudit;
 use Random\Engine\Mt19937;
+use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 
 /**
@@ -356,6 +358,241 @@ it('pairs a Swiss stage without a repeat whatever the ids are', function (
 })
     ->with(AwkwardIds::dataset())
     ->with([[4], [5], [6]])
+    ->with([[42], [1337]]);
+
+// The property of issue #52: the same seed and options give the same
+// schedule on every run, for every leg strategy. The options are plain
+// data, which is all a stored configuration has, and every run builds its
+// own from that data; a scheduler that shuffles the field gets a randomizer
+// freshly seeded for the run. A scheduler without one must also repeat
+// itself call by call, on one options object: that is where a strategy
+// which kept the draws of an earlier call would show.
+//
+// One test per variant loops over the field sizes and the seeds.
+it('repeats the schedule of a seed and options on every run, for every field size from 2 to 16', function (
+    string $strategy,
+    int $legs,
+    string $field
+): void {
+    for ($size = 2; $size <= 16; ++$size) {
+        $participants = completenessParticipants($size);
+        $bySeed = [];
+
+        foreach ([1, 2, 3] as $seed) {
+            $data = ['legs' => $legs, 'strategy' => $strategy];
+            if ($strategy === 'shuffled') {
+                $data['strategy_seed'] = $seed;
+            }
+            $label = "{$strategy}, {$legs} leg(s), {$size} participants, {$field}, seed {$seed}";
+            $run = fn(): Schedule => (new RoundRobinScheduler(
+                null,
+                $field === 'shuffled field' ? new Randomizer(new Mt19937(1000 + $seed)) : null
+            ))->schedule($participants, RoundRobinOptions::fromArray($data));
+
+            $first = $run();
+
+            expect(RoundRobinAudit::faults($first, $participants, $legs))->toBe([], $label)
+                ->and($run()->toJson())->toBe($first->toJson(), "{$label}: a second run")
+                ->and($run()->toJson())->toBe($first->toJson(), "{$label}: a third run");
+
+            if ($field === 'field as given') {
+                $scheduler = new RoundRobinScheduler();
+                $options = RoundRobinOptions::fromArray($data);
+
+                expect($scheduler->schedule($participants, $options)->toJson())->toBe($first->toJson(), "{$label}: a first call")
+                    ->and($scheduler->schedule($participants, $options)->toJson())->toBe($first->toJson(), "{$label}: a second call");
+            }
+
+            $bySeed[$seed] = $first->toJson();
+        }
+
+        // A seed that decided nothing would pass everything above. From six
+        // participants a later leg has 15 roles or more to draw, and three
+        // seeds that drew the same ones would be a seed that is not read.
+        if ($strategy === 'shuffled' && $legs > 1 && $size >= 6) {
+            expect(array_unique($bySeed))->toHaveCount(3, "{$strategy}, {$legs} leg(s), {$size} participants, {$field}");
+        }
+    }
+})
+    ->with([['mirrored'], ['repeated'], ['shuffled']])
+    ->with([[1], [2], [3]])
+    ->with([['field as given'], ['shuffled field']]);
+
+// A constraint that rejects the first layout sends the scheduler through
+// its rotations, and each rotation asks the strategy for the later legs
+// again. The draws of the layouts that failed are part of the sequence, so
+// the schedule must still be the one the seed names, on every run.
+it('repeats the schedule of a seeded shuffled strategy when the first layouts are rejected', function (int $seed): void {
+    $participants = [];
+    for ($i = 1; $i <= 6; ++$i) {
+        $participants[] = new Participant("p{$i}", "Player {$i}", $i);
+    }
+    $data = ['legs' => 2, 'strategy' => 'shuffled', 'strategy_seed' => $seed];
+    $constraints = fn(): ConstraintSet => ConstraintSet::create()->add(new SeedProtectionConstraint(2, 0.25))->build();
+
+    // The premise: the layout of the list as given is one the constraint rejects
+    $meetingOfTheTopTwo = null;
+    foreach ((new RoundRobinScheduler())->schedule($participants, RoundRobinOptions::fromArray($data)) as $event) {
+        $ids = array_map(fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+        sort($ids);
+        $meetingOfTheTopTwo ??= $ids === ['p1', 'p2'] ? $event->getRound()?->getNumber() : null;
+    }
+    expect($meetingOfTheTopTwo)->toBeLessThanOrEqual(2);
+
+    $scheduler = new RoundRobinScheduler($constraints());
+    $first = $scheduler->schedule($participants, RoundRobinOptions::fromArray($data));
+
+    expect(RoundRobinAudit::faults($first, $participants, 2))->toBe([])
+        ->and($scheduler->schedule($participants, RoundRobinOptions::fromArray($data))->toJson())->toBe($first->toJson())
+        ->and((new RoundRobinScheduler($constraints()))->schedule($participants, RoundRobinOptions::fromArray($data))->toJson())
+        ->toBe($first->toJson());
+})->with([[1], [2], [3], [2026]]);
+
+// One strategy object is what a caller who builds the options once has: it
+// serves every call, of every scheduler the options are handed to. The
+// draws of one call must leave nothing behind for the next, whether that
+// call went through rejected layouts, or failed after it had drawn.
+it('repeats the schedule of one seeded shuffled strategy object across calls, schedulers and a failed call', function (
+    int $legs,
+    int $seed
+): void {
+    $participants = [];
+    for ($i = 1; $i <= 6; ++$i) {
+        $participants[] = new Participant("p{$i}", "Player {$i}", $i);
+    }
+    $constraints = fn(): ConstraintSet => ConstraintSet::create()->add(new SeedProtectionConstraint(2, 0.25))->build();
+    $fresh = fn(): RoundRobinOptions => new RoundRobinOptions(legs: $legs, strategy: new ShuffledLegStrategy(seed: $seed));
+
+    $plain = (new RoundRobinScheduler())->schedule($participants, $fresh())->toJson();
+    $constrained = (new RoundRobinScheduler($constraints()))->schedule($participants, $fresh())->toJson();
+
+    // The premise: the constraint sends the scheduler past the first layout
+    expect($constrained)->not->toBe($plain);
+
+    $shared = $fresh();
+    $one = new RoundRobinScheduler($constraints());
+    $other = new RoundRobinScheduler();
+
+    expect($one->schedule($participants, $shared)->toJson())->toBe($constrained)
+        ->and($one->schedule($participants, $shared)->toJson())->toBe($constrained)
+        ->and($other->schedule($participants, $shared)->toJson())->toBe($plain)
+        ->and($one->schedule($participants, $shared)->toJson())->toBe($constrained)
+        ->and($other->schedule($participants, $shared)->toJson())->toBe($plain);
+
+    // A call that fails in the last round has drawn the roles of every
+    // later leg before it fails, in every layout it tried
+    $lastRound = 5 * $legs;
+    $failing = new RoundRobinScheduler(
+        ConstraintSet::create()
+            ->custom(static fn(Event $event): bool => $event->getRound()?->getNumber() !== $lastRound, 'No last round')
+            ->build()
+    );
+
+    expect(fn(): Schedule => $failing->schedule($participants, $shared))->toThrow(IncompleteScheduleException::class)
+        ->and($other->schedule($participants, $shared)->toJson())->toBe($plain)
+        ->and($one->schedule($participants, $shared)->toJson())->toBe($constrained);
+})
+    ->with([[2], [3]])
+    ->with([[1], [2026]]);
+
+// The backtracking search lays out the first leg when no rotation can, and
+// the strategy is then asked for the later legs after every rotation has
+// asked and failed. The schedule is still the one the seed names.
+it('repeats the schedule of a seeded shuffled strategy that the backtracking search completes', function (
+    int $participantCount,
+    int $legs,
+    int $seed
+): void {
+    $participants = completenessParticipants($participantCount);
+    $ids = array_map(fn(Participant $participant): string => $participant->getId(), $participants);
+    $roundsPerLeg = $participantCount % 2 === 0 ? $participantCount - 1 : $participantCount;
+
+    // The first participant meets the others in list order, one per round
+    // of each leg: satisfiable, and out of reach of every rotation
+    $constraints = fn(): ConstraintSet => ConstraintSet::create()->custom(
+        static function (Event $event) use ($ids, $roundsPerLeg): bool {
+            $seats = array_map(
+                fn(Participant $participant) => array_search($participant->getId(), $ids, true),
+                $event->getParticipants()
+            );
+            $round = $event->getRound()?->getNumber();
+            if ($round === null || !in_array(0, $seats, true)) {
+                return true;
+            }
+
+            return max($seats) === (($round - 1) % $roundsPerLeg) + 1;
+        },
+        'Fixture Placement'
+    )->build();
+    $data = ['legs' => $legs, 'strategy' => 'shuffled', 'strategy_seed' => $seed];
+
+    // The premise: without the search there is no schedule
+    expect(fn(): Schedule => (new RoundRobinScheduler($constraints()))->schedule($participants, RoundRobinOptions::fromArray($data)))
+        ->toThrow(IncompleteScheduleException::class);
+
+    $data['backtracking'] = true;
+    $run = fn(): Schedule => (new RoundRobinScheduler($constraints()))->schedule($participants, RoundRobinOptions::fromArray($data));
+    $first = $run();
+
+    $scheduler = new RoundRobinScheduler($constraints());
+    $options = RoundRobinOptions::fromArray($data);
+
+    expect(RoundRobinAudit::faults($first, $participants, $legs))->toBe([])
+        ->and($run()->toJson())->toBe($first->toJson())
+        ->and($scheduler->schedule($participants, $options)->toJson())->toBe($first->toJson())
+        ->and($scheduler->schedule($participants, $options)->toJson())->toBe($first->toJson());
+
+    // A seed that the searched schedule did not read would pass the above
+    $otherSeed = (new RoundRobinScheduler($constraints()))->schedule(
+        $participants,
+        RoundRobinOptions::fromArray(['strategy_seed' => $seed + 1] + $data)
+    );
+    expect($otherSeed->toJson())->not->toBe($first->toJson());
+})
+    ->with([[5], [6]])
+    ->with([[2], [3]])
+    ->with([[7], [2026]]);
+
+// A seed is not a randomizer the caller built from it by another name only:
+// the two must draw the same roles, so that moving from one to the other
+// changes nothing.
+it('gives from a seed the schedule of a new Xoshiro256StarStar randomizer of that seed', function (int $size, int $legs, int $seed): void {
+    $participants = completenessParticipants($size);
+
+    $fromSeed = (new RoundRobinScheduler())->schedule(
+        $participants,
+        new RoundRobinOptions(legs: $legs, strategy: new ShuffledLegStrategy(seed: $seed))
+    );
+    $fromRandomizer = (new RoundRobinScheduler())->schedule(
+        $participants,
+        new RoundRobinOptions(legs: $legs, strategy: new ShuffledLegStrategy(new Randomizer(new Xoshiro256StarStar($seed))))
+    );
+
+    expect($fromSeed->toJson())->toBe($fromRandomizer->toJson());
+})
+    ->with([[4], [7], [12]])
+    ->with([[2], [3]])
+    ->with([[0], [42]]);
+
+// The draws of a seed read nothing of the participants, so an id stays a
+// name under a seeded shuffled strategy too.
+it('generates the same seeded shuffled round robin whatever the ids are', function (
+    array $ids,
+    int $participantCount,
+    int $seed
+): void {
+    $participants = AwkwardIds::participants($ids, $participantCount);
+    $plain = completenessParticipants($participantCount);
+    $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'shuffled', 'strategy_seed' => $seed]);
+
+    $schedule = (new RoundRobinScheduler())->schedule($participants, $options);
+
+    assertCompleteRoundRobinOverIds($schedule, $participants, 2);
+    expect(scheduleAsSeats($schedule, $participants))
+        ->toBe(scheduleAsSeats((new RoundRobinScheduler())->schedule($plain, $options), $plain));
+})
+    ->with(AwkwardIds::dataset())
+    ->with([[5], [6]])
     ->with([[42], [1337]]);
 
 // The wide sweep: every field size from 2 to 30, single and multi-leg, each
