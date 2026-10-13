@@ -185,6 +185,12 @@ heading **Output change (fix)**.
   (reason `InvalidResult`, context `winner` and `participants`). The winner
   is matched by ID, and a winner who is one of the two is returned as
   before, so no bracket the engines resolved changes (#121, item 5).
+- **`MetadataConstraint` casts its validator's answer to bool.** A
+  validator that returned anything but a bool (the 1 of a `preg_match()`,
+  a count, null) raised a raw `TypeError` when the constraint was asked,
+  where `CallableConstraint` casts its predicate's answer. Both now cast:
+  0, null, an empty string and an empty array reject the event. A
+  validator that returns a bool is read as before (#121, item 7).
 
 ## [0.2.3] - 2026-10-13
 
