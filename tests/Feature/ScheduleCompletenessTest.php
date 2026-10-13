@@ -1185,7 +1185,7 @@ it('satisfies over any number of mirrored legs the role limits that two mirrored
                 ->and(RoleCounts::worstRunningImbalance($unconstrained))
                 ->toBe(RoleCounts::worstRunningImbalance($twoLegs), $label);
 
-            // The limit the usage guide gives for the default roles
+            // The limit the usage guide gives for the round-parity roles
             // ("Role-Based Constraints") is therefore enough for any number
             if ($roleAssignmentName === 'round_parity') {
                 expect(RoleCounts::worstRunningImbalance($unconstrained))

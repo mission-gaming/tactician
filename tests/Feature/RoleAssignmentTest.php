@@ -307,7 +307,10 @@ describe('the balanced role assignment', function (): void {
         for ($size = 2; $size <= 30; ++$size) {
             $randomizer = static fn(): ?Randomizer => $seed === null ? null : new Randomizer(new Mt19937($seed + $size));
 
-            $default = (new RoundRobinScheduler(null, $randomizer()))->schedule(roleField($size));
+            $roundParity = (new RoundRobinScheduler(null, $randomizer()))->schedule(
+                roleField($size),
+                new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())
+            );
             $balanced = (new RoundRobinScheduler(null, $randomizer()))->schedule(
                 roleField($size),
                 new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())
@@ -315,34 +318,38 @@ describe('the balanced role assignment', function (): void {
 
             // The same pairings in the same rounds in the same order, the
             // same byes: only who is first-named differs
-            Assert::assertSame(RoleCounts::structure($default), RoleCounts::structure($balanced), "n={$size}");
-            Assert::assertSame($default->getMetadata(), $balanced->getMetadata(), "n={$size}");
+            Assert::assertSame(RoleCounts::structure($roundParity), RoleCounts::structure($balanced), "n={$size}");
+            Assert::assertSame($roundParity->getMetadata(), $balanced->getMetadata(), "n={$size}");
+            if ($size >= 3) {
+                // The comparison is between two role assignments, not of a schedule with itself
+                Assert::assertNotEquals($roundParity->toArray(), $balanced->toArray(), "n={$size}: the two schedules compared are one");
+            }
 
             // While the leg is played no participant is further apart than
             // 1 (even field) or 2 (odd field, where the bye shifts a parity)
             Assert::assertLessThanOrEqual($size % 2 === 0 ? 1 : 2, RoleCounts::worstRunningImbalance($balanced), "n={$size}");
 
-            // No role three times in a row, and never a longer run than the default
+            // No role three times in a row, and never a longer run than round parity
             Assert::assertLessThanOrEqual(2, RoleCounts::worstStreak($balanced), "n={$size}");
-            Assert::assertLessThanOrEqual(RoleCounts::worstStreak($default), RoleCounts::worstStreak($balanced), "n={$size}");
+            Assert::assertLessThanOrEqual(RoleCounts::worstStreak($roundParity), RoleCounts::worstStreak($balanced), "n={$size}");
 
             // The quality metrics, which are lower-is-better, agree
-            Assert::assertLessThanOrEqual($roleBalance->measure($default), $roleBalance->measure($balanced), "n={$size}");
-            Assert::assertLessThanOrEqual($roleStreaks->measure($default), $roleStreaks->measure($balanced), "n={$size}");
+            Assert::assertLessThanOrEqual($roleBalance->measure($roundParity), $roleBalance->measure($balanced), "n={$size}");
+            Assert::assertLessThanOrEqual($roleStreaks->measure($roundParity), $roleStreaks->measure($balanced), "n={$size}");
         }
     })->with([[null], [7], [20260]]);
 
     // Stated for RoleBalanceMetric only. RoleStreakMetric is not included:
     // two mirrored legs repeat a role across the leg boundary, and there the
-    // balanced assignment scores up to 0.4 worse than the default.
-    it('scores at least as well as the default on role balance over several legs', function (string $strategyName): void {
+    // balanced assignment scores up to 0.4 worse than round parity.
+    it('scores at least as well as round parity on role balance over several legs', function (string $strategyName): void {
         $roleBalance = new RoleBalanceMetric();
 
         for ($size = 2; $size <= 30; ++$size) {
             for ($legs = 1; $legs <= 6; ++$legs) {
-                $default = (new RoundRobinScheduler())->schedule(
+                $roundParity = (new RoundRobinScheduler())->schedule(
                     roleField($size),
-                    new RoundRobinOptions($legs, roleLegStrategy($strategyName))
+                    new RoundRobinOptions($legs, roleLegStrategy($strategyName), false, new RoundParityRoleAssignment())
                 );
                 $balanced = (new RoundRobinScheduler())->schedule(
                     roleField($size),
@@ -350,7 +357,7 @@ describe('the balanced role assignment', function (): void {
                 );
 
                 Assert::assertLessThanOrEqual(
-                    $roleBalance->measure($default),
+                    $roleBalance->measure($roundParity),
                     $roleBalance->measure($balanced),
                     "{$strategyName} n={$size} legs={$legs}"
                 );
