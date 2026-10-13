@@ -372,9 +372,20 @@ describe('LeftoverRecolourer', function (): void {
             ->and($positions)->toBe([0 => [0, 0], 1 => [1, 0]]);
     });
 
-    it('gives the repacker a work limit of 500,000 position checks', function (): void {
-        // The figure the design note and the changelog state and measured
-        expect(LeftoverRecolourer::WORK_LIMIT)->toBe(500_000);
+    it('gives the repacker a work limit of 500,000 position checks, and more on a large request', function (): void {
+        // The figures the design note and the changelog state and measured:
+        // a hundred checks for every event and position, never fewer than
+        // half a million and never more than three million
+        expect(LeftoverRecolourer::WORK_LIMIT)->toBe(500_000)
+            ->and(LeftoverRecolourer::WORK_PER_EVENT_AND_POSITION)->toBe(100)
+            ->and(LeftoverRecolourer::WORK_LIMIT_AT_MOST)->toBe(3_000_000)
+            ->and(LeftoverRecolourer::workLimitFor(200, 20))->toBe(500_000)
+            ->and(LeftoverRecolourer::workLimitFor(50, 100))->toBe(500_000)
+            ->and(LeftoverRecolourer::workLimitFor(50, 101))->toBe(505_000)
+            ->and(LeftoverRecolourer::workLimitFor(600, 30))->toBe(1_800_000)
+            ->and(LeftoverRecolourer::workLimitFor(600, 50))->toBe(3_000_000)
+            ->and(LeftoverRecolourer::workLimitFor(1_460, 75))->toBe(3_000_000)
+            ->and(LeftoverRecolourer::workLimitFor(0, 0))->toBe(500_000);
     });
 
     it('never moves a pinned participant onto its pinned position', function (): void {

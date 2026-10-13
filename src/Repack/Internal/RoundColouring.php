@@ -41,8 +41,8 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * an event it cannot place either comes after every round.
  *
  * The search is given no step budget. Its own limit on position checks
- * (LeftoverRecolourer::WORK_LIMIT) bounds it instead, so the rounds, and
- * with them the order of the events, never depend on the caller's
+ * (LeftoverRecolourer::workLimitFor()) bounds it instead, so the rounds,
+ * and with them the order of the events, never depend on the caller's
  * budget.
  *
  * @internal

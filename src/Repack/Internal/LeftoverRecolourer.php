@@ -69,19 +69,20 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * limit is a limit of the search's own, like the depth, and does not
  * depend on the budget.
  *
- * The whole step also stops searching after WORK_LIMIT position checks
+ * The whole step also stops searching after a number of position checks
  * (a check is one look at whether an event fits a position; each costs
- * well under a microsecond). The ceiling cannot prove of every request
+ * well under a microsecond): WORK_LIMIT, or WORK_PER_EVENT_AND_POSITION
+ * for every event and position of the request where that is more, up to
+ * WORK_LIMIT_AT_MOST (workLimitFor()). The ceiling cannot prove of every request
  * that nothing more fits, and where it cannot, the exchange search
  * would otherwise run to its limits on every round: seconds on requests
  * of a few hundred events that 0.2.2 repacked in milliseconds. The
- * limit is fixed, like the others, so a larger budget gives the same
- * outcome and the budget flag is not set when it is reached. Direct
- * moves go on after it, so an event left unplaced as NoSlotAvailable
- * still has no position with room and both participants free. It is
- * about 25 times what the largest complete round robin of the tests (40
- * participants) and the small corpus need, and on some requests it
- * leaves an event unplaced that a longer search would have placed.
+ * limit is fixed for a request, like the others, so a larger budget
+ * gives the same outcome and the budget flag is not set when it is
+ * reached. Direct moves go on after it, so an event left unplaced as
+ * NoSlotAvailable still has no position with room and both participants
+ * free. On some requests it leaves an event unplaced that a longer
+ * search would have placed.
  * A lifted event
  * tries the positions of its own session first, in slot order, and then
  * the rest of the grid in grid order, so the session loads the planner
@@ -117,10 +118,36 @@ final class LeftoverRecolourer
      */
     public const int WORK_LIMIT = 500_000;
 
+    /**
+     * How many position checks the step may make for every event and
+     * position of the request, where that comes to more than WORK_LIMIT.
+     * An alternating path lifts each placed event once at most and looks
+     * at each position for it a few times, so the events times the
+     * positions is about what one search that fails costs, and the fixed
+     * limit alone was the work of some five of them on 770 events and 39
+     * positions: the step stopped there with events it was still
+     * placing, and placed fewer than release 0.2.3 on requests of that
+     * size with many pins. A hundred of them is 3 million checks on such
+     * a request, about a second; a request of 200 events on 20 positions
+     * stays at WORK_LIMIT.
+     */
+    public const int WORK_PER_EVENT_AND_POSITION = 100;
+
+    /**
+     * The most position checks the step makes on any request, however
+     * large: without it a round robin of two legs among 40 participants
+     * (1,460 events on some 75 positions) had four times this to spend
+     * each time the step ran, and took eight seconds.
+     */
+    public const int WORK_LIMIT_AT_MOST = 3_000_000;
+
     private int $exchangeNodes = 0;
 
     /** Position checks made so far, against the work limit */
     private int $work = 0;
+
+    /** The work limit of the call of place() in progress */
+    private int $limit = self::WORK_LIMIT;
 
     /** The ceiling of the last call of place() (see ceiling()) */
     private int $placedCeiling = 0;
@@ -162,15 +189,31 @@ final class LeftoverRecolourer
     private array $journal = [];
 
     /**
-     * @param int $workLimit Position checks after which no further search
-     *                       starts; the repacker always passes WORK_LIMIT, and
-     *                       the unit tests pass a smaller one to see the step
-     *                       stop at it
+     * @param int|null $workLimit Position checks after which no further search
+     *                            starts. The repacker passes none, and the limit
+     *                            is then worked out from the request it is given
+     *                            (workLimitFor()); the unit tests pass a small one
+     *                            to see the step stop at it
      */
     public function __construct(
         private readonly StepBudget $budget,
-        private readonly int $workLimit = self::WORK_LIMIT
+        private readonly ?int $workLimit = null
     ) {}
+
+    /**
+     * The position checks the step may make on a request of so many
+     * events and positions: WORK_LIMIT, or WORK_PER_EVENT_AND_POSITION
+     * for every event and position where that is more, and never more
+     * than WORK_LIMIT_AT_MOST. Fixed for a request, whatever the step
+     * budget.
+     */
+    public static function workLimitFor(int $events, int $positions): int
+    {
+        return min(
+            self::WORK_LIMIT_AT_MOST,
+            max(self::WORK_LIMIT, self::WORK_PER_EVENT_AND_POSITION * $events * $positions)
+        );
+    }
 
     /**
      * @param array<int, array{int, int}> $edges Event index => participant index pair
@@ -202,6 +245,7 @@ final class LeftoverRecolourer
         $this->pinned = [];
         $this->positionOf = [];
         $this->work = 0;
+        $this->limit = $this->workLimit ?? self::workLimitFor(count($edges), (int) array_sum($slotCounts));
 
         /** @var array<int, array<int, int>> $indexOf */
         $indexOf = [];
@@ -468,7 +512,7 @@ final class LeftoverRecolourer
                     }
                     if (
                         ++$this->exchangeNodes > self::EXCHANGE_NODE_LIMIT
-                        || $this->work > $this->workLimit
+                        || $this->work > $this->limit
                         || !$this->budget->consume()
                     ) {
                         return null;
@@ -541,7 +585,7 @@ final class LeftoverRecolourer
                 }
                 if (
                     ++$this->exchangeNodes > self::EXCHANGE_NODE_LIMIT
-                    || $this->work > $this->workLimit
+                    || $this->work > $this->limit
                     || !$this->budget->consume()
                 ) {
                     return null;
@@ -621,7 +665,7 @@ final class LeftoverRecolourer
                 if (isset($this->occupant[$index][$start])) {
                     continue;
                 }
-                if ($this->work > $this->workLimit || !$this->budget->consume()) {
+                if ($this->work > $this->limit || !$this->budget->consume()) {
                     return $remaining;
                 }
 
@@ -745,7 +789,7 @@ final class LeftoverRecolourer
      */
     private function insert(int $eventIndex, ?int $fromSession): bool
     {
-        if ($this->work > $this->workLimit) {
+        if ($this->work > $this->limit) {
             return false;
         }
         if ($this->hasSaturatedParticipant($eventIndex)) {

@@ -1322,12 +1322,16 @@ function hubRepackInstance(int $seed): array
  * The requests of tests/Fixtures/repack/placed-by-0.2.3.json, each with
  * the number of events release 0.2.3 placed on it.
  *
- * They were found by repacking some 11,860 generated requests with 0.2.3
- * and with the change that made a repack independent of its ids (issue
- * #49): on these that change, as it first stood or without one of the
- * moves it then gained, placed fewer events than 0.2.3 had. The counts
- * were measured with a copy of that release's source, so that this test
- * needs no code of it. A request is plain data there: the participant
+ * They were found by repacking some 11,860 generated requests, and 151
+ * large ones with many pins, with 0.2.3 and with the change that made a
+ * repack independent of its ids (issue #49): on these that change, as it
+ * first stood or without one of the things it then gained, placed fewer
+ * events than 0.2.3 had. The last three are round robins of 40 with 60,
+ * 200 and 400 events pinned, which came out short for as long as the
+ * last placement step had the same limit on its work for every size of
+ * request. The counts were measured with a copy of that release's
+ * source, so that this test needs no code of it. A request is plain
+ * data there: the participant
  * ids, the slots of each session, the capacity of a slot (null for
  * unbounded), the movable events as [id, participant, participant] and
  * the pinned ones as [id, participant, participant, session, slot], a
