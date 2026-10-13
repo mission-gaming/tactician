@@ -306,14 +306,18 @@ There are two ways, and both give the engine the same thing.
     bracket is replayed from the list on every call. Passed only the
     entrants still in it, the engine sees a smaller bracket and offers
     its first round again; passed the same entrants in another order, it
-    looks for results of ties that were never played and reports the
-    round as still in play (`RoundPartiallyResolved`).
-  - **Their seeds and labels as they were.** Wherever a table leaves
-    entrants level, seed and label order them, so a club renamed in
-    mid-stage can change the next Swiss round of a rebuilt state. The
-    stored JSON does not have that problem, and for the same reason it
-    does not show the new name: it keeps each participant as it was
-    when the stage opened.
+    looks for ties that were never played. The single-elimination engine
+    then refuses the state (`RecordedRoundMismatch`); the
+    double-elimination engine reports the round as still in play
+    (`RoundPartiallyResolved`). A Swiss stage reads the same order
+    wherever its table leaves participants level.
+  - **Their IDs, and nothing else about them, for the pairing order.**
+    No stage reads a label or a seed attribute to order entrants, so a
+    club renamed in mid-stage changes no pairing of a rebuilt state.
+    (A constraint the engine was given reads what it reads: seed
+    protection the seed attribute, a metadata constraint its key.) The
+    stored JSON keeps each participant as it was when the stage opened,
+    so it does not show the new name.
   - **For every round**, its number and label, the two participants of
     every event in their order, the event's metadata (a two-legged tie
     carries its leg number there as `tie_leg`, and the engine reads it)

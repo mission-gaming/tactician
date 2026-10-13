@@ -1223,6 +1223,76 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
+        // "the places are 1, 2, 3, 4, then two, two, four, four" (sixteen entrants in double
+        // elimination), and what a rank selection over the table of a bracket takes and refuses
+        'the tiers of a bracket, and a rank selection over them' => [
+            'docs/USAGE.md',
+            '$titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];',
+            <<<'PHP'
+                $firstNamedWins = static function ($bracket, array $field) {
+                    $bracketState = StageState::start($field);
+                    while (!$bracket->isComplete($bracketState)) {
+                        $round = $bracket->pairNextRound($bracketState);
+                        $bracketState = $bracketState->withRoundPlayed($round, array_map(
+                            static fn ($event) => new Result($event, $event->getParticipants()[0]),
+                            $round->getEvents()
+                        ));
+                    }
+
+                    return $bracket->getOutcome($bracketState);
+                };
+
+                $sixteen = array_map(static fn (int $number) => new Participant("e{$number}", "Entrant {$number}"), range(1, 16));
+                $double = $firstNamedWins(new \MissionGaming\Tactician\Scheduling\DoubleEliminationEngine(), $sixteen);
+                assert(array_values(array_count_values($double->getStandings()->getTiers())) === [1, 1, 1, 1, 2, 2, 4, 4]);
+
+                // Eight entrants, one leg, no scores: the two who went out in the semifinals are level
+                $single = $firstNamedWins(new SingleEliminationEngine(), array_slice($sixteen, 0, 8));
+                assert($single->getStandings()->getTiers() === [0, 1, 2, 2, 3, 3, 3, 3]);
+                $selector = \MissionGaming\Tactician\Stage\RankRangeSelector::class;
+                assert(count($selector::overall(1, 2)->select($single)) === 2);
+                foreach ([[3, 3, 'tie_across_selection'], [1, 4, 'tie_within_selection']] as [$from, $to, $reason]) {
+                    try {
+                        $selector::overall($from, $to)->select($single);
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\UndecidedSelectionException $refused) {
+                        assert($refused->getReason()->value === $reason);
+                        assert([$refused->getFirstPlace(), $refused->getLastPlace()] === [3, 4]);
+                    }
+                }
+                assert(count($selector::overall(1, 4)->withTiesInsideSelectionAccepted()->select($single)) === 4);
+                PHP,
+        ],
+        // "a participant who had a bye and won twice in three rounds shows two played, two
+        // wins and nine points"
+        'a bye in the table of a Swiss stage' => [
+            'docs/USAGE.md',
+            '$leader = $outcome->getStandings()->getEntries()[0];',
+            <<<'PHP'
+                $five = array_slice($participants, 0, 5);
+                $threeRounds = new SwissPairingEngine(plannedRounds: 3);
+                $fiveState = StageState::start($five);
+                // Erin, in the last position, has the bye of the first round and wins the two events she plays
+                while (!$threeRounds->isComplete($fiveState)) {
+                    $round = $threeRounds->pairNextRound($fiveState);
+                    $fiveState = $fiveState->withRoundPlayed($round, array_map(
+                        static function ($event) {
+                            [$first, $second] = $event->getParticipants();
+
+                            return new Result($event, $second->getId() === 'erin' ? $second : $first);
+                        },
+                        $round->getEvents()
+                    ));
+                }
+                assert(array_values($fiveState->getByeIds())[0] === 'erin');
+
+                $erin = $threeRounds->getOutcome($fiveState)->getStandings()->getEntryFor($five[4]);
+                assert($erin->getByes() === 1);
+                assert($erin->getPlayed() === 2);
+                assert($erin->getWins() === 2);
+                assert($erin->getRankingValue() === 9.0);
+                PHP,
+        ],
         // "a kickoff that falls in the hour the clocks skip ... every later round keeps
         // the moved time". Records a known defect (issue #56: slot times are computed by
         // adding the interval repeatedly)

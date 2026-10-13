@@ -168,10 +168,12 @@ entry on the engine fingerprint.
   from the list: as few pairs of one pool as possible that can meet in the
   first round, then in the second, and so on. For the top two of every
   pool, a pool's winner and runner-up are in opposite halves for any number
-  of pools. Who is affected: per-group selections from three or more pools,
-  and selections of three or more ranks from two. What to check: the order
-  of the selected entrants, and anything that reads it by index. Two pools
-  and two ranks are unchanged (A1, B1, A2, B2). Before and after:
+  of pools. Who is affected: per-group selections of two or more ranks from
+  three or more pools. What to check: the order of the selected entrants,
+  and anything that reads it by index. A selection from one or two pools
+  is unchanged (A1, B1, A2, B2, and so on in pool order for every further
+  rank), and so is a selection of a single rank from any number of pools.
+  Before and after:
 
   ```text
   3 pools  before  A1 B1 C1 A2 B2 C2   round 1: A2 v B2, C1 v C2
@@ -413,10 +415,19 @@ entry on the engine fingerprint.
     new order (list position between level participants, and the table
     order among participants whose points include a bye). Stamp it again
     once that is what you want; to finish a stage exactly as 0.2.x would
-    have paired it, finish it on 0.2.x.
+    have paired it, finish it on 0.2.x. Nothing refuses a Swiss state that
+    was never stamped: it is paired by the new order without a word. A
+    round that 0.2.x paired and you have published, and that is not yet
+    recorded, stands only if you record the pairing you kept
+    (`withRoundPlayed()` with that `RoundPairing`): asked again,
+    `pairNextRound()` can answer with other pairs, and results for the
+    published events are then refused as not part of the round
+    (`EventNotInRound`).
   - *Re-seeded single elimination*: the bracket is replayed from its
     entrant list on every call. Where 0.3.0 pairs a recorded round as
-    0.2.x did, the state resolves as before. Where it does not (a field
+    0.2.x did, the recorded rounds stand, and the next round is paired by
+    the new order, which can be another round than 0.2.x would have made
+    of the same results. Where it does not (a field
     that is not a power of two, or level survivors whose list order is not
     their seed and label order), the engine refuses the state, stamped or
     not, with the new reason `RecordedRoundMismatch`, on `pairNextRound()`,

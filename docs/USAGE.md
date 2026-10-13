@@ -1867,10 +1867,13 @@ Heidi first.
 
 Use `MatchOutcomeSelector` to read who advances from one knockout round,
 which the table of a whole bracket does not say, and the standings for the
-placement of everyone. A rank selection over the table of a bracket
-(`RankRangeSelector::overall(1, 4)`) reads the places the bracket decided
-and refuses a cut through a shared tier, such as rank 3 alone when the two
-who went out in the semifinals are level (see
+placement of everyone. A rank selection over the table of a bracket reads
+the places the bracket decided: `RankRangeSelector::overall(1, 2)` is the
+two finalists. Where entrants of one tier are level (the two who went out
+in the semifinals, when no score separates them), a selection that takes
+one of them (`overall(3, 3)`) is refused, and so is one that takes both
+(`overall(1, 4)`), whose order is undecided, unless the selector is told to
+accept ties inside the selection (see
 [Selections that results do not decide](#selections-that-results-do-not-decide)).
 
 ### Recording a Level Event
