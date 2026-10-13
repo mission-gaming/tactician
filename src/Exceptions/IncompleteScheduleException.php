@@ -137,7 +137,9 @@ class IncompleteScheduleException extends SchedulingException
      * The algorithm, the participant, round, leg and event counts, the
      * recorded rejections grouped by constraint with the participants most
      * affected and every round affected, the blocked pairings and the attribution of the
-     * analysis when there is one, and suggestions.
+     * analysis when there is one, and suggestions. A rejection recorded
+     * without a round (null or 0) is counted for its constraint and its
+     * participants and is in no affected round.
      */
     #[\Override]
     public function getDiagnosticReport(): string
@@ -202,7 +204,8 @@ class IncompleteScheduleException extends SchedulingException
                         $participantCounts[$participantId] = ($participantCounts[$participantId] ?? 0) + 1;
                     }
 
-                    if ($violation->roundNumber !== null) {
+                    // Null and 0 both mean no round (ConstraintViolation)
+                    if ($violation->roundNumber !== null && $violation->roundNumber !== 0) {
                         $roundCounts[$violation->roundNumber] = ($roundCounts[$violation->roundNumber] ?? 0) + 1;
                     }
                 }

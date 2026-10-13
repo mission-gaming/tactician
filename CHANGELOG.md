@@ -254,6 +254,18 @@ heading **Output change (fix)**.
   argument. All three now take the first and the second participant in the
   order the event holds them. An event built from a list is read as before
   (#121, item 12).
+- **An incomplete round robin no longer blames constraints for a leg its
+  strategy left short, and its report no longer lists round 0.** When a
+  leg strategy returned no event for a pairing, the message of the
+  `IncompleteScheduleException` ended "Constraints may be preventing
+  complete schedule generation", also from a scheduler with no constraints
+  at all. It now says how many pairings of the leg the strategy returned no
+  event for, and how many more constraints rejected; under backtracking it
+  names the pairing. A leg that only constraints left short keeps its
+  message. In `getDiagnosticReport()`, a rejection recorded without a round
+  was listed under "Affected rounds" as round 0; it is left out there, as
+  `ConstraintViolationCollector::getAffectedRounds()` leaves it out. The
+  texts are for people and are not a contract (#121, item 14).
 
 ## [0.2.3] - 2026-10-13
 
