@@ -132,7 +132,8 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
 
         $selected = [];
         foreach ($this->groupEventsByTie($finalRound->getEvents()) as $tieEvents) {
-            [$first, $second] = $tieEvents[0]->getParticipants();
+            // An event keeps the keys it was given; the sides are its order
+            [$first, $second] = array_values($tieEvents[0]->getParticipants());
 
             $legResults = [];
             foreach ($tieEvents as $event) {
@@ -194,8 +195,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     {
         $ties = [];
         foreach ($events as $event) {
-            $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
-            $ties[PairKey::of(...$ids)][] = $event;
+            $ties[PairKey::of(...$this->participantIds($event))][] = $event;
         }
 
         return array_values($ties);
@@ -227,14 +227,25 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
             // collide with other rounds
             throw new InvalidConfigurationException(
                 'Match outcome selection requires events with round numbers',
-                ['participants' => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants())],
+                ['participants' => $this->participantIds($event)],
                 reason: InvalidConfigurationReason::EventWithoutRoundNumber
             );
         }
 
-        $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
         $leg = $event->getMetadataValue('tie_leg');
 
-        return $round . ':' . PairKey::of(...$ids) . ':' . (is_int($leg) ? $leg : 1);
+        return $round . ':' . PairKey::of(...$this->participantIds($event)) . ':' . (is_int($leg) ? $leg : 1);
+    }
+
+    /**
+     * The IDs of the event's participants in the order it holds them, as a
+     * list: an event keeps the array keys it was given, and a string key
+     * would be spread into a call as a named argument.
+     *
+     * @return list<string>
+     */
+    private function participantIds(Event $event): array
+    {
+        return array_values(array_map(fn(Participant $p) => $p->getId(), $event->getParticipants()));
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
@@ -187,4 +188,31 @@ describe('RoundRobinPlan', function (): void {
         expect($violations)->toContain('Event 1 contains a participant that is not in the tournament.');
         expect($violations)->toContain('Event 2 contains participant p2 twice.');
     });
+
+    // An event keeps the participant array it is given, keys included. The
+    // plan read the two sides by the keys 0 and 1, so other keys were a raw
+    // PHP warning and a call on null.
+    it('reads the two sides of an event by their order, whatever the array keys are', function (array $keys): void {
+        [$participant1, $participant2, $participant3] = roundRobinPlanParticipants(3);
+        $plan = new RoundRobinPlan([$participant1, $participant2, $participant3], 1);
+
+        $complete = new Schedule([
+            new Event([$keys[0] => $participant1, $keys[1] => $participant2], new Round(1)),
+            new Event([$keys[0] => $participant2, $keys[1] => $participant3], new Round(2)),
+            new Event([$keys[0] => $participant1, $keys[1] => $participant3], new Round(3)),
+        ]);
+        $repeated = new Schedule([
+            new Event([$keys[0] => $participant1, $keys[1] => $participant2], new Round(1)),
+            new Event([$keys[0] => $participant2, $keys[1] => $participant2], new Round(2)),
+        ]);
+
+        expect($plan->validateIntegrity($complete))->toBe([])
+            ->and($plan->validateIntegrity($repeated))->toContain('Event 2 contains participant p2 twice.')
+            ->and($plan->findUnplayedPairings([new Result($complete->getEvents()[0], $participant1)]))
+            ->toBe(['Player 1 vs Player 3', 'Player 2 vs Player 3']);
+    })->with([
+        'a list' => [[0, 1]],
+        'string keys' => [['home', 'away']],
+        'sparse integer keys' => [[3, 7]],
+    ]);
 });

@@ -222,7 +222,8 @@ final readonly class RoundRobinPlan implements PairwisePlan
     {
         $playedPairings = [];
         foreach ($results as $result) {
-            $eventParticipants = $result->getEvent()->getParticipants();
+            // An event keeps the keys it was given; the sides are its order
+            $eventParticipants = array_values($result->getEvent()->getParticipants());
             if (count($eventParticipants) === 2) {
                 $playedPairings[$this->pairingKey(
                     $eventParticipants[0]->getId(),
@@ -254,7 +255,8 @@ final readonly class RoundRobinPlan implements PairwisePlan
      *
      * It does not look at rounds: a participant in two events of one
      * round, a round number out of range and the roles within an event
-     * are not reported.
+     * are not reported. The participants of an event are read in the
+     * order it holds them, whatever keys its array was given.
      *
      * @return array<string>
      */
@@ -271,7 +273,8 @@ final readonly class RoundRobinPlan implements PairwisePlan
         $actualPairings = [];
 
         foreach ($schedule->getEvents() as $index => $event) {
-            $eventParticipants = $event->getParticipants();
+            // An event keeps the keys it was given; the sides are its order
+            $eventParticipants = array_values($event->getParticipants());
             if (count($eventParticipants) !== 2) {
                 $violations[] = sprintf(
                     'Event %d has %d participants; round robin events must have exactly 2 participants.',

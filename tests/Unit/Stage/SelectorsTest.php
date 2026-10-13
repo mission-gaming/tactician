@@ -209,4 +209,26 @@ describe('MatchOutcomeSelector', function (): void {
         expect(fn() => MatchOutcomeSelector::fromArray(['mode' => 'survivors']))
             ->toThrow(InvalidConfigurationException::class, 'mode');
     });
+
+    // An event keeps the participant array it is given, keys included. The
+    // selector read the two sides by the keys 0 and 1 and spread the IDs
+    // into a call, so other keys were a raw PHP warning or error.
+    it('reads the two sides of an event by their order, whatever the array keys are', function (array $keys): void {
+        $event1 = new Event([$keys[0] => $this->alice, $keys[1] => $this->bob], new Round(1));
+        $event2 = new Event([$keys[0] => $this->carol, $keys[1] => $this->dave], new Round(1));
+        $results = [new Result($event1, $this->alice), new Result($event2, $this->dave)];
+        $outcome = new StageOutcome(
+            (new StandingsCalculator())->calculate([$this->alice, $this->bob, $this->carol, $this->dave], []),
+            $results,
+            [],
+            new RoundPairing(1, 'semifinal', [$event1, $event2])
+        );
+
+        expect(array_map(fn(Participant $p) => $p->getId(), MatchOutcomeSelector::winners()->select($outcome)))->toBe(['p1', 'p4'])
+            ->and(array_map(fn(Participant $p) => $p->getId(), MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p2', 'p3']);
+    })->with([
+        'a list' => [[0, 1]],
+        'string keys' => [['home', 'away']],
+        'sparse integer keys' => [[3, 7]],
+    ]);
 });

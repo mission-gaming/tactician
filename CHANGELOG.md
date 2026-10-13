@@ -228,6 +228,15 @@ heading **Output change (fix)**.
   1-based; it now throws an `InvalidConfigurationException` with the reason
   `ValueOutOfRange`. Data that `toArray()` wrote, and every pairing an
   engine returns, is accepted as before (#121, item 11).
+- **`RoundRobinPlan` and `MatchOutcomeSelector` read the participants of
+  an event in their order, whatever the array keys are.** An `Event` keeps
+  the participant array it is given, keys included. With string keys or
+  sparse integer keys, `RoundRobinPlan::validateIntegrity()` and
+  `findUnplayedPairings()` raised a raw `Error` (a call on null), and
+  `MatchOutcomeSelector::select()` a raw `TypeError` or an unknown named
+  argument. All three now take the first and the second participant in the
+  order the event holds them. An event built from a list is read as before
+  (#121, item 12).
 
 ## [0.2.3] - 2026-10-13
 
