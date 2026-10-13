@@ -38,7 +38,7 @@ namespace MissionGaming\Tactician\Stage;
  *   corrected, as an "Output change (fix)" of the changelog. A 0.x minor
  *   release may change the scheme; the changelog then has a migration
  *   note saying what a stored stamp is replaced with. The string states
- *   the version of its scheme (`tactician:v1:`), so that a later scheme
+ *   the version of its scheme (`tactician:v2:`), so that a later scheme
  *   can be told apart.
  *
  * Fingerprints that begin with `tactician:` are the library's. Give an
