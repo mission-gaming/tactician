@@ -48,11 +48,12 @@ anything else that competes.
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
 | **Result** | The recorded outcome of an event: a winner or a draw, with optional per-participant scores. The event was played, unless the result is an **awarded result**. A result of a knockout tie that finished level may carry a **decider**. |
 | **Awarded result** | A result of an event that was not played, given to it by a decision of the application (`Result::isAwarded()`; the mark is an `Award` with an optional label and reason that the library never reads). It is a result in every respect: it counts for the winner it names, is the one result of its event, and settles what a result settles (who advances from a knockout tie). Two things are the caller's choice, on the standings calculator (`AwardedResultPolicy`): whether its scores count, and whether a tiebreaker computed between the tied participants only reads it. See [Awarded results](#awarded-results). |
-| **Decider** | The record of a decision made outside the results, where the results leave a knockout tie level (`DTO\Decider`, the `decider` argument of `Result`): the IDs of the participants who advance, as a list (one, for a tie between two), and an optional label and reason that the library never reads. The library records that the tie was decided and for whom, and never how. It holds no score and changes none: the result keeps the scores of the event as played. See [Recording a Level Event](#recording-a-level-event). |
+| **Decider** | The record of a decision made outside the results, where the results leave a knockout tie level (`DTO\Decider`, the `decider` argument of `Result`): the IDs of the participants who advance, as a list (one, for a tie between two), and an optional label and reason that the library never reads. The library records that the tie was decided and for whom, and never how. It holds no score and changes none: the result keeps the scores of the event as played. See [Recording a Level Event](#recording-a-level-event). The same type, given to a table or a rank selector, is a **decision**: its participants are then the level entries of a tied set, in the order decided. |
 | **Adjustment** | An amount added to, or taken from, one participant's ranking value for a reason that is no event (`Adjustment`: a participant ID, a signed amount, an optional label and reason that the library never reads). The amount is on the scale of the ranking strategy, whatever that is: points under `WinDrawLossRanking`. A table shows it as a figure of its own beside what was earned and is ordered by the two together; a stage state carries the adjustments of its stage. See [Adjustments](#adjustments). |
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
-| **Tied set** | Two or more adjacent entries of a standings table that are **level**: equal on the ranking value, on every configured tiebreaker, on score difference and on scores-for (and, in the table of a bracket, out in the same round), so that no result orders them. What does is the position in the entrant list, in the table of a stage, and the final fallback (seed, then ID) in a table calculated on its own. `Standings::getTiedSets()` reports each one (`TiedSet`) with the positions it spans. |
+| **Tied set** | Two or more adjacent entries of a standings table that are **level**: equal on the ranking value, on every configured tiebreaker, on score difference and on scores-for (and, in the table of a bracket, out in the same round), so that no result orders them. What does is the position in the entrant list, in the table of a stage, and the final fallback (seed, then ID) in a table calculated on its own. `Standings::getTiedSets()` reports each one (`TiedSet`) with the positions it spans. The application can settle one with a **decision**. |
+| **Decision** | The order of a set of level entries, settled outside the results by the application and given to the library as a `DTO\Decider`: the IDs of the level participants, best first, with an optional label and reason that the library never reads. `Standings::withDecisions()` applies it to a tied set of a table, and a rank selector takes it with `withDecisions()`; the table (`getDecisionFor()`) and the selection (`RankSelection`) mark every place it settled. It orders one whole set of level entries and never overrides a result: anything else is rejected with a reason (`RejectedDecisionException`). The library records that the order was decided and never how. See [Settling a tied set by a decision](#settling-a-tied-set-by-a-decision). |
 | **Entrant list** | The ordered list of participants a stage is given: `StageState::start()` for an engine, the list handed to a scheduler or to `PoolDistributor`, the last argument of a `StageOutcome` built by hand. Position 1 is first. Its order is authoritative: it places entrants, and it decides every order that results leave open. A label, a seed attribute or an ID never does. |
 | **Tier** | A group of entries of a table that a criterion before the records puts together (`Standings::getTiers()`). The table of an elimination outcome has tiers: the entrants who went out in the same round share one, and no record moves an entrant from one tier to another. |
 | **Constraint** | A hard rule on one candidate event, evaluated during generation (rounds between repeat meetings, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. A constraint sees rounds, never times; rules about time are **timeline rules**. |
@@ -1141,8 +1142,9 @@ form (whole numbers, halves, quarters) where ties must be recognised.
 
 Reading the tied sets changes nothing in the table: the entries, their order
 and `getPosition()` are what they were. Deciding a tie (a play-off, a drawing
-of lots, a shared rank) is the application's rule; apply it to the entrant
-list passed to the next stage, where position is authoritative.
+of lots, a ruling) is the application's rule. Once it is decided, the order
+goes into the table as a decision:
+[Settling a tied set by a decision](#settling-a-tied-set-by-a-decision).
 
 **Where the participants are an entrant list, its order decides.** The seed
 and the ID are the fallback of a table that stands alone. A stage has an
@@ -1168,6 +1170,159 @@ echo implode(', ', array_map(
 A `StageOutcome` built with an entrant list (its last constructor argument)
 does the same to the table it is given, so that what a rank selector reads
 is the table the outcome shows.
+
+### Settling a tied set by a decision
+
+When every figure is level, the order has to come from outside the results:
+the application settles it by its own rule and tells the library the order.
+That is a **decision**: a `Decider` holding the IDs of the level
+participants, best first, with an optional label and an optional reason.
+The label and the reason are the application's words and are opaque to the
+library, which stores them and hands them back. It records that the order
+was decided outside the results, and never how.
+
+```php
+use MissionGaming\Tactician\DTO\Decider;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+
+// A pool of four in which every event is drawn 0-0
+$four = array_map(fn (int $number) => new Participant("p{$number}", "Entrant {$number}"), range(1, 4));
+$goalless = array_map(
+    fn (Event $event) => new Result($event, null, [
+        $event->getParticipants()[0]->getId() => 0,
+        $event->getParticipants()[1]->getId() => 0,
+    ]),
+    (new RoundRobinScheduler())->schedule($four)->getEvents()
+);
+$level = (new StandingsCalculator())->calculate($four, $goalless);
+
+$tiedSet = $level->getTiedSets()[0];
+echo count($tiedSet) . " entries level in places {$tiedSet->getFirstPosition()} to {$tiedSet->getLastPosition()}\n";
+
+// The application settles the order and records it, best first
+$decision = new Decider(['p3', 'p1', 'p4', 'p2'], 'drawn', 'Drawn by the committee');
+$decided = $level->withDecisions([$decision]);
+
+foreach ($decided as $entry) {
+    $settledBy = $decided->getDecisionFor($entry->getParticipant());
+    echo "{$decided->getPosition($entry->getParticipant())}. {$entry->getParticipant()->getId()}"
+        . ($settledBy === null ? '' : " ({$settledBy->getLabel()}: {$settledBy->getReason()})") . "\n";
+}
+```
+
+That prints:
+
+```
+4 entries level in places 1 to 4
+1. p3 (drawn: Drawn by the committee)
+2. p1 (drawn: Drawn by the committee)
+3. p4 (drawn: Drawn by the committee)
+4. p2 (drawn: Drawn by the committee)
+```
+
+`withDecisions()` returns a new table in which the entries of the tied set
+are in the order of the decision, in the places the set held. The table
+carries the decision as the mark of those places: `getDecisionFor()` returns
+it for a participant whose position it settled and null for one that results
+placed, `getDecisions()` lists the decisions in table order, and the tied
+set says which decision ordered it (`TiedSet::getDecision()`). A decided set
+is still reported by `getTiedSets()`: its entries are level, and no result
+orders them. Show such a position as decided, with the label and the reason.
+
+**A decision never overrides a result.** It orders one whole tied set and
+nothing else: no entry passes one it is not level with, none leaves its
+tier, and every entry outside the set stays where it is. A decision that is
+anything else is rejected whole with a `RejectedDecisionException`, and the
+table is not changed. `getReason()` says which rule it broke, `getDecider()`
+which decision, and `getParticipantIds()` which participants are at fault:
+
+| The decision | Reason (`RejectedDecisionReason`) | `getParticipantIds()` |
+|--------------|-----------------------------------|-----------------------|
+| names a participant the table has no entry for | `UnknownParticipant` | the IDs with no entry |
+| names a participant that another decision names too, one given with it or one the table already carries | `SetAlreadyDecided` | the IDs named twice |
+| names participants that are not level with each other, or one that is level with nobody | `ParticipantsNotLevel` | the IDs that are not level with the first it names |
+| names only some of the entries of a tied set | `PartOfLevelSet` | the entries it leaves out |
+
+Where a decision breaks more than one rule, the first in the table is
+reported.
+
+```php
+use MissionGaming\Tactician\Exceptions\RejectedDecisionException;
+
+foreach ([['p3', 'p1'], ['p3', 'p1', 'p4', 'p9']] as $ids) {
+    try {
+        $level->withDecisions([new Decider($ids)]);
+    } catch (RejectedDecisionException $e) {
+        echo "{$e->getReason()->value}: " . implode(', ', $e->getParticipantIds()) . "\n";
+    }
+}
+```
+
+```text
+part_of_level_set: p2, p4
+unknown_participant: p9
+```
+
+- **A decision orders the whole set, also when only its first places
+  matter.** With two of the four to go through, the decision still names
+  all four. A table then has one order whatever is read from it, and the
+  same decision serves a selection of the top two and a display of the
+  whole table.
+- **Decisions are added, and a set takes one.** `withDecisions()` adds to
+  the decisions a table carries, in any order and with the same result. To
+  change a decision, apply the new one to the table as it was calculated.
+- **Apply decisions last.** A decision is about the entries that are level
+  once everything else is counted, so it comes after
+  [adjustments](#adjustments) and after byes are credited. A table that
+  carries a decision and is then given to `withAdjustments()` or
+  `withByesCredited()` keeps it where the change leaves the decided set as
+  it was, and is refused where it does not, with the reason `Stale`: the
+  library does not show an order as decided for a set the decision was not
+  made for, and does not drop it silently either.
+- **A decision that results have overtaken is rejected.** Given again to a
+  table in which a later result has separated its participants, it is
+  `ParticipantsNotLevel`: there is nothing left for it to settle.
+- **The entrant list leaves a decided set alone.** `withTiedSetsOrderedBy()`
+  orders the sets that are still undecided, and so does a `StageOutcome`
+  built with an entrant list.
+
+```php
+use MissionGaming\Tactician\Standings\Adjustment;
+
+// The decision was made for four level entrants. A point is then taken from p1
+try {
+    (new StandingsCalculator())->withAdjustments($decided, [new Adjustment('p1', -1.0)]);
+} catch (RejectedDecisionException $e) {
+    echo $e->getReason()->value . "\n";
+}
+
+// Adjust first, and decide what is level after that
+$adjustedFirst = (new StandingsCalculator())
+    ->withAdjustments($level, [new Adjustment('p1', -1.0)])
+    ->withDecisions([new Decider(['p3', 'p4', 'p2'], 'drawn')]);
+
+echo implode(', ', array_map(fn ($entry) => $entry->getParticipant()->getId(), $adjustedFirst->getEntries())) . "\n";
+```
+
+```text
+stale
+p3, p4, p2, p1
+```
+
+A decision is plain data, as every `Decider` is: `toArray()` writes
+`participants`, `label` and `reason` after `format_version`, and
+`Decider::fromArray()` reads it back, so an application stores its decisions
+beside its results. A stage state does not hold them. The engines pair and
+re-seed from the entrant list where results are level
+([position decides](#tied-sets)), and a decision changes neither: it is
+applied to the table an application shows and to a
+[rank selection](#selections-that-results-do-not-decide), which is where an
+order that results left open is acted on. The table of an engine's outcome
+takes one the same way: `$outcome->getStandings()->withDecisions([...])`.
+
+A tie decided by lot between two qualifiers, from the tied table to the
+bracket it seeds, is a runnable example:
+[`examples/28-ties-settled-by-decision.php`](../examples/28-ties-settled-by-decision.php).
 
 ### Awarded results
 
@@ -1393,6 +1548,11 @@ record, the scores and the awarded count are those of the results.
   `withTiedSetsOrderedBy()`, as the engines do.
 - `withAdjustments()` replaces any adjustments the table carries: pass
   every adjustment of the competition each time.
+- **A decision comes after the adjustments.** A
+  [decision](#settling-a-tied-set-by-a-decision) settles entries that are
+  level on the adjusted total. A table that already carries one is refused
+  when the adjustments leave its participants no longer one whole tied set
+  (`RejectedDecisionException`, reason `Stale`).
 
 A results-driven stage keeps its adjustments on the stage state, so that
 every table an engine builds has them, the one the next Swiss round is
@@ -2944,8 +3104,59 @@ tie_across_selection: pool A, places 1 to 4: zed, yan, bob, amy
 ```
 
 What happens next is the application's rule: a play-off, a drawing of lots,
-a tiebreaker added to the calculator. Going on without one is a choice, and
-it is made on the selector:
+a tiebreaker added to the calculator. Where the rule gives an order that no
+result gives, the selector takes it as a
+[decision](#settling-a-tied-set-by-a-decision): the level participants,
+best first, in a `Decider`.
+
+```php
+use MissionGaming\Tactician\DTO\Decider;
+
+// The four are level; the application has put them in this order
+$decision = new Decider(['bob', 'zed', 'amy', 'yan'], 'drawn', 'Drawn after the last event');
+$selection = RankRangeSelector::topPerGroup(2)->withDecisions([$decision])->selection($undecided);
+
+foreach ($selection->getParticipants() as $qualifier) {
+    $settledBy = $selection->getDecisionsFor($qualifier);
+    echo $qualifier->getLabel() . ($settledBy === [] ? '' : " ({$settledBy[0]->getLabel()})") . "\n";
+}
+```
+
+```text
+Bob (drawn)
+Zed (drawn)
+```
+
+`select()` returns the same list, and `selection()` returns it with its
+marks (a `RankSelection`): `getParticipants()` is the list,
+`isSettledByDecision()` says whether a decision put a selected participant
+at its place, `getDecisionsFor()` hands back the decision with its label
+and reason, and `getDecisions()` lists every decision the selection rests
+on. A participant that results placed has no mark. The rules are those of
+a table:
+
+- A decision orders one whole set of level entries, in the table it is for:
+  a pool's table in a per-group selection (the pool its participants are
+  in), the outcome's own table in an overall one. One that does not is
+  rejected with a `RejectedDecisionException` that names the pool
+  (`getPool()`), and nothing is selected.
+- It settles the order also where both level entrants are selected. With
+  the first two of a pool level and both going through, the order still
+  decides which slot of the next stage each of them takes, so the selection
+  stays refused (`TieWithinSelection`) until a decision is supplied, or
+  until the selector is told to go on without one.
+- A decision for a tie that touches no selected rank is applied and changes
+  nothing in the list. A table with no result is refused whatever is
+  decided: a decision settles a tie, not a stage that was not played.
+- A table the outcome was built with may carry decisions already
+  (`Standings::withDecisions()`); the selector reads them as if they were
+  given to it.
+- In plain data the decisions are the key `decisions`, a list of deciders
+  in their array form, written only when there are any. An application
+  that keeps its selectors as configuration and its decisions as records
+  gives them to the selector when it selects, as above.
+
+Going on without a decision is a choice too, and it is made on the selector:
 
 ```php
 // Accept level entries when all of them are selected: who goes through is
@@ -3168,6 +3379,33 @@ none. In plain data the selector is `['rank' => 3, 'count' => 2]`, with
 `comparison` and `ties` written when they were chosen and
 [`format_version`](#format-versions) written first; an unknown key is
 refused.
+
+**A decision settles either kind of tie.** `withDecisions()` takes
+[decisions](#settling-a-tied-set-by-a-decision) as a `RankRangeSelector`
+does, and which order a decision is for follows from the participants it
+names:
+
+- participants of one pool: it orders one whole tied set of that pool's
+  table, which settles who holds the rank there (and, under
+  `DiscardLowest`, who is left out of a larger pool);
+- participants of more than one pool: it orders one whole group of holders
+  that the comparison leaves level, under whichever method was chosen. It
+  orders the holders among themselves and moves none of them past a holder
+  it is not level with; a decision that names an entrant who does not hold
+  the rank is rejected (`ParticipantsNotLevel`, with the rank in
+  `getRankAcrossPools()`).
+
+The level holders need not be a tied set of any table: the combined table
+can have other entrants level with them, and per event played it can place
+them apart. So the decision for them is given to the selector, and the
+table does not take it. The same holds for an overall selection compared
+per event played, whose `UndecidedSelectionException` says so with
+`isPerEvent()`. Whichever of the three a refusal is (a pool's table, the
+holders of a rank, or the table per event played), a decision that orders
+exactly the participants it names, given to the selector that refused,
+settles it. `selection()` marks a holder with the decision that settled who
+holds the rank in its pool, with the one that settled its place among the
+holders, or with both, in that order.
 
 **`RankRangeSelector::overall()` takes the same setting.** It reads the
 combined table, which ranks entrants of every pool together, so across
@@ -4500,13 +4738,13 @@ records with its reasons:
 - **The key is written once to an array, at its top.** The participants and
   events inside a schedule, the round inside an event, the rounds,
   results and adjustments inside a stage state, the award and the decider
-  inside a result and the records inside a repack outcome carry none: they are read under the version of the array that holds them.
+  inside a result, the decisions inside a rank selector and the records inside a repack outcome carry none: they are read under the version of the array that holds them.
   A part serialized by itself (`$participant->toArray()`) is the top of its
   own array and has the key.
 - **An array without the key is version 1.** Version 1 is the form 0.2.x
   wrote, and beside it the optional keys 0.3.0 added (`strategy_seed` in
-  round-robin options, `seed` in Swiss options, `ties` and `comparison` in
-  a rank range selector, `third_place` in elimination options, `award` and
+  round-robin options, `seed` in Swiss options, `ties`, `comparison` and
+  `decisions` in a rank range selector, `third_place` in elimination options, `award` and
   `decider` in a result, `adjustments` in a stage state), each of which may
   be left out. So rows stored by 0.2.x load
   unchanged. There is nothing to migrate, and no need to add the key to
@@ -4824,11 +5062,12 @@ parent type matches too.
 | `SchedulingException` (abstract) | `\Exception` | A scheduling failure. Its subclasses carry a diagnostic report (`getDiagnosticReport()`). |
 | `InvalidConfigurationException` | `SchedulingException` | A scheduler, engine, stage, timeline or grid is configured in a way that cannot work. `getReason()` says which mistake it was: see [Configuration Errors](#configuration-errors). |
 | `PinConflictException` | `InvalidConfigurationException` | A repack request pins one participant in two events at the same session and slot. It carries the two event IDs (`getEventIds()`). |
-| `UndecidedSelectionException` | `InvalidConfigurationException` | A `RankRangeSelector` or a `BestOfRankSelector` is asked for a selection that results do not decide. It carries the IDs of the level participants (`getParticipantIds()`), the places they hold between them and the pool, or, where the holders of one rank were compared across pools, that rank (`getRankAcrossPools()`): see [Selections that results do not decide](#selections-that-results-do-not-decide) and [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
+| `UndecidedSelectionException` | `InvalidConfigurationException` | A `RankRangeSelector` or a `BestOfRankSelector` is asked for a selection that results do not decide. It carries the IDs of the level participants (`getParticipantIds()`), the places they hold between them and the pool, or, where the holders of one rank were compared across pools, that rank (`getRankAcrossPools()`); `isPerEvent()` says that they are level per event played and not as a tied set of the table: see [Selections that results do not decide](#selections-that-results-do-not-decide) and [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
 | `IncompleteScheduleException` | `SchedulingException` | Constraints leave a schedule that cannot be completed. |
 | `NoValidPairingException` | `SchedulingException` | No complete pairing exists for a Swiss round. |
 | `RepackViolationsException` | `SchedulingException` | A repack leaves violations and `RepackOptions(throwOnViolations: true)` asked for an exception instead of the outcome. |
 | `InvalidInputException` | `\InvalidArgumentException` | An argument of a value object is outside its allowed range (`new Round(0)`), or the serialized data given to the `fromArray()` or `fromJson()` of a value object, a stage state or a scheduled schedule is malformed: a missing field of an entry, a value of the wrong type, an unknown participant ID, a key the form does not have, a `format_version` the release does not read. Malformed or out-of-range configuration (options, timelines, grids, rules, selectors, a ranking) is an `InvalidConfigurationException` instead, and so is a stored stage state whose pieces are well formed and whose history no verb would have recorded. |
+| `RejectedDecisionException` | `\InvalidArgumentException` | A decision given to a standings table or a rank selector does not order one whole set of level entries. `getReason()` is a `RejectedDecisionReason` (`UnknownParticipant`, `SetAlreadyDecided`, `ParticipantsNotLevel`, `PartOfLevelSet`, `Stale`), and it carries the decision (`getDecider()`), the IDs at fault (`getParticipantIds()`) and, from a selector, the pool or the rank: see [Settling a tied set by a decision](#settling-a-tied-set-by-a-decision). It is rejected input, not a configuration error: `catch (InvalidConfigurationException)` does not match it. |
 | `JsonConversionException` | `\JsonException` | A `fromJson()` method is given text that is not valid JSON, or a `toJson()` method meets a value JSON cannot represent. The message and code are PHP's; the PHP exception is the previous one. |
 | `InvariantViolationException` | `\LogicException` | The library reached a state its own logic rules out. It reports a defect in the library, not a mistake in the input. |
 | `UnavailableValueException` | `\LogicException` | An object was asked for a value it does not hold: a time from a shape-only `SessionGrid`, the kickoff of an assignment made on one, the capacity of an unbounded grid as a number. It reports a mistake in the calling code, which the object's `has...()` method (named in the message) would have prevented. It is not a configuration error and not a library defect. |
