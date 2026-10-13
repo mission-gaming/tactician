@@ -43,6 +43,7 @@ anything else that competes.
 | **Home/Away roles** | The participant order within an event: the first participant is home, the second away. The round-robin generator proposes roles that alternate with round parity, which bounds how far a participant's home and away counts can drift apart and does not make them equal. The balanced **role assignment**, the default, does, as far as the number of events allows. |
 | **Role** | The position of a participant in an event: first-named (index 0 of `getParticipants()`) or second-named (index 1). The neutral name for what a sport calls home and away, white and black, or server and receiver. |
 | **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `BalancedRoleAssignment` (the default) ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size; `RoundParityRoleAssignment` (the default up to 0.2.x) alternates with round parity. A role assignment may state the rule it holds a leg to, and the scheduler then looks for other roles within that rule where a constraint rejects the ones it gave. See [Role Assignment](#role-assignment). |
+| **Fixed seating** | A seating is one pairing of a round as a role assignment is handed it: two seats, with the first-named participant in the first. A fixed seating is one the role assignment is told to keep as given (`RoleAssignmentContext::isFixed()`): the scheduler put its event to the constraints the other way round, they rejected it, and it asks the role assignment for the roles of the other seatings around it. See [Writing a role assignment](#writing-a-role-assignment). |
 | **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events — round robin records them in the `byes` schedule metadata, and the Swiss/elimination engines report them on the round pairing. |
 | **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and a standings table calculated on its own, with no entrant list, uses it in its last fallback, between scores-for and the ID (see **Tied set**). No stage reads it. Wherever an entrant list exists, the position in that list decides what results do not: bracket placement, serpentine pool distribution, pot membership, the pairing order and the byes of a Swiss stage, the survivors of a re-seeded elimination round, the table of an engine's outcome and a rank selection. Put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
@@ -81,7 +82,7 @@ anything else that competes.
 | **Quality metric** | A graded, lower-is-better measure of a valid schedule (`QualityMetric`): role balance, alternation streaks, rest rhythm, repeat spacing. Metrics measure defects — zero is ideal. Composed with weights by `ScheduleScorer`; policy (which metrics, what weights) stays application-side. |
 | **Optimization** | Best-of-N sampling (`ScheduleOptimizer`): generate N candidate schedules from one master seed, score each, keep the best. Deterministic when every randomness source uses the supplied child randomizer. Whole-schedule generators only. |
 | **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach, and over the roles of every leg. Greedy always runs first, and after it the search of first-leg roles that a role assignment's rule allows without the option; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
-| **Role search** | What the round-robin scheduler does when a constraint rejects a role that is free to change: it gives the event the other role and, when that is rejected too, changes the roles of earlier events, with the pairings and rounds held. Free are the roles of the later legs of a leg strategy that states them as preferences (the shuffled legs), always, and the roles of the first leg with backtracking generation. Bounded by a count of rejected roles; see [Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints). |
+| **Role search** | What the round-robin scheduler does when a constraint rejects a role that is free to change: it gives the event the other role and, when that is rejected too, changes the roles of earlier events, with the pairings and rounds held. Free are the roles of the later legs of a leg strategy that states them as preferences (the shuffled legs), always; the roles of the first leg within the rule its role assignment states, where it states one (the balanced roles of the default do, round parity does not), once every rotated order has failed with the roles as given; and the roles of the first leg of every layout that backtracking generation finds. Bounded by a count of rejected roles and of events put to the constraints; see [Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints). |
 | **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — a minimum time between a participant's kickoffs (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
 | **Session** | One match night (or day) on a repack grid: an ordered position in the grid's explicit session list, holding a fixed number of slots. Deliberately not a "round" — a round is a set of concurrent events, a session is a container of consecutive slots. |
 | **Session grid** | The declarative position model repacking assigns onto (`SessionGrid`): an explicit ordered list of zoned session starts, a slot interval, a per-session slot count (overridable — final sessions often run deeper), and a per-slot concurrency capacity. Irregular by design, unlike `TimelineDefinition`'s cadence. A grid built this way is instant-based; see **Shape-only grid** for the other form. |
@@ -679,11 +680,14 @@ Round parity, without backtracking: no schedule
 
 The league the default returns has the pairings and rounds of the league
 without the constraint, and a first leg that is balanced: only roles were
-looked for. Under a limit of two in a row over two to four mirrored legs it
-was found for every field of even size from 6 to 16 measured, and for the
-fields of 5, 7, 9 and 11; for 13 and 15 the search stopped at its bound,
-and four participants have no balanced first leg that keeps it in the
-layout of the circle method.
+looked for. Under a limit of two in a row over two mirrored legs it was
+found for every field of even size from 6 to 30, and for the fields of 3,
+5, 7, 9 and 11 (over three and four legs too, measured up to 20
+participants). For every field of odd size from 13 to 29 the search stopped
+at its bound and said so, after some seconds, and four participants have no
+first leg that keeps it, with any roles. A limit of three in a row, which
+is enough to rule out a run of four, was found for every field from 3 to
+20 over one to four legs.
 
 How the scheduler looks for a first leg within the rule of the role
 assignment, when every layout has failed with the roles it gave:
@@ -718,7 +722,11 @@ All searches are bounded, and a failure says which case it is:
   constraint does not say whether it reads roles, so nothing is advised
   for one). Each names `RoundRobinOptions(backtracking: true)` as the
   option that searches what it did not: the pairings and their rounds, and
-  under round parity the roles of the first leg. A backtracking search that
+  under round parity the roles of the first leg. A failure after a search
+  within a rule also names the options that search every choice of roles,
+  for a constraint that needs roles the role assignment does not keep
+  (one that names a participant first in all of its events cannot have a
+  balanced leg): `backtracking: true` with `RoundParityRoleAssignment`. A backtracking search that
   went through every way to play the first leg, with every choice of roles,
   says that the configuration is unsatisfiable with this leg strategy (and
   this role assignment, where it searched within its rule).
@@ -949,10 +957,12 @@ $balancedOptions->toArray();
 `'role_assignment' => 'round_parity'` in plain data. Options that name it
 serialize with the key, so a stored configuration stays on these roles.
 Options that name no role assignment serialize without the key and follow
-the default of the release that reads them: an options array stored by
-0.2.x without it gives balanced roles when a schedule is generated from it
-again. Where a schedule that was generated before must come out the same,
-add the key to the stored options before upgrading.
+the default of the release that reads them, which 0.2.x announced and
+0.3.0 changes: an options array stored by 0.2.x without it gives balanced
+roles when a schedule is generated from it again, and nothing reports it.
+Where a schedule that was generated before must come out the same, add the
+key to the stored options before upgrading
+([Format Versions](#format-versions) has why the form is still version 1).
 
 #### Legs after the first
 
@@ -4900,7 +4910,15 @@ records with its reasons:
   `decider` in a result, `adjustments` in a stage state), each of which may
   be left out. So rows stored by 0.2.x load
   unchanged. There is nothing to migrate, and no need to add the key to
-  stored data.
+  stored data. One stored form loads unchanged and means something else:
+  round-robin options without a `role_assignment` key name no role
+  assignment, and give balanced roles from 0.3.0 where they gave
+  round-parity roles before. Nothing is refused, so a schedule generated
+  from them again has other roles without an error; add
+  `'role_assignment' => 'round_parity'` to stored options that must keep
+  the old ones ([Role Assignment](#role-assignment)). The form is still
+  version 1; ADR 0005 says why, and that a later change of this default
+  would be version 2.
 - **A version the library does not know is refused**, as is a value below 1
   or one that is not an integer: configuration with an
   `InvalidConfigurationException` (reason `UnsupportedFormatVersion`), data

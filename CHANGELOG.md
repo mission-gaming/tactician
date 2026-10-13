@@ -407,7 +407,9 @@ entry on the engine fingerprint.
   (a `ShuffledLegStrategy` with a seed or a randomizer of its own
   included); and a schedule that only a backtracking search completes.
 
-  **What changes.** The first leg is the leg the same seed always gave.
+  **What changes.** Without constraints the first leg is the leg the same
+  seed always gave (under constraints it can be another: a later leg that
+  is now rejected sends the scheduler on to its next shuffle).
   From the second leg on, each event is the first-leg event of its pairing
   one leg later: reversed in the even-numbered legs of
   `MirroredLegStrategy`, as it is under `RepeatedLegStrategy`, and with a
@@ -464,13 +466,15 @@ entry on the engine fingerprint.
     1,755 schedules. Under constraints the old schedule also depended on
     which rotated orders were rejected, and nothing reproduces it.
 
-  Eight golden fixtures change, in every section of two legs or more and
+  Eight golden fixtures change, in their sections of two legs or more and
   in the rounds after the first leg only (each first leg, and each section
-  of one leg, is unchanged): `round-robin/mirrored-seed-1.txt`,
+  of one leg, is unchanged; a section of two participants changes only
+  where the seed exchanges the two, which of the three seeds 42 does): `round-robin/mirrored-seed-1.txt`,
   `round-robin/mirrored-seed-42.txt`, `round-robin/mirrored-seed-1337.txt`,
   `round-robin/repeated-seed-1.txt`, `round-robin/repeated-seed-42.txt`,
   `round-robin/repeated-seed-1337.txt`,
-  `round-robin/balanced-mirrored-seed-42.txt`, and
+  `round-robin/balanced-mirrored-seed-42.txt` (which the entry on the
+  default under **Changed** then replaces), and
   `examples/17-schedule-optimization.txt`, whose 25 candidates each come
   from a scheduler with a `Randomizer` over two legs: the schedule it keeps
   and its scores change, and its spacing metric reads 0 for every
@@ -592,8 +596,10 @@ entry on the engine fingerprint.
   search is bounded (20,000 rejected roles and 200,000 events put to the
   constraints, over all the layouts of a call) and a failure says whether a
   bound stopped it: two to four mirrored legs under a limit of two in a row
-  were found for every field of even size from 6 to 16 and for 5, 7, 9 and
-  11 participants, and the search stopped at its bound for 13 and 15.
+  were found for every field of even size from 6 to 20 and for 3, 5, 7, 9
+  and 11 participants, and the search stopped at its bound for 13, 15, 17
+  and 19 (over two legs, for every field of odd size from 13 to 29). A
+  limit of three in a row was found for every field from 3 to 20.
   `docs/design/role-assignment.md` ("The default") has the decision and
   the measurements, `docs/ROADMAP.md` what still fails.
 - **`RoleAssignment\RoleAssignmentContext`** (experimental), the second
@@ -1014,8 +1020,10 @@ entry on the engine fingerprint.
   ([#51](https://github.com/mission-gaming/tactician/issues/51)).**
   `RoundRobinOptions` without a role assignment now means
   `BalancedRoleAssignment`, where it meant `RoundParityRoleAssignment`. In
-  every leg each participant's two role counts end at most 1 apart in a
-  field of even size and equal in a field of odd size; the round-parity
+  the first leg, and in every later leg of `MirroredLegStrategy` and
+  `RepeatedLegStrategy`, each participant's two role counts end at most 1
+  apart in a field of even size and equal in a field of odd size (the later
+  legs of `ShuffledLegStrategy` draw their roles, as they did); the round-parity
   roles ended up to 3 and up to 4 apart, and of four participants one was
   second-named in all three of its events. This is an output change that is
   not a fix: the old roles were what was documented.
@@ -1037,6 +1045,13 @@ entry on the engine fingerprint.
   of the events, the byes of a field of odd size and the metadata are what
   they were; which of the two participants of an event is first-named is
   not, in the first leg and so in every leg the strategy derives from it.
+  That holds without constraints, and under constraints wherever they
+  accept the roles of the same rotated order under both role assignments.
+  Where a constraint rejects the roles of the one and not of the other,
+  the two schedules come from different rotated orders and differ in who
+  meets whom in which round as well: six participants `1` to `6` under a
+  closure that refuses `1` first-named against `2` open with `1-6 2-5 3-4`
+  under round parity and with `2-3 4-1 6-5` under the default.
   Compared over 936 schedules (2 to 14 participants, one to four legs, the
   three strategies, no seed and five seeds): no pairing and no round
   differs from the round-parity schedule, and every schedule of three or
@@ -1078,11 +1093,22 @@ entry on the engine fingerprint.
     fields.** A leg of balanced roles has no participant in one role more
     than twice in a row, but the second mirrored leg starts with the roles
     of round 1 reversed, and a participant can then play three in a row in
-    a field of even size and four in a field of odd size, which is more
-    than round parity gave in every field of even size from 6 up and in a
-    field of five. Add
-    `ConsecutiveRoleConstraint::homeAway(2)` if that matters: the scheduler
-    then finds a balanced first leg without it (see below and **Added**).
+    a field of even size, and in a field of odd size three or, where its
+    size is one more than a multiple of four (5, 9, 13 and so on), four.
+    The longest run anywhere in two to four mirrored legs, measured for 3
+    to 20 participants, under the default and under round parity: 3 and 2
+    in every field of even size from 6 up; 4 and 3 with 9, 13 and 17
+    participants; the same with 3, 4, 5, 11, 15 and 19 (2, 3, 4, 3, 3, 3);
+    3 and 4 with 7. Code that relied on round parity to keep such runs at
+    two in a field of even size gets three by default. Add
+    `ConsecutiveRoleConstraint::homeAway(3)` to rule out the run of four:
+    the scheduler then finds a balanced first leg without it, in every
+    field from 3 to 20 over one to four legs. `homeAway(2)` rules out the
+    run of three as well, and is found for every field of even size from 6
+    up and of odd size up to 11; with 13 or more participants of odd size
+    the search stops at its bound and the schedule fails, saying so, and
+    four participants have no schedule of two mirrored legs under it at
+    all (see below and **Added**).
   - **Role constraints are answered differently.** A constraint sees the
     balanced roles first, and where it rejects them the scheduler now looks
     for other balanced roles before it fails (see **Added**). Measured
@@ -1104,9 +1130,14 @@ entry on the engine fingerprint.
     legs broke under round parity now holds.
   - **A failing schedule can take longer**, because the roles of its first
     leg are searched before it fails: up to 20,000 rejected roles and
-    200,000 events put to the constraints in a call. Measured: 0.3 to 1.3
+    200,000 events put to the constraints in a call, the passes that fix
+    the seatings a constraint rejects included. Measured: 0.3 to 1.3
     seconds for a rule that no schedule satisfies over two mirrored legs of
-    up to 20 participants, where the failure took milliseconds. A schedule
+    up to 20 participants, where the failure took milliseconds; one to
+    seven seconds for a limit of two in a row over two to four mirrored
+    legs of 13 to 29 participants, where the search stops at its bound;
+    and 3 seconds for a closure that fixes the role of every pairing of 40
+    participants with no balanced leg, where 0.2.x failed in 0.8. A schedule
     that completes with the roles as given costs what it did, and so does
     one that fails because of who meets whom and when under
     `NoRepeatPairings`, `MinimumRestPeriodsConstraint` or
@@ -1120,7 +1151,12 @@ entry on the engine fingerprint.
     rounds were not searched: RoundRobinOptions(backtracking: true)
     searches them.", or "…and the search stopped at a bound (20000 rejected
     roles, or 200000 events put to the constraints, over all the layouts).
-    Roles that satisfy the constraints may exist beyond it; …". Where the
+    Roles that satisfy the constraints may exist beyond it; …". Both go on
+    to name the way out for a constraint that needs roles the role
+    assignment does not keep: "Roles that <role assignment> does not keep
+    were not searched either: RoundRobinOptions(backtracking: true,
+    roleAssignment: new RoundParityRoleAssignment()) searches every choice
+    of roles." Where the
     constraint that rejects is one of the library's that read no role
     (`NoRepeatPairings`, `MinimumRestPeriodsConstraint`,
     `SeedProtectionConstraint`), nothing is searched and the message ends
@@ -1157,7 +1193,9 @@ entry on the engine fingerprint.
   `15-timeline-assignment.txt`, `16-backtracking-generation.txt`,
   `17-schedule-optimization.txt`, `21-standings-and-tiebreakers.txt`,
   `23-application-adapter-and-repack.txt` and
-  `25-awarded-results-and-adjustments.txt`. The fixtures that pinned the
+  `25-awarded-results-and-adjustments.txt` (`11-error-handling.txt` also
+  lists the most affected participants of its failure in another order).
+  The fixtures that pinned the
   opt-in are replaced by fixtures that pin the old default by name:
   `round-robin/balanced-mirrored-unseeded.txt`,
   `balanced-mirrored-seed-42.txt`, `balanced-repeated-unseeded.txt` and
@@ -1181,7 +1219,34 @@ entry on the engine fingerprint.
   guide says what a rule must be ("Writing a role assignment").
   `BalancedRoleAssignment` and `RoundParityRoleAssignment` are changed with
   the interface; with a context that fixes no seating both return the
-  roles they returned.
+  roles they returned. A class written for 0.2.x fails to load until it is
+  changed ("Declaration of ... must be compatible with ..."), so nothing
+  runs with the old signature unnoticed. Before and after, for a class
+  that needs neither the context nor a rule:
+
+  ```php
+  // 0.2.x
+  public function assignRoles(array $rounds): array
+  {
+      // ...
+  }
+
+  // 0.3.0
+  public function assignRoles(array $rounds, RoleAssignmentContext $context): array
+  {
+      // ... as before
+  }
+
+  public function rule(): ?ConstraintInterface
+  {
+      return null;
+  }
+  ```
+
+  The parameter is required and the method is in the interface, not in an
+  optional second one, so that the interface has the shape it is meant to
+  keep before it leaves the experimental surface: a parameter added later
+  would break every implementer again.
 - **The message of an undecided tie names the decider.** A level
   elimination tie with no decision is refused as before, with the reason
   `UndecidedTie`; its message told the caller to record `'tie_winner'`

@@ -279,14 +279,21 @@ experimental and could still change.
   nothing more than it did.
 - A constrained schedule that fails pays for the search: one allowance of
   20,000 rejected roles and 200,000 events put to the constraints for all
-  the layouts of a call. Where a failed rotation would have had its failure
+  the layouts of a call. The passes that fix seatings count against the
+  events: a closure that fixes the role of every pairing of 40
+  participants, with no balanced leg, put 1.8 million events to the
+  constraints in those passes before they were counted, and took 20
+  seconds to fail where it now takes 3. Where a failed rotation would have had its failure
   analysed only to be thrown away, and the constraints are the library's
   own role limits, the analysis is built once, after the search.
 - The search is bounded, and beyond its bound it does not know. Two
   mirrored legs under a limit of two in a row: found for every field of
-  even size from 6 to 16 and for 5 to 11 participants of odd size; stopped
-  at the bound for 13 and 15. It says so, and does not say that no roles
-  exist.
+  even size from 6 to 30 and for 3 to 11 participants of odd size; stopped
+  at the bound for every field of odd size from 13 to 29, after some
+  seconds. It says so, and does not say that no roles exist. Four
+  participants have no first leg that keeps that limit, with any roles. A
+  limit of three in a row is found for every field from 3 to 20 over one
+  to four legs.
 - Without backtracking only the circle layouts are searched. A limit that
   no balanced roles keep there, and that another way to play the leg would
   keep, needs `backtracking: true`.
@@ -313,8 +320,12 @@ experimental and could still change.
   mirrored legs wants it the other way for the two participants who meet
   the fixed seat in the last two rounds. So the rule stays, and a schedule
   that must not repeat a role three times says so with a
-  `ConsecutiveRoleConstraint`: the scheduler then reverses those two
-  seatings, which is the balanced leg its search finds.
+  `ConsecutiveRoleConstraint`: in a field of even size the scheduler then
+  reverses those two seatings, which is the balanced leg its search finds.
+  A field of odd size has no fixed seat, and there the search finds a leg
+  under a limit of two up to 11 participants and stops at its bound from 13
+  up ("What it costs, and what is short"); a limit of three, which rules
+  out the run of four, it finds in every field measured.
 
 A scheduler with a `Randomizer` is no longer among them. Up to 0.2.x it
 shuffled the participant order of the first leg only and laid the later legs
