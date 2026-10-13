@@ -178,6 +178,13 @@ heading **Output change (fix)**.
   1, whatever the keys are. A list is labelled as before, and
   `BlackoutRule::fromArray()`, which always built a list, is unchanged
   (#121, items 2 and 16).
+- **`TieDecision::advancer()` refuses a single-leg result whose winner is
+  not in the tie.** With one leg it returned the winner the result
+  recorded, whoever that was; with two legs the same input was refused. It
+  now throws the `InvalidConfigurationException` of the two-legged case
+  (reason `InvalidResult`, context `winner` and `participants`). The winner
+  is matched by ID, and a winner who is one of the two is returned as
+  before, so no bracket the engines resolved changes (#121, item 5).
 
 ## [0.2.3] - 2026-10-13
 

@@ -170,4 +170,30 @@ describe('TieDecision', function (): void {
         expect(fn() => TieDecision::advancer($legs, $this->alice, $this->bob, 2))
             ->toThrow(InvalidConfigurationException::class, 'not in the tie');
     });
+
+    // With two legs this input was always refused. With one, the winner the
+    // result records was returned although neither side of the tie.
+    it('rejects a single-leg result naming a winner outside the tie', function (): void {
+        $carol = new Participant('p3', 'Carol');
+        $foreign = new Event([$this->alice, $carol], new Round(1));
+
+        try {
+            TieDecision::advancer([new Result($foreign, $carol)], $this->alice, $this->bob, 1);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::InvalidResult)
+                ->and($exception->getConfigurationIssue())->toBe('Leg result names a winner who is not in the tie')
+                ->and($exception->getContext())->toBe(['winner' => 'p3', 'participants' => ['p1', 'p2']]);
+
+            return;
+        }
+
+        $this->fail('A participant outside the tie advanced from it.');
+    });
+
+    it('advances a single-leg winner who is an equal copy of one side', function (): void {
+        $event = new Event([$this->alice, $this->bob], new Round(1));
+        $winner = new Participant('p2', 'Bob');
+
+        expect(TieDecision::advancer([new Result($event, $winner)], $this->alice, $this->bob, 1)?->getId())->toBe('p2');
+    });
 });
