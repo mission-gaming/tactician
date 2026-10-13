@@ -24,6 +24,7 @@ use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
+use MissionGaming\Tactician\Stage\Withdrawal;
 use MissionGaming\Tactician\Standings\EntryOrder;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
@@ -336,13 +337,23 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
     /**
      * Every recorded round as this engine reads it (see RecordedRound).
      *
-     * The derivation of a round is the round this engine pairs from the
-     * rounds recorded before it and their results, for the participants
-     * who are active now or are named by that round or a later one. An
-     * engine that holds a Randomizer has none to give: what it drew when
-     * the round was paired is not part of the state. Neither has an engine
-     * whose search finds no pairing for the round, or a state whose
-     * earlier rounds StageState::fromHistory() would refuse.
+     * The derivation of a round is the round this engine pairs from what
+     * was known when the round was paired: the rounds recorded before it
+     * and their results, the adjustments made before it
+     * (Adjustment::getAfterRound()), and the participants who had not
+     * withdrawn by then (StageState::getWithdrawals(); a participant whose
+     * withdrawal has no round is taken to have been in the stage for the
+     * rounds that name it and for those before them). So a round this
+     * engine paired is not reported as manual for what was recorded after
+     * it.
+     *
+     * An engine that holds a Randomizer has no derivation to give: what it
+     * drew when the round was paired is not part of the state. Neither has
+     * a state that holds an adjustment which does not say when it was
+     * made: the table the round was paired from is then not known, and no
+     * round is reported as manual. Neither has an engine whose search
+     * finds no pairing for the round, or a state whose earlier rounds
+     * StageState::fromHistory() would refuse.
      *
      * @return list<RecordedRound>
      *
@@ -417,21 +428,48 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         $rounds = array_values($state->getRoundsPlayed());
         $number = $rounds[$index]->getRoundNumber();
 
-        // Who was in the stage when the round was paired: the state does
-        // not say when a participant withdrew, so it is everyone who is
-        // active now or is named by this round or a later one.
+        // The table the round was paired from has the adjustments made
+        // before it. One that does not say when it was made may or may not
+        // be among them, and the engine does not guess.
+        $adjustments = [];
+        foreach ($state->getAdjustments() as $adjustment) {
+            if ($adjustment->getAfterRound() === null) {
+                return null;
+            }
+            if ($adjustment->getAfterRound() < $number) {
+                $adjustments[] = $adjustment;
+            }
+        }
+
+        // Who was in the stage when the round was paired: everyone who is
+        // active now, and everyone who withdrew after this round or a
+        // later one was recorded. Where the state does not say when a
+        // participant withdrew, it was in the stage for this round if this
+        // round or a later one names it.
         $present = [];
         foreach ($state->getParticipants() as $participant) {
             $present[$participant->getId()] = true;
         }
+        $withdrewEarlier = [];
+        foreach ($state->getWithdrawals() as $withdrawal) {
+            if ($withdrawal->getAfterRound() < $number) {
+                $withdrewEarlier[$withdrawal->getParticipant()->getId()] = $withdrawal;
+            } else {
+                $present[$withdrawal->getParticipant()->getId()] = true;
+            }
+        }
         foreach (array_slice($rounds, $index) as $later) {
             foreach ($later->getEvents() as $event) {
                 foreach ($event->getParticipants() as $participant) {
-                    $present[$participant->getId()] = true;
+                    if (!isset($withdrewEarlier[$participant->getId()])) {
+                        $present[$participant->getId()] = true;
+                    }
                 }
             }
             foreach ($later->getByes() as $bye) {
-                $present[$bye->getId()] = true;
+                if (!isset($withdrewEarlier[$bye->getId()])) {
+                    $present[$bye->getId()] = true;
+                }
             }
         }
 
@@ -454,11 +492,14 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
                     $state->getResults(),
                     static fn(Result $result): bool => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $number
                 )),
-                array_values(array_filter(
-                    $entrants,
-                    static fn(Participant $entrant): bool => !isset($present[$entrant->getId()])
-                )),
-                $state->getAdjustments()
+                array_map(
+                    static fn(Participant $entrant): Participant|Withdrawal => $withdrewEarlier[$entrant->getId()] ?? $entrant,
+                    array_values(array_filter(
+                        $entrants,
+                        static fn(Participant $entrant): bool => !isset($present[$entrant->getId()])
+                    ))
+                ),
+                $adjustments
             );
 
             // Before its first round a stage has only the participants it

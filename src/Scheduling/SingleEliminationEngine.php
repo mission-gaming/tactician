@@ -20,6 +20,7 @@ use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
@@ -230,6 +231,13 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                                       TieDecision refuses (`InvalidResult`), a recorded
      *                                       round holds a third-place tie where this engine
      *                                       plays none (reason `RecordedRoundMismatch`), a re-seeded
+     *                                       bracket holds an adjustment that does not say after which
+     *                                       round it was made and a recorded round after the first
+     *                                       that an entrant had withdrawn before (also
+     *                                       `RecordedRoundMismatch`, with `round`,
+     *                                       `adjusted_without_round` and `withdrawn` in the context:
+     *                                       what became of that entrant depends on a ranking that is
+     *                                       not known), a re-seeded
      *                                       bracket has a bye and a ranking strategy that does
      *                                       not say what a bye is worth (`IncompatibleOptions`), or the
      *                                       bracket is complete
@@ -311,11 +319,15 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * round recorded after the bracket's last is read by nothing and is
      * not listed.
      *
-     * In a re-seeded bracket the derivation of a round already played
-     * counts every adjustment the state holds, also one recorded after
-     * the round was paired, because an adjustment carries no round. Such
-     * a round can therefore be reported as manual when it was not. It is
-     * read as recorded either way.
+     * In a re-seeded bracket the derivation of a round is ranked from the
+     * adjustments made before the round was paired
+     * (Adjustment::getAfterRound()), so a round this engine paired is not
+     * reported as manual for an adjustment recorded since. Where the state
+     * holds an adjustment that does not say when it was made, the ranking
+     * of a recorded round after the first is not known: the round has no
+     * derivation and is not reported as manual. It is read as recorded
+     * either way, unless reading it takes the ranking (see pairNextRound()
+     * for that refusal).
      *
      * @return list<RecordedRound>
      *
@@ -460,15 +472,29 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         while (count($slots) > 1) {
             ++$structural;
 
+            // The round is read from what was known when it was paired: for
+            // the recorded round with the next number where there is one
+            // (this round, or the one this round was skipped before), and
+            // from the state as it stands otherwise.
+            $recorded = $reading->recorded[$reading->number + 1] ?? null;
+            $pairedAt = $recorded instanceof RoundPairing ? $reading->number + 1 : null;
+            $out = $reading->withdrawnWhenPaired($pairedAt);
+
             // Re-seeded path: after the entry round, survivors are
             // re-ranked by standings and re-folded each round. Only
-            // results from earlier rounds may inform the ranking - the
-            // round is derived the same before and after its own results
-            // are recorded.
-            if ($this->options->reseedEachRound && $structural > 1) {
+            // results from earlier rounds, and adjustments made before the
+            // round was paired, may inform the ranking - the round is
+            // derived the same before and after its own results are
+            // recorded, and whatever is recorded later.
+            $ranked = $this->options->reseedEachRound && $structural > 1;
+            $rankedBlind = $ranked && $pairedAt !== null && $this->adjustmentsWithoutRound($state) !== [];
+            if ($ranked) {
                 $survivors = array_values(array_filter($slots, fn(?Participant $slot) => $slot !== null));
+                if ($rankedBlind) {
+                    $this->requireNoRankingToReadBy($state, $survivors, $out, $reading->number + 1);
+                }
                 $slots = array_values($this->buildInitialSlots(
-                    $this->rankByStandings($survivors, $state, $reading->number + 1, $reading->levelAdvancers, $byes)
+                    $this->rankByStandings($survivors, $state, $reading->number + 1, $reading->levelAdvancers, $byes, $pairedAt)
                 ));
             }
 
@@ -478,7 +504,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             // final: the round is paired with both, awaits results with
             // one of them decided, and is complete with both.
             $thirdPlaceTie = count($slots) === 2
-                ? $this->thirdPlaceTie($wentOutInPreviousRound, $state, $reading->number + 1, $reading->levelAdvancers, $byes)
+                ? $this->thirdPlaceTie($wentOutInPreviousRound, $state, $reading->number + 1, $reading->levelAdvancers, $byes, $pairedAt)
                 : null;
 
             $ties = $thirdPlaceTie === null ? [] : [$thirdPlaceTie];
@@ -489,14 +515,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                     $ties[] = [$first, $second];
                 }
             }
-            $toPlay = false;
-            foreach ($ties as [$first, $second]) {
-                $toPlay = $toPlay || (!isset($reading->withdrawn[$first->getId()]) && !isset($reading->withdrawn[$second->getId()]));
-            }
 
-            $recorded = $reading->recorded[$reading->number + 1] ?? null;
-            $claimed = $recorded instanceof RoundPairing && ($toPlay || $this->namesBothEntrantsOfOneOf($recorded, $ties));
-            $derivation = $this->buildRoundPairing($reading->number + 1, count($slots), $pairs, $thirdPlaceTie, $reading->withdrawn);
+            [$toPlay, $claimed] = $this->claimOf($reading, $recorded, $ties, $out);
+            $derivation = $this->buildRoundPairing($reading->number + 1, count($slots), $pairs, $thirdPlaceTie, $out);
 
             if (!$claimed && $toPlay) {
                 $reading->pending = $derivation;
@@ -512,14 +533,17 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $claimed ? $recorded : null,
                 $claimed ? $reading->number : $reading->number + 1,
                 $legsPerTie,
-                $thirdPlaceTie
+                $thirdPlaceTie,
+                $pairedAt
             );
 
             if ($claimed && $recorded instanceof RoundPairing) {
+                // A round ranked without knowing when an adjustment was
+                // made has no round of this engine to be compared with
                 $reading->rounds[] = new RecordedRound(
                     $recorded,
-                    $derivation,
-                    $read['manual'],
+                    $rankedBlind ? null : $derivation,
+                    !$rankedBlind && $read['manual'],
                     $read['unresolved'],
                     $read['uncontested'],
                     $read['undecided']
@@ -603,6 +627,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * @param list<Participant> $wentOutInPreviousRound In the order of that round's ties
      * @param array<string, Participant> $levelAdvancers
      * @param array<int|string, int> $byes Byes of the earlier rounds, by participant ID
+     * @param int|null $pairedAt The number of the recorded round the tie was paired for, or null
+     *                           when it is paired now
      * @return array{Participant, Participant}|null
      *
      * @throws InvalidConfigurationException When the bracket is re-seeded, one of the two had a
@@ -614,14 +640,15 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         StageState $state,
         int $round,
         array $levelAdvancers,
-        array $byes
+        array $byes,
+        ?int $pairedAt
     ): ?array {
         if (!$this->options->thirdPlace || count($wentOutInPreviousRound) !== 2) {
             return null;
         }
 
         $entrants = $this->options->reseedEachRound
-            ? $this->rankByStandings($wentOutInPreviousRound, $state, $round, $levelAdvancers, $byes)
+            ? $this->rankByStandings($wentOutInPreviousRound, $state, $round, $levelAdvancers, $byes, $pairedAt)
             : $wentOutInPreviousRound;
 
         return [$entrants[0], $entrants[1]];
@@ -825,28 +852,25 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * the table leaves level are in the order of the participant list:
      * no seed attribute, label or ID is read.
      *
-     * Every adjustment recorded on the state is in the ranking, whenever
-     * it was recorded: an adjustment belongs to no round, so there is no
-     * "earlier" to hold it to. The round that is paired next is ranked
-     * with every adjustment made so far, which is what was known when it
-     * is paired (ADR 0001). A round that is already recorded is not
-     * ranked again to be read: it is read as recorded, so an adjustment
-     * made after it was paired changes none of its ties and none of the
-     * rounds derived from them. It does change what the engine would pair
-     * in that round's place today, which is only what
-     * RecordedRound::getDerivation() shows: such a round can be reported
-     * as manual when it was not.
+     * An adjustment is in the ranking when it was made before the round
+     * was paired (ADR 0001): for a round that is recorded, the
+     * adjustments made after a round before it
+     * (Adjustment::getAfterRound()), so that one recorded later changes
+     * neither the round nor anything read from it; for the round that is
+     * paired next, every adjustment the state holds, which is what is
+     * known now.
      *
-     * One thing is still read from this ranking for a recorded round: the
-     * slots, and with them whom an entrant would have met who had
-     * withdrawn before the round was paired (the round holds no event for
-     * that tie). An adjustment made after such a round can change who is
-     * read as having gone out in it. Nothing recorded says otherwise until
-     * an adjustment carries the round it was made after.
+     * An adjustment that says no round counts here too, and the caller
+     * does not rely on it: the ranking of a recorded round is then not
+     * known, the round is given no derivation, and it is read only where
+     * the order of the survivors makes no difference (see
+     * requireNoRankingToReadBy()).
      *
      * @param array<Participant> $survivors
      * @param array<string, Participant> $levelAdvancers
      * @param array<int|string, int> $byes Byes of the earlier rounds, by participant ID
+     * @param int|null $pairedAt The number of the recorded round the ranking was made for, or
+     *                           null when it is made now
      * @return array<Participant>
      *
      * @throws InvalidConfigurationException When a survivor had a bye and the ranking strategy does
@@ -857,8 +881,16 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         StageState $state,
         int $beforeRound,
         array $levelAdvancers,
-        array $byes
+        array $byes,
+        ?int $pairedAt
     ): array {
+        $adjustments = array_values(array_filter(
+            $state->getAdjustments(),
+            static fn(Adjustment $adjustment): bool => $pairedAt === null
+                || $adjustment->getAfterRound() === null
+                || $adjustment->getAfterRound() < $pairedAt
+        ));
+
         $priorResults = array_values(array_filter(
             $state->getResults(),
             fn($result) => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $beforeRound
@@ -870,7 +902,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $entrants,
                 $this->resultsForStandings($priorResults, $levelAdvancers),
                 $byes,
-                $state->getAdjustments(),
+                $adjustments,
                 $this->options->legsPerTie
             )
             ->withTiedSetsOrderedBy($entrants);
@@ -888,6 +920,69 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         }
 
         return $ranked;
+    }
+
+    /**
+     * The adjustments of the state that do not say after which round they
+     * were made.
+     *
+     * @return list<Adjustment>
+     */
+    private function adjustmentsWithoutRound(StageState $state): array
+    {
+        return array_values(array_filter(
+            $state->getAdjustments(),
+            static fn(Adjustment $adjustment): bool => $adjustment->getAfterRound() === null
+        ));
+    }
+
+    /**
+     * Refuse to read a recorded round of a re-seeded bracket where that
+     * takes the ranking it was paired from and the ranking is not known.
+     *
+     * The state holds an adjustment that does not say when it was made, so
+     * the order the survivors were folded in when the round was paired is
+     * not known. The ties the round holds are read without it, and so is
+     * every survivor who was in the bracket then: it is in a tie or went
+     * on. The one thing the order decides is what became of a survivor who
+     * had withdrawn before the round was paired, for whom the round holds
+     * no event: it went out against whoever it was folded with, or stood
+     * alone and is still in the next round. Taking either is a guess that
+     * can change the size of the round paired next, so the state is
+     * refused, with the participants and the way to say what is missing.
+     *
+     * @param list<Participant> $survivors The entrants the round is entered with
+     * @param array<int|string, true> $out Who had withdrawn when the round was paired
+     *
+     * @throws InvalidConfigurationException When one of the survivors had withdrawn
+     */
+    private function requireNoRankingToReadBy(StageState $state, array $survivors, array $out, int $round): void
+    {
+        $withdrawn = [];
+        foreach ($survivors as $survivor) {
+            if (isset($out[$survivor->getId()])) {
+                $withdrawn[] = $survivor->getId();
+            }
+        }
+        if ($withdrawn === []) {
+            return;
+        }
+
+        $adjusted = array_values(array_unique(array_map(
+            static fn(Adjustment $adjustment): string => $adjustment->getParticipantId(),
+            $this->adjustmentsWithoutRound($state)
+        )));
+
+        throw new InvalidConfigurationException(
+            "The recorded round {$round} of this re-seeded bracket cannot be read: the state holds an adjustment that"
+                . ' does not say after which round it was made (for ' . implode(', ', $adjusted) . '), so the order the'
+                . ' survivors were folded in is not known, and what became of an entrant who had withdrawn before the'
+                . ' round was paired (' . implode(', ', $withdrawn) . ') depends on it. Say when each adjustment was'
+                . ' made: StageState::withAdjustment() records it, and a history states it with'
+                . ' Adjustment::madeAfterRound().',
+            ['round' => $round, 'adjusted_without_round' => $adjusted, 'withdrawn' => $withdrawn],
+            reason: InvalidConfigurationReason::RecordedRoundMismatch
+        );
     }
 
     /**

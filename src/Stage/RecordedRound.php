@@ -59,16 +59,23 @@ final readonly class RecordedRound
     }
 
     /**
-     * The round the engine would have paired here, from the entrant list
-     * and the rounds recorded before this one, or null when the engine
-     * cannot say: it draws from a randomizer, whose draw at the time is not
-     * part of the state, or it finds no pairing of its own for the round.
+     * The round the engine would have paired here from what was known
+     * when the recorded round was paired: the entrant list, the rounds
+     * recorded before this one and their results, the adjustments made
+     * before it (Adjustment::getAfterRound()) and the entrants who had not
+     * withdrawn by then (StageState::getWithdrawals()).
+     *
+     * Null when the engine cannot say: it draws from a randomizer, whose
+     * draw at the time is not part of the state; it finds no pairing of
+     * its own for the round; or the state holds an adjustment that does
+     * not say when it was made, and the round is one whose pairing an
+     * adjustment can change (every round of a Swiss stage, every round
+     * after the first of a bracket that re-seeds).
      *
      * It is there to be shown beside a manual round. Nothing is paired
-     * from it. It is derived from the state as it stands now, and two
-     * things the state holds carry no round: an adjustment counts in it
-     * whenever it was recorded, and an entrant who has withdrawn is read
-     * as having been in the stage for every round that names it.
+     * from it. A withdrawal the state does not know the time of is read
+     * from the recorded rounds: the entrant was in the stage for every
+     * round that names it, and for none after the last that does.
      */
     public function getDerivation(): ?RoundPairing
     {

@@ -281,9 +281,14 @@ enum InvalidConfigurationReason: string
     case EngineFingerprintMismatch = 'engine_fingerprint_mismatch';
 
     /**
-     * A round recorded on a stage state is not the round the engine has at
-     * that number: it pairs other participants, because it was paired under
-     * other rules or the participant list changed afterwards.
+     * A round recorded on a stage state cannot be read as a round of the
+     * bracket reading it: it holds a third-place tie where the single
+     * elimination engine plays none, it leaves another number of entrants
+     * in a double elimination stage than the stage has places for, or it is
+     * a round of a re-seeded bracket that an entrant had withdrawn before,
+     * in a state that holds an adjustment which does not say after which
+     * round it was made. A round that only pairs the entrants otherwise
+     * than the engine would have is read, and reported as manual.
      */
     case RecordedRoundMismatch = 'recorded_round_mismatch';
 

@@ -385,7 +385,17 @@ trait EliminationBracketSupport
             }
         }
 
-        return new BracketReading($recorded, $this->indexResults($state->getResults()), $withdrawn, $lastNamedIn);
+        // A withdrawal the state knows the time of counts only for the one
+        // who is still withdrawn
+        $withdrawals = [];
+        foreach ($state->getWithdrawals() as $order => $withdrawal) {
+            $id = $withdrawal->getParticipant()->getId();
+            if (isset($withdrawn[$id])) {
+                $withdrawals[$id] = [$withdrawal->getAfterRound(), $order];
+            }
+        }
+
+        return new BracketReading($recorded, $this->indexResults($state->getResults()), $withdrawn, $lastNamedIn, $withdrawals);
     }
 
     /**
@@ -489,6 +499,51 @@ trait EliminationBracketSupport
     }
 
     /**
+     * Whether the recorded round with the next number is the round the
+     * bracket has for the given ties, and whether that round has a tie to
+     * play.
+     *
+     * A round takes a number when it has a tie to play at the moment it is
+     * paired: a tie neither entrant of which had withdrawn. Where the state
+     * knows when every entrant withdrew, that is the whole answer. A tie
+     * that is kept from being played only by a withdrawal the state does
+     * not know the time of may have been paired before that entrant left,
+     * and the recorded round is then known by whom it names (see
+     * namesBothEntrantsOfOneOf()).
+     *
+     * @param list<array{Participant, Participant}> $ties The ties the bracket has in the round
+     * @param array<int|string, true> $out Who had withdrawn when the round was paired
+     *
+     * @return array{bool, bool} Whether the round has a tie to play, and whether the recorded
+     *                           round is this round
+     */
+    private function claimOf(BracketReading $reading, ?RoundPairing $recorded, array $ties, array $out): array
+    {
+        $toPlay = false;
+        $perhaps = [];
+        foreach ($ties as [$first, $second]) {
+            $firstOut = isset($out[$first->getId()]);
+            $secondOut = isset($out[$second->getId()]);
+            if (!$firstOut && !$secondOut) {
+                $toPlay = true;
+                continue;
+            }
+
+            if (
+                !($firstOut && $reading->knowsWithdrawalOf($first->getId()))
+                && !($secondOut && $reading->knowsWithdrawalOf($second->getId()))
+            ) {
+                $perhaps[] = [$first, $second];
+            }
+        }
+
+        return [
+            $toPlay,
+            $recorded instanceof RoundPairing && ($toPlay || $this->namesBothEntrantsOfOneOf($recorded, $perhaps)),
+        ];
+    }
+
+    /**
      * Settle one tie from what is recorded: who goes on from it, who goes
      * out, and whether it is still open.
      *
@@ -509,6 +564,15 @@ trait EliminationBracketSupport
      * on from the tie; where a later round names neither, or both, nobody
      * did.
      *
+     * Where the state does not know when one of them withdrew, the
+     * recorded rounds say what they can: the one that a later recorded
+     * round names went on from the tie, and where a later round names
+     * neither, or both, neither is read as having gone on.
+     *
+     * @param array<int|string, true> $out Who counts as withdrawn for this tie, by ID: everyone
+     *                                     who has withdrawn for a tie the round holds, and for a
+     *                                     pair of slots it holds no tie for, who had when the
+     *                                     round was paired
      * @param array<string, Participant> $levelAdvancers
      * @return array{winner: Participant|null, losers: list<Participant>, open: bool, uncontested: bool, undecided: bool, refusal: array{issue: string, context: array<string, mixed>}|null}
      *
@@ -521,6 +585,7 @@ trait EliminationBracketSupport
         Participant $first,
         Participant $second,
         int $legsPerTie,
+        array $out,
         array &$levelAdvancers
     ): array {
         $undecided = null;
@@ -555,8 +620,8 @@ trait EliminationBracketSupport
             ];
         }
 
-        $firstOut = isset($reading->withdrawn[$first->getId()]);
-        $secondOut = isset($reading->withdrawn[$second->getId()]);
+        $firstOut = isset($out[$first->getId()]);
+        $secondOut = isset($out[$second->getId()]);
         if (!$firstOut && !$secondOut) {
             return [
                 'winner' => null,
@@ -611,6 +676,9 @@ trait EliminationBracketSupport
      * @param int $round The number the round's results carry
      * @param array{Participant, Participant}|null $extraTie A tie of the round that stands in no slot
      *                                                       (the third-place tie)
+     * @param int|null $pairedAt The number of the recorded round the slots were paired for (the
+     *                           round itself, or the one this round was skipped before); null
+     *                           when the round is read from the state as it stands
      * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, unplayed: list<Participant>, unresolved: list<Event>, uncontested: list<Event>, undecided: list<Event>}
      *                                                                                                                                                                                                                                                                              `unplayed` lists who went on without a tie being played;
      *                                                                                                                                                                                                                                                                              `unresolved` the events that await a result, and
@@ -625,8 +693,14 @@ trait EliminationBracketSupport
         ?RoundPairing $recorded,
         int $round,
         int $legsPerTie,
-        ?array $extraTie = null
+        ?array $extraTie = null,
+        ?int $pairedAt = null
     ): array {
+        // Who had withdrawn when the round was paired: a pair of slots the
+        // round holds no tie for is settled from that, and from nobody who
+        // left later
+        $out = $reading->withdrawnWhenPaired($pairedAt);
+
         $position = [];
         foreach ($slots as $index => $occupant) {
             if ($occupant instanceof Participant) {
@@ -701,7 +775,7 @@ trait EliminationBracketSupport
                 continue;
             }
 
-            $settled = $this->settleTie($reading, $round, $first, $second, $legsPerTie, $reading->levelAdvancers);
+            $settled = $this->settleTie($reading, $round, $first, $second, $legsPerTie, $reading->withdrawn, $reading->levelAdvancers);
             if ($settled['refusal'] !== null) {
                 // The tie pairNextRound() names is the first of the bracket
                 // and not the first of the recorded events, which a history
@@ -753,7 +827,7 @@ trait EliminationBracketSupport
             $secondFree = $second instanceof Participant && !isset($inTie[$second->getId()]);
 
             if ($first instanceof Participant && $second instanceof Participant && $firstFree && $secondFree) {
-                $settled = $this->settleTie($reading, $round, $first, $second, $legsPerTie, $reading->levelAdvancers);
+                $settled = $this->settleTie($reading, $round, $first, $second, $legsPerTie, $out, $reading->levelAdvancers);
                 if (!$settled['open']) {
                     $rows[] = [2 * $index, $sequence++, $settled];
                     if ($settled['winner'] instanceof Participant) {
@@ -774,13 +848,14 @@ trait EliminationBracketSupport
                     continue;
                 }
 
-                // An entrant who has withdrawn goes on like any other: when
-                // it left is not known, and the tie it stands in next is
-                // settled for its opponent there. It went on without playing
-                // where the round says so by listing it among its byes: that
-                // is recorded, and its leaving later does not take it back.
+                // An entrant who has withdrawn goes on like any other: the
+                // tie it stands in next is settled for its opponent there.
+                // It went on without playing where it was in the stage when
+                // the round was paired, or where the round says so by
+                // listing it among its byes: that is recorded, and its
+                // leaving later does not take it back.
                 $rows[] = [$at, $sequence++, ['winner' => $occupant, 'losers' => []]];
-                if (!isset($reading->withdrawn[$occupant->getId()]) || isset($recordedByes[$occupant->getId()])) {
+                if (!isset($out[$occupant->getId()]) || isset($recordedByes[$occupant->getId()])) {
                     $unplayed[] = $occupant;
                 }
                 $held = true;
@@ -794,7 +869,7 @@ trait EliminationBracketSupport
             // The tie that stands in no slot is not in the round: it is
             // settled where an entrant of it has withdrawn, and is left
             // undecided otherwise.
-            $settled = $this->settleTie($reading, $round, $extraTie[0], $extraTie[1], $legsPerTie, $reading->levelAdvancers);
+            $settled = $this->settleTie($reading, $round, $extraTie[0], $extraTie[1], $legsPerTie, $out, $reading->levelAdvancers);
             $extra = $settled['open'] ? null : $settled;
         }
 
@@ -811,8 +886,8 @@ trait EliminationBracketSupport
             foreach ($derived as $key => [$first, $second]) {
                 $manual = $manual || (
                     !isset($ties[$key])
-                    && !isset($reading->withdrawn[$first->getId()])
-                    && !isset($reading->withdrawn[$second->getId()])
+                    && !isset($out[$first->getId()])
+                    && !isset($out[$second->getId()])
                 );
             }
         }

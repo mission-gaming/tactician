@@ -25,6 +25,7 @@ use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Stage\Withdrawal;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
@@ -223,9 +224,27 @@ function historyRebuilt(StageState $state, array $entrants, Randomizer $rng, boo
         $entrants,
         $rng->shuffleArray($rounds),
         $rng->shuffleArray($state->getResults()),
-        $rng->shuffleArray($state->getWithdrawnEntrants()),
+        historyWithdrawals($state, $rng),
         $state->getAdjustments()
     );
+}
+
+/**
+ * The withdrawals of a state as an application's rows hold them: each with
+ * the round it happened after, and the rounds in an order of their own.
+ * Those of one round stay in the order they happened in, which is the one
+ * thing about their order that says something.
+ *
+ * @return list<Withdrawal>
+ */
+function historyWithdrawals(StageState $state, Randomizer $rng): array
+{
+    $byRound = [];
+    foreach ($state->getWithdrawals() as $withdrawal) {
+        $byRound[$withdrawal->getAfterRound()][] = $withdrawal;
+    }
+
+    return array_merge(...$rng->shuffleArray(array_values($byRound)), ...[[]]);
 }
 
 /**
@@ -1695,7 +1714,9 @@ describe('the stored form of a state', function (): void {
             ->and($withdrawn->toArray()['active'])->toBe(['h1', 'h3', 'h4'])
             ->and(historyIds($withdrawn->getParticipants()))->toBe(['h1', 'h3', 'h4'])
             ->and(historyIds($withdrawn->getWithdrawnEntrants()))->toBe(['h2'])
-            ->and(array_key_last($withdrawn->toArray()))->toBe('entrants');
+            // And when: after which round, the last key of the form
+            ->and($withdrawn->toArray()['withdrawals'] ?? null)->toBe([['participant' => 'h2', 'after_round' => 1]])
+            ->and(array_key_last($withdrawn->toArray()))->toBe('withdrawals');
 
         $restored = StageState::fromJson($withdrawn->toJson());
 

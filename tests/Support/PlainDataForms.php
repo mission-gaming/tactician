@@ -115,7 +115,7 @@ final class PlainDataForms
         $decider = ['participants' => ['b'], 'label' => 'drawn by lot', 'reason' => 'The event finished level'];
         // The order of a set of level entries, as a rank selector takes it
         $decision = ['participants' => ['c', 'a', 'b'], 'label' => 'drawn by lot', 'reason' => 'Level on every figure'];
-        $adjustment = ['participant' => 'b', 'amount' => -3.0, 'label' => 'deduction', 'reason' => 'a late entry'];
+        $adjustment = ['participant' => 'b', 'amount' => -3.0, 'label' => 'deduction', 'reason' => 'a late entry', 'after_round' => 1];
         $tiebreaker = ['tiebreaker' => 'buchholz', 'byes' => 'own-ranking-value'];
         $window = ['from' => '2026-11-09 00:00', 'to' => '2026-11-17 00:00', 'timezone' => 'Europe/London', 'label' => 'break'];
 
@@ -516,7 +516,7 @@ final class PlainDataForms
             'adjustment' => [
                 'class' => Adjustment::class,
                 'kind' => self::DATA,
-                'keys' => ['participant', 'amount', 'label', 'reason'],
+                'keys' => ['participant', 'amount', 'label', 'reason', 'after_round'],
                 'sample' => $adjustment,
                 'read' => static fn(array $data, array $registry): object => Adjustment::fromArray($data),
                 'generate' => self::adjustment(...),
@@ -571,7 +571,7 @@ final class PlainDataForms
             'stage state' => [
                 'class' => StageState::class,
                 'kind' => self::DATA,
-                'keys' => ['participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments', 'entrants'],
+                'keys' => ['participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments', 'entrants', 'withdrawals'],
                 'sample' => [
                     'participants' => $participants,
                     // b has withdrawn from the live stage and keeps its place
@@ -581,6 +581,7 @@ final class PlainDataForms
                     'engine_fingerprint' => 'an engine of our own',
                     'adjustments' => [$adjustment],
                     'entrants' => ['a', 'b', 'c'],
+                    'withdrawals' => [['participant' => 'b', 'after_round' => 1]],
                 ],
                 'read' => static fn(array $data, array $registry): object => StageState::fromArray(self::stringKeyed($data)),
                 'generate' => self::stageState(...),
@@ -918,7 +919,9 @@ final class PlainDataForms
 
     /**
      * An adjustment for one of the field: a whole amount, a fraction, a
-     * zero, an amount JSON writes with an exponent, of either sign.
+     * zero, an amount JSON writes with an exponent, of either sign. Two in
+     * three say after which round they were made, before the first
+     * included, and one in three does not.
      *
      * @param array<Participant> $field
      */
@@ -930,7 +933,8 @@ final class PlainDataForms
             $field[$random->getInt(0, count($field) - 1)]->getId(),
             [-3.0, 1.0, 0.0, 0.1, -0.125, 1.0e-9, -2.5e15, 0.30000000000000004][$random->getInt(0, 7)],
             [null, 'deduction', ''][$random->getInt(0, 2)],
-            [null, 'a late entry'][$random->getInt(0, 1)]
+            [null, 'a late entry'][$random->getInt(0, 1)],
+            [null, 0, $random->getInt(1, 6)][$random->getInt(0, 2)]
         );
     }
 
@@ -995,7 +999,9 @@ final class PlainDataForms
      * A stage state recorded the way an application records one: started,
      * rounds recorded in order (now and then with a gap in the numbers),
      * some events with a result and some without, a result added later, a
-     * withdrawal, and a stamp or none.
+     * withdrawal, and a stamp or none. Its adjustments are recorded after
+     * a round of the stage: the one the state gives them, or an earlier
+     * one they state themselves.
      *
      * @param array<Participant> $field
      *
@@ -1037,7 +1043,14 @@ final class PlainDataForms
             for ($i = $random->getInt(1, 3); $i > 0 && $seen !== []; --$i) {
                 $adjustment = self::adjustment($random, $field);
                 if (in_array($adjustment->getParticipantId(), $seen, true)) {
-                    $state = $state->withAdjustment($adjustment);
+                    // A round the adjustment states is one the state holds
+                    $state = $state->withAdjustment(new Adjustment(
+                        $adjustment->getParticipantId(),
+                        $adjustment->getAmount(),
+                        $adjustment->getLabel(),
+                        $adjustment->getReason(),
+                        $adjustment->getAfterRound() === null ? null : min($adjustment->getAfterRound(), $number)
+                    ));
                 }
             }
         }

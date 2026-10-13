@@ -528,9 +528,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * walk stops there. A stage with no tie to play (bye propagation, or
      * ties an entrant has withdrawn from) advances its entrants without
      * consuming a round number, unless it is recorded: it was recorded
-     * when the entrants withdrew after it was paired, and it is known by
-     * naming both entrants of one of the stage's ties (see
-     * namesBothEntrantsOfOneOf()).
+     * when the entrants withdrew after it was paired (see claimOf()).
      *
      * @param array<Participant|null> $slots
      * @return array{stopped: bool, winners: list<Participant|null>, losers: list<Participant|null>, out: list<Participant>}
@@ -547,19 +545,22 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $pairs = array_chunk($slots, 2);
 
         $ties = [];
-        $toPlay = false;
         foreach ($pairs as $pair) {
             $first = $pair[0] ?? null;
             $second = $pair[1] ?? null;
             if ($first !== null && $second !== null) {
                 $ties[] = [$first, $second];
-                $toPlay = $toPlay || (!isset($reading->withdrawn[$first->getId()]) && !isset($reading->withdrawn[$second->getId()]));
             }
         }
 
+        // The stage is read from who was in the bracket when it was paired:
+        // for the recorded round with the next number where there is one,
+        // and from the state as it stands otherwise.
         $recorded = $reading->recorded[$reading->number + 1] ?? null;
-        $claimed = $recorded instanceof RoundPairing && ($toPlay || $this->namesBothEntrantsOfOneOf($recorded, $ties));
-        $derivation = $this->buildStagePairing($reading->number + 1, $stageName, $pairs, $reading->withdrawn);
+        $pairedAt = $recorded instanceof RoundPairing ? $reading->number + 1 : null;
+        $out = $reading->withdrawnWhenPaired($pairedAt);
+        [$toPlay, $claimed] = $this->claimOf($reading, $recorded, $ties, $out);
+        $derivation = $this->buildStagePairing($reading->number + 1, $stageName, $pairs, $out);
         $stopped = ['stopped' => true, 'winners' => [], 'losers' => [], 'out' => []];
 
         if (!$claimed && $toPlay) {
@@ -576,7 +577,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $slots,
             $claimed ? $recorded : null,
             $claimed ? $reading->number : $reading->number + 1,
-            $this->options->legsPerTie
+            $this->options->legsPerTie,
+            null,
+            $pairedAt
         );
 
         if ($claimed && $recorded instanceof RoundPairing) {
@@ -633,7 +636,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * the other entrant of a tie an entrant has withdrawn from included.
      *
      * @param array<array<Participant|null>> $pairs
-     * @param array<int|string, true> $withdrawn The IDs of the entrants who have withdrawn
+     * @param array<int|string, true> $withdrawn The IDs of the entrants who had withdrawn when
+     *                                           the stage was paired
      */
     private function buildStagePairing(int $roundNumber, string $stageName, array $pairs, array $withdrawn): RoundPairing
     {

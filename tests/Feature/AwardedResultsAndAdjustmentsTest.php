@@ -1050,12 +1050,11 @@ describe('an elimination bracket with awarded results and adjustments', function
     });
 
     // The adjustment below is recorded before round 3 is paired and is meant
-    // for it. Round 2 was played and is read as recorded, so the adjustment
-    // changes nothing about it, and the final is between the two who
-    // advanced from it. What the engine would pair as round 2 today does
-    // count the adjustment, which carries no round: that is the derivation
-    // shown beside the round, and the round is reported as manual for it.
-    it('reads a re-seeded state whose adjustment was recorded after a round it would have changed', function (): void {
+    // for it. The state records that it was made after round 2, so round 2
+    // is ranked without it: the engine's own round 2 is the round that was
+    // played, and nothing is reported as manual. The final is between the
+    // two who advanced from it.
+    it('ranks a recorded round of a re-seeded bracket without an adjustment made after it was paired', function (): void {
         $entrants = awardsEntrants(8);
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
 
@@ -1077,16 +1076,46 @@ describe('an elimination bracket with awarded results and adjustments', function
         expect($final->getRoundNumber())->toBe(3)
             ->and(awardsPairs($final))->toBe([['e1', 'e2']])
             ->and($rounds[1]->getPairing())->toBe($late->getRoundsPlayed()[1])
+            ->and($late->getAdjustments()[0]->getAfterRound())->toBe(2)
             ->and(awardsPairs($rounds[1]->getPairing()))->toBe([['e1', 'e4'], ['e2', 'e3']])
+            ->and(awardsPairs($derivation))->toBe([['e1', 'e4'], ['e2', 'e3']])
+            ->and($rounds[1]->isManual())->toBeFalse();
+    });
+
+    // The same adjustment, said to have been made after round 1: it was
+    // known when round 2 was paired, the engine would then have folded e1
+    // last, and the round that was played is another one. It is read as
+    // recorded and reported as manual, with the engine's round beside it.
+    it('ranks a recorded round of a re-seeded bracket with an adjustment that says it was made before it', function (): void {
+        $entrants = awardsEntrants(8);
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
+
+        $state = StageState::start($entrants);
+        foreach ([1, 2] as $round) {
+            $pairing = $engine->pairNextRound($state);
+            $state = $state->withRoundPlayed($pairing, array_map(awardsWonByTheBetterPlaced(...), $pairing->getEvents()));
+        }
+
+        $earlier = $state->withAdjustment((new Adjustment('e1', -1.0))->madeAfterRound(1));
+        $rounds = $engine->getRecordedRounds($earlier);
+        $derivation = $rounds[1]->getDerivation();
+        assert($derivation !== null);
+
+        expect(awardsPairs($rounds[1]->getPairing()))->toBe([['e1', 'e4'], ['e2', 'e3']])
             ->and(awardsPairs($derivation))->toBe([['e1', 'e2'], ['e3', 'e4']])
-            ->and($rounds[1]->isManual())->toBeTrue();
+            ->and($rounds[1]->isManual())->toBeTrue()
+            ->and($rounds[0]->isManual())->toBeFalse()
+            // The final follows from the round that was played
+            ->and(awardsPairs($engine->pairNextRound($earlier)))->toBe([['e1', 'e2']]);
     });
 
     // Issue #154: adjustments recorded at any point of a re-seeded bracket,
     // also after the rounds they would have changed and after the last.
-    it('reads a re-seeded bracket to its end with adjustments recorded at any point of it', function (): void {
+    // Every round is ranked from the adjustments made before it, so the
+    // engine's own round is the round it paired, at every later point.
+    it('reads a re-seeded bracket to its end with adjustments recorded at any point of it, and reports none of its own rounds as manual', function (): void {
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
-        $changed = 0;
+        $wouldDiffer = 0;
 
         for ($size = 4; $size <= 9; ++$size) {
             foreach ([1, 2] as $seed) {
@@ -1109,8 +1138,29 @@ describe('an elimination bracket with awarded results and adjustments', function
                     expect($read)->toBe($state->getRoundsPlayed(), "{$size} entrants, seed {$seed}");
                 }
                 $state = $adjust($state);
-                $changed += count(array_filter(
-                    $engine->getRecordedRounds($state),
+
+                foreach ($engine->getRecordedRounds($state) as $round) {
+                    $derivation = $round->getDerivation();
+                    assert($derivation instanceof RoundPairing);
+
+                    expect($round->isManual())->toBeFalse("{$size} entrants, seed {$seed}, round {$round->getRoundNumber()}")
+                        ->and(awardsPairs($derivation))->toBe(awardsPairs($round->getPairing()));
+                }
+
+                // What a ranking with every adjustment, whenever it was made,
+                // gives for the same rounds: the reading this replaces
+                $allAtTheStart = StageState::fromHistory(
+                    $entrants,
+                    $state->getRoundsPlayed(),
+                    $state->getResults(),
+                    [],
+                    array_map(
+                        static fn(Adjustment $adjustment): Adjustment => $adjustment->madeAfterRound(0),
+                        $state->getAdjustments()
+                    )
+                );
+                $wouldDiffer += count(array_filter(
+                    $engine->getRecordedRounds($allAtTheStart),
                     static fn(RecordedRound $round): bool => $round->isManual()
                 ));
 
@@ -1124,9 +1174,10 @@ describe('an elimination bracket with awarded results and adjustments', function
             }
         }
 
-        // The adjustments did change what the engine would pair: these are
-        // the states an engine that paired every round again refused
-        expect($changed)->toBeGreaterThan(0);
+        // The adjustments did change what the engine would pair with all of
+        // them: these are the states an engine that ranked every round with
+        // every adjustment refused
+        expect($wouldDiffer)->toBeGreaterThan(0);
     });
 
     it('reads a re-seeded bracket to its end when every adjustment was recorded before the second round is paired', function (): void {
