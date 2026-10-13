@@ -2909,9 +2909,13 @@ entry on the engine fingerprint.
     library raises the notice itself: a call that takes an advancer from
     the key emits one `E_USER_DEPRECATED` notice, whatever the number of
     ties the key decided in that call, and on every PHP version, PHP 8.3
-    included. Those calls are `isComplete()`, `pairNextRound()` and
-    `getOutcome()` of the two elimination engines,
-    `MatchOutcomeSelector::select()` and `TieDecision::advancer()`. An
+    included. Those calls are `isComplete()`, `pairNextRound()`,
+    `getOutcome()`, `getReadiness()`, `getRecordedRounds()` and
+    `getStandings()` of the two elimination engines,
+    `TieDecision::advancer()`, and `MatchOutcomeSelector::select()` where
+    it reads the results itself (an outcome that carries no settled ties;
+    for the outcome of an engine the notice came from the `getOutcome()`
+    call that built it). An
     application that turns every notice into an exception will see them
     fail until it records deciders. The constant carries the `@deprecated`
     tag and the `#[\Deprecated]` attribute, as the deprecated methods do,

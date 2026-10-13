@@ -813,7 +813,11 @@ describe("the deprecated 'tie_winner' metadata key", function () use ($root): vo
         expect(TieWinnerDeprecation::once(fn(): bool => $engine->isComplete($state)))->toBeTrue()
             ->and(TieWinnerDeprecation::once(fn(): ?StageOutcome => $engine->getOutcome($state)))->not->toBeNull()
             ->and(fn() => TieWinnerDeprecation::once(fn() => $engine->pairNextRound($state)))
-            ->toThrow(InvalidConfigurationException::class, 'Bracket is complete');
+            ->toThrow(InvalidConfigurationException::class, 'Bracket is complete')
+            // The calls that read a stage in progress walk the same bracket
+            ->and(TieWinnerDeprecation::once(fn(): bool => $engine->getReadiness($state)->isComplete()))->toBeTrue()
+            ->and(TieWinnerDeprecation::once(fn(): array => $engine->getRecordedRounds($state)))->toHaveCount(2)
+            ->and(TieWinnerDeprecation::once(fn(): int => count($engine->getStandings($state)->getEntries())))->toBe(4);
     });
 
     // The outcome of an engine carries its last tie as the engine settled

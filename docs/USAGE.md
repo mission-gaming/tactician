@@ -7263,10 +7263,15 @@ attribute. The key is a string in your data, which nothing can mark, so
 the library says it when it reads it:
 
 - A call that takes an advancer from the key emits one `E_USER_DEPRECATED`
-  notice: `isComplete()`, `pairNextRound()` and `getOutcome()` of the two
-  elimination engines, `MatchOutcomeSelector::select()` and
-  `TieDecision::advancer()`. It is one notice for the call, however many
-  ties of the bracket the key decided.
+  notice: `isComplete()`, `pairNextRound()`, `getOutcome()`,
+  `getReadiness()`, `getRecordedRounds()` and `getStandings()` of the two
+  elimination engines, every one of which reads the bracket;
+  `TieDecision::advancer()`; and `MatchOutcomeSelector::select()` where it
+  reads the results itself, which is for an outcome that carries no settled
+  ties (one built by hand). For the outcome of an engine the selector reads
+  the tie as the engine settled it, and the notice came from the
+  `getOutcome()` call that built the outcome. It is one notice for the
+  call, however many ties of the bracket the key decided.
 - It is emitted on every PHP version, PHP 8.3 included, because it does not
   come from the attribute.
 - A key that is not read emits nothing: on a result of a tie that its
