@@ -15,7 +15,10 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * positions than it has free, so placing a dropped event only means
  * another of that participant's events is the one that does not fit.
  *
- * Three moves, in rounds, while a round places at least one event:
+ * Four moves, in rounds, while a round places at least one event. The
+ * last two are tried only when the first two placed nothing in the
+ * round, only while fewer events are placed than the ceiling (ceiling())
+ * allows, and only while some position has a free place:
  *
  * - Direct: an event takes a position with room where neither of its
  *   participants is busy or pinned. This is not a search and spends no
@@ -32,15 +35,25 @@ namespace MissionGaming\Tactician\Repack\Internal;
  *   started for an event one of whose participants already plays every
  *   position it is not pinned at: the event of that participant that
  *   would be lifted has nowhere to go.
+ * - Rematch (rematchOne()): a position with room takes one more event
+ *   by an augmenting path among the events placed there and the
+ *   unplaced ones: unplaced events go in, the placed events between
+ *   them go out and are unplaced for the next round. It changes which
+ *   events of an over-capacity participant are the ones left out, any
+ *   number of them at one position, where an exchange changes one or
+ *   two.
  * - Exchange: an unplaced event takes the position of one placed event
  *   it collides with, that event leaves the schedule, and the exchange
  *   stands only if some unplaced event (the one that left included) can
  *   then be placed by an alternating path, or, one level deeper, by a
  *   further exchange (EXCHANGE_DEPTH). One in, one out and one more in:
- *   one more event placed. It is searched only when no alternating path
- *   placed anything in the round, and only while fewer events are placed
- *   than the ceiling (ceiling()) allows, and it tries at most
- *   EXCHANGE_NODE_LIMIT exchanges per search.
+ *   one more event placed. Every single exchange is tried before any
+ *   chain of two, and between the two an exchange for two events
+ *   (exchangeForTwo()): the unplaced event takes a position where both
+ *   its participants have an event, both leave, and two of the events
+ *   waiting must then be placed. Each of the three searches tries at
+ *   most EXCHANGE_NODE_LIMIT exchanges. An event an exchange brought in
+ *   is not taken out again on the same branch, but a path may move it.
  *
  * Every move is applied as it is searched and recorded in a journal, and
  * taken back from the journal where it fails, so every state keeps the
@@ -50,32 +63,45 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * that does not place one more event in the end is taken back entirely,
  * so the step changes nothing it cannot improve.
  *
- * Each alternating-path node and each exchange spends one step from the
- * budget it is given; with no step left the searches stop and only
- * direct moves are made. The exchange limit is a limit of the search's
- * own, like the depth, and does not depend on the budget.
+ * Each alternating-path node, each start of an augmenting path and each
+ * exchange spends one step from the budget it is given; with no step
+ * left the searches stop and only direct moves are made. The exchange
+ * limit is a limit of the search's own, like the depth, and does not
+ * depend on the budget.
  *
- * The whole step also stops searching after WORK_LIMIT position checks
+ * The whole step also stops searching after a number of position checks
  * (a check is one look at whether an event fits a position; each costs
- * well under a microsecond). The ceiling cannot prove of every request
+ * well under a microsecond): WORK_LIMIT, or WORK_PER_EVENT_AND_POSITION
+ * for every event and position of the request where that is more, up to
+ * WORK_LIMIT_AT_MOST (workLimitFor()). The ceiling cannot prove of every request
  * that nothing more fits, and where it cannot, the exchange search
  * would otherwise run to its limits on every round: seconds on requests
- * of a few hundred events that 0.2.2 repacked in milliseconds. The
- * limit is fixed, like the others, so a larger budget gives the same
- * outcome and the budget flag is not set when it is reached. Direct
- * moves go on after it, so an event left unplaced as NoSlotAvailable
- * still has no position with room and both participants free. It is
- * about 25 times what the largest complete round robin of the tests (40
- * participants) and the small corpus need, and on some requests it
- * leaves an event unplaced that a longer search would have placed.
+ * of a few hundred events that 0.2.2 repacked in milliseconds. That is
+ * the limit at the default step budget and at every larger one, where a
+ * larger budget gives the same outcome and the budget flag is not set
+ * when the limit is reached. A step is one node of a search and a node
+ * looks at every position, so steps alone do not bound the work in
+ * proportion to the budget; below the default budget the step has the
+ * same share of the limit as the budget is of the default
+ * (StepBudget::workLimit()), and never less than
+ * WORK_PER_EVENT_AND_POSITION_AT_LEAST for every event and position,
+ * which is about one search that fails and grows with the request as
+ * the passes that are not searches do. A search the smaller limit stops
+ * is reported to the budget as a search it stopped, because a larger
+ * budget would have let it go on. Direct moves go on after the limit, so
+ * an event left unplaced as NoSlotAvailable still has no position with
+ * room and both participants free. On some requests it leaves an event
+ * unplaced that a longer search would have placed.
  * A lifted event
  * tries the positions of its own session first, in slot order, and then
  * the rest of the grid in grid order, so the session loads the planner
  * chose change as little as they can; the gaps the moves leave are the
  * audit's to report.
  *
- * All ids are the orchestrator's dense integer indexes; index order is
- * caller-id order, so index tie-breaks are id tie-breaks.
+ * All ids are the orchestrator's dense integer indexes, given in the
+ * order the request itself gives (StructuralOrder for the participants,
+ * RoundColouring for the events), so an index tie-break follows what the
+ * request says and not what its ids happen to be.
  *
  * @internal
  */
@@ -95,16 +121,65 @@ final class LeftoverRecolourer
 
     /**
      * How many position checks the whole step may make before it starts
-     * no further search: a limit of the step's own, which the step budget
-     * does not lift (see the class docblock). About a sixth of a second
-     * on the machine it was measured on.
+     * no further search: a limit of the step's own, which no step budget
+     * lifts and one below the default makes smaller (see the class
+     * docblock). About a sixth of a second on the machine it was
+     * measured on.
      */
     public const int WORK_LIMIT = 500_000;
+
+    /**
+     * How many position checks the step may make for every event and
+     * position of the request, where that comes to more than WORK_LIMIT.
+     * An alternating path lifts each placed event once at most and looks
+     * at each position for it a few times, so the events times the
+     * positions is about what one search that fails costs, and the fixed
+     * limit alone was the work of some five of them on 770 events and 39
+     * positions: the step stopped there with events it was still
+     * placing, and placed fewer than release 0.2.3 on requests of that
+     * size with many pins. A hundred of them is 3 million checks on such
+     * a request, about a second; a request of 200 events on 20 positions
+     * stays at WORK_LIMIT.
+     */
+    public const int WORK_PER_EVENT_AND_POSITION = 100;
+
+    /**
+     * How many position checks the step may make for every event and
+     * position of the request however small the step budget is: one,
+     * which is about what a single search that fails costs. Without it a
+     * budget of a few steps left the round layout no search at all, and
+     * the layout is what the planner's order of events comes from: on
+     * seasons of 40 participants over two legs with rounds played, a
+     * budget of one step placed 14,339 of 16,184 events, fewer than
+     * release 0.2.3 at the same budget (14,849), and with it 15,517, for
+     * about a fifth more time. It is work in proportion to the request,
+     * like the passes that are not searches, so it is part of what no
+     * budget shortens. Two and four for every event and position placed
+     * a little more again for twice and four times the cost.
+     */
+    public const int WORK_PER_EVENT_AND_POSITION_AT_LEAST = 1;
+
+    /**
+     * The most position checks the step makes on any request, however
+     * large: without it a round robin of two legs among 40 participants
+     * (1,460 events on some 75 positions) had four times this to spend
+     * each time the step ran, and took eight seconds.
+     */
+    public const int WORK_LIMIT_AT_MOST = 3_000_000;
 
     private int $exchangeNodes = 0;
 
     /** Position checks made so far, against the work limit */
     private int $work = 0;
+
+    /** The work limit of the call of place() in progress */
+    private int $limit = self::WORK_LIMIT;
+
+    /** Whether that limit is smaller than the one the default budget gives */
+    private bool $limitIsShortened = false;
+
+    /** The ceiling of the last call of place() (see ceiling()) */
+    private int $placedCeiling = 0;
 
     /** @var array<int, array{int, int}> */
     private array $edges = [];
@@ -143,15 +218,47 @@ final class LeftoverRecolourer
     private array $journal = [];
 
     /**
-     * @param int $workLimit Position checks after which no further search
-     *                       starts; the repacker always passes WORK_LIMIT, and
-     *                       the unit tests pass a smaller one to see the step
-     *                       stop at it
+     * @param int|null $workLimit Position checks after which no further search
+     *                            starts. The repacker passes none, and the limit
+     *                            is then worked out from the request it is given
+     *                            (workLimitFor()) and the budget
+     *                            (StepBudget::workLimit()); the unit tests pass a
+     *                            small one to see the step stop at it
      */
     public function __construct(
         private readonly StepBudget $budget,
-        private readonly int $workLimit = self::WORK_LIMIT
+        private readonly ?int $workLimit = null
     ) {}
+
+    /**
+     * The position checks the step may make on a request of so many
+     * events and positions: WORK_LIMIT, or WORK_PER_EVENT_AND_POSITION
+     * for every event and position where that is more, and never more
+     * than WORK_LIMIT_AT_MOST. This is the limit at the default step
+     * budget and above; place() takes the share of it a smaller budget
+     * leaves, and no less than workLimitAtLeast().
+     */
+    public static function workLimitFor(int $events, int $positions): int
+    {
+        return min(
+            self::WORK_LIMIT_AT_MOST,
+            max(self::WORK_LIMIT, self::WORK_PER_EVENT_AND_POSITION * $events * $positions)
+        );
+    }
+
+    /**
+     * The position checks the step may make on a request of so many
+     * events and positions however small the step budget is:
+     * WORK_PER_EVENT_AND_POSITION_AT_LEAST for every event and position,
+     * and never more than the limit the default budget gives.
+     */
+    public static function workLimitAtLeast(int $events, int $positions): int
+    {
+        return min(
+            self::workLimitFor($events, $positions),
+            self::WORK_PER_EVENT_AND_POSITION_AT_LEAST * $events * $positions
+        );
+    }
 
     /**
      * @param array<int, array{int, int}> $edges Event index => participant index pair
@@ -183,6 +290,11 @@ final class LeftoverRecolourer
         $this->pinned = [];
         $this->positionOf = [];
         $this->work = 0;
+        $positionCount = (int) array_sum($slotCounts);
+        $whole = self::workLimitFor(count($edges), $positionCount);
+        $this->limit = $this->workLimit
+            ?? max($this->budget->workLimit($whole), self::workLimitAtLeast(count($edges), $positionCount));
+        $this->limitIsShortened = $this->limit < $whole;
 
         /** @var array<int, array<int, int>> $indexOf */
         $indexOf = [];
@@ -221,12 +333,22 @@ final class LeftoverRecolourer
 
         $remaining = array_values($leftovers);
         sort($remaining);
-        $ceiling = $this->ceiling($remaining, $leftOutAtLeast);
+        $this->placedCeiling = $this->ceiling($remaining, $leftOutAtLeast);
         do {
             $before = count($remaining);
             $remaining = $this->placeEach($remaining);
-            if (count($remaining) === $before && $remaining !== [] && count($this->positionOf) < $ceiling) {
-                $remaining = $this->exchangeOne($remaining);
+            if (
+                count($remaining) === $before
+                && $remaining !== []
+                && count($this->positionOf) < $this->placedCeiling
+                && $this->hasRoomAnywhere()
+            ) {
+                // Both moves below end at a free place, so neither is
+                // tried on a grid that has none. The cheap one comes first
+                $remaining = $this->rematchOne($remaining);
+                if (count($remaining) === $before) {
+                    $remaining = $this->exchangeOne($remaining);
+                }
             }
         } while (count($remaining) < $before && $remaining !== []);
 
@@ -239,6 +361,17 @@ final class LeftoverRecolourer
         ksort($positions);
 
         return $remaining;
+    }
+
+    /**
+     * The ceiling the last call of place() worked out: a number of placed
+     * events that no placement of that request exceeds (see ceiling()).
+     * A schedule that places as many is one no other order of the events
+     * can place more than; one that places fewer may or may not be.
+     */
+    public function lastCeiling(): int
+    {
+        return $this->placedCeiling;
     }
 
     /**
@@ -365,40 +498,70 @@ final class LeftoverRecolourer
      */
     private function exchangeOne(array $remaining): array
     {
-        if (!$this->hasRoomAnywhere()) {
-            // Every alternating path ends at a free place, and there is none
-            return $remaining;
+        // Breadth before depth: every single exchange is tried before any
+        // chain of two, and between them the exchanges that take two
+        // events out. Each of the three has the node limit to itself
+        for ($depth = 1; $depth <= self::EXCHANGE_DEPTH; ++$depth) {
+            $this->exchangeNodes = 0;
+            $this->journal = [];
+            $found = $this->exchange($remaining, [], $depth);
+            if ($found !== null) {
+                return $found;
+            }
+
+            if ($depth === 1) {
+                $this->exchangeNodes = 0;
+                $this->journal = [];
+                $found = $this->exchangeForTwo($remaining);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
         }
 
-        $this->exchangeNodes = 0;
-        $this->journal = [];
-
-        return $this->exchange($remaining, [], self::EXCHANGE_DEPTH) ?? $remaining;
+        return $remaining;
     }
 
     /**
      * One level of the exchange search: an unplaced event takes the
-     * place of a placed one, and then either an alternating path places
-     * one of the events waiting, or (below the depth limit) a further
-     * exchange is tried. Events an exchange brought in are not taken out
-     * again on the same branch.
+     * place of a placed one, and then, at the last level, an alternating
+     * path places one of the events waiting; above it a further exchange
+     * is tried. Events an exchange brought in are not taken out again on
+     * the same branch; a path may move them.
+     *
+     * The search is run once for every depth up to EXCHANGE_DEPTH, so a
+     * level above the last does not look for a path: the run before
+     * looked for it there.
+     *
+     * Of several unplaced events between the same two participants only
+     * the first is brought in at a level, and an event is not exchanged
+     * for another between the same two: either changes nothing but which
+     * of them is placed.
      *
      * @param list<int> $remaining Ascending
      * @param array<int, true> $fixed Events this branch brought in
+     * @param int $depth Levels still to go, this one included
      *
      * @return list<int>|null The events still unplaced after a branch that placed one more, or null
      */
     private function exchange(array $remaining, array $fixed, int $depth): ?array
     {
+        $tried = [];
         foreach ($remaining as $incoming) {
+            [$a, $b] = $this->edges[$incoming];
+            if (isset($tried[$a][$b])) {
+                continue;
+            }
+            $tried[$a][$b] = true;
+
             foreach (array_keys($this->positionList) as $index) {
                 foreach ($this->exchangeCandidates($incoming, $index) as $outgoing) {
-                    if (isset($fixed[$outgoing])) {
+                    if (isset($fixed[$outgoing]) || $this->edges[$outgoing] === $this->edges[$incoming]) {
                         continue;
                     }
                     if (
                         ++$this->exchangeNodes > self::EXCHANGE_NODE_LIMIT
-                        || $this->work > $this->workLimit
+                        || $this->isPastWorkLimit()
                         || !$this->budget->consume()
                     ) {
                         return null;
@@ -407,7 +570,6 @@ final class LeftoverRecolourer
                     $mark = count($this->journal);
                     $this->remove($outgoing);
                     $this->put($incoming, $index);
-                    $nowFixed = $fixed + [$incoming => true];
 
                     $waiting = array_values(array_filter(
                         $remaining,
@@ -415,20 +577,21 @@ final class LeftoverRecolourer
                     ));
                     $waiting[] = $outgoing;
                     sort($waiting);
-                    foreach ($waiting as $candidate) {
-                        $this->lifted = $nowFixed + [$candidate => true];
-                        if ($this->placeDirectly($candidate) || $this->insert($candidate, null)) {
-                            return array_values(array_filter(
-                                $waiting,
-                                static fn(int $eventIndex): bool => $eventIndex !== $candidate
-                            ));
-                        }
-                    }
 
                     if ($depth > 1) {
-                        $deeper = $this->exchange($waiting, $nowFixed, $depth - 1);
+                        $deeper = $this->exchange($waiting, $fixed + [$incoming => true], $depth - 1);
                         if ($deeper !== null) {
                             return $deeper;
+                        }
+                    } else {
+                        foreach ($waiting as $candidate) {
+                            $this->lifted = [$candidate => true];
+                            if ($this->placeDirectly($candidate) || $this->insert($candidate, null)) {
+                                return array_values(array_filter(
+                                    $waiting,
+                                    static fn(int $eventIndex): bool => $eventIndex !== $candidate
+                                ));
+                            }
                         }
                     }
 
@@ -438,6 +601,192 @@ final class LeftoverRecolourer
         }
 
         return null;
+    }
+
+    /**
+     * An exchange that takes two events out: an unplaced event takes a
+     * position where each of its participants has an event, both leave
+     * the schedule, and the exchange stands only if direct moves and
+     * alternating paths then place at least two of the events waiting
+     * (the two that left included). One in, two out and two more in: one
+     * more event placed. It is what gets a schedule out of a state where
+     * every unplaced event has two events in its way wherever it goes,
+     * which no exchange for one event can leave.
+     *
+     * @param list<int> $remaining Ascending
+     *
+     * @return list<int>|null The events still unplaced after an exchange that placed one more, or null
+     */
+    private function exchangeForTwo(array $remaining): ?array
+    {
+        $tried = [];
+        foreach ($remaining as $incoming) {
+            [$a, $b] = $this->edges[$incoming];
+            if (isset($tried[$a][$b])) {
+                continue;
+            }
+            $tried[$a][$b] = true;
+
+            foreach (array_keys($this->positionList) as $index) {
+                $blocking = $this->blocking($incoming, $index);
+                if ($blocking === null || count($blocking) !== 2) {
+                    continue;
+                }
+                if (
+                    ++$this->exchangeNodes > self::EXCHANGE_NODE_LIMIT
+                    || $this->isPastWorkLimit()
+                    || !$this->budget->consume()
+                ) {
+                    return null;
+                }
+
+                $mark = count($this->journal);
+                $this->remove($blocking[0]);
+                $this->remove($blocking[1]);
+                $this->put($incoming, $index);
+
+                $waiting = array_values(array_filter(
+                    $remaining,
+                    static fn(int $eventIndex): bool => $eventIndex !== $incoming
+                ));
+                $waiting[] = $blocking[0];
+                $waiting[] = $blocking[1];
+                sort($waiting);
+
+                $stillLeft = [];
+                foreach ($waiting as $candidate) {
+                    $this->lifted = [$candidate => true];
+                    if (!$this->placeDirectly($candidate) && !$this->insert($candidate, null)) {
+                        $stillLeft[] = $candidate;
+                    }
+                }
+                if (count($stillLeft) < count($remaining)) {
+                    return $stillLeft;
+                }
+
+                $this->rollBack($mark);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Try, position by position, to put one more event at a position
+     * with room by exchanging events there for unplaced ones, until one
+     * position takes one more.
+     *
+     * At one position the events placed there are a matching of the
+     * participants, and the unplaced events are other pairs of them. An
+     * augmenting path starts at a participant free there, takes an
+     * unplaced event of its to a participant that plays there, follows
+     * that participant's event to its opponent, and so on, until an
+     * unplaced event ends at a participant that is free: the unplaced
+     * events of the path go in, the placed ones go out, and the position
+     * holds one more. The events that went out are unplaced then, and the
+     * next round offers them to every position. The search follows each
+     * participant once and does not look inside an odd cycle, so it can
+     * miss a path that exists. Each start spends one step.
+     *
+     * @param list<int> $remaining Ascending
+     *
+     * @return list<int> The events still unplaced, ascending; unchanged when no position took one more
+     */
+    private function rematchOne(array $remaining): array
+    {
+        foreach (array_keys($this->positionList) as $index) {
+            if ($this->room[$index] < 1) {
+                continue;
+            }
+
+            /** @var array<int, list<array{int, int}>> $waiting Participant => [unplaced event, opponent] */
+            $waiting = [];
+            foreach ($remaining as $eventIndex) {
+                [$a, $b] = $this->edges[$eventIndex];
+                if (isset($this->pinned[$index][$a]) || isset($this->pinned[$index][$b])) {
+                    continue;
+                }
+                $waiting[$a][] = [$eventIndex, $b];
+                $waiting[$b][] = [$eventIndex, $a];
+            }
+
+            foreach (array_keys($waiting) as $start) {
+                if (isset($this->occupant[$index][$start])) {
+                    continue;
+                }
+                if ($this->isPastWorkLimit() || !$this->budget->consume()) {
+                    return $remaining;
+                }
+
+                $visited = [$start => true];
+                $path = [];
+                if (!$this->augment($index, $start, $waiting, $visited, $path)) {
+                    continue;
+                }
+
+                $in = [];
+                foreach ($path as [$incoming, $outgoing]) {
+                    $in[$incoming] = true;
+                    if ($outgoing !== null) {
+                        $this->remove($outgoing);
+                        $remaining[] = $outgoing;
+                    }
+                }
+                foreach (array_keys($in) as $incoming) {
+                    $this->put($incoming, $index);
+                }
+                $remaining = array_values(array_filter(
+                    $remaining,
+                    static fn(int $eventIndex): bool => !isset($in[$eventIndex])
+                ));
+                sort($remaining);
+
+                return $remaining;
+            }
+        }
+
+        return $remaining;
+    }
+
+    /**
+     * Extend an augmenting path at one position from a participant that
+     * is free there (see rematchOne()).
+     *
+     * @param array<int, list<array{int, int}>> $waiting Participant => [unplaced event, opponent]
+     * @param array<int, true> $visited Participants on the path or given up
+     * @param list<array{int, int|null}> $path [unplaced event to bring in, placed event to take out
+     *                                         or null at the end of the path]
+     */
+    private function augment(int $index, int $from, array $waiting, array &$visited, array &$path): bool
+    {
+        foreach ($waiting[$from] ?? [] as [$eventIndex, $other]) {
+            ++$this->work;
+            if (isset($visited[$other])) {
+                continue;
+            }
+
+            $matched = $this->occupant[$index][$other] ?? null;
+            if ($matched === null) {
+                $path[] = [$eventIndex, null];
+
+                return true;
+            }
+
+            [$x, $y] = $this->edges[$matched];
+            $next = $x === $other ? $y : $x;
+            if (isset($visited[$next])) {
+                continue;
+            }
+            $visited[$other] = true;
+            $visited[$next] = true;
+            $path[] = [$eventIndex, $matched];
+            if ($this->augment($index, $next, $waiting, $visited, $path)) {
+                return true;
+            }
+            array_pop($path);
+        }
+
+        return false;
     }
 
     /**
@@ -489,16 +838,15 @@ final class LeftoverRecolourer
      */
     private function insert(int $eventIndex, ?int $fromSession): bool
     {
-        if ($this->work > $this->workLimit) {
-            return false;
-        }
         if ($this->hasSaturatedParticipant($eventIndex)) {
             // A participant whose every unpinned position already holds one
             // of its events is in the way wherever the event goes, and the
-            // event of its that is lifted has nowhere to go: no path exists
+            // event of its that is lifted has nowhere to go: no path exists.
+            // Asked before the work limit, so that a limit is not reported
+            // as having stopped a search that was never going to be made
             return false;
         }
-        if (!$this->budget->consume()) {
+        if ($this->isPastWorkLimit() || !$this->budget->consume()) {
             return false;
         }
 
@@ -626,6 +974,25 @@ final class LeftoverRecolourer
         }
 
         return $blocking;
+    }
+
+    /**
+     * Whether the step has made its position checks, asked by a search
+     * that is about to start or go on: a true answer is a search cut
+     * short, and when the limit is smaller than the one the default
+     * budget gives, the budget is told
+     * (StepBudget::stoppedAtWorkLimit()).
+     */
+    private function isPastWorkLimit(): bool
+    {
+        if ($this->work <= $this->limit) {
+            return false;
+        }
+        if ($this->limitIsShortened) {
+            $this->budget->stoppedAtWorkLimit();
+        }
+
+        return true;
     }
 
     private function hasSaturatedParticipant(int $eventIndex): bool

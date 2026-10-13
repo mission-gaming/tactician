@@ -7,7 +7,11 @@ use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\BalancedWherePossibleRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
@@ -180,6 +184,40 @@ describe('every form as 0.2.3 wrote it', function (): void {
         }
 
         expect($refused)->toBe(storedCasesNoLongerRead());
+    });
+
+    // The one stored form whose meaning 0.3.0 changed without a change of
+    // its bytes (ADR 0005, "A second form means something else in 0.3.0"):
+    // round-robin options that name no role assignment were written without
+    // the `role_assignment` key and follow the default of the release that
+    // reads them, as the usage guide has said since 0.2.2. That default is
+    // the roles that are balanced where possible now. Options that named a
+    // role assignment were written with the key and keep the one they
+    // named: `balanced` is the strict one, as it was.
+    it('reads round-robin options without a role assignment as the default that is balanced where possible, and a named one as named', function (): void {
+        $readAs = ['absent' => [], 'round_parity' => [], 'balanced' => []];
+
+        foreach (formsWrittenByZeroTwoThree() as $name => $case) {
+            if ($case['class'] !== RoundRobinOptions::class || isset(storedCasesNoLongerRead()[$name])) {
+                continue;
+            }
+
+            $stored = json_decode($case['stored'], true, 512, JSON_THROW_ON_ERROR);
+            $options = readStoredCase($case);
+            assert(is_array($stored) && $options instanceof RoundRobinOptions);
+
+            $named = $stored['role_assignment'] ?? 'absent';
+            assert(is_string($named));
+            $readAs[$named][] = $options->roleAssignment::class;
+        }
+
+        expect(count($readAs['absent']))->toBeGreaterThan(0)
+            ->and(count($readAs['round_parity']))->toBeGreaterThan(0)
+            ->and(array_values(array_unique($readAs['absent'])))->toBe([BalancedWherePossibleRoleAssignment::class])
+            ->and(array_values(array_unique($readAs['round_parity'])))->toBe([RoundParityRoleAssignment::class])
+            ->and(array_values(array_unique($readAs['balanced'])))->toBe(
+                $readAs['balanced'] === [] ? [] : [BalancedRoleAssignment::class]
+            );
     });
 });
 

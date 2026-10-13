@@ -16,30 +16,30 @@ Top 2 protected for 50% of the rounds (rounds 1 to 3): 4
 
 == Schedule without protection ==
 meta: algorithm=round-robin participant_count=8 legs=1 rounds_per_leg=7 total_rounds=7 expected_event_count=28 byes=[]
-R1: celtic-union athletic-rayo livorno-clapton redstar-stpauli
-R2: athletic-celtic union-livorno rayo-redstar clapton-stpauli
-R3: celtic-livorno redstar-athletic stpauli-union clapton-rayo
-R4: redstar-celtic livorno-stpauli athletic-clapton union-rayo
-R5: celtic-stpauli clapton-redstar rayo-livorno union-athletic
-R6: clapton-celtic stpauli-rayo redstar-union livorno-athletic
-R7: celtic-rayo union-clapton athletic-stpauli livorno-redstar
+R1: union-celtic athletic-rayo clapton-livorno redstar-stpauli
+R2: celtic-athletic livorno-union rayo-redstar stpauli-clapton
+R3: livorno-celtic redstar-athletic union-stpauli clapton-rayo
+R4: celtic-redstar stpauli-livorno athletic-clapton rayo-union
+R5: stpauli-celtic clapton-redstar livorno-rayo union-athletic
+R6: celtic-clapton rayo-stpauli redstar-union athletic-livorno
+R7: rayo-celtic union-clapton stpauli-athletic livorno-redstar
 
 == Schedule protected for 25% of the rounds ==
 meta: algorithm=round-robin participant_count=8 legs=1 rounds_per_leg=7 total_rounds=7 expected_event_count=28 byes=[]
-R1: celtic-union athletic-rayo livorno-clapton redstar-stpauli
-R2: athletic-celtic union-livorno rayo-redstar clapton-stpauli
-R3: celtic-livorno redstar-athletic stpauli-union clapton-rayo
-R4: redstar-celtic livorno-stpauli athletic-clapton union-rayo
-R5: celtic-stpauli clapton-redstar rayo-livorno union-athletic
-R6: clapton-celtic stpauli-rayo redstar-union livorno-athletic
-R7: celtic-rayo union-clapton athletic-stpauli livorno-redstar
+R1: union-celtic athletic-rayo clapton-livorno redstar-stpauli
+R2: celtic-athletic livorno-union rayo-redstar stpauli-clapton
+R3: livorno-celtic redstar-athletic union-stpauli clapton-rayo
+R4: celtic-redstar stpauli-livorno athletic-clapton rayo-union
+R5: stpauli-celtic clapton-redstar livorno-rayo union-athletic
+R6: celtic-clapton rayo-stpauli redstar-union athletic-livorno
+R7: rayo-celtic union-clapton stpauli-athletic livorno-redstar
 
 == Schedule protected for 50% of the rounds ==
 meta: algorithm=round-robin participant_count=8 legs=1 rounds_per_leg=7 total_rounds=7 expected_event_count=28 byes=[]
-R1: livorno-athletic redstar-celtic stpauli-union clapton-rayo
-R2: redstar-livorno athletic-stpauli celtic-clapton union-rayo
-R3: livorno-stpauli clapton-redstar rayo-athletic union-celtic
-R4: clapton-livorno stpauli-rayo redstar-union athletic-celtic
-R5: livorno-rayo union-clapton celtic-stpauli athletic-redstar
-R6: union-livorno rayo-celtic clapton-athletic stpauli-redstar
-R7: livorno-celtic athletic-union redstar-rayo stpauli-clapton
+R1: athletic-livorno redstar-celtic union-stpauli clapton-rayo
+R2: livorno-redstar stpauli-athletic celtic-clapton rayo-union
+R3: stpauli-livorno clapton-redstar athletic-rayo union-celtic
+R4: livorno-clapton rayo-stpauli redstar-union celtic-athletic
+R5: rayo-livorno union-clapton stpauli-celtic athletic-redstar
+R6: livorno-union celtic-rayo clapton-athletic redstar-stpauli
+R7: celtic-livorno athletic-union rayo-redstar stpauli-clapton

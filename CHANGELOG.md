@@ -291,6 +291,7 @@ entry on the engine fingerprint.
   stage scored by itself), and `ScheduleScorer`/`ScheduleOptimizer` totals
   that include this metric for one. A schedule whose first round is 1
   measures as before.
+
 - **Mirrored legs alternate: `MirroredLegStrategy` reverses the roles in the
   even-numbered legs only.** It reversed them in every leg after the first,
   so a pair that met three times was split 1:2 and a pair that met four
@@ -346,16 +347,12 @@ entry on the engine fingerprint.
       the old roles with the new for both constraints at every limit from 1
       to 5, in fields of 2 to 8, over three and four legs and with either
       role assignment.
-    - **With a `Randomizer`**, a configuration can also fail where it
-      succeeded. The scheduler lays the second and third legs out from the
-      same order, so the third leg used to repeat the second and now meets
-      it as two mirrored legs of a scheduler without a `Randomizer` meet,
-      and a role can repeat more often there. Five participants over three
-      legs with `ConsecutiveRoleConstraint::homeAway(3)` and the default
-      roles completed in 0.2.x and now throw an
-      `IncompleteScheduleException`, for every seed tried. Generate such a
-      configuration again before relying on it: it fails loudly if the
-      limit no longer holds.
+    - **With a `Randomizer`**, the later legs change for another reason
+      as well, which the next entry describes: they now derive from the
+      first leg. A role limit is then answered as it is without a
+      `Randomizer`, which can refuse a configuration that 0.2.x completed.
+      Generate such a configuration again before relying on it: it fails
+      loudly if the limit no longer holds.
   - To keep the old roles, pass a leg strategy of your own that reverses
     every leg after the first. `LegStrategyInterface` has two methods:
     `generateEventForLeg()` returns the pairing as given for leg 1 and
@@ -367,15 +364,15 @@ entry on the engine fingerprint.
     even-numbered legs" from this release; the library carries it and acts
     on nothing in it.
 
-  With a scheduler that holds a `Randomizer`, only the first leg is laid
-  out from the shuffled field, as before, so the later legs are not the
-  first leg reversed. They alternate among themselves: leg 3 is leg 2
-  reversed. A pair is then one apart over an odd number of legs and level or
-  two apart over an even number.
+  With a scheduler that holds a `Randomizer` the alternation is the same
+  from this release: every later leg derives from the first leg (the next
+  entry), so leg 3 has the roles of leg 1 there too.
 
   Six golden fixtures change, in their sections for three and four legs and
   in the rounds of the third leg only (their sections for one and two legs
-  are unchanged): `round-robin/mirrored-unseeded.txt`,
+  are unchanged by this entry; the four of a scheduler with a `Randomizer`
+  change in every leg after the first by the next one):
+  `round-robin/mirrored-unseeded.txt`,
   `round-robin/mirrored-seed-1.txt`, `round-robin/mirrored-seed-42.txt`,
   `round-robin/mirrored-seed-1337.txt`,
   `round-robin/balanced-mirrored-unseeded.txt` and
@@ -387,6 +384,112 @@ entry on the engine fingerprint.
   tables under "Role-Based Constraints" and "Legs after the first" in the
   usage guide, the architecture document, the roadmap's limitations and the
   role assignment design note.
+- **A round-robin scheduler with a `Randomizer` derives every later leg
+  from its first leg.** `new RoundRobinScheduler($constraints, $randomizer)`
+  shuffled the participant order for the first leg only and laid every
+  later leg out from the order as given. The later legs were therefore a
+  round robin of their own: a pairing fell in another round of its leg, a
+  mirrored leg did not reverse the first, and a repeated leg did not repeat
+  it. Measured over two mirrored legs of 4 to 14 participants and five
+  seeds each, 49.8% of the pairings had the same participant first-named in
+  both legs, 20 of the 55 schedules had a pair that met in the last round
+  of one leg and the first round of the next, and over four legs 54 of 55
+  had a pairing split 3:1 or 4:0. Now the first leg is laid out from the
+  shuffled order and every later leg has its pairings in the same rounds of
+  the leg, in the roles the leg strategy derives from the first leg's, as a
+  scheduler without a `Randomizer` always did, and as a backtracking search
+  did with one (#51). The three figures are 0%, none and none.
+
+  **Who is affected.** Every round robin of two or more legs from a
+  scheduler that holds a `Randomizer`: every field size from 2, every leg
+  count from 2, each of the three leg strategies, either role assignment,
+  with or without constraints, and whatever the seed. A `ScheduleOptimizer`
+  whose generator builds such a scheduler is included. Not affected, byte
+  for byte: a schedule of one leg, with or without a `Randomizer`; every
+  schedule from a scheduler without one, whatever its leg strategy
+  (a `ShuffledLegStrategy` with a seed or a randomizer of its own
+  included); and a schedule that only a backtracking search completes.
+
+  **What changes.** Without constraints the first leg is the leg the same
+  seed always gave (under constraints it can be another: a later leg that
+  is now rejected sends the scheduler on to its next shuffle).
+  From the second leg on, each event is the first-leg event of its pairing
+  one leg later: reversed in the even-numbered legs of
+  `MirroredLegStrategy`, as it is under `RepeatedLegStrategy`, and with a
+  drawn role under `ShuffledLegStrategy` (the draws are the same, one for
+  each event in order; the pairings they apply to are the first leg's). The
+  byes of a field of odd size follow: a participant sits out the same round
+  of every leg. A field of two changes too, where the seed shuffles the
+  order: its one pairing was not reversed in the second mirrored leg. The
+  number of events, the round numbers and the metadata do not change.
+  Before and after for four participants `1` to `4`, two mirrored legs,
+  `Mt19937` seed 1 and round-parity roles (rounds 1 to 3, the first leg,
+  are the same in both):
+
+  ```
+            before        after
+  R1:       4-2 1-3       4-2 1-3
+  R2:       1-4 2-3       1-4 2-3
+  R3:       4-3 2-1       4-3 2-1
+  R4:       4-1 3-2       2-4 3-1
+  R5:       1-2 3-4       4-1 3-2
+  R6:       3-1 2-4       3-4 1-2
+  ```
+
+  Before, 1 met 4 in rounds 2 and 4 and 2 met 3 in the same two; after,
+  every pair meets again three rounds on, with the roles reversed.
+
+  **What to check (migration).**
+  - A stored schedule of two or more legs that came from a scheduler with
+    a `Randomizer` is not regenerated identically from the same seed. Keep
+    the stored events if they are published. Anything that compares a
+    fresh schedule with a stored one, or with its hash, sees a difference
+    from the first round of the second leg on.
+  - Role constraints (`ConsecutiveRoleConstraint`, `RoleBalanceConstraint`)
+    over several legs are now answered as they are without a `Randomizer`,
+    whatever the seed, because the schedule is the schedule of the list as
+    given under other names. A limit that only held because the legs were
+    unrelated is refused: five participants over two mirrored legs under
+    `ConsecutiveRoleConstraint::homeAway(3)` with round-parity roles
+    completed in 0.2.x for the seeds 1 to 5 and now throw an
+    `IncompleteScheduleException`, as they always did without a
+    `Randomizer` (the two legs meet in a run of four). A limit that the
+    unrelated legs broke by chance now holds: a role balance limit of 3 (4
+    in a field of odd size) over any number of mirrored legs, for one.
+  - `MinimumRestPeriodsConstraint` sees a pair's meetings exactly one leg
+    apart, as it does without a `Randomizer`: a minimum up to the number of
+    rounds in a leg always holds, and a larger one never does.
+  - There is no option that gives the old later legs back: they were not a
+    choice. For a schedule without constraints they can be put together
+    from two calls, which is what 0.2.x did: the first leg of the scheduler
+    with the `Randomizer` (`legs: 1`), followed by the legs after the first
+    of a scheduler without one for the same options. That was compared
+    with 0.2.x for 2 to 14 participants, two to four legs, the three leg
+    strategies, both role assignments and five seeds, and held for all
+    1,755 schedules. Under constraints the old schedule also depended on
+    which rotated orders were rejected, and nothing reproduces it.
+
+  Eight golden fixtures change, in their sections of two legs or more and
+  in the rounds after the first leg only (each first leg, and each section
+  of one leg, is unchanged; a section of two participants changes only
+  where the seed exchanges the two, which of the three seeds 42 does): `round-robin/mirrored-seed-1.txt`,
+  `round-robin/mirrored-seed-42.txt`, `round-robin/mirrored-seed-1337.txt`,
+  `round-robin/repeated-seed-1.txt`, `round-robin/repeated-seed-42.txt`,
+  `round-robin/repeated-seed-1337.txt`,
+  `round-robin/balanced-mirrored-seed-42.txt` (which the entry on the
+  default under **Changed** then replaces), and
+  `examples/17-schedule-optimization.txt`, whose 25 candidates each come
+  from a scheduler with a `Randomizer` over two legs: the schedule it keeps
+  and its scores change, and its spacing metric reads 0 for every
+  candidate, because the two meetings of a pair are now always a leg
+  apart.
+
+  The documents that described the old behaviour are corrected with it: the
+  docblocks of `RoundRobinScheduler`, `MirroredLegStrategy`,
+  `RepeatedLegStrategy`, `RoleBalanceConstraint` and
+  `MinimumRestPeriodsConstraint`, the sections "Role-Based Constraints" and
+  "Legs after the first" of the usage guide, the architecture document, the
+  roadmap's limitations and the role assignment design note.
 - **`SlotAssignment::toArray()` writes a kickoff that is not in UTC as the
   instant it is.** The kickoff was formatted as it was held and a `Z` was
   put after it, so an assignment built by hand with 20:15 in London was
@@ -437,8 +540,11 @@ entry on the engine fingerprint.
     tried. Nothing is drawn again, so the same seed gives the same schedule.
   - **Repeated and mirrored legs: the roles are a rule**, and a later-leg
     event is never reversed. What can change is the first leg. Without
-    `backtracking` its roles are the role assignment's and such a schedule
-    still fails; with `backtracking: true` the search now crosses the
+    `backtracking` its roles are the role assignment's, and under a role
+    assignment that states no rule (`RoundParityRoleAssignment`) such a
+    schedule still fails; under the two balanced role assignments, the
+    default among them, they are searched within the balance (#51, under
+    **Added**). With `backtracking: true` the search now crosses the
     boundary of the first leg: for every first leg it finds it searches the
     roles of all legs with the pairings and rounds held, and a first leg
     that no roles complete sends it on to the next one, where it used to
@@ -456,8 +562,425 @@ entry on the engine fingerprint.
   `docs/ROADMAP.md`; the usage guide has the contract of each strategy
   ("Leg Strategies and Role Constraints").
 
+- **A repack no longer depends on how its events and participants are
+  named, and contiguity comes ahead of the consolidation weight**
+  ([#49](https://github.com/mission-gaming/tactician/issues/49)). Almost
+  every repack outcome changes: positions, which events are unplaced where
+  some are, the violations, and with them `toArray()` and
+  `RepackOutcome::fingerprint()`. No public signature changes, and the
+  hard rules are as they were: no participant is double-booked, a pin
+  never moves, no slot is filled past its capacity, infeasibility comes
+  back as violations, and the same request gives the same outcome.
+
+  *What was wrong.* The repacker ordered events by `strcmp()` on their
+  ids and every tie-break followed, so the same events on the same grid
+  were packed well under one naming and badly under another. And it chose
+  each event's session by the two weights before it looked at any slot,
+  so it reported gaps where a placement without one existed.
+
+  *What it does now.* The participants are taken in an order made from
+  the request (how many events each has, where it is pinned, whom it
+  plays), and the events by their two participants; an id decides only
+  between events of the same two participants and between participants
+  the request does not tell apart. Before any session is chosen the
+  events are split into rounds (sets that can share a slot) laid on the
+  grid's positions around the pins, and the planner takes them round by
+  round, so that the sessions it fills by the weights are ones that pack.
+  The rounds are also a schedule of their own: they are returned where
+  they place more events than the planned schedule, or as many with fewer
+  gap slots. A schedule that still has a gap is then searched for a
+  placement of as many events with fewer gap slots. Where the result
+  places fewer events than a bound on what any placement can hold, or
+  still has a gap, the events are planned and packed once more in the
+  order of their participants, on the steps the two budgets have left,
+  and that third schedule is returned when it places more events, or as
+  many with fewer gap slots. The last placement step, which moves placed
+  events to make room for an unplaced one, searches further than it did
+  (below). One session's exact search may spend at most a quarter of
+  the steps left, where one that did not end used to take them all from
+  the sessions after it; the table that search starts from is paid for
+  out of the same quarter once a session has eight slots or more.
+
+  *What is and is not promised about ids.* For the same request under
+  other ids, the number of events at every position, the unplaced counts
+  by reason, and every violation but for the names in it are the same;
+  the schedule is the same participant for participant up to a symmetry
+  of the request (where two participants are alike in the request, their
+  ids decide which gets which part of the schedule). The tests hold the
+  repacker to that on random requests with pins, on the small corpus, and
+  on round robins with rounds pinned, among them round robins of 36 and
+  40 with one round played. It does not hold for every request, and
+  there are two known exceptions in which the ids decide and the counts
+  differ. The ordering may do a fixed amount of work, sized for 40
+  participants: in a larger request in which everybody is alike and no
+  two participants can simply be exchanged (a complete round robin of 44
+  or more with one round already played) it stops and falls back to the
+  ids. And two participants that differ, but are equal in everything the
+  ordering compares, are ordered by id: a request built for the purpose
+  (two different graphs of 16 participants with six events each, which
+  the comparison cannot tell apart, side by side) came back with 83 late
+  starts under one naming and 84 under another. None of 10,000 generated
+  requests, each under three other namings, showed either.
+
+  Before and after (0.2.3 against this release, default options):
+
+  | Request | 0.2.3 | Now |
+  |---|---|---|
+  | Events `100` P4 v P3, `101` P4 v P2, `102` P3 v P1, `103` P4 v P1 on sessions of two and four slots, capacity 1 | all four in session 1 (`102`, `103`, `100`, `101`), P3 with a gap | `102`, `103` in session 0 and `100`, `101` in session 1, no gap |
+  | Complete round robin of 10 on three four-slot sessions, capacity 5, ids `1`–`45` | no gap, 4 late starts | clean |
+  | The same with ids `1000`–`1044` | 5 gaps, 8 late starts | clean, the same schedule |
+  | Complete round robin of 24 on six four-slot sessions, ids `1`–`276` | 14 gaps, 6 late starts, budget spent | clean |
+  | Complete round robin of 40 on ten four-slot sessions | 24 gaps, 8 late starts, budget spent | clean |
+  | Complete round robin of 6 on one session of 21 slots, capacity 3 | 4 gaps (8 gap slots) | clean |
+  | 84 season-like requests of 14 to 40 participants (shuffled round robins, sessions of four to six slots, up to 32 pins) | 643 gaps, 908 late starts, 47 without a gap | 77 gaps, 201 late starts, 64 without a gap |
+  | 2,000 small random requests compared with an exhaustive search | 9% with a gap that a placement of as many events avoids; 31% with other counts under other event ids | none; none |
+
+  Every complete round robin of an even number of participants from 6 to
+  40, on sessions of four slots, now comes back with no violation at all
+  under each of three id schemes.
+
+  *What is not better.* The repacker is a set of bounded searches, and
+  another order of events is better on most requests and worse on some.
+  On 11,860 generated requests (random requests of up to 90 events,
+  over-capacity requests, shuffled round robins of 5 to 40 participants
+  with one or two legs, up to 60 pins, sessions of three to six slots,
+  grids from too small to roomy), compared with 0.2.3 request by request:
+
+  | | 0.2.3 | Now |
+  |---|---|---|
+  | Events placed, of 263,445 | 214,288 | 214,357 |
+  | Gap slots | 10,024 | 2,504 |
+  | Late starts | 25,847 | 25,712 |
+  | Requests with no gap | 9,322 | 11,040 |
+
+  No request places fewer events than 0.2.3 did, and 52 place more.
+  Counting events placed first, then gap slots, then late starts, 3,385
+  requests came back better and 958 worse. Of the worse ones, 812 have
+  as many events placed and as many gap slots and only more late starts,
+  which are not compared when one schedule is chosen over another. The
+  other 146 (1.2%) place as many events with more gap slots, 380 more
+  between them; on 63 of them a budget stopped a search. Round robins of
+  an odd number of participants are not improved as those of an even
+  number are: without pins, 142 of them have 376 gap slots where they
+  had 372, and 27 came back with more gap slots against 34 with fewer.
+  A round of an odd number leaves one participant out, so the rounds
+  laid out as they stand have a gap wherever that falls inside a
+  session, and the schedule has to come from the planner. The reference
+  scenario (`tests/Fixtures/repack-scenario.json`) had 7 late starts and
+  has 10, still with no gap, and its mis-pinned variant went from 2 gaps
+  and 6 late starts to no gap and 10 late starts.
+
+  *Events placed come first.* As this change first stood, it placed
+  fewer events than 0.2.3 on 23 of those requests (one fewer on 21 of
+  them), 768 of 770 on a round robin of 40 with ten pins on a grid with
+  exactly as many places as events, and fewer on 13 of 151 larger
+  requests (round robins of 39 and 40 with up to 400 events pinned, of
+  two legs with 100 pinned, and 800 random events, on grids from too
+  small to roomy). Nearly all are requests whose participants have more
+  events than positions, or whose grid has fewer places than events:
+  which events are left out decides whether every place can be filled,
+  and the new order left others out. Three things were added for them.
+  The last placement step searches further: it tries every single
+  exchange before any chain of two, takes two events out for one where
+  both participants of an unplaced event are in the way wherever it
+  goes, puts one more event at a position along an augmenting path
+  among the events there and the unplaced ones, and lets a path move an
+  event that an exchange brought in. The third schedule above starts
+  from another order where the first two leave something to gain. And
+  the limit on the step's own work, which was 500,000 position checks
+  on every request, is now a hundred checks for every event and
+  position, never fewer than 500,000 and never more than 3,000,000: on
+  770 events and 39 positions the fixed limit stopped the step while it
+  was still placing events. With the three, none of the 11,860 requests
+  and none of the 151 places fewer events than 0.2.3 did (the 151 place
+  104,693 events for 104,392, with 9,463 gap slots for 22,166), and the
+  round robin of 40 places all 770. Twenty-nine of those requests are
+  in the tests with the counts 0.2.3 placed
+  (`tests/Fixtures/repack/placed-by-0.2.3.json`), and requests in which
+  a few participants have most of the events are compared with an
+  exhaustive search. It is not a promise for every request: the
+  repacker is still a set of bounded searches from three orders of the
+  events. A second review looked for requests of another shape that do
+  place fewer, and found them where the pins are scattered: of 200
+  round robins of 16 to 40 participants with an eighth to a half of
+  their events pinned at positions drawn at random, on a grid with a
+  place for every event or one position to spare, 11 place fewer events
+  than 0.2.3 did, by one to three (100 place more; 55,265 events for
+  54,946 in all, with 904 gap slots for 1,557). Of 600 larger requests
+  of mixed kinds (round robins of one and two legs, of an odd number,
+  with extra events for a few participants, complete bipartite and
+  random pairings, on grids from short to roomy) two place fewer and 35
+  more, and of 7,500 small ones of the over-capacity kinds none does
+  and 41 place more. On nine of the eleven the last placement step
+  places as many as 0.2.3 or more when it is given forty times its limit
+  of position checks and fifty times its limit of exchanges, in two to
+  five times the time; on the other two (18 participants each) no limit
+  that was tried does. Where
+  the rounds played are pinned as whole rounds, which is what a season
+  under way looks like, none of 320 requests of 20 to 40 participants
+  places fewer and 144 place more.
+
+  *Time* (PHP 8.4, one core, `composer bench`, fastest of three):
+
+  | Benchmark | 0.2.3 | Now |
+  |---|---|---|
+  | 24 participants, even sessions | 162 ms | 5 ms |
+  | 24 participants, uneven sessions with pins | 464 ms | 51 ms |
+  | 40 participants, even sessions | 638 ms | 17 ms |
+  | 40 participants, uneven sessions with pins | 70 ms | 154 ms |
+
+  The last one is slower: 0.2.3 happened to pack that request without a
+  search, and this release spends about 0.1 seconds laying out its
+  rounds around the ten pins. Both return it with no gap. A request
+  that comes back clean costs what its first schedule costs. One that
+  does not is planned a second time and searched further for events to
+  place, and that is where the time goes: the 11,860 requests took 288
+  seconds in all where 0.2.3 took 106, the slowest of them 1.8 seconds
+  (a round robin of 40 with four pins, which took 0.5
+  seconds in 0.2.3). The 151 larger requests took 148 seconds where
+  0.2.3 took 79: a round robin of 40 with pins a median of 0.75 seconds
+  and 3 at most, one of two legs among 40 (1,460 events) a median of 2
+  seconds and 4.8 at most, where 0.2.3 took 0.9 and placed ten events
+  fewer with 18 more gap slots. The 200 round robins with scattered
+  pins named above took 0.58 seconds at the median and 3 at most, where
+  0.2.3 took 0.11 and 1.4, and the slowest request the second review
+  found, two legs among 29 participants (807 events and five pinned, on
+  a grid with 43 more places than events, where 14 events still find no
+  position), 4.1 seconds where 0.2.3 took 0.4 for as many events
+  placed. Requests that 0.2.3 packed without a search are the ones
+  that are slower by the most: a round
+  robin of 40 with 400 of its events pinned took 0.03 seconds and takes
+  0.5 (with 84 gap slots for 157), 800 events between 800 separate
+  pairs of participants 0.12 and 0.35, and 800 events of one participant
+  against three others, of which 60 can be placed and the step cannot
+  prove it, 0.2 and 1.5. Sessions of many slots were the slowest thing
+  a repack did, and still are, though less so: the table a session's
+  exact search starts from grows with two to the power of its slot
+  count, and it is now paid for in steps, so a session whose share of
+  the budget cannot pay for it is packed greedily. A request of 800
+  events among 200 participants, whose sessions do not pack, took 0.3
+  seconds on sessions of 12 slots and takes 0.9, 3.7 seconds at 16 slots
+  and takes 2.6, and 17 seconds and 890 MB at 18 slots and takes 10
+  seconds and 16 MB (with 767 gap slots for 1,336 at 12 slots, 1,104 for
+  1,703 at 16 and 1,551 for 2,037 at 18). The usage guide has the
+  figures.
+
+  *What the step budget governs.* The laying out of the
+  events before any session is chosen, the last placement step, the
+  search for fewer gap slots and the search for the events two
+  over-capacity participants share are not bounded by steps alone (a
+  step of theirs is not a fixed amount of work, and the first spends
+  none): each stops at a limit on its own work. At the default
+  `stepBudget` of 200,000 and at every larger one those limits are
+  fixed, so a larger budget changes nothing there. Below the default
+  each is the same share of its limit as the budget is of the default,
+  and the last placement step never has fewer than one position check
+  for every event and position. So a smaller budget shortens every
+  search of a repack, as it did in 0.2.3, where every search was
+  counted in steps. `RepackOutcome::isBudgetExhausted()` is true when a
+  search reached such a smaller limit, as it is when a step was
+  refused, so false still means that a larger budget gives the same
+  outcome. The order of the participants is the one search no budget
+  shortens: it has a fixed limit of its own (at most about a tenth of a
+  second), left whole so that the ids of a request decide no more at a
+  small budget than at a large one. As this change first stood the
+  limits did not follow the budget, and a budget of one step took 0.27
+  seconds at the median and 1.3 at most on the scattered pins and 2
+  seconds on the slowest request. Measured now (PHP 8.4, no OPcache,
+  one core; median / longest in milliseconds, then events placed), on
+  160 seasons of one and two legs among 20 to 40 participants with a
+  fifth or a half of their rounds played and pinned, on the 200 round
+  robins with scattered pins, and on the slowest request:
+
+  | Requests | `stepBudget` | 0.2.3 | Now |
+  |---|---|---|---|
+  | 160 seasons (71,808 events) | 1 | 23 / 167, 64,465 | 31 / 171, 67,884 |
+  | | 2,000 | 33 / 229, 69,549 | 49 / 259, 69,215 |
+  | | 20,000 | 60 / 351, 69,810 | 72 / 719, 69,919 |
+  | | 200,000 (default) | 78 / 895, 69,823 | 117 / 1,762, 70,008 |
+  | 200 with scattered pins (55,573 events) | 1 | 8 / 35, 48,420 | 17 / 57, 53,072 |
+  | | 2,000 | 34 / 99, 54,477 | 31 / 117, 53,721 |
+  | | 20,000 | 74 / 358, 54,938 | 106 / 511, 54,706 |
+  | | 200,000 (default) | 111 / 1,407, 54,946 | 576 / 3,048, 55,265 |
+  | Two legs among 29 (807 events) | 1 | 34, 751 | 96, 793 |
+  | | 2,000 | 111, 793 | 137, 793 |
+  | | 20,000 | 238, 793 | 504, 793 |
+  | | 200,000 (default) | 398, 793 | 4,086, 793 |
+
+  The budget bounds the work and the longest time falls with it; it is
+  not a dial that makes every repack take a tenth as long at a tenth of
+  the budget, because a search that ended well inside its limit at the
+  default is not shortened by a share of that limit. Seasons of 40 over
+  two legs (1,560 events) take 0.12 seconds at a budget of one step and
+  0.38 at a tenth of the default, where they take 0.79 at the default
+  and took 0.07, 0.18 and 0.30 in 0.2.3; over one leg, 0.04, 0.09 and
+  0.17. Where the pins are scattered, a budget between a hundredth and
+  a tenth of the default places fewer events than 0.2.3 placed at that
+  budget (fewer on 135 of the 200 requests at 2,000 steps and more on
+  12), in about the same time; at one step and at the default it places
+  more. Two more things hold below the default. A smaller budget is a
+  smaller bound and not less time for every request: one whose search
+  the default ends just inside a limit can take longer at a smaller
+  budget, because the phases after a search that was cut short have
+  more to do (the largest difference found: 36 milliseconds at the
+  default and 160 to 180 at half of it). And where two or more
+  participants have more events than positions, the grid's own
+  `CapacityExceeded` (the one with no participant) can state a smaller
+  demand than at the default or be missing, and an unplaced event can
+  have the reason `ParticipantOverCapacity` where the default gives
+  `NoSlotAvailable`; `isBudgetExhausted()` is true for such an outcome,
+  and the over-capacity participants themselves are reported alike at
+  every budget. In 0.2.3 the capacity violations did not depend on the
+  budget. The usage guide ("The Step Budget") has the table by size of
+  season and what no budget shortens.
+
+  *Who is affected.* Everyone who repacks. *What to check:* an outcome
+  kept from an earlier release, or its fingerprint, no longer matches a
+  new run of the same request, so repack again before comparing; code
+  that expected a particular event at a particular position for a fixed
+  request; the number of events placed where the pins are scattered
+  over the grid and not whole rounds, which is lower by one to three on
+  about one such request in twenty and higher on about half (above);
+  time limits set close to what a repack used to take, because a
+  request that does not come back clean takes longer than it did (the
+  slowest found, 4.1 seconds for 0.4), and a `stepBudget` below the
+  default is the way to bound that, for fewer events placed and more
+  gaps as the table shows; and a `stepBudget` already chosen below the
+  default for the time it gave, which now buys other outcomes and other
+  times (the table above).
+  The order of the lists an outcome returns has not changed: assignments
+  and unplaced events by event id, violations by kind and then by
+  participant id and session, over-capacity participants by shortfall and
+  then id. Two ties that the ids used to decide follow the repacker's
+  own order now. Where two over-capacity participants share a dropped
+  event and have the same shortfall, the one it names is the first in
+  that order and no longer the one with the lower id. And of an
+  over-capacity participant's events against opponents with the same
+  room to spare, the one left out is the last in that order and no
+  longer the one with the highest id. Code that predicted either from
+  the ids must read the unplaced list instead.
+
+  Golden fixtures regenerated, each because the positions (and so the
+  fingerprints) changed as described: `tests/Fixtures/golden/repack/round-robin.txt`
+  (every case now has no violation), `repack/scenario.txt` (late starts
+  as above; the mis-pinned variant leaves out event `1009` where it left
+  out `1022`), `repack/budget-stops.txt` (a round robin without pins now
+  gives the same clean outcome at every budget, where a budget of one
+  step left events unplaced; every case with pins has fewer violations
+  than it had at every budget, at the default one 9 for 15 with eight
+  participants, 12 for 37 with twelve, 43 for 76 with sixteen, 51 for
+  124 with twenty and 61 for 193 with twenty-four; and the case of
+  eight participants with pins says at a budget of 1,000 steps that a
+  budget stopped a search, where it said none did, because the third
+  schedule is made on what is left; three of its lines at budgets below
+  the default are what they are because the work limits follow the
+  budget: with eight participants and pins, 10 violations at 1,000
+  steps, and at 30,000 steps the default's outcome with a budget having
+  stopped a search; with twelve and pins, 33 violations at 1,000 steps;
+  no line at the default budget depends on it), `examples/19-repacking-a-season.txt` (the
+  same counts, one late start named for another participant) and
+  `examples/23-application-adapter-and-repack.txt` (three of five events
+  placed as before; `fx10` is placed and `fx09` left out, where it was
+  the other way round).
+
 ### Added
 
+- **The roles of the first leg are searched within what the role
+  assignment keeps, without `backtracking`
+  ([#51](https://github.com/mission-gaming/tactician/issues/51)).** A role
+  assignment decided the roles of the first leg before any constraint saw
+  an event, and a constraint that rejected them failed the schedule,
+  although other roles the same role assignment would have given satisfy it.
+  A role assignment now states the rule it holds a first leg to
+  (`RoleAssignmentInterface::rule()`), and when every rotated order has
+  failed with the roles as given, the scheduler goes through the same
+  layouts again and looks for roles within that rule:
+  - a seating that a closure, a metadata rule or a constraint of your own
+    rejects is fixed the other way round, and the role assignment is asked
+    again with the fixed seatings in its `RoleAssignmentContext`.
+    `BalancedRoleAssignment` balances the leg around them whenever a
+    balanced leg with those roles exists, whatever the size of the field;
+  - where that does not complete the schedule, as under a limit on
+    same-role runs or on the role totals, which fixes no seating, the roles
+    of the first leg are searched, each choice held to the rule, with the
+    later legs following by the leg strategy.
+
+  Only roles are looked for: the pairings and their rounds are those of
+  the layout, and a schedule that a rotated order completes with the roles
+  as given is returned as it always was. `BalancedRoleAssignment` states
+  the rule that no participant has a role more often in a leg than half its
+  events rounded up; `RoundParityRoleAssignment` states none, so nothing
+  about it changes. What this gives the default: two mirrored legs of eight
+  under `ConsecutiveRoleConstraint::homeAway(2)` complete without
+  `backtracking`, with a balanced first leg, where the balanced roles of
+  0.2.2 failed; and of the 729 ways to fix the roles of some of the six
+  pairings of four participants, none fails while a balanced leg with those
+  roles exists, where 143 did. With `backtracking: true` the same search
+  runs for every first leg the backtracking search finds, so a first leg
+  that the role assignment would change no longer ends the search. The
+  search is bounded (20,000 rejected roles and 200,000 events put to the
+  constraints, over all the layouts of a call) and a failure says whether a
+  bound stopped it: two to four mirrored legs under a limit of two in a row
+  were found for every field of even size from 6 to 20 and for 3, 5, 7, 9
+  and 11 participants, and the search stopped at its bound for 13, 15, 17
+  and 19 (over two legs, for every field of odd size from 13 to 29). A
+  limit of three in a row was found for every field from 3 to 20. A
+  failure of this search is a failure of the schedule under
+  `BalancedRoleAssignment`; under the default the roles the generator
+  proposes are tried after it (the entry on the default under **Changed**).
+  `docs/design/role-assignment.md` ("The default") has the decision and
+  the measurements, `docs/ROADMAP.md` what still fails.
+- **`RoleAssignment\BalancedWherePossibleRoleAssignment`** (experimental),
+  the default of `RoundRobinOptions` from this release (the entry on the
+  default under **Changed** has what that changes), and
+  `'balanced_where_possible'` in plain data. It decides a leg exactly as
+  `BalancedRoleAssignment` does and states the same rule, so the scheduler
+  looks for balanced roles under it in the same way; where it finds no
+  schedule with them, it generates the schedule again with the roles the
+  generator proposes, as under `RoundParityRoleAssignment`, and marks it.
+  The fall-back is the scheduler's: it knows this class, and a role
+  assignment of your own cannot ask for it. Options that name the class
+  serialize with the identifier and keep it through a round trip; options
+  that name nothing serialize without the key, as before. `'balanced'` and
+  `'round_parity'` mean what they meant: balanced roles or a failure, and
+  the roles of 0.2.x.
+- **`RoleAssignment\RoleFallback`** (experimental), and the metadata key
+  `role_fallback` of a round-robin schedule. A schedule that the default
+  role assignment could not give balanced roles says so in its metadata,
+  under `RoleFallback::METADATA_KEY` (`'role_fallback'`), with the reason
+  as a string; `RoleFallback::of(Schedule $schedule): ?RoleFallback` reads
+  it and returns null for a schedule without it. The key is absent from
+  every schedule with balanced roles and from every schedule generated
+  under a role assignment that was named, so those are byte for byte what
+  they were. It is part of the schedule's plain data and survives
+  `toArray()`, `fromArray()` and JSON; the schedule form stays version 1,
+  since `metadata` is the free-form map it always was. Three reasons, each
+  with what naming `BalancedRoleAssignment` would do for the same input:
+  `NoBalancedRoles` (`no_balanced_roles`): every choice of balanced roles
+  that is searched was tried, and it would fail;
+  `SearchStoppedAtBound` (`search_stopped_at_bound`): a bound stopped the
+  search, and it would stop at the same bound and fail;
+  `BalancedRolesRejected` (`balanced_roles_rejected`): under a constraint
+  of your own the balanced roles put to it were rejected and, with a
+  schedule in hand, the rest was not searched, which it would search to its
+  bounds. `of()` throws an `InvalidInputException` for a value under the
+  key that is none of them. More reasons may be added, so a `match` needs a
+  `default` arm.
+- **`RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND`**
+  (4,000): the events the default role assignment may still put to the
+  constraints in search of balanced roles once the roles the generator
+  proposes have completed the schedule, under constraints the search of
+  roles cannot reason about exactly. The usage guide ("Balanced where
+  possible") says what is and is not tried within it.
+- **`RoleAssignment\RoleAssignmentContext`** (experimental), the second
+  argument of `assignRoles()`: `$leg` and `$legs` (which leg of how many
+  the roles are decided for; the scheduler asks once for each leg), and the
+  seatings the constraints have fixed, read with `isFixed(int $round, int
+  $position)` and `hasFixedSeatings()`. A role assignment that does not
+  read them loses that step and nothing else: an answer that reverses a
+  fixed seating is not used, and the scheduler goes on to search the roles
+  within the rule. It is an object so that more can be told later without
+  another change of the interface.
 - **A tie in a table can be settled by a decision the application
   supplies.** Where every figure is level, the order has to come from
   outside the results, and until now an application could only apply it to
@@ -1108,6 +1631,355 @@ entry on the engine fingerprint.
 
 ### Changed
 
+- **Breaking: the roles of a round robin are balanced where possible by
+  default ([#51](https://github.com/mission-gaming/tactician/issues/51)).**
+  `RoundRobinOptions` without a role assignment now means
+  `BalancedWherePossibleRoleAssignment` (under **Added**), where it meant
+  `RoundParityRoleAssignment`. The scheduler gives a schedule balanced
+  roles wherever it finds a schedule with them, which without constraints
+  is always: in the first leg, and in every later leg of
+  `MirroredLegStrategy` and `RepeatedLegStrategy`, each participant's two
+  role counts end at most 1 apart in a field of even size and equal in a
+  field of odd size (the later legs of `ShuffledLegStrategy` draw their
+  roles, as they did); the round-parity roles ended up to 3 and up to 4
+  apart, and of four participants one was second-named in all three of its
+  events. Where the constraints leave it no schedule with balanced roles
+  that it finds, it **falls back**: the schedule is generated with the
+  round-parity roles, exactly as under `RoundParityRoleAssignment`, and its
+  metadata says so and why. So a configuration that completed with the
+  default options of 0.2.x still completes, and the default fails only
+  where `RoundParityRoleAssignment` fails, with its failure. This is an
+  output change that is not a fix: the old roles were what was documented.
+
+  `BalancedRoleAssignment`, named, is the strict choice and promises what
+  it promised: balanced roles, or an `IncompleteScheduleException`.
+
+  **Who is affected.** Every round robin of three or more participants
+  generated without naming a role assignment: every leg count, each of the
+  three leg strategies, with or without a `Randomizer` and whatever its
+  seed, with or without constraints, `backtracking` on or off, and options
+  built in code or read from plain data. A `ScheduleOptimizer` whose
+  generator makes such a schedule is included. Not affected, byte for byte:
+  a field of two; a schedule whose options name a role assignment, either
+  of the two that 0.2.x had (compared with 0.2.x over 2 to 14 participants,
+  one to four legs, the three leg strategies, no seed and five seeds:
+  identical apart from the later legs of a scheduler with a `Randomizer`,
+  which the entry under "Output change (fix)" changes for every role
+  assignment); Swiss, elimination and pot-draw schedules, which do not use
+  a role assignment.
+
+  **What changes.** Roles only. Who meets whom, in which round, the order
+  of the events, the byes of a field of odd size and the metadata are what
+  they were; which of the two participants of an event is first-named is
+  not, in the first leg and so in every leg the strategy derives from it.
+  That holds without constraints, and under constraints wherever they
+  accept the roles of the same rotated order under both role assignments.
+  Where a constraint rejects the roles of the one and not of the other,
+  the two schedules come from different rotated orders and differ in who
+  meets whom in which round as well: six participants `1` to `6` under a
+  closure that refuses `1` first-named against `2` open with `1-6 2-5 3-4`
+  under round parity and with `2-3 4-1 6-5` under the default.
+  Compared over 936 schedules (2 to 14 participants, one to four legs, the
+  three strategies, no seed and five seeds): no pairing and no round
+  differs from the round-parity schedule, and every schedule of three or
+  more participants differs from it in roles. Four participants `1` to `4`,
+  one leg, no seed:
+
+  ```
+            0.2.x (round parity)   0.3.0 (balanced)
+  R1:       1-4 2-3                4-1 2-3
+  R2:       2-1 4-3                1-2 3-4
+  R3:       1-3 4-2                3-1 4-2
+  ```
+
+  Before, 1 was first-named twice, 2 twice, 3 never and 4 twice; after, 1
+  and 2 once and 3 and 4 twice, which is as close as three events allow.
+
+  A schedule that falls back is, without a `Randomizer`, the schedule
+  0.2.x gave, event for event, with one more metadata key (with one, it is
+  what `RoundParityRoleAssignment` gives from the same seed, whose later
+  legs the entry under "Output change (fix)" changes). The same four
+  participants under a rule that never names `3` first: no leg can be
+  balanced, since `3` plays all three of its events in one role, and the
+  default returns the left-hand column above with
+  `'role_fallback' => 'balanced_roles_rejected'` in its metadata.
+
+  **What to check (migration).**
+  - To keep the roles of 0.2.x, name the old role assignment:
+    `new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())`,
+    or `'role_assignment' => 'round_parity'` in plain data. A test holds
+    that output to fixtures whose bodies are the 0.2.x default's
+    (`round-parity-*.txt` below).
+  - **Not every schedule of the default is balanced.** Code that needs to
+    know reads the mark: `RoleFallback::of($schedule)` is null for a
+    schedule with balanced roles and the reason for one without. Code that
+    would rather have no schedule than an unbalanced one names
+    `BalancedRoleAssignment`, or `'role_assignment' => 'balanced'`.
+  - **Stored options.** `RoundRobinOptions::fromArray()` reads data without
+    a `role_assignment` key as naming no role assignment, which gets the
+    default of the release that reads it, as the usage guide has said since
+    0.2.2. Stored options without the key therefore now give roles that are
+    balanced where possible: that is everything `toArray()` wrote for
+    options that named no role assignment, and hand-written data without
+    the key. Options that named one, the old default included, were written
+    with the key and are read as they were written. Add
+    `'role_assignment' => 'round_parity'` to stored data that must keep
+    generating the schedule it generated. The form itself is unchanged and
+    stays version 1: the absent key means what it meant, the default of the
+    reading release, and it is that default which moved. The new default
+    has an identifier of its own, `'balanced_where_possible'`, for options
+    that should name it; 0.2.x refuses that identifier.
+  - A stored or published schedule is not regenerated identically. Keep the
+    stored events; anything that compares a fresh schedule, or its hash,
+    with a stored one sees a difference from round 1.
+  - **Same-role runs where two mirrored legs meet are one longer in most
+    fields.** A leg of balanced roles has no participant in one role more
+    than twice in a row, but the second mirrored leg starts with the roles
+    of round 1 reversed, and a participant can then play three in a row in
+    a field of even size, and in a field of odd size three or, where its
+    size is one more than a multiple of four (5, 9, 13 and so on), four.
+    The longest run anywhere in two to four mirrored legs, measured for 3
+    to 20 participants, under the default and under round parity: 3 and 2
+    in every field of even size from 6 up; 4 and 3 with 9, 13 and 17
+    participants; the same with 3, 4, 5, 11, 15 and 19 (2, 3, 4, 3, 3, 3);
+    3 and 4 with 7. Code that relied on round parity to keep such runs at
+    two in a field of even size gets three by default. Add
+    `ConsecutiveRoleConstraint::homeAway(3)` to rule out the run of four:
+    the scheduler then finds a balanced first leg without it, in every
+    field from 3 to 20 over one to four legs. `homeAway(2)` rules out the
+    run of three as well, and is found for every field of even size from 6
+    up and of odd size up to 11. With 13 or more participants of odd size
+    the search stops at its bound, and round parity breaks that limit there
+    too, so the schedule fails, as it did in 0.2.x; four participants have
+    no schedule of two mirrored legs under it at all (see **Added**).
+  - **Role constraints are answered differently.** A constraint sees the
+    balanced roles first, and where it rejects them the scheduler looks for
+    other balanced roles (see **Added**) and then falls back. Measured
+    against 0.2.x under default options: 40,888 configurations in fields of 2 to 20 (1,520 without
+    constraints; the library's role limits alone and beside rest, repeat
+    and seed-protection rules; limits, pinned roles and metadata rules
+    written as closures, as a class and a subclass of your own, and inside
+    a subclass of `ConstraintSet`; one to four legs, the three strategies,
+    with and without a `Randomizer`, `backtracking` on and off in the
+    small fields). Without a `Randomizer`, no configuration that completed
+    fails. Of the 22,106 that completed in 0.2.x, 17,761 complete with
+    balanced roles and 4,242 fall back; each of the 2,175 fall-backs
+    without a `Randomizer` has the events 0.2.x gave it. The other 103 hold
+    a `Randomizer` and fail: each fails under `RoundParityRoleAssignment`
+    too, because its later legs now derive from the first (the entry under
+    "Output change (fix)"). Of the configurations that failed in 0.2.x,
+    9,034 complete with balanced roles. With the library's own constraints
+    and nothing else (8,464 of the configurations) none falls back: each
+    is balanced or fails as it did. A constraint that itself puts a
+    participant out of balance in a leg, such as one that names a
+    participant first in both of its events in a field of three, or second
+    in all three in a field of four, completes as it did where the
+    round-parity roles agree with it, marked.
+  - **A limit on roles written as a closure or a class of your own gets
+    balanced roles only where the balanced roles as given keep it.** The
+    scheduler knows what the library's two role limits read and goes
+    straight back to the event that matters; a constraint of yours does not
+    say, and a search for it goes back one event at a time and can run to
+    its bound in a league of ordinary size. So where such a constraint
+    rejects an event for what came before it and the round-parity roles
+    complete the schedule, the default returns that schedule, marked
+    `balanced_roles_rejected`, and does not search. Measured with a closure
+    that does what `ConsecutiveRoleConstraint::homeAway(2)` does, two and
+    four mirrored legs, default options, every field of even size measured
+    from 6 to 40: the default returns the
+    schedule of 0.2.x, marked, after asking the closure 2.0 to 2.3 times
+    as often as 0.2.x asked it over two legs and 1.5 to 1.6 times over
+    four, in 1.5 to 2.0 times the time over two legs (0.6 ms for 0.3 with
+    6 participants, 3.8 for 2.2 with 12, 17.7 for 11.3 with 20, 159 for
+    104 with 40) and 1.1 to 1.3 times over four (11.6 ms for 8.8 with 12,
+    527 for 460 with 40). What to change, if such a schedule should be
+    balanced: use the library's constraint where it says the same
+    (`ConsecutiveRoleConstraint`, `RoleBalanceConstraint`), which is
+    searched exactly and found for those fields; or name
+    `BalancedRoleAssignment`, which searches to its bounds for a constraint
+    of yours too (it finds 6, 8 and 10 participants over two legs, and
+    stops at a bound, after 1 to 13 seconds, from 12 up). A rule of yours
+    that fixes the role of a pairing whatever came before is not affected:
+    the scheduler solves for it, with a schedule in hand as without.
+  - A `RoleBalanceConstraint` limit that the balanced roles need is lower:
+    1 for a single leg of a field of even size and 2 for one of odd size,
+    where round parity needs 3 and 4. Repeated legs of balanced roles are
+    as many apart as there are legs, so a limit of 3 or 4 that two repeated
+    legs broke under round parity now holds.
+  - **A schedule that has no balanced roles can take longer**, to fall back
+    or to fail, because balanced roles are looked for first. Under the
+    library's own constraints that is the whole search of first-leg roles:
+    up to 20,000 rejected roles and 200,000 events put to the constraints
+    in a call, the passes that fix the seatings a constraint rejects
+    included, and with `backtracking: true` the step budget of a
+    backtracking search for a balanced first leg. Measured: one to seven
+    seconds for a limit of two in a row over two to four mirrored legs of
+    13 to 29 participants of odd size, where the search stops at its bound
+    and the schedule then fails as it did. Under a constraint of your own
+    the round-parity roles are tried before the search, and with their
+    schedule in hand what is still spent on balanced roles is at most 4,000
+    events put to the constraints; with none in hand, a schedule that
+    failed in 0.2.x fails after the search as well: a role pinned in every leg over
+    two mirrored legs, which no schedule has, fails in 0.3, 0.6 and 1.4
+    seconds with 8, 12 and 20 participants, where 0.2.x failed in 4, 18
+    and 128 milliseconds. A
+    schedule that completes with the roles as given costs what it did, and
+    so does one that fails because of who meets whom and when under
+    `NoRepeatPairings`, `MinimumRestPeriodsConstraint` or
+    `SeedProtectionConstraint`: those read no role, and no search is made
+    for them. Under `ShuffledLegStrategy` such a failure does take longer
+    than it did: every rotated order is laid out for the balanced roles and
+    again for the roles of round parity, so that the draws, and with them
+    the failure, are those of `RoundParityRoleAssignment`. Measured over
+    two shuffled legs: 35 ms for 23 with 16 participants and 141 for 89
+    with 24 where a pair may not meet again within more rounds than a leg
+    has, and 65 for 57 and 410 for 361 where the top two seeds are
+    protected in every round.
+  - **A schedule balanced by a search costs more than its round-parity
+    schedule did.** Where the balanced roles as
+    given break a constraint, every rotated participant order is tried with
+    them before other balanced roles are searched for, so that a schedule a
+    rotated order completes is the one it was. Two mirrored legs under
+    `ConsecutiveRoleConstraint::homeAway(2)`, which round parity keeps
+    without a retry: 14 ms for 2.3 with 12 participants, 86 for 12 with
+    20, 350 for 42 with 30 and 860 for 108 with 40, six to eight times the
+    time of 0.2.x for a schedule that is balanced where that one was not.
+    Name `RoundParityRoleAssignment` where the time matters more than the
+    balance.
+  - **Failure messages.** Under the default every message is the one
+    `RoundParityRoleAssignment` gives, which is the one 0.2.x gave for the
+    same failure: nothing about balance is added, and `getAnalysis()` and
+    `getViolationCollector()` are those of that failure. Under
+    `BalancedRoleAssignment`, named, a failure after a search of first-leg
+    roles ends with what was searched: "The roles of the first leg were
+    then searched within what <role assignment> keeps, in each of the N
+    layouts tried, and no choice of them has a schedule the constraints
+    accept. The pairings and their rounds were not searched:
+    RoundRobinOptions(backtracking: true) searches them.", or "…and the
+    search stopped at a bound (20000 rejected roles, or 200000 events put
+    to the constraints, over all the layouts). Roles that satisfy the
+    constraints may exist beyond it; …". Both go on to name the way out
+    for a constraint that needs roles the role assignment does not keep:
+    "Roles that <role assignment> does not keep were not searched either:
+    RoundRobinOptions(backtracking: true, roleAssignment: new
+    RoundParityRoleAssignment()) searches every choice of roles." Where the
+    constraint that rejects is one of the library's that read no role
+    (`NoRepeatPairings`, `MinimumRestPeriodsConstraint`,
+    `SeedProtectionConstraint`), nothing is searched and the message ends
+    "No choice of roles for the first leg changes that: in each of the N
+    layouts tried the constraints reject an event for who meets whom and
+    when, whichever participant is first-named. The pairings and their
+    rounds were not searched: …". The sentence "The roles of leg 1 were not
+    searched: …" is left out of the message of a later leg when that search
+    follows. With `backtracking: true` the finding reads "…the constraints
+    reject the first leg, or the later legs that <strategy> derives from
+    it, in each of the N round decompositions of the first leg it tried,
+    whatever roles <role assignment> keeps for the first leg, so the
+    configuration is unsatisfiable with this leg strategy and this role
+    assignment". The exception of the last layout with the roles as given
+    is the `getPrevious()` of such a failure, and `getAnalysis()` and
+    `getViolationCollector()` are filled as before. (In 0.2.2 and 0.2.3
+    `BalancedRoleAssignment` failed without a search of the first leg, with
+    the message of the last layout.)
+  - **A constraint that counts its calls is asked more often.** The
+    default generates a constrained schedule up to three times in a call,
+    and with a schedule in hand puts an event a constraint of yours
+    rejected to it once more with a context that holds no events. The
+    usage guide asks for pure predicates ("What a constraint may rely on"),
+    and what is said above holds for those. That context is one no
+    generation makes for an event of a later leg, where a constraint may
+    rely on the first leg being there (the first meeting of a pair, read
+    for the return meeting): what a constraint throws for that one question
+    is read as "the rejection turns on what came before", the schedule in
+    hand is returned, marked, and the exception does not reach the caller.
+
+  **Golden fixtures.** Every fixture of a round robin with default options
+  changes, in roles only: `round-robin/mirrored-unseeded.txt`,
+  `round-robin/mirrored-seed-1.txt`, `round-robin/mirrored-seed-42.txt`,
+  `round-robin/mirrored-seed-1337.txt`, `round-robin/repeated-unseeded.txt`,
+  `round-robin/repeated-seed-1.txt`, `round-robin/repeated-seed-42.txt`,
+  `round-robin/repeated-seed-1337.txt`, `round-robin/constrained.txt`
+  (which also gains one section, a backtracking search around pinned
+  rounds), `wire/schedule.json`, and the examples that print a round robin
+  or something computed from one: `examples/01-basic-round-robin.txt`,
+  `02-participants-and-metadata.txt`, `03-iterating-schedules.txt`,
+  `04-basic-constraints.txt`, `05-seed-protection.txt`,
+  `06-rest-periods.txt`, `07-metadata-constraints.txt`,
+  `08-custom-constraints.txt`, `09-multi-leg-home-away.txt`,
+  `10-complex-tournament.txt`, `11-error-handling.txt`,
+  `15-timeline-assignment.txt`, `17-schedule-optimization.txt`,
+  `21-standings-and-tiebreakers.txt`,
+  `23-application-adapter-and-repack.txt` and
+  `25-awarded-results-and-adjustments.txt`. No schedule in them falls
+  back, and the failure messages the examples print are those of 0.2.x
+  (`16-backtracking-generation.txt`, which prints a failure and a searched
+  schedule, does not change at all). The fixtures that pinned the
+  opt-in are replaced by fixtures that pin the old default by name:
+  `round-robin/balanced-mirrored-unseeded.txt`,
+  `balanced-mirrored-seed-42.txt`, `balanced-repeated-unseeded.txt` and
+  `balanced-constrained.txt` are removed, since the default fixtures now
+  hold that output, and `round-robin/round-parity-mirrored-unseeded.txt`,
+  `round-parity-mirrored-seed-42.txt`, `round-parity-repeated-unseeded.txt`
+  and `round-parity-constrained.txt` are added, each with the body the
+  default fixture of the same name had before this change.
+- **`LegStrategyInterface::planLegs()` can be called more than once in a
+  `schedule()` call.** It was called once, before any event was generated.
+  Under the default role assignment the scheduler can generate a
+  constrained schedule up to three times in a call (the entry above), and
+  each run has to draw what a call draws, so a leg strategy that says it
+  needs randomization (`LegPlanContribution::$requiresRandomization`) is
+  asked for its plan again before each further run, with the same
+  arguments. That is where a `ShuffledLegStrategy` built from a seed
+  starts its draws again. Who is affected: a leg strategy of your own that
+  says so and does more in `planLegs()` than state its facts. What to
+  check: that calling it again is harmless, and that a strategy which
+  draws from a seed starts its draws there. The plan of the call is still
+  built from the first answer, and a strategy that does not say it needs
+  randomization, or a schedule under a role assignment that was named, is
+  asked once, as before.
+- **Breaking: `RoleAssignmentInterface` (experimental) has a second
+  parameter and a second method.** The signature is
+  `assignRoles(array $rounds, RoleAssignmentContext $context): array`,
+  where it was `assignRoles(array $rounds): array`, and
+  `rule(): ?ConstraintInterface` is new. Who is affected: a class that
+  implements the interface, and code that calls `assignRoles()` itself.
+  What to change: add the parameter (an implementation that does not need
+  it ignores it), and add `public function rule(): ?ConstraintInterface {
+  return null; }`, which keeps the behaviour of 0.2.x exactly: the roles the
+  class gives stand, and are searched with `backtracking: true` only. A
+  caller passes `new RoleAssignmentContext()` for a single leg. Returning a
+  rule is the opt-in to the search described under **Added**; the usage
+  guide says what a rule must be ("Writing a role assignment").
+  `BalancedRoleAssignment` and `RoundParityRoleAssignment` are changed with
+  the interface; with a context that fixes no seating both return the
+  roles they returned. A class written for 0.2.x fails to load until it is
+  changed ("Declaration of ... must be compatible with ..."), so nothing
+  runs with the old signature unnoticed. Before and after, for a class
+  that needs neither the context nor a rule:
+
+  ```php
+  // 0.2.x
+  public function assignRoles(array $rounds): array
+  {
+      // ...
+  }
+
+  // 0.3.0
+  public function assignRoles(array $rounds, RoleAssignmentContext $context): array
+  {
+      // ... as before
+  }
+
+  public function rule(): ?ConstraintInterface
+  {
+      return null;
+  }
+  ```
+
+  The parameter is required and the method is in the interface, not in an
+  optional second one, so that the interface has the shape it is meant to
+  keep before it leaves the experimental surface: a parameter added later
+  would break every implementer again.
 - **Byes and adjustments are refused for a table that exists where a
   tiebreaker depends on them.** `StandingsCalculator::withByesCredited()`
   keeps the tiebreaker values of the table it is given, and so does
@@ -1698,7 +2570,10 @@ entry on the engine fingerprint.
     roles (<name>) rejected an event of leg N in the roles <strategy> gives
     it, which follow from the roles of leg 1 by a rule. The roles of leg 1
     were not searched: RoundRobinOptions(backtracking: true) searches
-    them." Nothing is added when the rejection came from any other
+    them." (Under `BalancedRoleAssignment`, which states a rule, the roles
+    of leg 1 are searched and the sentence is left out. Under the default
+    the message is the one round parity gives, with the sentence: see the
+    entry on the default above.) Nothing is added when the rejection came from any other
     constraint: a closure or a class of your own does not say whether it
     reads roles.
   - `getActualEventCount()` of such a failure is the number of events in

@@ -737,43 +737,106 @@ it('splits every pairing of mirrored legs as evenly as the leg count allows, for
     ->with([[1], [2], [3], [4], [5], [6]])
     ->with([['round_parity'], ['balanced']]);
 
-// A scheduler with a randomizer shuffles the field for the first leg only,
-// so its later legs are not derived from its first (docs/USAGE.md, "Legs
-// after the first"). The later legs alternate among themselves all the
-// same: leg 3 is leg 2 reversed, leg 4 is leg 2 again. A pairing is then
-// one apart over an odd number of legs, and level or two apart over an even
-// number, where leg 1 decides which.
-it('alternates the legs after the first of a mirrored schedule from a scheduler that shuffles the field', function (
+// A scheduler with a randomizer shuffles the field and lays the first leg
+// out from the shuffled order. Every later leg is derived from that first
+// leg, as it is from the first leg of a scheduler without a randomizer
+// (issue #51): the same pairings in the same rounds of the leg, in the roles
+// the leg strategy gives them. Up to 0.2.x the later legs were laid out from
+// the order as given, so that they were another round robin altogether: about
+// half the pairings of two mirrored legs had the same participant first-named
+// in both, and a pair could meet in the last round of one leg and the first
+// round of the next.
+//
+// Everything is counted from the events. For each seed:
+//
+// - every leg has the pairings of the first leg in the same rounds of the
+//   leg, so the two meetings of a pair in consecutive legs are exactly one
+//   leg apart and never in consecutive rounds (a field of two has one
+//   pairing and one round in a leg, and nothing else to play);
+// - the share of pairings with the same participant first-named in two
+//   consecutive legs is none of them for mirrored legs and all of them for
+//   repeated legs;
+// - a pairing of mirrored legs is split as evenly as the number of legs
+//   allows, which the first leg laid out from another order did not give:
+//   over four legs a pairing could be split two apart.
+it('derives every later leg from the first leg of a scheduler that shuffles the field', function (
+    string $strategyName,
     int $legs,
     string $roleAssignmentName
 ): void {
     for ($size = 2; $size <= 30; ++$size) {
-        $label = "{$legs} legs, {$size} participants";
-        $participants = completenessParticipants($size);
-        $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
+        foreach ([300 + $size, 1, 2] as $seed) {
+            $label = "{$strategyName}, {$legs} legs, {$size} participants, seed {$seed}";
+            $participants = completenessParticipants($size);
+            $roundsPerLeg = $size % 2 === 0 ? $size - 1 : $size;
 
-        $schedule = (new RoundRobinScheduler(null, new Randomizer(new Mt19937(300 + $size))))->schedule(
-            $participants,
-            new RoundRobinOptions(
-                legs: $legs,
-                strategy: new MirroredLegStrategy(),
-                roleAssignment: completenessRoleAssignment($roleAssignmentName)
-            )
-        );
+            $schedule = (new RoundRobinScheduler(null, new Randomizer(new Mt19937($seed))))->schedule(
+                $participants,
+                new RoundRobinOptions(
+                    legs: $legs,
+                    strategy: match ($strategyName) {
+                        'mirrored' => new MirroredLegStrategy(),
+                        'repeated' => new RepeatedLegStrategy(),
+                        'shuffled' => new ShuffledLegStrategy(seed: $seed),
+                        default => throw new UnexpectedValueException($strategyName),
+                    },
+                    roleAssignment: completenessRoleAssignment($roleAssignmentName)
+                )
+            );
 
-        expect(RoundRobinAudit::faults($schedule, $participants, $legs))->toBe([], $label);
+            expect(RoundRobinAudit::faults($schedule, $participants, $legs))->toBe([], $label);
 
-        $second = mirroredLegRoles($schedule, 2, $roundsPerLeg);
-        for ($leg = 3; $leg <= $legs; ++$leg) {
-            expect(mirroredLegRoles($schedule, $leg, $roundsPerLeg, reversed: $leg % 2 === 1))
-                ->toBe($second, "{$label}, leg {$leg}");
+            // The same pairings in the same rounds of every leg
+            $firstStructure = RoleCounts::structure(RoleCounts::leg($schedule, 1, $roundsPerLeg));
+            for ($leg = 2; $leg <= $legs; ++$leg) {
+                $structure = array_map(
+                    static function (string $meeting) use ($leg, $roundsPerLeg): string {
+                        [$round, $pairing] = explode(': ', $meeting, 2);
+
+                        return ((int) $round - ($leg - 1) * $roundsPerLeg) . ': ' . $pairing;
+                    },
+                    RoleCounts::structure(RoleCounts::leg($schedule, $leg, $roundsPerLeg))
+                );
+                expect($structure)->toBe($firstStructure, "{$label}, leg {$leg}");
+            }
+
+            // No pair meets in two consecutive rounds: its meetings are a
+            // whole leg apart
+            $rounds = [];
+            $firstNamed = [];
+            foreach ($schedule as $event) {
+                $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+                $first = $ids[0];
+                sort($ids);
+                $rounds[implode(' + ', $ids)][] = $event->getRound()?->getNumber() ?? 0;
+                $firstNamed[implode(' + ', $ids)][] = $first;
+            }
+            $gaps = [];
+            $sameInConsecutiveLegs = 0;
+            foreach ($rounds as $pairing => $played) {
+                for ($index = 1; $index < count($played); ++$index) {
+                    $gaps[$played[$index] - $played[$index - 1]] = true;
+                    $sameInConsecutiveLegs += $firstNamed[$pairing][$index] === $firstNamed[$pairing][$index - 1] ? 1 : 0;
+                }
+            }
+            expect(array_keys($gaps))->toBe([$roundsPerLeg], $label);
+
+            if ($strategyName === 'shuffled') {
+                continue;
+            }
+
+            // The share of pairings with the same participant first-named in
+            // two consecutive legs: none when mirrored, all when repeated
+            $pairings = intdiv($size * ($size - 1), 2);
+            expect($sameInConsecutiveLegs)->toBe($strategyName === 'mirrored' ? 0 : $pairings * ($legs - 1), $label);
+
+            $splits = array_values(array_unique(RoleCounts::pairingSplits($schedule)));
+            expect($splits)->toBe([$strategyName === 'mirrored' ? $legs % 2 : $legs], $label);
         }
-
-        $splits = array_unique(RoleCounts::pairingSplits($schedule));
-        expect(array_values(array_diff($splits, $legs % 2 === 1 ? [1] : [0, 2])))->toBe([], $label);
     }
 })
-    ->with([[3], [4], [5], [6]])
+    ->with([['mirrored'], ['repeated'], ['shuffled']])
+    ->with([[2], [3], [4]])
     ->with([['round_parity'], ['balanced']]);
 
 /**
@@ -829,8 +892,10 @@ function mirroredRoundsAsPrinted(Schedule $schedule, array $rounds): array
 //   to be refused now, and from one with a randomizer one is.
 it('gives the third leg of four participants as the 0.3.0 changelog prints it, before and after', function (): void {
     $participants = completenessParticipants(4);
+    // The roles the entry prints are those of the round-parity role
+    // assignment, the default when it was written
     $schedule = static fn(LegStrategyInterface $strategy, int $legs): Schedule => (new RoundRobinScheduler())
-        ->schedule($participants, new RoundRobinOptions(legs: $legs, strategy: $strategy));
+        ->schedule($participants, new RoundRobinOptions(legs: $legs, strategy: $strategy, roleAssignment: new RoundParityRoleAssignment()));
 
     $after = $schedule(new MirroredLegStrategy(), 3);
     $before = $schedule(everyLaterLegReversed(), 3);
@@ -853,33 +918,122 @@ it('gives the third leg of four participants as the 0.3.0 changelog prints it, b
         ->and(array_values(array_unique(RoleCounts::pairingSplits($schedule(everyLaterLegReversed(), 4)))))->toBe([2]);
 });
 
-// The alternation can refuse a role limit that the roles of 0.2.x satisfied,
-// and the changelog says where: a scheduler with a randomizer. Its second leg
-// is not its first reversed, so where legs 1 and 2 meet is a matter of the
-// seed. Where legs 2 and 3 meet is not: they are laid out from the same
-// order, so 0.2.x repeated leg 2 there and a third leg now meets the second
-// as two mirrored legs of a scheduler without a randomizer meet. In a field
-// of five that is a run of four in one role (the figure pinned in
-// DefaultRoleAssignmentTest), so a limit of 3 is refused whatever the seed.
+// A scheduler with a randomizer answers a limit on roles as a scheduler
+// without one does. Its legs are the legs of a scheduler without a
+// randomizer under other names: the first leg is the circle layout of the
+// shuffled order, and every later leg derives from it (issue #51). The two
+// role constraints read roles and rounds and no names, so whether a limit
+// can be kept over several legs is no longer a matter of the seed.
 //
-// This records what the roles reach, like the rows for repeated legs under
-// "Documented values": it is the cost of the change, not a promise to keep.
-it('refuses over three mirrored legs from a scheduler that shuffles the field a streak limit that the roles of 0.2.x satisfied', function (
-    int $seed
+// Up to 0.2.x it was, because the later legs were laid out from another
+// order than the first: a limit that the legs of a scheduler without a
+// randomizer break could be kept by chance, and one that they keep could be
+// broken. Five participants over two mirrored legs under a limit of three in
+// a row are the case the first holds for, with the roles that alternate with
+// round parity: the two legs meet in a run of four (the figure pinned in
+// DefaultRoleAssignmentTest), so the limit is refused without a randomizer,
+// and with one it was kept for the seeds 1 to 5. It is refused for them now.
+//
+// Held for each constraint at every limit from 1 to 3, for both leg
+// strategies of rules, two and three legs, three to six participants and two
+// seeds. The wider sweep passed as well (two to seven participants, limits
+// up to 4, two to four legs, the seeds 1 to 5) and took 19 s where this
+// takes 2: almost all of it is the scheduler describing its refusals.
+it('completes with a scheduler that shuffles the field exactly the role limits it completes without a randomizer', function (
+    string $strategyName,
+    string $roleAssignmentName
+): void {
+    $completed = 0;
+    $refused = 0;
+
+    for ($size = 3; $size <= 6; ++$size) {
+        $participants = completenessParticipants($size);
+
+        foreach (['consecutive roles', 'role balance'] as $constraintName) {
+            for ($limit = 1; $limit <= 3; ++$limit) {
+                for ($legs = 2; $legs <= 3; ++$legs) {
+                    $completes = static function (?int $seed) use ($participants, $constraintName, $limit, $legs, $strategyName, $roleAssignmentName): bool {
+                        $constraints = ConstraintSet::create()->add($constraintName === 'role balance'
+                            ? RoleBalanceConstraint::homeAway($limit)
+                            : ConsecutiveRoleConstraint::homeAway($limit))->build();
+                        $scheduler = new RoundRobinScheduler($constraints, $seed === null ? null : new Randomizer(new Mt19937($seed)));
+
+                        try {
+                            $scheduler->schedule($participants, new RoundRobinOptions(
+                                legs: $legs,
+                                strategy: $strategyName === 'mirrored' ? new MirroredLegStrategy() : new RepeatedLegStrategy(),
+                                roleAssignment: completenessRoleAssignment($roleAssignmentName)
+                            ));
+                        } catch (IncompleteScheduleException) {
+                            return false;
+                        }
+
+                        return true;
+                    };
+
+                    $withoutRandomizer = $completes(null);
+                    $withoutRandomizer ? ++$completed : ++$refused;
+
+                    foreach ([1, 2] as $seed) {
+                        expect($completes($seed))->toBe(
+                            $withoutRandomizer,
+                            "{$constraintName} at {$limit}, {$legs} {$strategyName} legs, {$size} participants, seed {$seed}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // The premise: both answers were compared
+    expect($completed)->toBeGreaterThan(0)->and($refused)->toBeGreaterThan(0);
+})
+    ->with([['mirrored'], ['repeated']])
+    ->with([['round_parity'], ['balanced']]);
+
+// What the 0.3.0 changelog entry for the later legs of a scheduler with a
+// randomizer tells a reader to expect, held here because the changelog is
+// not one of the documents whose snippets the suite runs:
+//
+// - the second leg of four participants from the seed it names, before and
+//   after;
+// - the "before" column is what its migration note says the old later legs
+//   were: the later legs of a scheduler without a randomizer, after the
+//   first leg of the scheduler with one.
+it('gives the second leg of four participants from a shuffled field as the 0.3.0 changelog prints it, before and after', function (): void {
+    $participants = completenessParticipants(4);
+    $options = static fn(int $legs): RoundRobinOptions => new RoundRobinOptions(
+        legs: $legs,
+        strategy: new MirroredLegStrategy(),
+        roleAssignment: new RoundParityRoleAssignment()
+    );
+    $seeded = static fn(int $legs): Schedule => (new RoundRobinScheduler(null, new Randomizer(new Mt19937(1))))
+        ->schedule($participants, $options($legs));
+
+    $after = $seeded(2);
+    $withoutRandomizer = (new RoundRobinScheduler())->schedule($participants, $options(2));
+
+    expect(mirroredRoundsAsPrinted($after, [1, 2, 3]))->toBe(['R1: 4-2 1-3', 'R2: 1-4 2-3', 'R3: 4-3 2-1'])
+        ->and(mirroredRoundsAsPrinted($after, [4, 5, 6]))->toBe(['R4: 2-4 3-1', 'R5: 4-1 3-2', 'R6: 3-4 1-2'])
+        // The first leg is the single leg of the same seed, as it was
+        ->and(mirroredRoundsAsPrinted($seeded(1), [1, 2, 3]))->toBe(mirroredRoundsAsPrinted($after, [1, 2, 3]))
+        // "before": the second leg of the list as given
+        ->and(mirroredRoundsAsPrinted($withoutRandomizer, [4, 5, 6]))->toBe(['R4: 4-1 3-2', 'R5: 1-2 3-4', 'R6: 3-1 2-4']);
+});
+
+// The case the comment above the sweep names, as the 0.3.0 changelog states it.
+it('refuses five participants two mirrored legs under a limit of three in a row, with a randomizer as without', function (
+    ?int $seed
 ): void {
     $participants = completenessParticipants(5);
     $limit = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(3))->build();
-    $generate = static fn(LegStrategyInterface $strategy, int $legs): Schedule => (new RoundRobinScheduler(
-        $limit,
-        new Randomizer(new Mt19937($seed))
-    ))->schedule($participants, new RoundRobinOptions(legs: $legs, strategy: $strategy));
+    $options = new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy(), roleAssignment: new RoundParityRoleAssignment());
+    $randomizer = static fn(): ?Randomizer => $seed === null ? null : new Randomizer(new Mt19937($seed));
 
-    // Two legs are what they were, and complete
-    expect($generate(new MirroredLegStrategy(), 2)->toArray())->toBe($generate(everyLaterLegReversed(), 2)->toArray());
-
-    expect(RoundRobinAudit::faults($generate(everyLaterLegReversed(), 3), $participants, 3))->toBe([]);
-    expect(fn() => $generate(new MirroredLegStrategy(), 3))->toThrow(IncompleteScheduleException::class);
-})->with([[1], [2], [3], [4], [5]]);
+    expect(RoleCounts::worstStreak((new RoundRobinScheduler(null, $randomizer()))->schedule($participants, $options)))->toBe(4)
+        ->and(fn() => (new RoundRobinScheduler($limit, $randomizer()))->schedule($participants, $options))
+        ->toThrow(IncompleteScheduleException::class);
+})->with([[null], [1], [2], [3], [4], [5]]);
 
 // Without a randomizer nothing of the kind is known, and for the two role
 // constraints there is a reason: every boundary between two alternating legs
@@ -1031,7 +1185,7 @@ it('satisfies over any number of mirrored legs the role limits that two mirrored
                 ->and(RoleCounts::worstRunningImbalance($unconstrained))
                 ->toBe(RoleCounts::worstRunningImbalance($twoLegs), $label);
 
-            // The limit the usage guide gives for the default roles
+            // The limit the usage guide gives for the round-parity roles
             // ("Role-Based Constraints") is therefore enough for any number
             if ($roleAssignmentName === 'round_parity') {
                 expect(RoleCounts::worstRunningImbalance($unconstrained))

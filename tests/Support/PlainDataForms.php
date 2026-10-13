@@ -30,6 +30,7 @@ use MissionGaming\Tactician\Repack\SlotAssignment;
 use MissionGaming\Tactician\Repack\UnplacedEvent;
 use MissionGaming\Tactician\Repack\UnplacedReason;
 use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\BalancedWherePossibleRoleAssignment;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\PotDrawOptions;
@@ -139,9 +140,10 @@ final class PlainDataForms
                         default => new ShuffledLegStrategy(seed: $random->getInt(-9, 9_999)),
                     },
                     $random->getInt(0, 1) === 1,
-                    match ($random->getInt(0, 2)) {
+                    match ($random->getInt(0, 3)) {
                         0 => null,
                         1 => new RoundParityRoleAssignment(),
+                        2 => new BalancedWherePossibleRoleAssignment(),
                         default => new BalancedRoleAssignment(),
                     }
                 ),

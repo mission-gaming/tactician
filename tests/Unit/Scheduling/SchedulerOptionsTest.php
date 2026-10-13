@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
@@ -9,6 +10,8 @@ use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\BalancedWherePossibleRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentContext;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
@@ -160,13 +163,22 @@ describe('RoundRobinOptions', function (): void {
         (new RoundRobinOptions(legs: 2, strategy: $custom))->toArray();
     })->throws(InvalidConfigurationException::class);
 
-    it('defaults to the round-parity role assignment', function (): void {
-        expect((new RoundRobinOptions())->roleAssignment)->toBeInstanceOf(RoundParityRoleAssignment::class);
-        expect(RoundRobinOptions::fromArray([])->roleAssignment)->toBeInstanceOf(RoundParityRoleAssignment::class);
+    // Balanced where possible since 0.3.0. Options that name no role
+    // assignment follow the default of the release that reads them, whether
+    // they are built in code or from plain data, so a payload stored
+    // without the key by 0.2.x gets that default too (the changelog says
+    // so). It is a class of its own and not the strict balanced one, which
+    // is balanced or refused.
+    it('defaults to the role assignment that is balanced where possible', function (): void {
+        expect((new RoundRobinOptions())->roleAssignment)->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
+        expect(RoundRobinOptions::fromArray([])->roleAssignment)->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
 
         // A payload written before the option existed
         expect(RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'repeated', 'backtracking' => true])->roleAssignment)
-            ->toBeInstanceOf(RoundParityRoleAssignment::class);
+            ->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
+        // And one written by toArray() for options that named none
+        expect(RoundRobinOptions::fromArray((new RoundRobinOptions(legs: 2))->toArray())->roleAssignment)
+            ->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
     });
 
     it('maps stable identifiers to the built-in role assignments', function (): void {
@@ -174,6 +186,8 @@ describe('RoundRobinOptions', function (): void {
             ->toBeInstanceOf(RoundParityRoleAssignment::class);
         expect(RoundRobinOptions::fromArray(['role_assignment' => 'balanced'])->roleAssignment)
             ->toBeInstanceOf(BalancedRoleAssignment::class);
+        expect(RoundRobinOptions::fromArray(['role_assignment' => 'balanced_where_possible'])->roleAssignment)
+            ->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
     });
 
     // The wire shape of options that name no role assignment is the three
@@ -190,9 +204,10 @@ describe('RoundRobinOptions', function (): void {
         'a null role assignment' => [['role_assignment' => null]],
     ]);
 
-    // The default is to change in 0.3. A caller that names today's default
-    // to keep it must still have named it after a round trip through plain
-    // data, or the stored configuration would follow the new default.
+    // The default changed in 0.3.0. A caller that named the default of
+    // 0.2.x to keep it must still have named it after a round trip through
+    // plain data, or the stored configuration would follow the new default;
+    // and one that names the new default keeps saying so.
     it('keeps a role assignment that was named, the default included', function (): void {
         $pinned = ['format_version' => 1, 'legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'round_parity'];
 
@@ -206,6 +221,17 @@ describe('RoundRobinOptions', function (): void {
         expect($balanced->toArray())
             ->toBe(['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);
         expect(RoundRobinOptions::fromArray($balanced->toArray())->toArray())->toBe($balanced->toArray());
+
+        // The default of 0.3.0 has a name of its own, so that it can be
+        // named and then stays named: options that name it are written
+        // with the key, and options that name nothing are not
+        $named = new RoundRobinOptions(legs: 2, roleAssignment: new BalancedWherePossibleRoleAssignment());
+
+        expect($named->toArray())
+            ->toBe(['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced_where_possible']);
+        expect(RoundRobinOptions::fromArray($named->toArray())->toArray())->toBe($named->toArray());
+        expect(RoundRobinOptions::fromArray(['legs' => 2, 'role_assignment' => 'balanced_where_possible'])->toArray())->toBe($named->toArray());
+        expect((new RoundRobinOptions(legs: 2))->toArray())->not->toHaveKey('role_assignment');
     });
 
     it('rejects a role assignment identifier it does not know', function (mixed $identifier): void {
@@ -216,9 +242,15 @@ describe('RoundRobinOptions', function (): void {
     it('refuses to serialize a custom role assignment', function (): void {
         $custom = new class implements RoleAssignmentInterface {
             #[Override]
-            public function assignRoles(array $rounds): array
+            public function assignRoles(array $rounds, RoleAssignmentContext $context): array
             {
                 return $rounds;
+            }
+
+            #[Override]
+            public function rule(): ?ConstraintInterface
+            {
+                return null;
             }
         };
 

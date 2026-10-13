@@ -286,6 +286,60 @@ final class RoleScheduleOracle
     }
 
     /**
+     * Broken when $second is first-named in any meeting with $first, in
+     * whichever round and leg it is played.
+     *
+     * @return Closure(list<array{int, string, string}>): bool
+     */
+    public static function pinnedRule(string $first, string $second): Closure
+    {
+        return static function (array $events) use ($first, $second): bool {
+            foreach ($events as [, $eventFirst, $eventSecond]) {
+                if ($eventFirst === $second && $eventSecond === $first) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+    }
+
+    /**
+     * Broken when the first leg cannot end balanced any more: a participant
+     * has one role in it more often than half the events of a leg, rounded
+     * up. A leg of a round robin gives each of $participants one event
+     * against every other, so a whole first leg that does not break this
+     * has every participant's two role counts at most 1 apart, and 0 apart
+     * in a field of odd size.
+     *
+     * This is what the balanced role assignment promises of the leg it
+     * decides, stated as counting and nothing else.
+     *
+     * @return Closure(list<array{int, string, string}>): bool
+     */
+    public static function balancedFirstLegRule(int $participants, int $roundsPerLeg): Closure
+    {
+        $most = intdiv($participants, 2);
+
+        return static function (array $events) use ($most, $roundsPerLeg): bool {
+            $firstNamed = [];
+            $secondNamed = [];
+            foreach ($events as [$round, $first, $second]) {
+                if ($round > $roundsPerLeg) {
+                    continue;
+                }
+                $firstNamed[$first] = ($firstNamed[$first] ?? 0) + 1;
+                $secondNamed[$second] = ($secondNamed[$second] ?? 0) + 1;
+                if ($firstNamed[$first] > $most || $secondNamed[$second] > $most) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+    }
+
+    /**
      * Broken when any of the rules is.
      *
      * @param Closure(list<array{int, string, string}>): bool ...$rules

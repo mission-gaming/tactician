@@ -20,24 +20,24 @@ With the custom constraint: 3
 
 == Schedule without constraints ==
 meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
-R1: celtic-clapton athletic-stpauli livorno-redstar
-R2: athletic-celtic clapton-livorno stpauli-redstar
-R3: celtic-livorno redstar-athletic stpauli-clapton
-R4: redstar-celtic livorno-stpauli athletic-clapton
-R5: celtic-stpauli clapton-redstar athletic-livorno
+R1: clapton-celtic athletic-stpauli redstar-livorno
+R2: celtic-athletic livorno-clapton stpauli-redstar
+R3: livorno-celtic redstar-athletic clapton-stpauli
+R4: celtic-redstar stpauli-livorno athletic-clapton
+R5: stpauli-celtic clapton-redstar livorno-athletic
 
 == Schedule with noRepeatPairings() only ==
 meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
-R1: celtic-clapton athletic-stpauli livorno-redstar
-R2: athletic-celtic clapton-livorno stpauli-redstar
-R3: celtic-livorno redstar-athletic stpauli-clapton
-R4: redstar-celtic livorno-stpauli athletic-clapton
-R5: celtic-stpauli clapton-redstar athletic-livorno
+R1: clapton-celtic athletic-stpauli redstar-livorno
+R2: celtic-athletic livorno-clapton stpauli-redstar
+R3: livorno-celtic redstar-athletic clapton-stpauli
+R4: celtic-redstar stpauli-livorno athletic-clapton
+R5: stpauli-celtic clapton-redstar livorno-athletic
 
 == Schedule with the custom constraint ==
 meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
-R1: athletic-celtic livorno-clapton redstar-stpauli
-R2: livorno-athletic celtic-redstar clapton-stpauli
-R3: athletic-redstar stpauli-livorno clapton-celtic
-R4: stpauli-athletic redstar-clapton livorno-celtic
-R5: athletic-clapton celtic-stpauli livorno-redstar
+R1: celtic-athletic livorno-clapton stpauli-redstar
+R2: athletic-livorno redstar-celtic clapton-stpauli
+R3: redstar-athletic stpauli-livorno celtic-clapton
+R4: athletic-stpauli clapton-redstar livorno-celtic
+R5: clapton-athletic celtic-stpauli redstar-livorno

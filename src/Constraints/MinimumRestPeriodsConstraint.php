@@ -18,9 +18,9 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * pairing last met each other, in round numbers. A pairing that has not met
  * before is never rejected, so in a single-leg round robin, where no pair
  * meets twice, the constraint rejects nothing. It has an effect across
- * legs: in a round robin generated without a randomizer a pair's meetings
- * in consecutive legs are exactly one leg's rounds apart, so a minimum
- * above the number of rounds in a leg fails generation.
+ * legs: in a round robin a pair's meetings in consecutive legs are exactly
+ * one leg's rounds apart, with a randomizer and without, so a minimum above
+ * the number of rounds in a leg fails generation.
  *
  * @experimental
  */

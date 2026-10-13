@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
@@ -19,7 +20,11 @@ use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\Quality\RoleBalanceMetric;
 use MissionGaming\Tactician\Quality\RoleStreakMetric;
 use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\BalancedWherePossibleRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentContext;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+use MissionGaming\Tactician\RoleAssignment\RoleFallback;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Tests\Support\RoleCounts;
@@ -195,10 +200,29 @@ function roleFixedRolesConstraint(array $firstNamed): ConstraintSet
 }
 
 describe('the default role assignment', function (): void {
-    it('is what options that name no role assignment use', function (): void {
-        $explicit = RoundRobinOptions::fromArray(['role_assignment' => 'round_parity']);
+    // Balanced where possible since 0.3.0 (issue #51). Without constraints
+    // that is balanced, and the schedule of the balanced role assignment
+    // byte for byte, with no mark. Four participants tell balanced roles
+    // from round parity: round parity names p3 second in all three of its
+    // events.
+    it('gives the balanced roles, for options that name no role assignment', function (): void {
+        $named = RoundRobinOptions::fromArray(['role_assignment' => 'balanced']);
+        $default = RoundRobinOptions::fromArray(['role_assignment' => 'balanced_where_possible']);
 
-        foreach ([null, new RoundRobinOptions(), $explicit] as $options) {
+        foreach ([null, new RoundRobinOptions(), RoundRobinOptions::fromArray([]), RoundRobinOptions::fromArray(['legs' => 1]), $default, $named] as $options) {
+            $schedule = (new RoundRobinScheduler())->schedule(roleField(4), $options);
+
+            expect(RoleCounts::worstEndImbalance($schedule))->toBe(1)
+                ->and($schedule->toJson())->toBe((new RoundRobinScheduler())->schedule(roleField(4), $named)->toJson())
+                ->and(RoleFallback::of($schedule))->toBeNull()
+                ->and($schedule->hasMetadata(RoleFallback::METADATA_KEY))->toBeFalse();
+        }
+
+        expect((new RoundRobinOptions())->roleAssignment)->toBeInstanceOf(BalancedWherePossibleRoleAssignment::class);
+    });
+
+    it('leaves the round-parity roles to options that name them', function (): void {
+        foreach ([RoundRobinOptions::fromArray(['role_assignment' => 'round_parity']), new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())] as $options) {
             $schedule = (new RoundRobinScheduler())->schedule(roleField(4), $options);
 
             expect(RoleCounts::differences($schedule)['p3'])->toBe(-3);
@@ -291,7 +315,10 @@ describe('the balanced role assignment', function (): void {
         for ($size = 2; $size <= 30; ++$size) {
             $randomizer = static fn(): ?Randomizer => $seed === null ? null : new Randomizer(new Mt19937($seed + $size));
 
-            $default = (new RoundRobinScheduler(null, $randomizer()))->schedule(roleField($size));
+            $roundParity = (new RoundRobinScheduler(null, $randomizer()))->schedule(
+                roleField($size),
+                new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())
+            );
             $balanced = (new RoundRobinScheduler(null, $randomizer()))->schedule(
                 roleField($size),
                 new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())
@@ -299,34 +326,38 @@ describe('the balanced role assignment', function (): void {
 
             // The same pairings in the same rounds in the same order, the
             // same byes: only who is first-named differs
-            Assert::assertSame(RoleCounts::structure($default), RoleCounts::structure($balanced), "n={$size}");
-            Assert::assertSame($default->getMetadata(), $balanced->getMetadata(), "n={$size}");
+            Assert::assertSame(RoleCounts::structure($roundParity), RoleCounts::structure($balanced), "n={$size}");
+            Assert::assertSame($roundParity->getMetadata(), $balanced->getMetadata(), "n={$size}");
+            if ($size >= 3) {
+                // The comparison is between two role assignments, not of a schedule with itself
+                Assert::assertNotEquals($roundParity->toArray(), $balanced->toArray(), "n={$size}: the two schedules compared are one");
+            }
 
             // While the leg is played no participant is further apart than
             // 1 (even field) or 2 (odd field, where the bye shifts a parity)
             Assert::assertLessThanOrEqual($size % 2 === 0 ? 1 : 2, RoleCounts::worstRunningImbalance($balanced), "n={$size}");
 
-            // No role three times in a row, and never a longer run than the default
+            // No role three times in a row, and never a longer run than round parity
             Assert::assertLessThanOrEqual(2, RoleCounts::worstStreak($balanced), "n={$size}");
-            Assert::assertLessThanOrEqual(RoleCounts::worstStreak($default), RoleCounts::worstStreak($balanced), "n={$size}");
+            Assert::assertLessThanOrEqual(RoleCounts::worstStreak($roundParity), RoleCounts::worstStreak($balanced), "n={$size}");
 
             // The quality metrics, which are lower-is-better, agree
-            Assert::assertLessThanOrEqual($roleBalance->measure($default), $roleBalance->measure($balanced), "n={$size}");
-            Assert::assertLessThanOrEqual($roleStreaks->measure($default), $roleStreaks->measure($balanced), "n={$size}");
+            Assert::assertLessThanOrEqual($roleBalance->measure($roundParity), $roleBalance->measure($balanced), "n={$size}");
+            Assert::assertLessThanOrEqual($roleStreaks->measure($roundParity), $roleStreaks->measure($balanced), "n={$size}");
         }
     })->with([[null], [7], [20260]]);
 
     // Stated for RoleBalanceMetric only. RoleStreakMetric is not included:
     // two mirrored legs repeat a role across the leg boundary, and there the
-    // balanced assignment scores up to 0.4 worse than the default.
-    it('scores at least as well as the default on role balance over several legs', function (string $strategyName): void {
+    // balanced assignment scores up to 0.4 worse than round parity.
+    it('scores at least as well as round parity on role balance over several legs', function (string $strategyName): void {
         $roleBalance = new RoleBalanceMetric();
 
         for ($size = 2; $size <= 30; ++$size) {
             for ($legs = 1; $legs <= 6; ++$legs) {
-                $default = (new RoundRobinScheduler())->schedule(
+                $roundParity = (new RoundRobinScheduler())->schedule(
                     roleField($size),
-                    new RoundRobinOptions($legs, roleLegStrategy($strategyName))
+                    new RoundRobinOptions($legs, roleLegStrategy($strategyName), false, new RoundParityRoleAssignment())
                 );
                 $balanced = (new RoundRobinScheduler())->schedule(
                     roleField($size),
@@ -334,7 +365,7 @@ describe('the balanced role assignment', function (): void {
                 );
 
                 Assert::assertLessThanOrEqual(
-                    $roleBalance->measure($default),
+                    $roleBalance->measure($roundParity),
                     $roleBalance->measure($balanced),
                     "{$strategyName} n={$size} legs={$legs}"
                 );
@@ -377,10 +408,12 @@ describe('role assignments and constraints', function (): void {
             Assert::assertLessThanOrEqual(2, RoleCounts::worstStreak($schedule), "n={$size}");
         }
 
-        // The default cannot: four participants put one of them in the same
+        // Round parity cannot: four participants put one of them in the same
         // role three times in a row under every rotation
-        expect(fn() => (new RoundRobinScheduler($constraints))->schedule(roleField(4)))
-            ->toThrow(IncompleteScheduleException::class);
+        expect(fn() => (new RoundRobinScheduler($constraints))->schedule(
+            roleField(4),
+            new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())
+        ))->toThrow(IncompleteScheduleException::class);
     });
 
     it('satisfies a running balance limit of 1 in an even field and of 2 in an odd one', function (): void {
@@ -397,11 +430,13 @@ describe('role assignments and constraints', function (): void {
             Assert::assertLessThanOrEqual($limit, RoleCounts::worstRunningImbalance($schedule), "n={$size}");
         }
 
-        // The default cannot: its running difference reaches 3 with four participants
+        // Round parity cannot: its running difference reaches 3 with four participants
         $constraints = ConstraintSet::create()->add(new RoleBalanceConstraint(1))->build();
 
-        expect(fn() => (new RoundRobinScheduler($constraints))->schedule(roleField(4)))
-            ->toThrow(IncompleteScheduleException::class);
+        expect(fn() => (new RoundRobinScheduler($constraints))->schedule(
+            roleField(4),
+            new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())
+        ))->toThrow(IncompleteScheduleException::class);
     });
 
     it('fails loudly when a role constraint rejects the balanced roles', function (bool $backtracking): void {
@@ -456,9 +491,10 @@ describe('role assignments and constraints', function (): void {
             new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())
         ))->toThrow(IncompleteScheduleException::class);
 
+        // Round parity keeps the roles the search chose
         $searched = (new RoundRobinScheduler($constraints))->schedule(
             roleField($size),
-            new RoundRobinOptions(backtracking: true)
+            new RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment())
         );
         $balanced = (new RoundRobinScheduler($constraints))->schedule(
             roleField($size),
@@ -480,34 +516,44 @@ describe('role assignments and constraints', function (): void {
         'six participants' => [6, ['p1 + p2' => 1, 'p1 + p3' => 2, 'p1 + p4' => 3, 'p1 + p6' => 4, 'p1 + p5' => 5]],
     ]);
 
-    // Fixed roles that the roles of no rotation satisfy, under either role
-    // assignment, so both schedules below come from the search: in fields
-    // larger than the placement cases above reach.
-    it('balances a searched first leg of a larger field without breaking the roles a constraint fixes', function (
+    // Fixed roles that the roles of no rotation satisfy as either role
+    // assignment gives them, in fields larger than the placement cases above
+    // reach. Round parity states no rule, so its roles are searched with
+    // backtracking only, and the search returns a leg far from balanced.
+    // The balanced role assignment needs no backtracking: the scheduler
+    // fixes the seatings the rule rejects, and the role assignment balances
+    // the leg around them, in the layout of the circle method.
+    it('balances a larger field around the roles a constraint fixes, in the layout of the circle method', function (
         int $size,
-        array $firstNamed
+        array $firstNamed,
+        bool $backtracking
     ): void {
         $constraints = roleFixedRolesConstraint($firstNamed);
-
-        foreach ([null, new BalancedRoleAssignment()] as $roleAssignment) {
-            expect(fn() => (new RoundRobinScheduler($constraints))->schedule(
-                roleField($size),
-                new RoundRobinOptions(roleAssignment: $roleAssignment)
-            ))->toThrow(IncompleteScheduleException::class);
-        }
-
-        $searched = (new RoundRobinScheduler($constraints))->schedule(
-            roleField($size),
-            new RoundRobinOptions(backtracking: true)
+        $parity = static fn(bool $backtracking): RoundRobinOptions => new RoundRobinOptions(
+            backtracking: $backtracking,
+            roleAssignment: new RoundParityRoleAssignment()
         );
+
+        // The premises: the balanced roles as the circle rule gives them
+        // break the rule, and so do the round-parity roles of every rotation
+        $unconstrained = (new RoundRobinScheduler())->schedule(roleField($size));
+        $unconstrainedRoles = array_map(
+            static fn(Event $event): string => $event->getParticipants()[0]->getId() . '|' . $event->getParticipants()[1]->getId(),
+            $unconstrained->getEvents()
+        );
+        expect(array_values(array_intersect($firstNamed, $unconstrainedRoles)))->not->toBe($firstNamed)
+            ->and(fn() => (new RoundRobinScheduler($constraints))->schedule(roleField($size), $parity(false)))
+            ->toThrow(IncompleteScheduleException::class);
+
+        $searched = (new RoundRobinScheduler($constraints))->schedule(roleField($size), $parity(true));
         $balanced = (new RoundRobinScheduler($constraints))->schedule(
             roleField($size),
-            new RoundRobinOptions(backtracking: true, roleAssignment: new BalancedRoleAssignment())
+            new RoundRobinOptions(backtracking: $backtracking)
         );
 
         assertRoundRobinStructure($balanced, $size, 1);
-        expect(RoleCounts::structure($balanced))->toBe(RoleCounts::structure($searched));
-        expect($balanced->getMetadata())->toBe($searched->getMetadata());
+        expect(RoleCounts::structure($balanced))->toBe(RoleCounts::structure($unconstrained));
+        expect($balanced->getMetadata())->toBe($unconstrained->getMetadata());
 
         // The roles the search chose are out of balance, or this proves nothing
         expect(RoleCounts::worstEndImbalance($searched))->toBeGreaterThan(1);
@@ -515,7 +561,7 @@ describe('role assignments and constraints', function (): void {
             expect(abs($difference))->toBe($size % 2 === 0 ? 1 : 0);
         }
 
-        // The repair reversed pairings, and none of the fixed ones
+        // Every fixed role is as the rule has it
         $roles = array_map(
             static fn(Event $event): string => $event->getParticipants()[0]->getId() . '|' . $event->getParticipants()[1]->getId(),
             $balanced->getEvents()
@@ -525,40 +571,263 @@ describe('role assignments and constraints', function (): void {
         'eight participants' => [8, ['p2|p7', 'p2|p3', 'p8|p1', 'p7|p6']],
         'nine participants, with byes' => [9, ['p6|p8', 'p3|p6', 'p8|p2', 'p4|p9']],
         'twelve participants' => [12, ['p10|p12', 'p7|p1', 'p3|p6']],
-    ]);
+    ])->with([[false], [true]]);
 
-    // The documented limit: a role assignment does not know the constraints,
-    // and the scheduler does not look for other balanced roles. Here the
-    // default roles satisfy the rule and so would these balanced ones, which
-    // are stated by hand:
+    // Up to 0.2.x a role assignment did not know the constraints, and the
+    // scheduler did not look for other balanced roles: this rule failed
+    // under the balanced role assignment, with and without backtracking,
+    // although these balanced roles, stated by hand, keep it:
     //
     //   p2-p1  p4-p1  p1-p3  p3-p2  p2-p4  p3-p4
     //
     // (p1 and p4 one more second-named, p2 and p3 one more first-named).
-    // The failure is loud and names the rule; it must never become a
-    // schedule that quietly has other roles than the ones asked for.
-    it('fails loudly on fixed roles that other balanced roles would satisfy', function (bool $backtracking): void {
+    // Now the scheduler fixes the seatings the rule rejects and the role
+    // assignment balances the leg around them (issue #51). The schedule has
+    // the pairings and rounds of the schedule without the rule: only roles
+    // were looked for.
+    it('finds the balanced roles that fixed roles leave', function (bool $backtracking, ?RoleAssignmentInterface $roleAssignment): void {
         $constraints = roleFixedRolesConstraint(['p2|p1', 'p4|p1']);
+        $options = new RoundRobinOptions(backtracking: $backtracking, roleAssignment: $roleAssignment);
 
-        $default = (new RoundRobinScheduler($constraints))->schedule(roleField(4));
-        assertRoundRobinStructure($default, 4, 1);
+        $schedule = (new RoundRobinScheduler($constraints))->schedule(roleField(4), $options);
 
-        try {
-            (new RoundRobinScheduler($constraints))->schedule(
-                roleField(4),
-                new RoundRobinOptions(backtracking: $backtracking, roleAssignment: new BalancedRoleAssignment())
-            );
-            Assert::fail('The schedule was generated.');
-        } catch (IncompleteScheduleException $exception) {
-            expect(array_keys($exception->getViolationCollector()->getViolationCountsByConstraint()))
-                ->toBe(['Fixed Roles']);
+        assertRoundRobinStructure($schedule, 4, 1);
+        expect(RoleCounts::structure($schedule))->toBe(RoleCounts::structure((new RoundRobinScheduler())->schedule(roleField(4), $options)))
+            ->and(RoleCounts::worstEndImbalance($schedule))->toBe(1);
 
-            if ($backtracking) {
-                expect($exception->getMessage())
-                    ->toContain('the constraints reject the roles that ' . BalancedRoleAssignment::class . ' gives it')
-                    ->toContain('use the round-parity role assignment');
+        $roles = array_map(
+            static fn(Event $event): string => $event->getParticipants()[0]->getId() . '|' . $event->getParticipants()[1]->getId(),
+            $schedule->getEvents()
+        );
+        expect($roles)->toContain('p2|p1')->toContain('p4|p1');
+    })
+        ->with([[false], [true]])
+        ->with([
+            'the default' => [null],
+            'the balanced role assignment, named' => [new BalancedRoleAssignment()],
+        ]);
+
+    // The exhaustive case of issue #51. Four participants have six
+    // pairings, and a rule about roles can leave each one free or fix it
+    // either way round: 3^6 = 729 rules. For every one of them the
+    // scheduler, under the balanced role assignment, returns a schedule
+    // exactly when a balanced leg exists that keeps the rule, and a failure
+    // names the rule. (The default returns the same schedule in each of
+    // those cases, and does not fail in the others where the roles of
+    // round parity keep the rule: the test after this one.)
+    //
+    // "A balanced leg exists" is counted here and not asked of the library:
+    // each of the 2^6 ways to name one participant of every pairing first,
+    // kept when it has no pairing the wrong way round and leaves every
+    // participant one apart (each plays three events, so that is the least
+    // there is). Whether one exists does not depend on the rounds, since
+    // the rule does not read them.
+    //
+    // Before the scheduler searched the roles within the rule of the role
+    // assignment, 143 of the 729 failed under the balanced role assignment
+    // although a balanced leg exists.
+    it('finds a balanced leg for each of the 729 ways to fix roles of four participants that leaves one', function (bool $backtracking): void {
+        $field = roleField(4);
+        $pairings = [['p1', 'p2'], ['p1', 'p3'], ['p1', 'p4'], ['p2', 'p3'], ['p2', 'p4'], ['p3', 'p4']];
+        $wrong = [];
+        $found = 0;
+        $refused = 0;
+
+        for ($code = 0; $code < 729; ++$code) {
+            $firstNamed = [];
+            $digits = $code;
+            foreach ($pairings as [$one, $other]) {
+                $choice = $digits % 3;
+                $digits = intdiv($digits, 3);
+                if ($choice === 1) {
+                    $firstNamed[] = "{$one}|{$other}";
+                } elseif ($choice === 2) {
+                    $firstNamed[] = "{$other}|{$one}";
+                }
+            }
+            $case = $firstNamed === [] ? 'no role fixed' : implode(', ', $firstNamed);
+
+            $exists = false;
+            for ($roles = 0; $roles < 64 && !$exists; ++$roles) {
+                $difference = [];
+                $kept = true;
+                foreach ($pairings as $bit => [$one, $other]) {
+                    [$first, $second] = (($roles >> $bit) & 1) === 1 ? [$other, $one] : [$one, $other];
+                    if (in_array("{$second}|{$first}", $firstNamed, true)) {
+                        $kept = false;
+                        break;
+                    }
+                    $difference[$first] = ($difference[$first] ?? 0) + 1;
+                    $difference[$second] = ($difference[$second] ?? 0) - 1;
+                }
+                $exists = $kept && RoleCounts::largest($difference) === 1;
+            }
+
+            try {
+                $schedule = (new RoundRobinScheduler(roleFixedRolesConstraint($firstNamed)))
+                    ->schedule($field, new RoundRobinOptions(backtracking: $backtracking, roleAssignment: new BalancedRoleAssignment()));
+            } catch (IncompleteScheduleException $failure) {
+                ++$refused;
+                if ($exists) {
+                    $wrong[] = "{$case}: a balanced leg exists, and the scheduler said: {$failure->getMessage()}";
+                } elseif (array_keys($failure->getViolationCollector()->getViolationCountsByConstraint()) !== ['Fixed Roles']) {
+                    $wrong[] = "{$case}: the failure does not name the rule";
+                }
+
+                continue;
+            }
+
+            ++$found;
+            if (!$exists) {
+                $wrong[] = "{$case}: no balanced leg exists, and the scheduler returned a schedule";
+            }
+            if (RoleCounts::worstEndImbalance($schedule) !== 1) {
+                $wrong[] = "{$case}: the leg is not balanced";
+            }
+            foreach ($schedule as $event) {
+                [$first, $second] = $event->getParticipants();
+                if (in_array($second->getId() . '|' . $first->getId(), $firstNamed, true)) {
+                    $wrong[] = "{$case}: {$first->getId()} is first-named against {$second->getId()}";
+                }
+            }
+            assertRoundRobinStructure($schedule, 4, 1, $case);
+        }
+
+        expect($wrong)->toBe([])
+            ->and($found + $refused)->toBe(729)
+            ->and($found)->toBeGreaterThan(0)
+            ->and($refused)->toBeGreaterThan(0);
+    })->with([[false], [true]]);
+
+    // The same 729 rules with the options as they come: the default,
+    // which is balanced where possible. Three things can happen, and the
+    // rule decides which:
+    //
+    // - a balanced leg keeps the rule: the schedule is the one the balanced
+    //   role assignment gives, byte for byte, and carries no mark;
+    // - none does, and the roles the generator proposes keep it in some
+    //   rotated order (with backtracking: in some way to play the leg, which
+    //   for a rule about roles alone is any rule that does not fix a pairing
+    //   both ways round, and no rule here does): the schedule is the one
+    //   round parity gives, and its mark says that the constraints rejected
+    //   the balanced roles. (Not that none exist: the rule is a closure,
+    //   and with a schedule in hand the scheduler does not go through every
+    //   choice of roles to show it.) These completed up to 0.2.x, and
+    //   failed while the default was the strict balanced role assignment;
+    // - neither: the failure of round parity, which names the rule.
+    //
+    // "A balanced leg exists" is counted as in the test before this one.
+    // What round parity gives is asked of the scheduler with that role
+    // assignment named, which tests/Feature/DefaultRoleAssignmentTest.php
+    // and the golden fixtures pin to what it gave up to 0.2.x.
+    it('balances each of the 729 rules that leaves a balanced leg and falls back, marked, for the others that round parity keeps', function (bool $backtracking): void {
+        $field = roleField(4);
+        $pairings = [['p1', 'p2'], ['p1', 'p3'], ['p1', 'p4'], ['p2', 'p3'], ['p2', 'p4'], ['p3', 'p4']];
+        $wrong = [];
+        $counts = ['balanced' => 0, 'fell back' => 0, 'refused' => 0];
+
+        for ($code = 0; $code < 729; ++$code) {
+            $firstNamed = [];
+            $digits = $code;
+            foreach ($pairings as [$one, $other]) {
+                $choice = $digits % 3;
+                $digits = intdiv($digits, 3);
+                if ($choice === 1) {
+                    $firstNamed[] = "{$one}|{$other}";
+                } elseif ($choice === 2) {
+                    $firstNamed[] = "{$other}|{$one}";
+                }
+            }
+            $case = $firstNamed === [] ? 'no role fixed' : implode(', ', $firstNamed);
+
+            $exists = false;
+            for ($roles = 0; $roles < 64 && !$exists; ++$roles) {
+                $difference = [];
+                $kept = true;
+                foreach ($pairings as $bit => [$one, $other]) {
+                    [$first, $second] = (($roles >> $bit) & 1) === 1 ? [$other, $one] : [$one, $other];
+                    if (in_array("{$second}|{$first}", $firstNamed, true)) {
+                        $kept = false;
+                        break;
+                    }
+                    $difference[$first] = ($difference[$first] ?? 0) + 1;
+                    $difference[$second] = ($difference[$second] ?? 0) - 1;
+                }
+                $exists = $kept && RoleCounts::largest($difference) === 1;
+            }
+
+            $outcome = static function (?RoleAssignmentInterface $roleAssignment) use ($firstNamed, $field, $backtracking): Schedule|IncompleteScheduleException {
+                try {
+                    return (new RoundRobinScheduler(roleFixedRolesConstraint($firstNamed)))
+                        ->schedule($field, new RoundRobinOptions(backtracking: $backtracking, roleAssignment: $roleAssignment));
+                } catch (IncompleteScheduleException $failure) {
+                    return $failure;
+                }
+            };
+            $schedule = $outcome(null);
+            $underRoundParity = $outcome(new RoundParityRoleAssignment());
+
+            if ($schedule instanceof IncompleteScheduleException) {
+                ++$counts['refused'];
+                if ($exists) {
+                    $wrong[] = "{$case}: a balanced leg exists, and the scheduler said: {$schedule->getMessage()}";
+                }
+                if (!$underRoundParity instanceof IncompleteScheduleException || $underRoundParity->getMessage() !== $schedule->getMessage()) {
+                    $wrong[] = "{$case}: the failure is not the one round parity gives";
+                }
+                if (array_keys($schedule->getViolationCollector()->getViolationCountsByConstraint()) !== ['Fixed Roles']) {
+                    $wrong[] = "{$case}: the failure does not name the rule";
+                }
+
+                continue;
+            }
+
+            foreach ($schedule as $event) {
+                [$first, $second] = $event->getParticipants();
+                if (in_array($second->getId() . '|' . $first->getId(), $firstNamed, true)) {
+                    $wrong[] = "{$case}: {$first->getId()} is first-named against {$second->getId()}";
+                }
+            }
+            assertRoundRobinStructure($schedule, 4, 1, $case);
+
+            $mark = RoleFallback::of($schedule);
+            $balanced = RoleCounts::worstEndImbalance($schedule) === 1;
+
+            if ($exists) {
+                ++$counts['balanced'];
+                $underBalanced = $outcome(new BalancedRoleAssignment());
+                if ($mark !== null || !$balanced) {
+                    $wrong[] = "{$case}: a balanced leg exists, and the schedule " . ($balanced ? 'is marked' : 'is not balanced');
+                }
+                if (!$underBalanced instanceof Schedule || $underBalanced->toArray() !== $schedule->toArray()) {
+                    $wrong[] = "{$case}: not the schedule the balanced role assignment gives";
+                }
+
+                continue;
+            }
+
+            ++$counts['fell back'];
+            if ($balanced) {
+                $wrong[] = "{$case}: no balanced leg exists, and the schedule is balanced";
+            }
+            if ($mark !== RoleFallback::BalancedRolesRejected) {
+                $wrong[] = "{$case}: no balanced leg exists, and the mark is " . ($mark->value ?? 'absent');
+            }
+            $withoutTheMark = $schedule->toArray();
+            unset($withoutTheMark['metadata'][RoleFallback::METADATA_KEY]);
+            if (!$underRoundParity instanceof Schedule || $underRoundParity->toArray() !== $withoutTheMark) {
+                $wrong[] = "{$case}: not the schedule round parity gives";
             }
         }
+
+        expect($wrong)->toBe([])
+            ->and(array_sum($counts))->toBe(729)
+            ->and($counts['balanced'])->toBeGreaterThan(0)
+            ->and($counts['fell back'])->toBeGreaterThan(0)
+            // Without backtracking some rules are kept by no rotated order
+            // under either role assignment. With it the search chooses the
+            // roles, and no rule here fixes a pairing both ways round
+            ->and($counts['refused'] === 0)->toBe($backtracking);
     })->with([[false], [true]]);
 
     it('derives the later legs from the balanced first leg of a search', function (): void {
@@ -580,7 +849,15 @@ describe('role assignments and constraints', function (): void {
         expect(RoleCounts::worstEndImbalance($schedule))->toBe(0);
     });
 
-    it('fails loudly when a constraint rejects the roles it changes in a searched leg', function (): void {
+    // A constraint that no balanced leg satisfies is a failure under the
+    // balanced role assignment, and the failure says what was shown: with
+    // backtracking every way to play the first leg was gone through, with
+    // every choice of roles the role assignment keeps, so no schedule
+    // exists under it. Up to 0.2.x the search stopped at the first leg it
+    // found, balanced it and reported the one event the constraints then
+    // rejected. The default does not fail: it returns the schedule of the
+    // search, as round parity does, and marks it.
+    it('says that no balanced schedule exists when a constraint leaves none, and falls back under the default', function (): void {
         $placement = rolePlacementConstraint(['p1 + p2' => 1, 'p1 + p3' => 2, 'p1 + p4' => 3]);
         $constraints = ConstraintSet::create()
             ->custom($placement, 'Fixture Placement')
@@ -590,30 +867,40 @@ describe('role assignments and constraints', function (): void {
             )
             ->build();
 
-        // The search satisfies both: participant 1 is first-named three times
+        // Round parity keeps the roles the search chose, which satisfy
+        // both: participant 1 is first-named three times
         $searched = (new RoundRobinScheduler($constraints))->schedule(
             roleField(4),
-            new RoundRobinOptions(backtracking: true)
+            new RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment())
         );
         expect(RoleCounts::differences($searched)['p1'])->toBe(3);
 
         // No balanced leg can: the constraint itself puts participant 1 three apart
-        $scheduler = new RoundRobinScheduler($constraints);
-
         try {
-            $scheduler->schedule(
+            (new RoundRobinScheduler($constraints))->schedule(
                 roleField(4),
                 new RoundRobinOptions(backtracking: true, roleAssignment: new BalancedRoleAssignment())
             );
             Assert::fail('The schedule was generated.');
         } catch (IncompleteScheduleException $exception) {
             expect($exception->getMessage())
-                ->toContain('the constraints reject the roles that ' . BalancedRoleAssignment::class . ' gives it')
-                ->toContain('vs p1 in round');
+                ->toStartWith('Backtracking search exhausted the search space: ')
+                ->toContain('whatever roles ' . BalancedRoleAssignment::class . ' keeps for the first leg')
+                ->toEndWith('so the configuration is unsatisfiable with this leg strategy and this role assignment.');
             expect(array_keys($exception->getViolationCollector()->getViolationCountsByConstraint()))
-                ->toBe(['Participant 1 is first-named']);
+                ->toContain('Participant 1 is first-named');
             expect($exception->getPrevious())->toBeInstanceOf(IncompleteScheduleException::class);
         }
+
+        $scheduler = new RoundRobinScheduler($constraints);
+        $default = $scheduler->schedule(roleField(4), new RoundRobinOptions(backtracking: true));
+
+        expect(RoleFallback::of($default))->toBe(RoleFallback::BalancedRolesRejected)
+            ->and($default->getEvents())->toEqual($searched->getEvents())
+            ->and($default->getMetadata())->toBe($searched->getMetadata() + [RoleFallback::METADATA_KEY => 'balanced_roles_rejected'])
+            // A schedule was returned: the rejections of the attempts that
+            // came before it are not left behind as diagnostics
+            ->and($scheduler->getViolationCollector()->hasViolations())->toBeFalse();
     });
 });
 
@@ -621,7 +908,7 @@ describe('a custom role assignment', function (): void {
     it('decides the roles of every leg', function (): void {
         $reversing = new class implements RoleAssignmentInterface {
             #[Override]
-            public function assignRoles(array $rounds): array
+            public function assignRoles(array $rounds, RoleAssignmentContext $context): array
             {
                 return array_map(
                     static fn(array $seatings): array => array_map(
@@ -631,10 +918,20 @@ describe('a custom role assignment', function (): void {
                     $rounds
                 );
             }
+
+            #[Override]
+            public function rule(): ?ConstraintInterface
+            {
+                return null;
+            }
         };
 
         foreach ([4, 5] as $size) {
-            $default = (new RoundRobinScheduler())->schedule(roleField($size), new RoundRobinOptions(legs: 2));
+            // The roles the generator proposes, which the assignment reverses
+            $default = (new RoundRobinScheduler())->schedule(
+                roleField($size),
+                new RoundRobinOptions(legs: 2, roleAssignment: new RoundParityRoleAssignment())
+            );
             $reversed = (new RoundRobinScheduler())->schedule(
                 roleField($size),
                 new RoundRobinOptions(legs: 2, roleAssignment: $reversing)
@@ -659,10 +956,16 @@ describe('a custom role assignment', function (): void {
             public function __construct(private Closure $answer) {}
 
             #[Override]
-            public function assignRoles(array $rounds): array
+            public function assignRoles(array $rounds, RoleAssignmentContext $context): array
             {
                 /** @var list<list<array{0: Participant|null, 1: Participant|null}>> */
                 return ($this->answer)($rounds);
+            }
+
+            #[Override]
+            public function rule(): ?ConstraintInterface
+            {
+                return null;
             }
         };
 
@@ -732,13 +1035,19 @@ describe('a custom role assignment', function (): void {
             ->build();
         $dropsARound = new class implements RoleAssignmentInterface {
             #[Override]
-            public function assignRoles(array $rounds): array
+            public function assignRoles(array $rounds, RoleAssignmentContext $context): array
             {
                 // The circle layouts of the failed attempts pass; the searched
                 // leg, which lists rounds of the same size, loses its last round
                 return count($rounds[0]) === 2 && $rounds[0][0][0]?->getId() === 'p1' && $rounds[0][0][1]?->getId() === 'p3'
                     ? array_slice($rounds, 0, 2)
                     : $rounds;
+            }
+
+            #[Override]
+            public function rule(): ?ConstraintInterface
+            {
+                return null;
             }
         };
 
@@ -759,15 +1068,21 @@ describe('a custom role assignment', function (): void {
         $constraints = ConstraintSet::create()->custom(rolePlacementConstraint($placement), 'Fixture Placement')->build();
         $keepsEveryRole = new class implements RoleAssignmentInterface {
             #[Override]
-            public function assignRoles(array $rounds): array
+            public function assignRoles(array $rounds, RoleAssignmentContext $context): array
             {
                 return $rounds;
+            }
+
+            #[Override]
+            public function rule(): ?ConstraintInterface
+            {
+                return null;
             }
         };
 
         $searched = (new RoundRobinScheduler($constraints))->schedule(
             roleField($size),
-            new RoundRobinOptions(backtracking: true)
+            new RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment())
         );
         $kept = (new RoundRobinScheduler($constraints))->schedule(
             roleField($size),
@@ -780,6 +1095,42 @@ describe('a custom role assignment', function (): void {
         'five participants, with byes' => [5, ['p1 + p2' => 5, 'p1 + p3' => 4]],
     ]);
 
+    // What a role assignment is told about the leg it decides: which leg
+    // of how many, for every leg of the schedule, and nothing fixed where no
+    // constraint rejected a seating.
+    it('is told which leg of how many it decides', function (?int $seed): void {
+        $recording = new class implements RoleAssignmentInterface {
+            /** @var list<string> */
+            public array $asked = [];
+
+            #[Override]
+            public function assignRoles(array $rounds, RoleAssignmentContext $context): array
+            {
+                $this->asked[] = "leg {$context->leg} of {$context->legs}"
+                    . ($context->hasFixedSeatings() || $context->isFixed(0, 0) ? ', with fixed seatings' : '')
+                    // The layout of every leg is the layout of the first
+                    . ': ' . ($rounds[0][0][0]?->getId() ?? '') . ' v ' . ($rounds[0][0][1]?->getId() ?? '');
+
+                return $rounds;
+            }
+
+            #[Override]
+            public function rule(): ?ConstraintInterface
+            {
+                return null;
+            }
+        };
+
+        $schedule = (new RoundRobinScheduler(null, $seed === null ? null : new Randomizer(new Mt19937($seed))))->schedule(
+            roleField(6),
+            new RoundRobinOptions(legs: 3, roleAssignment: $recording)
+        );
+        [$first, $second] = $schedule->getEvents()[0]->getParticipants();
+        $seating = "{$first->getId()} v {$second->getId()}";
+
+        expect($recording->asked)->toBe(["leg 1 of 3: {$seating}", "leg 2 of 3: {$seating}", "leg 3 of 3: {$seating}"]);
+    })->with([[null], [5]]);
+
     // Every leg is asked about and every answer is checked: a role
     // assignment that answers the first leg well is still refused for what
     // it does to the second.
@@ -788,9 +1139,15 @@ describe('a custom role assignment', function (): void {
             private int $legsAnswered = 0;
 
             #[Override]
-            public function assignRoles(array $rounds): array
+            public function assignRoles(array $rounds, RoleAssignmentContext $context): array
             {
                 return ++$this->legsAnswered === 2 ? array_reverse($rounds) : $rounds;
+            }
+
+            #[Override]
+            public function rule(): ?ConstraintInterface
+            {
+                return null;
             }
         };
 

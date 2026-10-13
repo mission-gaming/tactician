@@ -10,12 +10,12 @@
 # Review it, then regenerate with `composer golden-update`.
 
 == Results ==
-- R1: aurora-drift => aurora (2-1)
+- R1: drift-aurora => aurora (1-2)
 - R1: basilisk-cinder => cinder (1-2)
-- R2: basilisk-aurora => aurora (0-2)
-- R3: aurora-cinder => aurora (2-1)
+- R2: aurora-basilisk => aurora (2-0)
+- R3: cinder-aurora => aurora (1-2)
 - R3: drift-basilisk => basilisk (0-2)
-- R2: drift-cinder => cinder (0-2) awarded "no-show"
+- R2: cinder-drift => cinder (2-0) awarded "no-show"
 
 == Table of the series played ==
 1. aurora played=3 wins=3 draws=0 losses=0 value=9 for=6 against=2

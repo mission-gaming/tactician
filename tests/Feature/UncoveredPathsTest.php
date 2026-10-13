@@ -21,6 +21,9 @@ use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
@@ -226,7 +229,12 @@ describe('repacking where no other test went', function (): void {
     // The improvement pass spends steps of the shared budget. Whatever
     // budget it is stopped at, the outcome is a proper one, and the flag
     // says whether a search was cut short: once a budget is enough it stays
-    // enough, and the outcome is then the one an ample budget gives.
+    // enough, and the outcome is then the one an ample budget gives. The
+    // sweep goes to 200 steps because the first budget that is enough for
+    // every search of this request is 154: a budget below the default also
+    // sets how many position checks the searches after the packing may
+    // make, and they need more of those than the improvement pass needs
+    // steps (64, where the sweep used to end at 120).
     it('returns a proper outcome whatever step budget the improvement pass is stopped at', function (): void {
         [$p1, $p2, $p3] = array_map(static fn(int $i): Participant => new Participant("p{$i}", "P{$i}"), [1, 2, 3]);
         $movable = [
@@ -243,7 +251,7 @@ describe('repacking where no other test went', function (): void {
 
         $stopped = 0;
         $enough = false;
-        for ($budget = 1; $budget <= 120; ++$budget) {
+        for ($budget = 1; $budget <= 200; ++$budget) {
             $outcome = $repacker->repack(new RepackRequest($movable, [], $grid, new RepackOptions(stepBudget: $budget)));
 
             expect(uncoveredPathsRepackFaults($outcome, $movable, [], 1))->toBe([], "budget {$budget}");
@@ -435,7 +443,7 @@ describe('a leg strategy that yields no event', function (): void {
         );
     });
 
-    it('keeps the message of a leg that only constraints left short', function (): void {
+    it('keeps the message of a leg that only constraints left short', function (?RoleAssignmentInterface $roleAssignment, string $afterwards): void {
         $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
         $constraints = ConstraintSet::create()->custom(
             fn(Event $event, SchedulingContext $context): bool => ($event->getRound()?->getNumber() ?? 0) < 4,
@@ -444,16 +452,32 @@ describe('a leg strategy that yields no event', function (): void {
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: 2));
+            (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: 2, roleAssignment: $roleAssignment));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
 
         expect($failure?->getMessage())->toBe(
             'Failed to generate complete schedule for leg 2. Generated 0 events, expected 6.'
-            . ' Constraints may be preventing complete schedule generation.'
+            . ' Constraints may be preventing complete schedule generation.' . $afterwards
         );
-    });
+    })->with([
+        'round parity, whose roles are not searched' => [new RoundParityRoleAssignment(), ''],
+        // The default is balanced where possible: it fails where round
+        // parity fails, and says what round parity says
+        'the default, which fails as round parity does' => [null, ''],
+        // The balanced role assignment states a rule, so the roles of the
+        // first leg are searched within it before the failure, and the
+        // message goes on to say what that came to
+        'the balanced role assignment, named' => [
+            new BalancedRoleAssignment(),
+            ' The roles of the first leg were then searched within what ' . BalancedRoleAssignment::class
+                . ' keeps, in each of the 4 layouts tried, and no choice of them has a schedule the constraints accept.'
+                . ' The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.'
+                . ' Roles that ' . BalancedRoleAssignment::class . ' does not keep were not searched either:'
+                . ' RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()) searches every choice of roles.',
+        ],
+    ]);
 });
 
 /**

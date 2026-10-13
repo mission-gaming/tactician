@@ -37,7 +37,7 @@ jobs:
   # change on the four cores of a standard runner. The shards of
   # src/Scheduling hold about 650 to 700 changes each (some 80 minutes at
   # that rate), the first two of src/Repack/Internal about 440 each, and the
-  # recolouring shard, one file, fewer than that. The limit is
+  # recolouring shard, four files, not yet measured. The limit is
   # more than twice the estimate, because the rate is not even: a change that
   # makes a search run for ever costs its whole time limit.
   #
@@ -86,7 +86,7 @@ jobs:
           - shard: repack session packing
             path: src/Repack/Internal/SessionPacker.php,src/Repack/Internal/ContiguityTargets.php,src/Repack/Internal/IntervalPlacement.php,src/Repack/Internal/RepackAuditor.php
           - shard: repack recolouring
-            path: src/Repack/Internal/LeftoverRecolourer.php
+            path: src/Repack/Internal/LeftoverRecolourer.php,src/Repack/Internal/RoundColouring.php,src/Repack/Internal/StructuralOrder.php,src/Repack/Internal/GapSearch.php
 
     name: Mutation testing, ${{ matrix.shard }}
     timeout-minutes: 180

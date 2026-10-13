@@ -20,9 +20,17 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *   events that are never scheduled. A rejected event is put to each
  *   constraint of the set again, to record which one rejected it. When an
  *   ordering fails, the round-robin scheduler starts again from a rotated
- *   participant order. The backtracking search and the Swiss round search
- *   try pairings and undo them. The analysis of a failure asks about every
- *   missing pairing in every round, in both role orders.
+ *   participant order, and when every ordering has failed it goes through
+ *   them again in search of other roles the role assignment keeps. The
+ *   backtracking search, a search of roles and the Swiss round search try
+ *   events and undo them. The analysis of a failure asks about every
+ *   missing pairing in every round, in both role orders. Under the default
+ *   role assignment of `RoundRobinOptions` a schedule whose constraints
+ *   reject the balanced roles is generated again with the roles the
+ *   generator proposes, and under a constraint of your own once more with
+ *   balanced roles; an event that such a constraint then rejects is put to
+ *   it once more against a context that holds no events, an event of a
+ *   later leg included, which no generation does.
  * - Do not depend on how often or in which order the questions come.
  *   Neither is part of the contract, and either can change in any release.
  *
@@ -40,14 +48,23 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * a `ConsecutiveRoleConstraint` or a class of your own included, is asked
  * every question it was asked before those shortcuts existed, so what such
  * a constraint sees and what the caller gets back did not change when they
- * were added. This paragraph describes the present implementation; the
- * list above is what a constraint may rely on.
+ * were added. A third shortcut is taken for a set that holds nothing but
+ * objects of those four classes and of `ConsecutiveRoleConstraint`: where
+ * the round-robin scheduler goes on from the failed orderings to a search
+ * of roles (the role assignment states a rule, as the balanced one of the
+ * default does), it builds the failure analysis once, after the search,
+ * and for none of the orderings. This paragraph describes the present
+ * implementation; the list above is what a constraint may rely on.
  *
  * The library does not catch what a constraint of your own throws: the
  * exception leaves the `schedule()` or `pairNextRound()` call that asked.
  * The exception to that is a constraint that throws one of the library's
  * own `IncompleteScheduleException` or `NoValidPairingException`: a
- * scheduler takes it for a failure of its own.
+ * scheduler takes it for a failure of its own. And one question is not a
+ * question of a generation: the one the round-robin scheduler asks against
+ * a context that holds no events, under the default role assignment (the
+ * list above). What a constraint throws there is caught and read as an
+ * answer, that its verdict turns on the events before the candidate.
  *
  * @experimental
  */

@@ -19,11 +19,11 @@
 
 == At most two regions per event: schedule ==
 meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
-R1: wolves-sharks thunder-squad kings-lions
-R2: thunder-wolves sharks-kings squad-lions
-R3: wolves-kings lions-thunder squad-sharks
-R4: lions-wolves kings-squad thunder-sharks
-R5: wolves-squad sharks-lions thunder-kings
+R1: sharks-wolves thunder-squad lions-kings
+R2: wolves-thunder kings-sharks squad-lions
+R3: kings-wolves lions-thunder sharks-squad
+R4: wolves-lions squad-kings thunder-sharks
+R5: squad-wolves sharks-lions kings-thunder
 
 == Same platform only ==
 MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 7 events, expected 15. Constraints may be preventing complete schedule generation.

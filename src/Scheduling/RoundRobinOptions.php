@@ -11,6 +11,7 @@ use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\BalancedWherePossibleRoleAssignment;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Serialization\PlainData;
@@ -20,10 +21,17 @@ use Override;
  * Options for round-robin scheduling: how many legs, how pairings vary
  * across them, and which participant of a pairing is first-named.
  *
- * Defaults to a single mirrored leg with round-parity roles. The
- * identifiers accepted by fromArray() are stable: 'mirrored', 'repeated',
- * and 'shuffled' for the leg strategy, 'round_parity' and 'balanced' for
- * the role assignment. The shuffled strategy draws, so in plain data it
+ * Defaults to a single mirrored leg with roles that are balanced where
+ * possible (BalancedWherePossibleRoleAssignment): balanced roles when the
+ * scheduler finds a schedule with them, which without constraints it always
+ * does, and otherwise the roles the generator proposes, with a mark on the
+ * schedule that says so (RoleFallback). Up to 0.2.x the roles of the
+ * default alternated with round parity; name RoundParityRoleAssignment, or
+ * 'round_parity', to keep those. BalancedRoleAssignment, or 'balanced', is
+ * the strict choice: balanced roles or a failure. The identifiers accepted
+ * by fromArray() are stable: 'mirrored', 'repeated', and 'shuffled' for the
+ * leg strategy, 'round_parity', 'balanced' and 'balanced_where_possible'
+ * for the role assignment. The shuffled strategy draws, so in plain data it
  * comes with the seed of its draws, `strategy_seed`.
  *
  * @api
@@ -39,6 +47,7 @@ final readonly class RoundRobinOptions implements SchedulerOptions
     private const array ROLE_ASSIGNMENT_IDENTIFIERS = [
         'round_parity' => RoundParityRoleAssignment::class,
         'balanced' => BalancedRoleAssignment::class,
+        'balanced_where_possible' => BalancedWherePossibleRoleAssignment::class,
     ];
 
     /**
@@ -65,10 +74,16 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      *                           the constraints (bounded by a count of pairing attempts, and
      *                           deterministic for a given field order; greedy always runs first).
      *                           The search is over how the pairings of the first leg fall into
-     *                           rounds and over the roles of every leg; without it the roles of
-     *                           the first leg are the role assignment's and are not searched
+     *                           rounds and over the roles of every leg; without it the pairings
+     *                           and rounds are the circle method's, and the roles of the first
+     *                           leg are searched only within the rule the role assignment states
      * @param RoleAssignmentInterface|null $roleAssignment Which participant of each pairing is first-named
-     *                                                     (default: round parity, the roles the generator proposes)
+     *                                                     (default: balanced where possible. Each
+     *                                                     participant's two role counts are at most 1
+     *                                                     apart in every leg, unless the constraints
+     *                                                     leave the scheduler no such schedule that it
+     *                                                     finds; then the roles are the generator's and
+     *                                                     the schedule is marked, see RoleFallback)
      * @throws InvalidConfigurationException When legs is not a positive integer
      */
     public function __construct(
@@ -87,7 +102,7 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         }
 
         $this->strategy = $strategy ?? new MirroredLegStrategy();
-        $this->roleAssignment = $roleAssignment ?? new RoundParityRoleAssignment();
+        $this->roleAssignment = $roleAssignment ?? new BalancedWherePossibleRoleAssignment();
         $this->roleAssignmentNamed = $roleAssignment !== null;
     }
 
@@ -98,6 +113,16 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * draws, ['legs' => 2, 'strategy' => 'shuffled', 'strategy_seed' => 7].
      * A key this class does not have is refused, so that a misspelt option
      * is not silently read as its default.
+     *
+     * An array without the `role_assignment` key names no role assignment
+     * and gets the default of the release that reads it: roles balanced
+     * where possible from 0.3.0, round-parity roles before. Options stored
+     * without the key therefore give other roles when a schedule is
+     * generated from them again; store 'round_parity' to hold a
+     * configuration to the old ones. 'balanced_where_possible' names the
+     * default of 0.3.0, and holds a configuration to it should a later
+     * release change the default; 'balanced' is balanced roles or a
+     * failure.
      *
      * Every key is optional but one: `strategy_seed` is required with
      * 'shuffled' and refused with any other strategy. It is the integer

@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 use MissionGaming\Tactician\Constraints\NoRepeatPairings;
 use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
+use MissionGaming\Tactician\RoleAssignment\LegBalanceRule;
 
 /**
  * Says whether a constraint set may be asked a question fewer times, more
@@ -55,6 +57,18 @@ final class ConstraintPurity
         NoRepeatPairings::class,
         MinimumRestPeriodsConstraint::class,
         RoleBalanceConstraint::class,
+        SeedProtectionConstraint::class,
+    ];
+
+    /**
+     * The known classes that read no position of an event
+     * (constraintIgnoresRoles()).
+     *
+     * @var list<class-string>
+     */
+    public const array IGNORES_ROLES = [
+        NoRepeatPairings::class,
+        MinimumRestPeriodsConstraint::class,
         SeedProtectionConstraint::class,
     ];
 
@@ -114,11 +128,55 @@ final class ConstraintPurity
         }
 
         foreach ($constraints->getConstraints() as $constraint) {
-            if ($constraint::class !== ConsecutiveRoleConstraint::class && !in_array($constraint::class, self::KNOWN, true)) {
+            if (!self::constraintReadsOwnEventsOnly($constraint)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * Whether the verdict of this one constraint on an event can depend,
+     * among the events of the context, only on those one of the event's own
+     * participants takes part in: an object of exactly one of the classes
+     * in KNOWN, or of ConsecutiveRoleConstraint (see readsOwnEventsOnly()
+     * for what that class is taken on trust for).
+     */
+    public static function constraintReadsOwnEventsOnly(ConstraintInterface $constraint): bool
+    {
+        return $constraint::class === ConsecutiveRoleConstraint::class || in_array($constraint::class, self::KNOWN, true);
+    }
+
+    /**
+     * Whether the verdict of this one constraint on an event is the same
+     * whichever of the event's participants is first-named, and whichever
+     * is in the events of the context: it reads who meets whom and in which
+     * round, and no position. An object of exactly one of the classes in
+     * IGNORES_ROLES.
+     *
+     * An event such a constraint rejects is rejected under every choice of
+     * roles for a layout, since a layout fixes the pairings and their
+     * rounds: a search of roles has nothing to find there, and the
+     * scheduler does not start one (RoundRobinScheduler). Adding a class to
+     * IGNORES_ROLES is a claim that it reads no position.
+     */
+    public static function constraintIgnoresRoles(ConstraintInterface $constraint): bool
+    {
+        return in_array($constraint::class, self::IGNORES_ROLES, true);
+    }
+
+    /**
+     * Whether the rule a role assignment states for the first leg
+     * (RoleAssignmentInterface::rule()) reads only the events of the
+     * candidate's own participants. No rule does: there is nothing to ask.
+     * Of the rules there are, the library knows that of its own
+     * LegBalanceRule, which counts the roles of the two participants in
+     * their leg; a rule of the caller's says nothing about what it reads,
+     * and a search under one goes back one event at a time.
+     */
+    public static function ruleReadsOwnEventsOnly(?ConstraintInterface $rule): bool
+    {
+        return !$rule instanceof ConstraintInterface || $rule::class === LegBalanceRule::class;
     }
 }

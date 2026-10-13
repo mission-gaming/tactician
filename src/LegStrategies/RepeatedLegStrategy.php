@@ -14,20 +14,25 @@ use Override;
  * Strategy that keeps the roles of each pairing as the leg has them, in
  * every leg.
  *
- * In a schedule from a scheduler without a randomizer every leg is then
- * the first leg again: the same pairings in the same rounds of the leg,
- * with the same roles, so a participant that is first-named against an
- * opponent is first-named in all their meetings. A scheduler with a
- * randomizer shuffles the participant order for the first leg only, so its
- * later legs are not the first leg repeated pairing by pairing.
+ * Every leg is then the first leg again: the same pairings in the same
+ * rounds of the leg, with the same roles, so a participant that is
+ * first-named against an opponent is first-named in all their meetings.
+ * That holds for a scheduler with a randomizer too, whose first leg is laid
+ * out from the shuffled order (up to 0.2.x its later legs were laid out
+ * from the order as given, and were not the first leg repeated).
  *
  * The roles are a rule: an event of a later leg in the other role would
  * not be a repeat, so the scheduler never reverses one to satisfy a
  * constraint. What a constraint on roles can change is the first leg,
- * which every later leg repeats. Its roles are the role assignment's, and
- * the scheduler searches them only with
- * `RoundRobinOptions(backtracking: true)`; without it, roles that break a
- * constraint when they are repeated fail the schedule.
+ * which every later leg repeats. Its roles are the role assignment's. The
+ * scheduler searches them within the rule the role assignment states (the
+ * two balanced role assignments state one, the default among them: the
+ * first leg stays balanced), and freely with
+ * `RoundRobinOptions(backtracking: true)`; under a role assignment that
+ * states none, and without backtracking, roles that break a constraint
+ * when they are repeated fail the schedule. The default, which is balanced
+ * where possible, goes on from a search that finds nothing to the roles
+ * the generator proposes, and fails only where those fail too.
  *
  * @api
  */

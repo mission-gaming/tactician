@@ -20,8 +20,8 @@ use Random\Randomizer;
 
 // Constraints are hard filters; quality is graded. A shuffled two-leg
 // league is valid however the coin flips land, but some samples alternate
-// roles evenly and space repeat fixtures nicely - and some don't. The
-// optimizer generates candidates from one master seed and keeps the best.
+// roles evenly - and some don't. The optimizer generates candidates from
+// one master seed and keeps the best.
 
 $players = [
     new Participant('p1', 'Magnus', 1),
@@ -33,8 +33,10 @@ $players = [
 ];
 
 // Policy: colour balance matters most, then alternation, then how the
-// two meetings of each pair spread across the season. Every metric is
-// lower-is-better, and so is the weighted score.
+// two meetings of each pair spread across the season (in a round robin
+// they are always a leg apart, which is the even spread, so that metric
+// reads 0 for every sample). Every metric is lower-is-better, and so is
+// the weighted score.
 $scorer = new ScheduleScorer([
     ['metric' => new RoleBalanceMetric(), 'weight' => 3.0],
     ['metric' => new RoleStreakMetric(), 'weight' => 2.0],
