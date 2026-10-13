@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -35,6 +36,32 @@ describe('the ranks of a table', function (): void {
             ->toBe([1, 2, 2, 2, 5])
             // Positions are never shared
             ->and([$table->getPosition($b), $table->getPosition($c), $table->getPosition($d)])->toBe([2, 3, 4]);
+    });
+
+    // A decision puts the entries of a tied set one after the other, so a
+    // decided set shares no rank; a set beside it that is still undecided does
+    it('are the positions inside a tied set that a decision ordered', function (): void {
+        [$a, $b, $c, $d, $e] = $this->field;
+
+        // A beat E. B, C and D have not played, and are then put in an order
+        $table = (new StandingsCalculator())->calculate($this->field, [new Result(new Event([$a, $e]), $a, ['a' => 1, 'e' => 0])]);
+        $settled = $table->withDecisions([new Decider(['d', 'b', 'c'], 'drawn')]);
+
+        expect($table->getRanks())->toBe([1, 2, 2, 2, 5])
+            ->and($settled->getRanks())->toBe([1, 2, 3, 4, 5])
+            ->and([$settled->getRank($d), $settled->getRank($b), $settled->getRank($c)])->toBe([2, 3, 4])
+            // The set is still reported as tied, with its decision
+            ->and(count($settled->getTiedSets()))->toBe(1);
+
+        // Two sets of two, one of them decided
+        $unplayed = (new StandingsCalculator())->calculate([$a, $b, $c, $d], [
+            new Result(new Event([$a, $b]), null, ['a' => 2, 'b' => 2]),
+            new Result(new Event([$c, $d]), null, ['c' => 0, 'd' => 0]),
+        ]);
+
+        expect($unplayed->getRanks())->toBe([1, 1, 3, 3])
+            ->and($unplayed->withDecisions([new Decider(['d', 'c'])])->getRanks())->toBe([1, 1, 3, 4])
+            ->and($unplayed->withDecisions([new Decider(['b', 'a'])])->getRanks())->toBe([1, 2, 3, 3]);
     });
 
     it('are the positions where results decide every place, and 1 for everyone where they decide none', function (): void {

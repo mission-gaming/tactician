@@ -186,8 +186,14 @@ readonly class Standings implements IteratorAggregate, Countable
      * entries level behind a leader are ranked 1, 2, 2, 2, and the next is
      * ranked 5. An entry in no tied set has its position as its rank.
      *
+     * A tied set that a decision ordered (withDecisions()) shares no rank:
+     * the decision placed its entries one after the other, so each has
+     * its position as its rank, although getTiedSets() still reports the
+     * set. A rank is shared only where nothing has decided, neither a
+     * result nor a decision.
+     *
      * Positions are never shared (getPosition()); ranks say which
-     * positions the results do decide. The rank of a tied set stays the
+     * positions are decided. The rank of an undecided tied set stays the
      * same when its entries are put in another order
      * (withTiedSetsOrderedBy()).
      */
@@ -200,9 +206,9 @@ readonly class Standings implements IteratorAggregate, Countable
 
     /**
      * The rank of each entry, in table order: shared by the entries of a
-     * tied set, as getRank() describes. A list as long as the table, never
-     * falling, in which a number that is in it n times is followed by one
-     * at least n higher.
+     * tied set that no decision ordered, as getRank() describes. A list as
+     * long as the table, never falling, in which a number that is in it n
+     * times is followed by one at least n higher.
      *
      * @return list<int>
      */
@@ -210,6 +216,11 @@ readonly class Standings implements IteratorAggregate, Countable
     {
         $shared = [];
         foreach ($this->getTiedSets() as $tiedSet) {
+            // A decision placed the entries of the set one after the other
+            if ($tiedSet->getDecision() !== null) {
+                continue;
+            }
+
             for ($position = $tiedSet->getFirstPosition(); $position <= $tiedSet->getLastPosition(); ++$position) {
                 $shared[$position] = $tiedSet->getFirstPosition();
             }
