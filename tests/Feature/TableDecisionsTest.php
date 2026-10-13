@@ -139,7 +139,9 @@ function tableDecisionLevelSets(array $rows): array
 /**
  * Why the oracle rejects a list of decisions, as the backing string of the
  * reason, or null when it accepts every one. The rules are those the
- * contract states, in the order it states them, for each decision in turn.
+ * contract states, in the order it states them, and each is held to every
+ * decision before the next is held to any: the reason does not depend on
+ * the order the decisions are given in.
  *
  * @param list<array{id: string, tier: int, figures: list<float>}> $rows
  * @param list<list<string>> $decisions Each as its ids, best first
@@ -153,23 +155,28 @@ function tableDecisionOracleReason(array $rows, array $decisions): ?string
         }
     }
 
-    $named = [];
     foreach ($decisions as $ids) {
         foreach ($ids as $id) {
             if (!isset($setOf[$id])) {
                 return 'unknown_participant';
             }
         }
-        if (array_intersect($ids, $named) !== []) {
-            return 'set_already_decided';
-        }
-        $named = [...$named, ...$ids];
+    }
 
+    $named = array_merge(...$decisions);
+    if (count($named) !== count(array_unique($named))) {
+        return 'set_already_decided';
+    }
+
+    foreach ($decisions as $ids) {
         $set = $setOf[$ids[0]];
         if (count($set) < 2 || array_diff($ids, $set) !== []) {
             return 'participants_not_level';
         }
-        if (array_diff($set, $ids) !== []) {
+    }
+
+    foreach ($decisions as $ids) {
+        if (array_diff($setOf[$ids[0]], $ids) !== []) {
             return 'part_of_level_set';
         }
     }
@@ -294,6 +301,131 @@ function tableDecisionStatedOutcome(array $values): StageOutcome
     return new StageOutcome(new Standings($entries), [new Result(new Event([$members[0], $members[1]]))]);
 }
 
+/**
+ * Generated pools as plain rows, and the pooled outcome built from them by
+ * hand. Each row has the events it has played, so that rows can be level per
+ * event played and apart on their totals: most ranking values are a rate
+ * times the events played. The table of the outcome is every row in the
+ * order of its totals.
+ *
+ * @return array{
+ *     pools: array<string, list<array{id: string, tier: int, figures: list<float>, played: int}>>,
+ *     rows: list<array{id: string, tier: int, figures: list<float>, played: int}>,
+ *     smallest: int,
+ *     outcome: StageOutcome
+ * }
+ */
+function tableDecisionPooled(Randomizer $rng): array
+{
+    // By totals, higher first; a stable sort leaves level rows as drawn
+    $byTotals = static fn(array $a, array $b): int => $b['figures'] <=> $a['figures'];
+
+    $pools = [];
+    foreach (array_slice(['A', 'B', 'C', 'D'], 0, $rng->getInt(2, 4)) as $label) {
+        $rows = [];
+        for ($number = 1, $size = $rng->getInt(2, 4); $number <= $size; ++$number) {
+            $played = $rng->getInt(1, 3);
+            $scoreFor = $rng->getInt(0, 5) === 0 ? 2.0 * $played : 0.0;
+            $rows[] = [
+                'id' => strtolower($label) . $number,
+                'tier' => 0,
+                // Ranking value, the one tiebreaker, score difference, scores-for
+                'figures' => [
+                    $rng->getInt(0, 5) === 0 ? 4.5 : [0.0, 1.0, 3.0][$rng->getInt(0, 2)] * $played,
+                    $rng->getInt(0, 5) === 0 ? 1.0 * $played : 0.0,
+                    $scoreFor,
+                    $scoreFor,
+                ],
+                'played' => $played,
+            ];
+        }
+        usort($rows, $byTotals);
+        $pools[$label] = $rows;
+    }
+
+    $all = array_merge(...array_values($pools));
+    usort($all, $byTotals);
+
+    $entries = [];
+    foreach ($all as $row) {
+        $entries[$row['id']] = new StandingEntry(
+            new Participant($row['id'], strtoupper($row['id'])),
+            $row['played'],
+            0,
+            0,
+            0,
+            $row['figures'][0],
+            $row['figures'][3],
+            0.0,
+            ['tb' => $row['figures'][1]]
+        );
+    }
+
+    $outcomes = [];
+    $results = [];
+    foreach ($pools as $label => $rows) {
+        $table = array_map(static fn(array $row): StandingEntry => $entries[$row['id']], $rows);
+        $played = [new Result(new Event([$table[0]->getParticipant(), $table[1]->getParticipant()]))];
+        $outcomes[$label] = new StageOutcome(new Standings($table), $played);
+        $results = [...$results, ...$played];
+    }
+
+    return [
+        'pools' => $pools,
+        'rows' => $all,
+        'smallest' => min(array_map(count(...), $pools)),
+        'outcome' => new StageOutcome(new Standings(array_values($entries)), $results, pools: $outcomes),
+    ];
+}
+
+/**
+ * The oracle's comparison across pools: the given ids as groups of level
+ * rows, best first, each group in the order of the table of the outcome.
+ * Per event played, two figures are compared as fractions, by multiplying
+ * each by the events the other row has played: nothing is divided.
+ *
+ * @param list<array{id: string, tier: int, figures: list<float>, played: int}> $rows The rows of the
+ *                                                                                    outcome's table,
+ *                                                                                    in its order
+ * @param list<string> $ids
+ *
+ * @return list<list<string>>
+ */
+function tableDecisionComparedGroups(array $rows, array $ids, bool $perEvent): array
+{
+    $compare = static function (array $a, array $b) use ($perEvent): int {
+        foreach ($a['figures'] as $index => $figure) {
+            $comparison = $perEvent
+                ? $b['figures'][$index] * $a['played'] <=> $figure * $b['played']
+                : $b['figures'][$index] <=> $figure;
+            if ($comparison !== 0) {
+                return $comparison;
+            }
+        }
+
+        return 0;
+    };
+
+    // In the order of the table, which a stable sort keeps among level rows
+    $compared = array_values(array_filter($rows, static fn(array $row): bool => in_array($row['id'], $ids, true)));
+    usort($compared, $compare);
+
+    $groups = [];
+    $group = [];
+    foreach ($compared as $index => $row) {
+        if ($index > 0 && $compare($compared[$index - 1], $row) !== 0) {
+            $groups[] = $group;
+            $group = [];
+        }
+        $group[] = $row['id'];
+    }
+    if ($group !== []) {
+        $groups[] = $group;
+    }
+
+    return $groups;
+}
+
 describe('a decision applied to a generated table', function (): void {
     it('reorders exactly the set it names, and nothing else', function (): void {
         $decided = 0;
@@ -407,6 +539,7 @@ describe('a decision applied to a generated table', function (): void {
     it('is accepted or rejected as the oracle says, with its reason, whatever it names', function (): void {
         /** @var array<string, int> $seen */
         $seen = ['accepted' => 0];
+        $ordersHeldToOneReason = 0;
 
         for ($seed = 1; $seed <= 1500; ++$seed) {
             $rng = new Randomizer(new Mt19937($seed));
@@ -445,6 +578,13 @@ describe('a decision applied to a generated table', function (): void {
                 expect(in_array($rejected->getDecider()->getParticipantIds(), $decisions, true))->toBeTrue($context);
                 $seen[$rejected->getReason()->value] = ($seen[$rejected->getReason()->value] ?? 0) + 1;
 
+                // The reason is the same whatever order the decisions are in
+                $reversed = tableDecisionRejection(
+                    fn(): Standings => $standings->withDecisions(tableDecisionDeciders(array_reverse($decisions)))
+                );
+                expect($reversed->getReason()->value)->toBe($expected, $context);
+                $ordersHeldToOneReason += count($decisions) > 1 ? 1 : 0;
+
                 continue;
             }
 
@@ -457,7 +597,8 @@ describe('a decision applied to a generated table', function (): void {
             ->and($seen['unknown_participant'] ?? 0)->toBeGreaterThan(100)
             ->and($seen['set_already_decided'] ?? 0)->toBeGreaterThan(50)
             ->and($seen['participants_not_level'] ?? 0)->toBeGreaterThan(100)
-            ->and($seen['part_of_level_set'] ?? 0)->toBeGreaterThan(50);
+            ->and($seen['part_of_level_set'] ?? 0)->toBeGreaterThan(25)
+            ->and($ordersHeldToOneReason)->toBeGreaterThan(500);
     });
 
     it('never moves an entry past one it is not level with, and never across a tier', function (): void {
@@ -487,6 +628,18 @@ describe('a decision applied to a generated table', function (): void {
 
         expect((new Standings(['first' => $a, 'second' => $b]))->withDecisions([new Decider(['b', 'a'])])->getEntries())
             ->toBe(['first' => $b, 'second' => $a]);
+    });
+
+    it('keeps every entry of a table built by hand that lists a participant twice', function (): void {
+        // Nothing stops such a table being built. A decision orders by ID,
+        // and both entries of the ID go where the decision puts it
+        $first = new StandingEntry(new Participant('a', 'A'), 1, 0, 0, 0, 1.0);
+        $again = new StandingEntry(new Participant('a', 'A again'), 1, 0, 0, 0, 1.0);
+        $b = new StandingEntry(new Participant('b', 'B'), 1, 0, 0, 0, 1.0);
+
+        $table = (new Standings([$first, $b, $again]))->withDecisions([new Decider(['b', 'a'])]);
+
+        expect($table->getEntries())->toBe([$b, $first, $again]);
     });
 
     it('takes its decisions through the constructor under the same rules', function (): void {
@@ -552,6 +705,23 @@ describe('a decision that is rejected', function (): void {
             ->and($reason(['a', 'b'], ['b', 'c']))->toBe(RejectedDecisionReason::SetAlreadyDecided)
             ->and($reason(['d', 'c']))->toBe(RejectedDecisionReason::ParticipantsNotLevel)
             ->and($reason(['d', 'e']))->toBe(RejectedDecisionReason::PartOfLevelSet);
+    });
+
+    it('is reported by the same rule whatever order the decisions are given in', function (): void {
+        $reason = fn(array ...$decisions): RejectedDecisionReason => tableDecisionRejection(
+            fn(): Standings => $this->table->withDecisions(array_map(static fn(array $ids): Decider => new Decider($ids), $decisions))
+        )->getReason();
+
+        // One decision is not level and overlaps the other: decided twice
+        // comes first, also when the decision that is not level is read first
+        expect($reason(['a', 'b'], ['b', 'c']))->toBe(RejectedDecisionReason::SetAlreadyDecided)
+            ->and($reason(['b', 'c'], ['a', 'b']))->toBe(RejectedDecisionReason::SetAlreadyDecided)
+            // One names nobody the table has, another is not level
+            ->and($reason(['d', 'c'], ['a', 'x']))->toBe(RejectedDecisionReason::UnknownParticipant)
+            ->and($reason(['a', 'x'], ['d', 'c']))->toBe(RejectedDecisionReason::UnknownParticipant)
+            // One is part of a set, another is not level
+            ->and($reason(['d', 'e'], ['c', 'a']))->toBe(RejectedDecisionReason::ParticipantsNotLevel)
+            ->and($reason(['c', 'a'], ['d', 'e']))->toBe(RejectedDecisionReason::ParticipantsNotLevel);
     });
 
     it('is rejected for a set that has a decision already, given together or one after the other', function (): void {
@@ -635,6 +805,24 @@ describe('a table that carries a decision and is then changed', function (): voi
                 }
             }
 
+            // One table in three: a single adjustment that brings a row of
+            // the same tier level with a decided set, where there is such a
+            // row. The set is not separated, it grows
+            if ($rng->getInt(0, 2) === 0) {
+                $byId = array_column($rows, null, 'id');
+                $decidedRow = $byId[$decisions[0][0]];
+                foreach ($rows as $row) {
+                    if (
+                        !in_array($row['id'], $decisions[0], true)
+                        && $row['tier'] === $decidedRow['tier']
+                        && array_slice($row['figures'], 1) === array_slice($decidedRow['figures'], 1)
+                    ) {
+                        $amounts = [$row['id'] => $decidedRow['figures'][0] - $row['figures'][0]];
+                        break;
+                    }
+                }
+            }
+
             // The oracle: the adjusted rows, level by tier and figures alone.
             // A decision still stands when its ids are one whole level set.
             $levelWith = [];
@@ -643,16 +831,22 @@ describe('a table that carries a decision and is then changed', function (): voi
                 $figures[0] += $amounts[$row['id']] ?? 0.0;
                 $levelWith[json_encode([$row['tier'], $figures])][] = $row['id'];
             }
+            // It no longer stands when its ids are in more than one level
+            // set (separated), or in one that has more members (grown)
             $stands = true;
+            $separated = false;
             foreach ($decisions as $ids) {
                 $sorted = $ids;
                 sort($sorted);
                 $found = false;
+                $within = false;
                 foreach ($levelWith as $set) {
                     sort($set);
                     $found = $found || $set === $sorted;
+                    $within = $within || array_diff($ids, $set) === [];
                 }
                 $stands = $stands && $found;
+                $separated = $separated || !$within;
             }
 
             $adjustments = [];
@@ -668,9 +862,17 @@ describe('a table that carries a decision and is then changed', function (): voi
                     ->and($rejected->getPrevious())->toBeInstanceOf(RejectedDecisionException::class, $context)
                     ->and(in_array($rejected->getDecider()->getParticipantIds(), $decisions, true))->toBeTrue($context);
                 ++$stale;
+
+                // What the decision was refused for against the changed
+                // table: not level where a set was separated, and part of a
+                // set where the only change is that a set grew
                 $previous = $rejected->getPrevious();
-                $staleBecauseASetGrew += $previous instanceof RejectedDecisionException
-                    && $previous->getReason() === RejectedDecisionReason::PartOfLevelSet ? 1 : 0;
+                assert($previous instanceof RejectedDecisionException);
+                expect($previous->getReason())->toBe(
+                    $separated ? RejectedDecisionReason::ParticipantsNotLevel : RejectedDecisionReason::PartOfLevelSet,
+                    $context
+                );
+                $staleBecauseASetGrew += $separated ? 0 : 1;
 
                 continue;
             }
@@ -689,7 +891,7 @@ describe('a table that carries a decision and is then changed', function (): voi
 
         expect($kept)->toBeGreaterThan(40)
             ->and($stale)->toBeGreaterThan(100)
-            ->and($staleBecauseASetGrew)->toBeGreaterThan(5);
+            ->and($staleBecauseASetGrew)->toBeGreaterThan(40);
     });
 
     it('is refused when an adjustment separates a decided pair, and kept when it moves both alike', function (): void {
@@ -946,6 +1148,14 @@ describe('first and second are level, both qualify, and the two places feed diff
         $rejected = tableDecisionRejection(fn(): array => $unknown->select($this->outcome));
         expect($rejected->getReason())->toBe(RejectedDecisionReason::UnknownParticipant)
             ->and($rejected->getParticipantIds())->toBe(['zz']);
+
+        // Both at once: the unknown participant is reported, whichever
+        // decision is given first
+        foreach ([[['a1', 'b1'], ['a2', 'zz']], [['a2', 'zz'], ['a1', 'b1']]] as [$one, $other]) {
+            $both = RankRangeSelector::topPerGroup(2)->withDecisions([new Decider($one), new Decider($other)]);
+            expect(tableDecisionRejection(fn(): array => $both->select($this->outcome))->getReason())
+                ->toBe(RejectedDecisionReason::UnknownParticipant);
+        }
     });
 
     it('reads a decision the pool table carries as one given to the selector, and refuses it twice', function (): void {
@@ -1304,6 +1514,399 @@ describe('a decision given to a best-of-rank selection', function (): void {
         $unknown = BestOfRankSelector::ofRank(1, 1)->withDecisions([new Decider(['c1', 'zz'])]);
         expect(tableDecisionRejection(fn(): array => $unknown->select($this->outcome))->getReason())
             ->toBe(RejectedDecisionReason::UnknownParticipant);
+    });
+});
+
+describe('a selection across generated pools with decisions', function (): void {
+    it('orders the level holders of a rank as decided, marks them, and refuses what is still undecided', function (): void {
+        $selected = 0;
+        $refusedInAPool = 0;
+        $refusedAcross = 0;
+        $settledAcross = 0;
+        $withBothMarks = 0;
+        $rejected = ['part_of_level_set' => 0, 'participants_not_level' => 0];
+
+        for ($seed = 1; $seed <= 1500; ++$seed) {
+            $rng = new Randomizer(new Mt19937($seed));
+            $pooled = tableDecisionPooled($rng);
+            $perEvent = $rng->getInt(0, 1) === 0;
+            $rank = $rng->getInt(1, $pooled['smallest']);
+            $count = $rng->getInt(1, count($pooled['pools']));
+            $policy = $rng->getInt(0, 2);
+            $context = "seed {$seed}, rank {$rank}, count {$count}, policy {$policy}, " . ($perEvent ? 'per event' : 'totals');
+
+            // The oracle, on the rows alone. In each pool: the order with the
+            // drawn decisions, and whether the rank is held by an undecided set
+            $poolDecisions = [];
+            $holders = [];
+            $expectedRefusal = null;
+            foreach ($pooled['pools'] as $label => $rows) {
+                $decisions = tableDecisionDrawn($rng, $rows);
+                $poolDecisions = [...$poolDecisions, ...$decisions];
+                $holders[] = tableDecisionOracleOrder($rows, $decisions)[$rank - 1];
+
+                foreach (tableDecisionLevelSets($rows) as $start => $ids) {
+                    $undecided = count($ids) >= 2
+                        && array_filter($decisions, static fn(array $decision): bool => array_diff($ids, $decision) === []) === [];
+                    if ($expectedRefusal === null && $undecided && $policy !== 2 && $start < $rank && $start + count($ids) >= $rank) {
+                        $expectedRefusal = ['ids' => $ids, 'pool' => $label, 'rank' => null];
+                    }
+                }
+            }
+
+            // Across the pools: the holders as groups that the comparison
+            // leaves level, with a drawn decision for some of them
+            $groups = tableDecisionComparedGroups($pooled['rows'], $holders, $perEvent);
+            $across = [];
+            $first = 1;
+            foreach ($groups as $index => $group) {
+                $last = $first + count($group) - 1;
+                if (count($group) >= 2 && $rng->getInt(1, 10) <= 6) {
+                    $across[] = $groups[$index] = $rng->shuffleArray($group);
+                } elseif (count($group) >= 2 && $expectedRefusal === null && $first <= $count && ($policy === 0 || ($policy === 1 && $last > $count))) {
+                    $expectedRefusal = ['ids' => $group, 'pool' => null, 'rank' => $rank];
+                }
+                $first = $last + 1;
+            }
+
+            $base = BestOfRankSelector::ofRank($rank, $count)->comparedBy($perEvent ? PoolComparison::PerEvent : PoolComparison::RawTotals);
+            $base = match ($policy) {
+                0 => $base,
+                1 => $base->withTiesInsideSelectionAccepted(),
+                default => $base->withTableOrderAccepted(),
+            };
+            $given = $rng->shuffleArray([...$poolDecisions, ...$across]);
+            $selector = $base->withDecisions(tableDecisionDeciders($given));
+
+            try {
+                $selection = $selector->selection($pooled['outcome']);
+            } catch (UndecidedSelectionException $undecided) {
+                expect($expectedRefusal)->not->toBeNull($context)
+                    ->and([
+                        'ids' => $undecided->getParticipantIds(),
+                        'pool' => $undecided->getPool(),
+                        'rank' => $undecided->getRankAcrossPools(),
+                    ])->toBe($expectedRefusal, $context)
+                    ->and($undecided->isPerEvent())->toBeFalse($context);
+                $refusedInAPool += $undecided->getPool() === null ? 0 : 1;
+                $refusedAcross += $undecided->getPool() === null ? 1 : 0;
+
+                continue;
+            }
+
+            expect($expectedRefusal)->toBeNull($context)
+                ->and(tableDecisionIds($selection->getParticipants()))->toBe(array_slice(array_merge(...$groups), 0, $count), $context)
+                ->and(tableDecisionIds($selector->select($pooled['outcome'])))->toBe(tableDecisionIds($selection->getParticipants()), $context);
+
+            // A selected holder has the decision that made it the holder in
+            // its pool, then the one that placed it among the holders
+            foreach ($selection->getParticipants() as $participant) {
+                $naming = static fn(array $decisions): array => array_values(array_filter(
+                    $decisions,
+                    static fn(array $decision): bool => in_array($participant->getId(), $decision, true)
+                ));
+                $marks = [...$naming($poolDecisions), ...$naming($across)];
+
+                expect(array_map(
+                    static fn(Decider $decider): array => $decider->getParticipantIds(),
+                    $selection->getDecisionsFor($participant)
+                ))->toBe($marks, $context);
+                $settledAcross += $naming($across) === [] ? 0 : 1;
+                $withBothMarks += count($marks) === 2 ? 1 : 0;
+            }
+            ++$selected;
+
+            // The same selection with one decision that is wrong: part of a
+            // group of level holders, or a group with a holder it is not
+            // level with. Every order is accepted, so that nothing else stops it
+            foreach ($groups as $group) {
+                $others = array_values(array_diff($holders, $group));
+                $wrong = match (true) {
+                    count($group) >= 3 => ['part_of_level_set', array_slice($rng->shuffleArray($group), 1)],
+                    count($group) === 2 && $others !== [] => ['participants_not_level', [...$group, $others[0]]],
+                    default => null,
+                };
+                if ($wrong === null) {
+                    continue;
+                }
+
+                // Without the decisions for the holders it names: decided twice comes first
+                $withoutIt = array_values(array_filter($across, static fn(array $decision): bool => array_intersect($wrong[1], $decision) === []));
+                $refusing = $base->withTableOrderAccepted()->withDecisions(tableDecisionDeciders([...$poolDecisions, ...$withoutIt, $wrong[1]]));
+                $refusal = tableDecisionRejection(fn(): array => $refusing->select($pooled['outcome']));
+
+                expect($refusal->getReason()->value)->toBe($wrong[0], $context)
+                    ->and($refusal->getRankAcrossPools())->toBe($rank, $context)
+                    ->and($refusal->getPool())->toBeNull($context)
+                    ->and($refusal->getDecider()->getParticipantIds())->toBe($wrong[1], $context);
+                ++$rejected[$wrong[0]];
+
+                break;
+            }
+        }
+
+        expect($selected)->toBeGreaterThan(300)
+            ->and($refusedInAPool)->toBeGreaterThan(70)
+            ->and($refusedAcross)->toBeGreaterThan(40)
+            ->and($settledAcross)->toBeGreaterThan(100)
+            ->and($withBothMarks)->toBeGreaterThan(10)
+            ->and($rejected['part_of_level_set'])->toBeGreaterThan(10)
+            ->and($rejected['participants_not_level'])->toBeGreaterThan(40);
+    });
+
+    it('orders entries that are level per event played as decided, marks them, and refuses what is still undecided', function (): void {
+        $selected = 0;
+        $refused = 0;
+        $marked = 0;
+        $apartInTheTable = 0;
+        $rejected = ['part_of_level_set' => 0, 'participants_not_level' => 0];
+
+        for ($seed = 1; $seed <= 900; ++$seed) {
+            $rng = new Randomizer(new Mt19937($seed));
+            $pooled = tableDecisionPooled($rng);
+            $everyone = array_column($pooled['rows'], 'id');
+            $from = $rng->getInt(1, count($everyone));
+            $to = $rng->getInt($from, min(count($everyone), $from + 3));
+            $policy = $rng->getInt(0, 2);
+            $context = "seed {$seed}, ranks {$from} to {$to}, policy {$policy}";
+
+            // The oracle: every row compared per event played, as groups, with
+            // a drawn decision for some of the groups of two or more
+            $groups = tableDecisionComparedGroups($pooled['rows'], $everyone, true);
+            $decisions = [];
+            $expectedRefusal = null;
+            $first = 1;
+            foreach ($groups as $index => $group) {
+                $last = $first + count($group) - 1;
+                if (count($group) >= 2 && $rng->getInt(1, 10) <= 6) {
+                    $decisions[] = $groups[$index] = $rng->shuffleArray($group);
+                } elseif (
+                    count($group) >= 2 && $expectedRefusal === null && $last >= $from && $first <= $to
+                    && ($policy === 0 || ($policy === 1 && !($first >= $from && $last <= $to)))
+                ) {
+                    $expectedRefusal = ['ids' => $group, 'first' => $first, 'last' => $last];
+                }
+                $first = $last + 1;
+            }
+
+            $base = RankRangeSelector::overall($from, $to)->comparedBy(PoolComparison::PerEvent);
+            $base = match ($policy) {
+                0 => $base,
+                1 => $base->withTiesInsideSelectionAccepted(),
+                default => $base->withTableOrderAccepted(),
+            };
+            $selector = $base->withDecisions(tableDecisionDeciders($rng->shuffleArray($decisions)));
+
+            try {
+                $selection = $selector->selection($pooled['outcome']);
+            } catch (UndecidedSelectionException $undecided) {
+                expect($expectedRefusal)->not->toBeNull($context)
+                    ->and([
+                        'ids' => $undecided->getParticipantIds(),
+                        'first' => $undecided->getFirstPlace(),
+                        'last' => $undecided->getLastPlace(),
+                    ])->toBe($expectedRefusal, $context)
+                    ->and($undecided->isPerEvent())->toBeTrue($context)
+                    ->and($undecided->getPool())->toBeNull($context)
+                    ->and($undecided->getRankAcrossPools())->toBeNull($context);
+                ++$refused;
+
+                continue;
+            }
+
+            expect($expectedRefusal)->toBeNull($context)
+                ->and(tableDecisionIds($selection->getParticipants()))
+                ->toBe(array_slice(array_merge(...$groups), $from - 1, $to - $from + 1), $context);
+            foreach ($selection->getParticipants() as $participant) {
+                $naming = array_values(array_filter(
+                    $decisions,
+                    static fn(array $decision): bool => in_array($participant->getId(), $decision, true)
+                ));
+                expect(array_map(
+                    static fn(Decider $decider): array => $decider->getParticipantIds(),
+                    $selection->getDecisionsFor($participant)
+                ))->toBe($naming, $context);
+                $marked += $naming === [] ? 0 : 1;
+            }
+            ++$selected;
+
+            // A decided group whose members the table of totals places apart
+            // is one the table itself would not take a decision for
+            foreach ($decisions as $decision) {
+                try {
+                    $pooled['outcome']->getStandings()->withDecisions(tableDecisionDeciders([$decision]));
+                } catch (RejectedDecisionException) {
+                    ++$apartInTheTable;
+                }
+            }
+
+            // One wrong decision: a group without one of its members, or two
+            // groups as one order
+            $big = array_values(array_filter($groups, static fn(array $group): bool => count($group) >= 2));
+            $wrong = match (true) {
+                $big !== [] && $seed % 2 === 0 => ['part_of_level_set', array_slice($rng->shuffleArray($big[0]), 1)],
+                count($groups) >= 2 => ['participants_not_level', [...$groups[0], ...$groups[1]]],
+                default => null,
+            };
+            if ($wrong !== null) {
+                $refusing = $base->withTableOrderAccepted()->withDecisions(tableDecisionDeciders([$wrong[1]]));
+                $refusal = tableDecisionRejection(fn(): array => $refusing->select($pooled['outcome']));
+
+                expect($refusal->getReason()->value)->toBe($wrong[0], $context)
+                    ->and($refusal->getPool())->toBeNull($context)
+                    ->and($refusal->getRankAcrossPools())->toBeNull($context);
+                ++$rejected[$wrong[0]];
+            }
+        }
+
+        expect($selected)->toBeGreaterThan(300)
+            ->and($refused)->toBeGreaterThan(150)
+            ->and($marked)->toBeGreaterThan(300)
+            ->and($apartInTheTable)->toBeGreaterThan(50)
+            ->and($rejected['part_of_level_set'])->toBeGreaterThan(100)
+            ->and($rejected['participants_not_level'])->toBeGreaterThan(100);
+    });
+});
+
+describe('a decision on the place below which a larger pool is left out', function (): void {
+    beforeEach(function (): void {
+        // Pool A of three and pool B of four, so the entrant placed fourth in
+        // B is left out with its results. In B the third and the fourth are
+        // level: b1 beat b3 and drew with b4, b2 beat b4 and drew with b3.
+        // Without b4, b1 has two wins; without b3, a win and a draw. a1 has
+        // a win by two and a draw, and stands between the two
+        $member = static fn(string $id): Participant => new Participant($id, strtoupper($id));
+        $this->a = array_map($member, ['a1', 'a2', 'a3']);
+        $this->b = array_map($member, ['b1', 'b2', 'b3', 'b4']);
+        $played = static fn(Participant $first, Participant $second, int $for, int $against): Result => new Result(
+            new Event([$first, $second]),
+            $for === $against ? null : $first,
+            [$first->getId() => $for, $second->getId() => $against]
+        );
+        [$a1, $a2, $a3] = $this->a;
+        [$b1, $b2, $b3, $b4] = $this->b;
+        $resultsA = [$played($a1, $a2, 2, 0), $played($a1, $a3, 0, 0), $played($a2, $a3, 1, 0)];
+        $resultsB = [
+            $played($b1, $b2, 1, 0), $played($b1, $b3, 1, 0), $played($b1, $b4, 0, 0),
+            $played($b2, $b3, 0, 0), $played($b2, $b4, 1, 0), $played($b3, $b4, 0, 0),
+        ];
+
+        $calculator = new StandingsCalculator();
+        $this->outcome = StageOutcome::combining([
+            'A' => new StageOutcome($calculator->calculate($this->a, $resultsA), $resultsA, entrants: $this->a),
+            'B' => new StageOutcome($calculator->calculate($this->b, $resultsB), $resultsB, entrants: $this->b),
+        ], $calculator);
+        $this->selector = BestOfRankSelector::ofRank(1, 1)->comparedBy(PoolComparison::DiscardLowest);
+    });
+
+    it('is refused until the level entries on both sides of that place are decided', function (): void {
+        try {
+            $this->selector->select($this->outcome);
+        } catch (UndecidedSelectionException $undecided) {
+            expect($undecided->getParticipantIds())->toBe(['b3', 'b4'])
+                ->and([$undecided->getFirstPlace(), $undecided->getLastPlace()])->toBe([3, 4])
+                ->and($undecided->getPool())->toBe('B')
+                ->and($undecided->getRankAcrossPools())->toBeNull()
+                ->and($undecided->isPerEvent())->toBeFalse();
+
+            return;
+        }
+
+        throw new LogicException('The selection was not refused.');
+    });
+
+    it('leaves out the entrant the decision places below it, which decides who is selected', function (): void {
+        $fourthIsB4 = new Decider(['b3', 'b4'], 'ruling');
+        $fourthIsB3 = new Decider(['b4', 'b3'], 'ruling');
+
+        expect(tableDecisionIds($this->selector->withDecisions([$fourthIsB4])->select($this->outcome)))->toBe(['b1'])
+            ->and(tableDecisionIds($this->selector->withDecisions([$fourthIsB3])->select($this->outcome)))->toBe(['a1']);
+    });
+
+    it('marks every selected place with that decision: each is compared without the entrant it left out', function (): void {
+        $fourthIsB3 = new Decider(['b4', 'b3'], 'ruling', 'Decided by the organisers');
+
+        $selection = BestOfRankSelector::ofRank(1, 2)
+            ->comparedBy(PoolComparison::DiscardLowest)
+            ->withDecisions([$fourthIsB3])
+            ->selection($this->outcome);
+
+        expect(tableDecisionIds($selection->getParticipants()))->toBe(['a1', 'b1'])
+            ->and($selection->getDecisionsFor($this->a[0]))->toBe([$fourthIsB3])
+            ->and($selection->getDecisionsFor($this->b[0]))->toBe([$fourthIsB3])
+            ->and($selection->getDecisions())->toBe([$fourthIsB3]);
+
+        // Under another comparison nobody is left out, and the same decision
+        // settles nothing about the first places
+        $byTotals = BestOfRankSelector::ofRank(1, 2)
+            ->comparedBy(PoolComparison::RawTotals)
+            ->withDecisions([$fourthIsB3])
+            ->selection($this->outcome);
+        expect(tableDecisionIds($byTotals->getParticipants()))->toBe(['b1', 'a1'])
+            ->and($byTotals->getDecisions())->toBe([]);
+    });
+
+    it('marks a holder once when the decision that made it the holder is the one on that place', function (): void {
+        // The third of each pool: in B that is b3 or b4, by the same decision
+        // that says who is left out. Without b3, b4 is level with a3, and
+        // that tie between the two selected is accepted here
+        $decision = new Decider(['b4', 'b3']);
+        $selection = BestOfRankSelector::ofRank(3, 2)
+            ->comparedBy(PoolComparison::DiscardLowest)
+            ->withTiesInsideSelectionAccepted()
+            ->withDecisions([$decision])
+            ->selection($this->outcome);
+
+        // Level holders are in the order of the outcome's table, which has
+        // b4 above a3 on the totals of every result
+        expect(tableDecisionIds($selection->getParticipants()))->toBe(['b4', 'a3'])
+            ->and($selection->getDecisionsFor($this->b[3]))->toBe([$decision])
+            ->and($selection->getDecisionsFor($this->a[2]))->toBe([$decision]);
+    });
+});
+
+describe('the decisions of the table of a pooled outcome', function (): void {
+    it('are not carried by a combined table, which is calculated afresh', function (): void {
+        ['pool' => $pool, 'results' => $results] = tableDecisionDrawnPool();
+        $decision = new Decider(['p3', 'p1', 'p4', 'p2']);
+        $decided = new StageOutcome((new StandingsCalculator())->calculate($pool, $results)->withDecisions([$decision]), $results, entrants: $pool);
+
+        $combined = StageOutcome::combining(['A' => $decided]);
+
+        expect($combined->getStandings()->getDecisions())->toBe([])
+            ->and($combined->getPool('A')?->getStandings()->getDecisions())->toBe([$decision])
+            // The per-group selection reads the pool's table, decided
+            ->and(tableDecisionIds(RankRangeSelector::topPerGroup(2)->select($combined)))->toBe(['p3', 'p1'])
+            // The overall selection reads the combined table, which is not
+            ->and(fn(): array => RankRangeSelector::overall(1, 2)->select($combined))->toThrow(UndecidedSelectionException::class)
+            ->and(tableDecisionIds(RankRangeSelector::overall(1, 2)->withDecisions([$decision])->select($combined)))->toBe(['p3', 'p1']);
+    });
+
+    it('are read by an overall selection of totals and not by one per event played', function (): void {
+        // Two pools of two, every entry level; the table of the outcome is
+        // built by hand and carries a decision for all four
+        $entry = static fn(string $id): StandingEntry => new StandingEntry(new Participant($id, strtoupper($id)), 1, 0, 1, 0, 1.0);
+        $entries = array_map($entry, ['a1', 'a2', 'b1', 'b2']);
+        $result = static fn(StandingEntry $first, StandingEntry $second): array => [new Result(new Event([$first->getParticipant(), $second->getParticipant()]))];
+        $decision = new Decider(['b2', 'a2', 'b1', 'a1'], 'on the table');
+        $outcome = new StageOutcome(
+            (new Standings($entries))->withDecisions([$decision]),
+            [...$result($entries[0], $entries[1]), ...$result($entries[2], $entries[3])],
+            pools: [
+                'A' => new StageOutcome(new Standings([$entries[0], $entries[1]]), $result($entries[0], $entries[1])),
+                'B' => new StageOutcome(new Standings([$entries[2], $entries[3]]), $result($entries[2], $entries[3])),
+            ]
+        );
+
+        $byTotals = RankRangeSelector::overall(1, 2)->selection($outcome);
+        expect(tableDecisionIds($byTotals->getParticipants()))->toBe(['b2', 'a2'])
+            ->and($byTotals->getDecisions())->toBe([$decision]);
+
+        // Per event played the selector orders the entries itself: the tie is
+        // reported, and the decision is given to the selector
+        $perEvent = RankRangeSelector::overall(1, 2)->comparedBy(PoolComparison::PerEvent);
+        expect(fn(): array => $perEvent->select($outcome))->toThrow(UndecidedSelectionException::class, 'the standings per event played')
+            ->and(tableDecisionIds($perEvent->withDecisions([$decision])->select($outcome)))->toBe(['b2', 'a2']);
     });
 });
 
