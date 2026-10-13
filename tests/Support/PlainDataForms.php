@@ -436,8 +436,14 @@ final class PlainDataForms
             'round pairing' => [
                 'class' => RoundPairing::class,
                 'kind' => self::DATA,
-                'keys' => ['round', 'label', 'events', 'byes'],
-                'sample' => ['round' => 1, 'label' => 'semifinal', 'events' => [$event], 'byes' => ['c']],
+                'keys' => ['round', 'label', 'events', 'byes', 'paired_on_incomplete_results'],
+                'sample' => [
+                    'round' => 1,
+                    'label' => 'semifinal',
+                    'events' => [$event],
+                    'byes' => ['c'],
+                    'paired_on_incomplete_results' => true,
+                ],
                 'read' => static fn(array $data, array $registry): object => RoundPairing::fromArray(self::stringKeyed($data), $registry),
                 'generate' => static fn(Randomizer $random, array $field): object => self::pairing($random, $field, $random->getInt(1, 30)),
             ],
@@ -466,14 +472,16 @@ final class PlainDataForms
             'stage state' => [
                 'class' => StageState::class,
                 'kind' => self::DATA,
-                'keys' => ['participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments'],
+                'keys' => ['participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments', 'entrants'],
                 'sample' => [
                     'participants' => $participants,
-                    'active' => ['a', 'b', 'c'],
+                    // b has withdrawn from the live stage and keeps its place
+                    'active' => ['a', 'c'],
                     'rounds' => [['round' => 1, 'label' => null, 'events' => [$event], 'byes' => ['c']]],
                     'results' => [['event' => $event, 'winner' => 'a', 'scores' => [], 'metadata' => []]],
                     'engine_fingerprint' => 'an engine of our own',
                     'adjustments' => [$adjustment],
+                    'entrants' => ['a', 'b', 'c'],
                 ],
                 'read' => static fn(array $data, array $registry): object => StageState::fromArray(self::stringKeyed($data)),
                 'generate' => self::stageState(...),
@@ -820,7 +828,9 @@ final class PlainDataForms
             $number,
             $random->getInt(0, 1) === 1 ? 'label ' . $number : null,
             $events,
-            array_slice($order, 2 * $paired)
+            array_slice($order, 2 * $paired),
+            // Now and then a round paired before the results were all in
+            $random->getInt(0, 5) === 0
         );
     }
 

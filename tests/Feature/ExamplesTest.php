@@ -1151,6 +1151,54 @@ $demonstrations = [
                 'reason' => 'Fielded an unregistered substitute',
             ]);
     },
+
+    // The application's rows are the stage: a round drawn by hand is read as drawn and reported, an unplayed
+    // quarter-final holds the next round back without an exception, and a withdrawal sends the opponent on
+    '27-stage-from-application-rows' => function (array $results): void {
+        $pairs = static function (array $events): array {
+            $pairs = [];
+            foreach ($events as $event) {
+                Assert::assertInstanceOf(Event::class, $event);
+                $pairs[] = examplePair($event);
+            }
+            sort($pairs);
+
+            return $pairs;
+        };
+
+        // The organiser had the entrants in positions 5 and 8 change places; the engine's own draw is shown beside it
+        expect($pairs(exampleArray($results, 'Quarter-finals, as the organiser drew them')))->toBe(['11|15', '12|17', '13|16', '14|18'])
+            ->and($pairs(exampleArray($results, 'Quarter-finals, as the engine would have drawn them')))->toBe(['11|18', '12|17', '13|16', '14|15'])
+            ->and($results['Reported as paired by hand'])->toBeTrue();
+
+        // One quarter-final unplayed: read without an exception, and named
+        expect($results['With one quarter-final unplayed'])->toBe([
+            'Complete' => false,
+            'The next round can be paired' => false,
+            'Waiting for round' => 1,
+        ])->and($pairs(exampleArray($results, 'The quarter-final it waits for')))->toBe(['13|16']);
+
+        // The semifinals hold the four who won the quarter-finals that were played, the two of the upper half
+        // in one tie. The engine's own quarter-finals could not have given this tie: they had 11 meet 18
+        expect($pairs(exampleArray($results, 'Semifinals, from the quarter-finals that were played')))->toBe(['11|18', '12|16']);
+
+        // 18 withdraws: its tie is not played and awaits nothing, the other is still awaited, and 11 is in the final
+        expect($pairs(exampleArray($results, 'After Noor withdraws: not played')))->toBe(['11|18'])
+            ->and($pairs(exampleArray($results, 'After Noor withdraws: still to play')))->toBe(['12|16'])
+            ->and($pairs(exampleArray($results, 'The final')))->toBe(['11|16']);
+
+        // 11 won the final having played two events; 18 went out in the semifinals with the one it won
+        $standings = exampleResult($results, 'Final standings', Standings::class);
+        expect(array_map(static fn($entry): string => $entry->getParticipant()->getId(), $standings->getEntries()))
+            ->toBe(['11', '16', '12', '18', '13', '14', '15', '17'])
+            ->and($standings->getTiers())->toBe([0, 1, 2, 2, 3, 3, 3, 3])
+            ->and($standings->getEntries()[0]->getPlayed())->toBe(2)
+            ->and($standings->getEntries()[3]->getPlayed())->toBe(1);
+
+        $refused = exampleResult($results, 'A fixture for a player who was not entered', InvalidConfigurationException::class);
+        expect($refused->getReason())->toBe(InvalidConfigurationReason::ParticipantNotAnEntrant)
+            ->and($results['Its reason'])->toBe('participant_not_an_entrant');
+    },
 ];
 
 /**

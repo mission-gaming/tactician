@@ -240,6 +240,7 @@ describe('Golden output', function (): void {
             'examples/23-application-adapter-and-repack.txt',
             'examples/24-recording-bracket-results.txt',
             'examples/25-awarded-results-and-adjustments.txt',
+            'examples/27-stage-from-application-rows.txt',
         ]);
     });
 

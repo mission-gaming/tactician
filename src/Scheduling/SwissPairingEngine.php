@@ -7,13 +7,18 @@ namespace MissionGaming\Tactician\Scheduling;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
+use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\HistoryReadingEngine;
+use MissionGaming\Tactician\Stage\PairingReadiness;
 use MissionGaming\Tactician\Stage\PairKey;
+use MissionGaming\Tactician\Stage\RecordedRound;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -63,13 +68,31 @@ use Random\Randomizer;
  * participant leaves the active list, and their recorded pairings and
  * results still count toward the remaining participants' standings.
  *
- * Repeat avoidance reads the pairings recorded on the state, not the
- * results - so driving the engine with a Randomizer while recording no
- * results produces non-repeat pairing from a shuffled field, which is the
+ * A round is paired from the results of the rounds before it, so the
+ * engine waits for them: while an event of a recorded round has no
+ * result, pairNextRound() refuses with an UnresolvedRoundException that
+ * lists the events, isComplete() is false, and getReadiness() says the
+ * same without throwing. Reading the stage does not wait: the table
+ * (getStandings()) and the recorded rounds are available at any point. An
+ * application that means to pair a round before the last results are in
+ * says so by calling pairNextRoundOnIncompleteResults(), and the round it
+ * gets is marked as paired that way. An event that is never played is
+ * given an awarded result, which is a result.
+ *
+ * Results-free mode (the resultsFree constructor argument) is the other
+ * way to pair without results, and it is a property of the stage, not of
+ * one call: the rounds are recorded without results on purpose, no event
+ * awaits one, and the stage is complete when its planned rounds are
+ * recorded. Repeat avoidance reads the pairings recorded on the state,
+ * not the results - so driving the engine in this mode with a Randomizer
+ * produces non-repeat pairing from a shuffled field, which is the
  * whole-schedule Swiss preset SwissScheduler wraps. In a field of odd size
  * that pairing is not random throughout: a recorded bye is credited as a
  * win, so the participants who have had a bye are placed above the rest
- * and are paired with each other first.
+ * and are paired with each other first. The mode is part of the engine's
+ * fingerprint, so a state stamped by an engine in one mode is refused by
+ * an engine in the other: a stage with no results yet is never mistaken
+ * for one that is to have none.
  *
  * Without a Randomizer the engine draws nothing: the same state gives the
  * same pairing. With one, each call to pairNextRound() draws from it, so
@@ -82,7 +105,7 @@ use Random\Randomizer;
  *
  * @experimental
  */
-readonly class SwissPairingEngine implements StageEngineInterface, FingerprintedEngine
+readonly class SwissPairingEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine
 {
     /**
      * @param ConstraintSet|null $constraints Asked about every candidate pairing, with a context of
@@ -96,13 +119,17 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * @param Randomizer|null $randomizer Shuffles pairing order within equal-ranking groups;
      *                                    with no recorded rounds the whole field ties at zero,
      *                                    so the entire pairing order is shuffled
+     * @param bool $resultsFree Whether the stage is paired without results on purpose (see the
+     *                          class docblock): no recorded event then awaits a result, and a
+     *                          round is paired whatever the earlier rounds have of them
      * @throws InvalidInputException When the planned rounds are below 1
      */
     public function __construct(
         private ?ConstraintSet $constraints = null,
         private StandingsCalculator $standingsCalculator = new StandingsCalculator(),
         private ?int $plannedRounds = null,
-        private ?Randomizer $randomizer = null
+        private ?Randomizer $randomizer = null,
+        private bool $resultsFree = false
     ) {
         if ($plannedRounds !== null && $plannedRounds < 1) {
             throw new InvalidInputException('Planned rounds must be at least 1');
@@ -126,7 +153,10 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *   off (default: both on);
      * - a subclass of StandingsCalculator, stated as custom in place of the
      *   two above: it may order the table by rules of its own, so nothing
-     *   is read from it, and two subclasses are not told apart.
+     *   is read from it, and two subclasses are not told apart;
+     * - results-free mode, when it is on (default: off). An engine that
+     *   waits for results has the fingerprint it had before the mode
+     *   existed.
      *
      * Not part of it:
      *
@@ -148,6 +178,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
     {
         return EngineFingerprint::of('swiss')
             ->withStandingsRules($this->standingsCalculator)
+            ->with('results-free', $this->resultsFree, false)
             ->with('subclass', static::class !== self::class, false)
             ->toString();
     }
@@ -184,11 +215,20 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * isComplete() first. A stage with no planned rounds is never refused
      * for its length.
      *
+     * A round is paired from the table, so the rounds before it have to be
+     * finished: while an event of a recorded round has no result the call
+     * is refused, and the exception lists the events. Ask getReadiness()
+     * to learn the same without catching anything. In results-free mode no
+     * event awaits a result and the call is never refused for one.
+     *
      * The search is exhaustive: the exception means that no complete
      * pairing exists, not that the search gave up. In a field of odd size
      * every participant is tried as the bye, in the order the class
      * docblock gives, before it is thrown.
      *
+     * @throws UnresolvedRoundException When an event of a recorded round has no result and the
+     *                                  engine is not in results-free mode (reason
+     *                                  `RoundPartiallyResolved`)
      * @throws InvalidConfigurationException When fewer than 2 active participants remain, the
      *                                       planned rounds have all been played (reason
      *                                       `PlannedRoundsPlayed`), the state is stamped with
@@ -201,9 +241,244 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
     public function pairNextRound(StageState $state): RoundPairing
     {
         $state->requireEngineFingerprint($this->getFingerprint());
+        $this->validateParticipants(array_values($state->getParticipants()));
 
+        $unresolved = $this->unresolvedEvents($state);
+        if ($unresolved !== []) {
+            throw new UnresolvedRoundException(
+                $unresolved[0]->getRound()?->getNumber() ?? 0,
+                $unresolved,
+                'Record the remaining results before pairing the next round, or pair it now with'
+                    . ' pairNextRoundOnIncompleteResults() if that is what is meant.'
+            );
+        }
+
+        return $this->pair($state, false);
+    }
+
+    /**
+     * Pair the next round now, whether or not the recorded rounds have all
+     * their results: the explicit way to pair early.
+     *
+     * The round is paired from the table as it stands, in which an event
+     * without a result counts for nobody. When an event did await a result
+     * the pairing is marked (RoundPairing::isPairedOnIncompleteResults()),
+     * and the mark is recorded and stored with the round. When none did,
+     * this is pairNextRound() and the pairing carries no mark. In
+     * results-free mode no event awaits a result, so nothing is marked.
+     *
+     * @throws InvalidConfigurationException For every case pairNextRound() names but the
+     *                                       unfinished round
+     * @throws NoValidPairingException When no complete pairing exists for the round
+     */
+    public function pairNextRoundOnIncompleteResults(StageState $state): RoundPairing
+    {
+        $state->requireEngineFingerprint($this->getFingerprint());
+        $this->validateParticipants(array_values($state->getParticipants()));
+
+        return $this->pair($state, $this->unresolvedEvents($state) !== []);
+    }
+
+    /**
+     * Whether the next round can be paired now and, when it cannot, the
+     * events that await a result (see HistoryReadingEngine).
+     *
+     * A stage with fewer than 2 active participants is complete, as
+     * isComplete() has it.
+     *
+     * @throws InvalidConfigurationException When the state is stamped with another engine's fingerprint
+     */
+    #[Override]
+    public function getReadiness(StageState $state): PairingReadiness
+    {
+        if ($this->isComplete($state)) {
+            return PairingReadiness::complete();
+        }
+
+        $unresolved = $this->unresolvedEvents($state);
+        if ($unresolved !== []) {
+            return PairingReadiness::awaitingResults($unresolved[0]->getRound()?->getNumber() ?? 0, $unresolved);
+        }
+
+        return PairingReadiness::ready($state->getNextRoundNumber());
+    }
+
+    /**
+     * Every recorded round as this engine reads it (see RecordedRound).
+     *
+     * The derivation of a round is the round this engine pairs from the
+     * rounds recorded before it and their results, for the participants
+     * who are active now or are named by that round or a later one. An
+     * engine that holds a Randomizer has none to give: what it drew when
+     * the round was paired is not part of the state. Neither has an engine
+     * whose search finds no pairing for the round, or a state whose
+     * earlier rounds StageState::fromHistory() would refuse.
+     *
+     * @return list<RecordedRound>
+     *
+     * @throws InvalidConfigurationException When the state is stamped with another engine's fingerprint
+     */
+    #[Override]
+    public function getRecordedRounds(StageState $state): array
+    {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
+        $unresolvedByRound = [];
+        foreach ($this->unresolvedEvents($state) as $event) {
+            $unresolvedByRound[$event->getRound()?->getNumber() ?? 0][] = $event;
+        }
+
+        $rounds = [];
+        foreach (array_values($state->getRoundsPlayed()) as $index => $pairing) {
+            $derivation = $this->derivationOf($state, $index);
+
+            $rounds[] = new RecordedRound(
+                $pairing,
+                $derivation,
+                $derivation instanceof RoundPairing && !$this->pairsTheSame($pairing, $derivation),
+                $unresolvedByRound[$pairing->getRoundNumber()] ?? []
+            );
+        }
+
+        return $rounds;
+    }
+
+    /**
+     * The table of the stage as recorded so far: the one the next round is
+     * paired from, and the one the outcome carries when the stage is
+     * complete. An event without a result counts for nobody in it.
+     *
+     * @throws InvalidConfigurationException When the state is stamped with another engine's
+     *                                       fingerprint, or a bye is recorded and the ranking
+     *                                       strategy is not a WinDrawLossRanking
+     */
+    #[Override]
+    public function getStandings(StageState $state): Standings
+    {
+        $state->requireEngineFingerprint($this->getFingerprint());
+
+        return $this->table($state);
+    }
+
+    /**
+     * The recorded events that await a result, in play order: every event
+     * without one, and none at all in results-free mode.
+     *
+     * @return list<Event>
+     */
+    private function unresolvedEvents(StageState $state): array
+    {
+        return $this->resultsFree ? [] : $state->getEventsWithoutResult();
+    }
+
+    /**
+     * The round this engine pairs in the place of a recorded one, or null
+     * when it cannot say (see getRecordedRounds()).
+     *
+     * @param int $index The place of the recorded round among the rounds of the state
+     */
+    private function derivationOf(StageState $state, int $index): ?RoundPairing
+    {
+        if ($this->randomizer !== null) {
+            return null;
+        }
+
+        $rounds = array_values($state->getRoundsPlayed());
+        $number = $rounds[$index]->getRoundNumber();
+
+        // Who was in the stage when the round was paired: the state does
+        // not say when a participant withdrew, so it is everyone who is
+        // active now or is named by this round or a later one.
+        $present = [];
+        foreach ($state->getParticipants() as $participant) {
+            $present[$participant->getId()] = true;
+        }
+        foreach (array_slice($rounds, $index) as $later) {
+            foreach ($later->getEvents() as $event) {
+                foreach ($event->getParticipants() as $participant) {
+                    $present[$participant->getId()] = true;
+                }
+            }
+            foreach ($later->getByes() as $bye) {
+                $present[$bye->getId()] = true;
+            }
+        }
+
+        $entrants = $state->getEntrants();
+        $listed = [];
+        foreach ($entrants as $entrant) {
+            $listed[$entrant->getId()] = true;
+        }
+        foreach ($state->getAllSeenParticipants() as $seen) {
+            if (!isset($listed[$seen->getId()])) {
+                $entrants[] = $seen;
+            }
+        }
+
+        try {
+            $before = StageState::fromHistory(
+                $entrants,
+                array_slice($rounds, 0, $index),
+                array_values(array_filter(
+                    $state->getResults(),
+                    static fn(Result $result): bool => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $number
+                )),
+                array_values(array_filter(
+                    $entrants,
+                    static fn(Participant $entrant): bool => !isset($present[$entrant->getId()])
+                )),
+                $state->getAdjustments()
+            );
+
+            // Before its first round a stage has only the participants it
+            // was started with, and fromHistory() has dropped the others
+            return count($before->getParticipants()) < 2 ? null : $this->pair($before, false);
+        } catch (InvalidConfigurationException|InvalidInputException|NoValidPairingException) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether two rounds pair the same participants and leave the same
+     * ones out: roles, order, labels and metadata are not compared.
+     */
+    private function pairsTheSame(RoundPairing $one, RoundPairing $other): bool
+    {
+        $shape = static function (RoundPairing $pairing): array {
+            $pairs = [];
+            foreach ($pairing->getEvents() as $event) {
+                $pairs[] = 'event ' . PairKey::of(...array_map(
+                    static fn(Participant $participant): string => $participant->getId(),
+                    array_values($event->getParticipants())
+                ));
+            }
+            foreach ($pairing->getByes() as $bye) {
+                $pairs[] = 'bye ' . PairKey::of($bye->getId());
+            }
+            $pairs = array_values(array_unique($pairs));
+            sort($pairs, SORT_STRING);
+
+            return $pairs;
+        };
+
+        return $shape($one) === $shape($other);
+    }
+
+    /**
+     * Pair a round from the state, whatever its recorded rounds have of
+     * results.
+     *
+     * @param bool $onIncompleteResults Whether the pairing is to be marked as made while an
+     *                                  event awaited a result
+     *
+     * @throws InvalidConfigurationException When the planned rounds have all been played, or a
+     *                                       bye is recorded under a ranking strategy that is not
+     *                                       a WinDrawLossRanking
+     * @throws NoValidPairingException When no complete pairing exists for the round
+     */
+    private function pair(StageState $state, bool $onIncompleteResults): RoundPairing
+    {
         $participants = array_values($state->getParticipants());
-        $this->validateParticipants($participants);
 
         $roundNumber = $state->getNextRoundNumber();
         if ($this->plannedRounds !== null && $roundNumber > $this->plannedRounds) {
@@ -245,7 +520,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             $events = $search->pair($orderedParticipants);
 
             if ($events !== null) {
-                return new RoundPairing($roundNumber, null, $events);
+                return new RoundPairing($roundNumber, null, $events, [], $onIncompleteResults);
             }
 
             throw new NoValidPairingException($roundNumber, $participants);
@@ -260,7 +535,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             $events = $search->pair($remaining);
 
             if ($events !== null) {
-                return new RoundPairing($roundNumber, null, $events, [$byeCandidate]);
+                return new RoundPairing($roundNumber, null, $events, [$byeCandidate], $onIncompleteResults);
             }
         }
 
@@ -274,6 +549,11 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * participants never reports complete - the application decides when
      * to stop, or pairNextRound() throws when no valid pairing remains.
      *
+     * A round is played when every event of it has a result: a stage whose
+     * planned rounds are all recorded and whose last round still has an
+     * event without one is not complete, and nothing is thrown for it. In
+     * results-free mode a round is played once it is recorded.
+     *
      * @throws InvalidConfigurationException When the state is stamped with another engine's fingerprint
      */
     #[Override]
@@ -286,7 +566,8 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         }
 
         return $this->plannedRounds !== null
-            && $state->getNextRoundNumber() > $this->plannedRounds;
+            && $state->getNextRoundNumber() > $this->plannedRounds
+            && $this->unresolvedEvents($state) === [];
     }
 
     /**

@@ -78,7 +78,7 @@ jobs:
           - shard: Swiss round search
             path: src/Scheduling/SwissRoundSearch.php,src/Scheduling/PerfectMatching.php
           - shard: elimination
-            path: src/Scheduling/DoubleEliminationEngine.php,src/Scheduling/SingleEliminationEngine.php,src/Scheduling/EliminationBracketSupport.php,src/Scheduling/EliminationOptions.php
+            path: src/Scheduling/DoubleEliminationEngine.php,src/Scheduling/SingleEliminationEngine.php,src/Scheduling/EliminationBracketSupport.php,src/Scheduling/EliminationOptions.php,src/Scheduling/BracketReading.php
           - shard: repack load planning
             path: src/Repack/Internal/LoadPlanner.php,src/Repack/Internal/LoadPlan.php,src/Repack/Internal/StepBudget.php,src/Repack/Internal/BudgetExhausted.php,src/Repack/Internal/CanonicalEncoding.php
           - shard: repack session packing

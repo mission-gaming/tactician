@@ -158,6 +158,7 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
         expect($internal)->toBe([
             'Diagnostics\SchedulingDiagnostics',
             'Scheduling\BacktrackingRoundRobinGenerator',
+            'Scheduling\BracketReading',
             'Scheduling\ConstraintPurity',
             'Scheduling\EliminationBracketSupport',
             'Scheduling\EventIndex',

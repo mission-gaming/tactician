@@ -117,8 +117,14 @@ describe('two results of one event', function (): void {
         $event = $pairing->getEvents()[0];
         $winner = $event->getParticipants()[0];
 
-        // The same request sent twice: the result is recorded, then added again
-        $state = $state->withRoundPlayed($pairing, [new Result($event, $winner)])
+        // The same request sent twice: the result is recorded, then added
+        // again. Every event of the round has a result, so the engine is not
+        // waiting for one and reads its table.
+        $state = $state
+            ->withRoundPlayed($pairing, array_map(
+                static fn(Event $played): Result => new Result($played, $played->getParticipants()[0]),
+                $pairing->getEvents()
+            ))
             ->withAdditionalResults([new Result($event, $winner)]);
         $restored = StageState::fromJson($state->toJson());
 

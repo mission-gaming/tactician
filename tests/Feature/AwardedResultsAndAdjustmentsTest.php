@@ -14,6 +14,7 @@ use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\RecordedRound;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
@@ -1004,9 +1005,12 @@ describe('an elimination bracket with awarded results and adjustments', function
     });
 
     // The adjustment below is recorded before round 3 is paired and is meant
-    // for it. It is refused all the same: it is also in the ranking round 2
-    // is replayed from, and round 2 was played.
-    it('refuses, and says why, a re-seeded state whose adjustment was recorded after the round it changes', function (): void {
+    // for it. Round 2 was played and is read as recorded, so the adjustment
+    // changes nothing about it, and the final is between the two who
+    // advanced from it. What the engine would pair as round 2 today does
+    // count the adjustment, which carries no round: that is the derivation
+    // shown beside the round, and the round is reported as manual for it.
+    it('reads a re-seeded state whose adjustment was recorded after a round it would have changed', function (): void {
         $entrants = awardsEntrants(8);
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
 
@@ -1015,18 +1019,69 @@ describe('an elimination bracket with awarded results and adjustments', function
             $pairing = $engine->pairNextRound($state);
             $state = $state->withRoundPlayed($pairing, array_map(awardsWonByTheBetterPlaced(...), $pairing->getEvents()));
         }
-        expect($engine->pairNextRound($state)->getRoundNumber())->toBe(3);
+        expect(awardsPairs($engine->pairNextRound($state)))->toBe([['e1', 'e2']]);
 
         // Round 2 was folded with e1 on top; the adjustment puts it last
         $late = $state->withAdjustment(new Adjustment('e1', -1.0));
 
-        try {
-            $engine->pairNextRound($late);
-            $this->fail('The state was read against a round that was never played.');
-        } catch (InvalidConfigurationException $exception) {
-            expect($exception->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
-                ->and($exception->getMessage())->toContain('The state carries adjustments');
+        $final = $engine->pairNextRound($late);
+        $rounds = $engine->getRecordedRounds($late);
+        $derivation = $rounds[1]->getDerivation();
+        assert($derivation !== null);
+
+        expect($final->getRoundNumber())->toBe(3)
+            ->and(awardsPairs($final))->toBe([['e1', 'e2']])
+            ->and($rounds[1]->getPairing())->toBe($late->getRoundsPlayed()[1])
+            ->and(awardsPairs($rounds[1]->getPairing()))->toBe([['e1', 'e4'], ['e2', 'e3']])
+            ->and(awardsPairs($derivation))->toBe([['e1', 'e2'], ['e3', 'e4']])
+            ->and($rounds[1]->isManual())->toBeTrue();
+    });
+
+    // Issue #154: adjustments recorded at any point of a re-seeded bracket,
+    // also after the rounds they would have changed and after the last.
+    it('reads a re-seeded bracket to its end with adjustments recorded at any point of it', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
+        $changed = 0;
+
+        for ($size = 4; $size <= 9; ++$size) {
+            foreach ([1, 2] as $seed) {
+                $rng = new Randomizer(new Mt19937($size * 10 + $seed));
+                $entrants = awardsEntrants($size);
+                $adjust = static fn(StageState $state): StageState => $state->withAdjustment(
+                    new Adjustment($entrants[$rng->getInt(0, $size - 1)]->getId(), $rng->getInt(-6, 6) / 2.0)
+                );
+
+                $state = StageState::start($entrants);
+                while (!$engine->isComplete($state)) {
+                    $pairing = $engine->pairNextRound($state);
+                    $state = $adjust($state->withRoundPlayed($pairing, array_map(awardsWonByTheBetterPlaced(...), $pairing->getEvents())));
+
+                    // Every round recorded so far is read as it was recorded
+                    $read = array_map(
+                        static fn(RecordedRound $round): RoundPairing => $round->getPairing(),
+                        $engine->getRecordedRounds($state)
+                    );
+                    expect($read)->toBe($state->getRoundsPlayed(), "{$size} entrants, seed {$seed}");
+                }
+                $state = $adjust($state);
+                $changed += count(array_filter(
+                    $engine->getRecordedRounds($state),
+                    static fn(RecordedRound $round): bool => $round->isManual()
+                ));
+
+                $outcome = $engine->getOutcome(StageState::fromJson($state->toJson()));
+                $final = $state->getLastRound()?->getEvents()[0];
+                assert($outcome instanceof StageOutcome && $final instanceof Event);
+
+                // The bracket ends with whoever won the final that was played
+                expect($outcome->getStandings()->getEntries()[0]->getParticipant()->getId())
+                    ->toBe(awardsWonByTheBetterPlaced($final)->getWinner()?->getId());
+            }
         }
+
+        // The adjustments did change what the engine would pair: these are
+        // the states an engine that paired every round again refused
+        expect($changed)->toBeGreaterThan(0);
     });
 
     it('reads a re-seeded bracket to its end when every adjustment was recorded before the second round is paired', function (): void {

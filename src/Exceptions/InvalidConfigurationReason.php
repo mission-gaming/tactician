@@ -154,8 +154,11 @@ enum InvalidConfigurationReason: string
     case PlannedRoundsPlayed = 'planned_rounds_played';
 
     /**
-     * The next round was asked for while some ties of the current round
-     * have no complete result.
+     * The next round was asked for while an event of a recorded round still
+     * awaits its result: some ties of a bracket's current round have no
+     * complete result, or a Swiss round has an event without one. The
+     * exception is an {@see UnresolvedRoundException}, which carries the
+     * events.
      */
     case RoundPartiallyResolved = 'round_partially_resolved';
 
@@ -218,6 +221,20 @@ enum InvalidConfigurationReason: string
      * number of the last round recorded.
      */
     case RoundOutOfSequence = 'round_out_of_sequence';
+
+    /**
+     * A history supplied to `StageState::fromHistory()` names a participant
+     * who is not one of its entrants: in an event, a bye, a result, a
+     * withdrawal or an adjustment.
+     */
+    case ParticipantNotAnEntrant = 'participant_not_an_entrant';
+
+    /**
+     * A round of a history supplied to `StageState::fromHistory()` holds
+     * one participant twice: in two events against different opponents, in
+     * an event and among the byes, or in an event listed twice.
+     */
+    case ParticipantTwiceInRound = 'participant_twice_in_round';
 
     /**
      * An event, or the event of a result, does not belong to the round it

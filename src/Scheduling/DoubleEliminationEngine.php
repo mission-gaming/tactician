@@ -8,14 +8,18 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
-use MissionGaming\Tactician\Exceptions\InvariantViolationException;
+use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\HistoryReadingEngine;
+use MissionGaming\Tactician\Stage\PairingReadiness;
+use MissionGaming\Tactician\Stage\RecordedRound;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use Override;
 
@@ -57,7 +61,7 @@ use Override;
  *
  * @experimental
  */
-final readonly class DoubleEliminationEngine implements StageEngineInterface, FingerprintedEngine
+final readonly class DoubleEliminationEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine
 {
     use EliminationBracketSupport;
 
@@ -135,11 +139,26 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     /**
      * Pair the next unresolved stage of the bracket.
      *
-     * The bracket is replayed from the state's participant list and its
-     * results on every call, so the same state gives the same pairing, and
-     * a state that has the stage's pairing recorded but none of its results
-     * gives that stage again. The call does not record anything: pass the
+     * The bracket is read from the state on every call, so the same state
+     * gives the same pairing: the stages that are recorded are read as
+     * recorded, and the next one is derived from them. A recorded stage
+     * that pairs its entrants otherwise than this engine would have is not
+     * refused where it is still a pairing of that stage (see
+     * getRecordedRounds()). The call does not record anything: pass the
      * pairing and its results to StageState::withRoundPlayed().
+     *
+     * A stage that is recorded and not finished is not paired again: the
+     * call is refused with the events that await a result, whether the
+     * stage has some of its results or none. Ask getReadiness() to learn
+     * the same without catching anything.
+     *
+     * An entrant who has withdrawn from the live bracket
+     * (StageState::withoutParticipant()) keeps its slot. A tie it is in
+     * and has no complete result for is not played: the other entrant
+     * advances and is listed among the byes of the stage, and the
+     * withdrawn entrant takes the loss, so it drops to the losers bracket
+     * from the winners bracket and gives the next tie away there. Nothing
+     * is drawn again.
      *
      * Round numbers are 1-based and count the stages that have an event to
      * play, in the order they are played; a stage in which every
@@ -151,43 +170,118 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * metadata. The byes are the participants who advance from the stage
      * without playing.
      *
-     * @throws InvalidConfigurationException When the state has fewer than 2 participants or is
+     * @throws UnresolvedRoundException When the last recorded stage has a tie without a complete
+     *                                  result (reason `RoundPartiallyResolved`; record the
+     *                                  missing results via StageState::withAdditionalResults())
+     * @throws InvalidConfigurationException When the state has fewer than 2 entrants or is
      *                                       stamped with another engine's fingerprint, a result
      *                                       has no round number, is not of a two-participant
-     *                                       event or is recorded twice, a stage is partially
-     *                                       resolved (record the missing results via
-     *                                       StageState::withAdditionalResults()), a completed tie
-     *                                       is level without a usable tie decision, or the
-     *                                       bracket is complete
+     *                                       event or is recorded twice, a completed tie
+     *                                       is level without a usable tie decision, a recorded
+     *                                       stage leaves another number of entrants in the
+     *                                       bracket than the stage has places for (reason
+     *                                       `RecordedRoundMismatch`), or the bracket is complete
      */
     #[Override]
     public function pairNextRound(StageState $state): RoundPairing
     {
-        $resolution = $this->resolveState($state);
+        $reading = $this->resolveState($state);
 
-        if ($resolution['pending'] === null) {
-            throw new InvalidConfigurationException(
-                'Bracket is complete; no further rounds exist',
-                [],
-                reason: InvalidConfigurationReason::BracketComplete
-            );
+        if ($reading->pending instanceof RoundPairing) {
+            return $reading->pending;
         }
 
-        return $resolution['pending'];
+        if ($reading->awaitingRound !== null) {
+            throw new UnresolvedRoundException($reading->awaitingRound, $reading->unresolved);
+        }
+
+        throw new InvalidConfigurationException(
+            'Bracket is complete; no further rounds exist',
+            [],
+            reason: InvalidConfigurationReason::BracketComplete
+        );
     }
 
     /**
      * Whether the title is decided: the grand final has a result and no
      * reset is due, or the reset has one. No reset is due when the winners
-     * champion won the grand final or grandFinalReset is off.
+     * champion won the grand final or grandFinalReset is off. A stage
+     * that has some of its results, or none, is a bracket that is not
+     * complete, and nothing is thrown for it.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed: every case
-     *                                       pairNextRound() names but the complete bracket
+     *                                       pairNextRound() names but the unfinished stage and
+     *                                       the complete bracket
      */
     #[Override]
     public function isComplete(StageState $state): bool
     {
-        return $this->resolveState($state)['pending'] === null;
+        return $this->resolveState($state)->isComplete();
+    }
+
+    /**
+     * Whether the next stage can be paired now and, when it cannot, the
+     * events that await a result (see HistoryReadingEngine).
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
+     */
+    #[Override]
+    public function getReadiness(StageState $state): PairingReadiness
+    {
+        $reading = $this->resolveState($state);
+
+        return match (true) {
+            $reading->pending instanceof RoundPairing => PairingReadiness::ready($reading->pending->getRoundNumber()),
+            $reading->awaitingRound !== null => PairingReadiness::awaitingResults($reading->awaitingRound, $reading->unresolved),
+            default => PairingReadiness::complete(),
+        };
+    }
+
+    /**
+     * Every recorded stage as this engine reads it (see RecordedRound), up
+     * to and including the one the bracket is waiting for.
+     *
+     * The derivation of a stage is the pairing this engine makes of it
+     * from the stages recorded before. A recorded stage that pairs other
+     * entrants is manual, and the stages after it are derived from it as
+     * recorded: each of its ties stands where the earlier of its two
+     * entrants stood. The later stages take their entrants by place
+     * (which dropper meets which survivor), so a recorded stage has to
+     * leave as many places as the stage has: one that leaves more or
+     * fewer entrants in the bracket is refused (`RecordedRoundMismatch`).
+     *
+     * @return list<RecordedRound>
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
+     */
+    #[Override]
+    public function getRecordedRounds(StageState $state): array
+    {
+        return $this->resolveState($state)->rounds;
+    }
+
+    /**
+     * The table of the bracket as recorded so far, in placement order.
+     *
+     * For a finished bracket it is the table of the outcome (see
+     * getOutcome()). Before that, the entrants who have not been
+     * eliminated share the first tier, and those who have follow by the
+     * stage that put them out, later first.
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
+     */
+    #[Override]
+    public function getStandings(StageState $state): Standings
+    {
+        $reading = $this->resolveState($state);
+
+        return $this->placementStandings(
+            $this->standingsCalculator,
+            $this->entrantsOf($state),
+            $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
+            $reading->placement,
+            $state->getAdjustments()
+        );
     }
 
     /**
@@ -215,19 +309,19 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
     {
-        $resolution = $this->resolveState($state);
-        if ($resolution['pending'] !== null) {
+        $reading = $this->resolveState($state);
+        if (!$reading->isComplete()) {
             return null;
         }
 
-        $entrants = $state->getAllSeenParticipants();
+        $entrants = $this->entrantsOf($state);
 
         return new StageOutcome(
             $this->placementStandings(
                 $this->standingsCalculator,
                 $entrants,
-                $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers']),
-                $resolution['placement'],
+                $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
+                $reading->placement,
                 $state->getAdjustments()
             ),
             $state->getResults(),
@@ -239,72 +333,71 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
-     * Walk the fixed stage sequence, advancing through fully resolved stages.
+     * Walk the fixed stage sequence, advancing through the stages that are
+     * finished: recorded with every tie settled, or with no tie to play.
      *
-     * @return array{pending: RoundPairing|null, levelAdvancers: array<string, Participant>, placement: array<int|string, int>}
-     *                                                                                                                         The placement is the tier of every
-     *                                                                                                                         entrant of a finished bracket, 0 for
-     *                                                                                                                         the one who advanced from the last tie
-     *
-     * @throws InvalidConfigurationException
+     * @throws InvalidConfigurationException When a tie is broken, a recorded stage does not fit
+     *                                       the stage it is read as, or the state is stamped
+     *                                       with another engine's fingerprint
      */
-    private function resolveState(StageState $state): array
+    private function resolveState(StageState $state): BracketReading
     {
         $state->requireEngineFingerprint($this->getFingerprint());
 
-        $participants = array_values($state->getParticipants());
-        $this->validateParticipants($participants);
+        $entrants = $state->getEntrants();
+        $this->validateParticipants($entrants);
 
-        $slots = $this->buildInitialSlots($participants);
+        $reading = $this->beginReading($state);
+        $slots = $this->buildInitialSlots($entrants);
         $winnersRounds = (int) log(count($slots), 2);
-        $resultIndex = $this->indexResults($state->getResults());
-        $roundNumber = 0;
-        $levelAdvancers = [];
 
         // Who went out, and after how many of the stages that put an
         // entrant out: a loss in the winners bracket only drops an entrant,
         // so those stages are not counted.
         $wentOutAt = [];
         $exits = 0;
-        $noteExits = static function (array $losers) use (&$wentOutAt, &$exits): void {
+        $noteExits = static function (array $out) use (&$wentOutAt, &$exits): void {
             ++$exits;
-            foreach ($losers as $loser) {
-                if ($loser instanceof Participant) {
-                    $wentOutAt[$loser->getId()] = $exits;
+            foreach ($out as $entrant) {
+                if ($entrant instanceof Participant) {
+                    $wentOutAt[$entrant->getId()] = $exits;
                 }
             }
         };
-        // Nothing reads the level advancers of a bracket that is not
-        // finished: they are for the table of the outcome.
-        $unfinished = static fn(RoundPairing $pending): array => [
-            'pending' => $pending,
-            'levelAdvancers' => [],
-            'placement' => [],
-        ];
+        // Of a bracket that is not finished, the entrants who are not out
+        // are level in the first tier, ahead of those who are.
+        $unfinished = static function () use ($reading, $entrants, &$wentOutAt, &$exits): BracketReading {
+            foreach ($entrants as $entrant) {
+                $reading->placement[$entrant->getId()] = 0;
+            }
+            foreach ($wentOutAt as $id => $exit) {
+                $reading->placement[$id] = $exits - $exit + 1;
+            }
+
+            return $reading;
+        };
 
         // Winners round 1
-        $stage = $this->resolveStage($slots, $this->winnersStageName(1, $winnersRounds), $roundNumber, $resultIndex, $levelAdvancers);
-        if ($stage['pending'] !== null) {
-            return $unfinished($stage['pending']);
+        $stage = $this->resolveStage($slots, $this->winnersStageName(1, $winnersRounds), $reading);
+        if ($stage['stopped']) {
+            return $unfinished();
         }
         $winnersSlots = $stage['winners'];
 
         if ($winnersRounds === 1) {
-            $losersChampion = $stage['losers'][0];
+            $losersChampion = $stage['losers'][0] ?? null;
         } else {
             // Losers round 1: winners-round-1 losers pair up
             $losersStructuralRound = 1;
             $stage = $this->resolveStage(
                 $stage['losers'],
                 $this->losersStageName($losersStructuralRound, $winnersRounds),
-                $roundNumber,
-                $resultIndex,
-                $levelAdvancers
+                $reading
             );
-            if ($stage['pending'] !== null) {
-                return $unfinished($stage['pending']);
+            if ($stage['stopped']) {
+                return $unfinished();
             }
-            $noteExits($stage['losers']);
+            $noteExits($stage['out']);
             $losersSurvivors = $stage['winners'];
             $losersChampion = null;
 
@@ -312,12 +405,10 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 $stage = $this->resolveStage(
                     $winnersSlots,
                     $this->winnersStageName($winnersRound, $winnersRounds),
-                    $roundNumber,
-                    $resultIndex,
-                    $levelAdvancers
+                    $reading
                 );
-                if ($stage['pending'] !== null) {
-                    return $unfinished($stage['pending']);
+                if ($stage['stopped']) {
+                    return $unfinished();
                 }
                 $winnersSlots = $stage['winners'];
                 $droppers = $stage['losers'];
@@ -337,14 +428,12 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 $stage = $this->resolveStage(
                     $majorSlots,
                     $this->losersStageName($losersStructuralRound, $winnersRounds),
-                    $roundNumber,
-                    $resultIndex,
-                    $levelAdvancers
+                    $reading
                 );
-                if ($stage['pending'] !== null) {
-                    return $unfinished($stage['pending']);
+                if ($stage['stopped']) {
+                    return $unfinished();
                 }
-                $noteExits($stage['losers']);
+                $noteExits($stage['out']);
 
                 if ($winnersRound < $winnersRounds) {
                     // Minor round: major winners pair up
@@ -352,60 +441,43 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                     $stage = $this->resolveStage(
                         $stage['winners'],
                         $this->losersStageName($losersStructuralRound, $winnersRounds),
-                        $roundNumber,
-                        $resultIndex,
-                        $levelAdvancers
+                        $reading
                     );
-                    if ($stage['pending'] !== null) {
-                        return $unfinished($stage['pending']);
+                    if ($stage['stopped']) {
+                        return $unfinished();
                     }
-                    $noteExits($stage['losers']);
+                    $noteExits($stage['out']);
                     $losersSurvivors = $stage['winners'];
                 } else {
-                    $losersChampion = $stage['winners'][0];
+                    $losersChampion = $stage['winners'][0] ?? null;
                 }
             }
         }
 
-        $winnersChampion = $winnersSlots[0];
-        if ($winnersChampion === null || $losersChampion === null) {
-            // Not reached: every pair of the first winners round holds a
-            // participant, so every later winners round is played in full
-            // and the winners final gives each bracket its champion
-            throw new InvariantViolationException('Bracket resolution lost track of a finalist');
-        }
+        // Each bracket gives a champion unless every entrant left in it has
+        // withdrawn; the grand final is then a stage with an empty slot,
+        // and the other champion advances from it without playing.
+        $winnersChampion = $winnersSlots[0] ?? null;
 
         // Grand final
-        $stage = $this->resolveStage(
-            [$winnersChampion, $losersChampion],
-            'grand final',
-            $roundNumber,
-            $resultIndex,
-            $levelAdvancers
-        );
-        if ($stage['pending'] !== null) {
-            return $unfinished($stage['pending']);
+        $stage = $this->resolveStage([$winnersChampion, $losersChampion], 'grand final', $reading);
+        if ($stage['stopped']) {
+            return $unfinished();
         }
-        $grandFinalWinner = $stage['winners'][0];
+        $grandFinalWinner = $stage['winners'][0] ?? null;
 
-        if ($grandFinalWinner === null) {
-            // Not reached: the grand final is a playable pair, and a stage
-            // is only resolved when every playable pair has an advancer
-            throw new InvariantViolationException('Grand final resolved without a winner');
-        }
-
-        if ($this->options->grandFinalReset && $grandFinalWinner->getId() !== $winnersChampion->getId()) {
+        if (
+            $this->options->grandFinalReset
+            && $grandFinalWinner instanceof Participant
+            && $winnersChampion instanceof Participant
+            && $losersChampion instanceof Participant
+            && $grandFinalWinner->getId() !== $winnersChampion->getId()
+        ) {
             // The losers champion won: both finalists now have one loss,
             // so a reset match decides the title.
-            $stage = $this->resolveStage(
-                [$winnersChampion, $losersChampion],
-                'grand final reset',
-                $roundNumber,
-                $resultIndex,
-                $levelAdvancers
-            );
-            if ($stage['pending'] !== null) {
-                return $unfinished($stage['pending']);
+            $stage = $this->resolveStage([$winnersChampion, $losersChampion], 'grand final reset', $reading);
+            if ($stage['stopped']) {
+                return $unfinished();
             }
         }
 
@@ -413,100 +485,122 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         // loser out and leaves the entrant who advanced from it first.
         // Everyone else is placed by the stage that put them out, the
         // latest first.
-        $noteExits($stage['losers']);
-        $placement = [];
+        $noteExits($stage['out']);
         foreach ($wentOutAt as $id => $exit) {
-            $placement[$id] = $exits - $exit + 1;
+            $reading->placement[$id] = $exits - $exit + 1;
         }
         foreach ($stage['winners'] as $titleHolder) {
             if ($titleHolder !== null) {
-                $placement[$titleHolder->getId()] = 0;
+                $reading->placement[$titleHolder->getId()] = 0;
             }
         }
 
-        return ['pending' => null, 'levelAdvancers' => $levelAdvancers, 'placement' => $placement];
+        return $reading;
     }
 
     /**
      * Resolve one stage of the bracket from its slots.
      *
-     * Stages with no playable match (bye propagation) auto-advance without
-     * consuming a round number.
+     * A stage that is recorded is read as recorded (see readRound()), and
+     * the walk stops at it while a tie of it awaits a result. A stage that
+     * is not recorded and has a tie to play is the stage to pair, and the
+     * walk stops there. A stage with no tie to play (bye propagation, or
+     * ties an entrant has withdrawn from) advances its entrants without
+     * consuming a round number, unless it is recorded: it was recorded
+     * when the entrants withdrew after it was paired.
      *
      * @param array<Participant|null> $slots
-     * @param array<string, \MissionGaming\Tactician\DTO\Result> $resultIndex
-     * @param array<string, Participant> $levelAdvancers Collects who advanced from each level
-     *                                                   single-leg event (see resultsForStandings())
-     * @return array{pending: RoundPairing|null, winners: array<Participant|null>, losers: array<Participant|null>}
+     * @return array{stopped: bool, winners: list<Participant|null>, losers: list<Participant|null>, out: list<Participant>}
+     *                                                                                                                         The winners and the losers are by place,
+     *                                                                                                                         one for each pair of slots; `out` lists
+     *                                                                                                                         everyone who did not advance
      *
-     * @throws InvalidConfigurationException When the stage is partially resolved or a tie is broken
+     * @throws InvalidConfigurationException When a tie is broken, or the recorded stage leaves
+     *                                       another number of entrants than the stage has places
      */
-    private function resolveStage(
-        array $slots,
-        string $stageName,
-        int &$roundNumber,
-        array $resultIndex,
-        array &$levelAdvancers
-    ): array {
+    private function resolveStage(array $slots, string $stageName, BracketReading $reading): array
+    {
+        $slots = array_values($slots);
         $pairs = array_chunk($slots, 2);
 
-        $playable = [];
+        $ties = [];
+        $toPlay = false;
         foreach ($pairs as $pair) {
-            if ($pair[0] !== null && ($pair[1] ?? null) !== null) {
-                $playable[] = $pair;
+            $first = $pair[0] ?? null;
+            $second = $pair[1] ?? null;
+            if ($first !== null && $second !== null) {
+                $ties[] = [$first, $second];
+                $toPlay = $toPlay || (!isset($reading->withdrawn[$first->getId()]) && !isset($reading->withdrawn[$second->getId()]));
             }
         }
 
-        if ($playable !== []) {
-            ++$roundNumber;
+        $recorded = $reading->recorded[$reading->number + 1] ?? null;
+        $claimed = $recorded instanceof RoundPairing && ($toPlay || $this->holdsOneOf($recorded, $ties));
+        $derivation = $this->buildStagePairing($reading->number + 1, $stageName, $pairs, $reading->withdrawn);
+        $stopped = ['stopped' => true, 'winners' => [], 'losers' => [], 'out' => []];
 
-            $resolved = 0;
-            foreach ($playable as $pair) {
-                if ($this->lookupAdvancer($resultIndex, $roundNumber, $pair[0], $pair[1], $this->options->legsPerTie) !== null) {
-                    ++$resolved;
-                }
-            }
+        if (!$claimed && $toPlay) {
+            $reading->pending = $derivation;
 
-            if ($resolved === 0) {
-                return [
-                    'pending' => $this->buildStagePairing($roundNumber, $stageName, $pairs),
-                    'winners' => [],
-                    'losers' => [],
-                ];
-            }
+            return $stopped;
+        }
 
-            if ($resolved < count($playable)) {
+        if ($claimed) {
+            ++$reading->number;
+        }
+        $read = $this->readRound(
+            $reading,
+            $slots,
+            $claimed ? $recorded : null,
+            $claimed ? $reading->number : $reading->number + 1,
+            $this->options->legsPerTie
+        );
+
+        if ($claimed && $recorded instanceof RoundPairing) {
+            if (count($read['units']) !== count($pairs)) {
                 throw new InvalidConfigurationException(
-                    "Stage '{$stageName}' (round {$roundNumber}) is partially resolved: {$resolved} of " . count($playable)
-                        . ' ties have complete results. Record the remaining results before pairing the next round.',
-                    ['round' => $roundNumber, 'stage' => $stageName, 'resolved' => $resolved, 'playable' => count($playable)],
-                    reason: InvalidConfigurationReason::RoundPartiallyResolved
+                    "The recorded round {$reading->number} does not fit the stage '{$stageName}': it leaves "
+                        . count($read['units']) . ' places in the bracket where the stage has ' . count($pairs)
+                        . '. A stage of a double elimination bracket may be paired otherwise than this engine pairs it,'
+                        . ' and has to pair every entrant of the stage that the engine pairs.',
+                    ['round' => $reading->number, 'stage' => $stageName, 'places' => count($pairs), 'recorded_places' => count($read['units'])],
+                    reason: InvalidConfigurationReason::RecordedRoundMismatch
                 );
+            }
+
+            $reading->rounds[] = new RecordedRound($recorded, $derivation, $read['manual'], $read['unresolved'], $read['uncontested']);
+
+            if ($read['unresolved'] !== []) {
+                $reading->awaitingRound = $reading->number;
+                $reading->unresolved = $read['unresolved'];
+
+                return $stopped;
             }
         }
 
         $winners = [];
         $losers = [];
-        foreach ($pairs as $pair) {
-            [$first, $second] = [$pair[0], $pair[1] ?? null];
-            if ($first !== null && $second !== null) {
-                $advancer = $this->lookupAdvancer($resultIndex, $roundNumber, $first, $second, $this->options->legsPerTie);
-                $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $roundNumber, $first, $second, $this->options->legsPerTie, $advancer);
-                $winners[] = $advancer;
-                $losers[] = $advancer?->getId() === $first->getId() ? $second : $first;
-            } else {
-                $winners[] = $first ?? $second;
-                $losers[] = null;
+        $out = [];
+        foreach ($read['units'] as $unit) {
+            $winners[] = $unit['winner'];
+            $losers[] = $unit['losers'][0] ?? null;
+            foreach ($unit['losers'] as $loser) {
+                $out[] = $loser;
             }
         }
 
-        return ['pending' => null, 'winners' => $winners, 'losers' => $losers];
+        return ['stopped' => false, 'winners' => $winners, 'losers' => $losers, 'out' => $out];
     }
 
     /**
+     * The pairing of a stage: an event for each tie to play, in bracket
+     * order, and among the byes everyone who advances without playing,
+     * the other entrant of a tie an entrant has withdrawn from included.
+     *
      * @param array<array<Participant|null>> $pairs
+     * @param array<int|string, true> $withdrawn The IDs of the entrants who have withdrawn
      */
-    private function buildStagePairing(int $roundNumber, string $stageName, array $pairs): RoundPairing
+    private function buildStagePairing(int $roundNumber, string $stageName, array $pairs, array $withdrawn): RoundPairing
     {
         $round = new Round($roundNumber, ['label' => $stageName]);
 
@@ -515,14 +609,20 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         foreach ($pairs as $pair) {
             [$first, $second] = [$pair[0] ?? null, $pair[1] ?? null];
             if ($first !== null && $second !== null) {
-                foreach ($this->buildTieEvents($first, $second, $round, $this->options->legsPerTie) as $event) {
-                    $events[] = $event;
+                $firstOut = isset($withdrawn[$first->getId()]);
+                $secondOut = isset($withdrawn[$second->getId()]);
+                if (!$firstOut && !$secondOut) {
+                    foreach ($this->buildTieEvents($first, $second, $round, $this->options->legsPerTie) as $event) {
+                        $events[] = $event;
+                    }
+                } elseif (!$firstOut || !$secondOut) {
+                    $byes[] = $firstOut ? $second : $first;
                 }
                 continue;
             }
 
             $advancer = $first ?? $second;
-            if ($advancer !== null) {
+            if ($advancer !== null && !isset($withdrawn[$advancer->getId()])) {
                 $byes[] = $advancer;
             }
         }

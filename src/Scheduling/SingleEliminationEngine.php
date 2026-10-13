@@ -8,15 +8,19 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
-use MissionGaming\Tactician\Stage\PairKey;
+use MissionGaming\Tactician\Stage\HistoryReadingEngine;
+use MissionGaming\Tactician\Stage\PairingReadiness;
+use MissionGaming\Tactician\Stage\RecordedRound;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use Override;
@@ -79,7 +83,7 @@ use Override;
  *
  * @experimental
  */
-final readonly class SingleEliminationEngine implements StageEngineInterface, FingerprintedEngine
+final readonly class SingleEliminationEngine implements StageEngineInterface, FingerprintedEngine, HistoryReadingEngine
 {
     use EliminationBracketSupport;
 
@@ -105,11 +109,12 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * it when not at the default: legsPerTie (default 1), reseedEachRound
      * (default false) and thirdPlace (default false), so a state stamped
      * by an engine without a third-place tie is refused by one with it,
-     * and the other way round. A state that carries no stamp is refused
-     * too once its last round is recorded, with the reason
-     * `RecordedRoundMismatch`: by an engine with the option when the
-     * round lacks the tie, and by one without it when the round holds an
-     * event marked as the tie. A re-seeded bracket is paired from
+     * and the other way round. A state that carries no stamp and has its
+     * last round recorded is told apart by the round: an engine without
+     * the option refuses it, with the reason `RecordedRoundMismatch`,
+     * when the round holds an event marked as the tie, and an engine with
+     * the option reads a last round that lacks the tie as a round paired
+     * by hand, in which places 3 and 4 are not decided. A re-seeded bracket is paired from
      * the table after every round, so there the rules of the standings
      * calculator are part of it as well, when they are not the default:
      * the ranking scale (the three values of a WinDrawLossRanking, default
@@ -164,11 +169,28 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     /**
      * Pair the next unresolved round of the bracket.
      *
-     * The bracket is replayed from the state's participant list and its
-     * results on every call, so the same state gives the same pairing, and
-     * a state that has the round's pairing recorded but none of its results
-     * gives that round again. The call does not record anything: pass the
-     * pairing and its results to StageState::withRoundPlayed().
+     * The bracket is read from the state on every call, so the same state
+     * gives the same pairing: the rounds that are recorded are read as
+     * recorded, and the next round is derived from them. Before the first
+     * round that is the fold of the entrant list; after it, the entrants
+     * who advanced from the recorded ties, in the order of the slots they
+     * stood in. A recorded round that pairs the entrants otherwise than
+     * this engine would have is not refused: the next round follows from
+     * what was played (see getRecordedRounds()). The call does not record
+     * anything: pass the pairing and its results to
+     * StageState::withRoundPlayed().
+     *
+     * A round that is recorded and not finished is not paired again: the
+     * call is refused with the events that await a result, whether the
+     * round has some of its results or none. Read the round from the
+     * state (StageState::getLastRound()), and ask getReadiness() to learn
+     * without catching anything whether the next one can be paired.
+     *
+     * An entrant who has withdrawn from the live bracket
+     * (StageState::withoutParticipant()) keeps its slot. A tie it is in
+     * and has no complete result for is not played: the other entrant of
+     * the tie advances and is listed among the byes of the round, and no
+     * event is paired for it. Nothing is drawn again.
      *
      * Round numbers are 1-based, and the round carries its label ('round
      * of 16', 'quarterfinal', 'semifinal', 'final'). The events are in
@@ -183,17 +205,17 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * BracketTie::METADATA_KEY in its metadata ('final' or 'third-place');
      * read it with BracketTie::of().
      *
-     * @throws InvalidConfigurationException When the state has fewer than 2 participants, or
+     * @throws UnresolvedRoundException When the last recorded round has a tie without a complete
+     *                                  result (reason `RoundPartiallyResolved`; record the
+     *                                  missing results via StageState::withAdditionalResults())
+     * @throws InvalidConfigurationException When the state has fewer than 2 entrants, or
      *                                       fewer than 3 with the third-place option
      *                                       (`TooFewParticipants`), or is
      *                                       stamped with another engine's fingerprint, a result
      *                                       has no round number, is not of a two-participant
-     *                                       event or is recorded twice, a round is partially
-     *                                       resolved (record the missing results via
-     *                                       StageState::withAdditionalResults()), a completed tie
+     *                                       event or is recorded twice, a completed tie
      *                                       is level without a usable tie decision, a recorded
-     *                                       round pairs other participants than the bracket has
-     *                                       in it, or holds a third-place tie where this engine
+     *                                       round holds a third-place tie where this engine
      *                                       plays none (reason `RecordedRoundMismatch`), a re-seeded
      *                                       bracket has a bye and a ranking strategy that is not
      *                                       a WinDrawLossRanking (`IncompatibleOptions`), or the
@@ -202,33 +224,111 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     #[Override]
     public function pairNextRound(StageState $state): RoundPairing
     {
-        $resolution = $this->resolveBracket($state);
+        $reading = $this->resolveBracket($state);
 
-        if ($resolution['pending'] === null) {
-            throw new InvalidConfigurationException(
-                'Bracket is complete; no further rounds exist',
-                [],
-                reason: InvalidConfigurationReason::BracketComplete
-            );
+        if ($reading->pending instanceof RoundPairing) {
+            return $reading->pending;
         }
 
-        return $resolution['pending'];
+        if ($reading->awaitingRound !== null) {
+            throw new UnresolvedRoundException($reading->awaitingRound, $reading->unresolved);
+        }
+
+        throw new InvalidConfigurationException(
+            'Bracket is complete; no further rounds exist',
+            [],
+            reason: InvalidConfigurationReason::BracketComplete
+        );
     }
 
     /**
      * Whether the final has been decided: every round of the bracket has a
-     * result for each of its ties. A bracket with a third-place tie is
-     * complete when that tie is decided as well; with one of the two ties
-     * of the last round decided and the other not, the state is refused as
-     * partially resolved, as it is in every round.
+     * result for each of its ties, or needs none because an entrant of the
+     * tie has withdrawn. A bracket with a third-place tie is complete when
+     * that tie is decided as well. A round that has some of its results,
+     * or none, is a bracket that is not complete, and nothing is thrown
+     * for it.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed: every case
-     *                                       pairNextRound() names but the complete bracket
+     *                                       pairNextRound() names but the unfinished round and
+     *                                       the complete bracket
      */
     #[Override]
     public function isComplete(StageState $state): bool
     {
-        return $this->resolveBracket($state)['pending'] === null;
+        return $this->resolveBracket($state)->isComplete();
+    }
+
+    /**
+     * Whether the next round can be paired now and, when it cannot, the
+     * events that await a result (see HistoryReadingEngine).
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
+     */
+    #[Override]
+    public function getReadiness(StageState $state): PairingReadiness
+    {
+        $reading = $this->resolveBracket($state);
+
+        return match (true) {
+            $reading->pending instanceof RoundPairing => PairingReadiness::ready($reading->pending->getRoundNumber()),
+            $reading->awaitingRound !== null => PairingReadiness::awaitingResults($reading->awaitingRound, $reading->unresolved),
+            default => PairingReadiness::complete(),
+        };
+    }
+
+    /**
+     * Every recorded round as this engine reads it (see RecordedRound), up
+     * to and including the round the bracket is waiting for.
+     *
+     * The derivation of a round is the round this engine pairs from the
+     * rounds recorded before it: the fold of the entrant list for the
+     * first, and for a later one the entrants who advanced, in the order
+     * of their slots or, in a re-seeded bracket, of the table of the
+     * earlier rounds. A recorded round that pairs other entrants is
+     * manual, and the rounds after it are derived from it as recorded. A
+     * round recorded after the bracket's last is read by nothing and is
+     * not listed.
+     *
+     * In a re-seeded bracket the derivation of a round already played
+     * counts every adjustment the state holds, also one recorded after
+     * the round was paired, because an adjustment carries no round. Such
+     * a round can therefore be reported as manual when it was not. It is
+     * read as recorded either way.
+     *
+     * @return list<RecordedRound>
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
+     */
+    #[Override]
+    public function getRecordedRounds(StageState $state): array
+    {
+        return $this->resolveBracket($state)->rounds;
+    }
+
+    /**
+     * The table of the bracket as recorded so far, in placement order.
+     *
+     * For a finished bracket it is the table of the outcome (see
+     * getOutcome()). Before that, the entrants still in the bracket share
+     * the first tier, and those who have gone out follow by the round
+     * they went out in, later first; inside a tier the records order
+     * them, and the entrant list where those are level.
+     *
+     * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
+     */
+    #[Override]
+    public function getStandings(StageState $state): Standings
+    {
+        $reading = $this->resolveBracket($state);
+
+        return $this->placementStandings(
+            $this->standingsCalculator,
+            $this->entrantsOf($state),
+            $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
+            $reading->placement,
+            $state->getAdjustments()
+        );
     }
 
     /**
@@ -269,19 +369,19 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
     {
-        $resolution = $this->resolveBracket($state);
-        if ($resolution['pending'] !== null) {
+        $reading = $this->resolveBracket($state);
+        if (!$reading->isComplete()) {
             return null;
         }
 
-        $entrants = $state->getAllSeenParticipants();
+        $entrants = $this->entrantsOf($state);
 
         return new StageOutcome(
             $this->placementStandings(
                 $this->standingsCalculator,
                 $entrants,
-                $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers']),
-                $resolution['placement'],
+                $this->resultsForStandings($state->getResults(), $reading->levelAdvancers),
+                $reading->placement,
                 $state->getAdjustments()
             ),
             $state->getResults(),
@@ -293,120 +393,129 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
-     * Replay the bracket from the entry fold through the recorded results.
+     * Read the bracket from the entry fold through the recorded rounds.
      *
-     * @return array{pending: RoundPairing|null, levelAdvancers: array<string, Participant>, placement: array<int|string, int>}
-     *                                                                                                                         The placement is the tier of every
-     *                                                                                                                         entrant of a finished bracket, 0 for
-     *                                                                                                                         the one who advanced from the final
+     * The slots of the first round are the fold of the entrant list. Each
+     * round is then read as recorded (see readRound()), and the entrants
+     * who advance from it are the slots of the next. The walk stops at the
+     * first round that is not recorded and has a tie to play, which is the
+     * round to pair, or at a recorded round that awaits results.
      *
-     * @throws InvalidConfigurationException When a round is partially resolved, a tie is broken, a
-     *                                       recorded round is not the round the bracket has there
-     *                                       or holds a third-place tie this engine does not play,
-     *                                       a bye cannot be credited, or the state is stamped with
+     * A round in which no tie is to be played, because an entrant of each
+     * has withdrawn, takes no round number unless it is recorded: it was
+     * recorded when the entrants withdrew after it was paired. Whether a
+     * recorded round is that round is told by its ties: it is when the
+     * bracket has a tie to play in the round, or when the recorded round
+     * holds one of the ties the bracket has there.
+     *
+     * @throws InvalidConfigurationException When a tie is broken, a recorded round holds a
+     *                                       third-place tie this engine does not play, a bye
+     *                                       cannot be credited, or the state is stamped with
      *                                       another engine's fingerprint
      */
-    private function resolveBracket(StageState $state): array
+    private function resolveBracket(StageState $state): BracketReading
     {
         $state->requireEngineFingerprint($this->getFingerprint());
 
-        $participants = array_values($state->getParticipants());
-        $this->validateParticipants($participants);
-        $this->requireByesToBeCreditable(count($participants));
-        $this->requireAThirdPlaceToDecide(count($participants));
+        $entrants = $state->getEntrants();
+        $this->validateParticipants($entrants);
+        $this->requireByesToBeCreditable(count($entrants));
+        $this->requireAThirdPlaceToDecide(count($entrants));
         $this->requireNoThirdPlaceTieRecorded($state);
 
-        $resultIndex = $this->indexResults($state->getResults());
-        $totalRounds = (int) log($this->bracketSize(count($participants)), 2);
+        $reading = $this->beginReading($state);
+        $legsPerTie = $this->options->legsPerTie;
 
-        $slots = $this->buildInitialSlots($participants);
-        $levelAdvancers = [];
+        $slots = array_values($this->buildInitialSlots($entrants));
+        $structural = 0;
         $byes = [];
         $wentOutIn = [];
         $wentOutInPreviousRound = [];
-        $thirdPlaceTie = null;
         $thirdPlaceAdvancer = null;
 
-        for ($round = 1; $round <= $totalRounds; ++$round) {
+        while (count($slots) > 1) {
+            ++$structural;
+
             // Re-seeded path: after the entry round, survivors are
             // re-ranked by standings and re-folded each round. Only
             // results from earlier rounds may inform the ranking - the
-            // replay must reproduce the same pairing before and after the
-            // round's own results are recorded.
-            if ($this->options->reseedEachRound && $round > 1) {
+            // round is derived the same before and after its own results
+            // are recorded.
+            if ($this->options->reseedEachRound && $structural > 1) {
                 $survivors = array_values(array_filter($slots, fn(?Participant $slot) => $slot !== null));
-                $slots = $this->buildInitialSlots($this->rankByStandings($survivors, $state, $round, $levelAdvancers, $byes));
+                $slots = array_values($this->buildInitialSlots(
+                    $this->rankByStandings($survivors, $state, $reading->number + 1, $reading->levelAdvancers, $byes)
+                ));
             }
 
             $pairs = array_chunk($slots, 2);
-            $playable = [];
-            $resolved = 0;
-
-            foreach ($pairs as $pair) {
-                if ($pair[0] !== null && ($pair[1] ?? null) !== null) {
-                    $playable[] = $pair;
-                    if ($this->lookupAdvancer($resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie) !== null) {
-                        ++$resolved;
-                    }
-                }
-            }
 
             // The third-place tie is a tie of the last round like the
-            // final: the round is paired with both, is partially resolved
-            // with one of them decided, and is complete with both.
-            if ($round === $totalRounds) {
-                $thirdPlaceTie = $this->thirdPlaceTie($wentOutInPreviousRound, $state, $round, $levelAdvancers, $byes);
-            }
-            if ($thirdPlaceTie !== null) {
-                $playable[] = $thirdPlaceTie;
-                $thirdPlaceAdvancer = $this->lookupAdvancer($resultIndex, $round, $thirdPlaceTie[0], $thirdPlaceTie[1], $this->options->legsPerTie);
-                $resolved += $thirdPlaceAdvancer instanceof Participant ? 1 : 0;
-            }
+            // final: the round is paired with both, awaits results with
+            // one of them decided, and is complete with both.
+            $thirdPlaceTie = count($slots) === 2
+                ? $this->thirdPlaceTie($wentOutInPreviousRound, $state, $reading->number + 1, $reading->levelAdvancers, $byes)
+                : null;
 
-            $this->requireRecordedRoundToMatch($state, $round, $playable);
-
-            if ($resolved < count($playable)) {
-                if ($resolved > 0) {
-                    throw new InvalidConfigurationException(
-                        "Round {$round} is partially resolved: {$resolved} of " . count($playable)
-                            . ' ties have complete results. Record the remaining results before pairing the next round.',
-                        ['round' => $round, 'resolved' => $resolved, 'playable' => count($playable)],
-                        reason: InvalidConfigurationReason::RoundPartiallyResolved
-                    );
-                }
-
-                return [
-                    'pending' => $this->buildRoundPairing($round, $totalRounds, $pairs, $thirdPlaceTie),
-                    'levelAdvancers' => $levelAdvancers,
-                    'placement' => [],
-                ];
-            }
-
-            $nextSlots = [];
-            $wentOutInPreviousRound = [];
+            $ties = $thirdPlaceTie === null ? [] : [$thirdPlaceTie];
             foreach ($pairs as $pair) {
-                [$first, $second] = [$pair[0], $pair[1] ?? null];
+                $first = $pair[0] ?? null;
+                $second = $pair[1] ?? null;
                 if ($first !== null && $second !== null) {
-                    $advancer = $this->lookupAdvancer($resultIndex, $round, $first, $second, $this->options->legsPerTie);
-                    $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $round, $first, $second, $this->options->legsPerTie, $advancer);
-                    $nextSlots[] = $advancer;
-                    $wentOut = $advancer?->getId() === $first->getId() ? $second : $first;
-                    $wentOutIn[$wentOut->getId()] = $round;
-                    $wentOutInPreviousRound[] = $wentOut;
-                } else {
-                    $sitsOut = $first ?? $second;
-                    $nextSlots[] = $sitsOut;
-                    if ($sitsOut !== null) {
-                        $byes[$sitsOut->getId()] = ($byes[$sitsOut->getId()] ?? 0) + 1;
-                    }
+                    $ties[] = [$first, $second];
                 }
             }
-
-            if ($thirdPlaceTie !== null) {
-                $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $round, $thirdPlaceTie[0], $thirdPlaceTie[1], $this->options->legsPerTie, $thirdPlaceAdvancer);
+            $toPlay = false;
+            foreach ($ties as [$first, $second]) {
+                $toPlay = $toPlay || (!isset($reading->withdrawn[$first->getId()]) && !isset($reading->withdrawn[$second->getId()]));
             }
 
-            $slots = $nextSlots;
+            $recorded = $reading->recorded[$reading->number + 1] ?? null;
+            $claimed = $recorded instanceof RoundPairing && ($toPlay || $this->holdsOneOf($recorded, $ties));
+            $derivation = $this->buildRoundPairing($reading->number + 1, count($slots), $pairs, $thirdPlaceTie, $reading->withdrawn);
+
+            if (!$claimed && $toPlay) {
+                $reading->pending = $derivation;
+                break;
+            }
+
+            if ($claimed) {
+                ++$reading->number;
+            }
+            $read = $this->readRound(
+                $reading,
+                $slots,
+                $claimed ? $recorded : null,
+                $claimed ? $reading->number : $reading->number + 1,
+                $legsPerTie,
+                $thirdPlaceTie
+            );
+
+            if ($claimed && $recorded instanceof RoundPairing) {
+                $reading->rounds[] = new RecordedRound($recorded, $derivation, $read['manual'], $read['unresolved'], $read['uncontested']);
+            }
+
+            $wentOutInPreviousRound = [];
+            foreach ($read['units'] as $unit) {
+                foreach ($unit['losers'] as $wentOut) {
+                    $wentOutIn[$wentOut->getId()] = $structural;
+                    $wentOutInPreviousRound[] = $wentOut;
+                }
+            }
+            foreach ($read['unplayed'] as $advanced) {
+                $byes[$advanced->getId()] = ($byes[$advanced->getId()] ?? 0) + 1;
+            }
+            if ($read['extra'] !== null) {
+                $thirdPlaceAdvancer = $read['extra']['winner'];
+            }
+
+            if ($read['unresolved'] !== []) {
+                $reading->awaitingRound = $reading->number;
+                $reading->unresolved = $read['unresolved'];
+                break;
+            }
+
+            $slots = array_map(static fn(array $unit): ?Participant => $unit['winner'], $read['units']);
         }
 
         // The entrant who advanced from the final is in the first tier,
@@ -414,21 +523,36 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         // the final's is the second, the semifinals' the third. A
         // third-place tie splits the tier of the semifinals in two, its
         // winner above the other, and every earlier round is a tier lower.
-        $placement = [];
-        foreach ($wentOutIn as $id => $round) {
-            $tier = $totalRounds - $round + 1;
-            if ($thirdPlaceAdvancer instanceof Participant && $round < $totalRounds) {
-                $tier += $round < $totalRounds - 1 || (string) $id !== $thirdPlaceAdvancer->getId() ? 1 : 0;
-            }
-            $placement[$id] = $tier;
-        }
+        // In a bracket that is not finished, everyone still in it is level
+        // in the first tier.
+        $complete = $reading->isComplete();
         foreach ($slots as $slot) {
             if ($slot !== null) {
-                $placement[$slot->getId()] = 0;
+                $reading->placement[$slot->getId()] = 0;
+            }
+        }
+        foreach ($wentOutIn as $id => $round) {
+            if (!$complete && isset($reading->placement[$id]) && $round < $structural) {
+                // Back in the bracket: a later recorded round names an
+                // entrant who had gone out
+                continue;
+            }
+
+            $tier = $structural - $round + 1;
+            if ($complete && $thirdPlaceAdvancer instanceof Participant && $round < $structural) {
+                $tier += $round < $structural - 1 || (string) $id !== $thirdPlaceAdvancer->getId() ? 1 : 0;
+            }
+            $reading->placement[$id] = $tier;
+        }
+        if ($complete) {
+            foreach ($slots as $slot) {
+                if ($slot !== null) {
+                    $reading->placement[$slot->getId()] = 0;
+                }
             }
         }
 
-        return ['pending' => null, 'levelAdvancers' => $levelAdvancers, 'placement' => $placement];
+        return $reading;
     }
 
     /**
@@ -578,67 +702,14 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     }
 
     /**
-     * Refuse a state whose recorded round is not the round the bracket has
-     * at that number: the recorded results would be read against ties that
-     * were never played. A state is in that condition when its rounds were
-     * paired under other rules than this engine's (another option, or the
-     * re-seeding order of an earlier release) or when its participant list
-     * changed after a round was recorded. An adjustment recorded after the
-     * second round of a re-seeded bracket was paired can do it too, by
-     * changing the ranking a round already played is folded from (see
-     * rankByStandings()).
+     * The round the bracket has for a set of slots: the ties of the
+     * bracket in bracket order, then the third-place tie where the round
+     * has one.
      *
-     * @param list<array<Participant|null>> $playable The ties the bracket has in the round
-     *
-     * @throws InvalidConfigurationException When the recorded round pairs other participants
-     */
-    private function requireRecordedRoundToMatch(StageState $state, int $round, array $playable): void
-    {
-        $expected = [];
-        foreach ($playable as $pair) {
-            if ($pair[0] !== null && ($pair[1] ?? null) !== null) {
-                $expected[PairKey::of($pair[0]->getId(), $pair[1]->getId())] = true;
-            }
-        }
-
-        foreach ($state->getRoundsPlayed() as $recorded) {
-            if ($recorded->getRoundNumber() !== $round) {
-                continue;
-            }
-
-            $recordedPairs = [];
-            foreach ($recorded->getEvents() as $event) {
-                $recordedPairs[PairKey::of(...array_map(
-                    static fn(Participant $participant): string => $participant->getId(),
-                    array_values($event->getParticipants())
-                ))] = true;
-            }
-
-            // A recorded round may hold more than the bracket's ties (an
-            // event the application added is read by nothing); it may not
-            // lack one of them.
-            if (array_diff_key($expected, $recordedPairs) !== []) {
-                throw new InvalidConfigurationException(
-                    "The recorded round {$round} is not the round {$round} this bracket has: it pairs other participants."
-                        . ' The state was paired under other rules than this engine applies (other options, or the'
-                        . ' re-seeding order of an earlier release), or its participant list changed after the round'
-                        . ' was recorded. Rebuild the state from the rounds that stand.'
-                        . ($this->options->reseedEachRound && $state->getAdjustments() !== []
-                            ? ' The state carries adjustments, and a re-seeded bracket ranks the survivors of every round'
-                                . ' with every adjustment recorded: one recorded after the second round was paired can change'
-                                . ' a round already played. Keep such an adjustment out of the state and apply it to the table'
-                                . ' of the outcome with StandingsCalculator::withAdjustments().'
-                            : ''),
-                    ['round' => $round, 'recorded' => array_keys($recordedPairs), 'expected' => array_keys($expected)],
-                    reason: InvalidConfigurationReason::RecordedRoundMismatch
-                );
-            }
-        }
-    }
-
-    /**
-     * The events of a round: the ties of the bracket in bracket order,
-     * then the third-place tie where the round has one.
+     * A tie an entrant has withdrawn from is not played: the round holds
+     * no event for it, and the other entrant is listed among the byes
+     * with those who stand alone in a pair of slots. Nobody is listed for
+     * a tie both entrants have withdrawn from.
      *
      * With the third-place option, every event of the last round says
      * which tie it belongs to (see BracketTie), also in a field of 3,
@@ -647,35 +718,51 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *
      * @param array<array<Participant|null>> $pairs
      * @param array{Participant, Participant}|null $thirdPlaceTie
+     * @param array<int|string, true> $withdrawn The IDs of the entrants who have withdrawn
      */
-    private function buildRoundPairing(int $roundNumber, int $totalRounds, array $pairs, ?array $thirdPlaceTie): RoundPairing
-    {
-        $label = $this->roundLabel($roundNumber, $totalRounds);
+    private function buildRoundPairing(
+        int $roundNumber,
+        int $slotCount,
+        array $pairs,
+        ?array $thirdPlaceTie,
+        array $withdrawn
+    ): RoundPairing {
+        $label = $this->roundLabel($slotCount);
         $round = new Round($roundNumber, ['label' => $label]);
-        $marked = $this->options->thirdPlace && $roundNumber === $totalRounds;
+        $marked = $this->options->thirdPlace && $slotCount === 2;
 
         $events = [];
         $byes = [];
         foreach ($pairs as $pair) {
-            [$first, $second] = [$pair[0], $pair[1] ?? null];
+            [$first, $second] = [$pair[0] ?? null, $pair[1] ?? null];
             if ($first !== null && $second !== null) {
-                $events = [...$events, ...$this->buildTieEvents(
-                    $first,
-                    $second,
-                    $round,
-                    $this->options->legsPerTie,
-                    $marked ? [BracketTie::METADATA_KEY => BracketTie::Final->value] : []
-                )];
+                $firstOut = isset($withdrawn[$first->getId()]);
+                $secondOut = isset($withdrawn[$second->getId()]);
+                if (!$firstOut && !$secondOut) {
+                    $events = [...$events, ...$this->buildTieEvents(
+                        $first,
+                        $second,
+                        $round,
+                        $this->options->legsPerTie,
+                        $marked ? [BracketTie::METADATA_KEY => BracketTie::Final->value] : []
+                    )];
+                } elseif (!$firstOut || !$secondOut) {
+                    $byes[] = $firstOut ? $second : $first;
+                }
                 continue;
             }
 
             $advancer = $first ?? $second;
-            if ($advancer !== null) {
+            if ($advancer !== null && !isset($withdrawn[$advancer->getId()])) {
                 $byes[] = $advancer;
             }
         }
 
-        if ($thirdPlaceTie !== null) {
+        if (
+            $thirdPlaceTie !== null
+            && !isset($withdrawn[$thirdPlaceTie[0]->getId()])
+            && !isset($withdrawn[$thirdPlaceTie[1]->getId()])
+        ) {
             $events = [...$events, ...$this->buildTieEvents(
                 $thirdPlaceTie[0],
                 $thirdPlaceTie[1],
@@ -704,20 +791,15 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *
      * Every adjustment recorded on the state is in the ranking, whenever
      * it was recorded: an adjustment belongs to no round, so there is no
-     * "earlier" to hold it to. That is where this ranking falls short of
-     * the rule it follows for results (rank from what was known when the
-     * round was paired, ADR 0001). The first round is folded from the
-     * list and ranks nobody, so an adjustment recorded before the second
-     * round is paired is in every ranking there will be, and is safe. One
-     * recorded later is in the ranking of every round already paired as
-     * well: where it changes the order of the survivors of such a round,
-     * the round is replayed with other ties than were played, and the
-     * engine refuses the state because the recorded round is no longer
-     * the round it has (`RecordedRoundMismatch`). That holds for an
-     * adjustment meant for the next round too. In a re-seeded bracket,
-     * record adjustments before the second round is paired; keep a later
-     * one out of the state and apply it to the table of the outcome
-     * (StandingsCalculator::withAdjustments()).
+     * "earlier" to hold it to. The round that is paired next is ranked
+     * with every adjustment made so far, which is what was known when it
+     * is paired (ADR 0001). A round that is already recorded is not
+     * ranked again to be read: it is read as recorded, so an adjustment
+     * made after it was paired changes none of its ties and none of the
+     * rounds derived from them. It does change what the engine would pair
+     * in that round's place today, which is only what
+     * RecordedRound::getDerivation() shows: such a round can be reported
+     * as manual when it was not.
      *
      * @param array<Participant> $survivors
      * @param array<string, Participant> $levelAdvancers
@@ -739,7 +821,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             fn($result) => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $beforeRound
         ));
 
-        $entrants = $state->getAllSeenParticipants();
+        $entrants = $this->entrantsOf($state);
         $standings = $this->standingsCalculator
             ->withAdjustments(
                 $this->standingsCalculator->withByesCredited(
@@ -766,13 +848,21 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         return $ranked;
     }
 
-    private function roundLabel(int $roundNumber, int $totalRounds): string
+    /**
+     * The label of a round by the number of slots it is entered with: the
+     * final has two, the semifinals four. A round entered with a number
+     * that is no power of two, which only a recorded round that pairs the
+     * bracket otherwise leaves behind, is labelled as the next power up.
+     */
+    private function roundLabel(int $slotCount): string
     {
-        return match ($totalRounds - $roundNumber) {
-            0 => 'final',
-            1 => 'semifinal',
-            2 => 'quarterfinal',
-            default => 'round of ' . 2 ** ($totalRounds - $roundNumber + 1),
+        $size = $this->bracketSize($slotCount);
+
+        return match ($size) {
+            2 => 'final',
+            4 => 'semifinal',
+            8 => 'quarterfinal',
+            default => 'round of ' . $size,
         };
     }
 }

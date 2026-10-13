@@ -11,9 +11,13 @@ use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\BracketFold;
+use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\PairKey;
+use MissionGaming\Tactician\Stage\RoundPairing;
+use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Standings\Adjustment;
+use MissionGaming\Tactician\Standings\EntryOrder;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
@@ -285,6 +289,377 @@ trait EliminationBracketSupport
             array_map(static fn(array $row): StandingEntry => $row[2], $rows),
             array_map(static fn(array $row): int => $row[0], $rows)
         );
+    }
+
+    /**
+     * A new walk through the bracket of a state: its recorded rounds by
+     * number, its results by leg, and the entrants who have withdrawn.
+     *
+     * @throws InvalidConfigurationException When a result cannot be indexed (see indexResults())
+     */
+    private function beginReading(StageState $state): BracketReading
+    {
+        $recorded = [];
+        $lastNamedIn = [];
+        foreach ($state->getRoundsPlayed() as $pairing) {
+            $number = $pairing->getRoundNumber();
+            $recorded[$number] = $pairing;
+
+            foreach ($pairing->getEvents() as $event) {
+                foreach ($event->getParticipants() as $participant) {
+                    $lastNamedIn[$participant->getId()] = max($lastNamedIn[$participant->getId()] ?? 0, $number);
+                }
+            }
+            foreach ($pairing->getByes() as $bye) {
+                $lastNamedIn[$bye->getId()] = max($lastNamedIn[$bye->getId()] ?? 0, $number);
+            }
+        }
+
+        $withdrawn = [];
+        foreach ($state->getWithdrawnEntrants() as $entrant) {
+            $withdrawn[$entrant->getId()] = true;
+        }
+
+        return new BracketReading($recorded, $this->indexResults($state->getResults()), $withdrawn, $lastNamedIn);
+    }
+
+    /**
+     * The entrant list a bracket's tables are ordered by where records are
+     * level: the entrant list of the state, in which an entrant who has
+     * withdrawn from the live bracket keeps its place, then every other
+     * participant the state has seen, in the order of their IDs (the
+     * total order the standings calculator falls back on), so that the
+     * list is the same whatever order the recorded events are in.
+     *
+     * @return list<Participant>
+     */
+    private function entrantsOf(StageState $state): array
+    {
+        $entrants = $state->getEntrants();
+        $listed = [];
+        foreach ($entrants as $entrant) {
+            $listed[$entrant->getId()] = true;
+        }
+
+        $others = array_values(array_filter(
+            $state->getAllSeenParticipants(),
+            static fn(Participant $participant): bool => !isset($listed[$participant->getId()])
+        ));
+        usort(
+            $others,
+            static fn(Participant $first, Participant $second): int => EntryOrder::compareIds($first->getId(), $second->getId())
+        );
+
+        return [...$entrants, ...$others];
+    }
+
+    /**
+     * The ties a recorded round holds: its two-participant events, put
+     * together by the two they are between, in the order the round first
+     * names each. An event of any other size is no tie of a bracket and is
+     * read by nothing.
+     *
+     * @return array<string, array{participants: array{Participant, Participant}, events: list<Event>, thirdPlace: bool}>
+     */
+    private function recordedTies(?RoundPairing $recorded): array
+    {
+        $ties = [];
+        foreach ($recorded?->getEvents() ?? [] as $event) {
+            $participants = array_values($event->getParticipants());
+            if (count($participants) !== 2) {
+                continue;
+            }
+
+            $key = 'tie ' . PairKey::of($participants[0]->getId(), $participants[1]->getId());
+            $ties[$key] ??= ['participants' => [$participants[0], $participants[1]], 'events' => [], 'thirdPlace' => false];
+            $ties[$key]['events'][] = $event;
+            $ties[$key]['thirdPlace'] = $ties[$key]['thirdPlace'] || BracketTie::of($event) === BracketTie::ThirdPlace;
+        }
+
+        return $ties;
+    }
+
+    /**
+     * Whether a recorded round holds one of the given ties.
+     *
+     * @param list<array{Participant, Participant}> $ties
+     */
+    private function holdsOneOf(RoundPairing $recorded, array $ties): bool
+    {
+        $held = $this->recordedTies($recorded);
+        foreach ($ties as [$first, $second]) {
+            if (isset($held['tie ' . PairKey::of($first->getId(), $second->getId())])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Settle one tie from what is recorded: who goes on from it, who goes
+     * out, and whether it is still open.
+     *
+     * The results decide where they are complete. Where they are not, a
+     * tie an entrant has withdrawn from is uncontested: the other entrant
+     * goes on without it being played. A tie that neither decides is open.
+     *
+     * Where both have withdrawn, one of them may have gone on before it
+     * left: the state does not say when an entrant withdrew, and the
+     * recorded rounds do. The one that a later recorded round names went
+     * on from the tie; where a later round names neither, or both, nobody
+     * did.
+     *
+     * @param array<string, Participant> $levelAdvancers
+     * @return array{winner: Participant|null, losers: list<Participant>, open: bool, uncontested: bool}
+     *
+     * @throws InvalidConfigurationException When a completed tie is level without a usable tie decision
+     */
+    private function settleTie(
+        BracketReading $reading,
+        int $round,
+        Participant $first,
+        Participant $second,
+        int $legsPerTie,
+        array &$levelAdvancers
+    ): array {
+        $advancer = $this->lookupAdvancer($reading->resultIndex, $round, $first, $second, $legsPerTie);
+        if ($advancer instanceof Participant) {
+            $this->noteLevelAdvancer($levelAdvancers, $reading->resultIndex, $round, $first, $second, $legsPerTie, $advancer);
+
+            return [
+                'winner' => $advancer,
+                'losers' => [$advancer->getId() === $first->getId() ? $second : $first],
+                'open' => false,
+                'uncontested' => false,
+            ];
+        }
+
+        $firstOut = isset($reading->withdrawn[$first->getId()]);
+        $secondOut = isset($reading->withdrawn[$second->getId()]);
+        if (!$firstOut && !$secondOut) {
+            return ['winner' => null, 'losers' => [], 'open' => true, 'uncontested' => false];
+        }
+
+        if ($firstOut && $secondOut) {
+            $firstWentOn = ($reading->lastNamedIn[$first->getId()] ?? 0) > $reading->number;
+            $secondWentOn = ($reading->lastNamedIn[$second->getId()] ?? 0) > $reading->number;
+            if ($firstWentOn === $secondWentOn) {
+                return ['winner' => null, 'losers' => [$first, $second], 'open' => false, 'uncontested' => true];
+            }
+
+            $firstOut = !$firstWentOn;
+        }
+
+        return [
+            'winner' => $firstOut ? $second : $first,
+            'losers' => [$firstOut ? $first : $second],
+            'open' => false,
+            'uncontested' => true,
+        ];
+    }
+
+    /**
+     * Read one round of a bracket: the recorded round where there is one,
+     * and what follows from the slots alone where there is none.
+     *
+     * A recorded round is the round that was played, whatever the slots
+     * would have paired. Each of its ties is settled from its results, and
+     * the entrants of the round go on in units, one for each tie and one
+     * for each entrant that stood in the slots and is in none of the
+     * round's ties. The units are in the order of the slots: a tie stands
+     * where the earlier of its two entrants stood. So a round that pairs
+     * the slots as the bracket does gives the units the bracket has, and a
+     * round that pairs them otherwise gives the next round from what was
+     * played. A pair of slots the round has no tie for is settled without
+     * one where an entrant of it has withdrawn; an entrant who stands
+     * alone goes on, withdrawn or not.
+     *
+     * @param list<Participant|null> $slots The slots the round is entered with, in bracket order
+     * @param RoundPairing|null $recorded The recorded round, or null where the round is not recorded
+     * @param int $round The number the round's results carry
+     * @param array{Participant, Participant}|null $extraTie A tie of the round that stands in no slot
+     *                                                       (the third-place tie)
+     * @return array{manual: bool, units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null, unplayed: list<Participant>, unresolved: list<Event>, uncontested: list<Event>}
+     *                                                                                                                                                                                                                                                                              `unplayed` lists who went on without a tie being played
+     *
+     * @throws InvalidConfigurationException When a completed tie is level without a usable tie decision
+     */
+    private function readRound(
+        BracketReading $reading,
+        array $slots,
+        ?RoundPairing $recorded,
+        int $round,
+        int $legsPerTie,
+        ?array $extraTie = null
+    ): array {
+        $position = [];
+        foreach ($slots as $index => $occupant) {
+            if ($occupant instanceof Participant) {
+                $position[$occupant->getId()] = $index;
+            }
+        }
+
+        $pairs = array_chunk($slots, 2);
+        $derived = [];
+        foreach ($pairs as $pair) {
+            $first = $pair[0] ?? null;
+            $second = $pair[1] ?? null;
+            if ($first instanceof Participant && $second instanceof Participant) {
+                $derived['tie ' . PairKey::of($first->getId(), $second->getId())] = [$first, $second];
+            }
+        }
+        $extraKey = $extraTie === null ? null : 'tie ' . PairKey::of($extraTie[0]->getId(), $extraTie[1]->getId());
+        if ($extraTie !== null) {
+            $derived[(string) $extraKey] = $extraTie;
+        }
+
+        $ties = $this->recordedTies($recorded);
+        $rows = [];
+        $extra = null;
+        $inTie = [];
+        $unplayed = [];
+        $unresolved = [];
+        $uncontested = [];
+        $sequence = 0;
+
+        // The ties the bracket has in the round are read first, so that an
+        // event the application added beside them never takes their place.
+        $inOrder = [];
+        foreach ($ties as $key => $tie) {
+            if (isset($derived[$key])) {
+                $inOrder[$key] = $tie;
+            }
+        }
+        $inOrder += $ties;
+
+        foreach ($inOrder as $key => $tie) {
+            [$first, $second] = $tie['participants'];
+
+            // An event is no tie of the bracket, and is read by nothing,
+            // where the application added it: between two entrants neither
+            // of whom is in the round, or with an entrant who is in another
+            // tie of the round already.
+            if (
+                $key !== $extraKey
+                && !$tie['thirdPlace']
+                && (
+                    (!isset($position[$first->getId()]) && !isset($position[$second->getId()]))
+                    || isset($inTie[$first->getId()])
+                    || isset($inTie[$second->getId()])
+                )
+            ) {
+                unset($ties[$key]);
+                continue;
+            }
+
+            $settled = $this->settleTie($reading, $round, $first, $second, $legsPerTie, $reading->levelAdvancers);
+
+            foreach ($tie['events'] as $event) {
+                if (isset($reading->resultIndex[$this->legKey($round, $first, $second, $event->getMetadataValue('tie_leg'))])) {
+                    continue;
+                }
+                if ($settled['open']) {
+                    $unresolved[] = $event;
+                } elseif ($settled['uncontested']) {
+                    $uncontested[] = $event;
+                }
+            }
+            if ($settled['uncontested'] && $settled['winner'] instanceof Participant) {
+                $unplayed[] = $settled['winner'];
+            }
+
+            if ($key === $extraKey || $tie['thirdPlace']) {
+                $extra = $settled;
+                continue;
+            }
+
+            $inTie[$first->getId()] = true;
+            $inTie[$second->getId()] = true;
+            $rows[] = [
+                min($position[$first->getId()] ?? PHP_INT_MAX, $position[$second->getId()] ?? PHP_INT_MAX),
+                $sequence++,
+                $settled,
+            ];
+        }
+
+        foreach ($pairs as $index => $pair) {
+            $first = $pair[0] ?? null;
+            $second = $pair[1] ?? null;
+            $firstFree = $first instanceof Participant && !isset($inTie[$first->getId()]);
+            $secondFree = $second instanceof Participant && !isset($inTie[$second->getId()]);
+
+            if ($first instanceof Participant && $second instanceof Participant && $firstFree && $secondFree) {
+                $settled = $this->settleTie($reading, $round, $first, $second, $legsPerTie, $reading->levelAdvancers);
+                if (!$settled['open']) {
+                    $rows[] = [2 * $index, $sequence++, $settled];
+                    if ($settled['winner'] instanceof Participant) {
+                        $unplayed[] = $settled['winner'];
+                    }
+                    continue;
+                }
+                // The round holds no tie between the two and neither has
+                // withdrawn: both go on.
+            }
+
+            // The place of a pair is held by a tie one of its entrants is in,
+            // or by the entrants who go on alone; an empty slot goes on where
+            // neither holds it, so that the halves of the bracket stay apart.
+            $held = ($first instanceof Participant && !$firstFree) || ($second instanceof Participant && !$secondFree);
+            foreach ([[$first, $firstFree, 2 * $index], [$second, $secondFree, 2 * $index + 1]] as [$occupant, $free, $at]) {
+                if (!$occupant instanceof Participant || !$free) {
+                    continue;
+                }
+
+                // An entrant who has withdrawn goes on like any other: when
+                // it left is not known, and the tie it stands in next is
+                // settled for its opponent there.
+                $rows[] = [$at, $sequence++, ['winner' => $occupant, 'losers' => []]];
+                if (!isset($reading->withdrawn[$occupant->getId()])) {
+                    $unplayed[] = $occupant;
+                }
+                $held = true;
+            }
+            if (!$held) {
+                $rows[] = [2 * $index, $sequence++, ['winner' => null, 'losers' => []]];
+            }
+        }
+
+        if ($extraTie !== null && $extra === null) {
+            // The tie that stands in no slot is not in the round: it is
+            // settled where an entrant of it has withdrawn, and is left
+            // undecided otherwise.
+            $settled = $this->settleTie($reading, $round, $extraTie[0], $extraTie[1], $legsPerTie, $reading->levelAdvancers);
+            $extra = $settled['open'] ? null : $settled;
+        }
+
+        $manual = false;
+        if ($recorded instanceof RoundPairing) {
+            foreach (array_keys($ties) as $key) {
+                $manual = $manual || !isset($derived[$key]);
+            }
+            foreach ($derived as $key => [$first, $second]) {
+                $manual = $manual || (
+                    !isset($ties[$key])
+                    && !isset($reading->withdrawn[$first->getId()])
+                    && !isset($reading->withdrawn[$second->getId()])
+                );
+            }
+        }
+
+        usort($rows, static fn(array $one, array $other): int => [$one[0], $one[1]] <=> [$other[0], $other[1]]);
+
+        return [
+            'manual' => $manual,
+            'units' => array_map(
+                static fn(array $row): array => ['winner' => $row[2]['winner'], 'losers' => $row[2]['losers']],
+                $rows
+            ),
+            'extra' => $extra === null ? null : ['winner' => $extra['winner'], 'losers' => $extra['losers']],
+            'unplayed' => $unplayed,
+            'unresolved' => $unresolved,
+            'uncontested' => $uncontested,
+        ];
     }
 
     private function legKey(int $round, Participant $first, Participant $second, mixed $tieLeg): string

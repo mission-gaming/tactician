@@ -423,6 +423,24 @@ describe('engine fingerprints', function (): void {
             fn() => new SingleEliminationEngine(new EliminationOptions(thirdPlace: false)),
             'tactician:v2:single-elimination',
         ],
+        // Added with results-free mode; the rows above are as they were. An
+        // engine that waits for results has the stamp it always had.
+        'Swiss in results-free mode' => [
+            fn() => new SwissPairingEngine(resultsFree: true),
+            'tactician:v2:swiss;results-free=yes',
+        ],
+        'Swiss in results-free mode on the chess scale, with planned rounds' => [
+            fn() => new SwissPairingEngine(
+                standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero()),
+                plannedRounds: 5,
+                resultsFree: true
+            ),
+            'tactician:v2:swiss;ranking=win-draw-loss,1,0.5,0;results-free=yes',
+        ],
+        'Swiss with results-free mode stated as off' => [
+            fn() => new SwissPairingEngine(resultsFree: false),
+            'tactician:v2:swiss',
+        ],
         'double elimination' => [fn() => new DoubleEliminationEngine(), 'tactician:v2:double-elimination'],
         'two-legged double elimination' => [
             fn() => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
@@ -460,6 +478,7 @@ describe('engine fingerprints', function (): void {
             'standingsCalculator',  // in: ranking, tiebreakers, standings
             'plannedRounds',        // out: when the stage ends
             'randomizer',           // out: cannot be described
+            'resultsFree',          // in when on: rounds are recorded without results on purpose
         ])->and($constructor(SingleEliminationEngine::class))->toBe([
             'options',              // in, see EliminationOptions below
             'standingsCalculator',  // in when re-seeding, otherwise out
