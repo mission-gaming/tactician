@@ -161,6 +161,7 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
             'Scheduling\ConstraintPurity',
             'Scheduling\EliminationBracketSupport',
             'Scheduling\EventIndex',
+            'Scheduling\LegRoleSearch',
             'Scheduling\PerfectMatching',
             'Scheduling\SwissRoundSearch',
             'Serialization\\PlainData',

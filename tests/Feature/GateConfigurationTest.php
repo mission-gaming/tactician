@@ -506,11 +506,9 @@ describe('PHPUnit configuration', function () use ($root): void {
             }
         }
 
-        expect($marked)->toBe([
-            // "schedules the two legs with roles the constraints accept":
-            // a schedule exists and generation does not find it
-            'tests/Feature/ComplexConstraintTest.php' => 1,
-        ]);
+        // None at present. The last one, a schedule that exists and that
+        // generation did not find, became a test that passes.
+        expect($marked)->toBe([]);
     });
 
     it('is valid against the schema of the installed PHPUnit', function () use ($root): void {

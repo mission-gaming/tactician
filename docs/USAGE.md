@@ -78,7 +78,8 @@ anything else that competes.
 | **Resource** | A named host of concurrent events within a slot (venue, pitch, court, board...). A slot holds one event per resource; no declared resources means one anonymous resource. Each scheduled event carries its assigned resource. |
 | **Quality metric** | A graded, lower-is-better measure of a valid schedule (`QualityMetric`): role balance, alternation streaks, rest rhythm, repeat spacing. Metrics measure defects — zero is ideal. Composed with weights by `ScheduleScorer`; policy (which metrics, what weights) stays application-side. |
 | **Optimization** | Best-of-N sampling (`ScheduleOptimizer`): generate N candidate schedules from one master seed, score each, keep the best. Deterministic when every randomness source uses the supplied child randomizer. Whole-schedule generators only. |
-| **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach. Greedy always runs first; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
+| **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach, and over the roles of every leg. Greedy always runs first; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
+| **Role search** | What the round-robin scheduler does when a constraint rejects a role that is free to change: it gives the event the other role and, when that is rejected too, changes the roles of earlier events, with the pairings and rounds held. Free are the roles of the later legs of a leg strategy that states them as preferences (the shuffled legs), always, and the roles of the first leg with backtracking generation. Bounded by a count of rejected roles; see [Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints). |
 | **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — a minimum time between a participant's kickoffs (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
 | **Session** | One match night (or day) on a repack grid: an ordered position in the grid's explicit session list, holding a fixed number of slots. Deliberately not a "round" — a round is a set of concurrent events, a session is a container of consecutive slots. |
 | **Session grid** | The declarative position model repacking assigns onto (`SessionGrid`): an explicit ordered list of zoned session starts, a slot interval, a per-session slot count (overridable — final sessions often run deeper), and a per-slot concurrency capacity. Irregular by design, unlike `TimelineDefinition`'s cadence. A grid built this way is instant-based; see **Shape-only grid** for the other form. |
@@ -395,8 +396,10 @@ that an event it is asked about ends up in the schedule:
   that rejects, so a later constraint may be asked the second time only.
 - **Retries ask everything again.** A round robin that fails under one
   participant order is generated again under up to min(participants, 25)
-  rotated orders, and the backtracking search and the Swiss round search
-  put many candidate events to the constraints that they then discard.
+  rotated orders, and the backtracking search, a search of roles and the
+  Swiss round search put many candidate events to the constraints that they
+  then discard. A backtracking search over several legs asks about the
+  events of a first leg it found a second time, when it searches the roles.
 - **A failure analysis asks about events that were never candidates**: each
   missing pairing, in every round, with either participant first-named,
   against the events of the failed attempt.
@@ -467,7 +470,10 @@ scheduler without a `Randomizer`:
 | Two mirrored legs from a scheduler with a `Randomizer` | Can fail, depending on the seed: the later legs are not the first leg mirrored |
 
 A limit the roles break fails generation with an
-`IncompleteScheduleException`; the scheduler does not look for other roles.
+`IncompleteScheduleException`. The scheduler looks for other roles only
+where a role is free to change: in the later legs of a shuffled schedule,
+and in the first leg with `backtracking: true`
+([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)).
 Repeated legs give every participant the roles of the first leg again, so
 the totals drift by a leg's worth with every leg, and a limit has to allow
 for that. `BalancedRoleAssignment` lowers what a single leg needs to 1 in a
@@ -562,6 +568,120 @@ var_dump($scheduler->schedule($participants, $shuffledOptions)->toJson() === $sh
 Options whose shuffled strategy holds a `Randomizer` have no plain-data
 form, and `toArray()` refuses them (reason `NotSerializable`).
 
+### Leg Strategies and Role Constraints
+
+A constraint on roles reads every leg, and a leg that keeps it by itself can
+break it where two legs meet. What the scheduler may do about that depends
+on what the leg strategy says its roles are:
+
+| Leg strategy | Its roles in a later leg | When a constraint rejects one |
+|--------------|--------------------------|-------------------------------|
+| `MirroredLegStrategy` | A **rule**: the roles of the pairing's first-leg event, reversed in the even-numbered legs | The event is never given another role. Only other roles in the first leg can help, and those are searched with `backtracking: true` only |
+| `RepeatedLegStrategy` | A **rule**: the roles of the pairing's first-leg event | The same |
+| `ShuffledLegStrategy` | A **preference**: a draw | The event is given the other role. When that is rejected too, the roles of earlier events of the later legs are changed until every event is accepted or every choice was tried. The first leg is not touched |
+
+So a schedule of shuffled legs under a role constraint has the roles that
+were drawn wherever the constraints accept them, and others where they do
+not; without constraints, or when none rejects a role, it is exactly the
+draw. Nothing is drawn again, so a seed still names one schedule. A schedule
+of repeated or mirrored legs has the roles the role assignment gave the
+first leg, or fails; with `backtracking: true` the search chooses the roles
+of the first leg, and every later leg follows from it by the rule.
+
+```php
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+
+$league = [];
+foreach (['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as $letter) {
+    $league[] = new Participant("club-{$letter}", 'Club ' . strtoupper($letter));
+}
+
+// Nobody plays more than two events in a row in the same role
+$twoInARow = new RoundRobinScheduler(
+    ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build()
+);
+
+// Shuffled legs: the draws that break the limit are changed
+$shuffledLeague = $twoInARow->schedule(
+    $league,
+    new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 2026))
+);
+echo count($shuffledLeague), " events\n";
+
+// Repeated legs: the roles of the first leg, played twice, break the limit
+// where the legs meet, and without backtracking they are not searched
+try {
+    $twoInARow->schedule($league, new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy()));
+} catch (IncompleteScheduleException $failure) {
+    echo "Without backtracking: no schedule\n";
+}
+
+// With it, the search chooses a first leg that can be played twice
+$repeatedLeague = $twoInARow->schedule(
+    $league,
+    new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy(), backtracking: true)
+);
+echo count($repeatedLeague), " events\n";
+```
+
+The block prints:
+
+```
+56 events
+Without backtracking: no schedule
+56 events
+```
+
+Both searches are bounded, and a failure says which case it is:
+
+- **Every choice was tried.** Without backtracking the message says that the
+  constraints reject every choice of roles for the later legs in this
+  layout, and that the pairings, their rounds and the roles of the first leg
+  were not searched; it names `RoundRobinOptions(backtracking: true)` as
+  the option that searches them. So does the failure of a repeated or
+  mirrored leg, when it was a `ConsecutiveRoleConstraint` or a
+  `RoleBalanceConstraint` that rejected one of its events (a custom
+  constraint does not say whether it reads roles, so nothing is advised
+  for one). A backtracking search that went through every way to
+  play the first leg, with every choice of roles, says that the
+  configuration is unsatisfiable with this leg strategy.
+- **A bound stopped the search.** A search of roles stops after 20,000
+  rejected roles for one layout, and a backtracking search after its step
+  budget of 200,000 steps ([Backtracking Generation](#backtracking-generation)),
+  which the steps of its role searches count against. The message names the bound and says that
+  roles may exist beyond it; it does not say that none exist. A search the
+  budget stopped says of how many first legs it went through every choice
+  of roles, and of how many a bound stopped it.
+
+A schedule that fails pays for the search. Without backtracking the roles
+of shuffled later legs are searched once for every rotated participant
+order tried, up to 25, each up to the bound of rejected roles: 24
+participants and two shuffled legs under a limit of two in a row, with a
+custom constraint that leaves one pairing no round in the second leg, take
+49 seconds to fail (17 before the roles were searched).
+
+How far the search goes back when a role is rejected depends on the
+constraint set. For a set of `ConsecutiveRoleConstraint`,
+`RoleBalanceConstraint`, `MinimumRestPeriodsConstraint`,
+`SeedProtectionConstraint` and `NoRepeatPairings` objects it goes straight
+to an earlier event of the same participants: under a limit of two in a
+row, and under a limit on the role totals, it found the roles of two to
+four shuffled legs for every seed measured up to 40 participants. For a set
+that holds anything else (a custom
+constraint, a metadata rule, a class of your own) it goes back one event at
+a time, which is as thorough and slower: under a limit of two in a row
+beside a custom constraint, the roles of two to four shuffled legs were
+found for every seed measured up to 24 participants, and the bound stopped
+some from 30 up. The measurements are in
+`docs/design/backtracking-generation.md`.
+
+A leg strategy of your own states which of the two its roles are in the
+`LegPlanContribution` it returns from `planLegs()`
+(`rolesArePreferences: true` for a preference). The default is a rule, so a
+strategy that says nothing is never reversed.
+
 ### Backtracking Generation
 
 The greedy generator retries bounded rotated orderings when constraints
@@ -574,7 +694,6 @@ set: every rotation the greedy generator tries violates it, and the
 search finds the schedule that satisfies it:
 
 ```php
-use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 
 // Celtic must meet Athletic in round 1, Livorno in round 2 and Red Star
@@ -608,9 +727,16 @@ The rules of the search (see `docs/design/backtracking-generation.md`):
   are fixed, and a step budget bounds the exponential worst case. The
   failure diagnostic distinguishes a proven-unsatisfiable configuration
   (search space exhausted) from one that ran out of budget.
-- **Leg scope.** Leg 1 is searched; later legs derive from its actual
-  rounds through the leg strategy. A later leg rejected by constraints
-  fails loudly — the search does not cross leg boundaries.
+- **Leg scope.** The search is over how the pairings of leg 1 fall into
+  rounds, and over roles. Later legs derive from the actual rounds of
+  leg 1 through the leg strategy. For every first leg it finds, the search
+  holds the pairings and rounds and searches the roles of all legs: those
+  of the first leg, and those of the later legs where the leg strategy
+  states them as preferences
+  ([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)).
+  A first leg that no roles complete is a dead end, and the search goes on
+  to the next. The roles of the layout the rotations started from are
+  searched once as well, after the first leg found has failed.
 
 ### Multi-Leg Schedule Analysis
 
@@ -768,13 +894,15 @@ Two things the table does not promise:
   repeats a role at most twice there in a field of even size, and three
   times in a field of odd size from 9 participants up. Add a
   `ConsecutiveRoleConstraint` if a schedule of several legs must not do
-  that; it then fails loudly where the roles break it.
+  that. Mirrored and repeated legs then fail loudly where the roles of the
+  first leg break it, unless `backtracking: true` lets the scheduler choose
+  them ([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)).
 
 #### Role assignments and constraints
 
 Constraints stay hard filters. A constraint sees every event with the roles
-the role assignment gave it, and the scheduler never falls back to other
-roles to satisfy one:
+the role assignment gave it, and the scheduler never gives a leg other roles
+than its role assignment would to satisfy one:
 
 - **Role constraints the balanced roles satisfy.** For a single leg of 2 to 30
   participants, `ConsecutiveRoleConstraint` with a limit of 2 holds, and so
@@ -790,10 +918,14 @@ roles to satisfy one:
   role of one participant or of one pairing ("the first participant is
   first-named against the second") can reject the roles
   `BalancedRoleAssignment` chooses although other balanced roles would
-  satisfy it, and although the default roles do. The scheduler does not
-  search for them, with or without `backtracking`. If such a rule matters
-  more than the balance, keep `RoundParityRoleAssignment` for that schedule,
-  or write a role assignment that honours the rule.
+  satisfy it, and although the default roles do. Without `backtracking` the
+  scheduler does not search for them. With it, the search looks for a first
+  leg that satisfies the constraints and that the role assignment keeps as
+  it is, which finds a balanced leg where the search happens on one and not
+  otherwise: a single leg whose pinned role the balanced roles break still
+  fails. If such a rule matters more than the balance, keep
+  `RoundParityRoleAssignment` for that schedule, or write a role assignment
+  that honours the rule.
 - **Rotated retries.** Every retry lays the legs out again and asks the role
   assignment again, so a schedule that needed a retry keeps the limits above.
 - **Backtracking.** The search chooses the roles of the first leg itself,
@@ -805,7 +937,11 @@ roles to satisfy one:
   rejection fails with an `IncompleteScheduleException`: the scheduler does
   not keep the roles of the search, because that would silently drop the
   balance that was asked for. Constraints that do not read roles are never
-  affected.
+  affected. In a schedule of several legs the search may then change roles
+  of that first leg again, to make the later legs fit; the leg is put to the
+  role assignment once more and is returned only when the role assignment
+  keeps it as it is. Otherwise the search goes on to the next first leg, and
+  a failure says that roles exist which the role assignment would change.
 
 #### Writing a role assignment
 

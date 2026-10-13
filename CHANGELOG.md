@@ -417,9 +417,53 @@ entry on the engine fingerprint.
   written `20:00:00`, and a blackout window inside one second was written
   as one that ends when it starts, which `fromArray()` refuses. A time on a
   whole second is written as before by all three (#121, item 6).
+- **A role constraint no longer fails two or more shuffled legs, or (with
+  backtracking) repeated and mirrored legs, although a schedule exists
+  ([#117](https://github.com/mission-gaming/tactician/issues/117)).** The
+  scheduler fixed the role of every later-leg event once and never
+  reconsidered it, and the backtracking search stopped at the first leg it
+  found. Eight participants, two legs and
+  `ConsecutiveRoleConstraint::homeAway(2)` threw an
+  `IncompleteScheduleException` for every seed of a shuffled strategy and
+  for the repeated strategy, with and without `backtracking`. What a
+  schedule now gets depends on what the leg strategy's contract leaves
+  free:
+  - **Shuffled legs: a draw is a preference.** Where the constraints reject
+    an event as drawn, it is given the other role; where they reject both,
+    the roles of earlier events of the later legs are changed until every
+    event is accepted. This runs without `backtracking`, in every layout
+    tried. Nothing is drawn again, so the same seed gives the same schedule.
+  - **Repeated and mirrored legs: the roles are a rule**, and a later-leg
+    event is never reversed. What can change is the first leg. Without
+    `backtracking` its roles are the role assignment's and such a schedule
+    still fails; with `backtracking: true` the search now crosses the
+    boundary of the first leg: for every first leg it finds it searches the
+    roles of all legs with the pairings and rounds held, and a first leg
+    that no roles complete sends it on to the next one, where it used to
+    fail with "the search does not cross leg boundaries". The roles of the
+    circle layout are searched once as well.
+
+  No output changes for an input that succeeded before: every golden
+  fixture is unchanged, and a schedule whose roles the constraints accept
+  as they were is the schedule it was (for shuffled legs, exactly the
+  draw). Inputs that threw now return a schedule. Who is affected: code
+  that relied on the exception for such a configuration, and code that
+  reads the exception messages below. The bounds of the two searches, what
+  was measured and what still fails within them are in
+  `docs/design/backtracking-generation.md` ("Roles across legs") and
+  `docs/ROADMAP.md`; the usage guide has the contract of each strategy
+  ("Leg Strategies and Role Constraints").
 
 ### Added
 
+- **`LegPlanContribution::$rolesArePreferences`**, the fifth constructor
+  parameter, false by default. A leg strategy says with it whether the role
+  it gives a later-leg event is a rule (the scheduler never reverses the
+  event) or a preference (the scheduler reverses an event the constraints
+  reject, and searches the roles of the later legs when both roles are
+  rejected). `ShuffledLegStrategy` says true; the mirrored and the repeated
+  strategy, and every strategy written before the flag existed, say false
+  and are treated as they were.
 - **Awarded results.** A `Result` can say that its event was not played and
   that the application gave it this outcome: `new Result($event, $winner,
   $scores, award: new Award('label', 'reason'))`. `DTO\Award` (new) is the
@@ -1078,6 +1122,93 @@ entry on the engine fingerprint.
   What to change: build the strategy from a seed when the options are to be
   stored. For a strategy built from a seed the array has one more key,
   `strategy_seed`; for the two other strategies it is unchanged.
+- **Breaking: the messages of a round-robin failure in a later leg.** They
+  now say what was searched and whether a bound stopped the search, and
+  only an exhausted backtracking search says "unsatisfiable". Who is
+  affected: code that matches the message text. What to change: match the
+  exception class, and read `getViolationCollector()` and `getAnalysis()`.
+  - With `backtracking: true`, "Backtracking found a first leg, but
+    constraints reject its leg N derivation and the search does not cross
+    leg boundaries" is gone. In its place: "Backtracking search exhausted
+    the search space: the constraints reject the later legs that <strategy>
+    derives from each of the N round decompositions of the first leg it
+    tried, whatever the roles of the first leg, so the configuration is
+    unsatisfiable with this leg strategy"; the same finding with
+    "exhausted its step budget" when the budget ran out first and the
+    search had been through every choice of roles of each first leg it
+    tried, and otherwise "exhausted its step budget … It tried M round
+    decompositions of the first leg: for N the constraints reject the later
+    legs …; for N the search for roles stopped at a bound (20000 rejected
+    roles, or the step budget)", which claims the first only of the first
+    legs it was shown for; "…for N of
+    the M it tried the search for roles stopped at its bound of 20000
+    rejected roles" when a role search was stopped; "…without finding a
+    complete schedule that <role assignment> keeps" when roles exist that
+    the role assignment would change; and "…<strategy> returned no event
+    for A vs B in round R of leg N" for a strategy that returns none.
+  - Without it, for a strategy whose roles are preferences (shuffled
+    legs), "Failed to generate complete schedule for leg 2. Generated N
+    events, expected M…" becomes "Failed to generate complete schedule for
+    leg 2: the constraints reject every choice of roles for the events of
+    leg 2 in this layout…", or "…the search for roles the constraints
+    accept stopped at its bound of 20000 rejected roles…". Both end by
+    naming the option that searches what they did not:
+    "RoundRobinOptions(backtracking: true) searches them".
+  - Where one of these messages names the leg strategy or the role
+    assignment, an anonymous class is named after what it implements
+    (`…\LegStrategyInterface@anonymous`), without the file it is declared
+    in.
+  - Without it, for a strategy whose roles are rules (mirrored and
+    repeated legs, and a strategy of your own that says nothing), the
+    message of a later leg that ends short is what it was, with one
+    sentence added when a `ConsecutiveRoleConstraint` or a
+    `RoleBalanceConstraint` rejected one of its events: "A constraint on
+    roles (<name>) rejected an event of leg N in the roles <strategy> gives
+    it, which follow from the roles of leg 1 by a rule. The roles of leg 1
+    were not searched: RoundRobinOptions(backtracking: true) searches
+    them." Nothing is added when the rejection came from any other
+    constraint: a closure or a class of your own does not say whether it
+    reads roles.
+  - `getActualEventCount()` of such a failure is the number of events in
+    place when the search was furthest on, and the violation collector
+    holds the event it could get no further than, once for each role the
+    constraints rejected.
+- **A failing backtracking search over several legs takes longer.** It
+  used to stop at the first leg it found; it now goes through first legs
+  and roles until its step budget is spent (seconds, where it was
+  milliseconds: up to 6 seconds measured for 16 to 24 participants and
+  three or four legs that no roles satisfy). A configuration that
+  succeeded takes what it took.
+- **A failing schedule of shuffled legs can take longer without
+  backtracking too.** Where it used to fail at the first event the
+  constraints rejected, the roles of the later legs are now searched, in
+  every rotated participant order the scheduler tries (up to 25), each up
+  to the bound of 20,000 rejected roles. That costs most with a constraint
+  set that holds a closure, a metadata rule or a class of your own, which
+  is searched one event at a time: 24 participants and two shuffled legs
+  under a limit of two in a row, beside a closure that closes the second
+  leg to one pairing, failed in 17 seconds before and fail in 49 now (103
+  with four legs); 16 participants in 1.8 seconds before and 14 now.
+  Every such search is bounded by a count and not by time, and the failure
+  names the bound when one stopped it.
+- **A role search uses memory in proportion to the square of the number
+  of events.** It keeps the context of every round it has placed (of every
+  event, with backtracking) to go back to. Who is affected: a schedule of
+  shuffled legs with a constraint set, and a backtracking search over
+  several legs, in a large field. Four shuffled legs under a limit of two
+  in a row take 16 MB for 24 participants, 52 MB for 40 and 120 MB for 56,
+  where 40 participants without constraints take 6 MB; four repeated
+  legs with backtracking take 84 MB for 32 participants. What to check:
+  PHP's `memory_limit` for a field of that size
+  (`docs/design/backtracking-generation.md`, "Bounds").
+- **Constraints and leg strategies are asked more often in a search.** A
+  backtracking search over several legs puts the events of each first leg
+  it finds to the constraints again when it searches the roles, and asks a
+  mirrored, repeated or custom rule strategy again for a later-leg event
+  whenever the search has gone back past it. A strategy of preferences is
+  asked once for each event of a layout, as before. Who is affected: a
+  constraint or a strategy that counts its calls, which the usage guide
+  already excludes for constraints ("What a constraint may rely on").
 - **A timeline whose rounds overlap is rejected.** Nothing checked that the
   slots of a round come before the next round's first slot, so the same
   resource and the same participants could be given two events at one

@@ -165,9 +165,12 @@ describe('Backtracking round-robin generation', function (): void {
             ->toThrow(IncompleteScheduleException::class, 'step budget');
     });
 
-    it('fails loudly when constraints reject a later leg derivation', function (): void {
-        // Leg 1 needs the backtracked placement; its round-4 mirror
-        // (t1 vs t2) is then rejected, and the search stops at leg edges
+    it('says the configuration is unsatisfiable when no first leg has later legs the constraints accept', function (): void {
+        // Leg 1 needs the backtracked placement, which puts t1 vs t2 in
+        // its first round. Every later leg has that pairing in its first
+        // round too, and round 4 is closed to it in either role: the
+        // search goes through every first leg and every role, and none
+        // has a second leg
         $constraints = ConstraintSet::create()->custom(static function (Event $event): bool {
             $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
             sort($ids);
@@ -188,9 +191,32 @@ describe('Backtracking round-robin generation', function (): void {
             };
         }, 'Placement')->build();
 
-        expect(fn() => (new RoundRobinScheduler($constraints))
-            ->schedule(backtrackingField(4), new RoundRobinOptions(legs: 2, backtracking: true)))
-            ->toThrow(IncompleteScheduleException::class, 'does not cross leg boundaries');
+        $scheduler = new RoundRobinScheduler($constraints);
+        $failure = null;
+        try {
+            $scheduler->schedule(backtrackingField(4), new RoundRobinOptions(legs: 2, backtracking: true));
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        expect($failure)->toBeInstanceOf(IncompleteScheduleException::class)
+            ->and($failure?->getMessage())->toContain('exhausted the search space')
+            // The one first leg the constraints allow, and the circle
+            // layout, whose roles the search tries once as well
+            ->toContain('each of the 2 round decompositions of the first leg it tried')
+            ->toContain('unsatisfiable with this leg strategy')
+            ->and(str_contains($failure?->getMessage() ?? '', 'budget'))->toBeFalse()
+            // How far it got: the six events of the first leg, and the
+            // rejected pairing recorded with the constraint that rejected it
+            ->and($failure?->getActualEventCount())->toBe(6)
+            ->and($failure?->getExpectedEventCount())->toBe(12)
+            ->and($failure?->getPrevious())->toBeInstanceOf(IncompleteScheduleException::class);
+
+        $rejected = array_map(
+            static fn($violation): string => $violation->getConstraintName() . ' in round ' . $violation->roundNumber,
+            $failure?->getViolationCollector()->getViolations() ?? []
+        );
+        expect($rejected)->toContain('Placement in round 4');
     });
 
     it('derives later-leg byes from the backtracked first leg', function (): void {
