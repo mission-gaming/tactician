@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Standings;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * An amount added to, or taken from, one participant's ranking value for a
@@ -96,13 +97,16 @@ final readonly class Adjustment
 
     /**
      * Convert this adjustment to a serializable array: all four keys,
-     * always.
+     * always, after `format_version`, the version of this form (1). A
+     * stage state writes its adjustments without the version, as it writes
+     * every part it holds.
      *
-     * @return array{participant: string, amount: float, label: string|null, reason: string|null}
+     * @return array{format_version: int, participant: string, amount: float, label: string|null, reason: string|null}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'participant' => $this->participantId,
             'amount' => $this->amount,
             'label' => $this->label,
@@ -122,19 +126,14 @@ final readonly class Adjustment
      *
      * @param array<array-key, mixed> $data
      *
-     * @throws InvalidInputException When a key is unknown, the participant is not a non-empty
+     * @throws InvalidInputException When the format version is not one this release reads, a
+     *                               key is unknown, the participant is not a non-empty
      *                               string, the amount is not a finite int or float, or a
      *                               label or reason is neither a string nor null
      */
     public static function fromArray(array $data): self
     {
-        $unknown = array_diff(array_map(strval(...), array_keys($data)), ['participant', 'amount', 'label', 'reason']);
-        if ($unknown !== []) {
-            throw new InvalidInputException(sprintf(
-                "Unknown key in adjustment data: '%s' (the known keys are 'participant', 'amount', 'label', 'reason')",
-                implode("', '", $unknown)
-            ));
-        }
+        PlainData::checkFields($data, ['participant', 'amount', 'label', 'reason'], 'adjustment data');
 
         $participantId = $data['participant'] ?? null;
         if (!is_string($participantId)) {

@@ -34,7 +34,7 @@ describe('StageState adjustments', function (): void {
         $state = StageState::start($this->participants);
 
         expect($state->getAdjustments())->toBe([])
-            ->and(array_keys($state->toArray()))->toBe(['participants', 'active', 'rounds', 'results']);
+            ->and(array_keys($state->toArray()))->toBe(['format_version', 'participants', 'active', 'rounds', 'results']);
     });
 
     it('records an adjustment on a new state and leaves the one it was called on', function (): void {
@@ -119,7 +119,8 @@ describe('StageState adjustments', function (): void {
 
         $data = $state->toArray();
 
-        expect(array_keys($data))->toBe(['participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments'])
+        // An adjustment is a part of the state: it carries no version of its own
+        expect(array_keys($data))->toBe(['format_version', 'participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments'])
             ->and($data['adjustments'] ?? null)->toBe([
                 ['participant' => 'jun', 'amount' => -1.0, 'label' => 'ruling', 'reason' => 'Late roster'],
                 ['participant' => 'ines', 'amount' => 0.5, 'label' => null, 'reason' => null],

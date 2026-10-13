@@ -48,7 +48,7 @@ describe('RoundRobinOptions', function (): void {
         foreach (['mirrored', 'repeated'] as $identifier) {
             $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => $identifier]);
 
-            expect($options->toArray())->toBe(['legs' => 2, 'strategy' => $identifier, 'backtracking' => false]);
+            expect($options->toArray())->toBe(['format_version' => 1, 'legs' => 2, 'strategy' => $identifier, 'backtracking' => false]);
         }
     });
 
@@ -60,14 +60,15 @@ describe('RoundRobinOptions', function (): void {
 
         expect($options->strategy)->toBeInstanceOf(ShuffledLegStrategy::class)
             ->and($options->strategy instanceof ShuffledLegStrategy ? $options->strategy->seed : null)->toBe($seed)
-            ->and($options->toArray())->toBe($data)
-            ->and((new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: $seed)))->toArray())->toBe($data);
+            ->and($options->toArray())->toBe(['format_version' => 1, ...$data])
+            ->and((new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: $seed)))->toArray())
+            ->toBe(['format_version' => 1, ...$data]);
     })->with([[0], [7], [-3], [PHP_INT_MAX]]);
 
     it('writes the seed before the role assignment a caller named', function (): void {
         $data = ['legs' => 3, 'strategy' => 'shuffled', 'backtracking' => true, 'strategy_seed' => 7, 'role_assignment' => 'balanced'];
 
-        expect(RoundRobinOptions::fromArray($data)->toArray())->toBe($data);
+        expect(RoundRobinOptions::fromArray($data)->toArray())->toBe(['format_version' => 1, ...$data]);
     });
 
     // The defect of issue #52: 'shuffled' in plain data used to build a
@@ -97,7 +98,7 @@ describe('RoundRobinOptions', function (): void {
     // row with an empty seed column reads as a row without one
     it('reads a null seed as no seed', function (): void {
         expect(RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'repeated', 'strategy_seed' => null])->toArray())
-            ->toBe(['legs' => 2, 'strategy' => 'repeated', 'backtracking' => false]);
+            ->toBe(['format_version' => 1, 'legs' => 2, 'strategy' => 'repeated', 'backtracking' => false]);
 
         $refusal = roundRobinOptionsRefusal(
             fn(): RoundRobinOptions => RoundRobinOptions::fromArray(['strategy' => 'shuffled', 'strategy_seed' => null])
@@ -140,7 +141,7 @@ describe('RoundRobinOptions', function (): void {
 
     it('builds from empty configuration with the documented defaults', function (): void {
         expect(RoundRobinOptions::fromArray([])->toArray())
-            ->toBe(['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false]);
+            ->toBe(['format_version' => 1, 'legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false]);
     });
 
     it('rejects unknown strategy identifiers', function (): void {
@@ -176,9 +177,9 @@ describe('RoundRobinOptions', function (): void {
     });
 
     // The wire shape of options that name no role assignment is the three
-    // keys it has always been
+    // options it has always been, after the version of the form
     it('serializes no role assignment when none was named', function (array $payload): void {
-        $threeKeys = ['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false];
+        $threeKeys = ['format_version' => 1, 'legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false];
 
         expect((new RoundRobinOptions())->toArray())->toBe($threeKeys);
         expect(RoundRobinOptions::fromArray($payload)->toArray())->toBe($threeKeys);
@@ -193,7 +194,7 @@ describe('RoundRobinOptions', function (): void {
     // to keep it must still have named it after a round trip through plain
     // data, or the stored configuration would follow the new default.
     it('keeps a role assignment that was named, the default included', function (): void {
-        $pinned = ['legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'round_parity'];
+        $pinned = ['format_version' => 1, 'legs' => 1, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'round_parity'];
 
         expect((new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()))->toArray())->toBe($pinned);
         expect(RoundRobinOptions::fromArray(['role_assignment' => 'round_parity'])->toArray())->toBe($pinned);
@@ -203,7 +204,7 @@ describe('RoundRobinOptions', function (): void {
         $balanced = new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment());
 
         expect($balanced->toArray())
-            ->toBe(['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);
+            ->toBe(['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);
         expect(RoundRobinOptions::fromArray($balanced->toArray())->toArray())->toBe($balanced->toArray());
     });
 
@@ -239,7 +240,7 @@ describe('SwissOptions', function (): void {
         $options = SwissOptions::fromArray(['rounds' => 5]);
 
         expect($options->rounds)->toBe(5);
-        expect($options->toArray())->toBe(['rounds' => 5]);
+        expect($options->toArray())->toBe(['format_version' => 1, 'rounds' => 5]);
     });
 
     it('rejects non-integer rounds configuration', function (): void {

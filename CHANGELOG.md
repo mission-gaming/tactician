@@ -478,6 +478,23 @@ entry on the engine fingerprint.
   `StageState::getAllSeenParticipants()`. With no awarded result and no
   adjustment every table and every pairing is what it was ("Adjustments"
   in the usage guide, #100).
+- **A schedule keeps its entrants: `Schedule::getEntrants()`.** It returns
+  every participant the schedule is of, once, as a list. For a schedule
+  that `RoundRobinScheduler`, `SwissScheduler` or `PotDrawScheduler`
+  returned it is the list the scheduler was given, the same objects in the
+  same order, which is the seeding where position decides. The constructor
+  takes the list as a third, optional parameter:
+  `new Schedule($events, $metadata, $entrants)`. Left out, the entrants are
+  read from the events in the order of first appearance, which is what a
+  schedule built by hand had before. Given, the list has to hold every
+  participant of every event and no ID twice (`InvalidInputException`
+  otherwise), and may hold an entrant who is in no event. `addEvent()`
+  keeps the list and adds a participant it does not hold after it. The
+  list survives `toArray()`/`fromArray()` and JSON in its order (#53).
+- **`InvalidConfigurationReason::UnsupportedFormatVersion`**
+  (`unsupported_format_version`), for plain-data configuration that states
+  a format version the release does not read; see the entry on
+  `format_version` under Changed.
 - **An entrant list on a table and on an outcome.**
   `Standings::withTiedSetsOrderedBy(array $entrants)` returns the table
   with the entries of every tied set in the order of the list, and moves
@@ -552,6 +569,229 @@ entry on the engine fingerprint.
 
 ### Changed
 
+- **Breaking: every array a `toArray()` returns starts with
+  `format_version`, and a version the library does not know is refused.**
+  No serialized form said which release's rules it was written under, so
+  the first change to a form would have left a reader unable to tell an
+  old array from a new one. Every form now states its version, an integer,
+  as the first key of the array: the options classes
+  (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`,
+  `EliminationOptions`, `RepackOptions`), `WinDrawLossRanking`,
+  `AwardedResultPolicy`, `TimelineDefinition`, `SessionGrid`,
+  `BlackoutRule`, `MinimumRestRule`, `RankRangeSelector`,
+  `MatchOutcomeSelector`, `Participant`, `Round`, `Event`, `Result`,
+  `Award`, `Schedule`, `RoundPairing`, `StageState`, `Adjustment`,
+  `ScheduledEvent`, `ScheduledSchedule`, `RepackOutcome`, `SlotAssignment`,
+  `UnplacedEvent` and the five repack violations. Every form is at version
+  1 (#53). ADR 0005 (`docs/adr/0005-serialized-forms-carry-a-format-version.md`)
+  records the rule:
+  - The key is written once to an array, at its top. A form held in
+    another (the participants and events of a schedule, the round of an
+    event, the rounds, results and adjustments of a stage state, the award
+    of a result, the records of a repack outcome) is written without it, so the size of a stored schedule grows
+    by one key and not by one key per event.
+  - **Data stored by 0.2.x loads unchanged.** An array without the key is
+    read as version 1, which is the form 0.2.x wrote and, beside it, the
+    optional keys this release adds (`strategy_seed`, `seed` in Swiss
+    options, `ties` in a rank range selector, `award` in a result,
+    `adjustments` in a stage state). Nothing is to be
+    migrated and the key need not be added to stored rows.
+    `tests/Fixtures/stored-by-0.2/` holds a schedule and a stage state as
+    v0.2.0 wrote them and 124 values of every form that is read as v0.2.3
+    wrote them, and a test reads them on every run. What 0.2.x wrote and
+    0.3.0 does not read is in two other entries of this section: `'strategy'
+    => 'shuffled'` without a seed, and a timeline whose slots overrun its
+    round.
+  - A `format_version` above 1, below 1 or not an integer is refused:
+    configuration with an `InvalidConfigurationException` whose reason is
+    the new `InvalidConfigurationReason::UnsupportedFormatVersion`
+    (`unsupported_format_version`; the context holds `format_version` and
+    `newest_supported`), data with an `InvalidInputException`.
+  - Forms are versioned one by one. A later release that changes a form
+    gives it the next number, says so here, and keeps reading the earlier
+    versions; a patch release never changes a form.
+  - It is not the `v2` of an engine fingerprint or the `v1` of an outcome
+    fingerprint, which version those schemes. The stage state form is
+    version 1 whichever scheme its stamp is of, and
+    `RepackOutcome::fingerprint()` does not cover the key, so the key
+    changes no fingerprint.
+
+  Who is affected: code that compares a `toArray()` result or a `toJson()`
+  string with a literal, that validates it against a schema of its own, or
+  that iterates the keys of the array. What to change: expect the key.
+  Before: `$options->toArray() === ['rounds' => 5]`. After:
+  `$options->toArray() === ['format_version' => 1, 'rounds' => 5]`. Code
+  that reads single keys (`$schedule->toArray()['events']`) and code that
+  passes a stored array back to `fromArray()` needs no change.
+
+  Rolling back: an array written by 0.3.0 is still read by 0.2.x, which
+  cannot check the version and ignores the key, as it ignores every key it
+  does not know (`strategy_seed`, `seed` in Swiss options and `ties` in a
+  rank range selector, and before 0.2.2 `role_assignment` and
+  `engine_fingerprint`, are read as left out; so are `award` and
+  `adjustments`, which means 0.2.x reads an awarded result as one that was
+  played and a stage state without its adjustments). The one exception is
+  `PotDrawOptions::fromArray()` of 0.2.2 and 0.2.3, which refused unknown
+  keys already and refuses `format_version` (`Unknown pot draw option`):
+  remove the key from stored pot draw options before reading them with
+  those releases. A schedule written by 0.3.0 and written again by 0.2.x
+  has its participants back in the order of first appearance.
+
+  Golden fixtures: `tests/Fixtures/golden/wire/schedule.json` and
+  `tests/Fixtures/golden/wire/stage-state.json` gain `"format_version":1`
+  as their first key and are otherwise byte for byte what they were;
+  `tests/Fixtures/golden/examples/18-stateless-web-flow.txt` reports each
+  stored state 19 bytes longer, the length of that key. No other fixture
+  changes: the repack fixtures and the examples that print violations
+  render the records as the outcome writes them, which carry no key of
+  their own.
+- **Breaking: `StageState::fromArray()` and `fromJson()` refuse a history
+  the verbs refuse.** The stored data was checked for its shape and its
+  history was trusted: rounds in any order, a pairing filed under another
+  round number than its events carry, a result of a round that is not
+  recorded. An engine then replayed that history as if `withRoundPlayed()`
+  had recorded it. A stored state is now recorded again through
+  `withRoundPlayed()` when it is read, so what the verb refuses of a live
+  state is refused of a stored one, with the same
+  `InvalidConfigurationException` and reason: `ValueOutOfRange` for a
+  round number below 1 (the verb's own check is new, under Fixed),
+  `RoundOutOfSequence` for rounds out of play order or a round number
+  twice, `EventNotInRound` for
+  an event or a result that does not belong to its round, a result of a
+  round that is not recorded and a result that does not stand with the
+  results of its round, and `EventWithoutRoundNumber` for an event or a
+  result's event with no round. What the verbs accept still loads: a gap in
+  the round numbers, a pairing whose participants are not active, and two
+  results of one event, which has to load so that `withResultReplaced()`
+  can repair it. Who is affected: an application whose stored states were
+  written or edited by something other than `toArray()` or `toJson()` (a
+  migration script, a hand-built array), and code that catches only
+  `InvalidInputException` around `fromArray()`. A state the library wrote
+  is always one the verbs recorded and loads as before, whichever release
+  wrote it. What to change: catch `InvalidConfigurationException` as well
+  (`catch (TacticianException)` covers both), and rebuild a refused state
+  from your own rows with `StageState::start()` and `withRoundPlayed()`.
+  Before: `StageState::fromArray(['rounds' => [$roundTwo, $roundOne], ...])`
+  returned a state. After: it throws, reason `RoundOutOfSequence`. Both
+  methods declare one more `@throws`, which code analysed with checked
+  exceptions sees (#53).
+- **Breaking: `StandingsCalculator::calculate()` recognises two results of
+  one event by what the events say, and no longer by the object alone.** It
+  refused two results that held the same `Event` object and counted any
+  two that did not. An `Event` object does not survive storage, so a result
+  recorded twice (the same request sent twice, say) was refused on the live
+  state and counted twice once the state had been through `toJson()` and
+  `fromJson()`: one match gave two wins, and a Swiss stage paired its next
+  round from that table. Two results are now of one event when they hold
+  the same object, or when their events carry the same round number, the
+  same participants in either order and the same tie leg (the `tie_leg`
+  metadata; an event without it is leg 1), which is how `StageState` and
+  the bracket engines already recognise an event. Both are refused with
+  the `InvalidInputException` the calculator already threw; where the
+  event has a round, its message now goes on with the round and the
+  participants and with what to do when the two results are in fact of two
+  events. The Swiss engine, which pairs from the table, refuses such a
+  state before and after storage alike, and `withResultReplaced()` repairs
+  it, also in a state that came back from JSON. An event with no round has
+  nothing but the object to tell it from another meeting of the same
+  participants, so two such events are still two events played. Who is
+  affected: code that passes one `calculate()` call results that share
+  round numbers between the same participants and are in fact different
+  events, which the library's own generators and engines never produce
+  within one schedule or one stage: an all-time table over two seasons
+  generated alike, or over two stages that each count their rounds from 1.
+  What to change: calculate a table for each and combine them, give the
+  later events round numbers that continue from the earlier ones, or give
+  events of one round that are two meetings a `tie_leg` each. Before:
+  `calculate($field, [...$seasonOne, ...$seasonTwo])` returned a table.
+  After: it throws at the first pair that met in the same round of both
+  (#53).
+- **Breaking: a serialized schedule lists its participants in entrant
+  order, and `Schedule::fromArray()` refuses a participant listed twice.**
+  A schedule did not hold the list it was generated from. `toArray()` wrote
+  the participants in the order they first appear in the events, so five
+  entrants `p1` to `p5` were written, and read back, as `p2, p5, p3, p4,
+  p1`, and the seeding, which is the order of the list, could not be
+  recovered. A schedule now keeps its entrants (see `getEntrants()` under
+  Added), and the `participants` of the array are that list in its order,
+  an entrant in no event included. The key, its shape and the events are
+  unchanged, so the form is still version 1. Who is affected: code that
+  relies on the order of `participants` in a serialized schedule, or that
+  compares a stored schedule byte for byte with a newly generated one; and
+  data whose `participants` list one ID twice, which was read with the
+  later entry winning and is now refused (`toArray()` never wrote that).
+  What to change: nothing for reading; a comparison of stored JSON with
+  new output sees the participants in another order. Schedules that 0.2.x
+  stored load unchanged, with their participants, in the order they were
+  written, as their entrants: the order the generator was given was not
+  written and cannot be recovered. Before, for the three entrants `1, 2,
+  3`: `"participants":[{"id":"2",...},{"id":"3",...},{"id":"1",...}]`.
+  After: `"participants":[{"id":"1",...},{"id":"2",...},{"id":"3",...}]`.
+  Golden fixture: `tests/Fixtures/golden/wire/schedule.json` lists its
+  three participants as `1, 2, 3` where it listed `2, 3, 1`; its events and
+  metadata are unchanged (#53).
+- **Breaking: `new Participant()` refuses an empty ID, and `new Event()`
+  refuses a participant listed twice.** `Participant::fromArray()` already
+  refused the empty string as an ID and the constructor took it; an event
+  could pair a participant with itself, by the same object twice or by two
+  objects with one ID, and the plans, the event index and a constraint each
+  carried a guard for it. Both constructors now throw an
+  `InvalidInputException` (an `\InvalidArgumentException`):
+  `A participant ID cannot be empty`, and `An event cannot list participant
+  <id> twice: a participant is not paired with itself`. Only the empty
+  string is empty: `'0'`, a space and every other string remain IDs, and
+  IDs are compared as strings, so `'01'` and `'1'` still make an event.
+  `Event::fromArray()`, and so `Schedule::fromArray()`,
+  `StageState::fromArray()` and the other readers of events, refuse data
+  that lists one ID twice in an event. Who is affected: code that builds a
+  placeholder participant with an empty ID (a bye or "to be decided" side),
+  and code that builds an event of one participant against itself, for
+  instance to stand for a bye. Nothing a scheduler or an engine returns is
+  such a participant or such an event, so stored schedules and states the
+  library wrote load as before. What to change: give a placeholder an ID of
+  its own (`new Participant('bye', 'Bye')`), and do not model a bye as an
+  event: the schedulers report byes in the schedule metadata and the
+  engines in `RoundPairing::getByes()`. Before: `new Event([$alice,
+  $alice])` returned an event. After: it throws. Code analysed with checked
+  exceptions sees one more `@throws` on `Participant::__construct()` (#53).
+- **Breaking: every `fromArray()` refuses a key its form does not have.**
+  A key that was not known used to be ignored, so a misspelt key was read
+  as the key left out: `RoundRobinOptions::fromArray(['legs' => 2,
+  'stratgy' => 'repeated'])` gave two mirrored legs, and a result stored
+  with `winer` in place of `winner` was read as a draw. Both now throw
+  (#53).
+  - *Configuration* throws an `InvalidConfigurationException` with the
+    reason `UnknownOptionKey`, whose context lists the keys that are not
+    known under `unknown` and the keys of the form under `known`:
+    `RoundRobinOptions`, `SwissOptions`, `EliminationOptions`,
+    `RepackOptions`, `WinDrawLossRanking`, `AwardedResultPolicy`,
+    `TimelineDefinition`,
+    `SessionGrid`, `BlackoutRule` (the rule and each of its windows),
+    `MinimumRestRule`, `RankRangeSelector` and `MatchOutcomeSelector`.
+    `PotDrawOptions` already did; its message is now `Unknown key in pot
+    draw options: '<key>'` where it was `Unknown pot draw option`, and its
+    reason and context are unchanged.
+  - *Data* throws an `InvalidInputException` whose message names the keys
+    that are not known and the known ones: `Participant`, `Round`, `Event`,
+    `Result`, `Award`, `Schedule`, `RoundPairing`, `StageState`,
+    `Adjustment`, `ScheduledEvent` and `ScheduledSchedule`, on their own or nested in one another.
+
+  Who is affected: an application that passes a `fromArray()` an array with
+  keys of its own in it (a database row with its `id` and timestamps, a
+  form with a CSRF token, an event array decorated with a venue), and one
+  whose stored configuration holds a misspelt key, which until now did
+  nothing. Arrays that `toArray()` wrote hold no such key and load as
+  before. What to change: pass the library's keys only, and keep data of
+  your own in the `metadata` of the participant, round, event, result or
+  schedule it belongs to, or beside the array. Before:
+  `RepackOptions::fromArray($row)` with `$row = ['id' => 7, 'step_budget'
+  => 50000]`. After: `RepackOptions::fromArray(['step_budget' =>
+  $row['step_budget']])`. A misspelt key is to be corrected: the exception
+  names it and lists the keys the form has. A known key given as `null` is
+  still read as the key left out wherever it was, and `session_count`
+  beside `sessions` in a session grid is still accepted and not read. Code
+  analysed with checked exceptions sees no new exception type: each method
+  already declared the one it now throws for this.
 - **Breaking: a rank selection that results do not decide is refused.**
   `RankRangeSelector::select()` read positions from a table whatever
   decided them. A pool in which every event was drawn, entered as Zed, Yan,
@@ -694,7 +934,7 @@ entry on the engine fingerprint.
   reason `IncompatibleOptions`; a `strategy_seed` that is neither an
   integer nor null has the reason `WrongValueType`, and null is read as the
   key left out. The first used to build the unseeded strategy above.
-  The second is refused, where an unknown key is ignored, because a seed
+  The second is refused because a seed
   beside a strategy that draws nothing would decide nothing and
   `toArray()` could not give it back. Who is affected: stored
   configuration that says `'strategy' => 'shuffled'`. What to change: add

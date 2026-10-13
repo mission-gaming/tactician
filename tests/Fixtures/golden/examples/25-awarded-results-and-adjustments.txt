@@ -78,6 +78,7 @@ label: no-show
 reason: Drift did not check in before the deadline
 
 == The adjustment as plain data ==
+format_version: 1
 participant: aurora
 amount: -4
 label: ruling

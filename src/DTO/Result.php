@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The outcome of an event: who won, or that nobody did, and optionally a
@@ -37,8 +38,10 @@ readonly class Result
      * The winner and the scores are not checked against each other, and
      * scores need not cover every participant of the event.
      *
-     * @param Event $event The event the result is of. Pass the object the scheduler or engine
-     *                     produced: the standings calculator tells events apart by object
+     * @param Event $event The event the result is of. Pass the event the scheduler or engine
+     *                     produced, or one equal to it: an event is recognised by its round
+     *                     number, its participants and its tie leg, and one with no round by
+     *                     the object alone
      * @param Participant|null $winner The winning participant, or null for a draw
      * @param array<int|string, int|float> $scores Optional numeric scores keyed by participant ID
      *                                             (numeric-string IDs become int keys in PHP)
@@ -184,25 +187,34 @@ readonly class Result
      * Convert this result to a serializable array.
      *
      * The event is embedded in its own array form (participants referenced
-     * by ID); pair with a participant registry to rehydrate.
+     * by ID); pair with a participant registry to rehydrate. The first key
+     * is `format_version`, the version of this form (1); the event is
+     * written without one.
      *
      * The `award` key is present only for an awarded result (see
-     * isAwarded()), so the array of a played result has the four keys it
-     * has always had.
+     * isAwarded()), so the array of a played result has no key but the
+     * version and the four it has always had. The award is written without
+     * a version of its own.
      *
-     * @return array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}}
+     * @return array{format_version: int, event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}}
      */
     public function toArray(): array
     {
+        $event = $this->event->toArray();
+        unset($event[PlainData::VERSION_KEY]);
+
         $data = [
-            'event' => $this->event->toArray(),
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'event' => $event,
             'winner' => $this->winner?->getId(),
             'scores' => $this->scores,
             'metadata' => $this->metadata,
         ];
 
         if ($this->award instanceof Award) {
-            $data['award'] = $this->award->toArray();
+            $award = $this->award->toArray();
+            unset($award[PlainData::VERSION_KEY]);
+            $data['award'] = $award;
         }
 
         return $data;
@@ -217,11 +229,14 @@ readonly class Result
      * A missing 'award', or one that is null, is a result of an event that
      * was played, which is every result stored before the key existed; an
      * array under it, the empty one included, is an awarded result.
+     * Any other key is refused, so that a misspelt 'winner' is not silently
+     * read as a draw, nor a misspelt 'award' as a result that was played.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
      *
-     * @throws InvalidInputException When a field has the wrong type, a score is not an int
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, a field has the wrong type, a score is not an int
      *                               or a float, a participant ID is not in the registry,
      *                               the winner or a score names a participant who is
      *                               not in the event, or the award is not an array of a
@@ -229,6 +244,8 @@ readonly class Result
      */
     public static function fromArray(array $data, array $participantsById): self
     {
+        PlainData::checkFields($data, ['event', 'winner', 'scores', 'metadata', 'award'], 'result data');
+
         $eventData = $data['event'] ?? null;
         if (!is_array($eventData)) {
             throw new InvalidInputException('Result data requires an event array');

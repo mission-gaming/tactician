@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Standings;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The two things a standings calculator does with an awarded result that
@@ -55,20 +56,14 @@ final readonly class AwardedResultPolicy
      *
      * @param array<array-key, mixed> $config
      *
-     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), or
-     *                                       a value is not a boolean (`WrongValueType`)
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), or a value is not a boolean
+     *                                       (`WrongValueType`)
      */
     public static function fromArray(array $config): self
     {
-        $known = ['count_scores', 'count_between_tied_participants'];
-        $unknown = array_values(array_diff(array_map(strval(...), array_keys($config)), $known));
-        if ($unknown !== []) {
-            throw new InvalidConfigurationException(
-                sprintf("Unknown key in awarded result policy: '%s'", implode("', '", $unknown)),
-                ['unknown' => $unknown, 'known' => $known],
-                reason: InvalidConfigurationReason::UnknownOptionKey
-            );
-        }
+        PlainData::checkOptions($config, ['count_scores', 'count_between_tied_participants'], 'awarded result policy');
 
         $countScores = $config['count_scores'] ?? true;
         $countBetweenTiedParticipants = $config['count_between_tied_participants'] ?? true;
@@ -87,13 +82,15 @@ final readonly class AwardedResultPolicy
     }
 
     /**
-     * The plain-data form fromArray() accepts: both keys, always.
+     * The plain-data form fromArray() accepts: both keys, always, after
+     * `format_version`, the version of this form (1).
      *
-     * @return array{count_scores: bool, count_between_tied_participants: bool}
+     * @return array{format_version: int, count_scores: bool, count_between_tied_participants: bool}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'count_scores' => $this->countScores,
             'count_between_tied_participants' => $this->countBetweenTiedParticipants,
         ];

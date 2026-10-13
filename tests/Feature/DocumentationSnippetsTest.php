@@ -277,6 +277,32 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         }
     })->with([
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'format versions' => [
+            'docs/USAGE.md',
+            "echo \$stored['format_version']",
+            [
+                "format_version, participants, events, metadata\n1\nparticipants, round, metadata\n"
+                . "{\"format_version\":1,\"rounds\":5}\n1\n"
+                . 'Unsupported format version 2 in schedule data: this version of the library reads version 1.'
+                . " The data was written by a later release; upgrade the library to read it\n",
+            ],
+            [],
+        ],
+        'a stored stage state with its rounds reversed' => [
+            'docs/USAGE.md',
+            "\$stored['rounds'] = array_reverse(\$stored['rounds']);",
+            ["2\nround_out_of_sequence\n"],
+            [],
+        ],
+        'a key a form does not have' => [
+            'docs/USAGE.md',
+            "'stratgy' => 'repeated'",
+            [
+                "unknown_option_key\nstratgy\nformat_version, legs, strategy, backtracking, strategy_seed, role_assignment\n"
+                . "Unknown key in participant data: 'seeding' (the known keys are 'format_version', 'id', 'label', 'seed', 'metadata')\n",
+            ],
+            [],
+        ],
         'ids that are equal as numbers or hold a separator' => ['docs/USAGE.md', 'count($entrySchedule)', ["6 events\n"], []],
         'the leg count of a format without legs, and the exception a deprecated factory built' => [
             'docs/USAGE.md',
@@ -526,7 +552,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 . "e04: session 0, slot 2, ordinal 2\n"
                 . "{\"session\":1,\"slot\":2}\n"
                 . "null\n"
-                . "{\"session_count\":2,\"slots_per_session\":3,\"capacity_per_slot\":3,\"slots_per_session_overrides\":{\"1\":4}}\n",
+                . "{\"format_version\":1,\"session_count\":2,\"slots_per_session\":3,\"capacity_per_slot\":3,\"slots_per_session_overrides\":{\"1\":4}}\n",
             ],
             ['kickoff'],
         ],
@@ -652,12 +678,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         'options round trip' => [
             'docs/USAGE.md',
             '$options->toArray();',
-            "assert(\$options->toArray() === ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]);",
+            "assert(\$options->toArray() === ['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]);",
         ],
         'shuffled options round trip with their seed' => [
             'docs/USAGE.md',
             '$shuffledOptions->toArray();',
-            "assert(\$shuffledOptions->toArray() === ['legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false, 'strategy_seed' => 2026]);",
+            "assert(\$shuffledOptions->toArray() === ['format_version' => 1, 'legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false, 'strategy_seed' => 2026]);",
         ],
         'role balance of the two role assignments' => [
             'docs/USAGE.md',
@@ -667,7 +693,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         'balanced options round trip' => [
             'docs/USAGE.md',
             '$balancedOptions->toArray();',
-            "assert(\$balancedOptions->toArray() === ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);",
+            "assert(\$balancedOptions->toArray() === ['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);",
         ],
         // The custom role assignment of the document is honoured in every event
         'a custom role assignment names the better seed first' => [
@@ -707,8 +733,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             '$stored = $drawOptions->toArray();',
             <<<'PHP'
-                assert($stored === ['pots' => 4, 'opponents_per_pot' => 2, 'seed' => 2026]);
-                assert(PotDrawOptions::fromArray([])->toArray() === ['pots' => 1, 'opponents_per_pot' => 1, 'seed' => 0]);
+                assert($stored === ['format_version' => 1, 'pots' => 4, 'opponents_per_pot' => 2, 'seed' => 2026]);
+                assert(PotDrawOptions::fromArray([])->toArray() === ['format_version' => 1, 'pots' => 1, 'opponents_per_pot' => 1, 'seed' => 0]);
                 assert($plan->getPotOf($entrants[0]) === 1 && $plan->getPotOf($entrants[8]) === 1 && $plan->getPotOf($entrants[9]) === 2);
                 assert($plan->getPotMembers(1) === array_slice($entrants, 0, 9));
                 // Every entrant has four events in each role
@@ -896,7 +922,7 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($fromDiff->toArray()['round_interval'] === 'P7D');
                 // "A `MinimumRestRule` ... writes a rest of amounts of time from either source"
                 $rest = new \MissionGaming\Tactician\Timeline\MinimumRestRule(\DateInterval::createFromDateString('48 hours'));
-                assert($rest->toArray() === ['rest' => 'PT48H']);
+                assert($rest->toArray() === ['format_version' => 1, 'rest' => 'PT48H']);
                 try {
                     (new \MissionGaming\Tactician\Timeline\MinimumRestRule(\DateInterval::createFromDateString('next weekday')))->toArray();
                     assert(false);
@@ -1124,15 +1150,32 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
-        // Records a known defect (issue #53: duplicate results are detected by object
-        // identity); the first assertion changes when it is fixed.
-        // "two Event objects for one match ... are counted as two matches"
-        'the calculator recognises an event by the object' => [
+        // "Two results are of one event when they hold the same Event object, or when
+        // their events carry the same round number, the same participants in either
+        // order and the same tie leg", and "two such events [with no round] are two
+        // events played". Until issue #53 was fixed the second case below was counted
+        // as two matches.
+        'the calculator recognises an event by what it says, and one with no round by the object' => [
             'docs/USAGE.md',
             '$standings = $calculator->calculate($participants, $results);',
             <<<'PHP'
                 $twice = $calculator->calculate([$alice, $bob], [new Result(new Event([$alice, $bob]), $alice), new Result(new Event([$alice, $bob]), $alice)]);
                 assert($twice->getEntries()[0]->getPlayed() === 2);
+                try {
+                    $calculator->calculate([$alice, $bob], [
+                        new Result(new Event([$alice, $bob], new \MissionGaming\Tactician\DTO\Round(1)), $alice),
+                        new Result(new Event([$bob, $alice], new \MissionGaming\Tactician\DTO\Round(1)), $alice),
+                    ]);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidInputException $refused) {
+                    assert(str_contains($refused->getMessage(), '(round 1, ' . $bob->getId() . ' vs ' . $alice->getId() . '). Events with the same round number'));
+                    assert(str_ends_with($refused->getMessage(), "or give each event a 'tie_leg'"));
+                }
+                $legs = $calculator->calculate([$alice, $bob], [
+                    new Result(new Event([$alice, $bob], new \MissionGaming\Tactician\DTO\Round(1), ['tie_leg' => 1]), $alice),
+                    new Result(new Event([$bob, $alice], new \MissionGaming\Tactician\DTO\Round(1), ['tie_leg' => 2]), $alice),
+                ]);
+                assert($legs->getEntries()[0]->getPlayed() === 2);
                 try {
                     $calculator->calculate([$alice, $bob], [new Result($eventOne, $alice), new Result($eventOne, $bob)]);
                     assert(false);
@@ -1199,8 +1242,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
-        // What a JSON round trip keeps of a schedule. That the entrant order is lost is a
-        // known defect (issue #53)
+        // What a JSON round trip keeps of a schedule: "The entrant list is kept, in its
+        // order". Until issue #53 was fixed the list came back in the order of first
+        // appearance in the events, which for five entrants is another order.
         'what a serialized schedule keeps' => [
             'docs/USAGE.md',
             '$restored = Schedule::fromJson($json);',
@@ -1209,16 +1253,19 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 for ($i = 1; $i <= 5; ++$i) {
                     $entrants[] = new Participant("p{$i}", "P{$i}", null, ['rating' => 1.0]);
                 }
-                $back = Schedule::fromJson((new RoundRobinScheduler())->schedule($entrants)->toJson());
+                $generated = (new RoundRobinScheduler())->schedule($entrants);
+                assert($generated->getEntrants() === $entrants);
+                $back = Schedule::fromJson($generated->toJson());
                 $ids = array_column($back->toArray()['participants'], 'id');
-                assert($ids !== ['p1', 'p2', 'p3', 'p4', 'p5']);
+                assert($ids === ['p1', 'p2', 'p3', 'p4', 'p5']);
+                assert(array_map(fn (Participant $entrant) => $entrant->getId(), $back->getEntrants()) === $ids);
                 $firstAppearance = [];
                 foreach ($back as $event) {
                     foreach ($event->getParticipants() as $participant) {
                         $firstAppearance[$participant->getId()] = true;
                     }
                 }
-                assert($ids === array_keys($firstAppearance));
+                assert($ids !== array_keys($firstAppearance));
                 assert($back->getEvents()[0]->getParticipants()[0]->getMetadataValue('rating') === 1);
                 PHP,
         ],

@@ -306,8 +306,11 @@ final class Example
             foreach ($value->getUnplaced() as $unplaced) {
                 $problems[] = 'Unplaced: ' . $unplaced->getEventId() . ' (' . $unplaced->getReason()->value . ')';
             }
-            foreach ($value->getViolations() as $violation) {
-                $problems[] = $violation->getKind()->value . ': ' . json_encode($violation->toArray());
+            // Each violation as the outcome writes it: the outcome states the
+            // format version once, so its records carry none
+            $written = $value->toArray()['violations'];
+            foreach ($value->getViolations() as $index => $violation) {
+                $problems[] = $violation->getKind()->value . ': ' . json_encode($written[$index] ?? []);
             }
 
             return ['parts', [

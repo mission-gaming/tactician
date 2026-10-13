@@ -48,7 +48,7 @@ describe('StageState engine fingerprint', function (): void {
         $state = StageState::start($this->participants);
 
         expect($state->getEngineFingerprint())->toBeNull()
-            ->and(array_keys($state->toArray()))->toBe(['participants', 'active', 'rounds', 'results']);
+            ->and(array_keys($state->toArray()))->toBe(['format_version', 'participants', 'active', 'rounds', 'results']);
     });
 
     it('stamps a new state and leaves the one it was called on', function (): void {
@@ -74,7 +74,7 @@ describe('StageState engine fingerprint', function (): void {
         $stamped = StageState::start($this->participants)->withEngineFingerprint('ladder:rungs=3');
 
         $data = $stamped->toArray();
-        expect(array_keys($data))->toBe(['participants', 'active', 'rounds', 'results', 'engine_fingerprint'])
+        expect(array_keys($data))->toBe(['format_version', 'participants', 'active', 'rounds', 'results', 'engine_fingerprint'])
             ->and($data['engine_fingerprint'] ?? null)->toBe('ladder:rungs=3');
 
         expect(StageState::fromArray($data)->getEngineFingerprint())->toBe('ladder:rungs=3')
@@ -485,9 +485,10 @@ describe('engine fingerprints', function (): void {
         assert($ranking instanceof WinDrawLossRanking);
 
         expect([$options->legsPerTie, $options->reseedEachRound, $options->grandFinalReset])->toBe([1, false, true])
-            ->and($ranking->toArray())->toBe(['win' => 3.0, 'draw' => 1.0, 'loss' => 0.0])
+            ->and($ranking->toArray())->toBe(['format_version' => 1, 'win' => 3.0, 'draw' => 1.0, 'loss' => 0.0])
             ->and((new StandingsCalculator())->getTiebreakers())->toBe([])
             ->and((new StandingsCalculator())->getAwardedResultPolicy()->toArray())->toBe([
+                'format_version' => 1,
                 'count_scores' => true,
                 'count_between_tied_participants' => true,
             ]);

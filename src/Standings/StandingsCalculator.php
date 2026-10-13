@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Standings;
 
+use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Stage\PairKey;
 
 /**
  * Calculates an ordered standings table from recorded results.
@@ -120,29 +122,68 @@ readonly class StandingsCalculator
      * value is below zero, or whose ranking value is zero with a score
      * difference below zero.
      *
-     * Results are told apart by their event object: two results for one
-     * Event instance are refused, and two results for two equal Event
-     * instances are two events played.
+     * An event has one result. Two results are of one event, and are
+     * refused, when they hold the same Event object, or when their events
+     * carry the same round number, the same participants in any order and
+     * the same tie leg (the `tie_leg` metadata of a two-legged tie; an
+     * event without it is leg 1). The second rule is what holds after
+     * storage: results read back from JSON hold Event objects of their
+     * own, so a result recorded twice is two objects and one match. An
+     * event with no round has nothing but the object to tell it from
+     * another meeting of the same participants, so two such events are
+     * two events played. Events of one round between the same participants
+     * that are in fact two events need a `tie_leg` each to be counted
+     * apart, and results of two schedules or stages that number their
+     * rounds alike (two seasons, two stages that each count from 1) are
+     * to be given one table each, or round numbers that continue; the
+     * message of the exception says so.
      *
      * @param array<Participant> $participants Everyone the table lists, in any order. Of two
      *                                         participants with the same ID the later is kept
      * @param array<Result> $results The recorded results, in any order
      *
      * @throws InvalidInputException When a result's event has a participant who is not
-     *                               among the given ones, or two results reference the
-     *                               same event object
+     *                               among the given ones, or two results are of one event
      */
     public function calculate(array $participants, array $results): Standings
     {
         $seenEvents = [];
+        $seenMatches = [];
         foreach ($results as $result) {
-            $eventId = spl_object_id($result->getEvent());
-            if (isset($seenEvents[$eventId])) {
+            $event = $result->getEvent();
+
+            // The object does not survive storage: two results of one match
+            // read back from JSON hold two Event objects that are equal.
+            // What does survive is what the event says about itself, so a
+            // result recorded twice is refused in the same words before and
+            // after the state was stored.
+            $eventId = spl_object_id($event);
+            $match = self::matchOf($event);
+            if (isset($seenEvents[$eventId]) || ($match !== null && isset($seenMatches[$match]))) {
+                $round = $event->getRound()?->getNumber();
+
+                // The same words whether the two results hold one object or
+                // two: the hint is for the caller whose two events are in
+                // fact two, which the calculator cannot tell from one.
                 throw new InvalidInputException(
                     'Two results reference the same event; each event can have only one result'
+                    . ($round === null ? '' : sprintf(
+                        ' (round %d, %s). Events with the same round number, participants and tie leg are one event:'
+                        . ' if these are two (one table over two stages or seasons, or two meetings in one round),'
+                        . " calculate a table for each, continue the round numbers, or give each event a 'tie_leg'",
+                        $round,
+                        implode(' vs ', array_map(
+                            fn(Participant $participant): string => $participant->getId(),
+                            $event->getParticipants()
+                        ))
+                    ))
                 );
             }
+
             $seenEvents[$eventId] = true;
+            if ($match !== null) {
+                $seenMatches[$match] = true;
+            }
         }
 
         /** @var array<string, Participant> $participantsById */
@@ -273,6 +314,28 @@ readonly class StandingsCalculator
         });
 
         return new Standings($ordered);
+    }
+
+    /**
+     * What identifies the match an event is, where the event says enough
+     * to identify one: its round number, its participants in any order and
+     * its tie leg. Null for an event with no round, which nothing but the
+     * object tells from another meeting of the same participants.
+     *
+     * The same three things identify an event to StageState and to the
+     * bracket engines, so a result is one match to all of them.
+     */
+    private static function matchOf(Event $event): ?string
+    {
+        $round = $event->getRound()?->getNumber();
+        if ($round === null) {
+            return null;
+        }
+
+        $ids = array_map(fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+        $leg = $event->getMetadataValue('tie_leg');
+
+        return $round . ':' . PairKey::of(...array_values($ids)) . ':' . (is_int($leg) ? $leg : 1);
     }
 
     /**

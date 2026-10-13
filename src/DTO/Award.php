@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The mark of an awarded result: the event was not played, and the result
@@ -48,13 +49,16 @@ readonly class Award
     }
 
     /**
-     * Convert this mark to a serializable array: both keys, always.
+     * Convert this mark to a serializable array: both keys, always, after
+     * `format_version`, the version of this form (1). A result writes its
+     * award without the version, as it writes every part it holds.
      *
-     * @return array{label: string|null, reason: string|null}
+     * @return array{format_version: int, label: string|null, reason: string|null}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'label' => $this->label,
             'reason' => $this->reason,
         ];
@@ -67,18 +71,13 @@ readonly class Award
      *
      * @param array<array-key, mixed> $data
      *
-     * @throws InvalidInputException When a key is unknown, or a label or reason is neither a
-     *                               string nor null
+     * @throws InvalidInputException When the format version is not one this release reads, a
+     *                               key is unknown, or a label or reason is neither a string
+     *                               nor null
      */
     public static function fromArray(array $data): self
     {
-        $unknown = array_diff(array_map(strval(...), array_keys($data)), ['label', 'reason']);
-        if ($unknown !== []) {
-            throw new InvalidInputException(sprintf(
-                "Unknown key in award data: '%s' (the known keys are 'label', 'reason')",
-                implode("', '", $unknown)
-            ));
-        }
+        PlainData::checkFields($data, ['label', 'reason'], 'award data');
 
         $label = $data['label'] ?? null;
         $reason = $data['reason'] ?? null;

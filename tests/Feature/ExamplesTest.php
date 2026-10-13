@@ -1144,6 +1144,7 @@ $demonstrations = [
                 ['Participant' => 'Drift', 'Earned' => 0.0, 'Adjustment' => 0.0, 'Total' => 0.0],
             ])
             ->and($results['The adjustment as plain data'])->toBe([
+                'format_version' => 1,
                 'participant' => 'aurora',
                 'amount' => -4.0,
                 'label' => 'ruling',

@@ -210,8 +210,9 @@ before (31 and 32); the changelog lists them as output changes.
     serializes with `session_count` in place of `sessions`, `timezone`
     and `slot_interval`, and `fromArray()` reads that form only when there
     is no `sessions` key: that input threw before, so no input that
-    worked reads differently. `session_count` beside `sessions` stays an
-    ignored unknown key, as it was.
+    worked reads differently. `session_count` beside `sessions` is still not
+    read, as it was. It is a key of the grid, so it is not refused as an
+    unknown one now that unknown keys are.
 23. **Unbounded capacity is `null` in PHP and the word `unbounded` in
     plain data.** A null `capacity_per_slot` in plain data has always
     meant "not given, use 1", so null could not be given a second meaning

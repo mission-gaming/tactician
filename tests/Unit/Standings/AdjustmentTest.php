@@ -44,6 +44,7 @@ describe('Adjustment', function (): void {
         $adjustment = new Adjustment('p1', -3.0, 'ruling', 'Fielded an unregistered player');
 
         expect($adjustment->toArray())->toBe([
+            'format_version' => 1,
             'participant' => 'p1',
             'amount' => -3.0,
             'label' => 'ruling',
@@ -51,6 +52,7 @@ describe('Adjustment', function (): void {
         ])
             ->and(Adjustment::fromArray($adjustment->toArray()))->toEqual($adjustment)
             ->and((new Adjustment('p2', 0.5))->toArray())->toBe([
+                'format_version' => 1,
                 'participant' => 'p2',
                 'amount' => 0.5,
                 'label' => null,
@@ -109,6 +111,7 @@ describe('AwardedResultPolicy', function (): void {
         $policy = new AwardedResultPolicy($scores, $betweenTied);
 
         expect($policy->toArray())->toBe([
+            'format_version' => 1,
             'count_scores' => $scores,
             'count_between_tied_participants' => $betweenTied,
         ])->and(AwardedResultPolicy::fromArray($policy->toArray()))->toEqual($policy);
@@ -121,7 +124,7 @@ describe('AwardedResultPolicy', function (): void {
         } catch (InvalidConfigurationException $exception) {
             expect($exception->getReason())->toBe(InvalidConfigurationReason::UnknownOptionKey)
                 ->and($exception->getContext()['unknown'] ?? null)->toBe(['count_score'])
-                ->and($exception->getContext()['known'] ?? null)->toBe(['count_scores', 'count_between_tied_participants']);
+                ->and($exception->getContext()['known'] ?? null)->toBe(['format_version', 'count_scores', 'count_between_tied_participants']);
         }
     });
 

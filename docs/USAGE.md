@@ -188,14 +188,20 @@ echo $detailedPlayer->getMetadataValue('region', 'Unknown') . "\n"; // 'Europe'
 
 ### Participant IDs
 
-An ID is any string, and two participants are the same participant only
-when their IDs are the same string. `'01'` and `'1'` are two participants,
-and so are `'1e3'` and `'1000'`, although PHP compares each pair as equal
-numbers. An ID may contain any character, including the `|`, `:` and `\`
-that the library uses inside its own lookup keys. The IDs of one field must
-be unique; nothing else is required of them to generate a schedule or to
-pair a stage. Writing a schedule or a stage state as JSON also needs every
-ID to be valid UTF-8.
+An ID is any string but the empty one, and two participants are the same
+participant only when their IDs are the same string. `'01'` and `'1'` are
+two participants, and so are `'1e3'` and `'1000'`, although PHP compares
+each pair as equal numbers. An ID may contain any character, including the
+`|`, `:` and `\` that the library uses inside its own lookup keys, and may
+be `'0'` or a single space; only `''` is refused, by
+`new Participant('', ...)` with an `InvalidInputException`. The IDs of one
+field must be unique; nothing else is required of them to generate a
+schedule or to pair a stage. Writing a schedule or a stage state as JSON
+also needs every ID to be valid UTF-8.
+
+An event holds each participant once. `new Event([$celtic, $celtic])`
+throws an `InvalidInputException`, and so does an event of two `Participant`
+objects with one ID: a participant is not paired with itself.
 
 ```php
 use MissionGaming\Tactician\DTO\Participant;
@@ -531,7 +537,7 @@ stable strategy identifiers `mirrored`, `repeated`, and `shuffled` (and
 
 ```php
 $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'mirrored']);
-$options->toArray(); // ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]
+$options->toArray(); // ['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false]
 ```
 
 In plain data the shuffled strategy comes with its seed, under the key
@@ -541,7 +547,8 @@ so stored options never name a seed that decides nothing:
 
 ```php
 $shuffledOptions = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'shuffled', 'strategy_seed' => 2026]);
-$shuffledOptions->toArray(); // ['legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false, 'strategy_seed' => 2026]
+$shuffledOptions->toArray();
+// ['format_version' => 1, 'legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false, 'strategy_seed' => 2026]
 
 // The same data gives the schedule of the same seed, on every call
 var_dump($scheduler->schedule($participants, $shuffledOptions)->toJson() === $shuffledSchedule->toJson()); // bool(true)
@@ -707,7 +714,7 @@ the default included:
 ```php
 $balancedOptions = RoundRobinOptions::fromArray(['legs' => 2, 'role_assignment' => 'balanced']);
 $balancedOptions->toArray();
-// ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']
+// ['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']
 ```
 
 `BalancedRoleAssignment` becomes the default in 0.3. To keep the roles of
@@ -901,12 +908,27 @@ also available. Ties beyond the configured tiebreakers fall back to score
 difference and score for. Entries that are still level are ordered by seed
 (a participant without one after those that have one) and finally by ID, so
 that the table is the same for every order of the participants array; a
-label is never compared. Each event may
-have at most one result: the calculator throws an `InvalidInputException`
-for two results that hold the same `Event` object. It recognises an event by
-the object and does not compare events, so two `Event` objects for one match
-(one of them rebuilt from stored data, say) are counted as two matches; pass
-it one result per match.
+label is never compared.
+
+Each event may have at most one result, and the calculator throws an
+`InvalidInputException` for two results of one event. Two results are of one
+event when they hold the same `Event` object, or when their events carry the
+same round number, the same participants in either order and the same tie
+leg (the `tie_leg` metadata of a two-legged tie; an event without it is leg
+1). The second rule is the one that holds for stored data: a result recorded
+twice comes back from JSON as two `Event` objects that are equal, and it is
+refused as it was before it was stored. Two things follow:
+
+- An event with no round has nothing but the object to tell it from another
+  meeting of the same participants, so two such events are two events
+  played.
+- One table over results that share round numbers (two seasons, or two
+  stages that each count their rounds from 1) refuses the first pair that
+  met in the same round of both. Calculate a table for each and combine
+  them, or give the events round numbers that continue from one to the
+  next. Two meetings of one pair in one round are told apart by a
+  `tie_leg` each. The message of the exception names the round and the
+  participants, and these ways out.
 
 ### Tied sets
 
@@ -1153,8 +1175,10 @@ awarded win is still in her record and her points, and the tiebreaker did
 not see it.
 
 A result carries the mark in its array form under `award`, a key that is
-there only for an awarded result, so the array of a played result is what it
-always was and data stored before the mark existed reads as played.
+there only for an awarded result, so the array of a played result has the
+keys it had and data stored before the mark existed reads as played. A
+misspelt `award` is refused like any key a result does not have, and not
+read as a result that was played.
 
 ### Adjustments
 
@@ -1759,7 +1783,7 @@ which is a ranking.
 ```php
 use MissionGaming\Tactician\DTO\Schedule;
 
-$stored = $drawOptions->toArray(); // ['pots' => 4, 'opponents_per_pot' => 2, 'seed' => 2026]
+$stored = $drawOptions->toArray(); // ['format_version' => 1, 'pots' => 4, 'opponents_per_pot' => 2, 'seed' => 2026]
 
 $again = (new PotDrawScheduler())->schedule($entrants, PotDrawOptions::fromArray($stored));
 $other = $scheduler->schedule($entrants, new PotDrawOptions(pots: 4, opponentsPerPot: 2, seed: 2027));
@@ -1770,7 +1794,8 @@ var_dump($events($other) === $events($schedule)); // bool(false)
 ```
 
 `PotDrawOptions::fromArray()` refuses a key it does not know (reason
-`UnknownOptionKey`), so a misspelt option is not silently read as its default.
+`UnknownOptionKey`), as every `fromArray()` does, so a misspelt option is not
+silently read as its default.
 A key that is left out takes its default: one pot, one opponent per pot,
 seed 0.
 
@@ -3078,7 +3103,7 @@ foreach ($shaped->getAssignments() as $assignment) {
 echo json_encode($shape->positionOf(5)), "\n";   // {"session":1,"slot":2}
 echo json_encode($shape->positionOf(7)), "\n";   // null: the grid has 7 positions, 0 to 6
 echo json_encode($shape->toArray()), "\n";
-// {"session_count":2,"slots_per_session":3,"capacity_per_slot":3,"slots_per_session_overrides":{"1":4}}
+// {"format_version":1,"session_count":2,"slots_per_session":3,"capacity_per_slot":3,"slots_per_session_overrides":{"1":4}}
 ```
 
 The repacker reads positions and nothing else, so a shape-only grid gets
@@ -3497,7 +3522,7 @@ the plain-data word for an unbounded capacity.
 |---|---|
 | `shapeOnly(int $sessions, int $slotsPerSession = 1, array $slotsPerSessionOverrides = [], ?int $capacityPerSlot = 1)` | A shape-only grid (static) |
 | `fromArray(array $config)` | A grid of either form from plain data (static) |
-| `toArray()` | The plain data `fromArray()` accepts |
+| `toArray()` | The plain data `fromArray()` accepts, with `format_version` first |
 | `hasInstants()` | False for a shape-only grid |
 | `getSessionCount()` | How many sessions |
 | `getSlotCount(int $session)` | How many slots that session has, overrides applied |
@@ -3523,7 +3548,7 @@ weight.
 | Method | Returns |
 |---|---|
 | `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget` and `throw_on_violations` (static) |
-| `toArray()` | The same plain data |
+| `toArray()` | The same plain data, with `format_version` first |
 
 #### `RepackOutcome`
 
@@ -3545,7 +3570,7 @@ The constant `RepackOutcome::FINGERPRINT_SCHEME` is the scheme
 | `isClean()` | Whether nothing is unplaced and there is no violation |
 | `isBudgetExhausted()` | Whether the step budget stopped a search |
 | `fingerprint()` | The outcome's fingerprint |
-| `toArray()` | `['assignments' => ..., 'unplaced' => ..., 'violations' => ...]`, each the `toArray()` of its records |
+| `toArray()` | `['format_version' => 1, 'assignments' => ..., 'unplaced' => ..., 'violations' => ...]`, each list holding the `toArray()` of its records without their own `format_version` (see [Format Versions](#format-versions)) |
 
 Building one by hand takes the three lists and, optionally, the budget
 flag: `new RepackOutcome(array $assignments, array $unplaced, array $violations, bool $budgetExhausted = false)`.
@@ -3565,7 +3590,7 @@ hand, in a test for example.
 | `getSlot()` | The 0-based slot within the session |
 | `hasKickoff()` | False when the grid is shape-only |
 | `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, in the timezone it was given in); throws an `UnavailableValueException` when there is none |
-| `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in |
+| `toArray()` | `format_version`, `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in |
 
 #### `UnplacedEvent`
 
@@ -3576,7 +3601,7 @@ hand, in a test for example.
 | `getEventId()` | The movable event's ID |
 | `getReason()` | The `UnplacedReason` |
 | `getParticipant()` | The participant with too many events, or null |
-| `toArray()` | `event_id`, `reason` and `participant` (its ID, or null) |
+| `toArray()` | `format_version`, `event_id`, `reason` and `participant` (its ID, or null) |
 
 #### `UnplacedReason`
 
@@ -3600,7 +3625,7 @@ typed accessors, each of which returns objects of its own class.
 | Method | Returns |
 |---|---|
 | `getKind()` | The `ViolationKind` |
-| `toArray()` | Plain data, always with a `kind` key holding the kind's backing string |
+| `toArray()` | Plain data, always with a `kind` key holding the kind's backing string. The library's violations write `format_version` first |
 
 #### `ParticipantDoubleBooked`
 
@@ -3613,7 +3638,7 @@ typed accessors, each of which returns objects of its own class.
 | `getSession()` | The session of the position |
 | `getSlot()` | The slot of the position |
 | `getEventIds()` | The IDs of the events that collide, sorted |
-| `toArray()` | `kind`, `participant`, `session`, `slot` and `event_ids` |
+| `toArray()` | `format_version`, `kind`, `participant`, `session`, `slot` and `event_ids` |
 
 #### `EventUnplaced`
 
@@ -3625,7 +3650,7 @@ typed accessors, each of which returns objects of its own class.
 | `getEventId()` | The movable event's ID |
 | `getReason()` | The `UnplacedReason` |
 | `getParticipant()` | The participant with too many events, or null |
-| `toArray()` | `kind`, `event_id`, `reason` and `participant` |
+| `toArray()` | `format_version`, `kind`, `event_id`, `reason` and `participant` |
 
 #### `ContiguityBroken`
 
@@ -3638,7 +3663,7 @@ typed accessors, each of which returns objects of its own class.
 | `getSession()` | The session |
 | `getGapSlots()` | How many slots between the participant's first and last are empty |
 | `getOccupiedSlots()` | The slots the participant occupies in the session, pins included, ascending |
-| `toArray()` | `kind`, `participant`, `session`, `gap_slots` and `occupied_slots` |
+| `toArray()` | `format_version`, `kind`, `participant`, `session`, `gap_slots` and `occupied_slots` |
 
 #### `LateStart`
 
@@ -3650,7 +3675,7 @@ typed accessors, each of which returns objects of its own class.
 | `getParticipant()` | The participant who starts late |
 | `getSession()` | The session |
 | `getFirstSlot()` | The first slot the participant occupies in it |
-| `toArray()` | `kind`, `participant`, `session` and `first_slot` |
+| `toArray()` | `format_version`, `kind`, `participant`, `session` and `first_slot` |
 
 #### `CapacityExceeded`
 
@@ -3663,7 +3688,7 @@ typed accessors, each of which returns objects of its own class.
 | `getDemand()` | How many positions were needed |
 | `getCapacity()` | How many there are |
 | `getShortfall()` | How many events do not fit: the demand less the capacity, never below zero |
-| `toArray()` | `kind`, `participant`, `demand`, `capacity` and `shortfall` |
+| `toArray()` | `format_version`, `kind`, `participant`, `demand`, `capacity` and `shortfall` |
 
 See `examples/19-repacking-a-season.php` for a complete runnable
 walkthrough, and `docs/design/schedule-repack.md` for the algorithm and
@@ -3794,20 +3819,26 @@ $restored = Schedule::fromJson($json);
 `toArray()`/`fromArray()` for custom persistence. So do `Award` and
 `Adjustment`. A result writes its `award` key, and a stage state its
 `adjustments` key, only when there is something to write: the array of a
-played result and of a state without adjustments is what it was before the
-keys existed, and data stored without them reads as played and as
-unadjusted.
+played result and of a state without adjustments has neither, and data
+stored without them reads as played and as unadjusted.
 
 What a round trip keeps is what JSON can hold:
 
 - **Metadata must be JSON data.** Scalars, lists and maps come back as they
   were. An object in metadata comes back as whatever its JSON form decodes
   to, and a float with no fraction (`1.0`) comes back as an integer.
-- **The participant list is derived.** A serialized schedule lists each
-  participant once, in the order of first appearance in the events. It is
-  not the list the schedule was generated from: the order differs, and a
-  participant in no event is absent. Store the entrant list yourself if you
-  need it again, in its order, which is the seeding.
+- **The entrant list is kept, in its order.** A schedule knows its
+  entrants: `getEntrants()` returns the list a generator was given, in that
+  order, which is the seeding where position decides. A serialized schedule
+  lists them as its `participants`, each once, in that order, an entrant in
+  no event included, and `fromArray()` and `fromJson()` give the same list
+  back. A schedule built from events alone (`new Schedule($events)`) has no
+  list to keep, so its entrants are the participants in the order they
+  first appear in the events; pass the list as the third argument,
+  `new Schedule($events, $metadata, $entrants)`, to state it. A schedule
+  that 0.2.x stored has its participants in that first-appearance order,
+  and loads with them as its entrants: the order the generator was given
+  was not written then and cannot be recovered from the data.
 
 Text that is not valid JSON is reported by a `JsonConversionException` (a
 `\JsonException`), and valid JSON or an array with an entry of the wrong
@@ -3815,6 +3846,198 @@ shape by an `InvalidInputException` (an `\InvalidArgumentException`). A
 missing top-level key is not an error: `Schedule::fromArray([])` is an empty
 schedule. Both exceptions are covered by
 `catch (TacticianException)`: see [Error Handling](#exception-hierarchy).
+
+### Format Versions
+
+Every array a `toArray()` returns, and so every JSON string a `toJson()`
+writes, starts with the key `format_version`: an integer that says which
+version of its form the array is written in. Every form is at version 1
+today.
+
+```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SwissOptions;
+
+$stored = (new RoundRobinScheduler())->schedule([
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+])->toArray();
+
+echo implode(', ', array_keys($stored)), "\n";              // format_version, participants, events, metadata
+echo $stored['format_version'], "\n";                       // 1
+echo implode(', ', array_keys($stored['events'][0])), "\n"; // participants, round, metadata
+
+echo json_encode((new SwissOptions(rounds: 5))->toArray()), "\n"; // {"format_version":1,"rounds":5}
+
+// Stored by 0.2.x, which wrote no version: read as version 1
+unset($stored['format_version']);
+echo count(Schedule::fromArray($stored)), "\n";             // 1
+
+// Written by a release that has changed the form
+try {
+    Schedule::fromArray(['format_version' => 2, 'events' => []]);
+} catch (InvalidInputException $exception) {
+    echo $exception->getMessage(), "\n";
+    // Unsupported format version 2 in schedule data: this version of the library reads version 1.
+    // The data was written by a later release; upgrade the library to read it
+}
+```
+
+The rule, which [ADR 0005](adr/0005-serialized-forms-carry-a-format-version.md)
+records with its reasons:
+
+- **The key is written once to an array, at its top.** The participants and
+  events inside a schedule, the round inside an event, the rounds,
+  results and adjustments inside a stage state, the award inside a result
+  and the records inside a repack outcome carry none: they are read under the version of the array that holds them.
+  A part serialized by itself (`$participant->toArray()`) is the top of its
+  own array and has the key.
+- **An array without the key is version 1.** Version 1 is the form 0.2.x
+  wrote, and beside it the optional keys 0.3.0 added (`strategy_seed` in
+  round-robin options, `seed` in Swiss options, `ties` in a rank range
+  selector, `award` in a result, `adjustments` in a stage state), each of
+  which may be left out. So rows stored by 0.2.x load
+  unchanged. There is nothing to migrate, and no need to add the key to
+  stored data.
+- **A version the library does not know is refused**, as is a value below 1
+  or one that is not an integer: configuration with an
+  `InvalidConfigurationException` (reason `UnsupportedFormatVersion`), data
+  with an `InvalidInputException`. A higher version means a later release
+  wrote the array; upgrade the library that reads it.
+- **Forms are versioned one by one.** When a release changes a form, that
+  form takes the next number, the changelog says what differs, and
+  `fromArray()` keeps reading the earlier versions. A patch release never
+  changes a form.
+- **An earlier release does not check the version.** 0.2.x reads an array
+  written by 0.3.0 as it read its own, ignoring `format_version` and every
+  other key it does not know, so an application that rolls back keeps
+  reading its rows. The exception is `PotDrawOptions::fromArray()` of 0.2.2
+  and 0.2.3, which refuses the key: remove it from stored pot draw options
+  before reading them with those releases. What 0.2.x has no key for it
+  does not see: it reads an awarded result as one that was played, and a
+  stage state without its adjustments.
+
+`format_version` is not the `v2` inside an engine fingerprint
+([Recording Which Engine Pairs a State](#recording-which-engine-pairs-a-state))
+or the `v1` in front of an outcome fingerprint
+([Outcome Fingerprints](#outcome-fingerprints)). Those version the scheme
+each fingerprint is built by, and each changes without the other: 0.3.0
+moved the engine fingerprint scheme from `v1` to `v2`, and the stage state
+that holds a stamp is still format version 1. An outcome fingerprint does
+not cover `format_version`, so adding the key changed no fingerprint.
+
+### Keys a Form Does Not Have
+
+Every `fromArray()` in the library refuses an array that holds a key its
+form does not have. A misspelt key is otherwise read as the key left out,
+which for an option is its default and for a result with a misspelt
+`winner` is a draw, and nothing says so.
+
+```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
+
+try {
+    RoundRobinOptions::fromArray(['legs' => 2, 'stratgy' => 'repeated']);
+} catch (InvalidConfigurationException $exception) {
+    echo $exception->getReason()?->value, "\n";                  // unknown_option_key
+    echo implode(', ', $exception->getContext()['unknown']), "\n"; // stratgy
+    echo implode(', ', $exception->getContext()['known']), "\n";
+    // format_version, legs, strategy, backtracking, strategy_seed, role_assignment
+}
+
+try {
+    Participant::fromArray(['id' => 'celtic', 'label' => 'Celtic', 'seeding' => 1]);
+} catch (InvalidInputException $exception) {
+    echo $exception->getMessage(), "\n";
+    // Unknown key in participant data: 'seeding' (the known keys are 'format_version', 'id', 'label', 'seed', 'metadata')
+}
+```
+
+The two kinds of form report it with the exception they report every other
+fault of their array with:
+
+- **Configuration** (the options classes, `WinDrawLossRanking`,
+  `AwardedResultPolicy`, `TimelineDefinition`, `SessionGrid`, the timeline rules and the progression
+  selectors, and each window of a `BlackoutRule`) throws an
+  `InvalidConfigurationException` with the reason `UnknownOptionKey`. Its
+  context lists the keys that are not known under `unknown` and the ones the
+  form has under `known`.
+- **Data** (`Participant`, `Round`, `Event`, `Result`, `Award`, `Schedule`,
+  `RoundPairing`, `StageState`, `Adjustment`, `ScheduledEvent` and
+  `ScheduledSchedule`,
+  nested in one another or on their own) throws an `InvalidInputException`
+  whose message names both.
+
+Data of your own does not go beside the library's keys. Put it in the
+`metadata` of the participant, the round, the event, the result or the
+schedule it belongs to, which is returned as it was given, or keep it beside
+the array and not in it.
+
+A known key whose value is `null` is read as the key left out, wherever a
+key may be left out: `['legs' => null]` is one leg, and a `seed` of `null`
+is no seed. `PotDrawOptions` is the exception: its three keys are integers
+or absent.
+
+### A Stored Stage State Is Checked as It Was Recorded
+
+`StageState::fromArray()` and `fromJson()` do not trust the history they are
+given. The state is recorded again through `withRoundPlayed()`, round by
+round, so whatever that verb refuses of a live state is refused of a stored
+one, with the same `InvalidConfigurationException` and the same reason:
+
+| The stored data | Reason |
+| --- | --- |
+| A round numbered below 1 | `ValueOutOfRange` |
+| Rounds not in play order, or one round number twice | `RoundOutOfSequence` |
+| A pairing that holds an event of another round | `EventNotInRound` |
+| A pairing that holds an event with no round | `EventWithoutRoundNumber` |
+| A result for an event its round does not hold | `EventNotInRound` |
+| A result of a round that is not recorded, or one that does not stand with the other results of its round | `EventNotInRound` |
+| A result whose event has no round | `EventWithoutRoundNumber` |
+
+```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\StageState;
+
+$engine = new SwissPairingEngine();
+$state = StageState::start([
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
+]);
+foreach ([1, 2] as $round) {
+    $state = $state->withRoundPlayed($engine->pairNextRound($state), []);
+}
+
+$stored = $state->toArray();
+echo count(StageState::fromArray($stored)->getRoundsPlayed()), "\n"; // 2
+
+// The same data with its rounds the other way round
+$stored['rounds'] = array_reverse($stored['rounds']);
+try {
+    StageState::fromArray($stored);
+} catch (InvalidConfigurationException $exception) {
+    echo $exception->getReason()?->value, "\n"; // round_out_of_sequence
+}
+```
+
+What the verbs accept is accepted from storage too: a gap in the round
+numbers, a pairing whose participants are no longer active, and two results
+of one event. The last is a state to repair and not one to read tables from
+(the standings and the bracket engines refuse it), and it has to load to be
+repaired: see [Correcting a Recorded Result](#correcting-a-recorded-result).
+A state that `toArray()` or `toJson()` wrote is always one the verbs
+recorded, so stored states are affected only where something else wrote or
+edited the data.
 
 ## Schedule Validation
 
@@ -3995,7 +4218,7 @@ parent type matches too.
 | `IncompleteScheduleException` | `SchedulingException` | Constraints leave a schedule that cannot be completed. |
 | `NoValidPairingException` | `SchedulingException` | No complete pairing exists for a Swiss round. |
 | `RepackViolationsException` | `SchedulingException` | A repack leaves violations and `RepackOptions(throwOnViolations: true)` asked for an exception instead of the outcome. |
-| `InvalidInputException` | `\InvalidArgumentException` | An argument of a value object is outside its allowed range (`new Round(0)`), or the serialized data given to the `fromArray()` or `fromJson()` of a value object, a stage state or a scheduled schedule is malformed: a missing field of an entry, a value of the wrong type, an unknown participant ID. Malformed or out-of-range configuration (options, timelines, grids, rules, selectors, a ranking) is an `InvalidConfigurationException` instead. |
+| `InvalidInputException` | `\InvalidArgumentException` | An argument of a value object is outside its allowed range (`new Round(0)`), or the serialized data given to the `fromArray()` or `fromJson()` of a value object, a stage state or a scheduled schedule is malformed: a missing field of an entry, a value of the wrong type, an unknown participant ID, a key the form does not have, a `format_version` the release does not read. Malformed or out-of-range configuration (options, timelines, grids, rules, selectors, a ranking) is an `InvalidConfigurationException` instead, and so is a stored stage state whose pieces are well formed and whose history no verb would have recorded. |
 | `JsonConversionException` | `\JsonException` | A `fromJson()` method is given text that is not valid JSON, or a `toJson()` method meets a value JSON cannot represent. The message and code are PHP's; the PHP exception is the previous one. |
 | `InvariantViolationException` | `\LogicException` | The library reached a state its own logic rules out. It reports a defect in the library, not a mistake in the input. |
 | `UnavailableValueException` | `\LogicException` | An object was asked for a value it does not hold: a time from a shape-only `SessionGrid`, the kickoff of an assignment made on one, the capacity of an unbounded grid as a number. It reports a mistake in the calling code, which the object's `has...()` method (named in the message) would have prevented. It is not a configuration error and not a library defect. |
@@ -4207,7 +4430,8 @@ identifier for logs and stored data):
 | `NotSerializable` | `not_serializable` | The configuration has no plain-data form to serialize to |
 | `UnsatisfiableLegStrategy` | `unsatisfiable_leg_strategy` | The leg strategy cannot produce the legs asked for |
 | `InvalidRoleAssignment` | `invalid_role_assignment` | A role assignment returned something other than the seatings it was given, unchanged or reversed |
-| `UnknownOptionKey` | `unknown_option_key` | Plain-data configuration holds a key the options do not have. Only `PotDrawOptions::fromArray()` raises it; the other `fromArray()` methods ignore a key they do not know |
+| `UnknownOptionKey` | `unknown_option_key` | Plain-data configuration holds a key its form does not have. Every `fromArray()` that reads configuration raises it; see [Keys a Form Does Not Have](#keys-a-form-does-not-have) |
+| `UnsupportedFormatVersion` | `unsupported_format_version` | Plain-data configuration states a `format_version` this release does not read: a higher one (a later release wrote it), one below 1, or a value that is not an integer; see [Format Versions](#format-versions) |
 | `OddParticipantCount` | `odd_participant_count` | The format has every participant in every round, issues no bye, and was given an odd number of participants |
 | `UnequalPots` | `unequal_pots` | The participants do not divide into the number of pots asked for |
 | `TooManyOpponentsPerPot` | `too_many_opponents_per_pot` | More opponents are asked from one pot than a pot has other members |
