@@ -12,8 +12,9 @@ name: Mutation testing
 # workflow red and hide what its jobs found.
 #
 # This workflow has no pull request trigger and none of its checks may be made
-# a required check: it runs on the default branch only, so a required check
-# from it would never report on a pull request.
+# a required check: it runs once a week on the default branch, and on the
+# branch a maintainer starts it for, so a required check from it would never
+# report on a pull request.
 on:
   schedule:
     # Wednesdays at 02:47 UTC: another day than scheduled.yml, and off the

@@ -194,12 +194,22 @@ the memory there was, and the job ended with a runner shutdown and no
 summary. A process that reaches the limit ends with PHP's fatal error and
 writes a line to `build/mutation-memory.log`; the summary script reads that
 file and says how many changes ended that way and in which source files.
+A line names the source file and the changed copy of it that the runner
+wrote (a file in `vendor/pestphp/pest-plugin-mutate/.temp/mutations/`, to
+compare with the source); that name is not the ID the run prints for an
+untested change, which `--id` takes. The count is not the same on every
+run of the same source: the tests of a change run in random order and stop
+at the first failure, so a change that one test fails on and another runs
+out of memory on can end either way (one change of `IntervalPlacement`
+does; the same holds for the time limit).
 The limit is set by `tests/mutation-memory.php`, which Composer's autoloader
-loads in a development checkout (`autoload-dev.files`): it acts in the test
-process of a change only, whatever `memory_limit` PHP is configured with,
-and does nothing in any other process. After you pull the change that added
-it, run `composer install` once, which writes the autoloader again, or your
-runs have no limit. The environment variable `TACTICIAN_MUTATION_MEMORY_LIMIT`
+loads in a development checkout (`autoload-dev.files`): it sets the limit in
+the test processes of a change only, whatever `memory_limit` PHP is
+configured with, removes the log of the run before in the process that
+starts a run, and does nothing in any other process. After you pull the
+change that added it, run `composer install` once, which writes the
+autoloader again, or your runs have no limit. The environment variable
+`TACTICIAN_MUTATION_MEMORY_LIMIT`
 replaces the limit (`512M`, `2G`), and `TACTICIAN_MUTATION_MEMORY_LOG` names
 another file for the log; give that file to the summary script as its fourth
 argument. A change that
