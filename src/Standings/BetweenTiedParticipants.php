@@ -37,6 +37,10 @@ use Override;
  * measure gives each of them what it gives for no result (0.0 for the four
  * above), and they stay level.
  *
+ * One measure has one place in a chain: the name is that of the measure,
+ * and a calculator refuses a chain with one name twice
+ * (StandingsCalculator::__construct()).
+ *
  * @experimental
  */
 final readonly class BetweenTiedParticipants implements TiedParticipantsTiebreaker

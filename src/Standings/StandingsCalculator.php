@@ -64,12 +64,40 @@ readonly class StandingsCalculator
      *                                            and whether a tiebreaker between the tied
      *                                            participants only reads it (default: both).
      *                                            Changes nothing where no result is awarded
+     *
+     * @throws InvalidInputException When the tiebreakers hold one that is computed between the
+     *                               tied participants (TiedParticipantsTiebreaker) and two of
+     *                               them have one name. A value is kept on an entry, and
+     *                               compared, under the name of its tiebreaker, and a
+     *                               tiebreaker of that kind has another value at every place
+     *                               in the chain: the later one would replace the earlier and
+     *                               order the table in its place. A chain without such a
+     *                               tiebreaker is not checked, as before
      */
     public function __construct(
         private RankingStrategy $rankingStrategy = new WinDrawLossRanking(),
         private array $tiebreakers = [],
         private AwardedResultPolicy $awardedResults = new AwardedResultPolicy()
-    ) {}
+    ) {
+        $betweenTheTied = false;
+        $named = [];
+        $repeated = null;
+        foreach ($tiebreakers as $tiebreaker) {
+            $betweenTheTied = $betweenTheTied || $tiebreaker instanceof TiedParticipantsTiebreaker;
+
+            $name = $tiebreaker->getName();
+            $repeated ??= isset($named[$name]) ? $name : null;
+            $named[$name] = true;
+        }
+
+        if ($betweenTheTied && $repeated !== null) {
+            throw new InvalidInputException(
+                "The tiebreaker '{$repeated}' is in the chain twice. With a tiebreaker between the tied participants in"
+                    . ' the chain every tiebreaker needs a name of its own: a value is kept and compared under the name,'
+                    . ' and such a tiebreaker has another value at every place'
+            );
+        }
+    }
 
     /**
      * Build a calculator from plain configuration data:

@@ -34,9 +34,12 @@ namespace MissionGaming\Tactician\Standings;
  * on a participant outside it. The calculator asks once per place in the
  * chain. Where the values split a set of four into one, two and one, the
  * two that are left are the tied set of the next tiebreaker in the chain,
- * and this one is not asked about them again: name it twice (two instances
- * with two names) where a competition applies its measure again to those
- * who are still level.
+ * and this one is not asked about them again. Where a competition applies
+ * its measure again to those who are still level, give the chain two
+ * tiebreakers of this kind with two names: a calculator refuses a chain
+ * that holds one of this kind and has one name twice
+ * (StandingsCalculator::__construct()), and BetweenTiedParticipants names
+ * itself after its measure, so the second is a class of your own.
  *
  * BetweenTiedParticipants turns any tiebreaker that reads entries into one
  * of this kind. Implement the interface on a tiebreaker of your own to have

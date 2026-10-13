@@ -7,6 +7,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\BetweenTiedParticipants;
 use MissionGaming\Tactician\Standings\RankingValueTiebreaker;
@@ -299,5 +300,43 @@ describe('a tied set that a measure splits into subsets', function (): void {
             ->and($table->getEntryFor($this->a)?->getScoreDifference())->toBe(2.0)
             ->and($table->getEntryFor($this->b)?->getScoreDifference())->toBe(1.0)
             ->and($table->getRanks())->toBe([1, 2, 3, 4, 5]);
+    });
+});
+
+// A value is kept on an entry, and compared, under the name of its
+// tiebreaker. A tiebreaker between the tied participants has another value
+// at every place in a chain, so two places under one name would keep the
+// later value and order the table by it at the earlier place.
+describe('a chain that names a tiebreaker between the tied participants twice', function (): void {
+    it('is refused when the calculator is built', function (array $chain, string $name): void {
+        try {
+            new StandingsCalculator(tiebreakers: $chain);
+            $this->fail('The chain was accepted.');
+        } catch (InvalidInputException $exception) {
+            expect($exception->getMessage())->toContain("'{$name}' is in the chain twice");
+        }
+    })->with([
+        'the same measure at two places' => [
+            [new BetweenTiedParticipants(new WinsTiebreaker()), new ScoreDifferenceTiebreaker(), new BetweenTiedParticipants(new WinsTiebreaker())],
+            'between-tied:wins',
+        ],
+        'another tiebreaker twice beside one' => [
+            [new WinsTiebreaker(), new BetweenTiedParticipants(new ScoreDifferenceTiebreaker()), new WinsTiebreaker()],
+            'wins',
+        ],
+    ]);
+
+    // What an earlier release accepted is accepted: without a tiebreaker
+    // between the tied participants a repeated name has one value, whatever
+    // its place
+    it('leaves a chain without one as it was', function (): void {
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $results = [tiedResult($a, $b)];
+
+        $once = (new StandingsCalculator(tiebreakers: [new WinsTiebreaker()]))->calculate([$a, $b], $results);
+        $twice = (new StandingsCalculator(tiebreakers: [new WinsTiebreaker(), new WinsTiebreaker()]))->calculate([$a, $b], $results);
+
+        expect($twice)->toEqual($once);
     });
 });

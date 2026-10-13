@@ -1294,7 +1294,10 @@ How a tiebreaker of this kind is computed:
   **next** tiebreaker; this one is not asked about them again. A
   competition that applies the same measure again to those still level
   gives it a second place in the chain under a second name, with a
-  `TiedParticipantsTiebreaker` of its own.
+  `TiedParticipantsTiebreaker` of its own. `BetweenTiedParticipants` is
+  named after its measure, so one measure has one place: a calculator
+  whose chain holds a tiebreaker of this kind and has one name twice is
+  refused when it is built (`InvalidInputException`).
 - **The same whatever the order of the input.** The sets are read from the
   figures, so the values do not depend on the order of the participants or
   of the results.

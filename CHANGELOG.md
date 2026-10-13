@@ -528,7 +528,12 @@ entry on the engine fingerprint.
   `TiedParticipantsTiebreaker`, the marker interface added with awarded
   results in this release, now has that contract: a tiebreaker of your own
   that implements it is handed the results and the entries of one tied set,
-  not those of the whole table.
+  not those of the whole table. A value is kept and compared under the name
+  of its tiebreaker, so `new StandingsCalculator()` refuses a chain that
+  holds a tiebreaker between the tied participants and has one name twice
+  (`InvalidInputException`): the same `BetweenTiedParticipants` measure has
+  one place in a chain. A chain without such a tiebreaker is not checked,
+  as before.
 - **Shared ranks.** `Standings::getRank(Participant): ?int` and
   `Standings::getRanks(): list<int>` give the rank the results decide: the
   entries of a tied set share the rank of the set's first position, and the
