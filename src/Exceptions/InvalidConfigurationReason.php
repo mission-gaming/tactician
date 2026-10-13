@@ -137,6 +137,12 @@ enum InvalidConfigurationReason: string
     case BracketComplete = 'bracket_complete';
 
     /**
+     * A further round was asked of a Swiss stage that has played every one
+     * of its planned rounds.
+     */
+    case PlannedRoundsPlayed = 'planned_rounds_played';
+
+    /**
      * The next round was asked for while some ties of the current round
      * have no complete result.
      */

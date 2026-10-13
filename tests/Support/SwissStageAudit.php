@@ -121,6 +121,10 @@ final class SwissStageAudit
 
             if ($engine->isComplete($state)) {
                 $violations[] = sprintf('round %d: the stage is reported complete after %d of %d rounds', $round, $round - 1, $rounds);
+
+                // A complete stage has no next round, and the engine
+                // refuses to pair one.
+                break;
             }
 
             try {

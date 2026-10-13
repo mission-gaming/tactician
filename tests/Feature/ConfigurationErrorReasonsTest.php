@@ -242,6 +242,7 @@ describe('the reason of a configuration error', function (): void {
             'OddPotWithOddOpponents' => 'odd_pot_with_odd_opponents',
             'ConfigurationNotYetSupported' => 'configuration_not_yet_supported',
             'BracketComplete' => 'bracket_complete',
+            'PlannedRoundsPlayed' => 'planned_rounds_played',
             'RoundPartiallyResolved' => 'round_partially_resolved',
             'EventWithoutRoundNumber' => 'event_without_round_number',
             'InvalidResult' => 'invalid_result',

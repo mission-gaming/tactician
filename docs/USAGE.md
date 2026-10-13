@@ -3550,6 +3550,7 @@ identifier for logs and stored data):
 | `OddPotWithOddOpponents` | `odd_pot_with_odd_opponents` | A pot of odd size cannot hold an odd number of events per member inside itself |
 | `ConfigurationNotYetSupported` | `configuration_not_yet_supported` | The configuration is feasible and the library has no construction for it yet |
 | `BracketComplete` | `bracket_complete` | A further round was asked of a finished bracket |
+| `PlannedRoundsPlayed` | `planned_rounds_played` | A further round was asked of a Swiss stage that has played all its planned rounds |
 | `RoundPartiallyResolved` | `round_partially_resolved` | An elimination engine was asked (`pairNextRound()`, `isComplete()` or `getOutcome()`) while some ties of the current round have a complete result and others do not. A round with no result at all is offered again |
 | `EventWithoutRoundNumber` | `event_without_round_number` | An event has no round number where one is required |
 | `InvalidResult` | `invalid_result` | A result cannot belong to the stage it was recorded in |

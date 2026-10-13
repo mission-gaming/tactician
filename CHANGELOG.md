@@ -120,6 +120,20 @@ heading **Output change (fix)**.
 
   The scheduled workflow's `Unlocked dependencies` jobs, which install the
   newest versions and had been failing on these findings, pass again.
+- **Breaking: `SwissPairingEngine::pairNextRound()` refuses a round beyond
+  the planned rounds.** With `plannedRounds: 1` and round 1 recorded,
+  `isComplete()` was true and `pairNextRound()` still returned a second
+  round; the bracket engines refuse in the same position. It now throws an
+  `InvalidConfigurationException` with the new reason `PlannedRoundsPlayed`
+  (`planned_rounds_played`) and the context `planned_rounds` and
+  `next_round`. An engine built without `plannedRounds` pairs as before,
+  for as long as a pairing exists. Who is affected: code that calls
+  `pairNextRound()` without asking `isComplete()` first, or that plays more
+  rounds than the number it gave the engine. What to check: every loop that
+  pairs a Swiss stage. Before: a pairing of round `plannedRounds + 1`.
+  After: the exception. To play a longer stage, build the engine with the
+  new number of rounds; the planned rounds are not part of the engine's
+  fingerprint, so the recorded state is still accepted (#121, item 1).
 
 ### Fixed
 
