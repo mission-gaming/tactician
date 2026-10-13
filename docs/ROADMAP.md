@@ -119,7 +119,8 @@ where a link is given.
 **Timeline and quality**
 
 - **An interval in hours is elapsed time.** `PT24H` and `PT168H` shift by an hour across a daylight-saving change; `P1D` and `P7D` keep the time of day, except that a kickoff in the hour the clocks skip is moved and every later round keeps the moved time ([usage guide](USAGE.md#timeline-assignment)).
-- **The assigner does not check who plays.** Without a `MinimumRestRule` it accepts one participant in two events at one time.
+- **The assigner checks who plays within a round only.** It refuses a round that has one participant in two events at one instant. Rest between kickoffs at different times, and a clash between rounds or stages that overlap in time, are checked by a `MinimumRestRule` and not otherwise.
+- **Some intervals have no plain-data form.** A timeline or a grid built with an interval from `DateInterval::createFromDateString()` or `diff()` that has a relative part or hours, minutes or seconds, or with a fraction of a second, works and cannot be written by `toArray()` ([usage guide](USAGE.md#timeline-assignment)).
 - **`ScheduleOptimizer` samples; it does not search.** It keeps the best of N seeded candidates and works with whole-schedule generators only ([design note](design/schedule-quality.md)).
 
 ## Deferred work

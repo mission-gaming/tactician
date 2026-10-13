@@ -1217,10 +1217,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($times === ['22 Mar 01:30', '29 Mar 02:30', '5 Apr 02:30']);
                 PHP,
         ],
-        // "without a rule it accepts a schedule that has one participant in two events at
-        // the same time ... add a MinimumRestRule". Issue #56 covers what the assigner
-        // does not check
-        'the assigner checks who plays only when it has a rest rule' => [
+        // "It refuses a round that puts one participant in two events at the same time ...
+        // with or without a rule"
+        'the assigner refuses one participant in two events at the same time' => [
             'docs/USAGE.md',
             "foreach (['P7D', 'PT168H'] as \$roundInterval)",
             <<<'PHP'
@@ -1234,14 +1233,27 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     roundInterval: new DateInterval('P7D'),
                     resources: ['Pitch 1', 'Pitch 2'],
                 );
-                [$firstEvent, $secondEvent] = (new TimelineAssigner())->assign($clash, $evening)->getScheduledEvents();
-                assert($firstEvent->getKickoff() == $secondEvent->getKickoff());
-                try {
-                    (new TimelineAssigner([new \MissionGaming\Tactician\Timeline\MinimumRestRule(new DateInterval('PT1S'))]))->assign($clash, $evening);
-                    assert(false);
-                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
-                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::TimeRuleViolation);
+                $assigners = [
+                    new TimelineAssigner(),
+                    new TimelineAssigner([new \MissionGaming\Tactician\Timeline\MinimumRestRule(new DateInterval('PT1S'))]),
+                ];
+                foreach ($assigners as $assigner) {
+                    try {
+                        $assigner->assign($clash, $evening);
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ParticipantDoubleBooked);
+                    }
                 }
+                // "Two events of one participant in different slots of a round are assigned"
+                $twoSlots = new TimelineDefinition(
+                    start: new DateTimeImmutable('2026-10-17 19:00', $londonTime),
+                    roundInterval: new DateInterval('P7D'),
+                    slotsPerRound: 2,
+                    slotInterval: new DateInterval('PT2H'),
+                );
+                [$firstEvent, $secondEvent] = (new TimelineAssigner())->assign($clash, $twoSlots)->getScheduledEvents();
+                assert($firstEvent->getKickoff() < $secondEvent->getKickoff());
                 PHP,
         ],
         // "the participants who have had a bye are ordered ahead of the others, with or

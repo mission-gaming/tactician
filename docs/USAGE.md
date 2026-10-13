@@ -2105,11 +2105,17 @@ P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00
 PT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00
 ```
 
-The assigner places events on slots and checks that a round fits. It does
-not look at who is in an event: without a rule it accepts a schedule that
-has one participant in two events at the same time. The generators do not
-produce one within a round; if rounds or stages can overlap in time, add a
-`MinimumRestRule` (see [Time-Aware Rules](#time-aware-rules)).
+The assigner places events on slots and checks that a round fits. It
+refuses a round that puts one participant in two events at the same time,
+which a slot with two or more resources would otherwise allow, with or
+without a rule (`InvalidConfigurationException`, reason
+`ParticipantDoubleBooked`; the context lists every participant concerned
+under `double_bookings`). It fills in schedule order and cannot move an
+event, so the remedy is in the schedule: the generators do not produce such
+a round. Two events of one participant in different slots of a round are
+assigned; whether the time between them is enough is a rule's to say. The
+check is made round by round: if rounds or stages can overlap in time, add
+a `MinimumRestRule` (see [Time-Aware Rules](#time-aware-rules)).
 
 **Resources** host concurrent events within a slot — venue, pitch,
 court, board, station; the name is generic because the concept is.
@@ -3597,6 +3603,7 @@ identifier for logs and stored data):
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
 | `TimelineCapacityExceeded` | `timeline_capacity_exceeded` | A round has more events than the timeline has places for |
+| `ParticipantDoubleBooked` | `participant_double_booked` | One participant is in two events of a round that the timeline places at the same instant |
 | `ConstraintViolation` | `constraint_violation` | Built by `SchedulingException::constraintViolation()`, which is [deprecated](#deprecations) |
 | `InvalidSchedule` | `invalid_schedule` | Built by `SchedulingException::invalidSchedule()`, which is [deprecated](#deprecations) |
 

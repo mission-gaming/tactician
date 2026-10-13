@@ -283,6 +283,12 @@ enum InvalidConfigurationReason: string
     /** A round has more events than the timeline has places for. */
     case TimelineCapacityExceeded = 'timeline_capacity_exceeded';
 
+    /**
+     * One participant is in two events of a round that the timeline places
+     * at the same instant, on two resources of one slot.
+     */
+    case ParticipantDoubleBooked = 'participant_double_booked';
+
     // The generic factories on SchedulingException
 
     /** Built by {@see SchedulingException::constraintViolation()}, which is deprecated. */

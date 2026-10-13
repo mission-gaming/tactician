@@ -65,6 +65,15 @@ heading **Output change (fix)**.
   that name, and not `seed`, because it seeds the leg strategy only: the
   order of the participant list is still shuffled by the `Randomizer` given
   to the scheduler, or not at all.
+- **What the fixes of #121 add to the public surface.** Each is described
+  with its fix under Changed or Fixed below:
+  `TimelineDefinition::writeInterval(DateInterval $interval, string $key):
+  string`; the optional fourth constructor parameter and public property
+  `StageTransition::$afterWholeBracket` (`bool`, default `false`); and two
+  cases of `InvalidConfigurationReason`, `PlannedRoundsPlayed`
+  (`planned_rounds_played`) and `ParticipantDoubleBooked`
+  (`participant_double_booked`). A `match` over the reason needs a
+  `default` arm, as the enum has always said.
 
 ### Changed
 
@@ -197,7 +206,7 @@ heading **Output change (fix)**.
   first the loser. The winners mode returned the recorded winner. Both
   modes now throw an `InvalidConfigurationException` with the reason
   `IncompatibleOutcome` and the context `mode` and `participants`, in line
-  with [ADR 0003](docs/adr/0003-multi-participant-events-are-a-2-0-goal.md):
+  with ADR 0003 (`docs/adr/0003-multi-participant-events-are-a-2-0-goal.md`):
   a component that is pairwise by nature refuses such an event and never
   answers as if it were pairwise. Nothing in the library generates an
   event of more than two participants, so no outcome an engine returns is
@@ -234,6 +243,31 @@ heading **Output change (fix)**.
   duration string that could mean another interval. After: the exception.
   Both `toArray()` methods declare it, so code analysed with checked
   exceptions sees one more `@throws` (#121, item 15).
+- **Breaking: `TimelineAssigner` refuses a round that puts one participant
+  in two events at the same instant.** A slot with two or more resources
+  holds several events, and nothing stopped two of them from holding the
+  same participant: `assign()` and `assignRound()` returned a timeline in
+  which one participant plays on two pitches at once, unless a
+  `MinimumRestRule` happened to be configured. Both now throw an
+  `InvalidConfigurationException` with the new reason
+  `ParticipantDoubleBooked` (`participant_double_booked`); the context has
+  the round under `round` and, under `double_bookings`, every participant
+  concerned with the kickoff and the two events. The assigner refuses, as
+  it does for a violated rule, and does not report: its filling is
+  deterministic, so it cannot move one of the two events, and no policy
+  accepts a participant in two places at once. Participants are matched by
+  ID. Two events of one participant in different slots of a round are
+  assigned as before; whether the time between them is enough stays a
+  rule's to say. No schedule a generator returns has a participant twice in
+  a round, so no generated schedule is affected. Who is affected: code that
+  assigns a schedule or a pairing built by hand, or by a format of its own,
+  in which a participant has two events in one round, on a timeline with
+  resources. What to check: the order of the round's events, which decides
+  the slot each lands in, or give the round more slots than resources.
+  Before: two scheduled events of one participant with the same kickoff.
+  After: the exception. Where a `MinimumRestRule` reported such a clash,
+  the reason changes from `TimeRuleViolation` to `ParticipantDoubleBooked`,
+  because the round is refused before the rules are asked (#121, item 10).
 
 ### Fixed
 

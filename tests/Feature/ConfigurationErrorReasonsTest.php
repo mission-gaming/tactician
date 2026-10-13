@@ -269,6 +269,7 @@ describe('the reason of a configuration error', function (): void {
             'NonAdvancingTime' => 'non_advancing_time',
             'TimeRuleViolation' => 'time_rule_violation',
             'TimelineCapacityExceeded' => 'timeline_capacity_exceeded',
+            'ParticipantDoubleBooked' => 'participant_double_booked',
             'ConstraintViolation' => 'constraint_violation',
             'InvalidSchedule' => 'invalid_schedule',
         ]);

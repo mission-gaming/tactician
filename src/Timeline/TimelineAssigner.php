@@ -26,9 +26,16 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  * per slot), and schedules carrying round-less events (which the
  * round-grouped view would silently drop), fail with diagnostics.
  *
- * Not checked unless a rule checks it: that a participant is in one event
- * of a slot only, and that the slots of one round end before the next
- * round starts. MinimumRestRule reports the first.
+ * A round that puts one participant in two events at the same instant
+ * fails too, with or without rules: a slot with two or more resources
+ * holds several events, and nobody can be in two of them. The assigner
+ * fills in schedule order and cannot move an event, so it refuses (reason
+ * `ParticipantDoubleBooked`). Two events of one participant in different
+ * slots of a round are assigned: whether the time between them is enough
+ * is a rule's to say (MinimumRestRule).
+ *
+ * Not checked unless a rule checks it: that the slots of one round end
+ * before the next round starts.
  *
  * @experimental
  */
@@ -73,7 +80,8 @@ final readonly class TimelineAssigner
      *
      * @throws InvalidConfigurationException When the schedule carries round-less events,
      *                                       a round has more events than the timeline has
-     *                                       slots, or a time-aware rule is violated
+     *                                       slots, a participant is in two events at one
+     *                                       instant, or a time-aware rule is violated
      */
     public function assign(Schedule $schedule, TimelineDefinition $timeline): ScheduledSchedule
     {
@@ -130,7 +138,8 @@ final readonly class TimelineAssigner
      *
      * @return array<ScheduledEvent> In slot order, the pairing's events in their order
      *
-     * @throws InvalidConfigurationException When the round has more events than the timeline has slots
+     * @throws InvalidConfigurationException When the round has more events than the timeline has slots,
+     *                                       or a participant is in two events at one instant
      */
     public function assignRound(RoundPairing $pairing, TimelineDefinition $timeline): array
     {
@@ -144,7 +153,8 @@ final readonly class TimelineAssigner
      * @param array<\MissionGaming\Tactician\DTO\Event> $events In schedule order
      * @return array<ScheduledEvent>
      *
-     * @throws InvalidConfigurationException When the round overflows the timeline's capacity
+     * @throws InvalidConfigurationException When the round overflows the timeline's capacity, or a
+     *                                       participant is in two events at one instant
      */
     private function assignEvents(array $events, int $roundNumber, TimelineDefinition $timeline): array
     {
@@ -175,6 +185,92 @@ final readonly class TimelineAssigner
             );
         }
 
+        $this->refuseDoubleBookings($scheduledEvents, $roundNumber);
+
         return $scheduledEvents;
+    }
+
+    /**
+     * Refuse a round in which one participant is in two events that kick
+     * off at the same instant, which a slot with two or more resources
+     * allows. Participants are matched by ID. Every participant concerned
+     * is reported, with the first two of its events at that instant, in the
+     * order they are found: the round's events in slot order, and the
+     * participants of an event in its order.
+     *
+     * It is refused and not left to a rule: a participant cannot be in two
+     * places at once under any policy, and the filling is deterministic, so
+     * the assigner cannot move one of the events. The order of the round's
+     * events in the schedule decides which slot each lands in.
+     *
+     * @param array<ScheduledEvent> $scheduledEvents The assigned events of one round
+     *
+     * @throws InvalidConfigurationException When a participant is in two events at one instant
+     */
+    private function refuseDoubleBookings(array $scheduledEvents, int $roundNumber): void
+    {
+        /** @var array<string, array<string, ScheduledEvent>> $firstEventAt Keyed by instant, then by participant ID */
+        $firstEventAt = [];
+        $doubleBookings = [];
+        $sentences = [];
+
+        foreach ($scheduledEvents as $scheduledEvent) {
+            $kickoff = $scheduledEvent->getKickoff();
+            $instant = $kickoff->format('U.u');
+
+            $seenInEvent = [];
+            foreach ($scheduledEvent->getEvent()->getParticipants() as $participant) {
+                $id = $participant->getId();
+                if (isset($seenInEvent[$id])) {
+                    continue;
+                }
+                $seenInEvent[$id] = true;
+
+                $first = $firstEventAt[$instant][$id] ?? null;
+                if ($first === null) {
+                    $firstEventAt[$instant][$id] = $scheduledEvent;
+                    continue;
+                }
+
+                if (isset($doubleBookings[$instant . ' ' . $id])) {
+                    continue;
+                }
+
+                $doubleBookings[$instant . ' ' . $id] = [
+                    'participant' => $id,
+                    'kickoff' => $kickoff->format(DATE_ATOM),
+                    'events' => [$this->describeEvent($first, false), $this->describeEvent($scheduledEvent, false)],
+                ];
+                $sentences[] = sprintf(
+                    '%s is in %s and in %s at %s UTC.',
+                    $participant->getLabel(),
+                    $this->describeEvent($first, true),
+                    $this->describeEvent($scheduledEvent, true),
+                    $kickoff->format('Y-m-d H:i:s')
+                );
+            }
+        }
+
+        if ($doubleBookings !== []) {
+            throw new InvalidConfigurationException(
+                "Round {$roundNumber} has " . count($doubleBookings) . ' participant(s) in two events at the same time: '
+                    . implode(' ', array_slice($sentences, 0, 3)),
+                ['round' => $roundNumber, 'double_bookings' => array_values($doubleBookings)],
+                reason: InvalidConfigurationReason::ParticipantDoubleBooked
+            );
+        }
+    }
+
+    /**
+     * The participants of an event, by label or by ID, joined with "vs".
+     */
+    private function describeEvent(ScheduledEvent $scheduledEvent, bool $byLabel): string
+    {
+        $names = [];
+        foreach ($scheduledEvent->getEvent()->getParticipants() as $participant) {
+            $names[] = $byLabel ? $participant->getLabel() : $participant->getId();
+        }
+
+        return implode(' vs ', $names);
     }
 }
