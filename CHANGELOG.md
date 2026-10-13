@@ -13,6 +13,111 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Output change (fix)
+
+- **Every slot time is computed from the start, not from the slot before
+  it.** `TimelineDefinition::getSlotTime()` added the round interval once
+  per round, each addition from the round before, so whatever one round was
+  adjusted by stayed in every later round. Round N is now the start plus
+  N−1 round intervals taken as one step, and a slot is its round's first
+  slot plus its slot intervals taken as one step.
+  `SessionGrid::getSlotTime()` and `positionOf()` compute a slot from its
+  session's start the same way. Three things change:
+
+  - *Months keep the day, or the month end.* An interval of months or years
+    from the 29th, 30th or 31st keeps that day of the month, and a month too
+    short for it gives its last day.
+
+    | `P1M` from 31 January 2026, rounds 1 to 5 | |
+    |---|---|
+    | Before | 31 Jan, 3 Mar, 3 Apr, 3 May, 3 Jun |
+    | After | 31 Jan, 28 Feb, 31 Mar, 30 Apr, 31 May |
+
+  - *A local time the clocks skip moves one round.* A weekly 01:30 in
+    `Europe/London` from 15 March 2026 was 01:30, 01:30, 02:30 (29 March has
+    no 01:30), then 02:30 in every later round. It is now 01:30, 01:30,
+    02:30, 01:30, 01:30. The slots of a session grid a day apart behave the
+    same.
+  - *An interval with months and days is multiplied out first.* Round N of
+    `P1M7D` is the start plus N−1 months, plus 7 × (N−1) days. From 1
+    January 2026 round 12 was 18 February 2027 and is now 16 February 2027;
+    rounds 2 and 3 (8 February, 15 March) are as before. The same holds for
+    an interval with a date part and a time part (`P1DT12H`) in a timezone
+    that changes its clocks: the days are counted in local time and the
+    hours as elapsed time, each once from the start.
+
+  Who is affected: a timeline whose round interval has months or years and
+  whose start is on the 29th, 30th or 31st; a timeline or a grid with an
+  interval of days, weeks or months whose local time of day falls in the
+  hour a clock change skips; and a timeline whose one interval mixes months
+  with days, or days with hours in a timezone with clock changes. What to
+  check: kickoffs stored from such a timeline no longer equal what
+  `getSlotTime()` and `TimelineAssigner` return, so assign again before
+  comparing. Nothing else changes: an interval of days, weeks, hours or
+  minutes at a time of day that exists on every date, and an interval of
+  months from the 1st to the 28th, give the kickoffs they gave, and no
+  golden fixture changed. An interval made by
+  `DateInterval::createFromDateString()` has no multiple and is still added
+  one step at a time.
+- **`PairingSpacingMetric` no longer assumes that rounds start at 1.** It
+  took the highest round number for the length of the schedule, so the same
+  schedule numbered from a later round measured worse: a mirrored two-leg
+  round robin of four in rounds 1 to 6 measured 0.0, and in rounds 11 to 16
+  it measured 5.0. The length is now the rounds the schedule spans, highest
+  minus lowest plus one, and both measure 0.0. Who is affected: anyone
+  scoring a schedule whose lowest round number is above 1 (a later leg or
+  stage scored by itself), and `ScheduleScorer`/`ScheduleOptimizer` totals
+  that include this metric for one. A schedule whose first round is 1
+  measures as before.
+
+### Added
+
+- **`InvalidConfigurationReason::OverlappingTime`** (`overlapping_time`), the
+  reason of the two rejections under Changed.
+
+### Changed
+
+- **A timeline whose rounds overlap is rejected.** Nothing checked that the
+  slots of a round come before the next round's first slot, so the same
+  resource and the same participants could be given two events at one
+  kickoff. `new TimelineDefinition(...)` and `TimelineDefinition::fromArray()`
+  now throw an `InvalidConfigurationException` (`OverlappingTime`) when the
+  first round's last slot is at or after the second round's first slot, and
+  `TimelineAssigner::assign()` and `assignRound()` throw the same for any
+  round they assign whose last slot is at or after the next round's first
+  (a short month or a clock change can shorten a later round). Before and
+  after: hourly rounds (`PT1H`) of two slots an hour apart were built, and
+  round 1 slot 1 and round 2 slot 0 were both 19:00; the definition is now
+  refused. Who is affected: a timeline with more than one slot per round
+  whose slots span the round interval or more. What to check: make the
+  round interval longer than (slots − 1) × slot interval; stored
+  configuration of such a timeline no longer loads.
+- **A session grid whose sessions overlap is rejected.** `SessionGrid`
+  checked only that session starts ascend. The constructor and
+  `fromArray()` now throw an `InvalidConfigurationException`
+  (`OverlappingTime`) when the last slot of a session is at or after the
+  start of the next session, slot-count overrides applied. Before and after:
+  sessions at 20:00 and 20:25 with two slots 25 minutes apart were accepted,
+  two positions were at 20:25, and a repack placed one participant in both
+  with no violation; the grid is now refused. Who is affected: an
+  instant-based grid whose sessions run into one another. What to check:
+  space the session starts, or lower the slot count of the earlier session
+  with an override; `positionOf()` given an instant no longer has two
+  positions to choose between. A shape-only grid has no instants and is not
+  checked, and the last session can still run as deep as it needs to.
+- **`TimelineAssigner::assignRound()` applies the assigner's rules.** It
+  ignored them: an assigner built with a `BlackoutRule` refused a kickoff
+  inside the window from `assign()` and scheduled it from `assignRound()`.
+  It now throws the `InvalidConfigurationException` (`TimeRuleViolation`)
+  that `assign()` throws, with every violation in the context. The rules
+  are shown the round's events only, because the assigner keeps nothing
+  between calls: a blackout is judged in full, and a minimum rest only
+  within the round. Who is affected: code that passes rules to the
+  constructor and calls `assignRound()`. What to check: a round that broke a
+  rule now throws where it returned events; to judge rest between rounds,
+  keep validating the accumulated `ScheduledSchedule` with the rule's
+  `validate()`, as before.
+
 ## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public

@@ -25,6 +25,16 @@ Settled decisions beyond the sketch:
   one event per slot only; the third cut added resources (below).
 - **Deterministic filling**: a round's events fill its slots in schedule
   order against slot time order.
+- **Every slot is computed from the start** (changed in 0.3.0): round N is
+  the start plus N−1 round intervals taken as one step, and a slot is its
+  round's first slot plus its slot intervals taken as one step. The first
+  implementation added the interval once per round, each addition from
+  the round before, so one round's adjustment carried into every later
+  round: `P1M` from 31 January went to 3 March and stayed on the 3rd, and
+  a weekly 01:30 that met the hour the clocks skip was 02:30 from then
+  on. Months now keep the start's day of the month, or the last day of a
+  month too short for it, and a skipped local time moves the one round
+  that lands on it.
 - **Intervals are added in the definition's timezone**, as PHP adds a
   `DateInterval` to a zoned time; kickoffs are then emitted in UTC
   (`timezone-explicit in, UTC-normalized out`). An interval in days, weeks
@@ -33,6 +43,14 @@ Settled decisions beyond the sketch:
   minutes or seconds is elapsed time: `PT168H` is not `P7D`, and lands an
   hour off after the change. The note first recorded this as "wall-clock
   interval arithmetic" without the distinction.
+- **Rounds do not overlap** (0.3.0): the last slot of a round must be
+  before the first slot of the next round, or the same resources and the
+  same participants are booked for two kickoffs at once. The definition
+  refuses a first round that runs into the second when it is built, and
+  the assigner checks every round it assigns, since a short month or a
+  clock change can shorten a later round. Events have no duration in the
+  model, so "ends" means the last kickoff, and a kickoff equal to the
+  next round's first is an overlap.
 - **No check of who plays.** The sketch below lists "a participant assigned
   overlapping slots" among the things that fail loudly. The assigner does
   not check it: it validates capacity and round numbers. A
@@ -67,7 +85,11 @@ Settled decisions beyond the sketch:
   authoritative like the definition itself). The assigner optionally
   carries rules and fails assignment loudly with every violation in the
   diagnostics; rules are also usable standalone against any accumulated
-  `ScheduledSchedule` (the round-by-round engine path). These are
+  `ScheduledSchedule` (the round-by-round engine path).
+  `assignRound()` applies the assigner's rules to the round it is given
+  (0.3.0; it ignored them before): a blackout is judged in full there,
+  and rest only within the round, because the assigner keeps no state
+  between calls. These are
   deliberately *not* `ConstraintInterface` implementations — generation
   constraints filter pairings during a search; timeline rules judge an
   already-determined mapping.
