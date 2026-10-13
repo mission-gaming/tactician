@@ -292,6 +292,9 @@ trait EliminationBracketSupport
      * @param array<Result> $results The results the records are computed from
      * @param array<int|string, int> $placement The tier of each placed participant by ID, 0 best
      * @param array<Adjustment> $adjustments The adjustments recorded on the stage state
+     *
+     * @throws InvalidConfigurationException Not thrown here: the table is given no bye, which is
+     *                                       all the calculator refuses
      */
     private function placementStandings(
         StandingsCalculator $calculator,
@@ -301,7 +304,7 @@ trait EliminationBracketSupport
         array $adjustments = []
     ): Standings {
         $table = $calculator
-            ->withAdjustments($calculator->calculate($entrants, $results), $adjustments)
+            ->calculateWith($entrants, $results, [], $adjustments)
             ->withTiedSetsOrderedBy($entrants);
 
         $unplaced = $placement === [] ? 0 : max($placement) + 1;

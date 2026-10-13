@@ -44,7 +44,9 @@ anything else that competes.
 | **Role** | The position of a participant in an event: first-named (index 0 of `getParticipants()`) or second-named (index 1). The neutral name for what a sport calls home and away, white and black, or server and receiver. |
 | **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `BalancedRoleAssignment` (the default) ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size; `RoundParityRoleAssignment` (the default up to 0.2.x) alternates with round parity. A role assignment may state the rule it holds a leg to, and the scheduler then looks for other roles within that rule where a constraint rejects the ones it gave. See [Role Assignment](#role-assignment). |
 | **Fixed seating** | A seating is one pairing of a round as a role assignment is handed it: two seats, with the first-named participant in the first. A fixed seating is one the role assignment is told to keep as given (`RoleAssignmentContext::isFixed()`): the scheduler put its event to the constraints the other way round, they rejected it, and it asks the role assignment for the roles of the other seatings around it. See [Writing a role assignment](#writing-a-role-assignment). |
-| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events — round robin records them in the `byes` schedule metadata, and the Swiss/elimination engines report them on the round pairing. |
+| **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events: a schedule lists them by round (`Schedule::getByesByRound()`, read from the events; round robin also records them in the `byes` schedule metadata), and the Swiss/elimination engines report them on the round pairing. A bye is no result. A table counts it as a figure of its own (`StandingEntry::getByes()`) and credits it with the **bye value**. See [Byes in a table](#byes-in-a-table). |
+| **Bye value** | What one bye adds to the ranking value of the participant who had it, as the ranking strategy states it (`RankingStrategyWithByeValue::getByeValue()`): the value of a win, of a draw, nothing, or any other amount. `WinDrawLossRanking` values a bye as a win unless told otherwise. The same value orders the next round of a stage and stands in its final table. |
+| **Bye treatment** | How a tiebreaker computed from opponents counts a bye (`ByeTreatment`): not at all (`Uncounted`, the default), as an opponent worth nothing (`Zero`), or as an opponent with the participant's own ranking value (`OwnRankingValue`); the last two read an opponent's ranking value with the credit of its byes. |
 | **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and a standings table calculated on its own, with no entrant list, uses it in its last fallback, between scores-for and the ID (see **Tied set**). No stage reads it. Wherever an entrant list exists, the position in that list decides what results do not: bracket placement, serpentine pool distribution, pot membership, the pairing order and the byes of a Swiss stage, the survivors of a re-seeded elimination round, the table of an engine's outcome and a rank selection. Put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
 | **Result** | The recorded outcome of an event: a winner or a draw, with optional per-participant scores. The event was played, unless the result is an **awarded result**. A result of a knockout tie that finished level may carry a **decider**. |
@@ -53,6 +55,8 @@ anything else that competes.
 | **Adjustment** | An amount added to, or taken from, one participant's ranking value for a reason that is no event (`Adjustment`: a participant ID, a signed amount, an optional label and reason that the library never reads). The amount is on the scale of the ranking strategy, whatever that is: points under `WinDrawLossRanking`. A table shows it as a figure of its own beside what was earned and is ordered by the two together; a stage state carries the adjustments of its stage. See [Adjustments](#adjustments). |
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
+| **Tiebreaker between the tied participants** | A tiebreaker whose value for a participant comes from the events between it and the participants it is level with, and from no other (`TiedParticipantsTiebreaker`; `BetweenTiedParticipants` wraps any measure). A sport calls it head-to-head. The calculator computes it for each tied set, and several of them in a row for the same tied sets, as one small table of the events among the level participants. See [Between the tied participants](#between-the-tied-participants). |
+| **Rank** | The place the results give an entry of a table (`Standings::getRank()`): its position, or, for an entry of a **tied set** that no **decision** ordered, the first position of the set, shared by all of the set. Positions are never shared; ranks are, where neither results nor a decision decide. |
 | **Tied set** | Two or more adjacent entries of a standings table that are **level**: equal on the ranking value, on every configured tiebreaker, on score difference and on scores-for (and, in the table of a bracket, out in the same round), so that no result orders them. What does is the position in the entrant list, in the table of a stage, and the final fallback (seed, then ID) in a table calculated on its own. `Standings::getTiedSets()` reports each one (`TiedSet`) with the positions it spans. The application can settle one with a **decision**. |
 | **Decision** | The order of a set of level entries, settled outside the results by the application and given to the library as a `DTO\Decider`: the IDs of the level participants, best first, with an optional label and reason that the library never reads. `Standings::withDecisions()` applies it to a tied set of a table, and a rank selector takes it with `withDecisions()`; the table (`getDecisionFor()`) and the selection (`RankSelection`) mark every place it settled. It orders one whole set of level entries and never overrides a result: anything else is rejected with a reason (`RejectedDecisionException`). The library records that the order was decided and never how. See [Settling a tied set by a decision](#settling-a-tied-set-by-a-decision). |
 | **Entrant list** | The ordered list of participants a stage is given: `StageState::start()` for an engine, the list handed to a scheduler or to `PoolDistributor`, the last argument of a `StageOutcome` built by hand. Position 1 is first. Its order is authoritative: it places entrants, and it decides every order that results leave open. A label, a seed attribute or an ID never does. |
@@ -72,7 +76,7 @@ anything else that competes.
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), results, and adjustments. Pairings count as played even without results; withdrawals are `withoutParticipant()`, a result of the last recorded round is corrected with `withResultReplaced()`, and an adjustment is recorded with `withAdjustment()`. |
 | **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format and for the options that shape which rounds the format has or how they are paired, and an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. A patch release keeps the fingerprint of every configuration; a 0.x minor release may change the scheme ([how long it lasts](#recording-which-engine-pairs-a-state)). An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
-| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. The ranking value it groups by includes a win for every bye a participant has had, as the table of the outcome does. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
+| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. The ranking value it groups by includes the **bye value** for every bye a participant has had, as the table of the outcome does. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
 | **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, the structural final round and the entrant list. Deliberately free of champion/winner vocabulary. The standings are the table of the whole stage: for an elimination stage the bracket placement, so rank 1 is the participant who advanced from its last tie (see [Who won the bracket](#who-won-the-bracket)). |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
@@ -1195,8 +1199,9 @@ its W/D/L record. `WinDrawLossRanking` is the built-in implementation, with
 the sport conventions as named constructors — `threeOneZero()`
 (association football) and `oneHalfZero()` (chess) — and plain-data
 construction via `WinDrawLossRanking::fromArray(['win' => 3, 'draw' => 1,
-'loss' => 0])` for config-driven platforms. `SonnebornBergerTiebreaker` is
-also available. Ties beyond the configured tiebreakers fall back to score
+'loss' => 0])` for config-driven platforms. The tiebreakers the library has,
+and how a chain of them is built from plain data, are under
+[Tiebreakers](#tiebreakers). Ties beyond the configured tiebreakers fall back to score
 difference and score for. Entries that are still level are ordered by seed
 (a participant without one after those that have one) and finally by ID, so
 that the table is the same for every order of the participants array; a
@@ -1320,6 +1325,29 @@ echo implode(', ', array_map(
 A `StageOutcome` built with an entrant list (its last constructor argument)
 does the same to the table it is given, so that what a rank selector reads
 is the table the outcome shows.
+
+**A rank is shared where a position is not.** `getPosition()` counts every
+entry, so no two entries have one position. `getRank()` is the rank the
+results give: every entry of a tied set has the rank of the set's first
+position, and the entry after the set has the rank of its own position.
+`getRanks()` lists the rank of every entry in table order.
+
+```php
+// One result so far: Alice beat Bob. Carol and Dave have not played.
+$early = $calculator->calculate($participants, [new Result($eventOne, $alice)]);
+
+echo implode(', ', $early->getRanks()) . "\n";                                     // 1, 2, 3, 3
+echo "rank {$early->getRank($dave)}, position {$early->getPosition($dave)}\n";     // rank 3, position 4
+echo implode(', ', $unplayed->getRanks()) . "\n";                                  // 1, 1, 1, 1
+```
+
+Bob is second there on Buchholz: the opponent he lost to has three points.
+A rank does not change when the entries of a tied set are put in another
+order, and it decides nothing either: a competition that shares a place, a
+prize or a seeding between the holders of one rank reads it here and applies
+its own rule. A tied set that a [decision](#settling-a-tied-set-by-a-decision)
+ordered shares no rank: the decision placed its entries one after the
+other, so each has its position as its rank.
 
 ### Settling a tied set by a decision
 
@@ -1475,6 +1503,178 @@ A tie decided by lot between two qualifiers, from the tied table to the
 bracket it seeds, is a runnable example:
 [`examples/28-ties-settled-by-decision.php`](../examples/28-ties-settled-by-decision.php).
 
+### Tiebreakers
+
+A tiebreaker gives every participant a value, higher is better
+(`TiebreakerInterface`). The calculator compares the values of entries that
+are level on the ranking value, in the order the tiebreakers were given, and
+stores them on the entry under the tiebreaker's name
+(`getTiebreakerValue()`). The library has these:
+
+| Identifier | Class | Value |
+|------------|-------|-------|
+| `wins` | `WinsTiebreaker` | The number of wins. |
+| `score-difference` | `ScoreDifferenceTiebreaker` | Scores-for minus scores-against. |
+| `scores-for` | `ScoresForTiebreaker` | The participant's own scores, added up. |
+| `buchholz` | `BuchholzTiebreaker` | The ranking values of every opponent met, added up. |
+| `sonneborn-berger` | `SonnebornBergerTiebreaker` | The ranking values of the opponents beaten, and half those of the opponents drawn with. |
+| `ranking-value` | `RankingValueTiebreaker` | The ranking value of the results. It separates nobody on its own; it is a measure for the next row. |
+| `between-tied:` and one of the above | `BetweenTiedParticipants` | That measure over the events between the tied participants only. |
+
+The identifier is the name the tiebreaker gives itself, and so the key of
+its value on an entry. The score difference and scores-for are compared
+anyway, after every tiebreaker; naming them in the chain gives them an
+earlier place and shows their values. The two tiebreakers that read
+opponents' ranking values take an option for [byes](#byes-in-a-table).
+
+#### Between the tied participants
+
+Many competitions separate level participants by the events they played
+against each other before any figure of the whole table (a sport calls it
+head-to-head). `BetweenTiedParticipants` wraps another tiebreaker, the
+measure, and asks it about a small table: the participants who are level
+when its turn in the chain comes, and the results of the events between
+them alone.
+
+```php
+use MissionGaming\Tactician\Standings\BetweenTiedParticipants;
+use MissionGaming\Tactician\Standings\RankingValueTiebreaker;
+use MissionGaming\Tactician\Standings\ScoreDifferenceTiebreaker;
+use MissionGaming\Tactician\Standings\TiebreakerChain;
+
+// Alice, Bob and Carol each beat one of the other two, and each beat Dave:
+// the three finish on 6 points
+$league = [
+    new Result(new Event([$alice, $bob]), $alice, ['alice' => 3, 'bob' => 0]),
+    new Result(new Event([$bob, $carol]), $bob, ['bob' => 2, 'carol' => 0]),
+    new Result(new Event([$carol, $alice]), $carol, ['carol' => 1, 'alice' => 0]),
+    new Result(new Event([$alice, $dave]), $alice, ['alice' => 1, 'dave' => 0]),
+    new Result(new Event([$bob, $dave]), $bob, ['bob' => 1, 'dave' => 0]),
+    new Result(new Event([$carol, $dave]), $carol, ['carol' => 9, 'dave' => 0]),
+];
+
+$betweenTheTiedFirst = new StandingsCalculator(
+    WinDrawLossRanking::threeOneZero(),
+    [
+        new BetweenTiedParticipants(new RankingValueTiebreaker()),
+        new BetweenTiedParticipants(new ScoreDifferenceTiebreaker()),
+        new ScoreDifferenceTiebreaker(),
+    ]
+);
+
+foreach ($betweenTheTiedFirst->calculate($participants, $league) as $entry) {
+    echo $entry->getParticipant()->getLabel() . ': ' . $entry->getRankingValue() . ' pts, '
+        . $entry->getTiebreakerValue('between-tied:ranking-value') . ' and '
+        . $entry->getTiebreakerValue('between-tied:score-difference') . ' between the tied, '
+        . $entry->getTiebreakerValue('score-difference') . " overall\n";
+}
+```
+
+That prints:
+
+```
+Alice: 6 pts, 3 and 2 between the tied, 3 overall
+Carol: 6 pts, 3 and -1 between the tied, 8 overall
+Bob: 6 pts, 3 and -1 between the tied, 0 overall
+Dave: 0 pts, 0 and 0 between the tied, -11 overall
+```
+
+The three are level on points, and on the points they took from each other
+(3 each: one win). The score difference of the three events among them puts
+Alice first, although Carol has the best score difference of the whole
+table. Bob and Carol are still level, and the next tiebreaker in the chain,
+the overall score difference, orders them.
+
+How a tiebreaker of this kind is computed:
+
+- **For the participants who are level.** A tied set is the participants
+  with the same ranking value (the total, with byes and adjustments in it)
+  and the same value for every tiebreaker before the run this one is in. A
+  participant level with nobody is a set of one.
+- **Several in a row are one small table.** Tiebreakers of this kind that
+  follow one another in the chain are a run, and every one of a run is
+  computed over the same tied set: the participants level when the first of
+  the run is asked. So `between-tied:ranking-value`,
+  `between-tied:score-difference` and `between-tied:scores-for`, in that
+  order, rank everyone level on points by the points, then the score
+  difference, then the scores-for of the events among all of them. Take
+  three participants on 4 points, A 0-0 B, A 5-0 C and B 1-0 C: A and B
+  have 4 points each from those events and C none, and A is above B on the
+  score difference of the three events, +5 against +1, whatever the score
+  difference of the whole table says. What A and B did against C counts,
+  although the first measure placed C apart. A tiebreaker of another kind
+  ends the run: one between the tied that comes after it is computed for
+  the participants level at that point, as a new small table.
+- **From the events between them only.** The measure is handed the results
+  of the events whose participants are all in the set, and the entries of a
+  table of the set calculated from those results alone, by the calculator's
+  ranking strategy. Two participants who have not met have nothing between
+  them: every measure gives each its value for no result, and they stay
+  level.
+- **Not again for a subset left level.** Where the values of a run split a
+  set of four into one, two and one, the two that are left keep the values
+  they have over the four and go on to the next tiebreaker of another
+  kind; the run is not taken again over the events between the two. A
+  competition that takes its measures again over those still level gives
+  the chain a second run, after a tiebreaker of another kind, of
+  `TiedParticipantsTiebreaker`s of its own under other names.
+  `BetweenTiedParticipants` is named after its measure, so one measure has
+  one place: a calculator whose chain holds a tiebreaker of this kind and
+  has one name twice is refused when it is built (`InvalidInputException`).
+- **The same whatever the order of the input.** The sets are read from the
+  figures, so the values do not depend on the order of the participants or
+  of the results.
+
+A tiebreaker of your own is computed this way when it implements
+`TiedParticipantsTiebreaker`, which adds no method to `TiebreakerInterface`:
+it is handed the results and the entries of the tied set.
+
+Who is tied depends on the byes and the adjustments of a table, so a
+calculator with a tiebreaker of this kind takes them with the results, in
+one call: [`calculateWith()`](#byes-in-a-table). `withAdjustments()` and
+`withByesCredited()`, which change a table that exists, refuse such a
+calculator (`IncompatibleOptions`) when they would change anything.
+
+#### A chain from plain data
+
+`TiebreakerChain::fromIdentifiers()` builds the tiebreakers from a list of
+identifiers, in the order they apply, and `identifiersOf()` writes one. An
+entry is an identifier of the table above, or a map that names one under
+`tiebreaker` and gives its option. A whole calculator is plain data too:
+`StandingsCalculator::fromArray()` reads a ranking
+(`WinDrawLossRanking::fromArray()`), a chain and an awarded result policy,
+each of which may be left out.
+
+```php
+$chain = TiebreakerChain::fromIdentifiers([
+    'between-tied:ranking-value',
+    'between-tied:score-difference',
+    'score-difference',
+]);
+echo count($chain) . ' tiebreakers: ' . implode(', ', TiebreakerChain::identifiersOf($chain)) . "\n";
+
+$configured = StandingsCalculator::fromArray([
+    'ranking' => ['win' => 3, 'draw' => 1, 'loss' => 0],
+    'tiebreakers' => ['wins', ['tiebreaker' => 'buchholz', 'byes' => 'own-ranking-value']],
+    'awarded_results' => ['count_scores' => false],
+]);
+echo json_encode($configured->toArray()['tiebreakers']) . "\n";
+```
+
+That prints:
+
+```
+3 tiebreakers: between-tied:ranking-value, between-tied:score-difference, score-difference
+["wins",{"tiebreaker":"buchholz","byes":"own-ranking-value"}]
+```
+
+An identifier that is not known, a key a map does not have and a name that
+is in the chain twice are refused with an `InvalidConfigurationException`
+(`UnknownIdentifier`, `UnknownOptionKey`, `DuplicateName`). Only the
+library's tiebreakers and `WinDrawLossRanking` have a plain-data form: a
+calculator that holds a tiebreaker or a ranking strategy of your own is
+built in code, and `toArray()` refuses it (`NotSerializable`).
+
 ### Awarded results
 
 An event that never takes place can still have an outcome: the application
@@ -1559,40 +1759,13 @@ changes anything. The ranking strategy and the tiebreakers are handed each
 result as it was recorded, so a strategy of your own that reads scores can
 ask `Result::isAwarded()` and decide for itself.
 
-A tiebreaker "computed between the tied participants only" (a sport calls it
-head-to-head) declares itself by implementing `TiedParticipantsTiebreaker`,
-which adds no method to `TiebreakerInterface`. The library ships none yet;
-one of your own gets the choice applied to it without a line of code for it:
+A tiebreaker [between the tied participants](#between-the-tied-participants)
+(a sport calls it head-to-head) is a `TiedParticipantsTiebreaker`, and the
+calculator applies the choice to every one of them, the library's
+`BetweenTiedParticipants` and one of your own alike, without a line of code
+in the tiebreaker for it:
 
 ```php
-use MissionGaming\Tactician\Standings\TiedParticipantsTiebreaker;
-
-// Wins over the participants one is level with on ranking value
-$betweenTheTied = new class implements TiedParticipantsTiebreaker {
-    public function getName(): string
-    {
-        return 'wins-between-the-tied';
-    }
-
-    public function calculate(Participant $participant, array $results, array $entries): float
-    {
-        $own = $entries[$participant->getId()]->getRankingValue();
-        $wins = 0.0;
-        foreach ($results as $result) {
-            foreach ($result->getEvent()->getParticipants() as $opponent) {
-                if ($result->isWinFor($participant)
-                    && $opponent !== $participant
-                    && $entries[$opponent->getId()]->getRankingValue() === $own
-                ) {
-                    ++$wins;
-                }
-            }
-        }
-
-        return $wins;
-    }
-};
-
 // Alice and Bob finish on one win each. Alice's is over Bob, and was awarded.
 $trio = [$alice, $bob, $carol];
 $trioResults = [
@@ -1602,12 +1775,12 @@ $trioResults = [
 
 foreach ([true, false] as $counts) {
     $table = (new StandingsCalculator(
-        tiebreakers: [$betweenTheTied],
+        tiebreakers: [new BetweenTiedParticipants(new WinsTiebreaker())],
         awardedResults: new AwardedResultPolicy(countBetweenTiedParticipants: $counts)
     ))->calculate($trio, $trioResults);
 
     $aliceEntry = $table->getEntryFor($alice);
-    echo "{$aliceEntry?->getWins()}W, {$aliceEntry?->getTiebreakerValue('wins-between-the-tied')} between the tied, "
+    echo "{$aliceEntry?->getWins()}W, {$aliceEntry?->getTiebreakerValue('between-tied:wins')} between the tied, "
         . count($table->getTiedSets()) . " tied sets\n";
 }
 ```
@@ -1683,9 +1856,14 @@ record, the scores and the awarded count are those of the results.
 - **Tiebreakers use what was earned.** The tiebreaker values are those of
   the results. A tiebreaker computed from opponents' ranking values
   (`BuchholzTiebreaker`, `SonnebornBergerTiebreaker`) counts an opponent for
-  the ranking value it earned: an opponent's adjustment, like an opponent's
-  bye, is not in it. Points removed for a reason that is no event say
-  nothing about how strong the opponent was to meet.
+  the ranking value it earned: an opponent's adjustment is not in it,
+  whatever the tiebreaker does with [byes](#byes-in-a-table). Points removed
+  for a reason that is no event say nothing about how strong the opponent
+  was to meet. One kind of tiebreaker does depend on the adjustments: who is
+  tied, for a tiebreaker [between the tied participants](#between-the-tied-participants),
+  is read from the totals with the adjustments in them, so a calculator
+  that has one takes the adjustments with the results
+  (`calculateWith($participants, $results, adjustments: $adjustments)`).
 - **An adjustment for a participant the table does not have is rejected**
   with an `InvalidInputException`.
 - **The order stays total.** The amounts for one participant are added
@@ -1777,14 +1955,147 @@ A league with an awarded result and an adjustment, from the results to the
 table, is a runnable example:
 [`examples/25-awarded-results-and-adjustments.php`](../examples/25-awarded-results-and-adjustments.php).
 
+### Byes in a table
+
+A bye is a round a participant sat out. It is no result, so
+`calculate()` counts it nowhere. What it is worth in a table is the
+competition's choice, and the **ranking strategy** states it
+(`RankingStrategyWithByeValue::getByeValue()`): what a win is worth, what a
+draw is worth, nothing, or any other amount. `WinDrawLossRanking` values a
+bye as a win unless it is told otherwise, with `withByeValue()` or the key
+`bye` of its plain data (a number, or `'win'`, `'draw'` or `'loss'` for the
+value the same array gives that outcome).
+
+`calculateWith()` calculates a table with its byes, and with its adjustments,
+in one call. The byes are counts by participant ID, which is what a stage
+state (`StageState::getByeCounts()`), an outcome (`StageOutcome::getByes()`)
+and a schedule (`Schedule::getByeCounts()`) return.
+
+```php
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Standings\ByeTreatment;
+
+// Alice beat Bob and lost to Carol, Bob beat Carol. Alice and Carol each
+// sat one round out.
+$trioPlayed = [
+    new Result(new Event([$alice, $bob]), $alice),
+    new Result(new Event([$carol, $alice]), $carol),
+    new Result(new Event([$bob, $carol]), $bob),
+];
+$byes = ['alice' => 1, 'carol' => 1];
+
+foreach (['win', 'draw', 0] as $bye) {
+    $ranking = WinDrawLossRanking::fromArray(['win' => 3, 'draw' => 1, 'loss' => 0, 'bye' => $bye]);
+    $entry = (new StandingsCalculator($ranking))->calculateWith($trio, $trioPlayed, $byes)->getEntryFor($alice);
+
+    echo "{$entry?->getPlayed()} played, {$entry?->getByes()} bye, "
+        . "{$entry?->getRankingValueOfResults()} from results, {$entry?->getEarnedRankingValue()} earned\n";
+}
+```
+
+That prints:
+
+```
+2 played, 1 bye, 3 from results, 6 earned
+2 played, 1 bye, 3 from results, 4 earned
+2 played, 1 bye, 3 from results, 3 earned
+```
+
+- **A bye is a figure of its own.** `getByes()` counts the byes of an entry,
+  also where a bye is worth nothing. Played, wins, draws and losses count
+  results only, so the record still adds up.
+- **The ranking value says where it came from.**
+  `getRankingValueOfResults()` is what the results are worth,
+  `getEarnedRankingValue()` adds the value of each bye, and
+  `getRankingValue()` adds the [adjustment](#adjustments). The table is
+  ordered by the last.
+- **One value, everywhere.** The engines hand the calculator the byes
+  recorded on the stage state and read one table for the order a round is
+  paired from and for the outcome, so a bye cannot be worth one thing for
+  pairing and another in the final table.
+- **A ranking strategy of your own says what a bye is worth** by
+  implementing `RankingStrategyWithByeValue`. One that does not keeps
+  working wherever no bye is credited; a table with a bye to credit is
+  refused under it (`IncompatibleOptions`), because nothing says what
+  sitting out counts for on its scale.
+
+A tiebreaker that adds up the ranking values of opponents has to say what a
+bye is in that sum, and the two the library has take the answer as a
+`ByeTreatment`:
+
+| `ByeTreatment` | The participant's own bye | An opponent's ranking value |
+|----------------|---------------------------|-----------------------------|
+| `Uncounted` (`uncounted`, the default) | adds nothing | the value of its results, without the credit of its byes |
+| `Zero` (`zero`) | is an opponent worth nothing: adds nothing | the value it earned, with the credit of its byes |
+| `OwnRankingValue` (`own-ranking-value`) | is an opponent with the participant's own earned ranking value | the value it earned, with the credit of its byes |
+
+```php
+// Alice's opponents: Bob has 3, all from results, and Carol has 6, of
+// which 3 for her bye. Alice herself earned 6.
+foreach (ByeTreatment::cases() as $treatment) {
+    $table = (new StandingsCalculator(tiebreakers: [new BuchholzTiebreaker($treatment)]))
+        ->calculateWith($trio, $trioPlayed, $byes);
+
+    echo "{$treatment->value}: {$table->getEntryFor($alice)?->getTiebreakerValue('buchholz')}\n";
+}
+```
+
+That prints:
+
+```
+uncounted: 6
+zero: 9
+own-ranking-value: 15
+```
+
+`Uncounted` is the default because it is what the tiebreakers computed
+before a bye could be valued, so a table calculated by an earlier release is
+calculated the same; choose one of the other two for a table in which a bye
+is credited. `SonnebornBergerTiebreaker` takes the same three, and counts
+the participant's own bye in full under `OwnRankingValue`, as an opponent
+beaten. No treatment reads an opponent's adjustment. In a table without
+byes the three give the same value.
+
+A tiebreaker of your own reads byes by implementing
+`TiebreakerWithByeTreatment`: it is then handed entries that carry the byes
+and their credit, where every other tiebreaker is handed the entries of the
+results alone.
+
+`withByesCredited()` credits byes to a table that exists and keeps its
+tiebreaker values as they are. That is right while no tiebreaker reads a
+bye; with one that does, or with one between the tied participants, it
+refuses a bye (`IncompatibleOptions`) and `calculateWith()` is the call.
+
+**Which byes a schedule has** is read from the schedule: an entrant has a
+bye in a round when no event of that round names it. `getByesByRound()`
+lists them by round number, as participants, and `getByeCounts()` adds them
+up, for a schedule a generator returned, one read back from storage and one
+put together by hand alike. `RoundPairing::getByes()` has the byes of a
+round an engine paired, and `StageState::getByesByRound()` those of every
+round recorded.
+
+```php
+$oddField = (new RoundRobinScheduler())->schedule($trio);
+
+foreach ($oddField->getByesByRound() as $round => $sittingOut) {
+    echo "Round {$round}: " . count($sittingOut) . " bye\n";
+}
+
+$counts = $oddField->getByeCounts();
+ksort($counts);
+echo json_encode($counts) . "\n"; // {"alice":1,"bob":1,"carol":1}
+```
+
 ## Swiss Tournaments
 
 `SwissPairingEngine` is a **stage engine** (`StageEngineInterface`): it
 pairs one round at a time from the recorded `StageState`. Participants are
 ordered by standings and paired adjacently (Monrad style), backtracking
 past repeat pairings. Byes rotate to the lowest-placed participant with
-the fewest so far and count as wins: in the order the next round is paired
-from, and in the table of the outcome, which is the same table.
+the fewest so far and are credited with what the ranking strategy says a
+bye is worth, the value of a win unless you choose another: in the order
+the next round is paired from, and in the table of the outcome, which is
+the same table.
 
 Where no result separates two participants, their position in the list the
 stage was started with decides: the first round pairs position 1 with 2 and
@@ -1842,14 +2153,51 @@ $leader = $outcome->getStandings()->getEntries()[0];
 
 The outcome's standings are the table the rounds were paired from. A bye
 counts in it as it counts for pairing: the ranking value of an entry
-includes one win for each bye the participant had, and
+includes the value of a bye for each bye the participant had, and
 `StandingEntry::getByes()` says how many. Played, wins, draws and losses
-count results only, so a participant who had a bye and won twice in three
-rounds shows two played, two wins and nine points. Crediting a bye needs a
-value for a win, which only a `WinDrawLossRanking` has: under a ranking
-strategy of your own, a stage in which a bye is recorded is refused
-(`IncompatibleOptions`). A tiebreaker that reads opponents' ranking values
-(Buchholz, Sonneborn–Berger) counts an opponent's bye as nothing.
+count results only, so with a bye worth a win a participant who had a bye
+and won twice in three rounds shows two played, two wins and nine points.
+
+What a bye is worth is the ranking strategy's to say
+([Byes in a table](#byes-in-a-table)). A `WinDrawLossRanking` values it as a
+win unless told otherwise, and the same value orders the next round and
+stands in the final table:
+
+```php
+use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
+
+// Five participants, so one sits out each round; a bye scores nothing here
+$field = array_slice($participants, 0, 5);
+$byeScoresNothing = new SwissPairingEngine(
+    standingsCalculator: new StandingsCalculator(WinDrawLossRanking::threeOneZero()->withByeValue(0.0)),
+    plannedRounds: 3
+);
+
+$stage = StageState::start($field);
+while (!$byeScoresNothing->isComplete($stage)) {
+    $round = $byeScoresNothing->pairNextRound($stage);
+    $stage = $stage->withRoundPlayed($round, array_map(
+        fn ($event) => new Result($event, $event->getParticipants()[0]),
+        $round->getEvents()
+    ));
+}
+
+$byes = 0;
+$scoredForByes = 0.0;
+foreach ($byeScoresNothing->getOutcome($stage)->getStandings() as $entry) {
+    $byes += $entry->getByes();
+    $scoredForByes += $entry->getRankingValue() - 3.0 * $entry->getWins();
+}
+echo "{$byes} byes in the table, {$scoredForByes} points for them\n"; // 3 byes in the table, 0 points for them
+```
+
+Under a ranking strategy of your own that does not say what a bye is worth
+(it is no `RankingStrategyWithByeValue`), a stage in which a bye is recorded
+is refused (`IncompatibleOptions`). A tiebreaker that reads opponents'
+ranking values (Buchholz, Sonneborn–Berger) leaves byes out unless it is
+given a `ByeTreatment`: by default an opponent counts for the value of its
+results, without its byes.
 
 `StageState` absorbs the between-round bookkeeping (bye threading, round
 numbers, played pairings) and serializes — `toArray()`/`fromArray()` and
@@ -2490,11 +2838,14 @@ every bracket.
   round ranks with the winners of that round, not below them. Survivors
   who are level are in the order of the entrant list, so in a field of
   five the entrants in positions 1 and 2 are in opposite semifinals.
-  Crediting a bye needs a value for a win: a re-seeded bracket whose field
-  is not a power of two, which therefore has byes, is refused under a
-  ranking strategy that is not a `WinDrawLossRanking`
-  (`IncompatibleOptions`), from the first call on, before a round is
-  paired.
+  That is with a bye worth a win, the default: the ranking strategy says
+  what a bye is worth ([Byes in a table](#byes-in-a-table)), and with a
+  bye worth nothing the entrants who sat out rank below the winners of
+  the round. Crediting a bye needs that value: a re-seeded bracket whose
+  field is not a power of two, which therefore has byes, is refused under
+  a ranking strategy that does not say what a bye is worth (it is no
+  `RankingStrategyWithByeValue`; reason `IncompatibleOptions`), from the
+  first call on, before a round is paired.
 - `legsPerTie: 2` plays every tie over two mirrored legs (annotated with
   `tie_leg` metadata). Whoever wins more legs advances; when the legs are
   level, the aggregate is **yours** to resolve — away goals, extra time,
@@ -3494,10 +3845,21 @@ awarded results:
   results that are left.
 - **A bye credited in a pool's table is not in the figures compared.** The
   combined table is calculated from the results, and credits no bye. Where
-  a pool's own table counts a bye as a win
-  (`StandingsCalculator::withByesCredited()`, as the table of a Swiss stage
+  a pool's own table credits a bye
+  (`StandingsCalculator::calculateWith()`, as the table of a Swiss stage
   does), that credit decides who holds the rank in the pool, and the
   holders are then compared by what they scored in the events they played.
+  The entries of the combined table show no bye (`getByes()` is 0 there),
+  whatever the ranking strategy says a bye is worth, and a tiebreaker
+  that reads byes finds none in it.
+- **A tiebreaker between the tied participants says little across pools.**
+  In the combined table the participants level on points come from several
+  pools, and those of different pools have not met: a
+  [`BetweenTiedParticipants`](#between-the-tied-participants) value there
+  counts only the events against entrants of the same pool that happen to
+  be level too. Keep such a tiebreaker in the pools' own tables, where it
+  decides who holds a rank, and give `combining()` a calculator without
+  it.
 - **An [adjustment](#adjustments) is in the figures
   compared, under every method, and an awarded result is a result.**
   `combining()` carries the adjustment of a pool's table over to the
@@ -4906,9 +5268,10 @@ records with its reasons:
 - **An array without the key is version 1.** Version 1 is the form 0.2.x
   wrote, and beside it the optional keys 0.3.0 added (`strategy_seed` in
   round-robin options, `seed` in Swiss options, `ties`, `comparison` and
-  `decisions` in a rank range selector, `third_place` in elimination options, `award` and
-  `decider` in a result, `adjustments` in a stage state), each of which may
-  be left out. So rows stored by 0.2.x load
+  `decisions` in a rank range selector, `third_place` in elimination options,
+  `award` and `decider` in a result, `adjustments` in a stage state, `bye` in
+  a win-draw-loss ranking), each of which may be left out. So rows stored by
+  0.2.x load
   unchanged. There is nothing to migrate, and no need to add the key to
   stored data. One stored form loads unchanged and means something else:
   round-robin options without a `role_assignment` key name no role

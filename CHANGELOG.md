@@ -121,7 +121,9 @@ entry on the engine fingerprint.
   ```
 
   A tiebreaker that reads opponents' ranking values (Buchholz,
-  Sonneborn–Berger) still counts an opponent's bye as nothing.
+  Sonneborn–Berger) still counts an opponent's bye as nothing unless it is
+  given a bye treatment, and a bye is worth a win unless the ranking is
+  given another value for it (both under **Added**).
 - **A standings table calculated on its own is the same for every order of
   its participants.** The last fallback of `StandingsCalculator` was seed,
   then label in natural order, then ID compared as PHP compares two
@@ -686,6 +688,124 @@ entry on the engine fingerprint.
     to the selector and not those of the outcome's own table.
   - With no decision supplied, every table, selection and array form is
     what it was. Example: `examples/28-ties-settled-by-decision.php`.
+- **The value of a bye is the caller's choice.** A ranking strategy says
+  what one bye adds to a ranking value by implementing the optional
+  interface `Standings\RankingStrategyWithByeValue` (`getByeValue(): float`).
+  `WinDrawLossRanking` implements it: a bye is worth a win, as it was,
+  unless another value is given with `withByeValue()` (new), a fourth
+  constructor argument `byeValue` (default null, for the value of a win),
+  or the optional key `bye` of `fromArray()`: a number, or `'win'`,
+  `'draw'` or `'loss'` for the value the same array gives that outcome.
+  `toArray()` writes `bye` only for a ranking that was given a value, so
+  the array of every other ranking is as it was. The Swiss engine and a
+  re-seeded bracket credit a bye with that value, in the one table they
+  read for the order a round is paired from and for the outcome, so the
+  two cannot value a bye differently. A ranking strategy of your own that
+  implements the interface is no longer refused a stage with a bye; one
+  that does not is refused as before, and the message names the interface.
+  An engine fingerprint states the value (`bye-value`) only when it is not
+  the value of a win, so every stamp written before is unchanged. With the
+  defaults no table, pairing or fingerprint changes; no golden fixture
+  changed ("Byes in a table" in `docs/USAGE.md`, ADR 0009,
+  `docs/adr/0009-a-bye-is-worth-what-the-ranking-strategy-says.md`; #58).
+- **A table with its byes and its adjustments in one call:
+  `StandingsCalculator::calculateWith(array $participants, array $results,
+  array $byes = [], array $adjustments = [], int $creditsPerBye = 1)`.** The
+  byes are counts by participant ID, as `StageState::getByeCounts()`,
+  `StageOutcome::getByes()` and the new `Schedule::getByeCounts()` return
+  them. Every bye is counted on the entry (`StandingEntry::getByes()`, also
+  where a bye is worth nothing) and credited with the value of a bye;
+  played, wins, draws and losses count results only.
+  `StandingEntry::getRankingValueOfResults()` (new, with a thirteenth
+  constructor parameter `rankingValueOfResults`, default null) is what the
+  results alone are worth, beside `getEarnedRankingValue()` (that plus the
+  byes) and `getRankingValue()` (that plus the adjustment). With
+  tiebreakers that read no bye and are not computed between the tied
+  participants, the table is entry for entry the one
+  `withAdjustments(withByesCredited(calculate(...)))` gives. The engines
+  calculate their tables with it.
+- **A bye treatment for the tiebreakers computed from opponents.**
+  `BuchholzTiebreaker` and `SonnebornBergerTiebreaker` take a
+  `Standings\ByeTreatment` (new) as a constructor argument: `Uncounted`
+  (the default, and what they computed before: the participant's own bye
+  adds nothing and an opponent's ranking value is that of its results),
+  `Zero` (a bye is an opponent worth nothing, and an opponent's ranking
+  value is what it earned, byes included) or `OwnRankingValue` (each bye
+  of the participant adds its own earned ranking value, and an opponent's
+  ranking value is what it earned). No treatment reads an opponent's
+  adjustment, and in a table without byes the three give one value. The
+  name of the tiebreaker, and so the key of its value, is the same under
+  each. A tiebreaker of your own reads byes by implementing the optional
+  interface `Standings\TiebreakerWithByeTreatment` (new), and is then
+  handed entries that carry the byes and their credit. An engine
+  fingerprint states a treatment (`tiebreaker-byes`) only when it is not
+  `Uncounted`.
+- **Tiebreakers between the tied participants, and by score difference and
+  scores-for.** `Standings\BetweenTiedParticipants` (new) wraps another
+  tiebreaker as its measure and is computed, for each set of participants
+  level when its turn in the chain comes, from the events between them
+  alone (a sport calls it head-to-head):
+  `new BetweenTiedParticipants(new RankingValueTiebreaker())`, and the same
+  around `WinsTiebreaker`, `ScoreDifferenceTiebreaker` and
+  `ScoresForTiebreaker`. The last two and `RankingValueTiebreaker` are new
+  tiebreakers; the score difference and scores-for of a whole table were
+  compared before, after the tiebreakers, and can now be given an earlier
+  place. The calculator forms the tied sets, so the values are the same
+  for every order of the participants and the results. Tiebreakers of this
+  kind that follow one another in a chain are one small table: every one
+  of the run is computed over the participants level when the first of
+  them is asked, from the events among all of those, so
+  `between-tied:ranking-value`, `between-tied:score-difference` and
+  `between-tied:scores-for` rank the level participants by the points,
+  then the score difference, then the scores-for they took from each
+  other. A tiebreaker of another kind ends the run, and one between the
+  tied after it is computed for those level at that point. A run is not
+  taken again over a subset it leaves level: that subset goes on to the
+  next tiebreaker of another kind (ADR 0010,
+  `docs/adr/0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md`).
+  `TiedParticipantsTiebreaker`, the marker interface added with awarded
+  results in this release, now has that contract: a tiebreaker of your own
+  that implements it is handed the results and the entries of one tied set,
+  not those of the whole table. A value is kept and compared under the name
+  of its tiebreaker, so `new StandingsCalculator()` refuses a chain that
+  holds a tiebreaker between the tied participants and has one name twice
+  (`InvalidInputException`): the same `BetweenTiedParticipants` measure has
+  one place in a chain. A chain without such a tiebreaker is not checked,
+  as before.
+- **Shared ranks.** `Standings::getRank(Participant): ?int` and
+  `Standings::getRanks(): list<int>` give the rank the results decide: the
+  entries of a tied set share the rank of the set's first position, and the
+  entry after the set has the rank of its own position (1, 2, 2, 2, 5).
+  A tied set that a decision ordered (`Standings::withDecisions()`) shares
+  no rank: its entries have the ranks of their positions, because the
+  decision placed them one after the other. `getPosition()` is unchanged
+  and never shared.
+- **A tiebreaker chain and a standings calculator from plain data.**
+  `Standings\TiebreakerChain::fromIdentifiers()` (new) builds the library's
+  tiebreakers from a list, in order: `'wins'`, `'score-difference'`,
+  `'scores-for'`, `'ranking-value'`, `'buchholz'`, `'sonneborn-berger'`,
+  each of them after `'between-tied:'`, or a map
+  `['tiebreaker' => 'buchholz', 'byes' => 'own-ranking-value']` for the
+  two that take a bye treatment. `identifiersOf()` writes a chain and
+  `identifiers()` lists what is known. `StandingsCalculator::fromArray()`
+  and `toArray()` (new) read and write a whole calculator: `ranking` (the
+  form of `WinDrawLossRanking`), `tiebreakers` (a chain) and
+  `awarded_results` (the form of `AwardedResultPolicy`), each optional when
+  read. An unknown identifier, a key a form does not have and a name that
+  is in a chain twice are refused; a calculator with a ranking strategy or
+  a tiebreaker of your own has no plain-data form and `toArray()` refuses
+  it (`NotSerializable`). The two forms are version 1 and are new in this
+  release; `bye` is a new optional key of version 1 of the win-draw-loss
+  ranking (ADR 0005).
+- **The byes of a schedule and of a stage state, by round.**
+  `Schedule::getByesByRound()` returns, for every round that has an event,
+  the entrants that have no event in it, as participants in entrant order,
+  and `Schedule::getByeCounts()` adds them up by participant ID. Both are
+  read from the events and the entrant list, so they hold for a round-robin
+  schedule, the whole-schedule Swiss preset, a schedule read back from
+  storage (also one whose `byes` metadata was dropped) and one built by
+  hand. `StageState::getByesByRound()` lists the byes of every recorded
+  round. `RoundPairing::getByes()` has those of one round, as before.
 - **A typed decider for a knockout tie that finishes level.** A `Result`
   can carry the decision that settled its tie: `new Result($event, null,
   $scores, decider: new Decider([$participant->getId()], 'label',
@@ -786,7 +906,7 @@ entry on the engine fingerprint.
   default true) says whether a tiebreaker computed between the tied
   participants only is handed awarded results. Such a tiebreaker declares
   itself with the new marker interface `TiedParticipantsTiebreaker`; the
-  library ships none yet (#58). A result writes the mark under the key
+  library's is `BetweenTiedParticipants` (below). A result writes the mark under the key
   `award`, only when it is awarded, so the array of a played result is
   unchanged and an array written by an earlier release reads as played. An
   engine fingerprint states either choice of the policy only when it is
@@ -858,12 +978,18 @@ entry on the engine fingerprint.
   `getTiers()`; entries of different tiers are never in one tied set. The
   elimination engines use them for the bracket placement.
 - **Byes in a table.** `StandingsCalculator::withByesCredited(Standings
-  $standings, array $byes, int $winsPerBye = 1)` adds the value of a win
-  for each bye to a table and puts it in order again (inside each tier,
-  for a table that has tiers);
-  `StandingEntry::getByes()` says how many byes an entry's ranking value
-  includes, and `StandingEntry::withByes()` builds such an entry. The
+  $standings, array $byes, int $creditsPerBye = 1)` adds the value of a bye
+  (the value of a win, unless the ranking is given another: see the entry
+  on the value of a bye) for each bye to a table and puts it in order
+  again (inside each tier, for a table that has tiers);
+  `StandingEntry::getByes()` says how many byes an entry has,
+  and `StandingEntry::withByes()` builds such an entry. The
   constructor of `StandingEntry` has a tenth parameter, `byes`, default 0.
+  `creditsPerBye` is how many times each bye is credited: 1, or the legs
+  of a tie where a bye stands for a tie of several legs. On the
+  development branch the parameter was first named `winsPerBye`, from when
+  a bye was always worth a win; no release shipped that name, so it is
+  renamed without a deprecation, here and on `calculateWith()`.
 - **A seed for a pre-drawn Swiss schedule.** `SwissOptions(rounds: 5,
   seed: 2026)`, and `'seed'` in `SwissOptions::fromArray()`; `toArray()`
   writes the key when there is a seed. The scheduler builds a
@@ -1267,6 +1393,45 @@ entry on the engine fingerprint.
   optional second one, so that the interface has the shape it is meant to
   keep before it leaves the experimental surface: a parameter added later
   would break every implementer again.
+- **Byes and adjustments are refused for a table that exists where a
+  tiebreaker depends on them.** `StandingsCalculator::withByesCredited()`
+  keeps the tiebreaker values of the table it is given, and so does
+  `withAdjustments()`. A calculator with a tiebreaker that reads byes (a
+  bye treatment other than `Uncounted`) is refused a bye by
+  `withByesCredited()`, and one with a tiebreaker between the tied
+  participants (`TiedParticipantsTiebreaker`) is refused a bye by
+  `withByesCredited()` and an adjustment by `withAdjustments()`, each with
+  an `InvalidConfigurationException` (reason `IncompatibleOptions`) that
+  names `calculateWith()`, which takes both with the results. Who is
+  affected: nobody with the tiebreakers of an earlier release at their
+  defaults; a calculator that names one of the new tiebreakers or
+  treatments and applies byes or adjustments in a second step. Nothing to
+  credit and nothing to adjust is never refused.
+- **Signatures.** Additive for callers. `WinDrawLossRanking::__construct()`
+  has a fourth parameter (`byeValue`), `StandingEntry::__construct()` a
+  thirteenth (`rankingValueOfResults`), and `BuchholzTiebreaker` and
+  `SonnebornBergerTiebreaker` have a constructor (`byes`), where they had
+  none: a subclass of either that declares a constructor of its own is not
+  affected. `WinDrawLossRanking` implements `RankingStrategyWithByeValue`
+  and the two tiebreakers implement `TiebreakerWithByeTreatment`; both
+  interfaces are optional, so a `RankingStrategy` or a
+  `TiebreakerInterface` of your own needs no change and is treated as it
+  was. `StandingsCalculator::withAdjustments()` and
+  `StageOutcome::combining()` declare an `InvalidConfigurationException`
+  they did not declare: the first throws it in the case above, the second
+  does not throw it with a calculator of the library (static analysis that
+  checks exceptions asks a caller to declare or catch it). A class that
+  extends `StandingsCalculator`, `Standings` or `Schedule` and declares a
+  method named `calculateWith`, `fromArray`, `toArray`, `getRank`,
+  `getRanks`, `getByesByRound` or `getByeCounts` with another signature is
+  affected. The engines call `calculateWith()`; a subclass of
+  `StandingsCalculator` is still calculated through its own `calculate()`,
+  `withByesCredited()` and `withAdjustments()`.
+- **The score groups of a Swiss stage allow for the value of a bye.** The
+  rounding allowance of the Swiss engine (two win/draw/loss totals that
+  differ by no more than the rounding of a float sum are level) reads the
+  value of a bye as one more value of the scale. With a bye worth a win,
+  which is every stage paired before, nothing changes.
 - **The message of an undecided tie names the decider.** A level
   elimination tie with no decision is refused as before, with the reason
   `UndecidedTie`; its message told the caller to record `'tie_winner'`
@@ -1612,19 +1777,22 @@ entry on the engine fingerprint.
   participant list changed after a round was recorded (a withdrawal, which
   the bracket engines do not support). A recorded round that holds more
   than the bracket's ties is still accepted.
-- **Breaking: a re-seeded bracket that has a bye needs a win/draw/loss
-  ranking.** Crediting the bye needs the value of a win, so
+- **Breaking: a re-seeded bracket that has a bye needs a ranking strategy
+  that says what a bye is worth.** Crediting the bye needs a value for it, so
   `SingleEliminationEngine` with `reseedEachRound` and a `RankingStrategy`
-  that is not a `WinDrawLossRanking` throws an
+  that is not a `RankingStrategyWithByeValue` (new; `WinDrawLossRanking`
+  is one) throws an
   `InvalidConfigurationException` (reason `IncompatibleOptions`) for a
   field that is not a power of two. The field says that the bracket has
   byes, so every call refuses it, `pairNextRound()` for the first round
   included: the bracket is not started and then left without a second
   round. A field that is a power of two, and a bracket on a fixed path, are
-  not affected. What to change: use a `WinDrawLossRanking`, or a fixed
+  not affected. What to change: implement `RankingStrategyWithByeValue` on
+  the strategy, use a `WinDrawLossRanking`, or use a fixed
   path. The Swiss engine refuses later, as it did: it pairs a round that
   has a bye and refuses to pair the round after it (the message now begins
-  "Crediting a bye requires a win/draw/loss ranking strategy"), and
+  "Crediting a bye requires a ranking strategy that says what a bye is
+  worth"), and
   `SwissPairingEngine::getOutcome()` raises it too, where it used to return
   a table without the bye. A Swiss stage whose only bye is in its last
   round (one planned round, or a withdrawal before the last) therefore has
