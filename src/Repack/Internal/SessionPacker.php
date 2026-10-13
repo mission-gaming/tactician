@@ -14,8 +14,10 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * finds no such packing: every placement of the runs was tried and
  * failed, the search's share of the budget ran out first (one in
  * SEARCH_SHARE of the steps left when it starts, so that a session whose
- * search does not end leaves steps for the sessions after it), or the
- * session has more than 20 slots, in which case no placement is tried.
+ * search does not end leaves steps for the sessions after it; the table
+ * of run placements the search starts from is paid for out of the same
+ * share, see IntervalPlacement), or the session has more than 20 slots,
+ * in which case no placement is tried.
  * A packing it finds gives an
  * unpinned participant one run with no gap, and among the run placements
  * it is the first that packs when they are tried in order of total late
@@ -87,6 +89,18 @@ final class SessionPacker
      *                                  yet used whose opponent is not yet matched at the slot either
      */
     private array $optionsAt = [];
+
+    /** Whether the repair is running, and the two tables below are up to date */
+    private bool $repairing = false;
+
+    /** @var array<int, int> Slot => movable events there, kept up to date while the repair runs */
+    private array $countAt = [];
+
+    /**
+     * @var array<int, array<int, int>> Slot => participant => its movable event there, kept up to
+     *                                  date while the repair runs
+     */
+    private array $eventAt = [];
 
     /**
      * The share of the steps left that one session's exact search may
@@ -553,6 +567,29 @@ final class SessionPacker
      */
     private function repair(): void
     {
+        // What the moves ask at every step is kept up to date while the
+        // repair runs, where it used to be counted from every event of
+        // the session each time: one step of the budget then cost work
+        // in proportion to the session, seconds in all on sessions of
+        // hundreds of events that do not pack
+        $this->countAt = array_fill(0, $this->slotCount, 0);
+        $this->eventAt = [];
+        foreach ($this->slotOf as $eventIndex => $slot) {
+            ++$this->countAt[$slot];
+            foreach ($this->edges[$eventIndex] as $pid) {
+                $this->eventAt[$slot][$pid] = $eventIndex;
+            }
+        }
+
+        $this->repairing = true;
+
+        $this->repairWhileItImproves();
+
+        $this->repairing = false;
+    }
+
+    private function repairWhileItImproves(): void
+    {
         $improved = true;
         while ($improved && !$this->budget->isExhausted()) {
             $improved = false;
@@ -644,14 +681,10 @@ final class SessionPacker
      */
     private function tryChainSwap(int $pid, int $slotA, int $slotB): bool
     {
-        $atSlot = [];
-        foreach ($this->slotOf as $eventIndex => $slot) {
-            if ($slot === $slotA || $slot === $slotB) {
-                [$a, $b] = $this->edges[$eventIndex];
-                $atSlot[$slot][$a] = $eventIndex;
-                $atSlot[$slot][$b] = $eventIndex;
-            }
-        }
+        $atSlot = [
+            $slotA => $this->eventAt[$slotA] ?? [],
+            $slotB => $this->eventAt[$slotB] ?? [],
+        ];
 
         $chainEvents = [];
         $chainPids = [];
@@ -730,6 +763,23 @@ final class SessionPacker
         $after = $this->patternScore($affected);
         // Lexicographic: fewer gaps wins outright, late depth breaks ties
         if ($after[0] < $before[0] || ($after[0] === $before[0] && $after[1] < $before[1])) {
+            // Every event leaves its slot before any arrives: a chain
+            // swaps two events of one participant between two slots
+            foreach ($previous as $eventIndex => $slot) {
+                --$this->countAt[$slot];
+                foreach ($this->edges[$eventIndex] as $pid) {
+                    if (($this->eventAt[$slot][$pid] ?? null) === $eventIndex) {
+                        unset($this->eventAt[$slot][$pid]);
+                    }
+                }
+            }
+            foreach ($moves as $eventIndex => $slot) {
+                ++$this->countAt[$slot];
+                foreach ($this->edges[$eventIndex] as $pid) {
+                    $this->eventAt[$slot][$pid] = $eventIndex;
+                }
+            }
+
             return true;
         }
 
@@ -788,6 +838,10 @@ final class SessionPacker
 
     private function movableCountAt(int $slot): int
     {
+        if ($this->repairing) {
+            return $this->countAt[$slot];
+        }
+
         $count = 0;
         foreach ($this->slotOf as $assigned) {
             if ($assigned === $slot) {
