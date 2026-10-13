@@ -184,14 +184,20 @@ echo $detailedPlayer->getMetadataValue('region', 'Unknown') . "\n"; // 'Europe'
 
 ### Participant IDs
 
-An ID is any string, and two participants are the same participant only
-when their IDs are the same string. `'01'` and `'1'` are two participants,
-and so are `'1e3'` and `'1000'`, although PHP compares each pair as equal
-numbers. An ID may contain any character, including the `|`, `:` and `\`
-that the library uses inside its own lookup keys. The IDs of one field must
-be unique; nothing else is required of them to generate a schedule or to
-pair a stage. Writing a schedule or a stage state as JSON also needs every
-ID to be valid UTF-8.
+An ID is any string but the empty one, and two participants are the same
+participant only when their IDs are the same string. `'01'` and `'1'` are
+two participants, and so are `'1e3'` and `'1000'`, although PHP compares
+each pair as equal numbers. An ID may contain any character, including the
+`|`, `:` and `\` that the library uses inside its own lookup keys, and may
+be `'0'` or a single space; only `''` is refused, by
+`new Participant('', ...)` with an `InvalidInputException`. The IDs of one
+field must be unique; nothing else is required of them to generate a
+schedule or to pair a stage. Writing a schedule or a stage state as JSON
+also needs every ID to be valid UTF-8.
+
+An event holds each participant once. `new Event([$celtic, $celtic])`
+throws an `InvalidInputException`, and so does an event of two `Participant`
+objects with one ID: a participant is not paired with itself.
 
 ```php
 use MissionGaming\Tactician\DTO\Participant;

@@ -20,21 +20,29 @@ use MissionGaming\Tactician\Serialization\PlainData;
 readonly class Participant
 {
     /**
-     * Nothing is validated here. The schedulers and StageState::start()
-     * reject a field in which two participants share an ID.
+     * The ID must not be empty; nothing else is validated here. An ID that
+     * is not empty is taken as it is, whitespace and `'0'` included. The
+     * schedulers and StageState::start() reject a field in which two
+     * participants share an ID.
      *
-     * @param string $id The identity. Use a non-empty string: fromArray() refuses an empty one
+     * @param string $id The identity: any string but the empty one
      * @param string $label Display name; also orders level entries of a standings table
      * @param int|null $seed Seeding number, lower is better; null for unseeded. Stages seed
      *                       entrants from their position in the list, not from this
      * @param array<string, mixed> $metadata Free-form data; MetadataConstraint reads the key it is given
+     *
+     * @throws InvalidInputException When the ID is the empty string
      */
     public function __construct(
         private string $id,
         private string $label,
         private ?int $seed = null,
         private array $metadata = []
-    ) {}
+    ) {
+        if ($id === '') {
+            throw new InvalidInputException('A participant ID cannot be empty');
+        }
+    }
 
     /**
      * The ID that identifies this participant.

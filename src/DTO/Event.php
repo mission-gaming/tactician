@@ -21,17 +21,20 @@ use MissionGaming\Tactician\Serialization\PlainData;
 readonly class Event
 {
     /**
-     * The participants are kept as given: the same order, the same keys, and
-     * no check that they differ from each other. Pass a list (keys 0, 1, ...):
-     * the library reads roles by index.
+     * The participants are kept as given: the same order and the same keys.
+     * They must differ from each other: a participant is not paired with
+     * itself, and two objects with one ID are one participant. Pass a list
+     * (keys 0, 1, ...): the library reads roles by index.
      *
-     * @param array<Participant> $participants At least 2, first-named participant first
+     * @param array<Participant> $participants At least 2, each with an ID of its own,
+     *                                         first-named participant first
      * @param Round|null $round The round the event is played in; null for an event not yet in a round
      * @param array<string, mixed> $metadata Free-form data. The library reads one key, 'tie_leg',
      *                                       which the elimination engines set on the two events
      *                                       of a two-legged tie
      *
-     * @throws InvalidInputException When fewer than 2 participants are provided
+     * @throws InvalidInputException When fewer than 2 participants are provided, or one
+     *                               participant ID is listed twice
      */
     public function __construct(
         private array $participants,
@@ -40,6 +43,17 @@ readonly class Event
     ) {
         if (count($participants) < 2) {
             throw new InvalidInputException('An event must have at least 2 participants');
+        }
+
+        $listed = [];
+        foreach ($participants as $participant) {
+            $id = $participant->getId();
+            if (isset($listed[$id])) {
+                throw new InvalidInputException(
+                    "An event cannot list participant {$id} twice: a participant is not paired with itself"
+                );
+            }
+            $listed[$id] = true;
         }
     }
 

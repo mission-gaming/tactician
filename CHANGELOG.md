@@ -151,6 +151,30 @@ heading **Output change (fix)**.
   `calculate($field, [...$seasonOne, ...$seasonTwo])` returned a table.
   After: it throws at the first pair that met in the same round of both
   (#53).
+- **Breaking: `new Participant()` refuses an empty ID, and `new Event()`
+  refuses a participant listed twice.** `Participant::fromArray()` already
+  refused the empty string as an ID and the constructor took it; an event
+  could pair a participant with itself, by the same object twice or by two
+  objects with one ID, and the plans, the event index and a constraint each
+  carried a guard for it. Both constructors now throw an
+  `InvalidInputException` (an `\InvalidArgumentException`):
+  `A participant ID cannot be empty`, and `An event cannot list participant
+  <id> twice: a participant is not paired with itself`. Only the empty
+  string is empty: `'0'`, a space and every other string remain IDs, and
+  IDs are compared as strings, so `'01'` and `'1'` still make an event.
+  `Event::fromArray()`, and so `Schedule::fromArray()`,
+  `StageState::fromArray()` and the other readers of events, refuse data
+  that lists one ID twice in an event. Who is affected: code that builds a
+  placeholder participant with an empty ID (a bye or "to be decided" side),
+  and code that builds an event of one participant against itself, for
+  instance to stand for a bye. Nothing a scheduler or an engine returns is
+  such a participant or such an event, so stored schedules and states the
+  library wrote load as before. What to change: give a placeholder an ID of
+  its own (`new Participant('bye', 'Bye')`), and do not model a bye as an
+  event: the schedulers report byes in the schedule metadata and the
+  engines in `RoundPairing::getByes()`. Before: `new Event([$alice,
+  $alice])` returned an event. After: it throws. Code analysed with checked
+  exceptions sees one more `@throws` on `Participant::__construct()` (#53).
 - **Breaking: every `fromArray()` refuses a key its form does not have.**
   A key that was not known used to be ignored, so a misspelt key was read
   as the key left out: `RoundRobinOptions::fromArray(['legs' => 2,
