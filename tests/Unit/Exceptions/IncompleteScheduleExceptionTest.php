@@ -429,4 +429,42 @@ describe('IncompleteScheduleException', function (): void {
         expect($exception->getDiagnosticReport())->not->toContain('BLOCKED PAIRINGS');
         expect($exception->getDiagnosticReport())->not->toContain('CONSTRAINT ATTRIBUTION');
     });
+
+    // A violation with round 0 has no round: the round-robin scheduler
+    // records 0 for an event without one, and the collector leaves it out
+    // of getAffectedRounds(). The report listed it as "0 (1)".
+    it('does not list round 0 as an affected round', function (): void {
+        $collector = new ConstraintViolationCollector();
+        foreach ([0, 2, null, 0] as $round) {
+            $collector->recordViolation(new ConstraintViolation(
+                constraint: $this->constraint,
+                rejectedEvent: new Event([$this->participant1, $this->participant3]),
+                reason: 'Would exceed consecutive home limit',
+                affectedParticipants: [$this->participant1],
+                roundNumber: $round
+            ));
+        }
+
+        $report = (new IncompleteScheduleException(12, 2, $collector, $this->plan, $this->participants))->getDiagnosticReport();
+
+        expect($report)->toContain("  Affected rounds: 2 (1)\n")
+            ->and($report)->not->toContain('Affected rounds: 0')
+            ->and($collector->getAffectedRounds())->toBe([1 => 2]);
+    });
+
+    it('writes no line of affected rounds when no violation has a round', function (): void {
+        $collector = new ConstraintViolationCollector();
+        $collector->recordViolation(new ConstraintViolation(
+            constraint: $this->constraint,
+            rejectedEvent: new Event([$this->participant1, $this->participant3]),
+            reason: 'Would exceed consecutive home limit',
+            affectedParticipants: [$this->participant1],
+            roundNumber: 0
+        ));
+
+        $report = (new IncompleteScheduleException(12, 2, $collector, $this->plan, $this->participants))->getDiagnosticReport();
+
+        expect($report)->not->toContain('Affected rounds')
+            ->and($report)->toContain('Most affected participants: p1 (1)');
+    });
 });

@@ -82,8 +82,8 @@ final readonly class StageState
      *
      * Recording no results is legal — the pairing's events still count as
      * played, which is what whole-schedule generation without outcomes
-     * relies on. Rounds are recorded in play order: each pairing's round
-     * number must exceed the last recorded one, and every event and result
+     * relies on. Rounds are recorded in play order: a round number is 1 or
+     * above and must exceed the last recorded one, and every event and result
      * in the pairing must carry that round number, so the history can
      * never contradict itself.
      *
@@ -93,14 +93,23 @@ final readonly class StageState
      * The results are appended to getResults() in the order given.
      *
      * @param array<Result> $results
-     * @throws InvalidConfigurationException When the pairing does not follow the recorded rounds
-     *                                       (reason `RoundOutOfSequence`), or an event or result
+     * @throws InvalidConfigurationException When the pairing's round number is below 1
+     *                                       (`ValueOutOfRange`), the pairing does not follow the
+     *                                       recorded rounds (`RoundOutOfSequence`), or an event or result
      *                                       belongs to a different round or is not in the pairing
      *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when the
      *                                       event carries no round number at all)
      */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self
     {
+        if ($pairing->getRoundNumber() < 1) {
+            throw new InvalidConfigurationException(
+                'Round numbers are 1-based: a round cannot be recorded with a number below 1',
+                ['pairing_round' => $pairing->getRoundNumber()],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
+
         $lastRound = $this->getLastRound();
         if ($lastRound !== null && $pairing->getRoundNumber() <= $lastRound->getRoundNumber()) {
             throw new InvalidConfigurationException(
@@ -620,11 +629,11 @@ final readonly class StageState
      * stamp existed, or by a caller that does not stamp, loads as an
      * unstamped state.
      *
-     * The shape is checked, and that every ID resolves in the
-     * `participants` registry. The history is not checked as
-     * withRoundPlayed() checks it (round order, results that belong to
-     * their round), and an ID listed twice in `active` is not refused: the
-     * data is trusted to be what toArray() wrote.
+     * The shape is checked, that every ID resolves in the `participants`
+     * registry, and that no ID is listed twice in `participants` or in
+     * `active`. The history is not checked as withRoundPlayed() checks it
+     * (round numbers and their order, results that belong to their round):
+     * there the data is trusted to be what toArray() wrote.
      *
      * @param array<string, mixed> $data
      * @throws InvalidInputException When the data is malformed
@@ -663,8 +672,14 @@ final readonly class StageState
                     'Stage state references unknown active participant ' . var_export($activeId, true)
                 );
             }
-            $active[] = $registry[$activeId];
+            if (isset($active[$activeId])) {
+                throw new InvalidInputException(
+                    'Stage state lists active participant ' . var_export($activeId, true) . ' twice'
+                );
+            }
+            $active[$activeId] = $registry[$activeId];
         }
+        $active = array_values($active);
 
         $roundsData = $data['rounds'] ?? [];
         if (!is_array($roundsData)) {

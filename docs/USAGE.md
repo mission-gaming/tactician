@@ -2007,7 +2007,12 @@ winners are half of them, rounded up for a bye, and losers half, rounded
 down. That is the arithmetic of a chain whose stages are single knockout
 rounds, as declared above. It is not what the selector returns from the
 outcome of a whole bracket played by one of the elimination engines, which
-is the one winner (or loser) of the final.
+is the one winner (or loser) of the final. The validator cannot see which
+of the two a stage is, so say it on the transition that leaves a whole
+bracket: `new StageTransition('next', 8, MatchOutcomeSelector::winners(),
+afterWholeBracket: true)` is counted as a selection of 1. A stage needs 2
+entrants, so that transition is always reported, which is the point: the
+winner of a bracket alone cannot fill the next stage.
 
 Consumer-derived selections participate by declaring expected entrant
 counts (a transition without a selector); concurrent routes (winners
@@ -2155,9 +2160,15 @@ PT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00
 ```
 
 The assigner places events on slots and checks that a round fits and that
-it ends before the next round starts. It does not look at who is in an
-event: without a rule it accepts a schedule that has one participant in
-two events at the same time. The generators do not produce one within a
+it ends before the next round starts. It also refuses a round that puts
+one participant in two events at the same time, which a slot with two or
+more resources would otherwise allow, with or without a rule
+(`InvalidConfigurationException`, reason `ParticipantDoubleBooked`; the
+context lists every participant concerned under `double_bookings`). It
+fills in schedule order and cannot move an event, so the remedy is in the
+schedule: the generators do not produce such a round. Two events of one
+participant in different slots of a round are assigned; whether the time
+between them is enough is a rule's to say. The check is made round by
 round, and the rounds of one timeline cannot overlap; if two stages can
 overlap in time, add a `MinimumRestRule` (see
 [Time-Aware Rules](#time-aware-rules)) and validate the two timelines
@@ -2211,6 +2222,35 @@ $timeline = TimelineDefinition::fromArray([
     'slot_interval' => 'PT1H',
 ]);
 ```
+
+`toArray()` writes a definition back to that form, and what it writes reads
+back to the same slot times. An ISO 8601 duration, as PHP reads one, holds
+years, months, days, hours, minutes and whole seconds. A `DateInterval` can
+hold more, and a definition or a session grid built with such an interval
+works, and is refused by `toArray()` with the reason `NotSerializable`: it
+is never written as a duration that means something else. The intervals
+refused are:
+
+- one made by `DateInterval::createFromDateString()`, whatever the string.
+  `next weekday` and `last day of next month` have no duration. Amounts of
+  time alone (`1 week`, `1 month`, `25 minutes`) have one, and it gives
+  other slot times: such an interval is added one step at a time and its
+  hours as local time, as described above, and the duration is not (`1
+  month` from 31 January is 3 March where `P1M` is 28 February);
+- one from `diff()` that has hours, minutes or seconds, because PHP adds
+  those as local time and the hours of a duration are elapsed time. An
+  interval of whole days, months and years that `diff()` returned is
+  written;
+- one with a fraction of a second, an inverted one, and one with a negative
+  part.
+
+Build the interval as `new DateInterval('PT25M')` where the configuration
+has to be stored. A start with a fraction of a second is written with it
+(`2026-08-01 18:00:00.250000`), and so are a session start of a grid and
+a bound of a blackout window. A `MinimumRestRule` adds its rest once and
+in UTC, so its `toArray()` writes a rest of amounts of time from either
+source (`48 hours` is `PT48H`) and refuses only what has no duration: a
+relative string that is more than amounts, a fraction of a second, a sign.
 
 **A datetime in plain data states its date in full**: the year, the month
 and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
@@ -2990,8 +3030,8 @@ hand, in a test for example.
 | `getSession()` | The 0-based session |
 | `getSlot()` | The 0-based slot within the session |
 | `hasKickoff()` | False when the grid is shape-only |
-| `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, and writes it out with a `Z` without converting it: pass UTC); throws an `UnavailableValueException` when there is none |
-| `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null |
+| `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, in the timezone it was given in); throws an `UnavailableValueException` when there is none |
+| `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in |
 
 #### `UnplacedEvent`
 
@@ -3634,6 +3674,7 @@ identifier for logs and stored data):
 | `OddPotWithOddOpponents` | `odd_pot_with_odd_opponents` | A pot of odd size cannot hold an odd number of events per member inside itself |
 | `ConfigurationNotYetSupported` | `configuration_not_yet_supported` | The configuration is feasible and the library has no construction for it yet |
 | `BracketComplete` | `bracket_complete` | A further round was asked of a finished bracket |
+| `PlannedRoundsPlayed` | `planned_rounds_played` | A further round was asked of a Swiss stage that has played all its planned rounds |
 | `RoundPartiallyResolved` | `round_partially_resolved` | An elimination engine was asked (`pairNextRound()`, `isComplete()` or `getOutcome()`) while some ties of the current round have a complete result and others do not. A round with no result at all is offered again |
 | `EventWithoutRoundNumber` | `event_without_round_number` | An event has no round number where one is required |
 | `InvalidResult` | `invalid_result` | A result cannot belong to the stage it was recorded in |
@@ -3661,6 +3702,7 @@ identifier for logs and stored data):
 | `OverlappingTime` | `overlapping_time` | The slots of one round of a timeline, or of one session of a grid, run up to or past the first slot of the next, or two slots of one round or session are not at rising times |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
 | `TimelineCapacityExceeded` | `timeline_capacity_exceeded` | A round has more events than the timeline has places for |
+| `ParticipantDoubleBooked` | `participant_double_booked` | One participant is in two events of a round that the timeline places at the same instant |
 | `ConstraintViolation` | `constraint_violation` | Built by `SchedulingException::constraintViolation()`, which is [deprecated](#deprecations) |
 | `InvalidSchedule` | `invalid_schedule` | Built by `SchedulingException::invalidSchedule()`, which is [deprecated](#deprecations) |
 

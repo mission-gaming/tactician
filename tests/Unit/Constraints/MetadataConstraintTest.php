@@ -46,6 +46,24 @@ describe('MetadataConstraint', function (): void {
             ->toThrow(InvalidArgumentException::class);
     });
 
+    // CallableConstraint casts its predicate's answer; this one returned it
+    // as it was, and anything but a bool was a raw TypeError.
+    it('reads an answer that is not a bool as PHP reads it in a condition', function (mixed $answer, bool $expected): void {
+        $constraint = new MetadataConstraint('region', fn(array $values): mixed => $answer);
+
+        expect($constraint->isSatisfied(new Event([$this->north1, $this->south1]), $this->context))->toBe($expected);
+    })->with([
+        'the 1 of a preg_match()' => [1, true],
+        'the 0 of a preg_match()' => [0, false],
+        'null, from a validator that returns nothing' => [null, false],
+        'a non-empty string' => ['yes', true],
+        'an empty string' => ['', false],
+        'a non-empty array' => [['north'], true],
+        'an empty array' => [[], false],
+        'true' => [true, true],
+        'false' => [false, false],
+    ]);
+
     it('requires matching values with requireSameValue', function (): void {
         $constraint = MetadataConstraint::requireSameValue('region');
 
