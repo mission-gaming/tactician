@@ -24,7 +24,9 @@ use Random\Randomizer;
 // The oracle below works on plain arrays and shares no code with the
 // library: it adds the records up, values a bye, and asks the tiebreakers
 // one after the other, because a tiebreaker between the tied participants
-// is computed for the participants that are level on everything before it.
+// is computed for the participants that are level on everything before the
+// run of such tiebreakers it is in: those that follow one another are one
+// small table of the same tied sets.
 // Every amount generated is a multiple of a quarter, which a float holds
 // exactly, so the figures are the same in whatever order they are added.
 
@@ -339,11 +341,16 @@ function byeTableOracle(array $case): array
         $values[$id] = [];
     }
 
+    // What the participants were level on before the run of tiebreakers
+    // between the tied that is being asked; null outside a run
+    $beforeRun = null;
     foreach ($case['chain'] as $entry) {
         $name = is_array($entry) ? $entry['tiebreaker'] : $entry;
         $treatment = is_array($entry) ? $entry['byes'] : 'uncounted';
         $between = str_starts_with($name, 'between-tied:');
         $measure = $between ? substr($name, strlen('between-tied:')) : $name;
+        $beforeRun = $between ? ($beforeRun ?? $values) : null;
+        $levelBefore = $beforeRun ?? $values;
 
         $calculated = [];
         foreach ($ids as $id) {
@@ -354,10 +361,11 @@ function byeTableOracle(array $case): array
             }
 
             // The tied set of this participant: everyone level with it on
-            // the total and on every tiebreaker before this one
+            // the total and on every tiebreaker before the run this one is
+            // in, whatever the earlier ones of the run made of the set
             $set = array_values(array_filter(
                 $ids,
-                static fn(string $other): bool => $total[$other] === $total[$id] && $values[$other] === $values[$id]
+                static fn(string $other): bool => $total[$other] === $total[$id] && $levelBefore[$other] === $levelBefore[$id]
             ));
             $among = array_values(array_filter(
                 $case['games'],

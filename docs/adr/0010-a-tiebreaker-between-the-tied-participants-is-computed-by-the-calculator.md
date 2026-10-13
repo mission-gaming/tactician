@@ -1,4 +1,4 @@
-# 0010. A tiebreaker between the tied participants is computed by the calculator, once for each place in the chain
+# 0010. A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table
 
 Status: accepted
 
@@ -27,7 +27,8 @@ of its input.
 time.** `StandingsCalculator` asks the tiebreakers in the order they were
 given. When the turn of a `TiedParticipantsTiebreaker` comes, the
 participants are level in groups: the same ranking value (the total, with
-byes and adjustments) and the same value for every tiebreaker before it. For
+byes and adjustments) and the same value for every tiebreaker before the
+run it is in (below). For
 each group the tiebreaker is asked about each participant with the results
 of the events whose participants are all in the group, and with the entries
 the calculator's ranking strategy and awarded result policy give for the
@@ -41,14 +42,40 @@ difference, the scores-for and the ranking value
 the same four classes that measure a whole table. Its name is
 `between-tied:` and the name of the measure.
 
-**A tiebreaker is asked once for each place it has in the chain.** Where
-its values split a tied set into subsets, a subset that is still level is
-the tied set of the next tiebreaker. The same tiebreaker is not asked again
-about it. Competitions differ on this point: some apply their measures
+**Tiebreakers of this kind that follow one another are one small table.**
+They are a run, and every one of a run is asked about the same tied sets:
+the groups that were level when the first of the run was asked. The second
+of a run does not read what the first made of a set. So a chain that names
+the ranking value, the score difference and the scores-for between the
+tied, in that order, ranks the level participants by one table of the
+events among all of them, which is how most written rules state it. A
+tiebreaker of another kind ends the run; a tiebreaker between the tied
+after it starts a new run, with the groups level at that point.
+
+This was first decided the other way: each tiebreaker was asked about the
+participants level when its own turn came, so a run narrowed the set step
+by step. That rule is simpler to state and was rejected before it was
+released, because it gives another order than the small table exactly
+where the small table matters. Three participants on 4 points, A 0-0 B,
+A 5-0 C and B 1-0 C: the first measure leaves A and B level on 4 and
+places C apart. Narrowing then reads the score difference from the one
+event between A and B, finds 0 for both, and passes the two on to whatever
+follows, where B can come first on a figure of the whole table. The small
+table has A on +5 and B on +1, and A is first. The two rules agree for a
+set of two, and for a set the first measure leaves whole or separates
+completely, so the difference would have shown only in a set of three or
+more that is split in part, as a result that looks right. Narrowing is
+still there for a competition that wants it: put a tiebreaker of another
+kind between two of this kind.
+
+**A run is asked once.** Where the values of a run split a tied set into
+subsets, a subset that is still level goes on to the next tiebreaker of
+another kind, and the run is not taken again over the events among the
+subset alone. Competitions differ on this point: some apply their measures
 again to the participants still level, some do not, and the ones that do
 differ on where they start again. One pass in chain order is the rule that
-needs no further choice, and a competition that wants a measure taken again
-gives it a further place in the chain.
+needs no further choice, and a competition that wants its measures taken
+again gives the chain a further run.
 
 **The table is calculated in one call when it has such a tiebreaker.** Who
 is tied depends on the byes and the adjustments, so
@@ -67,22 +94,16 @@ calculator that has one.
   first written (reading the whole table) is handed less than it was: the
   results and the entries of a tied set. The marker was added in the same
   unreleased version, so no release shipped the earlier contract.
-- Several tiebreakers of this kind in a row are not one small table of the
-  participants level on the ranking value. The second is computed over the
-  participants the first left level, so where the first separates some of a
-  set of three or more, the second does not read the events against the
-  ones it separated. Many written rules do: they rank everyone level on
-  points by the points, then the score difference, then the scores-for of
-  the events among all of them, and only then look elsewhere. Three
-  participants on 4 points, A 0-0 B, A 5-0 C and B 1-0 C: one small table
-  puts A above B on score difference (+5 against +1); here A and B are
-  level on the points they took from each other, the score difference
-  between the two of them is 0 for both, and the next tiebreaker of the
-  chain decides. The two rules agree for a set of two, and for a set the
-  first measure leaves whole or separates completely. Giving a run of such
-  tiebreakers one tied set (the participants level when the first of the
-  run is asked) would express the small table; it was not chosen here, and
-  `docs/ROADMAP.md` lists the difference as a known limitation.
+- What a chain means depends on which tiebreakers are next to each other:
+  `between-tied:ranking-value, between-tied:score-difference` is one small
+  table, and the same two with `wins` between them are two, the second of
+  the participants the first and the wins left level. The order of a chain
+  already carries that, so the plain-data form of a chain and the engine
+  fingerprint, which both list the names in order, say which it is and did
+  not change.
+- A value of a later tiebreaker of a run is shown on an entry also where an
+  earlier one of the run already placed the entry: it is its figure in the
+  small table, and orders nothing there.
 - A participant level with nobody is a tied set of one, and gets the value
   its measure gives for no result. The value is shown on the entry and
   orders nothing.
@@ -102,14 +123,17 @@ calculator that has one.
   it is not; `docs/ROADMAP.md` lists this as a known limitation.
 - The same measure cannot be in a chain twice under one name: a value is
   kept on an entry, and compared, under the name of its tiebreaker, and a
-  tiebreaker of this kind has another value at every place. A calculator
+  tiebreaker of this kind has another value in another run. A calculator
   whose chain holds one and names any tiebreaker twice is refused when it
   is built (`InvalidInputException`); a chain without one is not checked,
-  as before. Re-applying a measure to a subset takes a tiebreaker of the
-  application's with a name of its own; `docs/ROADMAP.md` lists that as a
-  known limitation.
+  as before. Re-applying a run to a subset it left level takes a further
+  run of tiebreakers of the application's with names of their own;
+  `docs/ROADMAP.md` lists that as a known limitation.
 - `tests/Unit/Standings/BetweenTiedParticipantsTest.php` pins the cases a
-  calculation over the whole table gets wrong (three participants level on
-  the measure among themselves, a set that splits into subsets), and
+  calculation over the whole table, or one that narrows the set inside a
+  run, gets wrong (three participants level on the measure among
+  themselves, three of whom the first measure places one apart, a set of
+  four that splits into subsets, a new run after a tiebreaker of another
+  kind), and
   `tests/Feature/ByesAndTiebreakersInvariantsTest.php` holds every measure
   to an oracle over generated cases, in every order of the input.

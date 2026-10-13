@@ -77,8 +77,9 @@ readonly class StandingsCalculator
      *                               tied participants (TiedParticipantsTiebreaker) and two of
      *                               them have one name. A value is kept on an entry, and
      *                               compared, under the name of its tiebreaker, and a
-     *                               tiebreaker of that kind has another value at every place
-     *                               in the chain: the later one would replace the earlier and
+     *                               tiebreaker of that kind has another value after a
+     *                               tiebreaker of another kind, where the tied sets are
+     *                               smaller: the later one would replace the earlier and
      *                               order the table in its place. A chain without such a
      *                               tiebreaker is not checked, as before
      */
@@ -102,7 +103,7 @@ readonly class StandingsCalculator
             throw new InvalidInputException(
                 "The tiebreaker '{$repeated}' is in the chain twice. With a tiebreaker between the tied participants in"
                     . ' the chain every tiebreaker needs a name of its own: a value is kept and compared under the name,'
-                    . ' and such a tiebreaker has another value at every place'
+                    . ' and such a tiebreaker can have another value at another place'
             );
         }
     }
@@ -233,11 +234,15 @@ readonly class StandingsCalculator
      * handed every result and the entries of the results alone, with two
      * exceptions. A TiebreakerWithByeTreatment is handed entries that carry
      * the byes of the table, of which this method has none. A
-     * TiedParticipantsTiebreaker is asked once for each set of participants
-     * that are level when its turn comes (the same ranking value and the
-     * same value for every tiebreaker before it), with the results between
-     * the participants of the set and the entries those results give; the
-     * interface has the contract.
+     * TiedParticipantsTiebreaker is asked once for each tied set, with the
+     * results between the participants of the set and the entries those
+     * results give. A tied set is the participants with the same ranking
+     * value and the same value for every tiebreaker before the run it is
+     * in: tiebreakers of this kind that follow one another are a run, and
+     * all of a run are asked about the same sets, those level when the
+     * first of them was asked, so that together they are one small table
+     * of the events among the level participants. The interface has the
+     * contract.
      *
      * An awarded result (DTO\Result::isAwarded()) is a result: it is
      * counted in played and as the win, draw or loss it is, it is handed to
@@ -455,12 +460,20 @@ readonly class StandingsCalculator
                 $values[$id] = [];
             }
 
+            /** @var array<string, list<float>>|null $figuresOfRun The figures as they were before a run of tiebreakers between the tied */
+            $figuresOfRun = null;
             foreach ($this->tiebreakers as $tiebreaker) {
                 $name = $tiebreaker->getName();
 
                 if ($tiebreaker instanceof TiedParticipantsTiebreaker) {
-                    $calculated = $this->betweenTiedParticipants($tiebreaker, $participantsById, $figures, $playedResults);
+                    // A run of these in a row is one small table: each is
+                    // asked about the sets that were level when the first
+                    // of the run was, and not about what its predecessors
+                    // in the run left level
+                    $figuresOfRun ??= $figures;
+                    $calculated = $this->betweenTiedParticipants($tiebreaker, $participantsById, $figuresOfRun, $playedResults);
                 } else {
+                    $figuresOfRun = null;
                     $handed = $tiebreaker instanceof TiebreakerWithByeTreatment ? $creditedEntries : $baseEntries;
                     $calculated = [];
                     foreach ($participantsById as $id => $participant) {
@@ -515,10 +528,11 @@ readonly class StandingsCalculator
      * the results between the participants of the set and the entries those
      * results give.
      *
-     * A tied set is the participants whose figures so far are the same:
-     * the ranking value and the value of every tiebreaker before this one.
-     * The sets are read from the figures alone, so they are the same for
-     * every order of the participants and the results.
+     * A tied set is the participants whose figures given are the same: the
+     * ranking value and the value of every tiebreaker before the run of
+     * tiebreakers between the tied that this one is in. The sets are read
+     * from the figures alone, so they are the same for every order of the
+     * participants and the results.
      *
      * @param array<string, Participant> $participantsById
      * @param array<string, list<float>> $figures By participant ID

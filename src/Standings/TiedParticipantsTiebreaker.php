@@ -13,11 +13,19 @@ namespace MissionGaming\Tactician\Standings;
  * of tiebreaker this is, and the calculator does the part that depends on
  * the table, so the tiebreaker needs no code for it:
  *
- * - Who is tied. When the tiebreaker's turn in the chain comes, the
- *   participants it is asked about are level in groups: those with the same
+ * - Who is tied. The participants are level in groups: those with the same
  *   ranking value (the total, with byes and adjustments) and the same value
- *   for every tiebreaker before this one. Each such group is a tied set. A
- *   participant level with nobody is a set of one.
+ *   for every tiebreaker before the run this one is in. Each such group is
+ *   a tied set. A participant level with nobody is a set of one.
+ * - What a run is. Tiebreakers of this kind that follow one another in the
+ *   chain are a run, and every one of a run is asked about the same tied
+ *   sets: those level when the first of the run was asked. Together they
+ *   are one small table of the events among the level participants (its
+ *   ranking value, then its score difference, then its scores-for, say),
+ *   and the second does not lose the events against a participant the
+ *   first placed apart. A tiebreaker of another kind ends the run; one of
+ *   this kind after it starts a new run, with the sets level at that
+ *   point.
  * - Which results. For a participant the tiebreaker is handed the results
  *   of the events whose participants are all in its tied set, and no other.
  *   With AwardedResultPolicy::$countBetweenTiedParticipants off, the
@@ -32,14 +40,16 @@ namespace MissionGaming\Tactician\Standings;
  * So the value is recomputed for every tied set, and it depends on nothing
  * but the set: not on the order of the participants or the results, and not
  * on a participant outside it. The calculator asks once per place in the
- * chain. Where the values split a set of four into one, two and one, the
- * two that are left are the tied set of the next tiebreaker in the chain,
- * and this one is not asked about them again. Where a competition applies
- * its measure again to those who are still level, give the chain two
- * tiebreakers of this kind with two names: a calculator refuses a chain
- * that holds one of this kind and has one name twice
- * (StandingsCalculator::__construct()), and BetweenTiedParticipants names
- * itself after its measure, so the second is a class of your own.
+ * chain, and a run is not taken again over a subset it leaves level: where
+ * the values of a run split a set of four into one, two and one, the two
+ * that are left go on to the next tiebreaker of another kind with the
+ * values they have over the four. Where a competition takes its measures
+ * again over those who are still level, give the chain a second run after
+ * a tiebreaker of another kind, of tiebreakers of this kind with names of
+ * their own: a calculator refuses a chain that holds one of this kind and
+ * has one name twice (StandingsCalculator::__construct()), and
+ * BetweenTiedParticipants names itself after its measure, so those of the
+ * second run are classes of your own.
  *
  * BetweenTiedParticipants turns any tiebreaker that reads entries into one
  * of this kind. Implement the interface on a tiebreaker of your own to have

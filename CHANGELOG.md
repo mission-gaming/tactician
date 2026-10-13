@@ -596,9 +596,17 @@ entry on the engine fingerprint.
   tiebreakers; the score difference and scores-for of a whole table were
   compared before, after the tiebreakers, and can now be given an earlier
   place. The calculator forms the tied sets, so the values are the same
-  for every order of the participants and the results, and a tiebreaker is
-  asked once for each place in the chain: a subset its values leave level
-  goes on to the next tiebreaker (ADR 0010,
+  for every order of the participants and the results. Tiebreakers of this
+  kind that follow one another in a chain are one small table: every one
+  of the run is computed over the participants level when the first of
+  them is asked, from the events among all of those, so
+  `between-tied:ranking-value`, `between-tied:score-difference` and
+  `between-tied:scores-for` rank the level participants by the points,
+  then the score difference, then the scores-for they took from each
+  other. A tiebreaker of another kind ends the run, and one between the
+  tied after it is computed for those level at that point. A run is not
+  taken again over a subset it leaves level: that subset goes on to the
+  next tiebreaker of another kind (ADR 0010,
   `docs/adr/0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md`).
   `TiedParticipantsTiebreaker`, the marker interface added with awarded
   results in this release, now has that contract: a tiebreaker of your own

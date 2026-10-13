@@ -54,7 +54,7 @@ anything else that competes.
 | **Adjustment** | An amount added to, or taken from, one participant's ranking value for a reason that is no event (`Adjustment`: a participant ID, a signed amount, an optional label and reason that the library never reads). The amount is on the scale of the ranking strategy, whatever that is: points under `WinDrawLossRanking`. A table shows it as a figure of its own beside what was earned and is ordered by the two together; a stage state carries the adjustments of its stage. See [Adjustments](#adjustments). |
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
-| **Tiebreaker between the tied participants** | A tiebreaker whose value for a participant comes from the events between it and the participants it is level with, and from no other (`TiedParticipantsTiebreaker`; `BetweenTiedParticipants` wraps any measure). A sport calls it head-to-head. The calculator computes it for each tied set when its turn in the chain comes. See [Between the tied participants](#between-the-tied-participants). |
+| **Tiebreaker between the tied participants** | A tiebreaker whose value for a participant comes from the events between it and the participants it is level with, and from no other (`TiedParticipantsTiebreaker`; `BetweenTiedParticipants` wraps any measure). A sport calls it head-to-head. The calculator computes it for each tied set, and several of them in a row for the same tied sets, as one small table of the events among the level participants. See [Between the tied participants](#between-the-tied-participants). |
 | **Rank** | The place the results give an entry of a table (`Standings::getRank()`): its position, or, for an entry of a **tied set** that no **decision** ordered, the first position of the set, shared by all of the set. Positions are never shared; ranks are, where neither results nor a decision decide. |
 | **Tied set** | Two or more adjacent entries of a standings table that are **level**: equal on the ranking value, on every configured tiebreaker, on score difference and on scores-for (and, in the table of a bracket, out in the same round), so that no result orders them. What does is the position in the entrant list, in the table of a stage, and the final fallback (seed, then ID) in a table calculated on its own. `Standings::getTiedSets()` reports each one (`TiedSet`) with the positions it spans. The application can settle one with a **decision**. |
 | **Decision** | The order of a set of level entries, settled outside the results by the application and given to the library as a `DTO\Decider`: the IDs of the level participants, best first, with an optional label and reason that the library never reads. `Standings::withDecisions()` applies it to a tied set of a table, and a rank selector takes it with `withDecisions()`; the table (`getDecisionFor()`) and the selection (`RankSelection`) mark every place it settled. It orders one whole set of level entries and never overrides a result: anything else is rejected with a reason (`RejectedDecisionException`). The library records that the order was decided and never how. See [Settling a tied set by a decision](#settling-a-tied-set-by-a-decision). |
@@ -1437,38 +1437,40 @@ the overall score difference, orders them.
 
 How a tiebreaker of this kind is computed:
 
-- **For the participants level when its turn comes.** A tied set is the
-  participants with the same ranking value (the total, with byes and
-  adjustments in it) and the same value for every tiebreaker before this
-  one in the chain. A participant level with nobody is a set of one.
+- **For the participants who are level.** A tied set is the participants
+  with the same ranking value (the total, with byes and adjustments in it)
+  and the same value for every tiebreaker before the run this one is in. A
+  participant level with nobody is a set of one.
+- **Several in a row are one small table.** Tiebreakers of this kind that
+  follow one another in the chain are a run, and every one of a run is
+  computed over the same tied set: the participants level when the first of
+  the run is asked. So `between-tied:ranking-value`,
+  `between-tied:score-difference` and `between-tied:scores-for`, in that
+  order, rank everyone level on points by the points, then the score
+  difference, then the scores-for of the events among all of them. Take
+  three participants on 4 points, A 0-0 B, A 5-0 C and B 1-0 C: A and B
+  have 4 points each from those events and C none, and A is above B on the
+  score difference of the three events, +5 against +1, whatever the score
+  difference of the whole table says. What A and B did against C counts,
+  although the first measure placed C apart. A tiebreaker of another kind
+  ends the run: one between the tied that comes after it is computed for
+  the participants level at that point, as a new small table.
 - **From the events between them only.** The measure is handed the results
   of the events whose participants are all in the set, and the entries of a
   table of the set calculated from those results alone, by the calculator's
   ranking strategy. Two participants who have not met have nothing between
   them: every measure gives each its value for no result, and they stay
   level.
-- **Once for each place in the chain.** Where the values split a set of four
-  into one, two and one, the two that are left are the tied set of the
-  **next** tiebreaker; this one is not asked about them again. A
-  competition that applies the same measure again to those still level
-  gives it a second place in the chain under a second name, with a
-  `TiedParticipantsTiebreaker` of its own. `BetweenTiedParticipants` is
-  named after its measure, so one measure has one place: a calculator
-  whose chain holds a tiebreaker of this kind and has one name twice is
-  refused when it is built (`InvalidInputException`).
-- **Several of them are not one small table.** Each tiebreaker of this
-  kind is asked about the participants level when its own turn comes, so
-  the second of two is computed over those the first left level, and not
-  over the set the first was computed over. Take three participants level
-  on points, of whom two are level on the points they took from each other
-  and the third is below them: a score difference between the tied, named
-  next, is that of the one event between the two, and what either did
-  against the third is not in it. A rule that ranks everyone level on
-  points by one small table of the events among all of them (its points,
-  then its score difference, then its scores-for) gives another order
-  there, and the library has no tiebreaker for it; with two participants
-  level, or a set the first measure leaves whole or separates completely,
-  the two rules agree.
+- **Not again for a subset left level.** Where the values of a run split a
+  set of four into one, two and one, the two that are left keep the values
+  they have over the four and go on to the next tiebreaker of another
+  kind; the run is not taken again over the events between the two. A
+  competition that takes its measures again over those still level gives
+  the chain a second run, after a tiebreaker of another kind, of
+  `TiedParticipantsTiebreaker`s of its own under other names.
+  `BetweenTiedParticipants` is named after its measure, so one measure has
+  one place: a calculator whose chain holds a tiebreaker of this kind and
+  has one name twice is refused when it is built (`InvalidInputException`).
 - **The same whatever the order of the input.** The sets are read from the
   figures, so the values do not depend on the order of the participants or
   of the results.

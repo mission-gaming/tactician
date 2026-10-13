@@ -251,7 +251,9 @@ describe('a tied set that a measure splits into subsets', function (): void {
         ];
     });
 
-    it('asks the next tiebreaker about each subset on its own', function (): void {
+    // Two tiebreakers between the tied that follow one another are one
+    // small table: the second is asked about the same four as the first.
+    it('asks every tiebreaker of a run about the whole set, whatever the one before made of it', function (): void {
         $table = (new StandingsCalculator(tiebreakers: [
             new BetweenTiedParticipants(new RankingValueTiebreaker()),
             new BetweenTiedParticipants(new WinsTiebreaker()),
@@ -266,10 +268,32 @@ describe('a tied set that a measure splits into subsets', function (): void {
         // It leaves A and B level, and C and D each alone.
         expect($totals)->toBe(['a' => 7.0, 'b' => 7.0, 'c' => 7.0, 'd' => 7.0, 'e' => 4.0])
             ->and(tiedValues($table, 'between-tied:ranking-value'))->toBe(['a' => 6.0, 'b' => 6.0, 'c' => 3.0, 'd' => 0.0, 'e' => 0.0])
-            // The second is asked about A and B alone, who met once: A won.
-            // Among the four B has two wins, as A has; those are not read.
-            ->and(tiedValues($table, 'between-tied:wins'))->toBe(['a' => 1.0, 'b' => 0.0, 'c' => 0.0, 'd' => 0.0, 'e' => 0.0])
+            // The second is the wins among the four as well: two for A and
+            // two for B. That A beat B is not asked again of the two alone,
+            // so they stay level and the score difference of the table
+            // orders them: +2 for A and +1 for B.
+            ->and(tiedValues($table, 'between-tied:wins'))->toBe(['a' => 2.0, 'b' => 2.0, 'c' => 1.0, 'd' => 0.0, 'e' => 0.0])
+            ->and($table->getEntryFor($this->a)?->getScoreDifference())->toBe(2.0)
+            ->and($table->getEntryFor($this->b)?->getScoreDifference())->toBe(1.0)
             ->and($table->getTiedSets())->toBe([]);
+    });
+
+    // A tiebreaker of another kind ends the run. The one between the tied
+    // that follows it starts a new run, with the sets level at that point:
+    // here A and B, whom the first measure and the wins of the table (3 and
+    // 3) leave level, and who met once.
+    it('starts a new run, with the set level then, after a tiebreaker of another kind', function (): void {
+        $table = (new StandingsCalculator(tiebreakers: [
+            new BetweenTiedParticipants(new RankingValueTiebreaker()),
+            new WinsTiebreaker(),
+            new BetweenTiedParticipants(new ScoreDifferenceTiebreaker()),
+        ]))->calculate($this->field, $this->results);
+
+        expect(tiedValues($table, 'between-tied:ranking-value'))->toBe(['a' => 6.0, 'b' => 6.0, 'c' => 3.0, 'd' => 0.0, 'e' => 0.0])
+            ->and(tiedValues($table, 'wins'))->toBe(['a' => 2.0, 'b' => 2.0, 'c' => 2.0, 'd' => 2.0, 'e' => 0.0])
+            // Over the one event between A and B, which A won 1-0, and not
+            // over the events among the four (+2 and +1)
+            ->and(tiedValues($table, 'between-tied:score-difference'))->toBe(['a' => 1.0, 'b' => -1.0, 'c' => 0.0, 'd' => 0.0, 'e' => 0.0]);
     });
 
     it('gives the same values for every order of the participants and the results', function (): void {
@@ -303,12 +327,14 @@ describe('a tied set that a measure splits into subsets', function (): void {
     });
 });
 
-// Several tiebreakers of this kind in a row narrow the set step by step.
-// They are not one small table of everyone level on the ranking value: a
-// rule that takes points, score difference and scores-for from the events
-// among all three would put A above B here, on +5 against +1.
+// Several tiebreakers of this kind in a row are one small table of everyone
+// level on the ranking value: its points, then its score difference, then
+// its scores-for, all from the events among the three. A calculation that
+// narrowed the set at every step would read the second measure from the one
+// event between A and B, find it level, and place B first on the score
+// difference of the whole table.
 describe('three participants of whom the first measure separates one', function (): void {
-    it('computes the next measure over the two left level, without their events against the third', function (): void {
+    it('computes the next measure over all three, with their events against the third', function (): void {
         $a = new Participant('a', 'A');
         $b = new Participant('b', 'B');
         $c = new Participant('c', 'C');
@@ -327,19 +353,31 @@ describe('three participants of whom the first measure separates one', function 
             tiedResult($f, $a, 9, 0),
         ];
 
-        $table = (new StandingsCalculator(tiebreakers: [
+        $calculator = new StandingsCalculator(tiebreakers: [
             new BetweenTiedParticipants(new RankingValueTiebreaker()),
             new BetweenTiedParticipants(new ScoreDifferenceTiebreaker()),
+            new BetweenTiedParticipants(new ScoresForTiebreaker()),
             new ScoreDifferenceTiebreaker(),
-        ]))->calculate([$a, $b, $c, $d, $e, $f], $results);
+        ]);
+        $table = $calculator->calculate([$a, $b, $c, $d, $e, $f], $results);
 
         $ids = array_map(static fn($entry): string => $entry->getParticipant()->getId(), $table->getEntries());
 
-        expect(array_slice(tiedValues($table, 'between-tied:ranking-value'), 0, 3, true))->toBe(['b' => 4.0, 'a' => 4.0, 'c' => 0.0])
-            // The one event between A and B was level; A's 5-0 over C is not read
-            ->and(array_slice(tiedValues($table, 'between-tied:score-difference'), 0, 3, true))->toBe(['b' => 0.0, 'a' => 0.0, 'c' => 0.0])
-            // So the score difference of the whole table orders them: +1 and -4
-            ->and(array_slice($ids, 0, 3))->toBe(['b', 'a', 'c']);
+        // The small table of the three: A 4 points +5 5 for, B 4 points +1
+        // 1 for, C 0 points -6 0 for
+        expect(array_slice(tiedValues($table, 'between-tied:ranking-value'), 0, 3, true))->toBe(['a' => 4.0, 'b' => 4.0, 'c' => 0.0])
+            ->and(array_slice(tiedValues($table, 'between-tied:score-difference'), 0, 3, true))->toBe(['a' => 5.0, 'b' => 1.0, 'c' => -6.0])
+            ->and(array_slice(tiedValues($table, 'between-tied:scores-for'), 0, 3, true))->toBe(['a' => 5.0, 'b' => 1.0, 'c' => 0.0])
+            // A is first on the score difference among the three, although
+            // B has the better one over the whole table: +1 against -4
+            ->and(array_slice(tiedValues($table, 'score-difference'), 0, 2, true))->toBe(['a' => -4.0, 'b' => 1.0])
+            ->and(array_slice($ids, 0, 3))->toBe(['a', 'b', 'c']);
+
+        // The same for every order of the participants and the results
+        $rng = new Randomizer(new Xoshiro256StarStar(160));
+        for ($order = 0; $order < 10; ++$order) {
+            expect($calculator->calculate($rng->shuffleArray([$a, $b, $c, $d, $e, $f]), $rng->shuffleArray($results)))->toEqual($table);
+        }
     });
 });
 
