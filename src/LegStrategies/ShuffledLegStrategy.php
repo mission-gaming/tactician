@@ -23,9 +23,22 @@ use stdClass;
  * across legs while maintaining the same participant combinations.
  *
  * Only roles are drawn: who meets whom, and in which round, is the
- * scheduler's layout and is not shuffled. Each role is drawn once and is
- * not drawn again when a constraint rejects the event, so a role
- * constraint can fail a schedule that other draws would have completed.
+ * scheduler's layout and is not shuffled.
+ *
+ * A draw is a preference, not a rule, and the strategy says so in its
+ * plan (LegPlanContribution::$rolesArePreferences). Without constraints,
+ * or where the constraints accept every event as drawn, the schedule has
+ * exactly the roles that were drawn. Where they reject an event as drawn,
+ * RoundRobinScheduler gives it the other role, and when they reject that
+ * too it changes the roles of earlier events of the later legs until every
+ * event is accepted: the role drawn for an event is the one tried first,
+ * every time. So a role constraint fails a schedule of shuffled legs only
+ * when no roles of the later legs satisfy it in that layout, or when the
+ * search stops at its bound and says so (RoundRobinScheduler states the
+ * bounds). Nothing is drawn again for any of this: one integer for each
+ * event the scheduler comes to, in the order of the events, whatever the
+ * constraints do. The same seed therefore gives the same schedule for the
+ * same input and constraints, searched or not.
  *
  * The draws need a source, and the strategy is given exactly one of two:
  *
@@ -110,9 +123,11 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
     }
 
     /**
-     * States that roles do not mirror across legs and that randomization
-     * is needed. No configuration is unsatisfiable for this strategy, and
-     * it reads none of its arguments.
+     * States that roles do not mirror across legs, that randomization is
+     * needed, and that the roles it gives are preferences: the scheduler
+     * may reverse an event of a later leg that the constraints reject. No
+     * configuration is unsatisfiable for this strategy, and it reads none
+     * of its arguments.
      *
      * A strategy built from a seed starts its draws again here, so that
      * the schedule() call this plan opens draws what every other one does.
@@ -128,7 +143,8 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
 
         return new LegPlanContribution(
             rolesMirrorAcrossLegs: false,
-            requiresRandomization: true
+            requiresRandomization: true,
+            rolesArePreferences: true
         );
     }
 

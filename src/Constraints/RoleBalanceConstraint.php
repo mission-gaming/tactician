@@ -33,7 +33,9 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *   the drift of the first (up to 6 and 8 after two legs);
  * - by four or more mirrored legs: every leg after the first is the reverse
  *   of the first, so the fourth leg drifts twice as far as a single one;
- * - by the shuffled leg strategy, which draws the roles of later legs;
+ * - by the roles the shuffled leg strategy draws for later legs. The
+ *   scheduler changes a drawn role that breaks the limit, so the schedule
+ *   keeps the limit where roles for the later legs exist that do;
  * - by a multi-leg schedule from a scheduler that was given a randomizer.
  *
  * `BalancedRoleAssignment` gives each participant role counts at most 1

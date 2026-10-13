@@ -77,7 +77,9 @@ class IncompleteScheduleException extends SchedulingException
     /**
      * How many events had been generated when generation stopped. After
      * retries over rotated orderings it is the count of the last ordering
-     * tried; when the backtracking search finds no first leg it is 0.
+     * tried; after a search of roles, the events in place when the search
+     * was furthest on; when the backtracking search finds no first leg it
+     * is 0.
      */
     public function getActualEventCount(): int
     {
@@ -101,7 +103,9 @@ class IncompleteScheduleException extends SchedulingException
      * The constraint rejections the round-robin scheduler recorded during
      * the generation that failed: after retries those of the last ordering
      * tried, and when the roles of a role assignment are rejected after a
-     * backtracking search, that one event. Empty when nothing was recorded:
+     * backtracking search, that one event. A search of roles records the
+     * event it could get no further than, once for each role the
+     * constraints rejected it in. Empty when nothing was recorded:
      * no constraint rejected an event, the schedule failed an integrity
      * check, or the exception comes from the Swiss scheduler, which does
      * not record the rejections of its constraints.

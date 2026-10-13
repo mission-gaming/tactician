@@ -15,8 +15,10 @@ use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvariantViolationException;
+use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
 use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ValidatesScheduleCompleteness;
@@ -37,6 +39,29 @@ use Random\Randomizer;
  * there are participants and never more than 25. RoundRobinOptions(backtracking:
  * true) then searches the round decompositions that no rotation reaches,
  * within a fixed number of pairing attempts.
+ *
+ * Roles are searched in two places, and nowhere else:
+ *
+ * - The roles of the later legs, when the leg strategy states them as
+ *   preferences (ShuffledLegStrategy does; mirrored and repeated legs are
+ *   rules). An event the constraints reject is given the other role, and
+ *   when they reject both, earlier events of the later legs are given
+ *   theirs, until every event is accepted or every choice was tried. This
+ *   runs in every layout, without backtracking being asked for, and costs
+ *   nothing where no event is rejected. It is bounded at
+ *   LegRoleSearch::REJECTION_LIMIT rejected roles for each layout.
+ * - The roles of the first leg, with RoundRobinOptions(backtracking: true)
+ *   only. Without it the first leg has the roles the role assignment
+ *   decided, whatever the later legs make of them: two repeated legs whose
+ *   roles break a constraint where the legs meet fail, although other
+ *   first-leg roles would not. With it, the search holds the pairings and
+ *   rounds of each first leg it finds and searches the roles of all legs
+ *   together, under the same limit of rejected roles and the step budget
+ *   of the search. It does so for the circle layout too, once.
+ *
+ * A failure says which of these happened: that every choice was tried, or
+ * that a bound stopped a search, and what was not searched at all. Only
+ * an exhausted backtracking search calls a configuration unsatisfiable.
  *
  * Without a Randomizer the output is a function of the input: the same
  * participants in the same order, options and constraints give the same
@@ -124,12 +149,15 @@ class RoundRobinScheduler implements SchedulerInterface
      *                                       the role assignment returns anything but the seatings
      *                                       it was given with roles changed
      * @throws IncompleteScheduleException When the constraints leave a leg short of an event in
-     *                                     every layout tried and, with backtracking on, the
-     *                                     search finds no first leg, or the constraints reject
-     *                                     the roles the role assignment gives that leg or an
-     *                                     event of a later leg derived from it; when the leg
-     *                                     strategy returns no event for a pairing; or when the
-     *                                     finished schedule fails the plan's integrity checks
+     *                                     every layout tried, or accept no roles for the later
+     *                                     legs of a strategy of preferences within the bound of
+     *                                     the role search, and, with backtracking on, the search
+     *                                     finds no first leg whose later legs the constraints
+     *                                     accept, within its step budget, or the constraints
+     *                                     reject the roles the role assignment gives a first leg
+     *                                     it found; when the leg strategy returns no event for a
+     *                                     pairing; or when the finished schedule fails the plan's
+     *                                     integrity checks
      */
     #[Override]
     public function schedule(
@@ -146,7 +174,9 @@ class RoundRobinScheduler implements SchedulerInterface
         // unsatisfiable configuration fails here with diagnostics, and
         // generation, validation, and diagnostics all read shape facts
         // from the resulting plan.
-        $plan = $this->buildPlan($participants, $options->legs, $strategy);
+        $contribution = $this->legContribution($participants, $options->legs, $strategy);
+        $plan = $this->buildPlan($participants, $options->legs, $contribution);
+        $rolesArePreferences = $contribution->rolesArePreferences;
 
         // Generate complete schedule using integrated approach, retrying with
         // rotated participant orderings when constraints reject the pairings
@@ -154,12 +184,12 @@ class RoundRobinScheduler implements SchedulerInterface
         // exhausted and backtracking is enabled, search the decompositions the
         // circle method cannot reach before failing loudly.
         try {
-            $allEvents = $this->generateScheduleWithRetries($participants, $strategy, $plan, $roleAssignment);
+            $allEvents = $this->generateScheduleWithRetries($participants, $strategy, $plan, $roleAssignment, $rolesArePreferences);
         } catch (IncompleteScheduleException $greedyFailure) {
             if (!$options->backtracking) {
                 throw $greedyFailure;
             }
-            $allEvents = $this->generateWithBacktracking($participants, $strategy, $plan, $greedyFailure, $roleAssignment);
+            $allEvents = $this->generateWithBacktracking($participants, $strategy, $plan, $greedyFailure, $roleAssignment, $rolesArePreferences);
         }
         ksort($this->roundByes);
 
@@ -199,7 +229,11 @@ class RoundRobinScheduler implements SchedulerInterface
         $options = $this->resolveOptions($options);
         $this->validateInputs($participants);
 
-        return $this->buildPlan($participants, $options->legs, $options->strategy);
+        return $this->buildPlan(
+            $participants,
+            $options->legs,
+            $this->legContribution($participants, $options->legs, $options->strategy)
+        );
     }
 
     /**
@@ -227,17 +261,17 @@ class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
-     * Build the plan from the leg strategy's contribution, failing loudly
-     * when the strategy reports the configuration unsatisfiable.
+     * Ask the leg strategy for its contribution to the plan, failing
+     * loudly when it reports the configuration unsatisfiable.
      *
      * @param array<Participant> $participants
      * @throws InvalidConfigurationException
      */
-    private function buildPlan(
+    private function legContribution(
         array $participants,
         int $legs,
         LegStrategyInterface $strategy
-    ): RoundRobinPlan {
+    ): LegPlanContribution {
         $contribution = $strategy->planLegs(
             $participants,
             $legs,
@@ -258,6 +292,20 @@ class RoundRobinScheduler implements SchedulerInterface
             );
         }
 
+        return $contribution;
+    }
+
+    /**
+     * Build the plan from the leg strategy's contribution.
+     *
+     * @param array<Participant> $participants
+     * @throws InvalidConfigurationException
+     */
+    private function buildPlan(
+        array $participants,
+        int $legs,
+        LegPlanContribution $contribution
+    ): RoundRobinPlan {
         return new RoundRobinPlan(
             $participants,
             $legs,
@@ -326,7 +374,8 @@ class RoundRobinScheduler implements SchedulerInterface
         array $participants,
         LegStrategyInterface $strategy,
         RoundRobinPlan $plan,
-        RoleAssignmentInterface $roleAssignment
+        RoleAssignmentInterface $roleAssignment,
+        bool $rolesArePreferences
     ): array {
         $participants = array_values($participants);
         $maxAttempts = $this->constraints === null
@@ -346,7 +395,7 @@ class RoundRobinScheduler implements SchedulerInterface
             $this->failureWillBeDiscarded = $discardedFailuresNeedNoAnalysis && $attempt < $maxAttempts - 1;
 
             try {
-                return $this->generateIntegratedSchedule($ordered, $strategy, $plan, $roleAssignment);
+                return $this->generateIntegratedSchedule($ordered, $strategy, $plan, $roleAssignment, $rolesArePreferences);
             } catch (IncompleteScheduleException $exception) {
                 if ($attempt === $maxAttempts - 1) {
                     throw $exception;
@@ -363,14 +412,24 @@ class RoundRobinScheduler implements SchedulerInterface
 
     /**
      * Search for a schedule after the greedy rotations failed: leg 1 via
-     * backtracking over round decompositions, later legs derived from
-     * leg 1's actual rounds through the leg strategy. The search does not
-     * cross leg boundaries (docs/design/backtracking-generation.md), so a
-     * later leg rejected by constraints fails loudly.
+     * backtracking over round decompositions and roles, later legs derived
+     * from leg 1's actual rounds through the leg strategy.
+     *
+     * The search crosses the boundary of the first leg
+     * (docs/design/backtracking-generation.md). For every first leg the
+     * generator finds, the roles are searched with the pairings and rounds
+     * held (LegRoleSearch): those of the first leg, which every later leg
+     * derives from, and those of the later legs where the leg strategy
+     * states them as preferences. A first leg that no roles complete is a
+     * dead end, and the generator goes on to the next round decomposition,
+     * under the one step budget.
      *
      * The search chooses the roles of leg 1 itself, to satisfy the
-     * constraints. The role assignment is asked about the leg it found, and
-     * roles it changes are checked against the constraints again.
+     * constraints. The role assignment is asked about every leg the
+     * generator finds, and roles it changes are checked against the
+     * constraints again. A first leg whose roles the role search then
+     * changed is put to the role assignment too, and is returned only when
+     * the role assignment keeps it as it is.
      *
      * @param array<Participant> $participants
      * @return array<Event>
@@ -382,7 +441,8 @@ class RoundRobinScheduler implements SchedulerInterface
         LegStrategyInterface $strategy,
         RoundRobinPlan $plan,
         IncompleteScheduleException $greedyFailure,
-        RoleAssignmentInterface $roleAssignment
+        RoleAssignmentInterface $roleAssignment,
+        bool $rolesArePreferences
     ): array {
         // The greedy final attempt's violations stay in the collector: if
         // the search also fails, callers still get constraint-level
@@ -393,75 +453,220 @@ class RoundRobinScheduler implements SchedulerInterface
         $field = array_values($participants);
         $field = $this->randomizer?->shuffleArray($field) ?? $field;
 
-        $generator = new BacktrackingRoundRobinGenerator($this->constraints);
-        $legOneEvents = $generator->generateFirstLeg($field, $plan);
+        $roundsPerLeg = $plan->getRoundsPerLeg();
+        $legs = $plan->getLegs();
+        $roleSearch = new LegRoleSearch($this->constraints, $strategy, $rolesArePreferences, true);
+        $roleSearchesStopped = 0;
+        $roleSearchesRefused = 0;
+        /** @var list<Event> $furthestGenerated */
+        $furthestGenerated = [];
+        /** @var list<array{Event, SchedulingContext}> $furthestRejections */
+        $furthestRejections = [];
 
-        if ($legOneEvents === null) {
+        // The roles of one layout: the first leg, each event free to be
+        // reversed, and after it every later leg, each event derived from
+        // the first-leg event of its pairing as the search then has it.
+        $searchRoles = function (array $legOneEvents, int $stepsLeft) use (
+            $roleAssignment,
+            $field,
+            $plan,
+            $participants,
+            $greedyFailure,
+            $strategy,
+            $roundsPerLeg,
+            $legs,
+            $roleSearch,
+            &$roleSearchesStopped,
+            &$roleSearchesRefused,
+            &$furthestGenerated,
+            &$furthestRejections
+        ): array {
+            $legOneEvents = array_values($legOneEvents);
+            $events = $roleSearch->search(
+                new SchedulingContext($field, $plan, [], 1),
+                $this->slotsOfSearchedSchedule($legOneEvents, $legs, $roundsPerLeg),
+                $stepsLeft,
+                LegRoleSearch::REJECTION_LIMIT
+            );
+            $steps = $roleSearch->attempts();
+
+            if ($events !== null) {
+                // A first leg the role search changed is put to the role
+                // assignment as the leg it was made from was. One it would
+                // change again is not returned in its place.
+                $searchedLegOne = array_slice($events, 0, count($legOneEvents));
+                if ($searchedLegOne !== $legOneEvents && !$this->roleAssignmentKeeps($roleAssignment, $searchedLegOne)) {
+                    ++$roleSearchesRefused;
+
+                    return ['events' => null, 'steps' => $steps, 'stopped' => false];
+                }
+
+                return ['events' => $events, 'steps' => $steps, 'stopped' => false];
+            }
+
+            $generated = $roleSearch->furthestEvents();
+            $slot = $roleSearch->slotWithoutEvent();
+
+            if ($slot !== null) {
+                // No other first leg is tried: nothing says the strategy
+                // would return an event for one, and a strategy that never
+                // does would cost the whole budget to find out.
+                throw new IncompleteScheduleException(
+                    $plan->getExpectedEventCount(),
+                    count($generated),
+                    $this->violationCollector,
+                    $plan,
+                    $participants,
+                    sprintf(
+                        'Backtracking found a first leg, but %s returned no event for %s in round %d of leg %d.',
+                        $strategy::class,
+                        implode(' vs ', array_map(static fn(Participant $participant): string => $participant->getId(), $slot['pairing'])),
+                        $slot['round'],
+                        $slot['leg']
+                    ),
+                    0,
+                    $greedyFailure,
+                    $this->analyzeFailure($participants, $plan, $generated)
+                );
+            }
+
+            if (count($generated) >= count($furthestGenerated)) {
+                $furthestGenerated = $generated;
+                $furthestRejections = $roleSearch->furthestRejections();
+            }
+
+            $outOfSteps = $roleSearch->wasStoppedByABound() && $steps >= $stepsLeft;
+            if ($roleSearch->wasStoppedByABound() && !$outOfSteps) {
+                ++$roleSearchesStopped;
+            }
+
+            return ['events' => null, 'steps' => $steps, 'stopped' => $outOfSteps];
+        };
+
+        // The layout the rotations started from, with its roles searched:
+        // tried once, after the first leg the generator finds has failed
+        // or when it finds none within its budget. A constraint on roles
+        // seldom needs other pairings in a round, and the generator comes
+        // to the roles of a large field's early rounds last.
+        $circleLayoutTried = false;
+        /** @var array<string, true> $layoutsTried */
+        $layoutsTried = [];
+        /** @var array<int, string>|null $circleLayoutByes */
+        $circleLayoutByes = null;
+        $searchCircleLayout = function (int $stepsLeft) use (
+            $field,
+            $roleAssignment,
+            $roundsPerLeg,
+            $legs,
+            $searchRoles,
+            &$circleLayoutTried,
+            &$circleLayoutByes,
+            &$layoutsTried
+        ): array {
+            $circleLayoutTried = true;
+            [$legOneEvents, $byes] = $this->circleLayoutLeg($field, $roleAssignment);
+
+            $layout = $this->layoutKey($legOneEvents);
+            if (isset($layoutsTried[$layout])) {
+                return ['events' => null, 'steps' => 0, 'stopped' => false];
+            }
+            $layoutsTried[$layout] = true;
+
+            $outcome = $searchRoles($legOneEvents, $stepsLeft);
+
+            if ($outcome['events'] !== null) {
+                $circleLayoutByes = [];
+                foreach ($byes as $legRound => $participantId) {
+                    for ($leg = 1; $leg <= $legs; ++$leg) {
+                        $circleLayoutByes[(($leg - 1) * $roundsPerLeg) + $legRound] = $participantId;
+                    }
+                }
+            }
+
+            return $outcome;
+        };
+
+        $completion = function (array $legOneEvents, array $roundByes, int $stepsLeft) use (
+            $roleAssignment,
+            $field,
+            $plan,
+            $participants,
+            $greedyFailure,
+            $legs,
+            $searchRoles,
+            $searchCircleLayout,
+            &$circleLayoutTried,
+            &$layoutsTried
+        ): array {
+            // The generator reaches the same pairings in the same rounds
+            // once for every choice of roles the constraints allow the
+            // first leg. The role search has been through all of those for
+            // a layout it has seen, so the layout is not searched twice.
+            $layout = $this->layoutKey($legOneEvents);
+            if (isset($layoutsTried[$layout])) {
+                return ['events' => null, 'steps' => 0, 'stopped' => false];
+            }
+            $layoutsTried[$layout] = true;
+
+            $legOneEvents = $this->reviseSearchedRoles($legOneEvents, $roleAssignment, $field, $plan, $participants, $greedyFailure);
+
+            if ($legs === 1) {
+                return ['events' => $legOneEvents, 'steps' => 0, 'stopped' => false];
+            }
+
+            $outcome = $searchRoles($legOneEvents, $stepsLeft);
+            if ($outcome['events'] !== null || $outcome['stopped'] || $circleLayoutTried) {
+                return $outcome;
+            }
+
+            $circleOutcome = $searchCircleLayout($stepsLeft - $outcome['steps']);
+
+            return [
+                'events' => $circleOutcome['events'],
+                'steps' => $outcome['steps'] + $circleOutcome['steps'],
+                'stopped' => $circleOutcome['stopped'],
+            ];
+        };
+
+        $generator = new BacktrackingRoundRobinGenerator($this->constraints);
+        $allEvents = $generator->generateSchedule($field, $plan, $completion);
+        $generatorFoundNoLeg = $layoutsTried === [];
+
+        if ($allEvents === null && !$circleLayoutTried && $legs > 1 && $generator->wasBudgetExhausted()) {
+            // The generator spent its budget before it found one first
+            // leg. The roles of the circle layout are searched all the
+            // same, with as many attempts again and within the rejection
+            // limit of a role search.
+            $allEvents = $searchCircleLayout(BacktrackingRoundRobinGenerator::STEP_BUDGET)['events'];
+        }
+
+        if ($allEvents === null) {
+            foreach ($furthestRejections as [$rejected, $rejectedContext]) {
+                $this->recordConstraintViolation($rejected, $rejectedContext);
+            }
+
             throw new IncompleteScheduleException(
                 $plan->getExpectedEventCount(),
-                0,
+                count($furthestGenerated),
                 $this->violationCollector,
                 $plan,
                 $participants,
-                $generator->wasBudgetExhausted()
-                    ? 'Backtracking search exhausted its step budget ('
-                        . BacktrackingRoundRobinGenerator::STEP_BUDGET
-                        . ' pairing attempts) without finding a complete schedule. The configuration may be unsatisfiable or may need a different participant order.'
-                    : 'Backtracking search exhausted the search space: no round decomposition of the first leg satisfies the constraints, so the configuration is unsatisfiable.',
+                $this->describeBacktrackingFailure($generator, $strategy, $roleAssignment, $roleSearchesStopped, $roleSearchesRefused, $generatorFoundNoLeg ? 0 : count($layoutsTried)),
                 0,
                 $greedyFailure,
-                $this->analyzeFailure($participants, $plan, [])
+                $this->analyzeFailure($participants, $plan, $furthestGenerated)
             );
         }
 
-        $legOneEvents = $this->reviseSearchedRoles($legOneEvents, $roleAssignment, $field, $plan, $participants, $greedyFailure);
-
-        $this->roundByes = $generator->getRoundByes();
-        $allEvents = $legOneEvents;
-        $roundsPerLeg = $plan->getRoundsPerLeg();
-
-        for ($leg = 2; $leg <= $plan->getLegs(); ++$leg) {
-            $legEvents = [];
-
-            foreach ($legOneEvents as $legOneEvent) {
-                $legRound = $legOneEvent->getRound()?->getNumber() ?? 0;
-                $globalRound = (($leg - 1) * $roundsPerLeg) + $legRound;
-
-                $context = new SchedulingContext($field, $plan, [...$allEvents, ...$legEvents], $leg);
-                $event = $strategy->generateEventForLeg(
-                    $legOneEvent->getParticipants(),
-                    $leg,
-                    $globalRound,
-                    $context
-                );
-
-                if ($event !== null && !$this->shouldAddEventWithFullConstraints($event, $context)) {
-                    $this->recordConstraintViolation($event, $context);
-                    $event = null;
-                }
-
-                if ($event === null) {
-                    throw new IncompleteScheduleException(
-                        $plan->getExpectedEventCount(),
-                        count($allEvents) + count($legEvents),
-                        $this->violationCollector,
-                        $plan,
-                        $participants,
-                        "Backtracking found a first leg, but constraints reject its leg {$leg} derivation and the search does not cross leg boundaries. Relax the constraints on later legs or change the leg strategy.",
-                        0,
-                        $greedyFailure,
-                        $this->analyzeFailure($participants, $plan, [...$allEvents, ...$legEvents])
-                    );
-                }
-
-                $legEvents[] = $event;
-            }
-
+        $this->roundByes = [];
+        if ($circleLayoutByes !== null) {
+            $this->roundByes = $circleLayoutByes;
+        } else {
             foreach ($generator->getRoundByes() as $legRound => $participantId) {
-                $this->roundByes[(($leg - 1) * $roundsPerLeg) + $legRound] = $participantId;
+                for ($leg = 1; $leg <= $legs; ++$leg) {
+                    $this->roundByes[(($leg - 1) * $roundsPerLeg) + $legRound] = $participantId;
+                }
             }
-
-            $allEvents = [...$allEvents, ...$legEvents];
         }
 
         // The search succeeded: the greedy attempt's violations would be
@@ -469,6 +674,163 @@ class RoundRobinScheduler implements SchedulerInterface
         $this->clearViolations();
 
         return $allEvents;
+    }
+
+    /**
+     * A key for who meets whom in which round of a leg, whatever the roles
+     * and whatever the order of the events: two legs have the same key
+     * exactly when they differ in nothing else.
+     *
+     * @param array<Event> $legEvents
+     */
+    private function layoutKey(array $legEvents): string
+    {
+        $meetings = [];
+        foreach ($legEvents as $event) {
+            $pair = $event->getParticipants();
+            $pairKey = PairKey::of($pair[0]->getId(), $pair[1]->getId());
+            // Length-prefixed, so that no two lists of keys read the same
+            $meetings[] = ($event->getRound()?->getNumber() ?? 0) . ':' . strlen($pairKey) . ':' . $pairKey;
+        }
+        sort($meetings, SORT_STRING);
+
+        return implode('', $meetings);
+    }
+
+    /**
+     * The first leg as the circle method lays it out from the field in the
+     * order given, with the roles the role assignment gives it and no
+     * constraint asked.
+     *
+     * @param list<Participant> $field
+     * @return array{list<Event>, array<int, string>} The events in round order, and the ID of the
+     *                                                participant sitting out by round number
+     * @throws InvalidConfigurationException When the role assignment changes more than roles
+     */
+    private function circleLayoutLeg(array $field, RoleAssignmentInterface $roleAssignment): array
+    {
+        $participantList = $field;
+        if (count($participantList) % 2 !== 0) {
+            $participantList[] = null; // null represents "bye"
+        }
+
+        $events = [];
+        $byes = [];
+        foreach ($this->assignedRoles($roleAssignment, $this->circleLayout($participantList)) as $index => $seatings) {
+            $round = $index + 1;
+            foreach ($seatings as [$participant1, $participant2]) {
+                if ($participant1 === null || $participant2 === null) {
+                    $sittingOut = $participant1 ?? $participant2;
+                    if ($sittingOut !== null) {
+                        $byes[$round] = $sittingOut->getId();
+                    }
+                    continue;
+                }
+
+                $events[] = new Event([$participant1, $participant2], new Round($round));
+            }
+        }
+
+        return [$events, $byes];
+    }
+
+    /**
+     * The slots of a schedule whose first leg a backtracking search found:
+     * the events of that leg, each free to be reversed, and after them one
+     * slot in every later leg for each of them, in the same order.
+     *
+     * @param list<Event> $legOneEvents The leg's events in round order
+     * @return list<array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int}>
+     */
+    private function slotsOfSearchedSchedule(array $legOneEvents, int $legs, int $roundsPerLeg): array
+    {
+        $slots = [];
+        for ($leg = 1; $leg <= $legs; ++$leg) {
+            foreach ($legOneEvents as $source => $legOneEvent) {
+                $slots[] = $this->slotOfSearchedSchedule($legOneEvent, $source, $leg, $roundsPerLeg);
+            }
+        }
+
+        return $slots;
+    }
+
+    /**
+     * @return array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int}
+     */
+    private function slotOfSearchedSchedule(Event $legOneEvent, int $source, int $leg, int $roundsPerLeg): array
+    {
+        $slot = [
+            'leg' => $leg,
+            'round' => (($leg - 1) * $roundsPerLeg) + ($legOneEvent->getRound()?->getNumber() ?? 0),
+            'pairing' => $legOneEvent->getParticipants(),
+        ];
+
+        if ($leg === 1) {
+            $slot['event'] = $legOneEvent;
+        } else {
+            $slot['source'] = $source;
+        }
+
+        return $slot;
+    }
+
+    /**
+     * The message of a backtracking search that returned no schedule. It
+     * says "unsatisfiable" only when the whole search space was tried and
+     * no bound stopped any part of the search.
+     */
+    private function describeBacktrackingFailure(
+        BacktrackingRoundRobinGenerator $generator,
+        LegStrategyInterface $strategy,
+        RoleAssignmentInterface $roleAssignment,
+        int $roleSearchesStopped,
+        int $roleSearchesRefused,
+        int $layoutsTried
+    ): string {
+        if ($layoutsTried === 0) {
+            return $generator->wasBudgetExhausted()
+                ? 'Backtracking search exhausted its step budget ('
+                    . BacktrackingRoundRobinGenerator::STEP_BUDGET
+                    . ' pairing attempts) without finding a complete schedule. The configuration may be unsatisfiable or may need a different participant order.'
+                : 'Backtracking search exhausted the search space: no round decomposition of the first leg satisfies the constraints, so the configuration is unsatisfiable.';
+        }
+
+        $found = $layoutsTried === 1
+            ? 'the one round decomposition of the first leg it tried, whatever the roles of the first leg'
+            : "each of the {$layoutsTried} round decompositions of the first leg it tried, whatever the roles of the first leg";
+
+        if ($generator->wasBudgetExhausted()) {
+            return sprintf(
+                'Backtracking search exhausted its step budget (%d pairing attempts) without finding a complete schedule: the constraints reject the later legs that %s derives from %s. The configuration may be unsatisfiable, or a first leg beyond the budget may have later legs the constraints accept.',
+                BacktrackingRoundRobinGenerator::STEP_BUDGET,
+                $strategy::class,
+                $found
+            );
+        }
+
+        if ($roleSearchesStopped > 0) {
+            return sprintf(
+                'Backtracking search tried every round decomposition of the first leg without finding a complete schedule, but for %d of the %d it tried the search for roles stopped at its bound of %d rejected roles. Roles that satisfy the constraints may exist beyond that bound.',
+                $roleSearchesStopped,
+                $layoutsTried,
+                LegRoleSearch::REJECTION_LIMIT
+            );
+        }
+
+        if ($roleSearchesRefused > 0) {
+            return sprintf(
+                'Backtracking search tried every round decomposition of the first leg without finding a complete schedule that %s keeps: for %d of the %d it tried, roles exist that satisfy the constraints in every leg, and the role assignment would change them. Use the round-parity role assignment, or one that honours the constraints.',
+                $roleAssignment::class,
+                $roleSearchesRefused,
+                $layoutsTried
+            );
+        }
+
+        return sprintf(
+            'Backtracking search exhausted the search space: the constraints reject the later legs that %s derives from %s, so the configuration is unsatisfiable with this leg strategy.',
+            $strategy::class,
+            $found
+        );
     }
 
     /**
@@ -510,7 +872,8 @@ class RoundRobinScheduler implements SchedulerInterface
         array $participants,
         LegStrategyInterface $strategy,
         RoundRobinPlan $plan,
-        RoleAssignmentInterface $roleAssignment
+        RoleAssignmentInterface $roleAssignment,
+        bool $rolesArePreferences
     ): array {
         $allEvents = [];
         $this->roundByes = [];
@@ -520,6 +883,18 @@ class RoundRobinScheduler implements SchedulerInterface
         $expectedEventsPerLeg = $plan->getEventsPerLeg();
 
         for ($leg = 1; $leg <= $legs; ++$leg) {
+            // Roles that are preferences are searched over all the later
+            // legs at once: an event of the last leg can need another role
+            // for an event of the second. Without constraints nothing is
+            // ever rejected, and the legs are generated one by one as
+            // they always were.
+            if ($leg === 2 && $rolesArePreferences && $this->constraints !== null) {
+                return [
+                    ...$allEvents,
+                    ...$this->generateLaterLegsWithRoleSearch($participants, $strategy, $plan, $roleAssignment, $allEvents),
+                ];
+            }
+
             $legEvents = $this->generateLegWithFullContext($participants, $leg, $strategy, $plan, $context, $roleAssignment);
 
             // Check if we generated the expected number of events for this leg
@@ -542,6 +917,121 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         return $allEvents;
+    }
+
+    /**
+     * Generate every leg after the first for a leg strategy whose roles
+     * are preferences, searching those roles where the constraints reject
+     * them (LegRoleSearch). The legs are laid out as the first one
+     * was, and the role assignment is asked about each.
+     *
+     * @param array<Participant> $participants
+     * @param array<Event> $legOneEvents
+     * @return list<Event> The events of legs 2 and up
+     * @throws IncompleteScheduleException When no roles satisfy the constraints in this layout, the
+     *                                     search stopped at its bound, or the strategy returned no event
+     * @throws InvalidConfigurationException When the role assignment changes more than roles
+     */
+    private function generateLaterLegsWithRoleSearch(
+        array $participants,
+        LegStrategyInterface $strategy,
+        RoundRobinPlan $plan,
+        RoleAssignmentInterface $roleAssignment,
+        array $legOneEvents
+    ): array {
+        $participantList = array_values($participants);
+        if (count($participantList) % 2 !== 0) {
+            $participantList[] = null; // null represents "bye"
+        }
+        $layout = $this->circleLayout($participantList);
+        $roundsPerLeg = $plan->getRoundsPerLeg();
+        $legs = $plan->getLegs();
+
+        $slots = [];
+        for ($leg = 2; $leg <= $legs; ++$leg) {
+            $roundOffset = ($leg - 1) * $roundsPerLeg;
+
+            foreach ($this->assignedRoles($roleAssignment, $layout) as $index => $seatings) {
+                $globalRound = $index + 1 + $roundOffset;
+
+                foreach ($seatings as [$participant1, $participant2]) {
+                    if ($participant1 === null || $participant2 === null) {
+                        $sittingOut = $participant1 ?? $participant2;
+                        if ($sittingOut !== null) {
+                            $this->roundByes[$globalRound] = $sittingOut->getId();
+                        }
+                        continue;
+                    }
+
+                    $slots[] = ['leg' => $leg, 'round' => $globalRound, 'pairing' => [$participant1, $participant2]];
+                }
+            }
+        }
+
+        $search = new LegRoleSearch($this->constraints, $strategy, true, false);
+        $events = $search->search(
+            new SchedulingContext($participants, $plan, $legOneEvents, 2),
+            $slots,
+            PHP_INT_MAX,
+            LegRoleSearch::REJECTION_LIMIT
+        );
+
+        if ($events !== null) {
+            return $events;
+        }
+
+        foreach ($search->furthestRejections() as [$rejected, $rejectedContext]) {
+            $this->recordConstraintViolation($rejected, $rejectedContext);
+        }
+
+        $generated = [...$legOneEvents, ...$search->furthestEvents()];
+
+        throw new IncompleteScheduleException(
+            $plan->getExpectedEventCount(),
+            count($generated),
+            $this->violationCollector,
+            $plan,
+            $participants,
+            $this->describeRoleSearchFailure($search, $strategy, $legs),
+            0,
+            null,
+            $this->analyzeFailure($participants, $plan, $generated)
+        );
+    }
+
+    /**
+     * The message of a role search of the later legs that returned no
+     * events: which of its three reasons it was, and what was and was not
+     * searched.
+     */
+    private function describeRoleSearchFailure(LegRoleSearch $search, LegStrategyInterface $strategy, int $legs): string
+    {
+        $range = $legs === 2 ? 'leg 2' : "legs 2 to {$legs}";
+        $slot = $search->slotWithoutEvent();
+
+        if ($slot !== null) {
+            return sprintf(
+                'Failed to generate complete schedule for leg %d: %s returned no event for %s in round %d.',
+                $slot['leg'],
+                $strategy::class,
+                implode(' vs ', array_map(static fn(Participant $participant): string => $participant->getId(), $slot['pairing'])),
+                $slot['round']
+            );
+        }
+
+        if ($search->wasStoppedByABound()) {
+            return sprintf(
+                'Failed to generate complete schedule for %s: the search for roles the constraints accept stopped at its bound of %d rejected roles. Roles that satisfy the constraints may exist beyond it; the pairings, their rounds and the roles of leg 1 were not searched.',
+                $range,
+                LegRoleSearch::REJECTION_LIMIT
+            );
+        }
+
+        return sprintf(
+            'Failed to generate complete schedule for %s: the constraints reject every choice of roles for the events of %s in this layout. The pairings, their rounds and the roles of leg 1 were not searched.',
+            $range,
+            $range
+        );
     }
 
     /**
@@ -733,6 +1223,57 @@ class RoundRobinScheduler implements SchedulerInterface
     }
 
     /**
+     * The events of one leg as a list of rounds, in the order given.
+     *
+     * @param array<Event> $legEvents The leg's events in round order
+     * @return list<list<Event>>
+     */
+    private function eventsByRound(array $legEvents): array
+    {
+        $eventsByRound = [];
+        foreach ($legEvents as $event) {
+            $eventsByRound[$event->getRound()?->getNumber() ?? 0][] = $event;
+        }
+
+        return array_values($eventsByRound);
+    }
+
+    /**
+     * The rounds of a leg as the seatings a role assignment is asked about.
+     *
+     * @param list<list<Event>> $eventsByRound
+     * @return list<list<array{0: Participant|null, 1: Participant|null}>>
+     */
+    private function seatingsOf(array $eventsByRound): array
+    {
+        $rounds = [];
+        foreach ($eventsByRound as $roundEvents) {
+            $seatings = [];
+            foreach ($roundEvents as $event) {
+                $pair = $event->getParticipants();
+                $seatings[] = [$pair[0], $pair[1]];
+            }
+            $rounds[] = $seatings;
+        }
+
+        return $rounds;
+    }
+
+    /**
+     * Whether the role assignment, asked about this first leg, returns it
+     * with every role as it is.
+     *
+     * @param array<Event> $legOneEvents The leg's events in round order
+     * @throws InvalidConfigurationException When the role assignment changes more than roles
+     */
+    private function roleAssignmentKeeps(RoleAssignmentInterface $roleAssignment, array $legOneEvents): bool
+    {
+        $rounds = $this->seatingsOf($this->eventsByRound($legOneEvents));
+
+        return $this->assignedRoles($roleAssignment, $rounds) === $rounds;
+    }
+
+    /**
      * Ask the role assignment about a first leg the backtracking search
      * found, and check the roles it changes against the constraints.
      *
@@ -757,23 +1298,8 @@ class RoundRobinScheduler implements SchedulerInterface
         array $participants,
         IncompleteScheduleException $greedyFailure
     ): array {
-        $eventsByRound = [];
-        foreach ($legOneEvents as $event) {
-            $eventsByRound[$event->getRound()?->getNumber() ?? 0][] = $event;
-        }
-        $eventsByRound = array_values($eventsByRound);
-
-        $rounds = [];
-        foreach ($eventsByRound as $roundEvents) {
-            $seatings = [];
-            foreach ($roundEvents as $event) {
-                $pair = $event->getParticipants();
-                $seatings[] = [$pair[0], $pair[1]];
-            }
-            $rounds[] = $seatings;
-        }
-
-        $assigned = $this->assignedRoles($roleAssignment, $rounds);
+        $eventsByRound = $this->eventsByRound($legOneEvents);
+        $assigned = $this->assignedRoles($roleAssignment, $this->seatingsOf($eventsByRound));
 
         $revised = [];
         $changed = false;

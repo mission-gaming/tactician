@@ -57,7 +57,10 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * @param LegStrategyInterface|null $strategy How pairings vary across legs (default: mirrored roles)
      * @param bool $backtracking Search for a schedule when the greedy rotations cannot satisfy
      *                           the constraints (bounded by a count of pairing attempts, and
-     *                           deterministic for a given field order; greedy always runs first)
+     *                           deterministic for a given field order; greedy always runs first).
+     *                           The search is over how the pairings of the first leg fall into
+     *                           rounds and over the roles of every leg; without it the roles of
+     *                           the first leg are the role assignment's and are not searched
      * @param RoleAssignmentInterface|null $roleAssignment Which participant of each pairing is first-named
      *                                                     (default: round parity, the roles the generator proposes)
      * @throws InvalidConfigurationException When legs is not a positive integer
