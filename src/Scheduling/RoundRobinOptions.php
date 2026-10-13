@@ -13,6 +13,7 @@ use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -39,6 +40,11 @@ final readonly class RoundRobinOptions implements SchedulerOptions
         'round_parity' => RoundParityRoleAssignment::class,
         'balanced' => BalancedRoleAssignment::class,
     ];
+
+    /**
+     * The keys fromArray() reads and toArray() writes.
+     */
+    private const array KEYS = ['legs', 'strategy', 'backtracking', 'strategy_seed', 'role_assignment'];
 
     public LegStrategyInterface $strategy;
 
@@ -90,7 +96,8 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * ['legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false,
      * 'role_assignment' => 'balanced'], or with the one strategy that
      * draws, ['legs' => 2, 'strategy' => 'shuffled', 'strategy_seed' => 7].
-     * A key this class does not have is ignored.
+     * A key this class does not have is refused, so that a misspelt option
+     * is not silently read as its default.
      *
      * Every key is optional but one: `strategy_seed` is required with
      * 'shuffled' and refused with any other strategy. It is the integer
@@ -102,14 +109,24 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * as it is for `role_assignment`.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When legs is not an integer or is below 1, backtracking
-     *                                       is not a boolean, an identifier is unknown, strategy_seed
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), legs
+     *                                       is not an integer or is below 1, backtracking is not
+     *                                       a boolean, an identifier is unknown, strategy_seed
      *                                       is not an integer, the shuffled strategy has no
      *                                       strategy_seed, or another strategy has one
      */
     #[Override]
     public static function fromArray(array $config): static
     {
+        PlainData::checkOptions(
+            $config,
+            self::KEYS,
+            'round-robin options',
+            InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
+        );
+
         $legs = $config['legs'] ?? 1;
         if (!is_int($legs)) {
             throw new InvalidConfigurationException(
@@ -202,7 +219,7 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      *
      * The `role_assignment` key is present only when a role assignment was
      * named, in the constructor or in the data given to fromArray(). Options
-     * that do not name one serialize to the three keys they always have, and
+     * that do not name one serialize to the keys they always have, and
      * options that name the default keep saying so, which is what holds a
      * stored configuration to its roles when a release changes the default.
      *
@@ -213,7 +230,11 @@ final readonly class RoundRobinOptions implements SchedulerOptions
      * fromArray() could rebuild it from, and fails loudly like a custom
      * strategy does.
      *
-     * @return array{legs: int, strategy: string, backtracking: bool, strategy_seed?: int, role_assignment?: string}
+     * The first key is `format_version`, the version of this form (1), as
+     * in every array a toArray() of the library returns; fromArray() reads
+     * an array without it as version 1.
+     *
+     * @return array{format_version: int, legs: int, strategy: string, backtracking: bool, strategy_seed?: int, role_assignment?: string}
      * @throws InvalidConfigurationException When the strategy or the role assignment is not one of the
      *                                       built-ins, or the strategy is a ShuffledLegStrategy that
      *                                       holds a randomizer
@@ -231,7 +252,12 @@ final readonly class RoundRobinOptions implements SchedulerOptions
             );
         }
 
-        $config = ['legs' => $this->legs, 'strategy' => $identifier, 'backtracking' => $this->backtracking];
+        $config = [
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'legs' => $this->legs,
+            'strategy' => $identifier,
+            'backtracking' => $this->backtracking,
+        ];
 
         if ($this->strategy instanceof ShuffledLegStrategy) {
             if ($this->strategy->seed === null) {

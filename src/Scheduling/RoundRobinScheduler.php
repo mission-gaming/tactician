@@ -142,6 +142,8 @@ class RoundRobinScheduler implements SchedulerInterface
      * participant's ID. The other metadata keys are 'algorithm',
      * 'participant_count', 'legs', 'rounds_per_leg', 'total_rounds' and
      * 'expected_event_count'.
+     * The schedule's entrants (Schedule::getEntrants()) are the participants
+     * as given, in their order.
      *
      * All or nothing: the schedule is checked against the plan before it is
      * returned, and a failure never returns the events that were generated.
@@ -210,7 +212,7 @@ class RoundRobinScheduler implements SchedulerInterface
             'total_rounds' => $plan->getTotalRounds(),
             'expected_event_count' => $plan->getExpectedEventCount(),
             'byes' => $this->roundByes,
-        ]);
+        ], array_values($participants));
 
         // Validate schedule completeness with all-or-nothing guarantee
         $this->validateGeneratedSchedule($schedule, $participants, $plan);

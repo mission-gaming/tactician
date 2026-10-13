@@ -12,6 +12,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\SwissPlan;
 use MissionGaming\Tactician\Tests\Support\GeneratedEvents;
+use MissionGaming\Tactician\Tests\Support\UncheckedEvent;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -188,7 +189,7 @@ describe('EventIndex', function (): void {
     it('counts an event once for a participant it lists twice', function (): void {
         $first = new Participant('a', 'A');
         $second = new Participant('b', 'B');
-        $events = [new Event([$first, $first]), new Event([$first, $second, $first])];
+        $events = [new UncheckedEvent([$first, $first]), new UncheckedEvent([$first, $second, $first])];
         $index = new EventIndex($events);
 
         expect($index->forParticipant('a'))->toBe($events);

@@ -421,7 +421,9 @@ class PotDrawScheduler implements SchedulerInterface
      * 'expected_event_count'.
      *
      * @param array<Participant> $participants The entrants in seeding order: list position is the
-     *                                         seeding, and no seed attribute is read
+     *                                         seeding, and no seed attribute is read. The schedule keeps
+     *                                         the list, in this order, as its entrants
+     *                                         (Schedule::getEntrants())
      * @param SchedulerOptions|null $options PotDrawOptions, or null for one pot, one opponent and seed 0
      *
      * @throws InvalidConfigurationException When the configuration is infeasible or not yet supported
@@ -472,7 +474,7 @@ class PotDrawScheduler implements SchedulerInterface
             'seed' => $options->seed,
             'total_rounds' => $plan->getTotalRounds(),
             'expected_event_count' => $plan->getExpectedEventCount(),
-        ]);
+        ], array_values($entrants));
 
         $this->validateGeneratedSchedule($schedule, $entrants, $plan);
 

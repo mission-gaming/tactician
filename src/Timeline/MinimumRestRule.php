@@ -8,6 +8,7 @@ use DateInterval;
 use DateTimeImmutable;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -50,20 +51,26 @@ final readonly class MinimumRestRule implements TimelineRule
     /**
      * Build from plain configuration data: ['rest' => 'PT48H']. The rest is
      * an ISO 8601 duration string, read by
-     * TimelineDefinition::parseInterval().
+     * TimelineDefinition::parseInterval(). Any other key is refused.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the duration is missing or malformed, or does
-     *                                       not move time forward
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), or
+     *                                       the duration is missing or malformed, or does not
+     *                                       move time forward
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, ['rest'], 'a minimum rest rule');
+
         return new self(TimelineDefinition::parseInterval($config['rest'] ?? null, 'rest'));
     }
 
     /**
-     * Serialize back to the plain-data form fromArray() accepts: the rest
-     * as the ISO 8601 duration TimelineDefinition::formatInterval() gives.
+     * Serialize back to the plain-data form fromArray() accepts:
+     * `format_version`, the version of this form (1), then the rest as the
+     * ISO 8601 duration TimelineDefinition::formatInterval() gives.
      *
      * A rest that has no such duration is refused, and never written as
      * text that fromArray() would refuse or read as another rest: one with
@@ -76,7 +83,7 @@ final readonly class MinimumRestRule implements TimelineRule
      * refuse to write those too, because they add an interval in a
      * timezone and in steps: TimelineDefinition::writeInterval().)
      *
-     * @return array{rest: string}
+     * @return array{format_version: int, rest: string}
      *
      * @throws InvalidConfigurationException When the rest has no ISO 8601 duration that reads
      *                                       back as the same rest (reason `NotSerializable`)
@@ -107,7 +114,7 @@ final readonly class MinimumRestRule implements TimelineRule
             );
         }
 
-        return ['rest' => $written];
+        return [PlainData::VERSION_KEY => PlainData::VERSION, 'rest' => $written];
     }
 
     /**

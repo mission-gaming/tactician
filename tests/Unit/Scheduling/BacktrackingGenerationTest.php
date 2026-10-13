@@ -352,7 +352,7 @@ describe('RoundRobinOptions backtracking flag', function (): void {
         $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'repeated', 'backtracking' => true]);
 
         expect($options->backtracking)->toBeTrue();
-        expect($options->toArray())->toBe(['legs' => 2, 'strategy' => 'repeated', 'backtracking' => true]);
+        expect($options->toArray())->toBe(['format_version' => 1, 'legs' => 2, 'strategy' => 'repeated', 'backtracking' => true]);
         expect(RoundRobinOptions::fromArray([])->backtracking)->toBeFalse();
     });
 

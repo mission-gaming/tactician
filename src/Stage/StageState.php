@@ -11,6 +11,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The full state of a results-driven stage between rounds.
@@ -574,10 +575,18 @@ final readonly class StageState
      * or results — so rehydration resolves all references.
      *
      * The `engine_fingerprint` key is present only when the state is
-     * stamped (see withEngineFingerprint()), so an unstamped state has the
-     * shape it has always had.
+     * stamped (see withEngineFingerprint()).
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}>, engine_fingerprint?: string}
+     * The first key is `format_version`, the version of this form (1). It
+     * says how the array is to be read and is written once, here: the
+     * participants, rounds and results inside carry none. It is another
+     * thing than the `v2` inside an engine fingerprint, which is the
+     * version of the scheme the stamp is written in; the stamp is one
+     * string value of this form, and either version can change without
+     * the other, as the scheme did in 0.3.0 while this form stayed at
+     * version 1.
+     *
+     * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}>, engine_fingerprint?: string}
      */
     public function toArray(): array
     {
@@ -602,17 +611,38 @@ final readonly class StageState
             }
         }
 
+        // One array has one version, at its top: what the state holds is
+        // written without the key.
+        $participants = [];
+        foreach ($registry as $participant) {
+            $form = $participant->toArray();
+            unset($form[PlainData::VERSION_KEY]);
+            $participants[] = $form;
+        }
+
+        $rounds = [];
+        foreach ($this->roundsPlayed as $key => $pairing) {
+            $form = $pairing->toArray();
+            unset($form[PlainData::VERSION_KEY]);
+            $rounds[$key] = $form;
+        }
+
+        $results = [];
+        foreach ($this->results as $key => $result) {
+            $form = $result->toArray();
+            unset($form[PlainData::VERSION_KEY]);
+            $results[$key] = $form;
+        }
+
         $data = [
-            'participants' => array_values(array_map(
-                fn(Participant $participant) => $participant->toArray(),
-                $registry
-            )),
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'participants' => $participants,
             'active' => array_map(
                 fn(Participant $participant) => $participant->getId(),
                 $this->participants
             ),
-            'rounds' => array_map(fn(RoundPairing $pairing) => $pairing->toArray(), $this->roundsPlayed),
-            'results' => array_map(fn(Result $result) => $result->toArray(), $this->results),
+            'rounds' => $rounds,
+            'results' => $results,
         ];
 
         if ($this->engineFingerprint !== null) {
@@ -627,19 +657,42 @@ final readonly class StageState
      *
      * The `engine_fingerprint` key is optional: data stored before the
      * stamp existed, or by a caller that does not stamp, loads as an
-     * unstamped state.
+     * unstamped state. So is `format_version`: data without it is read as
+     * version 1, the form the releases before 0.3.0 wrote. A version this
+     * release does not know is refused.
      *
-     * The shape is checked, that every ID resolves in the `participants`
+     * The shape is checked, that the data holds no key but the five
+     * toArray() writes, that every ID resolves in the `participants`
      * registry, and that no ID is listed twice in `participants` or in
-     * `active`. The history is not checked as withRoundPlayed() checks it
-     * (round numbers and their order, results that belong to their round):
-     * there the data is trusted to be what toArray() wrote.
+     * `active`.
+     *
+     * The history is checked as the verbs check it, because it is
+     * recorded again through withRoundPlayed(): rounds in play order with
+     * rising numbers from 1, every event of a pairing carrying the
+     * pairing's round number, and every result standing with the results
+     * of its round and belonging to an event of that round. Stored data
+     * that states a history no sequence of verbs could have recorded is
+     * refused with the reason the verb gives (`ValueOutOfRange` for a
+     * round below 1, `RoundOutOfSequence`, `EventNotInRound`,
+     * `EventWithoutRoundNumber`), where it used to load and be replayed by
+     * an engine as if it were sound. What the verbs do not check is not
+     * checked here either: a gap in the round numbers, the participants of
+     * a pairing being active, and an event with more than one result (the
+     * standings and the bracket engines refuse that one, and
+     * withResultReplaced() repairs it).
      *
      * @param array<string, mixed> $data
      * @throws InvalidInputException When the data is malformed
+     * @throws InvalidConfigurationException When the stored history is one the verbs refuse
      */
     public static function fromArray(array $data): self
     {
+        PlainData::checkFields(
+            $data,
+            ['participants', 'active', 'rounds', 'results', 'engine_fingerprint'],
+            'stage state data'
+        );
+
         $participantsData = $data['participants'] ?? [];
         if (!is_array($participantsData)) {
             throw new InvalidInputException('Stage state participants must be an array');
@@ -712,7 +765,7 @@ final readonly class StageState
             throw new InvalidInputException('Stage state engine fingerprint must be a non-empty string');
         }
 
-        return new self($active, $rounds, $results, $fingerprint);
+        return self::recorded($active, $rounds, $results, $fingerprint);
     }
 
     /**
@@ -736,6 +789,7 @@ final readonly class StageState
      *
      * @throws JsonConversionException When the JSON is malformed
      * @throws InvalidInputException When the decoded data is malformed
+     * @throws InvalidConfigurationException When the stored history is one the verbs refuse
      */
     public static function fromJson(string $json): self
     {
@@ -750,5 +804,67 @@ final readonly class StageState
 
         /** @var array<string, mixed> $data */
         return self::fromArray($data);
+    }
+
+    /**
+     * The state a stored history describes, recorded again through
+     * withRoundPlayed(): whatever that verb refuses of a live state is
+     * refused of a stored one, by the same check and with the same reason.
+     *
+     * The results of a state are in the order they were recorded, and a
+     * result can only be recorded with its round or added to the last
+     * round recorded, so the results of one round stand together and the
+     * rounds follow each other. Each round is recorded with the run of
+     * results that carries its number. A result that is left over is one
+     * no state could have recorded where it stands: its round is not
+     * recorded, or it stands among the results of another round.
+     *
+     * Two results of one event are not refused here. The verbs accept them
+     * (see withAdditionalResults()), so a live state can hold them, and a
+     * stored state that holds them has to load for withResultReplaced() to
+     * repair it. The standings and the bracket engines refuse them.
+     *
+     * @param array<Participant> $active
+     * @param array<RoundPairing> $rounds
+     * @param list<Result> $results
+     *
+     * @throws InvalidConfigurationException When the history is one the verbs refuse
+     */
+    private static function recorded(array $active, array $rounds, array $results, ?string $fingerprint): self
+    {
+        $state = new self($active);
+
+        $next = 0;
+        $count = count($results);
+        foreach ($rounds as $pairing) {
+            $ofRound = [];
+            while ($next < $count && $results[$next]->getEvent()->getRound()?->getNumber() === $pairing->getRoundNumber()) {
+                $ofRound[] = $results[$next];
+                ++$next;
+            }
+
+            $state = $state->withRoundPlayed($pairing, $ofRound);
+        }
+
+        if ($next < $count) {
+            $resultRound = $results[$next]->getEvent()->getRound()?->getNumber();
+
+            throw new InvalidConfigurationException(
+                'Stored result belongs to a round that is not recorded, or does not stand with the results of its round',
+                [
+                    'result' => $next,
+                    'result_round' => $resultRound,
+                    'recorded_rounds' => array_map(
+                        fn(RoundPairing $pairing): int => $pairing->getRoundNumber(),
+                        array_values($rounds)
+                    ),
+                ],
+                reason: $resultRound === null
+                    ? InvalidConfigurationReason::EventWithoutRoundNumber
+                    : InvalidConfigurationReason::EventNotInRound
+            );
+        }
+
+        return new self($state->participants, $state->roundsPlayed, $state->results, $fingerprint);
     }
 }

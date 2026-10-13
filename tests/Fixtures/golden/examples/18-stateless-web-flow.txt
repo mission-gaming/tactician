@@ -14,22 +14,22 @@
   Request: 1
   Did: opened the stage
   Events: 0
-  State stored (bytes): 408
+  State stored (bytes): 427
 -
   Request: 2
   Did: paired and recorded round 1
   Events: 3
-  State stored (bytes): 1085
+  State stored (bytes): 1104
 -
   Request: 3
   Did: paired and recorded round 2
   Events: 3
-  State stored (bytes): 1764
+  State stored (bytes): 1783
 -
   Request: 4
   Did: paired and recorded round 3
   Events: 3
-  State stored (bytes): 2443
+  State stored (bytes): 2462
 
 == Final standings, read by the last request ==
 1. ana played=3 wins=3 draws=0 losses=0 value=9 for=0 against=0

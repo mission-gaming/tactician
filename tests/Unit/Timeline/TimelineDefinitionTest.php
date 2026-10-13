@@ -93,7 +93,7 @@ describe('TimelineDefinition', function (): void {
 
         $timeline = TimelineDefinition::fromArray($config);
 
-        expect($timeline->toArray())->toBe($config);
+        expect($timeline->toArray())->toBe(['format_version' => 1, ...$config]);
         expect($timeline->getSlotTime(1, 1)->format('Y-m-d H:i'))->toBe('2026-08-01 18:00'); // 19:00 BST = 18:00 UTC
     });
 
@@ -105,6 +105,7 @@ describe('TimelineDefinition', function (): void {
         ]);
 
         expect($timeline->toArray())->toBe([
+            'format_version' => 1,
             'start' => '2026-08-01 19:00:00',
             'timezone' => 'UTC',
             'round_interval' => 'P7D',
@@ -208,7 +209,7 @@ describe('TimelineDefinition', function (): void {
             'resources' => ['Court A', 'Court B'],
         ];
 
-        expect(TimelineDefinition::fromArray($config)->toArray())->toBe($config);
+        expect(TimelineDefinition::fromArray($config)->toArray())->toBe(['format_version' => 1, ...$config]);
     });
 
     it('rejects malformed resources', function (): void {
