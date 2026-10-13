@@ -214,11 +214,12 @@ the same position decides it: the order a Swiss round is paired from and
 who has its bye, the order the survivors of a re-seeded elimination round
 are folded in, the table an engine builds for a stage, and what a
 `RankRangeSelector` returns when it is told to accept an undecided order.
-None of them reads a label, `Participant::getSeed()` or the spelling of an
-ID. The entrant list of an engine is the participant list of its
-`StageState` (the active participants as started, then those withdrawn, in
-the order of their IDs),
-and `StageOutcome` carries it so that a selector reads the order the table
+None of them reads a label or `Participant::getSeed()`, and none reads the
+spelling of an ID to order two entrants that have a position. The entrant
+list of an engine is the participant list of its `StageState`: the active
+participants as started, then those who have withdrawn from a Swiss stage,
+who have no position any more and follow in the order of their IDs.
+`StageOutcome` carries the list so that a selector reads the order the table
 was put in. `Standings::withTiedSetsOrderedBy()` is the one place the rule
 is applied to a table.
 
