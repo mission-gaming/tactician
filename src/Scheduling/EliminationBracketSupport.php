@@ -12,7 +12,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\BracketFold;
 use MissionGaming\Tactician\Stage\PairKey;
-use MissionGaming\Tactician\Stage\TieDecision;
+use MissionGaming\Tactician\Stage\TieResolution;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
@@ -152,7 +152,17 @@ trait EliminationBracketSupport
      * Resolve who advances from the tie between two slots, or null while
      * legs are missing results.
      *
+     * A level tie with no decision is reported with its round beside its
+     * participants: two entrants can meet more than once in a bracket (the
+     * grand final and its reset), so the pair alone does not say which tie.
+     *
+     * The deprecation of the 'tie_winner' metadata key is raised here, the
+     * first time a replay takes an advancer from it and never again in the
+     * same replay: the caller owns the flag and starts it at false for each
+     * call of the engine.
+     *
      * @param array<string, Result> $resultIndex
+     * @param bool $tieWinnerDeprecationRaised Whether this replay has raised the deprecation
      *
      * @throws InvalidConfigurationException When a completed tie is level and carries no
      *                                       usable tie decision (see TieDecision)
@@ -162,7 +172,8 @@ trait EliminationBracketSupport
         int $round,
         Participant $first,
         Participant $second,
-        int $legsPerTie
+        int $legsPerTie,
+        bool &$tieWinnerDeprecationRaised
     ): ?Participant {
         $legResults = [];
         for ($leg = 1; $leg <= $legsPerTie; ++$leg) {
@@ -172,7 +183,26 @@ trait EliminationBracketSupport
             }
         }
 
-        return TieDecision::advancer($legResults, $first, $second, $legsPerTie);
+        try {
+            $resolution = TieResolution::of($legResults, $first, $second, $legsPerTie);
+        } catch (InvalidConfigurationException $exception) {
+            if ($exception->getReason() !== InvalidConfigurationReason::UndecidedTie) {
+                throw $exception;
+            }
+
+            throw new InvalidConfigurationException(
+                $exception->getConfigurationIssue(),
+                ['round' => $round] + $exception->getContext(),
+                reason: InvalidConfigurationReason::UndecidedTie
+            );
+        }
+
+        if ($resolution->readTieWinnerMetadata && !$tieWinnerDeprecationRaised) {
+            $tieWinnerDeprecationRaised = true;
+            TieResolution::raiseTieWinnerDeprecation();
+        }
+
+        return $resolution->advancer;
     }
 
     /**
@@ -209,7 +239,7 @@ trait EliminationBracketSupport
 
             $decided[] = $advancer === null
                 ? $result
-                : new Result($event, $advancer, $result->getScores(), $result->getMetadata(), $result->getAward());
+                : new Result($event, $advancer, $result->getScores(), $result->getMetadata(), $result->getAward(), $result->getDecider());
         }
 
         return $decided;

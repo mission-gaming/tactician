@@ -39,7 +39,7 @@ The work before 0.1.0 was planned in five phases. All five were complete in
 - `StagePlan`: the shape of a stage declared by the algorithm and read by validation, diagnostics and constraints
 - Typed per-algorithm options, constructible from plain data, and `RankingStrategy` with `WinDrawLossRanking`
 - One results-driven interface for the engines (`StageEngineInterface`) with a serializable `StageState`, `RoundPairing` and `StageOutcome`
-- Progression, pools, and brackets as compositions: `ProgressionSelector` with `RankRangeSelector`/`BestOfRankSelector`/`MatchOutcomeSelector`, `CompositionValidator`, `PoolDistributor`, pooled `StageOutcome::combining()`, and two-legged ties decided app-side through `tie_winner` result metadata
+- Progression, pools, and brackets as compositions: `ProgressionSelector` with `RankRangeSelector`/`BestOfRankSelector`/`MatchOutcomeSelector`, `CompositionValidator`, `PoolDistributor`, pooled `StageOutcome::combining()`, and two-legged ties decided app-side and recorded as the decider of a result (`DTO\Decider`; the `tie_winner` result metadata that came first is deprecated)
 
 Design note: [phase-3-algorithm-neutral-core.md](design/phase-3-algorithm-neutral-core.md)
 
@@ -69,7 +69,7 @@ The changelog's `0.2.2` section has the detail and the output changes.
 
 - **Pot draws** (`PotDrawScheduler`, `PotDrawOptions`, `PotDrawPlan`): pairings drawn up front from seeded pots. Experimental
 - **Balanced role assignment** for round robin, opt-in ([role-assignment.md](design/role-assignment.md))
-- **Level single-leg elimination events** recorded with a `tie_winner` decision
+- **Level single-leg elimination events** recorded with a decider (`DTO\Decider`)
 - **Tied sets**: `Standings::getTiedSets()` reports where only the fallback orders a table
 - **Exceptions**: the `TacticianException` marker on every exception the library throws, a reason on every configuration error, and `PinConflictException`
 - **Stage state**: `withResultReplaced()`, and an optional engine fingerprint that makes an engine refuse a state another engine or configuration paired

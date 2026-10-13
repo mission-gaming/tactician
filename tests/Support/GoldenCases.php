@@ -12,6 +12,7 @@ use JsonException;
 use LogicException;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -70,6 +71,8 @@ final class GoldenCases
     public const string WIRE_SCHEDULE = 'wire/schedule.json';
 
     public const string WIRE_STAGE_STATE = 'wire/stage-state.json';
+
+    public const string WIRE_STAGE_STATE_DECIDED_TIE = 'wire/stage-state-decided-tie.json';
 
     private const array SEEDS = [1, 42, 1337];
 
@@ -131,11 +134,15 @@ final class GoldenCases
         // so it pins the brackets without one.
         $cases['single-elimination-third-place.txt'] = self::singleEliminationThirdPlace(...);
         $cases['double-elimination.txt'] = self::doubleElimination(...);
+        // Ties that finish level and are settled by a decider. The files
+        // above record no decider, so they pin the brackets without one.
+        $cases['elimination-decided-ties.txt'] = self::eliminationDecidedTies(...);
         $cases['repack/scenario.txt'] = self::repackScenario(...);
         $cases['repack/round-robin.txt'] = self::repackRoundRobin(...);
         $cases['repack/budget-stops.txt'] = self::repackBudgetStops(...);
         $cases[self::WIRE_SCHEDULE] = static fn(): string => self::wireSchedule() . "\n";
         $cases[self::WIRE_STAGE_STATE] = static fn(): string => self::wireStageState() . "\n";
+        $cases[self::WIRE_STAGE_STATE_DECIDED_TIE] = static fn(): string => self::wireStageStateDecidedTie() . "\n";
 
         foreach (ExampleResults::names() as $example) {
             $cases[self::exampleFixture($example)] = static fn(): string => ExampleResults::text($example);
@@ -511,6 +518,45 @@ final class GoldenCases
     }
 
     /**
+     * Brackets in which every tie finishes level and is settled by the
+     * decider of a result: the brackets of the files above that the
+     * last-named participant wins, with nobody winning an event, and a
+     * two-legged bracket in which each side wins a leg.
+     *
+     * @throws InvalidConfigurationException
+     * @throws JsonException
+     * @throws NoValidPairingException
+     */
+    private static function eliminationDecidedTies(): string
+    {
+        $lastNamed = self::levelLastNamedAdvances(...);
+        $reseeded = new EliminationOptions(reseedEachRound: true);
+        $thirdPlace = new EliminationOptions(thirdPlace: true);
+
+        $sections = [
+            'single n=8, every event level, the last-named advances' => self::bracket(new SingleEliminationEngine(), 8, $lastNamed),
+            'single n=8 reseedEachRound, every event level, the last-named advances' => self::bracket(new SingleEliminationEngine($reseeded), 8, $lastNamed),
+            'single n=8 thirdPlace, every event level, the last-named advances' => self::bracket(new SingleEliminationEngine($thirdPlace), 8, $lastNamed),
+            'double n=8, every event level, the last-named advances' => self::bracket(new DoubleEliminationEngine(), 8, $lastNamed),
+            'single n=5 legsPerTie=2, a leg each, the first-named of leg 1 advances' => self::bracket(
+                new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
+                5,
+                self::legEachFirstNamedAdvances(...)
+            ),
+        ];
+
+        return GoldenText::document([
+            'Elimination brackets whose ties finish level and are settled by a',
+            'decider (DTO\Decider, on the result), driven round by round to completion.',
+            ...self::bracketHeader(),
+            '',
+            'A level single-leg event counts in the standings as a win for the',
+            'participant its decider names; the legs of a two-legged tie count as',
+            'recorded, so its entrants have a win and a loss for every tie.',
+        ], $sections);
+    }
+
+    /**
      * @return list<string>
      */
     private static function bracketHeader(): array
@@ -567,6 +613,34 @@ final class GoldenCases
     private static function lastNamedWins(Event $event): Result
     {
         return new Result($event, $event->getParticipants()[1]);
+    }
+
+    /**
+     * The event finishes level, and its decider names the second-named
+     * participant.
+     */
+    private static function levelLastNamedAdvances(Event $event): Result
+    {
+        return new Result($event, null, [], [], null, new Decider([$event->getParticipants()[1]->getId()]));
+    }
+
+    /**
+     * The first-named participant of each leg wins it, so the tie is level
+     * at a leg each; the decider is on the second leg and names the
+     * participant who was first-named in the first.
+     */
+    private static function legEachFirstNamedAdvances(Event $event): Result
+    {
+        [$first, $second] = $event->getParticipants();
+
+        return new Result(
+            $event,
+            $first,
+            [],
+            [],
+            null,
+            $event->getMetadataValue('tie_leg') === 2 ? new Decider([$second->getId()]) : null
+        );
     }
 
     /**
@@ -833,6 +907,36 @@ final class GoldenCases
         foreach ($pairing->getEvents() as $event) {
             [$first, $second] = $event->getParticipants();
             $results[] = new Result($event, $first, [$first->getId() => 2, $second->getId() => 1]);
+        }
+
+        return $state->withRoundPlayed($pairing, $results)->toJson();
+    }
+
+    /**
+     * StageState::toJson() of the same bracket after its first round, with
+     * the played event level at 1-1 and settled by a decider that carries a
+     * label and a reason: the `decider` key of a result.
+     *
+     * @throws InvalidConfigurationException
+     * @throws JsonException
+     * @throws NoValidPairingException
+     */
+    private static function wireStageStateDecidedTie(): string
+    {
+        $state = StageState::start(self::field(5, true));
+        $pairing = (new SingleEliminationEngine())->pairNextRound($state);
+
+        $results = [];
+        foreach ($pairing->getEvents() as $event) {
+            [$first, $second] = $event->getParticipants();
+            $results[] = new Result(
+                $event,
+                null,
+                [$first->getId() => 1, $second->getId() => 1],
+                [],
+                null,
+                new Decider([$second->getId()], 'drawn by lot', 'Level after the event')
+            );
         }
 
         return $state->withRoundPlayed($pairing, $results)->toJson();

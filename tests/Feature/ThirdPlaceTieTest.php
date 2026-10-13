@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -21,7 +22,6 @@ use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\StageTransition;
-use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Standings\StandingEntry;
 
 // The third-place tie of a single elimination bracket, case by case. The
@@ -470,7 +470,7 @@ describe('the third-place tie of a single elimination bracket', function (): voi
 
         // The decision sends p3 on: third, above p4, whose record is the same
         $decided = $oneLeg->withAdditionalResults([
-            new Result($thirdSecondLeg, $p3, [], [TieDecision::TIE_WINNER_KEY => 'p3']),
+            new Result($thirdSecondLeg, $p3, [], [], null, new Decider(['p3'])),
         ]);
         $outcome = $engine->getOutcome($decided);
         assert($outcome !== null);
@@ -507,7 +507,7 @@ describe('the third-place tie of a single elimination bracket', function (): voi
 
         $decided = $state->withRoundPlayed($last, [
             $finalResult,
-            new Result($thirdPlace, null, ['p4' => 1, 'p3' => 1], [TieDecision::TIE_WINNER_KEY => 'p3']),
+            new Result($thirdPlace, null, ['p4' => 1, 'p3' => 1], [], null, new Decider(['p3'])),
         ]);
         $outcome = $this->engine->getOutcome($decided);
         assert($outcome !== null);
