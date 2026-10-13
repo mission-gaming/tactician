@@ -23,7 +23,8 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * leg strategy, with a randomizer as without (measured for 2 to 30
  * participants and up to six legs):
  *
- * - The balanced role assignment of the default: the running imbalance of
+ * - The balanced roles, which `BalancedRoleAssignment` and the default
+ *   (balanced where possible) start from: the running imbalance of
  *   a single leg never exceeds 1 in a field of even size and 2 in a field
  *   of odd size (the bye shifts one participant's parity), and that of any
  *   number of mirrored legs never exceeds 2: every even-numbered leg
@@ -42,7 +43,10 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * where one exists in the layout, within the bounds of the search); among
  * the roles the shuffled leg strategy draws for later legs; and among all
  * roles of the first leg with `RoundRobinOptions(backtracking: true)`.
- * Where none is found the schedule fails. This constraint counts over all
+ * Where none is found the schedule fails; under the default, which is
+ * balanced where possible, it fails only when the round-parity roles break
+ * the limit as well, and otherwise has those roles and says so
+ * (`RoleAssignment\RoleFallback`). This constraint counts over all
  * legs, so no roles keep a limit below the number of repeated legs in a
  * field of even size.
  *

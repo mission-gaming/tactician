@@ -38,10 +38,13 @@ use Override;
  * which every later leg follows: reversed in the even-numbered legs, as
  * it is in the odd-numbered ones. Its roles are the role assignment's. The
  * scheduler searches them within the rule the role assignment states
- * (the balanced role assignment of the default states one: the first leg
- * stays balanced), and freely with `RoundRobinOptions(backtracking: true)`;
- * under a role assignment that states none, and without backtracking,
- * roles that break a constraint in a later leg fail the schedule.
+ * (the two balanced role assignments state one, the default among them:
+ * the first leg stays balanced), and freely with
+ * `RoundRobinOptions(backtracking: true)`; under a role assignment that
+ * states none, and without backtracking, roles that break a constraint in
+ * a later leg fail the schedule. The default, which is balanced where
+ * possible, goes on from a search that finds nothing to the roles the
+ * generator proposes, and fails only where those fail too.
  *
  * @api
  */
