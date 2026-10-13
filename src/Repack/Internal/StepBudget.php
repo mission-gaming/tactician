@@ -15,7 +15,9 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * spend it all. The second is for the steps after the packing: the last
  * placement step (LeftoverRecolourer) and the search for fewer gap slots
  * (GapSearch), so that they run even when the phases before them spent
- * the first. Steps, not wall clock: behaviour is reproducible.
+ * the first. The third schedule the repacker makes, where the first two
+ * leave something to gain, is made on what the two have left. Steps, not
+ * wall clock: behaviour is reproducible.
  *
  * The budget also records whether it ever stopped a search
  * ({@see self::stoppedASearch()}), which the outcome reports. Both ways a

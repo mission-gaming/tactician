@@ -1248,6 +1248,135 @@ function largestSharedDrops(array $edges, array $need): int
     return $best;
 }
 
+/**
+ * A random request with a few participants in most of the events, small
+ * enough for RepackBruteForce: four to eight participants, one to three
+ * sessions of one to three slots each, a capacity of 2, 3, 4 or unbounded,
+ * six to eleven events of which seven in ten have one of one to three
+ * "hub" participants, and up to four legal pins. A hub has more events
+ * than positions, so which of its events are left out decides what else
+ * fits, which is where the last placement step has to exchange events.
+ *
+ * @return array{0: array<MovableEvent>, 1: array<PinnedEvent>, 2: SessionGrid}
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ * @throws Random\RandomException
+ */
+function hubRepackInstance(int $seed): array
+{
+    $rng = new Randomizer(new Mt19937($seed));
+    $participantCount = $rng->getInt(4, 8);
+    $participants = [];
+    for ($i = 1; $i <= $participantCount; ++$i) {
+        $participants[] = new Participant("p{$i}", "P{$i}");
+    }
+    $sessions = $rng->getInt(1, 3);
+    $slotsBySession = [];
+    for ($session = 0; $session < $sessions; ++$session) {
+        $slotsBySession[$session] = $rng->getInt(1, 3);
+    }
+    $capacity = [2, 3, 4, null][$rng->getInt(0, 3)];
+    $grid = SessionGrid::shapeOnly($sessions, 1, $slotsBySession, $capacity);
+
+    $hubs = $rng->getInt(1, 3);
+    $movable = [];
+    $eventCount = $rng->getInt(6, 11);
+    for ($i = 1; $i <= $eventCount; ++$i) {
+        $a = $rng->getInt(0, 9) < 7 ? $rng->getInt(0, $hubs - 1) : $rng->getInt(0, $participantCount - 1);
+        $b = $rng->getInt(0, $participantCount - 2);
+        if ($b >= $a) {
+            ++$b;
+        }
+        $movable[] = new MovableEvent(sprintf('m%02d', $i), $participants[$a], $participants[$b]);
+    }
+
+    $pinned = [];
+    $pinnedAt = [];
+    $countAt = [];
+    $attempts = $rng->getInt(0, 4);
+    for ($i = 1; $i <= $attempts; ++$i) {
+        $a = $rng->getInt(0, $participantCount - 1);
+        $b = $rng->getInt(0, $participantCount - 2);
+        if ($b >= $a) {
+            ++$b;
+        }
+        $session = $rng->getInt(0, $sessions - 1);
+        $slot = $rng->getInt(0, $slotsBySession[$session] - 1);
+        $position = "{$session}:{$slot}";
+        if ($capacity !== null && ($countAt[$position] ?? 0) >= $capacity) {
+            continue;
+        }
+        if (isset($pinnedAt["{$position}:{$a}"]) || isset($pinnedAt["{$position}:{$b}"])) {
+            continue;
+        }
+        $pinned[] = new PinnedEvent("x{$i}", $participants[$a], $participants[$b], $session, $slot);
+        $pinnedAt["{$position}:{$a}"] = true;
+        $pinnedAt["{$position}:{$b}"] = true;
+        $countAt[$position] = ($countAt[$position] ?? 0) + 1;
+    }
+
+    return [$movable, $pinned, $grid];
+}
+
+/**
+ * The requests of tests/Fixtures/repack/placed-by-0.2.3.json, each with
+ * the number of events release 0.2.3 placed on it.
+ *
+ * They were found by repacking some 11,860 generated requests with 0.2.3
+ * and with the change that made a repack independent of its ids (issue
+ * #49): on these that change, as it first stood or without one of the
+ * moves it then gained, placed fewer events than 0.2.3 had. The counts
+ * were measured with a copy of that release's source, so that this test
+ * needs no code of it. A request is plain data there: the participant
+ * ids, the slots of each session, the capacity of a slot (null for
+ * unbounded), the movable events as [id, participant, participant] and
+ * the pinned ones as [id, participant, participant, session, slot], a
+ * participant being its place in the list of ids.
+ *
+ * @return array<string, array{0: array<MovableEvent>, 1: array<PinnedEvent>, 2: SessionGrid, 3: int}>
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ * @throws JsonException
+ */
+function requestsPlacedByTheLastRelease(): array
+{
+    static $requests = null;
+    if ($requests !== null) {
+        return $requests;
+    }
+
+    /** @var array<string, array{participants: list<string>, slots: list<int>, capacity: int|null, movable: list<array{string, int, int}>, pinned: list<array{string, int, int, int, int}>, placed: int}> $data */
+    $data = json_decode(
+        (string) file_get_contents(__DIR__ . '/../Fixtures/repack/placed-by-0.2.3.json'),
+        true,
+        flags: JSON_THROW_ON_ERROR
+    );
+
+    $requests = [];
+    foreach ($data as $name => $request) {
+        $participants = [];
+        foreach ($request['participants'] as $id) {
+            $participants[] = new Participant($id, "P {$id}");
+        }
+        $movable = [];
+        foreach ($request['movable'] as [$id, $a, $b]) {
+            $movable[] = new MovableEvent($id, $participants[$a], $participants[$b]);
+        }
+        $pinned = [];
+        foreach ($request['pinned'] as [$id, $a, $b, $session, $slot]) {
+            $pinned[] = new PinnedEvent($id, $participants[$a], $participants[$b], $session, $slot);
+        }
+        $requests[$name] = [
+            $movable,
+            $pinned,
+            SessionGrid::shapeOnly(count($request['slots']), 1, $request['slots'], $request['capacity']),
+            $request['placed'],
+        ];
+    }
+
+    return $requests;
+}
+
 describe('Repacking every placeable event', function (): void {
     it('places every event of a complete round robin that fits the grid', function (int $n, string $idFormat): void {
         $request = completeGraphRequest($n, $idFormat);
@@ -1325,6 +1454,48 @@ describe('Repacking every placeable event', function (): void {
             expect($covered[$id] ?? 0)->toBeGreaterThanOrEqual($shortfall);
         }
     })->with(array_keys(smallRepackCorpus()));
+
+    it('places as many events as the best placement there is where a few participants have most of the events', function (int $from): void {
+        // A hundred hub instances to a row. Before the last placement step
+        // could take two events out for one, and move an event an exchange
+        // had brought in, seeds 257, 350 and 792 came out one event short
+        for ($seed = $from; $seed < $from + 100; ++$seed) {
+            [$movable, $pinned, $grid] = hubRepackInstance($seed);
+
+            $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+
+            expect(count($outcome->getAssignments()))
+                ->toBe(RepackBruteForce::maxPlaced($movable, $pinned, $grid), "hub instance {$seed}");
+            assertProperness($outcome, $movable, $pinned);
+            assertNoSlotAvailableIsLiteral($outcome, $movable, $pinned, $grid);
+        }
+    })->with(range(1, 701, 100));
+
+    it('places at least as many events as release 0.2.3 did on the requests an order of events once lost one on', function (string $name): void {
+        [$movable, $pinned, $grid, $placedBefore] = requestsPlacedByTheLastRelease()[$name];
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+
+        expect(count($outcome->getAssignments()))->toBeGreaterThanOrEqual($placedBefore);
+        assertProperness($outcome, $movable, $pinned);
+        assertNoSlotAvailableIsLiteral($outcome, $movable, $pinned, $grid);
+        expect(count($outcome->getAssignments()) + count($outcome->getUnplaced()))->toBe(count($movable));
+
+        // Pins hold capacity: no position holds more than the grid allows
+        $capacity = $grid->getCapacityLimit();
+        if ($capacity !== null) {
+            $perPosition = [];
+            foreach ($pinned as $pin) {
+                $key = "{$pin->getSession()}:{$pin->getSlot()}";
+                $perPosition[$key] = ($perPosition[$key] ?? 0) + 1;
+            }
+            foreach ($outcome->getAssignments() as $assignment) {
+                $key = "{$assignment->getSession()}:{$assignment->getSlot()}";
+                $perPosition[$key] = ($perPosition[$key] ?? 0) + 1;
+            }
+            expect($perPosition === [] ? 0 : max($perPosition))->toBeLessThanOrEqual($capacity);
+        }
+    })->with(array_keys(requestsPlacedByTheLastRelease()));
 
     it('places every event it can when the search for shared drops stops at its node limit', function (): void {
         // Thirteen participants on one session of six slots, no capacity

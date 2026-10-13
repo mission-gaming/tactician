@@ -6,6 +6,32 @@ use MissionGaming\Tactician\Repack\Internal\LeftoverRecolourer;
 use MissionGaming\Tactician\Repack\Internal\LoadPlanner;
 use MissionGaming\Tactician\Repack\Internal\StepBudget;
 
+/**
+ * No participant is twice at one position, counting the pins, which also
+ * says that no event is where one of its participants is pinned.
+ *
+ * @param list<array{int, int}> $edges
+ * @param array<int, array{int, int}> $positions Event index => [session, slot]
+ * @param array<int, array<int, array<int>>> $pinSlots Session => participant => pinned slots
+ */
+function expectProperPositions(array $edges, array $positions, array $pinSlots): void
+{
+    $busy = [];
+    foreach ($pinSlots as $session => $byParticipant) {
+        foreach ($byParticipant as $pid => $slots) {
+            foreach ($slots as $slot) {
+                $busy["{$session}:{$slot}"][$pid] = true;
+            }
+        }
+    }
+    foreach ($positions as $eventIndex => [$session, $slot]) {
+        foreach ($edges[$eventIndex] as $pid) {
+            expect(isset($busy["{$session}:{$slot}"][$pid]))->toBeFalse();
+            $busy["{$session}:{$slot}"][$pid] = true;
+        }
+    }
+}
+
 describe('LeftoverRecolourer', function (): void {
     it('places an event where a position is free for it without spending a step', function (): void {
         $budget = new StepBudget(0);
@@ -120,6 +146,137 @@ describe('LeftoverRecolourer', function (): void {
 
         expect($left)->toBe([0])
             ->and($positions)->toBe([1 => [1, 0], 2 => [0, 0], 3 => [0, 0]]);
+    });
+
+    it('lets a path move an event that an exchange brought in', function (): void {
+        // Participant 0 has four events and three positions (it is pinned
+        // in the second session), so five of the six events is the most.
+        // Events 3 (0 v 4) and 4 (1 v 2) are unplaced, and each of them
+        // collides with two events or a pin wherever it goes but for one
+        // exchange: event 3 for event 2 at the first slot. Event 4 then
+        // needs the last slot, and the events it lifts can only go where
+        // event 3 was just put, so event 3 has to move on. While an
+        // exchanged event could not be moved, four events stayed placed
+        $edges = [[0, 1], [0, 2], [0, 3], [0, 4], [1, 2], [1, 3]];
+        $positions = [0 => [0, 1], 1 => [0, 2], 2 => [0, 0], 5 => [0, 2]];
+        $pinSlots = [0 => [3 => [1], 4 => [1], 2 => [0], 5 => [0]], 1 => [2 => [0], 5 => [0], 1 => [0], 0 => [0]]];
+
+        $left = (new LeftoverRecolourer(new StepBudget(1_000)))->place(
+            $edges,
+            $positions,
+            [3, 4],
+            $pinSlots,
+            [0 => [1 => 1, 0 => 1], 1 => [0 => 2]],
+            [0 => 3, 1 => 1],
+            4
+        );
+
+        expect($left)->toHaveCount(1)
+            ->and($positions)->toHaveCount(5);
+        expectProperPositions($edges, $positions, $pinSlots);
+    });
+
+    it('takes two events out for one when two of the events waiting then fit', function (): void {
+        // Two sessions, of two slots and of one, two events to a slot;
+        // participants 0 and 1 are pinned at the second slot and 0 and 2
+        // at the third. Events 3 (0 v 3) and 4 (1 v 2) are unplaced, and
+        // the first slot is the only one either can play: both events
+        // there are in the way of each. No exchange for one event exists.
+        // Event 3 takes the slot, events 0 (0 v 1) and 1 (2 v 3) leave it,
+        // event 1 goes to the second slot and event 4 beside event 3:
+        // four events placed where there were three
+        $edges = [[0, 1], [2, 3], [1, 3], [0, 3], [1, 2]];
+        $positions = [0 => [0, 0], 1 => [0, 0], 2 => [1, 0]];
+        $pinSlots = [0 => [0 => [1], 1 => [1]], 1 => [0 => [0], 2 => [0]]];
+        $budget = new StepBudget(1_000);
+
+        $left = (new LeftoverRecolourer($budget))->place(
+            $edges,
+            $positions,
+            [3, 4],
+            $pinSlots,
+            [0 => [1 => 1], 1 => [0 => 1]],
+            [0 => 2, 1 => 1],
+            2
+        );
+
+        expect($left)->toBe([0])
+            ->and($positions)->toBe([1 => [0, 1], 2 => [1, 0], 3 => [0, 0], 4 => [0, 0]])
+            ->and($budget->stepsLeft())->toBe(999);
+    });
+
+    it('puts one more event at a position along an augmenting path longer than the exchanges reach', function (): void {
+        // One slot of four events. Events 0 to 2 (2 v 3, 4 v 5, 6 v 7) are
+        // placed and participants 0 and 1 are free. The unplaced events
+        // 0 v 2, 3 v 4, 5 v 6 and 7 v 1 fit together, but only together:
+        // all three placed events have to leave, one more than a chain of
+        // two exchanges takes out, and there is no other slot for a path
+        $edges = [[2, 3], [4, 5], [6, 7], [0, 2], [3, 4], [5, 6], [7, 1]];
+        $positions = [0 => [0, 0], 1 => [0, 0], 2 => [0, 0]];
+        $budget = new StepBudget(1_000);
+
+        $left = (new LeftoverRecolourer($budget))->place($edges, $positions, [3, 4, 5, 6], [], [], [0 => 1], 4);
+
+        expect($left)->toBe([0, 1, 2])
+            ->and($positions)->toBe([3 => [0, 0], 4 => [0, 0], 5 => [0, 0], 6 => [0, 0]])
+            ->and($budget->stoppedASearch())->toBeFalse();
+    });
+
+    it('starts no augmenting path at a position that is full or that the budget cannot pay for', function (): void {
+        // The same request with three events to the slot: it is full, and
+        // nothing changes
+        $positions = [0 => [0, 0], 1 => [0, 0], 2 => [0, 0]];
+
+        $left = (new LeftoverRecolourer(new StepBudget(1_000)))->place(
+            [[2, 3], [4, 5], [6, 7], [0, 2], [3, 4], [5, 6], [7, 1]],
+            $positions,
+            [3, 4, 5, 6],
+            [],
+            [],
+            [0 => 1],
+            3
+        );
+
+        expect($left)->toBe([3, 4, 5, 6])
+            ->and($positions)->toBe([0 => [0, 0], 1 => [0, 0], 2 => [0, 0]]);
+
+        // And with room but no step: each unplaced event has a participant
+        // that already plays the only position, so no alternating path is
+        // started and none asks for a step; the augmenting path asks for
+        // the first and is refused
+        $positions = [0 => [0, 0], 1 => [0, 0], 2 => [0, 0]];
+        $budget = new StepBudget(0);
+
+        $left = (new LeftoverRecolourer($budget))->place(
+            [[2, 3], [4, 5], [6, 7], [0, 2], [3, 4], [5, 6], [7, 1]],
+            $positions,
+            [3, 4, 5, 6],
+            [],
+            [],
+            [0 => 1],
+            4
+        );
+
+        expect($left)->toBe([3, 4, 5, 6])
+            ->and($positions)->toBe([0 => [0, 0], 1 => [0, 0], 2 => [0, 0]])
+            ->and($budget->stoppedASearch())->toBeTrue();
+    });
+
+    it('says how many events no placement of the request can exceed', function (): void {
+        // A triangle on two positions: a position holds one of its events
+        // at most, so two is the ceiling, and the two placed reach it
+        $positions = [0 => [0, 0], 1 => [0, 1]];
+        $recolourer = new LeftoverRecolourer(new StepBudget(1_000));
+
+        $recolourer->place([[0, 1], [1, 2], [0, 2]], $positions, [2], [], [], [0 => 2], 9);
+
+        expect($recolourer->lastCeiling())->toBe(2);
+
+        // Four events of one slot's worth of participants, three placed
+        $positions = [0 => [0, 0], 1 => [0, 0], 2 => [0, 0]];
+        $recolourer->place([[2, 3], [4, 5], [6, 7], [0, 2], [3, 4], [5, 6], [7, 1]], $positions, [3, 4, 5, 6], [], [], [0 => 1], 4);
+
+        expect($recolourer->lastCeiling())->toBe(4);
     });
 
     it('leaves the schedule as it was when no move places one more event', function (): void {

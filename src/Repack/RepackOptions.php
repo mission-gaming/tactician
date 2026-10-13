@@ -22,21 +22,26 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * them (session-load improvement, per-session packing, repair swaps) in
  * elementary search steps — deterministic and reproducible, unlike
  * wall-clock limits. The search of one session may spend a quarter of
- * what is left when it starts. The steps after the packing (the last
- * placement step, which runs only when an event is still unplaced, and
- * the search for fewer gap slots, which runs only when a gap is left)
- * get a budget of their own of the same size, so a repack spends at most
- * twice the budget. When a budget runs out, the repacker reports what is
- * left rather than pretending, and the outcome says so
- * ({@see RepackOutcome::isBudgetExhausted()}).
+ * what is left when it starts, the table it needs first included, which
+ * costs steps only when a session has eight slots or more. The steps after
+ * the packing (the last placement step, which runs only when an event is
+ * still unplaced, and the search for fewer gap slots, which runs only
+ * when a gap is left) get a budget of their own of the same size, so a
+ * repack spends at most twice the budget. Where the schedule that comes
+ * of this places fewer events than could be placed, or has a gap, the
+ * events are planned and packed once more in another order, on what the
+ * two budgets have left and no more. When a budget runs out, the
+ * repacker reports what is left rather than pretending, and the outcome
+ * says so ({@see RepackOutcome::isBudgetExhausted()}).
  *
  * The budget does not bound everything, and a small one does not make a
  * large repack short. Ordering the participants and laying the events
  * out before any session is chosen spend no step, and stop at fixed
  * limits of their own, as do the last placement step and the search for
- * fewer gap slots whatever the budget; and a session of many slots costs
- * work that is not counted in steps. The usage guide ("The Step Budget")
- * has the measured times.
+ * fewer gap slots whatever the budget; and planning a session of sixteen
+ * slots or more costs work that is not counted in steps (it is bounded
+ * instead: a session of more than twenty slots is not planned that way).
+ * The usage guide ("The Step Budget") has the measured times.
  *
  * The weights are bounded so that the objective stays an integer. The
  * repacker scores a move as at most earlyFillWeight x (sessions - 1) +

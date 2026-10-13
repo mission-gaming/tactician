@@ -8,6 +8,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\RepackViolationsException;
 use MissionGaming\Tactician\Repack\Internal\GapSearch;
 use MissionGaming\Tactician\Repack\Internal\LeftoverRecolourer;
+use MissionGaming\Tactician\Repack\Internal\LoadPlan;
 use MissionGaming\Tactician\Repack\Internal\LoadPlanner;
 use MissionGaming\Tactician\Repack\Internal\RepackAuditor;
 use MissionGaming\Tactician\Repack\Internal\RoundColouring;
@@ -40,7 +41,13 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * laid out place more events than the planned schedule, or as many with
  * fewer gap slots, they are returned in its place, and a schedule that
  * still has a gap is searched for a placement of as many events with
- * fewer gap slots. Properness — no participant twice at one position,
+ * fewer gap slots. Where that still places fewer events than the ceiling
+ * no placement can pass, or leaves a gap, the events are planned and
+ * packed once more in the order of their participants, on the steps the
+ * budgets have left, and that third schedule is returned when it places
+ * more events, or as many with fewer gap slots: no single order of the
+ * events is the best one for every request, and the number of events
+ * placed comes first. Properness — no participant twice at one position,
  * pins immovable — is never traded; contiguity is satisfied or reported,
  * never silently relaxed.
  *
@@ -111,7 +118,12 @@ final readonly class ScheduleRepacker
      * gap slots; either is then searched for a placement of as many
      * events with fewer gap slots, when it has a gap. Which event of an
      * over-capacity participant is the one left out can change in that
-     * search, and the reasons are then given again as above.
+     * search, and the reasons are then given again as above. When the
+     * result places fewer events than a bound on what any placement can
+     * hold, or has a gap, a third schedule is planned from the events in
+     * the order of their participants, with the steps the two budgets
+     * have left, and takes its place if it places more events, or as
+     * many with fewer gap slots.
      *
      * @throws RepackViolationsException Only when the options opted into
      *                                   throwOnViolations and the outcome
@@ -273,101 +285,25 @@ final readonly class ScheduleRepacker
             $edges[] = $pairsInOrder[$at];
         }
 
+        // Two budgets: one for the planning and the packing, and one of the
+        // same size for the steps after them, so that a run whose earlier
+        // searches spent the first still gets its last placement step
         $budget = new StepBudget($options->stepBudget);
+        $recolourBudget = new StepBudget($options->stepBudget);
 
-        // Phase A: which session does every event play in?
-        $plan = (new LoadPlanner($options, $budget))->plan(
+        // The planned schedule: sessions by the weights, then slots
+        [$positions, $stillLeft, $dropped, $plan, $ceiling] = $this->planned(
             $edges,
+            $eventIds,
+            $participants,
             $pinSlots,
             $pinCounts,
             $slotCounts,
             $capacityPerSlot,
-            $eventIds,
-            $participants
+            $options,
+            $budget,
+            $recolourBudget
         );
-
-        // Phases B and C: colour each session
-        /** @var array<int, array{int, int}> $positions */
-        $positions = [];
-        $leftovers = [];
-        $packer = new SessionPacker($budget);
-        // The plan lists events in ascending index order, so each session's
-        // events come out in that order too.
-        /** @var array<int, array<int, array{int, int}>> $edgesBySession */
-        $edgesBySession = [];
-        foreach ($plan->sessionByEvent as $eventIndex => $assignedSession) {
-            $edgesBySession[$assignedSession][$eventIndex] = $edges[$eventIndex];
-        }
-        for ($session = 0; $session < $sessionCount; ++$session) {
-            $packed = $packer->pack(
-                $edgesBySession[$session] ?? [],
-                $pinSlots[$session] ?? [],
-                $pinCounts[$session] ?? [],
-                $slotCounts[$session],
-                $capacityPerSlot
-            );
-            foreach ($packed['assignments'] as $eventIndex => $slot) {
-                $positions[$eventIndex] = [$session, $slot];
-            }
-            foreach ($packed['leftovers'] as $eventIndex) {
-                $leftovers[] = $eventIndex;
-            }
-        }
-
-        // Final sweep: any free position anywhere beats declaring an event
-        // unplaced — "no slot available" must be literally true. Planner
-        // rejections with that reason re-enter the sweep alongside packer
-        // leftovers; deliberate over-capacity drops do not, because their
-        // absence is what makes the CapacityExceeded arithmetic true.
-        /** @var array<int, UnplacedEvent> $dropped Event index => its over-capacity drop */
-        $dropped = [];
-        $eventIndexById = array_flip($eventIds);
-        foreach ($plan->unplaced as $planUnplaced) {
-            if ($planUnplaced->getReason() === UnplacedReason::NoSlotAvailable) {
-                $leftovers[] = $eventIndexById[$planUnplaced->getEventId()];
-                continue;
-            }
-            $dropped[$eventIndexById[$planUnplaced->getEventId()]] = $planUnplaced;
-        }
-        sort($leftovers);
-        $stillLeft = [];
-        foreach ($leftovers as $eventIndex) {
-            $position = $this->firstFreePosition(
-                $eventIndex,
-                $edges,
-                $positions,
-                $pinSlots,
-                $pinCounts,
-                $slotCounts,
-                $capacityPerSlot
-            );
-            if ($position === null) {
-                $stillLeft[] = $eventIndex;
-                continue;
-            }
-            $positions[$eventIndex] = $position;
-        }
-
-        // Last resort, reached only when an event is still unplaced: move
-        // placed events along alternating paths to open a position for
-        // it. The over-capacity drops are offered too: a participant can
-        // never hold more positions than it has free, so placing one only
-        // changes which of its events is the one that does not fit. The
-        // step has a budget of its own, of the same size, so that a run
-        // whose earlier searches spent the whole budget still gets one.
-        $recolourBudget = new StepBudget($options->stepBudget);
-        if ($stillLeft !== [] || $dropped !== []) {
-            $stillLeft = (new LeftoverRecolourer($recolourBudget))->place(
-                $edges,
-                $positions,
-                [...$stillLeft, ...array_keys($dropped)],
-                $pinSlots,
-                $pinCounts,
-                $slotCounts,
-                $capacityPerSlot,
-                $plan->leftOutAtLeast
-            );
-        }
 
         // Contiguity comes ahead of the weights the sessions were chosen
         // by. The rounds are a schedule themselves, made with no regard to
@@ -394,6 +330,76 @@ final readonly class ScheduleRepacker
             $slotCounts,
             $capacityPerSlot
         );
+
+        // Both schedules so far come from the events taken round by round.
+        // Where that still leaves something to gain (fewer events placed
+        // than the ceiling no placement can pass, or a gap), the events
+        // are planned once more in the order of their participants, which
+        // drops other events of an over-capacity participant and fills the
+        // sessions another way. It is a third schedule, made on what the
+        // two budgets have left, and it is returned only when it places
+        // more events, or as many with fewer gap slots. The order is the
+        // structural one, so it depends on the ids no more than the rounds
+        $gapSlots = self::gapSlots($positions, $edges, $pinSlots);
+        $byParticipants = array_flip($byRound);
+        ksort($byParticipants);
+        $byParticipants = array_values($byParticipants);
+        if (
+            (($ceiling !== null && count($positions) < $ceiling) || $gapSlots > 0)
+            && $byParticipants !== array_keys($byParticipants)
+        ) {
+            $otherEdges = [];
+            $otherIds = [];
+            foreach ($byParticipants as $eventIndex) {
+                $otherEdges[] = $edges[$eventIndex];
+                $otherIds[] = $eventIds[$eventIndex];
+            }
+            [$otherPositions, $otherLeft, $otherDropped, $otherPlan] = $this->planned(
+                $otherEdges,
+                $otherIds,
+                $participants,
+                $pinSlots,
+                $pinCounts,
+                $slotCounts,
+                $capacityPerSlot,
+                $options,
+                $budget,
+                $recolourBudget
+            );
+
+            // Back to the indexes everything else is written in
+            $inRoundOrder = [];
+            foreach ($otherPositions as $at => $position) {
+                $inRoundOrder[$byParticipants[$at]] = $position;
+            }
+            ksort($inRoundOrder);
+            $otherPositions = $inRoundOrder;
+            $inRoundOrder = [];
+            foreach ($otherDropped as $at => $drop) {
+                $inRoundOrder[$byParticipants[$at]] = $drop;
+            }
+            $otherDropped = $inRoundOrder;
+            $otherLeft = array_map(static fn(int $at): int => $byParticipants[$at], $otherLeft);
+            sort($otherLeft);
+
+            if (count($otherLeft) <= count($stillLeft)) {
+                $otherLeft = (new GapSearch($recolourBudget))->improve(
+                    $edges,
+                    $otherPositions,
+                    $otherLeft,
+                    $pinSlots,
+                    $pinCounts,
+                    $slotCounts,
+                    $capacityPerSlot
+                );
+            }
+            if ([count($otherLeft), self::gapSlots($otherPositions, $edges, $pinSlots)] < [count($stillLeft), $gapSlots]) {
+                $positions = $otherPositions;
+                $stillLeft = $otherLeft;
+                $dropped = $otherDropped;
+                $plan = $otherPlan;
+            }
+        }
 
         $unplaced = $this->label($stillLeft, $dropped, $plan->shortfalls, $edges, $eventIds, $participants);
 
@@ -475,6 +481,140 @@ final readonly class ScheduleRepacker
         }
 
         return $outcome;
+    }
+
+    /**
+     * The planned schedule of the events taken in the order given: the
+     * session of every event by the weights, each session packed, what
+     * that leaves over swept to the first free position, and the last
+     * placement step for what is still unplaced.
+     *
+     * The planner and the packer take the events in index order, so the
+     * order of the list is what this schedule depends on beside the
+     * request itself.
+     *
+     * @param array<int, array{int, int}> $edges Event index => participant index pair
+     * @param array<string> $eventIds Event index => caller event id
+     * @param array<Participant> $participants
+     * @param array<int, array<int, array<int>>> $pinSlots
+     * @param array<int, array<int, int>> $pinCounts
+     * @param array<int, int> $slotCounts
+     * @param StepBudget $budget For the planning and the packing
+     * @param StepBudget $recolourBudget For the last placement step
+     *
+     * @return array{array<int, array{int, int}>, list<int>, array<int, UnplacedEvent>, LoadPlan, int|null}
+     *         The positions by event index, the events with none (ascending), the planner's
+     *         over-capacity drops by event index, the plan, and the ceiling of the last placement
+     *         step (a number of placed events no placement exceeds), or null when every event
+     *         was placed without it
+     */
+    private function planned(
+        array $edges,
+        array $eventIds,
+        array $participants,
+        array $pinSlots,
+        array $pinCounts,
+        array $slotCounts,
+        int $capacityPerSlot,
+        RepackOptions $options,
+        StepBudget $budget,
+        StepBudget $recolourBudget
+    ): array {
+        // Phase A: which session does every event play in?
+        $plan = (new LoadPlanner($options, $budget))->plan(
+            $edges,
+            $pinSlots,
+            $pinCounts,
+            $slotCounts,
+            $capacityPerSlot,
+            $eventIds,
+            $participants
+        );
+
+        // Phases B and C: colour each session
+        /** @var array<int, array{int, int}> $positions */
+        $positions = [];
+        $leftovers = [];
+        $packer = new SessionPacker($budget);
+        // The plan lists events in ascending index order, so each session's
+        // events come out in that order too.
+        /** @var array<int, array<int, array{int, int}>> $edgesBySession */
+        $edgesBySession = [];
+        foreach ($plan->sessionByEvent as $eventIndex => $assignedSession) {
+            $edgesBySession[$assignedSession][$eventIndex] = $edges[$eventIndex];
+        }
+        foreach ($slotCounts as $session => $slotCount) {
+            $packed = $packer->pack(
+                $edgesBySession[$session] ?? [],
+                $pinSlots[$session] ?? [],
+                $pinCounts[$session] ?? [],
+                $slotCount,
+                $capacityPerSlot
+            );
+            foreach ($packed['assignments'] as $eventIndex => $slot) {
+                $positions[$eventIndex] = [$session, $slot];
+            }
+            foreach ($packed['leftovers'] as $eventIndex) {
+                $leftovers[] = $eventIndex;
+            }
+        }
+
+        // Final sweep: any free position anywhere beats declaring an event
+        // unplaced — "no slot available" must be literally true. Planner
+        // rejections with that reason re-enter the sweep alongside packer
+        // leftovers; deliberate over-capacity drops do not, because their
+        // absence is what makes the CapacityExceeded arithmetic true.
+        /** @var array<int, UnplacedEvent> $dropped Event index => its over-capacity drop */
+        $dropped = [];
+        $eventIndexById = array_flip($eventIds);
+        foreach ($plan->unplaced as $planUnplaced) {
+            if ($planUnplaced->getReason() === UnplacedReason::NoSlotAvailable) {
+                $leftovers[] = $eventIndexById[$planUnplaced->getEventId()];
+                continue;
+            }
+            $dropped[$eventIndexById[$planUnplaced->getEventId()]] = $planUnplaced;
+        }
+        sort($leftovers);
+        $stillLeft = [];
+        foreach ($leftovers as $eventIndex) {
+            $position = $this->firstFreePosition(
+                $eventIndex,
+                $edges,
+                $positions,
+                $pinSlots,
+                $pinCounts,
+                $slotCounts,
+                $capacityPerSlot
+            );
+            if ($position === null) {
+                $stillLeft[] = $eventIndex;
+                continue;
+            }
+            $positions[$eventIndex] = $position;
+        }
+
+        // Last resort, reached only when an event is still unplaced: move
+        // placed events along alternating paths to open a position for
+        // it. The over-capacity drops are offered too: a participant can
+        // never hold more positions than it has free, so placing one only
+        // changes which of its events is the one that does not fit.
+        $ceiling = null;
+        if ($stillLeft !== [] || $dropped !== []) {
+            $recolourer = new LeftoverRecolourer($recolourBudget);
+            $stillLeft = $recolourer->place(
+                $edges,
+                $positions,
+                [...$stillLeft, ...array_keys($dropped)],
+                $pinSlots,
+                $pinCounts,
+                $slotCounts,
+                $capacityPerSlot,
+                $plan->leftOutAtLeast
+            );
+            $ceiling = $recolourer->lastCeiling();
+        }
+
+        return [$positions, $stillLeft, $dropped, $plan, $ceiling];
     }
 
     /**
