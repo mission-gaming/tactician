@@ -1337,18 +1337,16 @@ function hubRepackInstance(int $seed): array
  * the pinned ones as [id, participant, participant, session, slot], a
  * participant being its place in the list of ids.
  *
- * @return array<string, array{0: array<MovableEvent>, 1: array<PinnedEvent>, 2: SessionGrid, 3: int}>
+ * The file is read again for every request and nothing is kept: the
+ * requests are large, and a test process that held them all to the end
+ * of the suite would need the memory for it.
  *
- * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ * @return array<string, array{participants: list<string>, slots: list<int>, capacity: int|null, movable: list<array{string, int, int}>, pinned: list<array{string, int, int, int, int}>, placed: int}>
+ *
  * @throws JsonException
  */
 function requestsPlacedByTheLastRelease(): array
 {
-    static $requests = null;
-    if ($requests !== null) {
-        return $requests;
-    }
-
     /** @var array<string, array{participants: list<string>, slots: list<int>, capacity: int|null, movable: list<array{string, int, int}>, pinned: list<array{string, int, int, int, int}>, placed: int}> $data */
     $data = json_decode(
         (string) file_get_contents(__DIR__ . '/../Fixtures/repack/placed-by-0.2.3.json'),
@@ -1356,29 +1354,41 @@ function requestsPlacedByTheLastRelease(): array
         flags: JSON_THROW_ON_ERROR
     );
 
-    $requests = [];
-    foreach ($data as $name => $request) {
-        $participants = [];
-        foreach ($request['participants'] as $id) {
-            $participants[] = new Participant($id, "P {$id}");
-        }
-        $movable = [];
-        foreach ($request['movable'] as [$id, $a, $b]) {
-            $movable[] = new MovableEvent($id, $participants[$a], $participants[$b]);
-        }
-        $pinned = [];
-        foreach ($request['pinned'] as [$id, $a, $b, $session, $slot]) {
-            $pinned[] = new PinnedEvent($id, $participants[$a], $participants[$b], $session, $slot);
-        }
-        $requests[$name] = [
-            $movable,
-            $pinned,
-            SessionGrid::shapeOnly(count($request['slots']), 1, $request['slots'], $request['capacity']),
-            $request['placed'],
-        ];
+    return $data;
+}
+
+/**
+ * One request of that fixture as the objects a repack takes, with the
+ * number of events release 0.2.3 placed on it.
+ *
+ * @return array{0: array<MovableEvent>, 1: array<PinnedEvent>, 2: SessionGrid, 3: int}
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ * @throws JsonException
+ */
+function requestPlacedByTheLastRelease(string $name): array
+{
+    $request = requestsPlacedByTheLastRelease()[$name];
+
+    $participants = [];
+    foreach ($request['participants'] as $id) {
+        $participants[] = new Participant($id, "P {$id}");
+    }
+    $movable = [];
+    foreach ($request['movable'] as [$id, $a, $b]) {
+        $movable[] = new MovableEvent($id, $participants[$a], $participants[$b]);
+    }
+    $pinned = [];
+    foreach ($request['pinned'] as [$id, $a, $b, $session, $slot]) {
+        $pinned[] = new PinnedEvent($id, $participants[$a], $participants[$b], $session, $slot);
     }
 
-    return $requests;
+    return [
+        $movable,
+        $pinned,
+        SessionGrid::shapeOnly(count($request['slots']), 1, $request['slots'], $request['capacity']),
+        $request['placed'],
+    ];
 }
 
 describe('Repacking every placeable event', function (): void {
@@ -1460,9 +1470,11 @@ describe('Repacking every placeable event', function (): void {
     })->with(array_keys(smallRepackCorpus()));
 
     it('places as many events as the best placement there is where a few participants have most of the events', function (int $from): void {
-        // A hundred hub instances to a row. Before the last placement step
-        // could take two events out for one, and move an event an exchange
-        // had brought in, seeds 257, 350 and 792 came out one event short
+        // A hundred hub instances to a row. Three seeds came out one event
+        // short before: 350 while the last placement step could not take
+        // two events out for one, 257 while a path could not move an event
+        // an exchange had brought in, and 792 while there was no third
+        // schedule from another order of the events
         for ($seed = $from; $seed < $from + 100; ++$seed) {
             [$movable, $pinned, $grid] = hubRepackInstance($seed);
 
@@ -1476,7 +1488,7 @@ describe('Repacking every placeable event', function (): void {
     })->with(range(1, 701, 100));
 
     it('places at least as many events as release 0.2.3 did on the requests an order of events once lost one on', function (string $name): void {
-        [$movable, $pinned, $grid, $placedBefore] = requestsPlacedByTheLastRelease()[$name];
+        [$movable, $pinned, $grid, $placedBefore] = requestPlacedByTheLastRelease($name);
 
         $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
 
