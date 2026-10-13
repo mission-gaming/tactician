@@ -17,6 +17,11 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * generation (via generateEventForLeg()). It never owns schedule shape —
  * rounds and event counts are RoundRobinPlan's job.
  *
+ * A strategy also says what its role decision is worth when a constraint
+ * rejects the event (LegPlanContribution::$rolesArePreferences): a rule,
+ * which the scheduler never changes, or a preference, which it tries
+ * first and may reverse.
+ *
  * @api
  */
 interface LegStrategyInterface
@@ -48,9 +53,24 @@ interface LegStrategyInterface
      * participants in the given round; only their order is the strategy's
      * to choose. The scheduler then puts the event to the constraints.
      *
+     * How often it is asked depends on what the strategy says of its
+     * roles. A strategy of preferences is asked once for each event of
+     * each layout the scheduler tries, in the order of the events, and not
+     * again while the roles of that layout are searched: the event it
+     * returned is the role tried first, and the scheduler builds the
+     * reverse itself, with the round and the metadata of the event
+     * returned. A strategy of rules is asked once for each event without
+     * backtracking; with backtracking it is asked again whenever the
+     * search goes back past the event and comes forward to it, with the
+     * pairing in the roles its first-leg event then has. Every rotated
+     * participant order, and every first leg a backtracking search finds,
+     * is a layout of its own and asks again. A strategy that keeps state
+     * between calls therefore gets what its own bookkeeping makes of that.
+     *
      * Returning null creates no event for the pairing. A complete round
      * robin needs every pairing in every leg, so the leg is then short and
-     * generation fails with an `IncompleteScheduleException`.
+     * generation fails with an `IncompleteScheduleException`, without a
+     * search for a first leg the strategy would return one for.
      *
      * @param array<Participant> $participants The two participants of the pairing, the first-named
      *                                         at index 0, in the roles the leg has before the

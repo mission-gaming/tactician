@@ -33,6 +33,15 @@ use Override;
  * shuffles the participant order for the first leg only, so its later legs
  * are not the first leg reversed pairing by pairing.
  *
+ * The roles are a rule: an event of a later leg in the other role would
+ * not be mirrored, so the scheduler never reverses one to satisfy a
+ * constraint. What a constraint on roles can change is the first leg,
+ * which every later leg follows: reversed in the even-numbered legs, as
+ * it is in the odd-numbered ones. Its roles are the role assignment's, and
+ * the scheduler searches them only with
+ * `RoundRobinOptions(backtracking: true)`; without it, roles that break a
+ * constraint in a later leg fail the schedule.
+ *
  * @api
  */
 readonly class MirroredLegStrategy implements LegStrategyInterface
