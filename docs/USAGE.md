@@ -1298,6 +1298,19 @@ How a tiebreaker of this kind is computed:
   named after its measure, so one measure has one place: a calculator
   whose chain holds a tiebreaker of this kind and has one name twice is
   refused when it is built (`InvalidInputException`).
+- **Several of them are not one small table.** Each tiebreaker of this
+  kind is asked about the participants level when its own turn comes, so
+  the second of two is computed over those the first left level, and not
+  over the set the first was computed over. Take three participants level
+  on points, of whom two are level on the points they took from each other
+  and the third is below them: a score difference between the tied, named
+  next, is that of the one event between the two, and what either did
+  against the third is not in it. A rule that ranks everyone level on
+  points by one small table of the events among all of them (its points,
+  then its score difference, then its scores-for) gives another order
+  there, and the library has no tiebreaker for it; with two participants
+  level, or a set the first measure leaves whole or separates completely,
+  the two rules agree.
 - **The same whatever the order of the input.** The sets are read from the
   figures, so the values do not depend on the order of the participants or
   of the results.

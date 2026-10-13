@@ -303,6 +303,46 @@ describe('a tied set that a measure splits into subsets', function (): void {
     });
 });
 
+// Several tiebreakers of this kind in a row narrow the set step by step.
+// They are not one small table of everyone level on the ranking value: a
+// rule that takes points, score difference and scores-for from the events
+// among all three would put A above B here, on +5 against +1.
+describe('three participants of whom the first measure separates one', function (): void {
+    it('computes the next measure over the two left level, without their events against the third', function (): void {
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $c = new Participant('c', 'C');
+        $d = new Participant('d', 'D');
+        $e = new Participant('e', 'E');
+        $f = new Participant('f', 'F');
+
+        // A, B and C finish on 4. Among the three: A 0-0 B, A 5-0 C, B 1-0 C.
+        // C has its 4 from D and E, and A also lost 0-9 to F.
+        $results = [
+            tiedResult($a, $b, 0, 0),
+            tiedResult($a, $c, 5, 0),
+            tiedResult($b, $c, 1, 0),
+            tiedResult($c, $d, 1, 0),
+            tiedResult($c, $e, 0, 0),
+            tiedResult($f, $a, 9, 0),
+        ];
+
+        $table = (new StandingsCalculator(tiebreakers: [
+            new BetweenTiedParticipants(new RankingValueTiebreaker()),
+            new BetweenTiedParticipants(new ScoreDifferenceTiebreaker()),
+            new ScoreDifferenceTiebreaker(),
+        ]))->calculate([$a, $b, $c, $d, $e, $f], $results);
+
+        $ids = array_map(static fn($entry): string => $entry->getParticipant()->getId(), $table->getEntries());
+
+        expect(array_slice(tiedValues($table, 'between-tied:ranking-value'), 0, 3, true))->toBe(['b' => 4.0, 'a' => 4.0, 'c' => 0.0])
+            // The one event between A and B was level; A's 5-0 over C is not read
+            ->and(array_slice(tiedValues($table, 'between-tied:score-difference'), 0, 3, true))->toBe(['b' => 0.0, 'a' => 0.0, 'c' => 0.0])
+            // So the score difference of the whole table orders them: +1 and -4
+            ->and(array_slice($ids, 0, 3))->toBe(['b', 'a', 'c']);
+    });
+});
+
 // A value is kept on an entry, and compared, under the name of its
 // tiebreaker. A tiebreaker between the tied participants has another value
 // at every place in a chain, so two places under one name would keep the

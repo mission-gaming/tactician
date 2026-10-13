@@ -31,7 +31,11 @@ use Override;
  * the participants still level when its turn comes: three participants
  * level on the ranking value who each beat one of the others are level on
  * the ranking value they took from each other too, and a score difference
- * named after it is then that of the three events among them.
+ * named after it is then that of the three events among them. Where the
+ * first measure separates one of the three, the next is computed over the
+ * two it left level, from the one event between them: several of these in
+ * a row narrow the set step by step and are not one small table of
+ * everyone level on the ranking value.
  *
  * Two participants who have not met have no events between them: every
  * measure gives each of them what it gives for no result (0.0 for the four

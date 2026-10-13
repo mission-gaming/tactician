@@ -67,6 +67,22 @@ calculator that has one.
   first written (reading the whole table) is handed less than it was: the
   results and the entries of a tied set. The marker was added in the same
   unreleased version, so no release shipped the earlier contract.
+- Several tiebreakers of this kind in a row are not one small table of the
+  participants level on the ranking value. The second is computed over the
+  participants the first left level, so where the first separates some of a
+  set of three or more, the second does not read the events against the
+  ones it separated. Many written rules do: they rank everyone level on
+  points by the points, then the score difference, then the scores-for of
+  the events among all of them, and only then look elsewhere. Three
+  participants on 4 points, A 0-0 B, A 5-0 C and B 1-0 C: one small table
+  puts A above B on score difference (+5 against +1); here A and B are
+  level on the points they took from each other, the score difference
+  between the two of them is 0 for both, and the next tiebreaker of the
+  chain decides. The two rules agree for a set of two, and for a set the
+  first measure leaves whole or separates completely. Giving a run of such
+  tiebreakers one tied set (the participants level when the first of the
+  run is asked) would express the small table; it was not chosen here, and
+  `docs/ROADMAP.md` lists the difference as a known limitation.
 - A participant level with nobody is a tied set of one, and gets the value
   its measure gives for no result. The value is shown on the entry and
   orders nothing.
