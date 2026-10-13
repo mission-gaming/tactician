@@ -129,6 +129,51 @@ describe('a participant in two events of one slot', function (): void {
             ->toBe(InvalidConfigurationReason::ParticipantDoubleBooked);
     });
 
+    // assignRound() applies the assigner's rules too, and the round is
+    // refused before they are asked, as in assign()
+    it('is refused for the same reason by assignRound() when a minimum rest rule is configured', function (): void {
+        $pairing = new RoundPairing(1, null, [
+            new Event([$this->alice, $this->bob], new Round(1)),
+            new Event([$this->alice, $this->carol], new Round(1)),
+        ]);
+        $assigner = new TimelineAssigner([new MinimumRestRule(new DateInterval('PT1H'))]);
+
+        expect(doubleBookingError(fn() => $assigner->assignRound($pairing, twoPitchTimeline()))->getReason())
+            ->toBe(InvalidConfigurationReason::ParticipantDoubleBooked);
+    });
+
+    // The check is of who is in an event, not of how many are: an event of
+    // three is read like any other
+    it('is refused in events of more than two participants', function (): void {
+        $schedule = new Schedule([
+            new Event([$this->alice, $this->bob, $this->carol], new Round(1)),
+            new Event([$this->dave, new Participant('e', 'Erin'), $this->alice], new Round(1)),
+        ]);
+
+        $exception = doubleBookingError(fn() => (new TimelineAssigner())->assign($schedule, twoPitchTimeline()));
+
+        expect($exception->getReason())->toBe(InvalidConfigurationReason::ParticipantDoubleBooked)
+            ->and($exception->getContext()['double_bookings'])->toBe([
+                ['participant' => 'a', 'kickoff' => '2026-08-01T18:00:00+00:00', 'events' => ['a vs b vs c', 'd vs e vs a']],
+            ]);
+    });
+
+    it('is reported once for a participant in three events at one instant, with the first two', function (): void {
+        $schedule = new Schedule([
+            new Event([$this->alice, $this->bob], new Round(1)),
+            new Event([$this->alice, $this->carol], new Round(1)),
+            new Event([$this->alice, $this->dave], new Round(1)),
+        ]);
+        $threePitches = new TimelineDefinition(
+            new DateTimeImmutable('2026-08-01 18:00:00', new DateTimeZone('UTC')),
+            new DateInterval('P7D'),
+            resources: ['Pitch 1', 'Pitch 2', 'Pitch 3']
+        );
+
+        expect(doubleBookingError(fn() => (new TimelineAssigner())->assign($schedule, $threePitches))->getContext()['double_bookings'])
+            ->toBe([['participant' => 'a', 'kickoff' => '2026-08-01T18:00:00+00:00', 'events' => ['a vs b', 'a vs c']]]);
+    });
+
     it('is matched by ID, not by object', function (): void {
         $schedule = new Schedule([
             new Event([$this->alice, $this->bob], new Round(1)),
@@ -158,6 +203,19 @@ describe('a participant in two events of one round at different times', function
             fn($scheduledEvent): string => $scheduledEvent->getKickoff()->format('H:i'),
             $scheduled->getScheduledEvents()
         ))->toBe(['18:00', '18:00', '20:00']);
+    });
+});
+
+describe('a participant listed twice in one event', function (): void {
+    // One event is one place: the participant is not in two events
+    it('is not a double booking', function (): void {
+        $alice = new Participant('a', 'Alice');
+        $schedule = new Schedule([
+            new Event([$alice, $alice], new Round(1)),
+            new Event([new Participant('b', 'Bob'), new Participant('c', 'Carol')], new Round(1)),
+        ]);
+
+        expect((new TimelineAssigner())->assign($schedule, twoPitchTimeline())->getScheduledEvents())->toHaveCount(2);
     });
 });
 
