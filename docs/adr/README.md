@@ -15,6 +15,7 @@ there is not repeated here.
 | [0003](0003-multi-participant-events-are-a-2-0-goal.md) | Multi-participant events are a goal for 2.0 |
 | [0004](0004-position-decides-where-results-do-not.md) | Position decides where results do not |
 | [0005](0005-serialized-forms-carry-a-format-version.md) | Serialized forms carry a format version |
+| [0007](0007-recorded-rounds-are-read-not-derived.md) | Recorded rounds are read, not derived |
 
 ## Adding a record
 
