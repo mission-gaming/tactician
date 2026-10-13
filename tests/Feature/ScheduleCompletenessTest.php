@@ -11,6 +11,8 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
+use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
@@ -19,6 +21,7 @@ use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Tests\Support\AwkwardIds;
@@ -534,6 +537,163 @@ it('alternates the legs after the first of a mirrored schedule from a scheduler 
     }
 })
     ->with([[3], [4], [5], [6]])
+    ->with([['round_parity'], ['balanced']]);
+
+/**
+ * The leg strategy the 0.3.0 changelog gives to keep the roles of 0.2.x:
+ * every leg after the first reversed.
+ */
+function everyLaterLegReversed(): LegStrategyInterface
+{
+    return new class implements LegStrategyInterface {
+        #[Override]
+        public function planLegs(array $participants, int $legs, ConstraintSet $constraints): LegPlanContribution
+        {
+            return new LegPlanContribution(rolesMirrorAcrossLegs: true, requiresRandomization: false);
+        }
+
+        #[Override]
+        public function generateEventForLeg(array $participants, int $leg, int $round, SchedulingContext $context): Event
+        {
+            return new Event($leg === 1 ? $participants : array_reverse($participants), new Round($round));
+        }
+    };
+}
+
+/**
+ * The events of the given rounds as the changelog prints them: "R7: 1-4 2-3".
+ *
+ * @param list<int> $rounds
+ * @return list<string>
+ */
+function mirroredRoundsAsPrinted(Schedule $schedule, array $rounds): array
+{
+    $lines = [];
+    foreach ($schedule as $event) {
+        $round = $event->getRound()?->getNumber() ?? 0;
+        if (in_array($round, $rounds, true)) {
+            $ids = array_map(static fn(Participant $participant): string => substr($participant->getId(), 1), $event->getParticipants());
+            $lines[$round] = ($lines[$round] ?? "R{$round}:") . ' ' . implode('-', $ids);
+        }
+    }
+
+    return array_values($lines);
+}
+
+// What the 0.3.0 changelog entry for mirrored legs tells a reader to expect.
+// The changelog is not one of the documents whose snippets the suite runs,
+// so its table and its migration note are held here:
+//
+// - the third leg of four participants, before and after;
+// - a leg strategy of the caller's own that reverses every leg after the
+//   first gives the roles of 0.2.x (the "before" column, and the splits of
+//   1:2 and 1:3);
+// - from a scheduler without a randomizer no role limit that held is known
+//   to be refused now, and from one with a randomizer one is.
+it('gives the third leg of four participants as the 0.3.0 changelog prints it, before and after', function (): void {
+    $participants = completenessParticipants(4);
+    $schedule = static fn(LegStrategyInterface $strategy, int $legs): Schedule => (new RoundRobinScheduler())
+        ->schedule($participants, new RoundRobinOptions(legs: $legs, strategy: $strategy));
+
+    $after = $schedule(new MirroredLegStrategy(), 3);
+    $before = $schedule(everyLaterLegReversed(), 3);
+
+    expect(mirroredRoundsAsPrinted($after, [7, 8, 9]))->toBe(['R7: 1-4 2-3', 'R8: 2-1 4-3', 'R9: 1-3 4-2'])
+        ->and(mirroredRoundsAsPrinted($before, [7, 8, 9]))->toBe(['R7: 4-1 3-2', 'R8: 1-2 3-4', 'R9: 3-1 2-4'])
+        // "rounds 1 to 6, the first two legs, are the same in both"
+        ->and(mirroredRoundsAsPrinted($before, [1, 2, 3, 4, 5, 6]))->toBe(mirroredRoundsAsPrinted($after, [1, 2, 3, 4, 5, 6]));
+
+    // "The same field over four legs had one participant first-named in nine
+    // events in a row and ended 6 apart; it now repeats a role three times
+    // at most and ends level"
+    expect(RoleCounts::worstStreak($schedule(everyLaterLegReversed(), 4)))->toBe(9)
+        ->and(RoleCounts::worstEndImbalance($schedule(everyLaterLegReversed(), 4)))->toBe(6)
+        ->and(RoleCounts::worstStreak($schedule(new MirroredLegStrategy(), 4)))->toBe(3)
+        ->and(RoleCounts::worstEndImbalance($schedule(new MirroredLegStrategy(), 4)))->toBe(0);
+
+    // The caller's own strategy splits every pair 1:2 and 1:3, as 0.2.x did
+    expect(array_values(array_unique(RoleCounts::pairingSplits($before))))->toBe([1])
+        ->and(array_values(array_unique(RoleCounts::pairingSplits($schedule(everyLaterLegReversed(), 4)))))->toBe([2]);
+});
+
+// The alternation can refuse a role limit that the roles of 0.2.x satisfied,
+// and the changelog says where: a scheduler with a randomizer. Its second leg
+// is not its first reversed, so where legs 1 and 2 meet is a matter of the
+// seed. Where legs 2 and 3 meet is not: they are laid out from the same
+// order, so 0.2.x repeated leg 2 there and a third leg now meets the second
+// as two mirrored legs of a scheduler without a randomizer meet. In a field
+// of five that is a run of four in one role (the figure pinned in
+// DefaultRoleAssignmentTest), so a limit of 3 is refused whatever the seed.
+//
+// This records what the roles reach, like the rows for repeated legs under
+// "Documented values": it is the cost of the change, not a promise to keep.
+it('refuses over three mirrored legs from a scheduler that shuffles the field a streak limit that the roles of 0.2.x satisfied', function (
+    int $seed
+): void {
+    $participants = completenessParticipants(5);
+    $limit = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(3))->build();
+    $generate = static fn(LegStrategyInterface $strategy, int $legs): Schedule => (new RoundRobinScheduler(
+        $limit,
+        new Randomizer(new Mt19937($seed))
+    ))->schedule($participants, new RoundRobinOptions(legs: $legs, strategy: $strategy));
+
+    // Two legs are what they were, and complete
+    expect($generate(new MirroredLegStrategy(), 2)->toArray())->toBe($generate(everyLaterLegReversed(), 2)->toArray());
+
+    expect(RoundRobinAudit::faults($generate(everyLaterLegReversed(), 3), $participants, 3))->toBe([]);
+    expect(fn() => $generate(new MirroredLegStrategy(), 3))->toThrow(IncompleteScheduleException::class);
+})->with([[1], [2], [3], [4], [5]]);
+
+// Without a randomizer nothing of the kind is known, and for the two role
+// constraints there is a reason: every boundary between two alternating legs
+// is the boundary between legs 1 and 2 or that one with the roles exchanged,
+// which 0.2.x had as well, and its other boundary (a leg repeated) is gone.
+// A limit that 0.2.x satisfied over three legs or more is therefore still
+// satisfied. Held here for each constraint at every limit from 1 to 5.
+it('completes with alternating mirrored legs every role limit that completed with the roles of 0.2.x, without a randomizer', function (
+    int $legs,
+    string $roleAssignmentName
+): void {
+    $completedBefore = 0;
+
+    for ($size = 2; $size <= 8; ++$size) {
+        $participants = completenessParticipants($size);
+
+        foreach (['consecutive roles', 'role balance'] as $constraintName) {
+            for ($limit = 1; $limit <= 5; ++$limit) {
+                $completes = static function (LegStrategyInterface $strategy) use ($participants, $constraintName, $limit, $legs, $roleAssignmentName): bool {
+                    $constraints = ConstraintSet::create()->add($constraintName === 'role balance'
+                        ? RoleBalanceConstraint::homeAway($limit)
+                        : ConsecutiveRoleConstraint::homeAway($limit))->build();
+
+                    try {
+                        (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(
+                            legs: $legs,
+                            strategy: $strategy,
+                            roleAssignment: completenessRoleAssignment($roleAssignmentName)
+                        ));
+                    } catch (IncompleteScheduleException) {
+                        return false;
+                    }
+
+                    return true;
+                };
+
+                if (!$completes(everyLaterLegReversed())) {
+                    continue;
+                }
+
+                ++$completedBefore;
+                expect($completes(new MirroredLegStrategy()))
+                    ->toBeTrue("{$constraintName} at {$limit}, {$legs} legs, {$size} participants");
+            }
+        }
+    }
+
+    // The premise: there were configurations to compare
+    expect($completedBefore)->toBeGreaterThan(10);
+})
+    ->with([[3], [4]])
     ->with([['round_parity'], ['balanced']]);
 
 // The backtracking search finds the first leg and the scheduler derives the

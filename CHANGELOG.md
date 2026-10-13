@@ -61,15 +61,31 @@ heading **Output change (fix)**.
   - Code that read "leg 2 and later" as "roles reversed": the rule is now
     "even-numbered legs".
   - A `RoleBalanceConstraint` or `ConsecutiveRoleConstraint` on such a
-    schedule sees the new roles. A limit that two mirrored legs satisfy is
-    now satisfied by any number of them, so a configuration that failed with
-    an `IncompleteScheduleException` at four mirrored legs (a role balance
-    limit of 3 in a field of even size, for example) can now succeed. One
-    that relied on the old roles of a third leg can fail where it succeeded,
-    although no case of that is known.
+    schedule sees the new roles. What that does depends on the scheduler:
+    - **Without a `Randomizer`**, a limit that two mirrored legs satisfy is
+      now satisfied by any number of them, so a configuration that failed
+      with an `IncompleteScheduleException` at four mirrored legs (a role
+      balance limit of 3 in a field of even size, for example) can now
+      succeed. None is known that succeeded and now fails: the tests compare
+      the old roles with the new for both constraints at every limit from 1
+      to 5, in fields of 2 to 8, over three and four legs and with either
+      role assignment.
+    - **With a `Randomizer`**, a configuration can also fail where it
+      succeeded. The scheduler lays the second and third legs out from the
+      same order, so the third leg used to repeat the second and now meets
+      it as two mirrored legs of a scheduler without a `Randomizer` meet,
+      and a role can repeat more often there. Five participants over three
+      legs with `ConsecutiveRoleConstraint::homeAway(3)` and the default
+      roles completed in 0.2.x and now throw an
+      `IncompleteScheduleException`, for every seed tried. Generate such a
+      configuration again before relying on it: it fails loudly if the
+      limit no longer holds.
   - To keep the old roles, pass a leg strategy of your own that reverses
-    every leg after the first: `generateEventForLeg()` of
-    `LegStrategyInterface` is the whole of it.
+    every leg after the first. `LegStrategyInterface` has two methods:
+    `generateEventForLeg()` returns the pairing as given for leg 1 and
+    reversed for every other leg, and `planLegs()` states what
+    `MirroredLegStrategy` states. The tests hold such a strategy to the
+    "before" column above.
   - A leg strategy of your own that states `rolesMirrorAcrossLegs: true` is
     not affected. The flag is documented as "reverses the roles in the
     even-numbered legs" from this release; the library carries it and acts
