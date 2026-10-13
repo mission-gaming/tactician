@@ -123,10 +123,9 @@ settings table can hold them. One thing to know when you do that:
 `EliminationOptions`, `RepackOptions`, `SessionGrid` and
 `TimelineDefinition` ignores one. There a misspelt key (`'legz' => 2`)
 gives the default silently, so check the keys in your own configuration
-code. And `'strategy' => 'shuffled'` in plain data builds a
-`ShuffledLegStrategy` with no seed, so that schedule is not repeatable;
-construct the strategy with a seeded `Randomizer` in code when it must
-be.
+code. And `'strategy' => 'shuffled'` in plain data needs a
+`'strategy_seed'` beside it, an integer: the roles it draws are then the
+same on every call, and `fromArray()` refuses the strategy without one.
 
 ### The output copied into entities
 

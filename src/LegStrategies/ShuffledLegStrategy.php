@@ -7,9 +7,13 @@ namespace MissionGaming\Tactician\LegStrategies;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use Override;
+use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
+use stdClass;
 
 /**
  * Strategy that shuffles participant roles for each leg.
@@ -23,25 +27,96 @@ use Random\Randomizer;
  * not drawn again when a constraint rejects the event, so a role
  * constraint can fail a schedule that other draws would have completed.
  *
+ * The draws need a source, and the strategy is given exactly one of two:
+ *
+ * - a seed, an integer. Every call of planLegs() then starts the draws
+ *   again from a new `Random\Randomizer` on the `Xoshiro256StarStar`
+ *   engine, seeded with that integer; the engine is part of the output for
+ *   a seed. The scheduler calls planLegs() once at the start of every
+ *   schedule() call, so the same seed gives the same roles for the same
+ *   input on every call and in every process, and the seed is plain data,
+ *   which RoundRobinOptions reads and writes as `strategy_seed`. The roles
+ *   are those the strategy would give once, were it handed
+ *   `new Randomizer(new Xoshiro256StarStar($seed))`;
+ * - a `Random\Randomizer`, which the strategy holds and draws from on
+ *   every call, and never starts again. The roles then repeat only from a
+ *   randomizer seeded the same and asked the same calls in the same order,
+ *   so one strategy used for two schedules gives two different sets of
+ *   roles.
+ *
+ * Either way a draw depends on the draws before it and on nothing about
+ * the participants: not their IDs, and not their seeds.
+ *
+ * The restart of a seed happens in planLegs() and nowhere else. A class
+ * that extends this one and overrides planLegs() calls the parent's, and a
+ * strategy that wraps this one passes planLegs() on to it; otherwise the
+ * draws of a seed go on from one schedule() call to the next, and the
+ * second schedule is not the first. A clone of a strategy built from a
+ * seed has draws of its own, which start at the seed: neither the clone
+ * nor the original moves the other on or back. A clone of a strategy that
+ * holds a randomizer holds the same randomizer object.
+ *
+ * There is no third way: the strategy never makes an unseeded randomizer
+ * of its own. A caller who wants roles that differ from run to run passes
+ * `new Randomizer()` and has said so.
+ *
  * @api
  */
 readonly class ShuffledLegStrategy implements LegStrategyInterface
 {
     /**
-     * @param Randomizer|null $randomizer The source of the draws. With a seeded one the same
-     *                                    calls in the same order give the same roles. With
-     *                                    none, every draw uses a new unseeded randomizer and
-     *                                    the schedule is not reproducible: this is the one
-     *                                    place the library does that
+     * Holds the randomizer of the current run of draws from the seed, as
+     * its `randomizer` property; the property is null until the first draw
+     * of a run. A holder, because the class is readonly and the randomizer
+     * is replaced whenever a run starts.
+     */
+    private stdClass $seededDraws;
+
+    /**
+     * @param Randomizer|null $randomizer A source the strategy draws from on every call, one
+     *                                    integer for each event of a later leg
+     * @param int|null $seed Any integer; each one names one sequence of draws, which
+     *                       starts again whenever planLegs() is called
+     * @throws InvalidConfigurationException When neither a randomizer nor a seed is given, or both are
      */
     public function __construct(
-        private ?Randomizer $randomizer = null
-    ) {}
+        private ?Randomizer $randomizer = null,
+        public ?int $seed = null
+    ) {
+        $this->seededDraws = new stdClass();
+        $this->seededDraws->randomizer = null;
+
+        if (($randomizer === null) === ($seed === null)) {
+            throw new InvalidConfigurationException(
+                $randomizer === null
+                    ? 'The shuffled leg strategy needs a seed or a randomizer: it does not draw from an unseeded source of its own'
+                    : 'The shuffled leg strategy takes a seed or a randomizer, not both',
+                ['seed' => $seed, 'randomizer_given' => $randomizer !== null],
+                reason: InvalidConfigurationReason::IncompatibleOptions,
+                requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
+            );
+        }
+    }
+
+    /**
+     * Gives a clone its own run of draws, starting at the seed. Without
+     * this the clone would share the original's holder, and a plan made
+     * on either would start the other's draws again.
+     */
+    public function __clone()
+    {
+        $this->seededDraws = new stdClass();
+        $this->seededDraws->randomizer = null;
+    }
 
     /**
      * States that roles do not mirror across legs and that randomization
      * is needed. No configuration is unsatisfiable for this strategy, and
      * it reads none of its arguments.
+     *
+     * A strategy built from a seed starts its draws again here, so that
+     * the schedule() call this plan opens draws what every other one does.
+     * A strategy that holds a randomizer leaves it as it is.
      */
     #[Override]
     public function planLegs(
@@ -49,6 +124,8 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
         int $legs,
         ConstraintSet $constraints
     ): LegPlanContribution {
+        $this->seededDraws->randomizer = null;
+
         return new LegPlanContribution(
             rolesMirrorAcrossLegs: false,
             requiresRandomization: true
@@ -58,8 +135,11 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
     /**
      * The pairing in the given round: in the given order for leg 1, and
      * for every later leg in the given order or reversed with equal
-     * probability. One integer is drawn from the randomizer for each call
-     * with a later leg, none for leg 1. The context is not read.
+     * probability. One integer is drawn for each call with a later leg,
+     * none for leg 1: from the randomizer the strategy holds, or from the
+     * one it made from its seed for the draws since the last planLegs()
+     * call (since construction, when there was none). The context is not
+     * read.
      *
      * @return Event|null Null when not given exactly two participants
      */
@@ -82,7 +162,7 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
         }
 
         // Subsequent legs: randomly shuffle the pairing order
-        $randomizer = $this->randomizer ?? new Randomizer();
+        $randomizer = $this->randomizer ?? $this->seededRandomizer();
 
         if ($randomizer->getInt(0, 1) === 1) {
             return new Event([
@@ -92,5 +172,24 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
         }
 
         return new Event($participants, $roundObject);
+    }
+
+    /**
+     * The randomizer of the current run of draws from the seed: the one
+     * the run already has, or a new one that starts the run.
+     */
+    private function seededRandomizer(): Randomizer
+    {
+        $current = $this->seededDraws->randomizer;
+
+        if (!$current instanceof Randomizer) {
+            // The constructor refuses a strategy with neither source, so the
+            // seed is an integer here. The engine reads null as "seed
+            // yourself", and the fallback keeps that out of reach.
+            $current = new Randomizer(new Xoshiro256StarStar($this->seed ?? 0));
+            $this->seededDraws->randomizer = $current;
+        }
+
+        return $current;
     }
 }

@@ -24,8 +24,9 @@ use Random\Randomizer;
  * Determinism holds only if the generator threads the supplied child
  * randomizer through every randomness source in its pipeline — the
  * scheduler *and* anything else that randomizes (a ShuffledLegStrategy,
- * for instance). An unseeded source anywhere makes sampling
- * unrepeatable.
+ * for instance; one built from a fixed seed is repeatable too, and draws
+ * the same roles in every sample). An unseeded source anywhere makes
+ * sampling unrepeatable.
  *
  * A sample whose generation throws IncompleteScheduleException — a
  * shuffled ordering no retry can fix, for instance — is skipped and
