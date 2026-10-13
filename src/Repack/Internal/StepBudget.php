@@ -10,10 +10,12 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * A repack makes two instances, each of RepackOptions::$stepBudget
  * steps, so a whole repack spends at most twice the budget. The first is
  * threaded through the load planning and the packing of every session,
- * and bounds them together. The second is the last placement step's
- * (LeftoverRecolourer), so that the step runs even when the phases before
- * it spent the first. Steps, not wall
- * clock: behaviour is reproducible.
+ * and bounds them together; the exact search of one session is given a
+ * share of what is left of it (share()), so that one session cannot
+ * spend it all. The second is for the steps after the packing: the last
+ * placement step (LeftoverRecolourer) and the search for fewer gap slots
+ * (GapSearch), so that they run even when the phases before them spent
+ * the first. Steps, not wall clock: behaviour is reproducible.
  *
  * The budget also records whether it ever stopped a search
  * ({@see self::stoppedASearch()}), which the outcome reports. Both ways a
@@ -52,6 +54,39 @@ final class StepBudget
         $this->remaining -= $steps;
 
         return true;
+    }
+
+    /**
+     * A budget of its own for one search: a share of the steps that are
+     * left (one in $divisor of them, and never none while a step is
+     * left), so that a search that does not end cannot take every step
+     * from the searches after it. Give it back with returnShare() when the
+     * search is over.
+     */
+    public function share(int $divisor): self
+    {
+        return new self($this->remaining > 0 ? max(1, intdiv($this->remaining, $divisor)) : 0);
+    }
+
+    /**
+     * Take back a share: the steps it spent are spent here, and a search
+     * it stopped is a search this budget stopped.
+     *
+     * @param int $steps How many steps the share was made with
+     */
+    public function returnShare(self $share, int $steps): void
+    {
+        $this->remaining -= $steps - $share->remaining;
+        $this->stoppedASearch = $this->stoppedASearch || $share->stoppedASearch;
+    }
+
+    /**
+     * How many steps are left, for the caller that hands out a share and
+     * has to say later how large it was.
+     */
+    public function stepsLeft(): int
+    {
+        return $this->remaining;
     }
 
     /**

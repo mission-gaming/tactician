@@ -68,7 +68,7 @@ jobs:
           - shard: repack session packing
             path: src/Repack/Internal/SessionPacker.php,src/Repack/Internal/ContiguityTargets.php,src/Repack/Internal/IntervalPlacement.php,src/Repack/Internal/RepackAuditor.php
           - shard: repack recolouring
-            path: src/Repack/Internal/LeftoverRecolourer.php
+            path: src/Repack/Internal/LeftoverRecolourer.php,src/Repack/Internal/RoundColouring.php,src/Repack/Internal/StructuralOrder.php,src/Repack/Internal/GapSearch.php
 
     name: Mutation testing, ${{ matrix.shard }}
     timeout-minutes: 180

@@ -47,6 +47,41 @@ describe('StepBudget', function (): void {
         expect($budget->stoppedASearch())->toBeFalse();
     });
 
+    it('hands one search a share of what is left, and takes back what the search did not spend', function (): void {
+        $budget = new StepBudget(100);
+        $budget->consume(20);
+
+        $share = $budget->share(4);
+        expect($share->stepsLeft())->toBe(20);
+
+        $share->consume(5);
+        $budget->returnShare($share, 20);
+
+        expect($budget->stepsLeft())->toBe(75)
+            ->and($budget->stoppedASearch())->toBeFalse();
+    });
+
+    it('counts a search its share stopped as a search it stopped, and keeps the steps past the share', function (): void {
+        $budget = new StepBudget(100);
+
+        $share = $budget->share(4);
+        expect($share->consume(25))->toBeTrue()
+            ->and($share->consume())->toBeFalse();
+        $budget->returnShare($share, 25);
+
+        expect($budget->stepsLeft())->toBe(75)
+            ->and($budget->stoppedASearch())->toBeTrue();
+    });
+
+    it('gives a share of at least one step while a step is left, and of none when none is', function (): void {
+        $budget = new StepBudget(2);
+        expect($budget->share(4)->stepsLeft())->toBe(1);
+
+        $budget->consume(2);
+        expect($budget->share(4)->stepsLeft())->toBe(0)
+            ->and($budget->stoppedASearch())->toBeFalse();
+    });
+
     it('records a refused step', function (): void {
         $budget = new StepBudget(1);
         $budget->consume();

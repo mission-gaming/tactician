@@ -74,8 +74,10 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * chose change as little as they can; the gaps the moves leave are the
  * audit's to report.
  *
- * All ids are the orchestrator's dense integer indexes; index order is
- * caller-id order, so index tie-breaks are id tie-breaks.
+ * All ids are the orchestrator's dense integer indexes, given in the
+ * order the request itself gives (StructuralOrder for the participants,
+ * RoundColouring for the events), so an index tie-break follows what the
+ * request says and not what its ids happen to be.
  *
  * @internal
  */

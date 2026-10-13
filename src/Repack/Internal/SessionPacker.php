@@ -12,8 +12,11 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * budget-bounded depth-first search with fail-first vertex selection
  * either packs the session with every participant on its target, or
  * finds no such packing: every placement of the runs was tried and
- * failed, the budget ran out first, or the session has more than 20
- * slots, in which case no placement is tried. A packing it finds gives an
+ * failed, the search's share of the budget ran out first (one in
+ * SEARCH_SHARE of the steps left when it starts, so that a session whose
+ * search does not end leaves steps for the sessions after it), or the
+ * session has more than 20 slots, in which case no placement is tried.
+ * A packing it finds gives an
  * unpinned participant one run with no gap, and among the run placements
  * it is the first that packs when they are tried in order of total late
  * start, all runs from the top first. A pinned participant's target can
@@ -28,8 +31,10 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * pinned position are rejected. Whatever repair cannot fix is left for
  * the audit to report rather than hidden.
  *
- * All ids are the orchestrator's dense integer indexes; index order is
- * caller-id order, so index tie-breaks are id tie-breaks.
+ * All ids are the orchestrator's dense integer indexes, given in the
+ * order the request itself gives (StructuralOrder for the participants,
+ * RoundColouring for the events), so an index tie-break follows what the
+ * request says and not what its ids happen to be.
  *
  * @internal
  */
@@ -83,7 +88,19 @@ final class SessionPacker
      */
     private array $optionsAt = [];
 
-    public function __construct(private readonly StepBudget $budget) {}
+    /**
+     * The share of the steps left that one session's exact search may
+     * spend: one in this many.
+     */
+    private const int SEARCH_SHARE = 4;
+
+    /** The budget of the exact search in progress, a share of the packer's */
+    private StepBudget $searchBudget;
+
+    public function __construct(private readonly StepBudget $budget)
+    {
+        $this->searchBudget = $budget;
+    }
 
     /**
      * @param array<int, array{int, int}> $edges This session's events, keyed by
@@ -188,13 +205,19 @@ final class SessionPacker
             $fixedMask ^= IntervalPlacement::maskOfSet($target, $this->slotCount);
         }
 
+        // The search has a share of the steps that are left, not all of
+        // them: a session with no gap-free packing can keep it going to
+        // the last step, and the sessions after it would then get none
+        $this->searchBudget = $this->budget->share(self::SEARCH_SHARE);
+        $shared = $this->searchBudget->stepsLeft();
+
         $result = null;
         try {
             IntervalPlacement::enumerate(
                 $fixedMask,
                 $flexibleLengths,
                 $this->slotCount,
-                $this->budget,
+                $this->searchBudget,
                 function (array $starts) use ($fixedTargets, $flexiblePids, $flexibleLengths, &$result): bool {
                     $assignments = $this->tryPlacement($fixedTargets, $flexiblePids, $flexibleLengths, $starts);
                     if ($assignments === null) {
@@ -208,6 +231,7 @@ final class SessionPacker
         } catch (BudgetExhausted) {
             // Fall through to the greedy path with whatever budget is left
         }
+        $this->budget->returnShare($this->searchBudget, $shared);
 
         $this->slotOf = [];
         $this->usedEvents = [];
@@ -356,7 +380,7 @@ final class SessionPacker
             return $this->solveSlot($slot + 1);
         }
 
-        if (!$this->budget->consume()) {
+        if (!$this->searchBudget->consume()) {
             throw new BudgetExhausted();
         }
 

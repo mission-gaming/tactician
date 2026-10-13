@@ -38,8 +38,10 @@ use MissionGaming\Tactician\Repack\UnplacedReason;
  * search instead of the drop count). The last placement step is offered
  * every drop, and places those it can.
  *
- * All ids are the orchestrator's dense integer indexes; index order is
- * caller-id order, so index tie-breaks are id tie-breaks.
+ * All ids are the orchestrator's dense integer indexes, given in the
+ * order the request itself gives (StructuralOrder for the participants,
+ * RoundColouring for the events), so an index tie-break follows what the
+ * request says and not what its ids happen to be.
  *
  * @internal
  */
@@ -111,7 +113,7 @@ final class LoadPlanner
 
     /**
      * @param array<int, array{int, int}> $edges Event index => participant index pair,
-     *                                           indexes ascending in caller-id order
+     *                                           in the orchestrator's order
      * @param array<int, array<int, array<int>>> $pinSlots Session => participant => pinned slots
      * @param array<int, array<int, int>> $pinCounts Session => slot => pinned event count
      * @param array<int, int> $slotCounts Session => slot count

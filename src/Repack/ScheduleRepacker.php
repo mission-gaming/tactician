@@ -6,11 +6,14 @@ namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\RepackViolationsException;
+use MissionGaming\Tactician\Repack\Internal\GapSearch;
 use MissionGaming\Tactician\Repack\Internal\LeftoverRecolourer;
 use MissionGaming\Tactician\Repack\Internal\LoadPlanner;
 use MissionGaming\Tactician\Repack\Internal\RepackAuditor;
+use MissionGaming\Tactician\Repack\Internal\RoundColouring;
 use MissionGaming\Tactician\Repack\Internal\SessionPacker;
 use MissionGaming\Tactician\Repack\Internal\StepBudget;
+use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
 
 /**
  * Repairs an existing schedule onto a session grid.
@@ -23,23 +26,41 @@ use MissionGaming\Tactician\Repack\Internal\StepBudget;
  * identities are fixed inputs, and the only free variable is where each
  * lands.
  *
- * Three phases, per the constraint hierarchy: per-session loads are
- * decided first (capacity- and pin-aware, weighted between consolidation
- * and early fill), each session is then packed against its contiguity
- * targets by exact search, and a bounded greedy-plus-repair fallback
- * covers what exact search cannot reach. When an event is still unplaced
- * after that, a last placement step moves placed events to make room for
- * it, across sessions: placing an event comes before contiguity, whose
- * breaks are reported. Properness — no participant twice at one
- * position, pins immovable — is never traded; contiguity is satisfied or
- * reported, never silently relaxed.
+ * The events are first split into rounds (sets of events that can share
+ * a slot), laid on the grid's positions around the pins, and taken in
+ * that order from then on. Three phases follow, per the constraint
+ * hierarchy: per-session loads are decided first (capacity- and
+ * pin-aware, weighted between consolidation and early fill), each session
+ * is then packed against its contiguity targets by exact search, and a
+ * bounded greedy-plus-repair fallback covers what exact search cannot
+ * reach. When an event is still unplaced after that, a last placement
+ * step moves placed events to make room for it, across sessions: placing
+ * an event comes before contiguity, whose breaks are reported. Contiguity
+ * in turn comes before the two weights: where the rounds as they were
+ * laid out place more events than the planned schedule, or as many with
+ * fewer gap slots, they are returned in its place, and a schedule that
+ * still has a gap is searched for a placement of as many events with
+ * fewer gap slots. Properness — no participant twice at one position,
+ * pins immovable — is never traded; contiguity is satisfied or reported,
+ * never silently relaxed.
  *
  * Deterministic: same input, same output, independent of input list
- * order (events are ordered internally by their caller-supplied ids and
- * nothing else). Pure: no clock reads, no I/O, no persistence. Bounded:
- * every search spends from the options' step budget (the last placement
- * step from a budget of its own of the same size), and the outcome says
- * whether a budget stopped one (RepackOutcome::isBudgetExhausted()).
+ * order. Independent of the ids as well, as far as that can be: the
+ * participants and events are taken in an order made from the request
+ * (how many events each participant has, where it is pinned, whom it
+ * plays), and an id decides only between events of the same two
+ * participants and between participants the request does not tell apart.
+ * So a request that differs from another only in its ids gets the same
+ * number of events at every position, the same unplaced counts and the
+ * same violations but for the names in them; and the same schedule,
+ * participant for participant, up to a symmetry of the request, whenever
+ * the id only ever decided between participants that such a symmetry
+ * exchanges (see Internal\StructuralOrder for when it can decide between
+ * two that are not alike). Pure: no clock reads, no I/O, no persistence.
+ * Bounded: every search spends from the options' step budget (the steps
+ * after the packing from a budget of their own of the same size) or has
+ * a fixed limit of its own, and the outcome says whether a budget stopped
+ * one (RepackOutcome::isBudgetExhausted()).
  *
  * A shape-only grid is repacked exactly as the instant-based grid of the
  * same shape is: positions are all the algorithm reads. The assignments
@@ -85,6 +106,13 @@ final readonly class ScheduleRepacker
      * An event still unplaced has the reason NoSlotAvailable only when no
      * position has room with both its participants free.
      *
+     * The schedule returned is the planned one, or the rounds as they
+     * were laid out when those place more events or as many with fewer
+     * gap slots; either is then searched for a placement of as many
+     * events with fewer gap slots, when it has a gap. Which event of an
+     * over-capacity participant is the one left out can change in that
+     * search, and the reasons are then given again as above.
+     *
      * @throws RepackViolationsException Only when the options opted into
      *                                   throwOnViolations and the outcome
      *                                   is not clean
@@ -103,9 +131,13 @@ final readonly class ScheduleRepacker
             $slotCounts[$session] = $grid->getSlotCount($session);
         }
 
-        // Normalize to dense integer indexes; index order is caller-id
-        // order, so every internal tie-break is an id tie-break and the
-        // output cannot depend on input list order
+        // Normalize to dense integer indexes. The lists are put in id
+        // order first, so that nothing depends on the order they came in;
+        // the indexes the phases work on are then given in an order made
+        // from what the request says about each participant and event,
+        // and from its id only where that says nothing (StructuralOrder,
+        // RoundColouring). Every internal tie-break is an index tie-break,
+        // so a request that differs only in its ids is repacked alike
         $movables = $request->getMovableEvents();
         usort(
             $movables,
@@ -131,25 +163,61 @@ final readonly class ScheduleRepacker
         }
         ksort($participantsById, SORT_STRING);
 
+        /** @var array<string, int> $rankById Participant id => its place in id order */
+        $rankById = [];
+        /** @var list<Participant> $inIdOrder */
+        $inIdOrder = [];
+        foreach ($participantsById as $id => $participant) {
+            $rankById[(string) $id] = count($inIdOrder);
+            $inIdOrder[] = $participant;
+        }
+
+        $rankedEvents = [];
+        foreach ($movables as $movable) {
+            $rankedEvents[] = [
+                $rankById[$movable->getParticipantA()->getId()],
+                $rankById[$movable->getParticipantB()->getId()],
+            ];
+        }
+        $rankedPins = [];
+        foreach ($pins as $pin) {
+            $rankedPins[] = [
+                $rankById[$pin->getParticipantA()->getId()],
+                $rankById[$pin->getParticipantB()->getId()],
+                $pin->getSession(),
+                $pin->getSlot(),
+            ];
+        }
+
         /** @var array<string, int> $participantIndexes */
         $participantIndexes = [];
         /** @var array<Participant> $participants */
         $participants = [];
-        foreach ($participantsById as $id => $participant) {
-            $participantIndexes[(string) $id] = count($participants);
-            $participants[] = $participant;
+        foreach (StructuralOrder::of(count($inIdOrder), $rankedEvents, $rankedPins) as $rank) {
+            $participantIndexes[$inIdOrder[$rank]->getId()] = count($participants);
+            $participants[] = $inIdOrder[$rank];
         }
 
-        /** @var array<string> $eventIds */
-        $eventIds = [];
-        /** @var array<int, array{int, int}> $edges */
-        $edges = [];
+        // An unbounded capacity becomes the number of events in the
+        // request: no slot can ever hold more than all of them, so that
+        // limit never binds, and no arithmetic on it can overflow
+        $capacityPerSlot = $grid->getCapacityLimit() ?? max(1, count($movables) + count($pins));
+
+        // The events by their two participants, lower index first, and by
+        // id only between events of the same two: which of those is which
+        // is all an event id decides
+        /** @var list<array{int, int}> $pairs In id order of the events */
+        $pairs = [];
         foreach ($movables as $movable) {
-            $eventIds[] = $movable->getId();
-            $edges[] = [
-                $participantIndexes[$movable->getParticipantA()->getId()],
-                $participantIndexes[$movable->getParticipantB()->getId()],
-            ];
+            $a = $participantIndexes[$movable->getParticipantA()->getId()];
+            $b = $participantIndexes[$movable->getParticipantB()->getId()];
+            $pairs[] = [min($a, $b), max($a, $b)];
+        }
+        $byPair = array_keys($pairs);
+        usort($byPair, static fn(int $x, int $y): int => [$pairs[$x], $x] <=> [$pairs[$y], $y]);
+        $pairsInOrder = [];
+        foreach ($byPair as $at) {
+            $pairsInOrder[] = $pairs[$at];
         }
 
         /** @var array<int, array<int, array<int>>> $pinSlots */
@@ -171,10 +239,39 @@ final readonly class ScheduleRepacker
         }
         unset($byParticipant);
 
-        // An unbounded capacity becomes the number of events in the
-        // request: no slot can ever hold more than all of them, so that
-        // limit never binds, and no arithmetic on it can overflow
-        $capacityPerSlot = $grid->getCapacityLimit() ?? max(1, count($movables) + count($pins));
+        // Then by round, so that the planner fills sessions with whole
+        // rounds (RoundColouring). An event the rounds could not hold
+        // comes after every round
+        /** @var array<int, int> $firstPlaceOf Session => the place in grid order of its first slot */
+        $firstPlaceOf = [];
+        $positionCount = 0;
+        foreach ($slotCounts as $session => $slotCount) {
+            $firstPlaceOf[$session] = $positionCount;
+            $positionCount += $slotCount;
+        }
+        $roundPositions = RoundColouring::of($pairsInOrder, $pinSlots, $pinCounts, $slotCounts, $capacityPerSlot);
+        $roundOf = [];
+        foreach (array_keys($pairsInOrder) as $at) {
+            $roundOf[$at] = isset($roundPositions[$at])
+                ? $firstPlaceOf[$roundPositions[$at][0]] + $roundPositions[$at][1]
+                : $positionCount;
+        }
+        $byRound = array_keys($pairsInOrder);
+        usort($byRound, static fn(int $x, int $y): int => [$roundOf[$x], $x] <=> [$roundOf[$y], $y]);
+
+        /** @var array<string> $eventIds */
+        $eventIds = [];
+        /** @var array<int, array{int, int}> $edges */
+        $edges = [];
+        /** @var array<int, array{int, int}> $roundLayout Event index => the position of its round */
+        $roundLayout = [];
+        foreach ($byRound as $at) {
+            if (isset($roundPositions[$at])) {
+                $roundLayout[count($edges)] = $roundPositions[$at];
+            }
+            $eventIds[] = $movables[$byPair[$at]]->getId();
+            $edges[] = $pairsInOrder[$at];
+        }
 
         $budget = new StepBudget($options->stepBudget);
 
@@ -272,6 +369,32 @@ final readonly class ScheduleRepacker
             );
         }
 
+        // Contiguity comes ahead of the weights the sessions were chosen
+        // by. The rounds are a schedule themselves, made with no regard to
+        // the weights: where they place more events than the planned
+        // schedule, or as many with fewer gap slots, they are the schedule
+        $roundsLeft = array_values(array_diff(array_keys($edges), array_keys($roundLayout)));
+        if (
+            [count($roundsLeft), self::gapSlots($roundLayout, $edges, $pinSlots)]
+            < [count($stillLeft), self::gapSlots($positions, $edges, $pinSlots)]
+        ) {
+            $positions = $roundLayout;
+            $stillLeft = $roundsLeft;
+        }
+
+        // And where the schedule still has a gap, look for a placement of
+        // as many events that has fewer gap slots. It spends from the
+        // second budget, and a schedule with no gap never reaches it
+        $stillLeft = (new GapSearch($recolourBudget))->improve(
+            $edges,
+            $positions,
+            $stillLeft,
+            $pinSlots,
+            $pinCounts,
+            $slotCounts,
+            $capacityPerSlot
+        );
+
         $unplaced = $this->label($stillLeft, $dropped, $plan->shortfalls, $edges, $eventIds, $participants);
 
         usort(
@@ -295,7 +418,25 @@ final readonly class ScheduleRepacker
                 $unplacedEvent->getParticipant()
             );
         }
-        foreach ($plan->violations as $violation) {
+        // The planner reports the over-capacity participants by shortfall
+        // and then by index; the outcome lists them by shortfall and then
+        // by id, the grid's own violation after them
+        $capacityViolations = $plan->violations;
+        usort($capacityViolations, static function (RepackViolation $x, RepackViolation $y): int {
+            if (!$x instanceof CapacityExceeded || !$y instanceof CapacityExceeded) {
+                return 0;
+            }
+            $px = $x->getParticipant();
+            $py = $y->getParticipant();
+            if ($px === null || $py === null) {
+                return ($px === null) <=> ($py === null);
+            }
+
+            $byShortfall = $y->getShortfall() <=> $x->getShortfall();
+
+            return $byShortfall !== 0 ? $byShortfall : strcmp($px->getId(), $py->getId());
+        });
+        foreach ($capacityViolations as $violation) {
             $violations[] = $violation;
         }
 
@@ -308,7 +449,6 @@ final readonly class ScheduleRepacker
             static fn(RepackViolation $x, RepackViolation $y): int => $kindOrder[$x->getKind()->value] <=> $kindOrder[$y->getKind()->value]
         );
 
-        ksort($positions);
         $assignments = [];
         foreach ($positions as $eventIndex => [$session, $slot]) {
             $assignments[] = new SlotAssignment(
@@ -318,6 +458,10 @@ final readonly class ScheduleRepacker
                 $grid->hasInstants() ? $grid->getSlotTime($session, $slot) : null
             );
         }
+        usort(
+            $assignments,
+            static fn(SlotAssignment $x, SlotAssignment $y): int => strcmp($x->getEventId(), $y->getEventId())
+        );
 
         $outcome = new RepackOutcome(
             $assignments,
@@ -421,6 +565,44 @@ final readonly class ScheduleRepacker
         }
 
         return $unplaced;
+    }
+
+    /**
+     * The gap slots of a schedule, counted as the audit counts them: per
+     * participant and session, over its pinned and movable slots together,
+     * and only where it has a movable event in the session.
+     *
+     * @param array<int, array{int, int}> $positions Event index => [session, slot]
+     * @param array<int, array{int, int}> $edges
+     * @param array<int, array<int, array<int>>> $pinSlots
+     */
+    private static function gapSlots(array $positions, array $edges, array $pinSlots): int
+    {
+        /** @var array<int, array<int, array<int, true>>> $held Participant => session => slots */
+        $held = [];
+        foreach ($positions as $eventIndex => [$session, $slot]) {
+            foreach ($edges[$eventIndex] as $pid) {
+                $held[$pid][$session][$slot] = true;
+            }
+        }
+
+        $gapSlots = 0;
+        foreach ($held as $pid => $bySession) {
+            foreach ($bySession as $session => $slots) {
+                foreach ($pinSlots[$session][$pid] ?? [] as $slot) {
+                    $slots[$slot] = true;
+                }
+                $first = PHP_INT_MAX;
+                $last = 0;
+                foreach (array_keys($slots) as $slot) {
+                    $first = min($first, $slot);
+                    $last = max($last, $slot);
+                }
+                $gapSlots += $last - $first + 1 - count($slots);
+            }
+        }
+
+        return $gapSlots;
     }
 
     /**

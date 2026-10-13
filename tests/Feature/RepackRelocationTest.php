@@ -109,9 +109,11 @@ describe('an event blocked by one that could be elsewhere', function (): void {
     });
 
     // The search for a move spends steps of the shared budget. With one
-    // step it stops before it finds the move, and says so; the outcome is
-    // still a proper one, with the blocked event reported.
-    it('is reported as unplaced, with the budget flag, when the step budget ends the search for a move', function (): void {
+    // step it stops before it finds the move, and says so. The blocked
+    // event is placed all the same: the rounds the events are ordered by
+    // are a schedule of their own, made without a step of the budget, and
+    // they hold both events where the planned schedule holds one.
+    it('is placed, with the budget flag, when the step budget ends the search for a move', function (): void {
         [$movable, $pinned, $grid] = relocationInstance();
 
         $outcome = (new ScheduleRepacker())->repack(
@@ -119,6 +121,7 @@ describe('an event blocked by one that could be elsewhere', function (): void {
         );
 
         expect($outcome->isBudgetExhausted())->toBeTrue()
-            ->and(relocationPositions($outcome))->toBe(['e0' => '1.1', 'e1' => UnplacedReason::NoSlotAvailable->name]);
+            ->and(relocationPositions($outcome))->toBe(['e0' => '0.0', 'e1' => '1.1'])
+            ->and($outcome->getUnplaced())->toBe([]);
     });
 });

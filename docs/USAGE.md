@@ -83,7 +83,7 @@ anything else that competes.
 | **Pinned event** | An event already on the grid that must not move (`PinnedEvent`). It occupies its position for both participants, consumes slot capacity, and may name participants absent from the movable set. Which events are pinned is caller policy about historical provenance. |
 | **Repack violation** | One structured compromise in a repack outcome (`RepackViolation`): double-booking (audited, never produced), unplaced events, interior gaps, late starts, exceeded capacity — data with participant/session/magnitude, never prose. The caller renders its own messages and decides what is fatal. |
 | **Unplaced event** | A movable event the repack gave no position (`UnplacedEvent`), with the reason (`UnplacedReason`). Every movable event is either assigned or unplaced. |
-| **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the last placement step has a second one of its own, so a repack can spend up to twice that number. Steps, not time, so the result is the same on every machine. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
+| **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the steps after the packing (the last placement step and the search for fewer gap slots) have a second one of their own, so a repack can spend up to twice that number. Steps, not time, so the result is the same on every machine. Ordering the participants and events before any session is chosen is not counted in steps and has a fixed limit of its own. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
 | **Last placement step** | The part of a repack that runs only when an event is still unplaced: it moves placed events along alternating paths, and exchanges one placed event for one unplaced event where that lets a further one in, to place events the earlier phases left over. It never double-books, never moves a pin and never exceeds a slot's capacity. |
 | **Outcome fingerprint** | A short string identifying what a repack outcome holds (`RepackOutcome::fingerprint()`): equal for the same assignments, unplaced events and violations, different when any differs, and the same on every PHP version and platform. For detecting that a plan computed again is not the plan that was shown. |
 | **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. Where the two events also exceed the capacity of the slot, the request reports that instead (`PinCapacityExceeded`). |
@@ -2372,6 +2372,34 @@ like any other. It never double-books, never moves a pin and never
 exceeds a slot's capacity, and an outcome with nothing unplaced never
 reaches it.
 
+Keeping a session contiguous comes before the two weights. The weights
+choose a session for each event, and a choice that looks best by them
+can be one no slot order lays out without a gap. So the repacker also
+lays the events out with no regard to the weights (whole sets of events
+that can share a slot, one set to a position in grid order, around the
+pins), and returns that schedule when it places more events than the
+one the weights chose, or as many with fewer gap slots. A schedule that
+still has a gap is then searched for another placement of as many
+events with fewer gap slots; on a small request that search tries every
+placement, so a gap it reports is one no placement of as many events
+avoids, and on a large one it stops at a limit of its own.
+
+**The ids decide as little as they can.** The repacker takes the
+participants and the events in an order made from the request itself:
+how many events a participant has, where it is pinned and whom it
+plays. An id decides only which of several events between the same two
+participants is which, and between participants the request does not
+tell apart. Give the same request other ids and the outcome has the
+same number of events at every position, the same number unplaced for
+each reason and the same violations but for the names in them; the
+schedule is the same participant for participant, up to a symmetry of
+the request (in a complete round robin any participant can stand for
+any other, and which of them gets which run of opponents follows the
+ids). The exception is narrow and is not ruled out: two participants
+that differ, in a request in which everything the repacker compares
+about them is equal, are ordered by id, and the outcome can then
+differ. The lists an outcome returns are still in id order.
+
 The repacker is deterministic (same input, same output, independent of
 input list order), pure (no clock reads, no I/O), and bounded in steps
 (the packing searches spend from one budget of
@@ -2556,15 +2584,16 @@ foreach ($crowded->getLateStartViolations() as $violation) {
     echo "{$violation->getParticipant()->getLabel()} starts at slot {$violation->getFirstSlot()} "
         . "of session {$violation->getSession()}\n";
 }
+// Athletic Bilbao starts at slot 2 of session 0
 // Rayo Vallecano starts at slot 2 of session 0
 
 foreach ($crowded->getUnplaced() as $unplaced) {
     $because = $unplaced->getParticipant()?->getLabel() ?? 'nobody in particular';
     echo "{$unplaced->getEventId()}: {$unplaced->getReason()->value} ({$because})\n";
 }
+// e04: no_slot_available (nobody in particular)
 // e05: participant_over_capacity (Celtic)
 // e06: no_slot_available (nobody in particular)
-// e07: no_slot_available (nobody in particular)
 
 echo count($crowded->getEventUnplacedViolations()), "\n";      // 3
 echo count($crowded->getContiguityBrokenViolations()), "\n";   // 0
@@ -2600,10 +2629,13 @@ unplaced as `participant_over_capacity`.
 `RepackOptions(stepBudget: ...)` is counted in search steps, not in
 time: the same request and budget give the same outcome on every
 machine. There are two budgets of that size. The load planning and the
-packing of each session spend from the first. The last placement step,
-which runs only when an event is still unplaced, spends from a second
-one of its own, so that it still runs when the searches before it spent
-theirs. **A repack can therefore spend up to twice `stepBudget`.** The
+packing of each session spend from the first, and the search of one
+session may spend no more than a quarter of what is left of it when it
+starts, so that a session whose search does not end leaves steps for
+the sessions after it. The last placement step, which runs only when an
+event is still unplaced, and the search for fewer gap slots, which runs
+only when a gap is left, spend from a second one of their own, so that
+they still run when the searches before them spent theirs. **A repack can therefore spend up to twice `stepBudget`.** The
 last placement step also stops after a fixed number of position checks
 of its own, whatever the budget, so that a request whose leftovers
 cannot be placed does not spend its whole second budget looking. When a
@@ -2626,16 +2658,23 @@ var_dump($starved->isBudgetExhausted());   // bool(true)
 How long a repack takes depends on the request and on the machine, and
 the budget does not turn into a number of seconds. Measured with the
 default budget of 200,000 steps (PHP 8.4, no OPcache, one core): a
-complete single round robin of 24 participants took between 0.05 and 1.0
-seconds over sessions of four to six slots, and one of 40 participants
-between 0.1 and 1.3 seconds; the slower figures are requests that use the
-whole budget. A request that leaves events over also runs the last
-placement step, with a budget of its own, so it can take up to twice as
-long: one that nearly fits a two-leg season of 38 participants (657
-events on seven sessions of five slots) took about one second, most of
-it the first budget, and a single round robin of 40 on one session fewer
-than its events need took about 0.8 seconds. A smaller `stepBudget`
-trades placed events for time. A step costs a few microseconds. Sessions of many slots add
+complete single round robin of 24 participants took 5 to 11
+milliseconds over sessions of four to six slots, and one of 40
+participants about 16 milliseconds, with no pins; these pack without a
+search. Pins and sessions of unequal length take the searches: a round
+robin of 40 with ten events pinned over sessions of four, five and six
+slots took about 0.16 seconds, and requests of that size with more pins
+between 0.2 and 0.6 seconds, the slower ones using the whole budget. A
+request that leaves events over also runs the last placement step, with
+a budget of its own: a single round robin of 40 on one session fewer
+than its events need took about 0.26 seconds. Some work is not counted
+in steps and has fixed limits of its own instead, which a small
+`stepBudget` does not shorten: ordering the participants and laying the
+events out before any session is chosen (up to about 0.2 seconds at 40
+participants, a few milliseconds on most requests), and the search for
+fewer gap slots at the end (up to about a tenth of a second, only
+when a gap is left). A smaller `stepBudget` trades gaps and late starts
+for time. A step costs a few microseconds. Sessions of many slots add
 work the budget does not count, because the repacker first works out which
 start slots can give gap-free runs at all, and that grows with two to the
 power of the slot count: on the requests measured, up to several seconds
