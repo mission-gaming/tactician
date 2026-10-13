@@ -147,6 +147,15 @@ failed:
 vendor/bin/pest --order-by=random --random-order-seed=<seed>
 ```
 
+A run does not depend on the `memory_limit` PHP is configured with. A plain
+run needs about as much as PHP's default of 128M allows and a run with
+coverage about 1.1 GB, so every process that runs tests raises a limit below
+4G to 4G (`tests/Pest.php` calls `tests/Support/SuiteMemoryLimit.php`). It
+leaves a higher limit, and no limit, as they are. Do not state a
+`memory_limit` in `phpunit.xml`: PHPUnit sets the value outright, which
+lowers the limit of a run that has none, as a run on CI has, and that ended
+the `Coverage` job once.
+
 Every feature and every path carries automated tests. Where a genuine
 technical or harness limitation prevents one, record the reason next to the
 gap, so that the absence is not mistaken for an oversight. When a change
