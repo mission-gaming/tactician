@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * Options for the elimination bracket presets.
@@ -51,14 +52,22 @@ final readonly class EliminationOptions
      * ['legs_per_tie' => 2, 'reseed_each_round' => false, 'grand_final_reset' => true].
      *
      * Every key is optional and takes the constructor's default when it is
-     * left out. A key this class does not have is ignored.
+     * left out. A key this class does not have is refused, so that a
+     * misspelt option is not silently read as its default.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value has the wrong type, or legs_per_tie is
-     *                                       not 1 or 2
+     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), a
+     *                                       value has the wrong type, or legs_per_tie is not 1
+     *                                       or 2
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions(
+            $config,
+            ['legs_per_tie', 'reseed_each_round', 'grand_final_reset'],
+            'elimination options'
+        );
+
         $legsPerTie = $config['legs_per_tie'] ?? 1;
         if (!is_int($legsPerTie)) {
             throw new InvalidConfigurationException(

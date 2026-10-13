@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -84,14 +85,19 @@ final readonly class BlackoutRule implements TimelineRule
      * day without a date or a date that does not exist is rejected. A date
      * without a time of day (`2026-11-09`) is midnight at the start of that
      * day. "Timeline Assignment" in the usage guide describes the rule.
-     * `label` is optional.
+     * `label` is optional. A key that is none of these is refused, in the
+     * rule and in a window, so that a misspelt `label` is not silently
+     * read as none.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the windows are malformed, or a bound does not
-     *                                       state an instant by itself
+     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), the
+     *                                       windows are malformed, or a bound does not state an
+     *                                       instant by itself
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, ['windows'], 'a blackout rule');
+
         $windowsData = $config['windows'] ?? null;
         if (!is_array($windowsData) || $windowsData === []) {
             throw new InvalidConfigurationException(
@@ -110,6 +116,8 @@ final readonly class BlackoutRule implements TimelineRule
                     reason: InvalidConfigurationReason::WrongValueType
                 );
             }
+
+            PlainData::checkOptions($windowData, ['from', 'to', 'timezone', 'label'], 'a blackout window');
 
             $timezone = $windowData['timezone'] ?? null;
             $window = [

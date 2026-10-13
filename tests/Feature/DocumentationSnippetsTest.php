@@ -277,6 +277,15 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         }
     })->with([
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'a key a form does not have' => [
+            'docs/USAGE.md',
+            "'stratgy' => 'repeated'",
+            [
+                "unknown_option_key\nstratgy\nlegs, strategy, backtracking, strategy_seed, role_assignment\n"
+                . "Unknown key in participant data: 'seeding' (the known keys are 'id', 'label', 'seed', 'metadata')\n",
+            ],
+            [],
+        ],
         'ids that are equal as numbers or hold a separator' => ['docs/USAGE.md', 'count($entrySchedule)', ["6 events\n"], []],
         'the leg count of a format without legs, and the exception a deprecated factory built' => [
             'docs/USAGE.md',

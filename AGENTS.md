@@ -41,6 +41,7 @@ See `docs/ARCHITECTURE.md` for the full picture. Orientation:
 - `src/Standings/` — `StandingsCalculator` ordering a table by a `RankingStrategy` (`WinDrawLossRanking`, with `threeOneZero()`/`oneHalfZero()` presets), then pluggable tiebreakers (`TiebreakerInterface`: wins, Buchholz, Sonneborn–Berger)
 - `src/Quality/` — lower-is-better `QualityMetric`s, the weighted `ScheduleScorer`, and `ScheduleOptimizer` (seeded best-of-N sampling over whole-schedule generators)
 - `src/Validation/`, `src/Diagnostics/`, `src/Exceptions/` — plan-driven completeness validation and diagnostic failure reporting
+- `src/Serialization/` — `PlainData` (internal): what every `fromArray()` checks before it reads a value. A key the form does not have is refused
 
 Two generation models coexist: schedulers produce complete schedules up
 front; engines resolve tournament state from recorded results on every call

@@ -8,6 +8,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -60,15 +61,17 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
 
     /**
      * Build from plain configuration data: ['mode' => 'winners'] or
-     * ['mode' => 'losers'], the form toArray() gives. Other keys are
-     * ignored.
+     * ['mode' => 'losers'], the form toArray() gives. Any other key is
+     * refused.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the mode is missing or unknown (reason
-     *                                       `UnknownIdentifier`)
+     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), or
+     *                                       the mode is missing or unknown (`UnknownIdentifier`)
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, ['mode'], 'a match outcome selector');
+
         $mode = $config['mode'] ?? null;
         if (!in_array($mode, [self::MODE_WINNERS, self::MODE_LOSERS], true)) {
             throw new InvalidConfigurationException(

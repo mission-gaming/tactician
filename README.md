@@ -283,6 +283,8 @@ before `1.0.0`):
 - `Validation`
 - `Diagnostics`
 - `RoleAssignment`
+- `Serialization`, which holds no public type: its one class,
+  `Serialization\PlainData`, is internal
 
 Anything not listed as stable is experimental, including the rest of
 `Scheduling`. `Repack\Internal` is internal: it is not public API and carries

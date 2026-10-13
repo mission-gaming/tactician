@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -39,14 +40,18 @@ final readonly class SwissOptions implements SchedulerOptions
     /**
      * Build from plain configuration data: ['rounds' => 5].
      *
-     * An omitted 'rounds' is 3. A key this class does not have is ignored.
+     * An omitted 'rounds' is 3. A key this class does not have is refused,
+     * so that a misspelt option is not silently read as its default.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When rounds is not an integer or is below 1
+     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), or
+     *                                       rounds is not an integer or is below 1
      */
     #[Override]
     public static function fromArray(array $config): static
     {
+        PlainData::checkOptions($config, ['rounds'], 'Swiss options');
+
         $rounds = $config['rounds'] ?? 3;
         if (!is_int($rounds)) {
             throw new InvalidConfigurationException(

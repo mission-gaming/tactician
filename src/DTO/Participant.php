@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * Anything that competes: a player, a club, a squad.
@@ -131,16 +132,19 @@ readonly class Participant
      * Recreate a participant from the array form toArray() produces.
      *
      * 'id' and 'label' are required; a missing 'seed' is null and a missing
-     * 'metadata' is empty. Other keys are ignored.
+     * 'metadata' is empty. Any other key is refused: data of your own
+     * belongs in the metadata.
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When the ID is not a non-empty string, the label is not
-     *                               a string, the seed is neither an integer nor null, or
-     *                               the metadata is not an array
+     * @throws InvalidInputException When a key is unknown, the ID is not a non-empty string,
+     *                               the label is not a string, the seed is neither an
+     *                               integer nor null, or the metadata is not an array
      */
     public static function fromArray(array $data): self
     {
+        PlainData::checkFields($data, ['id', 'label', 'seed', 'metadata'], 'participant data');
+
         $id = $data['id'] ?? null;
         $label = $data['label'] ?? null;
         if (!is_string($id) || $id === '' || !is_string($label)) {

@@ -10,6 +10,7 @@ use DateTimeZone;
 use Exception;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The declarative slot model a stage's rounds map onto.
@@ -148,14 +149,23 @@ final readonly class TimelineDefinition
      *
      * `round_interval` is required; `slots_per_round` (default 1),
      * `slot_interval` and `resources` are optional. The intervals are ISO
-     * 8601 duration strings, read by parseInterval().
+     * 8601 duration strings, read by parseInterval(). A key that is none of
+     * these is refused, so that a misspelt `slots_per_round` is not
+     * silently read as 1.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value is missing or malformed, or the start
-     *                                       does not state an instant by itself
+     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), a
+     *                                       value is missing or malformed, or the start does
+     *                                       not state an instant by itself
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions(
+            $config,
+            ['start', 'timezone', 'round_interval', 'slots_per_round', 'slot_interval', 'resources'],
+            'a timeline definition'
+        );
+
         $start = ZonedTime::parse($config['start'] ?? null, $config['timezone'] ?? null, 'start');
 
         $slotsPerRound = $config['slots_per_round'] ?? 1;

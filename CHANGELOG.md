@@ -39,6 +39,43 @@ heading **Output change (fix)**.
 
 ### Changed
 
+- **Breaking: every `fromArray()` refuses a key its form does not have.**
+  A key that was not known used to be ignored, so a misspelt key was read
+  as the key left out: `RoundRobinOptions::fromArray(['legs' => 2,
+  'stratgy' => 'repeated'])` gave two mirrored legs, and a result stored
+  with `winer` in place of `winner` was read as a draw. Both now throw
+  (#53).
+  - *Configuration* throws an `InvalidConfigurationException` with the
+    reason `UnknownOptionKey`, whose context lists the keys that are not
+    known under `unknown` and the keys of the form under `known`:
+    `RoundRobinOptions`, `SwissOptions`, `EliminationOptions`,
+    `RepackOptions`, `WinDrawLossRanking`, `TimelineDefinition`,
+    `SessionGrid`, `BlackoutRule` (the rule and each of its windows),
+    `MinimumRestRule`, `RankRangeSelector` and `MatchOutcomeSelector`.
+    `PotDrawOptions` already did; its message is now `Unknown key in pot
+    draw options: '<key>'` where it was `Unknown pot draw option`, and its
+    reason and context are unchanged.
+  - *Data* throws an `InvalidInputException` whose message names the keys
+    that are not known and the known ones: `Participant`, `Round`, `Event`,
+    `Result`, `Schedule`, `RoundPairing`, `StageState`, `ScheduledEvent`
+    and `ScheduledSchedule`, on their own or nested in one another.
+
+  Who is affected: an application that passes a `fromArray()` an array with
+  keys of its own in it (a database row with its `id` and timestamps, a
+  form with a CSRF token, an event array decorated with a venue), and one
+  whose stored configuration holds a misspelt key, which until now did
+  nothing. Arrays that `toArray()` wrote hold no such key and load as
+  before. What to change: pass the library's keys only, and keep data of
+  your own in the `metadata` of the participant, round, event, result or
+  schedule it belongs to, or beside the array. Before:
+  `RepackOptions::fromArray($row)` with `$row = ['id' => 7, 'step_budget'
+  => 50000]`. After: `RepackOptions::fromArray(['step_budget' =>
+  $row['step_budget']])`. A misspelt key is to be corrected: the exception
+  names it and lists the keys the form has. A known key given as `null` is
+  still read as the key left out wherever it was, and `session_count`
+  beside `sessions` in a session grid is still accepted and not read. Code
+  analysed with checked exceptions sees no new exception type: each method
+  already declared the one it now throws for this.
 - **Breaking: `ShuffledLegStrategy` is refused without a source of its
   draws.** `new ShuffledLegStrategy()` used to make an unseeded
   `Random\Randomizer` for every event, so a schedule with shuffled legs
@@ -64,7 +101,7 @@ heading **Output change (fix)**.
   reason `IncompatibleOptions`; a `strategy_seed` that is neither an
   integer nor null has the reason `WrongValueType`, and null is read as the
   key left out. The first used to build the unseeded strategy above.
-  The second is refused, where an unknown key is ignored, because a seed
+  The second is refused because a seed
   beside a strategy that draws nothing would decide nothing and
   `toArray()` could not give it back. Who is affected: stored
   configuration that says `'strategy' => 'shuffled'`. What to change: add

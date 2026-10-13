@@ -9,6 +9,7 @@ use Iterator;
 use JsonSerializable;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -311,17 +312,20 @@ class Schedule implements Iterator, Countable, JsonSerializable
      * Recreate a schedule from the array form toArray() produces.
      *
      * Every key is optional: missing 'participants', 'events' or 'metadata'
-     * are empty, and other keys are ignored. Events keep the order of the
-     * data. An event may only reference a participant the data lists.
+     * are empty. Any other key is refused: data of your own belongs in the
+     * metadata. Events keep the order of the data. An event may only
+     * reference a participant the data lists.
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When a field has the wrong type, a participant or an
-     *                               event is malformed, or an event references a
-     *                               participant ID that is not listed
+     * @throws InvalidInputException When a key is unknown, a field has the wrong type, a
+     *                               participant or an event is malformed, or an event
+     *                               references a participant ID that is not listed
      */
     public static function fromArray(array $data): self
     {
+        PlainData::checkFields($data, ['participants', 'events', 'metadata'], 'schedule data');
+
         $participantsData = $data['participants'] ?? [];
         if (!is_array($participantsData)) {
             throw new InvalidInputException('Schedule participants must be an array');

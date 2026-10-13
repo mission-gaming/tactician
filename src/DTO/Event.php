@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * One meeting of two or more participants, with the round it belongs to and
@@ -140,18 +141,21 @@ readonly class Event
      *
      * The participants are taken from the registry in the order the data
      * lists their IDs, so roles survive. A missing 'round' gives an event
-     * without a round and a missing 'metadata' gives none; other keys are
-     * ignored.
+     * without a round and a missing 'metadata' gives none. Any other key is
+     * refused: data of your own belongs in the metadata.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
      *
-     * @throws InvalidInputException When a field has the wrong type, a participant ID is
-     *                               not in the registry, fewer than 2 participants are
-     *                               listed, or the round number is not a positive integer
+     * @throws InvalidInputException When a key is unknown, a field has the wrong type, a
+     *                               participant ID is not in the registry, fewer than 2
+     *                               participants are listed, or the round number is not a
+     *                               positive integer
      */
     public static function fromArray(array $data, array $participantsById): self
     {
+        PlainData::checkFields($data, ['participants', 'round', 'metadata'], 'event data');
+
         $participantIds = $data['participants'] ?? null;
         if (!is_array($participantIds)) {
             throw new InvalidInputException('Event data requires a participants array');

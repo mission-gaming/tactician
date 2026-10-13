@@ -93,8 +93,10 @@ enum InvalidConfigurationReason: string
     case InvalidRoleAssignment = 'invalid_role_assignment';
 
     /**
-     * Plain-data configuration holds a key the options do not have. The
-     * context lists the unknown keys and the known ones.
+     * Plain-data configuration (options, a ranking, a timeline, a grid, a
+     * rule, a selector) holds a key its form does not have. The context
+     * lists the unknown keys under `unknown` and the known ones under
+     * `known`.
      */
     case UnknownOptionKey = 'unknown_option_key';
 

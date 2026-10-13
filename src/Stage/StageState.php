@@ -11,6 +11,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The full state of a results-driven stage between rounds.
@@ -620,7 +621,8 @@ final readonly class StageState
      * stamp existed, or by a caller that does not stamp, loads as an
      * unstamped state.
      *
-     * The shape is checked, and that every ID resolves in the
+     * The shape is checked, that the data holds no key but the five
+     * toArray() writes, and that every ID resolves in the
      * `participants` registry. The history is not checked as
      * withRoundPlayed() checks it (round order, results that belong to
      * their round), and an ID listed twice in `active` is not refused: the
@@ -631,6 +633,12 @@ final readonly class StageState
      */
     public static function fromArray(array $data): self
     {
+        PlainData::checkFields(
+            $data,
+            ['participants', 'active', 'rounds', 'results', 'engine_fingerprint'],
+            'stage state data'
+        );
+
         $participantsData = $data['participants'] ?? [];
         if (!is_array($participantsData)) {
             throw new InvalidInputException('Stage state participants must be an array');

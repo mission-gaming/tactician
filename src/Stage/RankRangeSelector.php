@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Stage;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -87,16 +88,19 @@ final readonly class RankRangeSelector implements ProgressionSelector
      * Build from plain configuration data:
      * ['mode' => 'per-group', 'from' => 1, 'to' => 2], the form toArray()
      * gives. The mode is 'overall' or 'per-group'; `from` defaults to 1
-     * and `to` is required. Other keys are ignored.
+     * and `to` is required. Any other key is refused, so that a misspelt
+     * `from` is not silently read as 1.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the mode is missing or unknown (reason
-     *                                       `UnknownIdentifier`), a bound is not an integer
-     *                                       (`WrongValueType`), or the range is not
-     *                                       1 <= from <= to (`ValueOutOfRange`)
+     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), the
+     *                                       mode is missing or unknown (`UnknownIdentifier`), a
+     *                                       bound is not an integer (`WrongValueType`), or the
+     *                                       range is not 1 <= from <= to (`ValueOutOfRange`)
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, ['mode', 'from', 'to'], 'a rank range selector');
+
         $mode = $config['mode'] ?? null;
         if (!in_array($mode, [self::MODE_OVERALL, self::MODE_PER_GROUP], true)) {
             throw new InvalidConfigurationException(

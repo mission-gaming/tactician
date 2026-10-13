@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The outcome of a played event: who won, or that nobody did, and
@@ -166,17 +167,21 @@ readonly class Result
      * The event is rebuilt from the data, so the result holds a new Event
      * object that is equal to the original and is not the same object. A
      * missing 'winner' is a draw; missing 'scores' and 'metadata' are empty.
+     * Any other key is refused, so that a misspelt 'winner' is not silently
+     * read as a draw.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
      *
-     * @throws InvalidInputException When a field has the wrong type, a score is not an int
+     * @throws InvalidInputException When a key is unknown, a field has the wrong type, a score is not an int
      *                               or a float, a participant ID is not in the registry,
      *                               or the winner or a score names a participant who is
      *                               not in the event
      */
     public static function fromArray(array $data, array $participantsById): self
     {
+        PlainData::checkFields($data, ['event', 'winner', 'scores', 'metadata'], 'result data');
+
         $eventData = $data['event'] ?? null;
         if (!is_array($eventData)) {
             throw new InvalidInputException('Result data requires an event array');

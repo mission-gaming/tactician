@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * A round: a set of events played concurrently, identified by its number.
@@ -124,15 +125,18 @@ readonly class Round implements \Stringable
     /**
      * Recreate a round from the array form toArray() produces.
      *
-     * 'number' is required; a missing 'metadata' is empty.
+     * 'number' is required; a missing 'metadata' is empty. Any other key
+     * is refused.
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When the number is missing, not an integer or below 1,
-     *                               or the metadata is not an array
+     * @throws InvalidInputException When a key is unknown, the number is missing, not an
+     *                               integer or below 1, or the metadata is not an array
      */
     public static function fromArray(array $data): self
     {
+        PlainData::checkFields($data, ['number', 'metadata'], 'round data');
+
         $number = $data['number'] ?? null;
         if (!is_int($number)) {
             throw new InvalidInputException('Round data requires an integer number');

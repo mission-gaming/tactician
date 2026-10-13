@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -75,14 +76,7 @@ final readonly class PotDrawOptions implements SchedulerOptions
     #[Override]
     public static function fromArray(array $config): static
     {
-        $unknown = array_values(array_diff(array_keys($config), self::KEYS));
-        if ($unknown !== []) {
-            throw new InvalidConfigurationException(
-                'Unknown pot draw option',
-                ['unknown' => $unknown, 'known' => self::KEYS],
-                reason: InvalidConfigurationReason::UnknownOptionKey
-            );
-        }
+        PlainData::checkOptions($config, self::KEYS, 'pot draw options');
 
         $values = [];
         foreach (self::KEYS as $key) {

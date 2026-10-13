@@ -10,6 +10,7 @@ use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
+use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use MissionGaming\Tactician\Timeline\ZonedTime;
 
@@ -74,6 +75,20 @@ final readonly class SessionGrid
      * read a null there as "not given" and applied the default of 1.
      */
     public const string UNBOUNDED = 'unbounded';
+
+    /**
+     * The keys fromArray() reads, of an instant-based grid and of a
+     * shape-only one together.
+     */
+    private const array KEYS = [
+        'sessions',
+        'timezone',
+        'slot_interval',
+        'session_count',
+        'slots_per_session',
+        'slots_per_session_overrides',
+        'capacity_per_slot',
+    ];
 
     /** @var array<int, DateTimeImmutable> Re-indexed 0..N-1; empty on a shape-only grid */
     private array $sessionStarts;
@@ -312,13 +327,19 @@ final readonly class SessionGrid
      * `capacity_per_slot` is a positive integer or the string
      * {@see self::UNBOUNDED}; left out, or null, it is 1.
      *
+     * A key that is none of those named above is refused, so that a
+     * misspelt `slots_per_session` is not silently read as 1.
+     *
      * @param array<string, mixed> $config
      *
-     * @throws InvalidConfigurationException When a value is missing or malformed, or a session
-     *                                       start does not state an instant by itself
+     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), a
+     *                                       value is missing or malformed, or a session start
+     *                                       does not state an instant by itself
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, self::KEYS, 'a session grid');
+
         if (!array_key_exists('sessions', $config) && array_key_exists('session_count', $config)) {
             $sessionCount = $config['session_count'];
             if (!is_int($sessionCount)) {

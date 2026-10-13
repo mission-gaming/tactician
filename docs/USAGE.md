@@ -1374,7 +1374,8 @@ var_dump($events($other) === $events($schedule)); // bool(false)
 ```
 
 `PotDrawOptions::fromArray()` refuses a key it does not know (reason
-`UnknownOptionKey`), so a misspelt option is not silently read as its default.
+`UnknownOptionKey`), as every `fromArray()` does, so a misspelt option is not
+silently read as its default.
 A key that is left out takes its default: one pot, one opponent per pot,
 seed 0.
 
@@ -3153,6 +3154,60 @@ missing top-level key is not an error: `Schedule::fromArray([])` is an empty
 schedule. Both exceptions are covered by
 `catch (TacticianException)`: see [Error Handling](#exception-hierarchy).
 
+### Keys a Form Does Not Have
+
+Every `fromArray()` in the library refuses an array that holds a key its
+form does not have. A misspelt key is otherwise read as the key left out,
+which for an option is its default and for a result with a misspelt
+`winner` is a draw, and nothing says so.
+
+```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
+
+try {
+    RoundRobinOptions::fromArray(['legs' => 2, 'stratgy' => 'repeated']);
+} catch (InvalidConfigurationException $exception) {
+    echo $exception->getReason()?->value, "\n";                  // unknown_option_key
+    echo implode(', ', $exception->getContext()['unknown']), "\n"; // stratgy
+    echo implode(', ', $exception->getContext()['known']), "\n";
+    // legs, strategy, backtracking, strategy_seed, role_assignment
+}
+
+try {
+    Participant::fromArray(['id' => 'celtic', 'label' => 'Celtic', 'seeding' => 1]);
+} catch (InvalidInputException $exception) {
+    echo $exception->getMessage(), "\n";
+    // Unknown key in participant data: 'seeding' (the known keys are 'id', 'label', 'seed', 'metadata')
+}
+```
+
+The two kinds of form report it with the exception they report every other
+fault of their array with:
+
+- **Configuration** (the options classes, `WinDrawLossRanking`,
+  `TimelineDefinition`, `SessionGrid`, the timeline rules and the progression
+  selectors, and each window of a `BlackoutRule`) throws an
+  `InvalidConfigurationException` with the reason `UnknownOptionKey`. Its
+  context lists the keys that are not known under `unknown` and the ones the
+  form has under `known`.
+- **Data** (`Participant`, `Round`, `Event`, `Result`, `Schedule`,
+  `RoundPairing`, `StageState`, `ScheduledEvent` and `ScheduledSchedule`,
+  nested in one another or on their own) throws an `InvalidInputException`
+  whose message names both.
+
+Data of your own does not go beside the library's keys. Put it in the
+`metadata` of the participant, the round, the event, the result or the
+schedule it belongs to, which is returned as it was given, or keep it beside
+the array and not in it.
+
+A known key whose value is `null` is read as the key left out, wherever a
+key may be left out: `['legs' => null]` is one leg, and a `seed` of `null`
+is no seed. `PotDrawOptions` is the exception: its three keys are integers
+or absent.
+
 ## Schedule Validation
 
 Every whole-schedule generator checks the schedule it built against its stage plan before it returns it: the number of events, then the plan's own integrity rules. A schedule that falls short is never returned; the generator throws an `IncompleteScheduleException`.
@@ -3543,7 +3598,7 @@ identifier for logs and stored data):
 | `NotSerializable` | `not_serializable` | The configuration has no plain-data form to serialize to |
 | `UnsatisfiableLegStrategy` | `unsatisfiable_leg_strategy` | The leg strategy cannot produce the legs asked for |
 | `InvalidRoleAssignment` | `invalid_role_assignment` | A role assignment returned something other than the seatings it was given, unchanged or reversed |
-| `UnknownOptionKey` | `unknown_option_key` | Plain-data configuration holds a key the options do not have. Only `PotDrawOptions::fromArray()` raises it; the other `fromArray()` methods ignore a key they do not know |
+| `UnknownOptionKey` | `unknown_option_key` | Plain-data configuration holds a key its form does not have. Every `fromArray()` that reads configuration raises it; see [Keys a Form Does Not Have](#keys-a-form-does-not-have) |
 | `OddParticipantCount` | `odd_participant_count` | The format has every participant in every round, issues no bye, and was given an odd number of participants |
 | `UnequalPots` | `unequal_pots` | The participants do not divide into the number of pots asked for |
 | `TooManyOpponentsPerPot` | `too_many_opponents_per_pot` | More opponents are asked from one pot than a pot has other members |

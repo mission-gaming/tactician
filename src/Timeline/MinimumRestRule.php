@@ -8,6 +8,7 @@ use DateInterval;
 use DateTimeImmutable;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -50,14 +51,17 @@ final readonly class MinimumRestRule implements TimelineRule
     /**
      * Build from plain configuration data: ['rest' => 'PT48H']. The rest is
      * an ISO 8601 duration string, read by
-     * TimelineDefinition::parseInterval().
+     * TimelineDefinition::parseInterval(). Any other key is refused.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the duration is missing or malformed, or does
-     *                                       not move time forward
+     * @throws InvalidConfigurationException When a key is unknown (reason `UnknownOptionKey`), or
+     *                                       the duration is missing or malformed, or does not
+     *                                       move time forward
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, ['rest'], 'a minimum rest rule');
+
         return new self(TimelineDefinition::parseInterval($config['rest'] ?? null, 'rest'));
     }
 

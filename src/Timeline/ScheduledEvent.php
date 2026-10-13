@@ -10,6 +10,7 @@ use Exception;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * An event decorated with its assigned kickoff time.
@@ -93,8 +94,9 @@ final readonly class ScheduledEvent
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
-     * @throws InvalidInputException When fields are malformed or a participant ID is unknown, or
-     *                               the kickoff does not state an instant by itself (the form
+     * @throws InvalidInputException When a key is unknown (`event`, `kickoff` and `resource` are
+     *                               the keys), fields are malformed or a participant ID is
+     *                               unknown, or the kickoff does not state an instant by itself (the form
      *                               `toArray()` writes does; `now`, `tomorrow`, an empty
      *                               string, a time of day without a date or a date that does
      *                               not exist does not). A kickoff without a zone is read as
@@ -102,6 +104,8 @@ final readonly class ScheduledEvent
      */
     public static function fromArray(array $data, array $participantsById): self
     {
+        PlainData::checkFields($data, ['event', 'kickoff', 'resource'], 'scheduled event data');
+
         $eventData = $data['event'] ?? null;
         if (!is_array($eventData)) {
             throw new InvalidInputException('Scheduled event data requires an event array');

@@ -12,6 +12,7 @@ use JsonSerializable;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -154,12 +155,15 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
      * date in full, as ScheduledEvent::fromArray() requires.
      *
      * @param array<string, mixed> $data
-     * @throws InvalidInputException When the data is malformed, an event names a participant
-     *                               the data does not list, or a kickoff does not state an
-     *                               instant by itself
+     * @throws InvalidInputException When a key is unknown (`participants` and `events` are the
+     *                               keys), the data is malformed, an event names a
+     *                               participant the data does not list, or a kickoff does not
+     *                               state an instant by itself
      */
     public static function fromArray(array $data): self
     {
+        PlainData::checkFields($data, ['participants', 'events'], 'scheduled schedule data');
+
         $participantsData = $data['participants'] ?? [];
         if (!is_array($participantsData)) {
             throw new InvalidInputException('Scheduled schedule participants must be an array');

@@ -163,6 +163,7 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
             'Scheduling\EventIndex',
             'Scheduling\PerfectMatching',
             'Scheduling\SwissRoundSearch',
+            'Serialization\PlainData',
             'Stage\EngineFingerprint',
             'Stage\PairKey',
             'Timeline\DateTimeString',

@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Stage;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The pairings a results-driven engine produces for a single round.
@@ -108,15 +109,18 @@ final readonly class RoundPairing
     /**
      * Recreate a pairing from its array representation, as toArray()
      * gives it. `round` is required; `label`, `events` and `byes` may be
-     * left out.
+     * left out. Any other key is refused.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
      *
-     * @throws InvalidInputException When fields are malformed or a participant ID is unknown
+     * @throws InvalidInputException When a key is unknown, fields are malformed or a
+     *                               participant ID is unknown
      */
     public static function fromArray(array $data, array $participantsById): self
     {
+        PlainData::checkFields($data, ['round', 'label', 'events', 'byes'], 'round pairing data');
+
         $roundNumber = $data['round'] ?? null;
         if (!is_int($roundNumber)) {
             throw new InvalidInputException('Round pairing data requires an integer round number');
