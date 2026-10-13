@@ -21,6 +21,9 @@ use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\ScheduleRepacker;
 use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
@@ -440,7 +443,7 @@ describe('a leg strategy that yields no event', function (): void {
         );
     });
 
-    it('keeps the message of a leg that only constraints left short', function (): void {
+    it('keeps the message of a leg that only constraints left short', function (?RoleAssignmentInterface $roleAssignment, string $afterwards): void {
         $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
         $constraints = ConstraintSet::create()->custom(
             fn(Event $event, SchedulingContext $context): bool => ($event->getRound()?->getNumber() ?? 0) < 4,
@@ -449,16 +452,32 @@ describe('a leg strategy that yields no event', function (): void {
 
         $failure = null;
         try {
-            (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: 2));
+            (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: 2, roleAssignment: $roleAssignment));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
 
         expect($failure?->getMessage())->toBe(
             'Failed to generate complete schedule for leg 2. Generated 0 events, expected 6.'
-            . ' Constraints may be preventing complete schedule generation.'
+            . ' Constraints may be preventing complete schedule generation.' . $afterwards
         );
-    });
+    })->with([
+        'round parity, whose roles are not searched' => [new RoundParityRoleAssignment(), ''],
+        // The default is balanced where possible: it fails where round
+        // parity fails, and says what round parity says
+        'the default, which fails as round parity does' => [null, ''],
+        // The balanced role assignment states a rule, so the roles of the
+        // first leg are searched within it before the failure, and the
+        // message goes on to say what that came to
+        'the balanced role assignment, named' => [
+            new BalancedRoleAssignment(),
+            ' The roles of the first leg were then searched within what ' . BalancedRoleAssignment::class
+                . ' keeps, in each of the 4 layouts tried, and no choice of them has a schedule the constraints accept.'
+                . ' The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.'
+                . ' Roles that ' . BalancedRoleAssignment::class . ' does not keep were not searched either:'
+                . ' RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()) searches every choice of roles.',
+        ],
+    ]);
 });
 
 /**

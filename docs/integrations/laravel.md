@@ -76,8 +76,11 @@ final class LeagueFixtureGenerator
 
 If the options come from `config()` or from a column, pass the library's
 keys and no others: every `fromArray()` refuses a key it does not know, so
-a misspelt option fails loudly and is not read as its default. The Symfony
-guide says [more](symfony.md#the-call).
+a misspelt option fails loudly and is not read as its default. Options
+stored without a `role_assignment` key get the default of the release that
+reads them, which since 0.3.0 is balanced where possible: balanced roles,
+or the roles of 0.2.x with a mark where the constraints leave no balanced
+schedule. The Symfony guide says [more](symfony.md#the-call).
 
 ## One step of a stage, under a lock
 

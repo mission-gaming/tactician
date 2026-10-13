@@ -203,10 +203,10 @@ describe('Golden output', function (): void {
             'round-robin/repeated-seed-42.txt',
             'round-robin/repeated-seed-1337.txt',
             'round-robin/constrained.txt',
-            'round-robin/balanced-mirrored-unseeded.txt',
-            'round-robin/balanced-mirrored-seed-42.txt',
-            'round-robin/balanced-repeated-unseeded.txt',
-            'round-robin/balanced-constrained.txt',
+            'round-robin/round-parity-mirrored-unseeded.txt',
+            'round-robin/round-parity-mirrored-seed-42.txt',
+            'round-robin/round-parity-repeated-unseeded.txt',
+            'round-robin/round-parity-constrained.txt',
             'swiss.txt',
             'pot-draw.txt',
             'single-elimination.txt',
@@ -335,18 +335,21 @@ describe('Golden baseline', function (): void {
         'round-robin/repeated-seed-1.txt',
         'round-robin/repeated-seed-42.txt',
         'round-robin/repeated-seed-1337.txt',
-        'round-robin/balanced-mirrored-unseeded.txt',
-        'round-robin/balanced-mirrored-seed-42.txt',
-        'round-robin/balanced-repeated-unseeded.txt',
+        'round-robin/round-parity-mirrored-unseeded.txt',
+        'round-robin/round-parity-mirrored-seed-42.txt',
+        'round-robin/round-parity-repeated-unseeded.txt',
     ]);
 
-    // If the role assignment were not wired through, a balanced file would
-    // equal the default one. It must differ from it in roles and in nothing
-    // else, and its single legs must be balanced: counted here in the stored
-    // text, whatever the library does.
-    it('stores balanced roles that differ from the default in nothing but roles', function (string $suffix): void {
-        $default = goldenSections("round-robin/{$suffix}.txt");
-        $balanced = goldenSections("round-robin/balanced-{$suffix}.txt");
+    // The default is the balanced role assignment since 0.3.0, and the
+    // files with the prefix pin the round-parity one, named. If the role
+    // assignment were not wired through, the two would be equal. They must
+    // differ in roles and in nothing else, and the single legs of the
+    // default must be balanced: counted here in the stored text, whatever
+    // the library does.
+    it('stores balanced roles by default, which differ from the round-parity ones in nothing but roles', function (string $suffix): void {
+        $parity = goldenSections("round-robin/round-parity-{$suffix}.txt");
+        $balanced = goldenSections("round-robin/{$suffix}.txt");
+        $default = $parity;
 
         expect(array_keys($balanced))->toBe(array_keys($default));
 
@@ -368,7 +371,7 @@ describe('Golden baseline', function (): void {
 
             expect($unordered($lines))->toBe($unordered($default[$title]), $title);
             // Two participants have one event per leg, which is balanced as
-            // the default lists it: every other field has its roles changed
+            // round parity lists it: every other field has other roles
             expect($lines !== $default[$title])->toBe($size !== 2, $title);
 
             if ($legs !== 1) {
@@ -391,8 +394,8 @@ describe('Golden baseline', function (): void {
         }
     })->with(['mirrored-unseeded', 'mirrored-seed-42', 'repeated-unseeded']);
 
-    it('stores a rotation-retry and two backtracking schedules with balanced roles', function (): void {
-        $titles = array_keys(goldenSections('round-robin/balanced-constrained.txt'));
+    it('stores a rotation-retry and two backtracking schedules with round-parity roles', function (): void {
+        $titles = array_keys(goldenSections('round-robin/round-parity-constrained.txt'));
 
         expect($titles)->toHaveCount(3)
             ->and($titles[0])->toStartWith('rotation retry: ')
@@ -421,13 +424,17 @@ describe('Golden baseline', function (): void {
             ->and($mirrored['n=8 legs=2'])->not->toBe($repeated['n=8 legs=2']);
     })->with(['unseeded', 'seed-1', 'seed-42', 'seed-1337']);
 
-    it('stores a rotation-retry and two backtracking schedules', function (): void {
+    // The default balances the first leg a search finds, so its file has
+    // one backtracking schedule more than the round-parity one: a leg whose
+    // searched roles were out of balance
+    it('stores a rotation-retry and three backtracking schedules', function (): void {
         $titles = array_keys(goldenSections('round-robin/constrained.txt'));
 
-        expect($titles)->toHaveCount(3)
+        expect($titles)->toHaveCount(4)
             ->and($titles[0])->toStartWith('rotation retry: ')
             ->and($titles[1])->toStartWith('backtracking: n=4 ')
-            ->and($titles[2])->toStartWith('backtracking: n=5 ');
+            ->and($titles[2])->toStartWith('backtracking: n=5 ')
+            ->and($titles[3])->toStartWith('backtracking: n=4 ');
     });
 
     it('stores a different Swiss schedule for every seed', function (string $field): void {

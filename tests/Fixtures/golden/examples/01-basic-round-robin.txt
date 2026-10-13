@@ -17,9 +17,9 @@
 
 == Schedule ==
 meta: algorithm=round-robin participant_count=4 legs=1 rounds_per_leg=3 total_rounds=3 expected_event_count=6 byes=[]
-R1: celtic-redstar athletic-livorno
-R2: athletic-celtic redstar-livorno
-R3: celtic-livorno redstar-athletic
+R1: redstar-celtic athletic-livorno
+R2: celtic-athletic livorno-redstar
+R3: livorno-celtic redstar-athletic
 
 == Shape ==
 Events: 6

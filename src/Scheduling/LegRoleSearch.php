@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Scheduling;
 
+use Closure;
+use MissionGaming\Tactician\Constraints\ConstraintInterface;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
@@ -14,10 +16,13 @@ use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
  * it builds the events in order, puts each one to the constraints, and
  * changes roles, and nothing else, where they reject one.
  *
- * The events to build are handed over as slots, of three kinds:
+ * The events to build are handed over as slots, of four kinds:
  *
- * - an event of the first leg that a backtracking search found. Its role
- *   is free: the event as found is tried first and its reverse second;
+ * - an event of the first leg whose role is free: the event as given is
+ *   tried first and its reverse second;
+ * - an event of the first leg that is `fixed`: it has the one role it is
+ *   given. A search in which every first-leg event is fixed is a replay:
+ *   it says whether these roles stand, and where they first do not;
  * - an event of a later leg whose strategy states its roles as a
  *   preference (LegPlanContribution::$rolesArePreferences, the shuffled
  *   legs). The event the strategy returns is tried first and its reverse
@@ -26,17 +31,36 @@ use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
  *   repeated legs). It has the one role the strategy gives it, and can
  *   only change when the first-leg event it is derived from does.
  *
- * When the constraints reject every role of an event, the search goes back
- * to an earlier event that has a role left, takes it and comes forward
- * again. Which earlier event depends on the constraints. For a set whose
- * verdict on an event can depend only on the events of that event's own
- * participants (ConstraintPurity::readsOwnEventsOnly()) it is the latest
- * event that shares a participant with the rejected one, or with one that
- * sent the search back to it before: no other event can change the
- * verdict, so nothing is lost by passing over the ones in between, and a
- * search that ends without roles has shown that there are none. For any
- * other set it is the event before, one at a time, which shows the same
+ * Where the role assignment states a rule for the first leg, an event of
+ * the first leg is put to that rule before it is put to the constraints,
+ * and the rule's rejection is a rejection like theirs.
+ *
+ * When every role of an event is rejected, the search goes back to an
+ * earlier event that has a role left, takes it and comes forward again.
+ * Which earlier event depends on why the roles were rejected. Where each
+ * was rejected for a reason that only the events of that event's own
+ * participants can change, it is the latest event that shares a
+ * participant with the rejected one, or with one that sent the search back
+ * to it before: no other event can change the verdict, so nothing is lost
+ * by passing over the ones in between, and a search that ends without
+ * roles has shown that there are none. Such a reason is a constraint set
+ * whose verdict can depend only on those events
+ * (ConstraintPurity::readsOwnEventsOnly()), or the rule of the first leg
+ * where it is one the library knows. Where a role was rejected for any
+ * other reason it is the event before, one at a time, which shows the same
  * and takes longer.
+ *
+ * With a rule for the first leg, a set that holds both kinds of constraint
+ * is asked one constraint at a time about an event it rejected, and the
+ * rejection counts as one of the first kind when a constraint of that kind
+ * rejects the event by itself. Without such a rule a set is asked as a
+ * whole, as it was before the first leg could be searched without
+ * backtracking.
+ *
+ * A first leg whose roles the search changed is put to the caller once it
+ * is whole (`$keepsFirstLeg`), where one is given: a leg that is not kept
+ * is a dead end, and the search goes on to the next choice of roles, one
+ * event back at a time.
  *
  * A strategy that states a preference is asked for each event once, the
  * first time the search comes to it, in the order of the events. Going
@@ -50,13 +74,17 @@ use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
  *
  * - the attempt limit: every event put to the constraints is one attempt.
  *   The backtracking generator passes what is left of its step budget;
- * - the rejection limit: every attempt the constraints reject. An attempt
- *   they accept at once costs nothing against it, so a schedule that needs
- *   no search is never stopped by it, whatever its size.
+ * - the rejection limit: every attempt that is rejected, by the rule of the
+ *   first leg or by the constraints, and every first leg that is not kept.
+ *   An attempt that is accepted at once costs nothing against it, so a
+ *   schedule that needs no search is never stopped by it, whatever its
+ *   size.
  *
  * @internal Not public API: the round-robin scheduler runs it for the legs
- *           after the first, and with RoundRobinOptions(backtracking: true)
- *           for the roles of the first leg too.
+ *           after the first, for the roles of the first leg where the role
+ *           assignment states a rule, and with
+ *           RoundRobinOptions(backtracking: true) for the roles of the
+ *           first leg of every layout the search finds.
  */
 final class LegRoleSearch
 {
@@ -72,14 +100,30 @@ final class LegRoleSearch
      */
     private readonly bool $verdictsAreLocal;
 
+    /**
+     * Whether what the rule of the first leg says about an event can
+     * depend only on the events of its own two participants.
+     */
+    private readonly bool $ruleIsLocal;
+
+    /**
+     * Whether a set that is not local as a whole is asked one constraint at
+     * a time about an event it rejected, to find a local reason for it.
+     */
+    private readonly bool $explainsRejections;
+
     private int $attempts = 0;
 
     private int $rejections = 0;
 
+    private int $firstLegsNotKept = 0;
+
     private bool $stoppedByABound = false;
 
-    /** @var array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int}|null */
+    /** @var array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int, fixed?: bool}|null */
     private ?array $slotWithoutEvent = null;
+
+    private ?int $furthestSlot = null;
 
     /** @var list<Event> */
     private array $furthestEvents = [];
@@ -94,14 +138,26 @@ final class LegRoleSearch
      *                                   holds the events already made in the event's own round (the
      *                                   backtracking search) or the earlier rounds only (the circle
      *                                   layout)
+     * @param ConstraintInterface|null $firstLegRule The rule the role assignment holds the first leg
+     *                                               to: a first-leg event whose role is free is put to
+     *                                               it before the constraints. Null for no rule
+     * @param (Closure(list<Event>): bool)|null $keepsFirstLeg Asked about a first leg whose roles the
+     *                                                         search changed, once it is whole: whether
+     *                                                         it may stand. Null lets every leg stand
      */
     public function __construct(
         private readonly ?ConstraintSet $constraints,
         private readonly LegStrategyInterface $strategy,
         private readonly bool $rolesArePreferences,
-        private readonly bool $contextHoldsOwnRound
+        private readonly bool $contextHoldsOwnRound,
+        private readonly ?ConstraintInterface $firstLegRule = null,
+        private readonly ?Closure $keepsFirstLeg = null
     ) {
         $this->verdictsAreLocal = ConstraintPurity::readsOwnEventsOnly($constraints);
+        $this->ruleIsLocal = ConstraintPurity::ruleReadsOwnEventsOnly($firstLegRule);
+        $this->explainsRejections = $firstLegRule instanceof ConstraintInterface
+            && $constraints instanceof ConstraintSet
+            && $constraints::class === ConstraintSet::class;
     }
 
     /**
@@ -112,7 +168,8 @@ final class LegRoleSearch
      * A slot holds its leg, its round number and its two participants
      * (`pairing`), and says where its event comes from:
      *
-     * - `event`: an event of the first leg, to be kept or reversed;
+     * - `event`: an event of the first leg, to be kept or reversed, or
+     *   with `fixed` set to true, to be kept;
      * - `source`: the index of the first-leg slot whose event, as the
      *   search has it, is the pairing handed to the strategy;
      * - neither: `pairing` is handed to the strategy as it is, in the roles
@@ -120,7 +177,7 @@ final class LegRoleSearch
      *
      * @param SchedulingContext $context The events generated before the first slot, with the leg of
      *                                   that slot as its current leg
-     * @param list<array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int}> $slots
+     * @param list<array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int, fixed?: bool}> $slots
      *                                   In generation order; legs do not decrease, and a source comes
      *                                   before the slots that name it
      * @param int $attemptLimit Attempts allowed
@@ -131,12 +188,23 @@ final class LegRoleSearch
     {
         $this->attempts = 0;
         $this->rejections = 0;
+        $this->firstLegsNotKept = 0;
         $this->stoppedByABound = false;
         $this->slotWithoutEvent = null;
+        $this->furthestSlot = null;
         $this->furthestEvents = [];
         $this->furthestRejections = [];
 
         $slotCount = count($slots);
+        $lastFirstLegSlot = -1;
+        if ($this->keepsFirstLeg instanceof Closure) {
+            foreach ($slots as $position => $slot) {
+                if (isset($slot['event'])) {
+                    $lastFirstLegSlot = $position;
+                }
+            }
+        }
+
         $contexts = [$context];
         /** @var array<int, list<Event>> $candidates */
         $candidates = [];
@@ -146,6 +214,8 @@ final class LegRoleSearch
         $placed = [];
         /** @var array<int, array<int, true>> $inherited */
         $inherited = [];
+        /** @var array<int, true> $anyEarlierEvent Slots with a role rejected for a reason any earlier event may change */
+        $anyEarlierEvent = [];
         $slotsByParticipant = null;
         $furthest = -1;
         $index = 0;
@@ -158,6 +228,7 @@ final class LegRoleSearch
                 $slotCandidates = $this->candidates($slot, $slotContext, $placed);
                 if ($slotCandidates === null) {
                     $this->slotWithoutEvent = $slot;
+                    $this->furthestSlot = $index;
                     $this->furthestEvents = array_slice($placed, 0, $index);
 
                     return null;
@@ -179,9 +250,25 @@ final class LegRoleSearch
                 $candidate = $candidates[$index][$tried[$index]];
                 ++$tried[$index];
 
-                if ($this->constraints === null || $this->constraints->isSatisfied($candidate, $slotContext)) {
+                $rejectedLocally = $this->rejection($slot, $candidate, $slotContext);
+
+                if ($rejectedLocally === null && $index === $lastFirstLegSlot) {
+                    // The first leg is whole. One the search changed stands
+                    // only when the caller keeps it
+                    $placed[$index] = $candidate;
+                    if ($this->firstLegWasChanged($slots, $placed, $index) && !$this->firstLegIsKept(array_slice($placed, 0, $index + 1))) {
+                        ++$this->firstLegsNotKept;
+                        $rejectedLocally = false;
+                    }
+                }
+
+                if ($rejectedLocally === null) {
                     $accepted = $candidate;
                     break;
+                }
+
+                if (!$rejectedLocally) {
+                    $anyEarlierEvent[$index] = true;
                 }
 
                 ++$this->rejections;
@@ -204,6 +291,7 @@ final class LegRoleSearch
 
             if ($index > $furthest) {
                 $furthest = $index;
+                $this->furthestSlot = $index;
                 $this->furthestEvents = array_slice($placed, 0, $index);
                 $this->furthestRejections = array_map(
                     static fn(Event $rejected): array => [$rejected, $slotContext],
@@ -215,12 +303,17 @@ final class LegRoleSearch
             // events in between start again from their first role when the
             // search comes forward to them.
             $target = $index - 1;
-            if ($this->verdictsAreLocal) {
+            if (isset($anyEarlierEvent[$index])) {
+                // Any earlier event may be what the rejection turned on:
+                // the event before is tried, and told the same
+                if ($target >= 0) {
+                    $anyEarlierEvent[$target] = true;
+                }
+            } else {
                 // Only an event that shares a participant with this one,
                 // or with an event that already sent the search back here,
-                // can change what the constraints say here: go straight
-                // to the latest of those, and hand it the rest to go back
-                // to in its turn.
+                // can change what was said here: go straight to the latest
+                // of those, and hand it the rest to go back to in its turn.
                 $slotsByParticipant ??= $this->slotsByParticipant($slots);
                 $culprits = $inherited[$index] ?? [];
                 foreach ($slot['pairing'] as $participant) {
@@ -241,7 +334,7 @@ final class LegRoleSearch
 
             for ($reset = $index; $reset > $target; --$reset) {
                 $tried[$reset] = 0;
-                unset($inherited[$reset]);
+                unset($inherited[$reset], $anyEarlierEvent[$reset]);
                 if (!$this->keepsItsCandidates($slots[$reset])) {
                     unset($candidates[$reset]);
                 }
@@ -265,6 +358,24 @@ final class LegRoleSearch
     }
 
     /**
+     * How many attempts of the last search were rejected, the first legs
+     * that were not kept included: what it spent of its rejection limit.
+     */
+    public function rejections(): int
+    {
+        return $this->rejections;
+    }
+
+    /**
+     * How many first legs the last search completed, with roles the
+     * constraints accept in that leg, that the caller did not keep.
+     */
+    public function firstLegsNotKept(): int
+    {
+        return $this->firstLegsNotKept;
+    }
+
+    /**
      * Whether the last search stopped at one of its two limits, and so
      * says nothing about whether roles exist.
      */
@@ -277,11 +388,22 @@ final class LegRoleSearch
      * The slot the strategy returned no event for in the last search; null
      * when it returned one for every slot it was asked about.
      *
-     * @return array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int}|null
+     * @return array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int, fixed?: bool}|null
      */
     public function slotWithoutEvent(): ?array
     {
         return $this->slotWithoutEvent;
+    }
+
+    /**
+     * The index of the slot the last failed search was furthest on at: the
+     * latest slot whose every role was rejected, or the slot the strategy
+     * returned no event for. Null when the search succeeded, or stopped at
+     * a bound before any slot had every role rejected.
+     */
+    public function furthestSlot(): ?int
+    {
+        return $this->furthestSlot;
     }
 
     /**
@@ -308,17 +430,79 @@ final class LegRoleSearch
     }
 
     /**
+     * Why an event is rejected, or null when it is accepted: true when
+     * only the events of its own participants can change the verdict, and
+     * false when any earlier event may.
+     *
+     * @param array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int, fixed?: bool} $slot
+     */
+    private function rejection(array $slot, Event $candidate, SchedulingContext $context): ?bool
+    {
+        if (
+            $this->firstLegRule instanceof ConstraintInterface
+            && isset($slot['event'])
+            && !$this->firstLegRule->isSatisfied($candidate, $context)
+        ) {
+            return $this->ruleIsLocal;
+        }
+
+        if (!$this->constraints instanceof ConstraintSet || $this->constraints->isSatisfied($candidate, $context)) {
+            return null;
+        }
+
+        if ($this->verdictsAreLocal) {
+            return true;
+        }
+
+        if ($this->explainsRejections) {
+            foreach ($this->constraints->getConstraints() as $constraint) {
+                if (ConstraintPurity::constraintReadsOwnEventsOnly($constraint) && !$constraint->isSatisfied($candidate, $context)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a first-leg slot up to $last holds another event than the one
+     * it was given.
+     *
+     * @param list<array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int, fixed?: bool}> $slots
+     * @param array<int, Event> $placed
+     */
+    private function firstLegWasChanged(array $slots, array $placed, int $last): bool
+    {
+        for ($index = 0; $index <= $last; ++$index) {
+            if (isset($slots[$index]['event']) && $placed[$index] !== $slots[$index]['event']) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<Event> $firstLeg
+     */
+    private function firstLegIsKept(array $firstLeg): bool
+    {
+        return !$this->keepsFirstLeg instanceof Closure || ($this->keepsFirstLeg)($firstLeg);
+    }
+
+    /**
      * The events to try for a slot, in the order to try them; null when
      * the strategy returns no event for it.
      *
-     * @param array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int} $slot
+     * @param array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int, fixed?: bool} $slot
      * @param array<int, Event> $placed
      * @return list<Event>|null
      */
     private function candidates(array $slot, SchedulingContext $context, array $placed): ?array
     {
         if (isset($slot['event'])) {
-            return $this->withReverse($slot['event']);
+            return ($slot['fixed'] ?? false) ? [$slot['event']] : $this->withReverse($slot['event']);
         }
 
         $pairing = isset($slot['source']) ? $placed[$slot['source']]->getParticipants() : $slot['pairing'];
@@ -336,7 +520,7 @@ final class LegRoleSearch
      * search comes forward to it again: not for a rule derived from a
      * first-leg event, which may have been reversed in between.
      *
-     * @param array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int} $slot
+     * @param array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int, fixed?: bool} $slot
      */
     private function keepsItsCandidates(array $slot): bool
     {
@@ -362,7 +546,7 @@ final class LegRoleSearch
     /**
      * The indexes of the slots each participant is in, in slot order.
      *
-     * @param list<array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int}> $slots
+     * @param list<array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int, fixed?: bool}> $slots
      * @return array<array-key, list<int>>
      */
     private function slotsByParticipant(array $slots): array
@@ -380,7 +564,7 @@ final class LegRoleSearch
     /**
      * The context of the slot at $index, once the slot before it is placed.
      *
-     * @param list<array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int}> $slots
+     * @param list<array{leg: int, round: int, pairing: array<Participant>, event?: Event, source?: int, fixed?: bool}> $slots
      * @param SchedulingContext $previousContext The context of the slot before
      * @param array<int, Event> $placed
      */

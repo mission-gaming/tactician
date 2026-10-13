@@ -14,6 +14,8 @@ use MissionGaming\Tactician\Constraints\SeedProtectionConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\ConstraintPurity;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
@@ -170,5 +172,137 @@ describe('ConstraintPurity', function (): void {
         expect($verdicts[0])->toBe([false, true, true])
             ->and($verdicts[1])->toBe($verdicts[0])
             ->and($verdicts[2])->toBe($verdicts[0]);
+    });
+
+    // One constraint at a time: what a search of first-leg roles asks of a
+    // set that holds both kinds, to tell a rejection that only the two
+    // participants' own events can lift from one that anything may.
+    it('says of one constraint whether it reads the own events only', function (): void {
+        $readsOwn = [
+            new NoRepeatPairings(),
+            new MinimumRestPeriodsConstraint(1),
+            RoleBalanceConstraint::homeAway(2),
+            new SeedProtectionConstraint(2, 0.5),
+            ConsecutiveRoleConstraint::homeAway(2),
+            ConsecutiveRoleConstraint::position(3),
+        ];
+        foreach ($readsOwn as $constraint) {
+            expect(ConstraintPurity::constraintReadsOwnEventsOnly($constraint))->toBeTrue($constraint::class);
+        }
+
+        $mayReadMore = [
+            new CallableConstraint(static fn(): bool => true, 'Yes'),
+            MetadataConstraint::requireSameValue('group'),
+            new PurityTestConstraint(),
+            new PurityTestRoleBalance(1),
+            // The rule of a role assignment is not a constraint of a set
+            (new BalancedRoleAssignment())->rule(),
+        ];
+        foreach ($mayReadMore as $constraint) {
+            expect(ConstraintPurity::constraintReadsOwnEventsOnly($constraint))->toBeFalse($constraint::class);
+        }
+    });
+
+    // A constraint that reads no position rejects a pairing in a round
+    // whatever the roles, so a search of roles has nothing to find where one
+    // rejects: the scheduler asks this before it starts one.
+    it('says of one constraint whether it reads no position of an event', function (): void {
+        foreach ([new NoRepeatPairings(), new NoRepeatPairings(acrossLegs: true), new MinimumRestPeriodsConstraint(1), new SeedProtectionConstraint(2, 0.5)] as $constraint) {
+            expect(ConstraintPurity::constraintIgnoresRoles($constraint))->toBeTrue($constraint::class);
+        }
+
+        $mayReadRoles = [
+            RoleBalanceConstraint::homeAway(2),
+            ConsecutiveRoleConstraint::homeAway(2),
+            new CallableConstraint(static fn(): bool => true, 'Yes'),
+            MetadataConstraint::requireSameValue('group'),
+            new PurityTestConstraint(),
+            (new BalancedRoleAssignment())->rule(),
+        ];
+        foreach ($mayReadRoles as $constraint) {
+            expect(ConstraintPurity::constraintIgnoresRoles($constraint))->toBeFalse($constraint::class);
+        }
+
+        // Every class that ignores roles is a known class
+        expect(array_diff(ConstraintPurity::IGNORES_ROLES, ConstraintPurity::KNOWN))->toBe([]);
+    });
+
+    // The claim behind the list, held for each class on it: every pairing
+    // of six participants, put to the constraint in each round of two legs
+    // after a growing part of a schedule, gets the verdict it gets with its
+    // two participants the other way round, and with every event before it
+    // the other way round. Both verdicts occur for every constraint, so the
+    // comparison is not of a constant.
+    it('gets the same verdict from a constraint that ignores roles whichever way round the events are', function (): void {
+        $field = [];
+        for ($i = 1; $i <= 6; ++$i) {
+            $field[] = new Participant("p{$i}", "P{$i}", $i);
+        }
+        $plan = new RoundRobinPlan($field, 2, true);
+        $reversed = static fn(Event $event): Event => new Event(array_reverse($event->getParticipants()), $event->getRound());
+
+        // A first leg by hand (the circle method's rounds), and its mirror
+        $rounds = [
+            [[0, 5], [1, 4], [2, 3]],
+            [[5, 3], [4, 2], [0, 1]],
+            [[1, 5], [2, 0], [3, 4]],
+            [[5, 4], [0, 3], [1, 2]],
+            [[2, 5], [3, 1], [4, 0]],
+        ];
+        $schedule = [];
+        foreach ([0, 1] as $leg) {
+            foreach ($rounds as $index => $pairs) {
+                foreach ($pairs as [$one, $other]) {
+                    $pair = $leg === 0 ? [$field[$one], $field[$other]] : [$field[$other], $field[$one]];
+                    $schedule[] = new Event($pair, new Round($leg * 5 + $index + 1));
+                }
+            }
+        }
+
+        $constraints = [
+            'no repeat in a leg' => new NoRepeatPairings(),
+            'no repeat at all' => new NoRepeatPairings(acrossLegs: true),
+            'six rounds of rest' => new MinimumRestPeriodsConstraint(6),
+            'seed protection' => new SeedProtectionConstraint(2, 0.5),
+        ];
+
+        foreach ($constraints as $name => $constraint) {
+            $verdicts = [];
+            foreach ([0, 9, 15, 21, 30] as $played) {
+                $before = array_slice($schedule, 0, $played);
+                $leg = $played < 15 ? 1 : 2;
+                $asPlayed = new SchedulingContext($field, $plan, $before, $leg);
+                $theOtherWayRound = new SchedulingContext($field, $plan, array_map($reversed, $before), $leg);
+
+                foreach ([intdiv($played, 3) + 1, 10] as $round) {
+                    for ($one = 0; $one < 6; ++$one) {
+                        for ($other = $one + 1; $other < 6; ++$other) {
+                            $candidate = new Event([$field[$one], $field[$other]], new Round($round));
+                            $verdict = $constraint->isSatisfied($candidate, $asPlayed);
+                            $verdicts[(int) $verdict] = true;
+
+                            expect($constraint->isSatisfied($reversed($candidate), $asPlayed))->toBe($verdict, "{$name}, the candidate reversed")
+                                ->and($constraint->isSatisfied($candidate, $theOtherWayRound))->toBe($verdict, "{$name}, the context reversed")
+                                ->and($constraint->isSatisfied($reversed($candidate), $theOtherWayRound))->toBe($verdict, "{$name}, both reversed");
+                        }
+                    }
+                }
+            }
+
+            expect($verdicts)->toHaveCount(2, "{$name} gives both verdicts here");
+        }
+    });
+
+    // The rule a role assignment states for the first leg: none reads
+    // nothing, the balanced one counts the roles of the two participants,
+    // and a rule of the caller's says nothing about what it reads.
+    it('knows the rule of the balanced role assignment, and no other', function (): void {
+        expect(ConstraintPurity::ruleReadsOwnEventsOnly(null))->toBeTrue()
+            ->and(ConstraintPurity::ruleReadsOwnEventsOnly((new RoundParityRoleAssignment())->rule()))->toBeTrue()
+            ->and(ConstraintPurity::ruleReadsOwnEventsOnly((new BalancedRoleAssignment())->rule()))->toBeTrue()
+            ->and(ConstraintPurity::ruleReadsOwnEventsOnly(new PurityTestConstraint()))->toBeFalse()
+            // A constraint that reads the own events only is still not a
+            // rule the library wrote for a first leg
+            ->and(ConstraintPurity::ruleReadsOwnEventsOnly(RoleBalanceConstraint::homeAway(1)))->toBeFalse();
     });
 });

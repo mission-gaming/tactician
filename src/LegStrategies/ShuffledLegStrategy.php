@@ -45,9 +45,12 @@ use stdClass;
  * - a seed, an integer. Every call of planLegs() then starts the draws
  *   again from a new `Random\Randomizer` on the `Xoshiro256StarStar`
  *   engine, seeded with that integer; the engine is part of the output for
- *   a seed. The scheduler calls planLegs() once at the start of every
- *   schedule() call, so the same seed gives the same roles for the same
- *   input on every call and in every process, and the seed is plain data,
+ *   a seed. The scheduler calls planLegs() at the start of every
+ *   schedule() call (and, under the default role assignment, once more
+ *   each time it starts the generation over with other roles, so that
+ *   every run of it draws what a call draws), so the same seed gives the
+ *   same roles for the same input on every call and in every process, and
+ *   the seed is plain data,
  *   which RoundRobinOptions reads and writes as `strategy_seed`. The roles
  *   are those the strategy would give once, were it handed
  *   `new Randomizer(new Xoshiro256StarStar($seed))`;

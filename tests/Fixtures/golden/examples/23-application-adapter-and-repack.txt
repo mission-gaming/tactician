@@ -29,8 +29,8 @@
 -
   id: fx02
   round: 1
-  home_club_id: 31
-  away_club_id: 44
+  home_club_id: 44
+  away_club_id: 31
   night: null
   slot: null
   local_kickoff: null
@@ -56,8 +56,8 @@
 -
   id: fx05
   round: 3
-  home_club_id: 7
-  away_club_id: 31
+  home_club_id: 31
+  away_club_id: 7
   night: null
   slot: null
   local_kickoff: null
@@ -74,8 +74,8 @@
 -
   id: fx07
   round: 4
-  home_club_id: 44
-  away_club_id: 7
+  home_club_id: 7
+  away_club_id: 44
   night: null
   slot: null
   local_kickoff: null
@@ -83,8 +83,8 @@
 -
   id: fx08
   round: 4
-  home_club_id: 31
-  away_club_id: 52
+  home_club_id: 52
+  away_club_id: 31
   night: null
   slot: null
   local_kickoff: null
@@ -101,8 +101,8 @@
 -
   id: fx10
   round: 5
-  home_club_id: 18
-  away_club_id: 31
+  home_club_id: 31
+  away_club_id: 18
   night: null
   slot: null
   local_kickoff: null
@@ -209,8 +209,8 @@ Applied with the rows and nights as previewed: true
 -
   id: fx02
   round: 1
-  home_club_id: 31
-  away_club_id: 44
+  home_club_id: 44
+  away_club_id: 31
   night: night-1
   slot: 0
   local_kickoff: 2026-09-03 19:00
@@ -236,8 +236,8 @@ Applied with the rows and nights as previewed: true
 -
   id: fx05
   round: 3
-  home_club_id: 7
-  away_club_id: 31
+  home_club_id: 31
+  away_club_id: 7
   night: night-4
   slot: 1
   local_kickoff: 2026-09-24 20:30
@@ -254,8 +254,8 @@ Applied with the rows and nights as previewed: true
 -
   id: fx07
   round: 4
-  home_club_id: 44
-  away_club_id: 7
+  home_club_id: 7
+  away_club_id: 44
   night: night-4
   slot: 0
   local_kickoff: 2026-09-24 19:00
@@ -263,8 +263,8 @@ Applied with the rows and nights as previewed: true
 -
   id: fx08
   round: 4
-  home_club_id: 31
-  away_club_id: 52
+  home_club_id: 52
+  away_club_id: 31
   night: night-5
   slot: 0
   local_kickoff: 2026-10-01 19:00
@@ -281,8 +281,8 @@ Applied with the rows and nights as previewed: true
 -
   id: fx10
   round: 5
-  home_club_id: 18
-  away_club_id: 31
+  home_club_id: 31
+  away_club_id: 18
   night: night-4
   slot: 0
   local_kickoff: 2026-09-24 19:00

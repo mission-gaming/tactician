@@ -65,7 +65,7 @@ play completes. The `src/Stage/` family:
 - **SchedulerInterface**: Contract for whole-schedule generators — participants and typed options in, a validated schedule out; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
 - **SchedulerOptions**: Typed per-algorithm options, one type per scheduler — no overloaded scalars. Config-constructible (`fromArray()`/`toArray()`) with stable identifiers; `fromArray()` refuses a key the options do not have, as every `fromArray()` in the library does (`Serialization\PlainData`, internal, is the one check).
 - **RoundRobinOptions / SwissOptions**: Legs, leg strategy, backtracking and role assignment for round robin; rounds and the optional seed of the draw for Swiss (retiring the old "legs means rounds here" overload)
-- **RoleAssignmentInterface** (`src/RoleAssignment/`): Which participant of each round-robin pairing is first-named. The generator hands over one leg with the roles it proposes and takes it back with seatings reversed; the scheduler refuses an answer that changes anything else. `RoundParityRoleAssignment` (the default) returns the proposal. `BalancedRoleAssignment` ends every leg with each participant's two role counts at most 1 apart (field of even size) or equal (field of odd size): a closed rule for a circle layout, a chain-reversing repair for any other. See `docs/design/role-assignment.md`.
+- **RoleAssignmentInterface** (`src/RoleAssignment/`): Which participant of each round-robin pairing is first-named. The generator hands over one leg with the roles it proposes, and a `RoleAssignmentContext` (which leg of how many, and the seatings the constraints have fixed), and takes the leg back with seatings reversed; the scheduler refuses an answer that changes anything else. `rule()` states what the assignment holds a first leg to, as a constraint on one event, or null: with a rule the scheduler searches the roles of the first leg within it when the constraints reject the ones given. `BalancedRoleAssignment` ends every leg with each participant's two role counts at most 1 apart (field of even size) or equal (field of odd size): a closed rule for a circle layout, a chain-reversing repair for any other, and the same repair around fixed seatings; its rule is `LegBalanceRule` (`@internal`). Named, it is strict: balanced or refused. `RoundParityRoleAssignment` (the default up to 0.2.x) returns the proposal and states no rule. `BalancedWherePossibleRoleAssignment` (the default) answers and states its rule as the balanced one does; the scheduler knows the class, and where it finds no schedule with balanced roles it generates the schedule again as under round parity and writes the reason into the schedule's metadata (`RoleFallback`, with its `METADATA_KEY` and `of()`). See `docs/design/role-assignment.md`.
 - **PotDrawOptions**: Pots, opponents per pot and the seed of the draw. The seed is an option and not a `Randomizer`, so a draw is repeatable from plain data.
 - **BacktrackingRoundRobinGenerator** (`@internal`): Opt-in search over the round decompositions the circle method cannot reach (`RoundRobinOptions(backtracking: true)`): per-round perfect matchings built seat by seat under the constraints, both orientations tried, dead ends backtracking across rounds. Deterministic, step-bounded, loud about budget-exhausted vs proven-unsatisfiable. Every first leg it reaches is handed to the scheduler to complete, and one that cannot be completed is a dead end.
 - **LegRoleSearch** (`@internal`): Searches roles with the pairings and rounds held: the roles of the later legs of a leg strategy that states them as preferences, in every layout, and with backtracking the roles of the first leg too, which mirrored and repeated legs derive from. Tries the role given first and the reverse second, goes straight back to an event of the same participants where the constraints read no others (`ConstraintPurity::readsOwnEventsOnly()`) and one event at a time otherwise, and is bounded by a count of rejected roles; a search a bound stopped says so.
@@ -265,13 +265,13 @@ orders, whichever of the two decided between them
    fixed, the others rotate, and seat *i* meets seat *n − 1 − i*. A field
    of odd size gets a bye seat. The roles proposed alternate with the
    parity of the round within the leg. With a `Randomizer` the participant
-   order of the first leg is shuffled first; later legs are laid out from
-   the order as given.
+   order is shuffled first. The first leg is the one leg that is laid out:
+   every later leg has its seatings, in the same rounds of the leg.
 3. **Roles.** The configured `RoleAssignmentInterface` is handed the leg
    and returns it with seatings unchanged or reversed; the scheduler
    refuses any other answer.
 4. **Legs after the first.** The leg strategy turns each seating of the
-   layout into the event of that leg.
+   first leg's layout into the event of that leg.
 5. **Constraints.** Each event is put to the constraint set against a
    context holding the events accepted so far. A rejected event is dropped
    and recorded as a violation; generation of the leg goes on, and a leg
@@ -284,23 +284,64 @@ orders, whichever of the two decided between them
    participant list rotated by one, up to min(participants, 25) attempts in
    all. Without one there is a single attempt. Only the last attempt's
    violations and failure analysis are reported.
-7. **Backtracking**, if `RoundRobinOptions(backtracking: true)` and every
-   rotation failed: `BacktrackingRoundRobinGenerator` searches the round
-   decompositions of the first leg, the role assignment is asked about each
-   leg it finds, and the later legs are derived from that leg through the
-   leg strategy. `LegRoleSearch` searches the roles of all legs of each
-   first leg, and a first leg that no roles complete sends the generator on
-   to the next. See [backtracking-generation.md](design/backtracking-generation.md).
-8. **Validation.** The finished schedule is checked against the plan (see
+7. **Roles of the first leg, within the role assignment's rule**, if every
+   rotation failed and the role assignment states a rule (the two balanced
+   ones do): the layouts are gone through again. In each, the roles are put to
+   the constraints in order; a seating whose event a constraint of unknown
+   reach rejects is reversed and fixed, and the role assignment is asked for
+   roles around the fixed seatings. Where that does not end with a
+   schedule, `LegRoleSearch` searches the roles of the first leg, each
+   choice held to the rule, with the later legs following by the leg
+   strategy. One allowance of rejected roles and of events put to the
+   constraints serves all the layouts.
+8. **Backtracking**, if `RoundRobinOptions(backtracking: true)` and nothing
+   before it found a schedule: `BacktrackingRoundRobinGenerator` searches
+   the round decompositions of the first leg, and the later legs are derived
+   from each leg it finds through the leg strategy. The roles of all legs of
+   each first leg are searched: within the rule of the role assignment as in
+   step 7, or, where it states none, freely by `LegRoleSearch`, with the
+   role assignment asked whether it keeps the leg. A first leg that no
+   roles complete sends the generator on to the next. See
+   [backtracking-generation.md](design/backtracking-generation.md).
+9. **Validation.** The finished schedule is checked against the plan (see
    [Validation & Diagnostics](#validation--diagnostics)) and returned with
    the plan's shape and the byes in its metadata.
+
+Steps 2 to 8 are what the scheduler does under one role assignment, held to
+it. Under the default, `BalancedWherePossibleRoleAssignment`, it does them
+up to three times in a call, and what it returns is the first schedule with
+balanced roles, or failing that the schedule of the roles the generator
+proposes, marked (`RoleFallback` in the metadata). The order depends on
+what the role search can know about the constraints
+(`ConstraintPurity::readsOwnEventsOnly()`):
+
+- **The library's own constraint classes in a `ConstraintSet`, or no
+  constraints.** Steps 2 to 8 with the balanced roles; if they fail, steps 2
+  to 8 with the roles the generator proposes, whose failure is the failure
+  of the call.
+- **Anything else** (a closure, a metadata rule, a class of the caller's, a
+  subclass). The balanced roles as given in the first layout; then steps 2
+  to 8 with the roles the generator proposes; then steps 2 to 8 with the
+  balanced roles. With a schedule in hand that last run is held to
+  `RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND` events
+  put to the constraints, leaves out the search that goes back one event at
+  a time (the seatings a constraint fixes are still solved for), ends at the
+  first rejection that turns on the events before the rejected one, and
+  makes a backtracking search only where the schedule in hand came from one:
+  the fall-back is not made to wait for a search that can take seconds.
+
+Each run starts where a call starts: the shuffles a `Randomizer` gave the
+call are read again from the first, and a leg strategy that draws is asked
+for its plan again. No failure of a balanced run reaches the caller, so none
+is analysed. [role-assignment.md](design/role-assignment.md#the-default) has
+the reasons and what was measured.
 
 The plan and the generators state the round-robin arithmetic separately.
 The scheduler reads the number of legs, the events per leg and the rounds
 per leg (for the round numbers of later legs) from the plan, and the circle
 layout derives the rounds of a leg from the seat count itself; the
 backtracking generator reads the rounds per leg from the plan. What keeps
-the two in agreement is step 8, which fails a schedule that does not match
+the two in agreement is step 9, which fails a schedule that does not match
 its plan, and the completeness property tests
 (`tests/Feature/ScheduleCompletenessTest.php`). It is a check, not a
 construction that rules a disagreement out.
@@ -421,7 +462,7 @@ benchmark suite (`tests/Benchmark/`) on the machine at hand, and the CI job
 - **Unconstrained round robin**: the circle method does work proportional to the number of events. The 200-participant, two-leg case above generates in about a tenth of a second
 - **Constraints**: within one attempt every candidate event is put to the constraint set once, and a set stops at the first constraint that rejects; a rejected event is then put to each constraint once more to record which rejected it. What a constraint costs depends on what it reads from the context
 - **Indexed context**: `SchedulingContext` answers "which events hold this participant, this pair, this round, this leg" from an index of its event list (`EventIndex`), built on first use and extended, not rebuilt, by `withEvents()`. A lookup costs the events it returns. Before the index every lookup scanned the whole schedule, so one check cost as much as the schedule was long: `NoRepeatPairings` over two legs took 0.12 s at 32 participants and 2.1 s at 64, and takes 0.009 s and 0.07 s now. `tests/Unit/Scheduling/EventIndexTest.php` holds every lookup to a scan. A constraint that calls `getExistingEvents()` and scans the list itself does not benefit
-- **Role alternation**: round-parity roles bound the running role imbalance of a participant within one leg at 3 for a field of even size and 4 for a field of odd size, whatever the field size (checked for 2 to 30 participants)
+- **Role alternation**: the balanced roles (the default gives them wherever it does not fall back, which without constraints is everywhere) keep the running role imbalance of a participant within one leg at 1 for a field of even size and 2 for a field of odd size; the round-parity roles the generator proposes bound it at 3 and 4, whatever the field size (both checked for 2 to 30 participants)
 
 ### Failure paths
 - **Bounded retries**: a constrained round robin that cannot be completed costs up to min(participants, 25) generation attempts

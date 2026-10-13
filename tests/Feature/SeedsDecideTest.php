@@ -11,6 +11,7 @@ use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
 use MissionGaming\Tactician\Quality\RoleBalanceMetric;
 use MissionGaming\Tactician\Quality\ScheduleOptimizer;
 use MissionGaming\Tactician\Quality\ScheduleScorer;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
@@ -140,8 +141,13 @@ describe('a different seed gives a different result', function (): void {
         $field = seedsDecideField(6);
 
         $schedules = [];
+        $balanced = [];
         for ($seed = 1; $seed <= SEEDS_DECIDE_SEEDS; ++$seed) {
             $schedules[] = seedsDecideSignature(
+                (new RoundRobinScheduler(seedsDecideFixturePlacement($field), new Randomizer(new Mt19937($seed))))
+                    ->schedule($field, new RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()))
+            );
+            $balanced[] = seedsDecideSignature(
                 (new RoundRobinScheduler(seedsDecideFixturePlacement($field), new Randomizer(new Mt19937($seed))))
                     ->schedule($field, new RoundRobinOptions(backtracking: true))
             );
@@ -149,8 +155,14 @@ describe('a different seed gives a different result', function (): void {
 
         // The constraint fixes who the first participant meets in each
         // round; the seed decides the order the search tries the rest in,
-        // and with it the other ten events and every role.
-        expect(array_unique($schedules))->toHaveCount(SEEDS_DECIDE_SEEDS);
+        // and with it the other ten events and every role. That is counted
+        // with the role assignment that keeps the roles the search chose.
+        // The balanced one of the default evens them out afterwards, so two
+        // seeds whose searches differ in roles alone can end at one
+        // schedule: fewer than twenty are told apart there, and far more
+        // than one.
+        expect(array_unique($schedules))->toHaveCount(SEEDS_DECIDE_SEEDS)
+            ->and(count(array_unique($balanced)))->toBeGreaterThan(SEEDS_DECIDE_SEEDS / 2);
     });
 
     it('shuffles the first round of a Swiss stage, where the whole field is level', function (): void {

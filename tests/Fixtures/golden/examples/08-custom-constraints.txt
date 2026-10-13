@@ -15,11 +15,11 @@ With the closure constraint: 4
 
 == Schedule with the veterans apart in rounds 1 to 3 ==
 meta: algorithm=round-robin participant_count=6 legs=1 rounds_per_leg=5 total_rounds=5 expected_event_count=15 byes=[]
-R1: phoenix-dragons hawks-lions wolves-serpents
-R2: hawks-phoenix dragons-wolves lions-serpents
-R3: phoenix-wolves serpents-hawks lions-dragons
-R4: serpents-phoenix wolves-lions hawks-dragons
-R5: phoenix-lions dragons-serpents hawks-wolves
+R1: dragons-phoenix hawks-lions serpents-wolves
+R2: phoenix-hawks wolves-dragons lions-serpents
+R3: wolves-phoenix serpents-hawks dragons-lions
+R4: phoenix-serpents lions-wolves hawks-dragons
+R5: lions-phoenix dragons-serpents wolves-hawks
 
 == Budget tier separation ==
 MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 11 events, expected 15. Constraints may be preventing complete schedule generation.

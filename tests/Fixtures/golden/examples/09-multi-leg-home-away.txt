@@ -17,12 +17,12 @@ events: 12
 
 == Mirrored legs ==
 meta: algorithm=round-robin participant_count=4 legs=2 rounds_per_leg=3 total_rounds=6 expected_event_count=12 byes=[]
-R1: mci-che ars-liv
-R2: ars-mci che-liv
-R3: mci-liv che-ars
-R4: che-mci liv-ars
-R5: mci-ars liv-che
-R6: liv-mci ars-che
+R1: che-mci ars-liv
+R2: mci-ars liv-che
+R3: liv-mci che-ars
+R4: mci-che liv-ars
+R5: ars-mci che-liv
+R6: mci-liv ars-che
 
 == Home games per club, mirrored legs ==
 Arsenal: 3
@@ -32,30 +32,30 @@ Manchester City: 3
 
 == Repeated legs ==
 meta: algorithm=round-robin participant_count=4 legs=2 rounds_per_leg=3 total_rounds=6 expected_event_count=12 byes=[]
-R1: mci-che ars-liv
-R2: ars-mci che-liv
-R3: mci-liv che-ars
-R4: mci-che ars-liv
-R5: ars-mci che-liv
-R6: mci-liv che-ars
+R1: che-mci ars-liv
+R2: mci-ars liv-che
+R3: liv-mci che-ars
+R4: che-mci ars-liv
+R5: mci-ars liv-che
+R6: liv-mci che-ars
 
 == Home games per club, repeated legs ==
-Arsenal: 4
+Arsenal: 2
 Chelsea: 4
-Liverpool: 0
-Manchester City: 4
+Liverpool: 4
+Manchester City: 2
 
 == Shuffled legs (seed 2026) ==
 meta: algorithm=round-robin participant_count=4 legs=2 rounds_per_leg=3 total_rounds=6 expected_event_count=12 byes=[]
-R1: mci-che ars-liv
-R2: ars-mci che-liv
-R3: mci-liv che-ars
-R4: che-mci ars-liv
-R5: ars-mci che-liv
-R6: liv-mci ars-che
+R1: che-mci ars-liv
+R2: mci-ars liv-che
+R3: liv-mci che-ars
+R4: mci-che ars-liv
+R5: mci-ars liv-che
+R6: mci-liv ars-che
 
 == Home games per club, shuffled legs ==
-Arsenal: 5
-Chelsea: 4
-Liverpool: 1
-Manchester City: 2
+Arsenal: 3
+Chelsea: 2
+Liverpool: 3
+Manchester City: 4

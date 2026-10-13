@@ -322,7 +322,7 @@ describe('Round Robin Integration', function (): void {
         // that lie wholly inside the first 30% of 7. Without the constraint
         // they meet in round 2, so the protection is what moved them.
         expect(topSeedMeetings($schedule, 2, 2))->toBe([])
-            ->and(topSeedMeetings((new RoundRobinScheduler())->schedule($participants), 2, 2))->toBe(['round 2: p2 v p1']);
+            ->and(topSeedMeetings((new RoundRobinScheduler())->schedule($participants), 2, 2))->toBe(['round 2: p1 v p2']);
     });
 
     // Tests multi-leg tournament with different leg strategies to validate
@@ -468,7 +468,7 @@ describe('Round Robin Integration', function (): void {
         // that fewer than half of the events of rounds 1 to 6 are between
         // top seeds, which any schedule satisfies.)
         expect(topSeedMeetings($schedule, 4, 2))->toBe([])
-            ->and(topSeedMeetings((new RoundRobinScheduler())->schedule($participants), 4, 2))->toBe(['round 2: seed2 v seed1']);
+            ->and(topSeedMeetings((new RoundRobinScheduler())->schedule($participants), 4, 2))->toBe(['round 2: seed1 v seed2']);
     });
 
     // Tests metadata-based custom constraints with complex business logic

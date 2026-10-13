@@ -18,28 +18,37 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * subject to the greedy generator: tight limits may reject orderings that a
  * completed schedule would balance out.
  *
- * Which limits RoundRobinScheduler can satisfy depends on the legs and the
- * options. With the default round-parity roles and no randomizer, the
- * running imbalance of a single leg never exceeds 3 in a field of even size
- * and 4 in a field of odd size (the bye shifts one participant's parity).
- * A limit at or above that bound is therefore satisfied by a single leg,
- * and by any number of mirrored legs: every even-numbered leg undoes the
- * leg before it, so every two mirrored legs end with every participant
- * balanced, and the next leg starts from there as the first did.
+ * Which limits RoundRobinScheduler satisfies with the roles as the role
+ * assignment gives them depends on the role assignment, the legs and the
+ * leg strategy, with a randomizer as without (measured for 2 to 30
+ * participants and up to six legs):
  *
- * The same limit is not satisfied in general:
+ * - The balanced roles, which `BalancedRoleAssignment` and the default
+ *   (balanced where possible) start from: the running imbalance of
+ *   a single leg never exceeds 1 in a field of even size and 2 in a field
+ *   of odd size (the bye shifts one participant's parity), and that of any
+ *   number of mirrored legs never exceeds 2: every even-numbered leg
+ *   undoes the leg before it. Repeated legs keep 2 in a field of odd size;
+ *   in a field of even size every leg adds the 1 of the first, so the
+ *   limit has to be as large as the number of legs.
+ * - The round-parity role assignment, the default up to 0.2.x: 3 in a
+ *   field of even size and 4 in a field of odd size for a single leg and
+ *   for any number of mirrored legs; repeated legs add the drift of the
+ *   first with every leg (up to 6 and 8 after two legs).
  *
- * - by the repeated leg strategy at two or more legs, where every leg adds
- *   the drift of the first (up to 6 and 8 after two legs);
- * - by the roles the shuffled leg strategy draws for later legs. The
- *   scheduler changes a drawn role that breaks the limit, so the schedule
- *   keeps the limit where roles for the later legs exist that do;
- * - by a multi-leg schedule from a scheduler that was given a randomizer.
- *
- * `BalancedRoleAssignment` gives each participant role counts at most 1
- * apart within every leg, and is the option to reach for when balance
- * matters. This constraint counts over all legs, and under the repeated
- * leg strategy the differences of the legs add up.
+ * Below those figures the roles as given break the limit. The scheduler
+ * then looks for others where a role is free to change: among the roles of
+ * the first leg that the role assignment keeps, where it states a rule (the
+ * balanced one does, so a balanced first leg that keeps the limit is found
+ * where one exists in the layout, within the bounds of the search); among
+ * the roles the shuffled leg strategy draws for later legs; and among all
+ * roles of the first leg with `RoundRobinOptions(backtracking: true)`.
+ * Where none is found the schedule fails; under the default, which is
+ * balanced where possible, it fails only when the round-parity roles break
+ * the limit as well, and otherwise has those roles and says so
+ * (`RoleAssignment\RoleFallback`). This constraint counts over all
+ * legs, so no roles keep a limit below the number of repeated legs in a
+ * field of even size.
  *
  * @experimental
  */

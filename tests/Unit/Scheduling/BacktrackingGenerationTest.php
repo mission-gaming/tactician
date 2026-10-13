@@ -7,6 +7,9 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\BacktrackingRoundRobinGenerator;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
@@ -165,7 +168,11 @@ describe('Backtracking round-robin generation', function (): void {
             ->toThrow(IncompleteScheduleException::class, 'step budget');
     });
 
-    it('says the configuration is unsatisfiable when no first leg has later legs the constraints accept', function (): void {
+    it('says the configuration is unsatisfiable when no first leg has later legs the constraints accept', function (
+        ?RoleAssignmentInterface $roleAssignment,
+        string $decompositions,
+        string $conclusion
+    ): void {
         // Leg 1 needs the backtracked placement, which puts t1 vs t2 in
         // its first round. Every later leg has that pairing in its first
         // round too, and round 4 is closed to it in either role: the
@@ -194,17 +201,15 @@ describe('Backtracking round-robin generation', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
         $failure = null;
         try {
-            $scheduler->schedule(backtrackingField(4), new RoundRobinOptions(legs: 2, backtracking: true));
+            $scheduler->schedule(backtrackingField(4), new RoundRobinOptions(legs: 2, backtracking: true, roleAssignment: $roleAssignment));
         } catch (IncompleteScheduleException $exception) {
             $failure = $exception;
         }
 
         expect($failure)->toBeInstanceOf(IncompleteScheduleException::class)
             ->and($failure?->getMessage())->toContain('exhausted the search space')
-            // The one first leg the constraints allow, and the circle
-            // layout, whose roles the search tries once as well
-            ->toContain('each of the 2 round decompositions of the first leg it tried')
-            ->toContain('unsatisfiable with this leg strategy')
+            ->toContain($decompositions)
+            ->toContain($conclusion)
             ->and(str_contains($failure?->getMessage() ?? '', 'budget'))->toBeFalse()
             // How far it got: the six events of the first leg, and the
             // rejected pairing recorded with the constraint that rejected it
@@ -217,7 +222,31 @@ describe('Backtracking round-robin generation', function (): void {
             $failure?->getViolationCollector()->getViolations() ?? []
         );
         expect($rejected)->toContain('Placement in round 4');
-    });
+    })->with([
+        // The one first leg the constraints allow, and the circle layout,
+        // whose roles the search tries once as well
+        'round parity, whose roles are searched with backtracking only' => [
+            new RoundParityRoleAssignment(),
+            'each of the 2 round decompositions of the first leg it tried, whatever the roles of the first leg',
+            'so the configuration is unsatisfiable with this leg strategy.',
+        ],
+        // The default is balanced where possible: it fails where round
+        // parity fails, and says what round parity says
+        'the default, which fails as round parity does' => [
+            null,
+            'each of the 2 round decompositions of the first leg it tried, whatever the roles of the first leg',
+            'so the configuration is unsatisfiable with this leg strategy.',
+        ],
+        // The roles of the circle layout were searched before the search
+        // began, within what the role assignment keeps, so the one first
+        // leg the constraints allow is the one it tries; and what it shows
+        // is about the roles the role assignment keeps
+        'the balanced role assignment, named' => [
+            new BalancedRoleAssignment(),
+            'in the one round decomposition of the first leg it tried, whatever roles ' . BalancedRoleAssignment::class . ' keeps for the first leg',
+            'so the configuration is unsatisfiable with this leg strategy and this role assignment.',
+        ],
+    ]);
 
     it('derives later-leg byes from the backtracked first leg', function (): void {
         $constraints = ConstraintSet::create()->custom(static function (Event $event): bool {

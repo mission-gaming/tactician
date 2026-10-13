@@ -91,14 +91,34 @@ for.
 |----------|-----------|-------|
 | A later leg, mirrored or repeated | The leg strategy, as a **rule**: the first-leg event, reversed in the even-numbered legs of a mirrored schedule and kept everywhere else | No. Another role would not be a mirrored or a repeated leg |
 | A later leg, shuffled | The leg strategy, as a **preference**: a draw | Yes: the reverse is a role it could have drawn |
-| The first leg, without backtracking | The role assignment | No. Constraints are hard filters on the roles that were asked for ([role-assignment.md](role-assignment.md)) |
-| The first leg, with backtracking | The search, which proposes; the role assignment, which is asked about the leg | Yes, as far as the role assignment keeps the result |
+| The first leg, under a role assignment that states a rule (`BalancedRoleAssignment`, and the default, `BalancedWherePossibleRoleAssignment`) | The role assignment, which says with its rule which legs it keeps | Yes, within the rule: any leg it keeps is a leg that was asked for ([role-assignment.md](role-assignment.md#the-default)). The default also accepts the leg the generator proposes where no leg within the rule is found, and marks the schedule |
+| The first leg, under a role assignment that states none (`RoundParityRoleAssignment`), without backtracking | The role assignment | No. Constraints are hard filters on the roles that were asked for |
+| The first leg, under a role assignment that states none, with backtracking | The search, which proposes; the role assignment, which is asked about the leg | Yes, as far as the role assignment keeps the result |
 
 A strategy states which of the two it is with
 `LegPlanContribution::$rolesArePreferences`. The default is a rule, so a
-strategy written before the flag existed is never reversed.
+strategy written before the flag existed is never reversed. A role
+assignment states its rule with `RoleAssignmentInterface::rule()`, and one
+that returns null is never searched around without backtracking.
 
-### Two searches
+### Three searches
+
+- **Without backtracking: the roles of the first leg, within the rule of
+  the role assignment.** When every rotated order has failed with the roles
+  as given, the same layouts are gone through again. In each, a seating
+  whose event a constraint of unknown reach rejects is reversed and fixed,
+  and the role assignment is asked for roles around the fixed seatings;
+  where that does not end with a schedule, the roles of the first leg are
+  searched with every event free, each choice held to the rule, the later
+  legs following by the leg strategy. The rotations come first, so a
+  schedule a rotated order completes is the schedule it was. A layout in
+  which a constraint that reads no position rejects an event
+  (`NoRepeatPairings`, `MinimumRestPeriodsConstraint`,
+  `SeedProtectionConstraint`: `ConstraintPurity::constraintIgnoresRoles()`)
+  is not searched, because a layout fixes who meets whom and when, and no
+  roles change such a verdict; a schedule that fails for that reason costs
+  what it cost before there was a search. Added in 0.3.0
+  with the change of default ([role-assignment.md](role-assignment.md#the-default)).
 
 - **Without backtracking: the roles of the later legs, for a strategy of
   preferences.** The layout stays what the circle method gives. The events
@@ -129,9 +149,13 @@ strategy written before the flag existed is never reversed.
   participants under a limit of two in a row it finds nothing within its
   budget, and the roles of the circle layout are found at once. The first
   leg the generator finds is still tried first, so a schedule that a
-  backtracking search returned before 0.3.0 is the one it returns now.
+  backtracking search returned before 0.3.0 is the one it returns now,
+  under a role assignment that states no rule. Under one that does, the
+  roles of each first leg are searched within the rule, as in the first
+  search above, and the circle layout has been searched before the
+  generator starts.
 
-Both are `LegRoleSearch`, and both are deterministic: the order of the
+All three are `LegRoleSearch`, and all are deterministic: the order of the
 events, of the two roles of an event and of the events gone back to is
 fixed.
 
@@ -155,11 +179,34 @@ A set that holds anything else (a closure, a metadata rule, a class of the
 caller's) is searched one event at a time, which finds the same roles or
 none and takes longer.
 
+In a search of first-leg roles within a rule, the unit is the rejection and
+not the set. The rule of the balanced role assignment reads the two
+participants' own events, so a role it rejects sends the search straight
+back. A set that holds both kinds of constraint is asked one constraint at
+a time about an event it rejected, and where one of the constraints above
+rejects the event by itself, that is the reason: the search goes straight
+back for it as well. Only a rejection that no such constraint explains (a
+closure's), and a first leg that the role assignment turns out not to keep,
+send it back one event at a time. Two mirrored legs of fourteen with the
+role counts never more than 1 apart, beside a closure that accepts
+everything: the search shows that no balanced first leg has it in 3,387
+rejected roles, as it does without the closure, where asking the set as a
+whole stops at the bound without an answer. The searches that existed
+before 0.3.0 ask a set as a whole, as they did.
+
 ### Bounds
 
 - **Rejected roles: 20,000 for each layout** (`LegRoleSearch::REJECTION_LIMIT`).
   An event accepted at once costs nothing against it, so a schedule that
   needs no search is never stopped, whatever its size.
+- **For the first-leg searches without backtracking: 20,000 rejected roles
+  and 200,000 events put to the constraints, for all the layouts of a call
+  together.** One allowance and not one for each rotated order, because the
+  rotated orders are the same schedule under other names for a limit on
+  roles: a search that spent the allowance on the first has little to find
+  in the second, and a schedule that cannot be completed would otherwise
+  pay it up to 25 times. Fixing the seatings a constraint rejects costs
+  nothing against it.
 - **The step budget**, with backtracking: every event a role search puts to
   the constraints is a step of the same 200,000. When the generator spends
   the budget before it finds one first leg, the roles of the circle layout
@@ -197,8 +244,8 @@ of rejected roles times a number of rotated orders, so it is bounded and
 does not depend on the machine's clock; it is the price of trying every
 rotated order, which is where some of those schedules are found.
 
-Where the first leg has to change (repeated legs, measured with the default
-roles, one run each for 4 to 24 participants): under a limit of two in a
+Where the first leg has to change (repeated legs, measured with the
+round-parity roles, one run each for 4 to 24 participants): under a limit of two in a
 row a backtracking search found two, three and four repeated legs for every
 size. Under `RoleBalanceConstraint` it found two repeated legs up to 16
 participants (limits of 2 and of 3) and stopped at its budget for 20 and
@@ -234,20 +281,44 @@ role without a bound stopping any part of it.
 
 ### The role assignment
 
-The search does not overrule a role assignment. Without backtracking the
-first leg has the roles the role assignment decided. With backtracking, the
-role assignment is asked about every first leg the generator finds, as it
-always was, and a first leg whose roles the role search changed is put to
-it again: the schedule is returned only when the role assignment keeps
-that leg as it is, and the failure says so when roles exist that it would
-change. `RoundParityRoleAssignment` keeps every leg; `BalancedRoleAssignment`
-keeps a leg that is balanced. A role assignment that takes the constraints
-into account is a separate change
-([role-assignment.md](role-assignment.md)).
+No search overrules a role assignment. A first leg is returned only when
+the role assignment keeps it as it is.
+
+- Under a role assignment that states a rule (`BalancedRoleAssignment`
+  keeps a leg that is balanced, and says so), the roles of the first leg
+  are searched within the rule, without backtracking in the circle layouts
+  and with it in every layout the generator finds. The leg a search returns
+  is put to the role assignment once more, so a rule that says more than
+  the role assignment keeps cannot let a leg through.
+- Under one that states none, the first leg has the roles the role
+  assignment decided unless backtracking is on. With backtracking, the role
+  assignment is asked about every first leg the generator finds, as it
+  always was, and a first leg whose roles the role search changed is put to
+  it again: the schedule is returned only when the role assignment keeps
+  that leg, and the failure says so when roles exist that it would change.
+  `RoundParityRoleAssignment` keeps every leg.
+- The default, `BalancedWherePossibleRoleAssignment`, is searched as the
+  balanced role assignment is, and a balanced leg that a search returns is
+  the leg `BalancedRoleAssignment` gets. It is the one role assignment
+  under which a first leg outside its rule is returned: where no balanced
+  leg is found, the scheduler starts the generation again with the roles
+  the generator proposes, exactly as under `RoundParityRoleAssignment`
+  (with backtracking, the leg the search chooses), and writes the reason
+  into the metadata of the schedule. That is not a search overruling a role
+  assignment: it is what this one asks for. Under constraints the role
+  search cannot reason about exactly, the roles the generator proposes are
+  tried before the searches of this section, and with their schedule in
+  hand the search that goes back one event at a time is left out.
+
+[role-assignment.md](role-assignment.md#the-default) has the decision and
+what was measured.
 
 ### What is not searched
 
-- The roles of the first leg without backtracking.
+- The roles of the first leg without backtracking, under a role assignment
+  that states no rule.
+- The pairings and rounds of the first leg without backtracking: they are
+  the circle method's, in each rotated order.
 - The pairings and rounds of a later leg: it has those of the first.
 - More than one first leg for a strategy that returns no event for a
   pairing: nothing says another first leg would get one.
