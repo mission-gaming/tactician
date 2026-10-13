@@ -8,6 +8,7 @@ use ArrayIterator;
 use Countable;
 use IteratorAggregate;
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use Override;
 
 /**
@@ -17,20 +18,53 @@ use Override;
  * computes one. Every entry has a position of its own, also where no result
  * separates it from its neighbour: see getTiedSets().
  *
+ * A table can have tiers: a criterion that orders it before any record is
+ * compared. The table of an elimination stage has them. A tier there is the
+ * round an entrant went out in, so the entrant who won the final is alone in
+ * the first tier, the one it beat alone in the second, and the two who lost
+ * the semifinals share the third. Entries of different tiers are never
+ * level, whatever their records.
+ *
  * @implements IteratorAggregate<int, StandingEntry>
  *
  * @experimental
  */
 readonly class Standings implements IteratorAggregate, Countable
 {
+    /** @var list<int> */
+    private array $tiers;
+
     /**
      * The entries are kept as given and are not sorted.
      *
      * @param array<StandingEntry> $entries Entries ordered best-first. The order of the array
      *                                      is the order of the table; its keys decide nothing
      *                                      (getEntries() returns them as given)
+     * @param array<int> $tiers The tier of each entry, in the order of the entries and
+     *                          never falling from one entry to the next; empty for a
+     *                          table without tiers
+     *
+     * @throws InvalidInputException When tiers are given and there is not one for each entry,
+     *                               or a tier is lower than the one before it
      */
-    public function __construct(private array $entries) {}
+    public function __construct(private array $entries, array $tiers = [])
+    {
+        $tiers = array_values($tiers);
+
+        if ($tiers !== []) {
+            if (count($tiers) !== count($entries)) {
+                throw new InvalidInputException('A standings table with tiers needs one tier for each entry');
+            }
+
+            foreach ($tiers as $index => $tier) {
+                if ($index > 0 && $tier < $tiers[$index - 1]) {
+                    throw new InvalidInputException('The tiers of a standings table must not fall from one entry to the next');
+                }
+            }
+        }
+
+        $this->tiers = $tiers;
+    }
 
     /**
      * Every entry in table order, best-placed first.
@@ -86,12 +120,14 @@ readonly class Standings implements IteratorAggregate, Countable
      * The table always gives every entry a position of its own. Where two or
      * more entries are level ({@see StandingEntry::isLevelWith()}: the same
      * ranking value, the same value for every tiebreaker, the same score
-     * difference and the same scores-for), their order comes from the final
-     * fallback alone (seed, then label, then participant ID) and reflects no
-     * result. Each such group is one tied set. A set is as large as it can
-     * be, no entry is in two sets, and an entry level with no neighbour is in
-     * none. A table in which results decide every position returns an empty
-     * list; a table with no results is one tied set of every entry.
+     * difference and the same scores-for; and, in a table with tiers, the
+     * same tier), their order reflects no result: it is the order of the
+     * entrant list in the table of a stage, and the calculator's fallback
+     * (seed, then participant ID) in a table calculated on its own. Each
+     * such group is one tied set. A set is as large as it can be, no entry
+     * is in two sets, and an entry level with no neighbour is in none. A
+     * table in which results decide every position returns an empty list; a
+     * table with no results is one tied set of every entry.
      *
      * Read this before acting on a position: a tied set whose positions
      * straddle a cut (the last place that advances, say) means the results
@@ -112,7 +148,11 @@ readonly class Standings implements IteratorAggregate, Countable
 
         foreach ($entries as $index => $entry) {
             $next = $entries[$index + 1] ?? null;
-            if ($next !== null && $entry->isLevelWith($next)) {
+            if (
+                $next !== null
+                && ($this->tiers[$index] ?? 0) === ($this->tiers[$index + 1] ?? 0)
+                && $entry->isLevelWith($next)
+            ) {
                 continue;
             }
 
@@ -123,6 +163,63 @@ readonly class Standings implements IteratorAggregate, Countable
         }
 
         return $tiedSets;
+    }
+
+    /**
+     * The tier of each entry, in table order: the same number for entries
+     * of one tier, rising down the table. Empty for a table without tiers
+     * (see the class docblock). The numbers say which entries share a tier
+     * and nothing else.
+     *
+     * @return list<int>
+     */
+    public function getTiers(): array
+    {
+        return $this->tiers;
+    }
+
+    /**
+     * The table with the entries of every tied set in the order of the
+     * given entrant list: where results do not decide between entries, the
+     * position in the list does.
+     *
+     * Only the order inside a tied set changes. Every entry keeps the
+     * positions its set spans, the sets are the same sets, and an entry
+     * that results place is where it was. Of the entries of one set, those
+     * whose participant is in the list come first, in list order; the
+     * others follow in the order they had. Participants are matched by ID.
+     *
+     * The engines do this to every table they build, with the participant
+     * list of the stage. Do it to a table of your own when its participants
+     * are an entrant list whose order means something:
+     *
+     *     $table = $calculator->calculate($pool, $results)->withTiedSetsOrderedBy($pool);
+     *
+     * @param array<Participant> $entrants The entrant list; position 1 first
+     */
+    public function withTiedSetsOrderedBy(array $entrants): self
+    {
+        $positions = [];
+        foreach (array_values($entrants) as $position => $entrant) {
+            $positions[$entrant->getId()] ??= $position;
+        }
+
+        $entries = array_values($this->entries);
+        foreach ($this->getTiedSets() as $tiedSet) {
+            $members = $tiedSet->getEntries();
+            $order = [];
+            foreach ($members as $index => $member) {
+                $order[$index] = [$positions[$member->getParticipant()->getId()] ?? PHP_INT_MAX, $index];
+            }
+            asort($order);
+
+            $offset = $tiedSet->getFirstPosition() - 1;
+            foreach (array_keys($order) as $index) {
+                $entries[$offset++] = $members[$index];
+            }
+        }
+
+        return new self($entries, $this->tiers);
     }
 
     /**

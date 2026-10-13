@@ -62,9 +62,9 @@ if ($outcome === null) {
 }
 
 // There is no champion accessor: the title holder is the winner of the
-// final round. Do not read it from rank 1 of the standings. The table orders
-// the entrants by their results over the whole bracket, and an entrant who
-// lost the grand final can have as many wins as the one who won it.
+// final round, who is also rank 1 of the outcome's standings (they are in
+// bracket placement order). The records in that table do not say it: an
+// entrant who lost the grand final can have more wins than the one who won.
 $champion = MatchOutcomeSelector::winners()->select($outcome)[0];
 
 // The losers-bracket champion won the first grand final, which left both

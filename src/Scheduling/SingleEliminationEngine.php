@@ -11,11 +11,13 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\EliminationPlan;
 use MissionGaming\Tactician\Stage\EngineFingerprint;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use Override;
 
 /**
@@ -34,7 +36,10 @@ use Override;
  *   the draw made at entry decides every route to the final.
  * - Re-seeded (reseedEachRound): survivors are re-ranked by standings
  *   after every round and re-folded, so the strongest remaining records
- *   meet as late as possible.
+ *   meet as late as possible. A bye counts in that ranking as the tie it
+ *   stands for, won in every leg, and survivors who are level are in the
+ *   order of the participant list: in a field of five, positions 1 and 2
+ *   are in opposite halves of the semifinals.
  *
  * Ties are played over one event or two mirrored legs (legsPerTie). A tie
  * that finishes level - a drawn single event, or two legs that do not
@@ -42,14 +47,10 @@ use Override;
  * decision on the result (see TieDecision); a level tie without one is
  * refused by every call.
  *
- * There is deliberately no champion accessor. The champion is the
- * participant who advances from the final:
- * MatchOutcomeSelector::winners() over the outcome's final round. Rank 1
- * of the outcome's standings is not that derivation. The standings are a
- * win/draw/loss table over the bracket's results, in the order of the
- * standings calculator, and the participant who lost the final can be
- * first in it: after a bye, and after a two-legged final that its tie
- * decision settled (see getOutcome()).
+ * There is deliberately no champion accessor. The participant who
+ * advances from the final is rank 1 of the outcome's standings, which are
+ * in bracket placement order (see getOutcome()), and is what
+ * MatchOutcomeSelector::winners() returns for the outcome's final round.
  *
  * @experimental
  */
@@ -60,10 +61,11 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     /**
      * Every option is accepted; grandFinalReset is not read.
      *
-     * @param StandingsCalculator $standingsCalculator Orders the outcome's standings and, in a
-     *                                                 re-seeded bracket, the survivors before every
-     *                                                 round after the first. On a fixed path it
-     *                                                 pairs nothing
+     * @param StandingsCalculator $standingsCalculator Computes the records of the outcome's standings
+     *                                                 and orders the entrants who went out in the
+     *                                                 same round; in a re-seeded bracket it also
+     *                                                 orders the survivors before every round after
+     *                                                 the first. On a fixed path it pairs nothing
      */
     public function __construct(
         private EliminationOptions $options = new EliminationOptions(),
@@ -145,7 +147,11 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                                       event or is recorded twice, a round is partially
      *                                       resolved (record the missing results via
      *                                       StageState::withAdditionalResults()), a completed tie
-     *                                       is level without a usable tie decision, or the
+     *                                       is level without a usable tie decision, a recorded
+     *                                       round pairs other participants than the bracket has
+     *                                       in it (reason `RecordedRoundMismatch`), a re-seeded
+     *                                       bracket has a bye and a ranking strategy that is not
+     *                                       a WinDrawLossRanking (`IncompatibleOptions`), or the
      *                                       bracket is complete
      */
     #[Override]
@@ -180,28 +186,25 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
     /**
      * The uniform completion product; null while the bracket is unfinished.
      *
-     * The standings are a win/draw/loss table over the bracket's results,
-     * in the order of the standings calculator. In a single-leg bracket
-     * with no byes the records follow conventional bracket placement: in
-     * an 8-entrant knockout the final's winner finishes 3-0, its loser 2-1,
-     * the semifinal losers 1-1, and the quarter-final losers 0-1. The
-     * table still lists the participants one after another: those with the
-     * same record (the two semifinal losers) are separated by the
-     * calculator's tiebreakers and then by its final ordering, not by the
-     * bracket. A single-leg event that finished level and was decided by
-     * its tie decision counts in the table as a win for the participant
-     * who advanced, so those records hold; the outcome's results are the
-     * results as recorded, the draw included.
+     * The standings are in bracket placement order, whatever the field
+     * size, the byes and the legs per tie: the entrant who advanced from
+     * the final is rank 1, the other finalist rank 2, then the two who
+     * went out in the semifinals, then the four of the quarter-finals, and
+     * so on back to the first round. The bracket decides those tiers
+     * (Standings::getTiers()), and no record moves an entrant from one to
+     * another: a finalist who had a bye, or who advanced from a two-legged
+     * final on a tie decision, is still above the entrant it beat.
      *
-     * The table is not a placement in two cases. A participant with a bye
-     * has played one event fewer, so the winner of a final can have the
-     * same points as its loser (one win against one win and one loss). And
-     * the legs of a two-legged tie are counted as recorded, whoever
-     * advanced: a final level over two legs leaves the finalists level in
-     * the table. In both cases the calculator's later criteria (score
-     * difference, the seed attribute, the label) decide which finalist is
-     * first. For the champion use MatchOutcomeSelector::winners() over the
-     * outcome's final round.
+     * Entrants who went out in the same round are ordered by the standings
+     * calculator from their records (ranking value, tiebreakers, score
+     * difference, scores-for), and where that leaves them level, by their
+     * position in the participant list. Standings::getTiedSets() reports
+     * those. The records are win/draw/loss records over the bracket's
+     * results: a bye is no win in them, the legs of a two-legged tie count
+     * as recorded, and a single-leg event that finished level and was
+     * decided by its tie decision counts as a win for the participant who
+     * advanced. The outcome's results are the results as recorded, the
+     * draw included.
      *
      * @throws InvalidConfigurationException When the recorded state is malformed (see isComplete())
      */
@@ -213,26 +216,35 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             return null;
         }
 
-        $standings = $this->standingsCalculator->calculate(
-            $state->getAllSeenParticipants(),
-            $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers'])
-        );
+        $entrants = $state->getAllSeenParticipants();
 
         return new StageOutcome(
-            $standings,
+            $this->placementStandings(
+                $this->standingsCalculator,
+                $entrants,
+                $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers']),
+                $resolution['placement']
+            ),
             $state->getResults(),
             $state->getByeCounts(),
-            $state->getLastRound()
+            $state->getLastRound(),
+            [],
+            $entrants
         );
     }
 
     /**
      * Replay the bracket from the entry fold through the recorded results.
      *
-     * @return array{pending: RoundPairing|null, levelAdvancers: array<string, Participant>}
+     * @return array{pending: RoundPairing|null, levelAdvancers: array<string, Participant>, placement: array<int|string, int>}
+     *                                                                                                                         The placement is the tier of every
+     *                                                                                                                         entrant of a finished bracket, 0 for
+     *                                                                                                                         the one who advanced from the final
      *
-     * @throws InvalidConfigurationException When a round is partially resolved, a tie is broken, or
-     *                                       the state is stamped with another engine's fingerprint
+     * @throws InvalidConfigurationException When a round is partially resolved, a tie is broken, a
+     *                                       recorded round is not the round the bracket has there,
+     *                                       a bye cannot be credited, or the state is stamped with
+     *                                       another engine's fingerprint
      */
     private function resolveBracket(StageState $state): array
     {
@@ -240,12 +252,15 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         $participants = array_values($state->getParticipants());
         $this->validateParticipants($participants);
+        $this->requireByesToBeCreditable(count($participants));
 
         $resultIndex = $this->indexResults($state->getResults());
         $totalRounds = (int) log($this->bracketSize(count($participants)), 2);
 
         $slots = $this->buildInitialSlots($participants);
         $levelAdvancers = [];
+        $byes = [];
+        $wentOutIn = [];
 
         for ($round = 1; $round <= $totalRounds; ++$round) {
             // Re-seeded path: after the entry round, survivors are
@@ -255,7 +270,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             // round's own results are recorded.
             if ($this->options->reseedEachRound && $round > 1) {
                 $survivors = array_values(array_filter($slots, fn(?Participant $slot) => $slot !== null));
-                $slots = $this->buildInitialSlots($this->rankByStandings($survivors, $state, $round, $levelAdvancers));
+                $slots = $this->buildInitialSlots($this->rankByStandings($survivors, $state, $round, $levelAdvancers, $byes));
             }
 
             $pairs = array_chunk($slots, 2);
@@ -271,6 +286,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 }
             }
 
+            $this->requireRecordedRoundToMatch($state, $round, $playable);
+
             if ($resolved < count($playable)) {
                 if ($resolved > 0) {
                     throw new InvalidConfigurationException(
@@ -281,24 +298,131 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                     );
                 }
 
-                return ['pending' => $this->buildRoundPairing($round, $totalRounds, $pairs), 'levelAdvancers' => $levelAdvancers];
+                return [
+                    'pending' => $this->buildRoundPairing($round, $totalRounds, $pairs),
+                    'levelAdvancers' => $levelAdvancers,
+                    'placement' => [],
+                ];
             }
 
             $nextSlots = [];
             foreach ($pairs as $pair) {
-                if ($pair[0] !== null && ($pair[1] ?? null) !== null) {
-                    $advancer = $this->lookupAdvancer($resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie);
-                    $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie, $advancer);
+                [$first, $second] = [$pair[0], $pair[1] ?? null];
+                if ($first !== null && $second !== null) {
+                    $advancer = $this->lookupAdvancer($resultIndex, $round, $first, $second, $this->options->legsPerTie);
+                    $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $round, $first, $second, $this->options->legsPerTie, $advancer);
                     $nextSlots[] = $advancer;
+                    $wentOutIn[$advancer?->getId() === $first->getId() ? $second->getId() : $first->getId()] = $round;
                 } else {
-                    $nextSlots[] = $pair[0] ?? $pair[1] ?? null;
+                    $sitsOut = $first ?? $second;
+                    $nextSlots[] = $sitsOut;
+                    if ($sitsOut !== null) {
+                        $byes[$sitsOut->getId()] = ($byes[$sitsOut->getId()] ?? 0) + 1;
+                    }
                 }
             }
 
             $slots = $nextSlots;
         }
 
-        return ['pending' => null, 'levelAdvancers' => $levelAdvancers];
+        // The entrant who advanced from the final is in the first tier,
+        // and everyone else in the tier of the round they went out in:
+        // the final's is the second, the semifinals' the third.
+        $placement = [];
+        foreach ($wentOutIn as $id => $round) {
+            $placement[$id] = $totalRounds - $round + 1;
+        }
+        foreach ($slots as $slot) {
+            if ($slot !== null) {
+                $placement[$slot->getId()] = 0;
+            }
+        }
+
+        return ['pending' => null, 'levelAdvancers' => $levelAdvancers, 'placement' => $placement];
+    }
+
+    /**
+     * Refuse a re-seeded bracket that will have a bye it cannot credit.
+     *
+     * A field that is not a power of two has byes in its first round, and
+     * the ranking before the second round credits each as a tie won, which
+     * needs the value of a win (StandingsCalculator::withByesCredited()).
+     * The entrant list says all of that before a round is paired, so the
+     * bracket is refused then, on every call, and not after its first
+     * round has been played.
+     *
+     * @throws InvalidConfigurationException When the bracket is re-seeded, the field is not a
+     *                                       power of two and the ranking strategy is not a
+     *                                       WinDrawLossRanking
+     */
+    private function requireByesToBeCreditable(int $participantCount): void
+    {
+        if (!$this->options->reseedEachRound || $participantCount === $this->bracketSize($participantCount)) {
+            return;
+        }
+
+        $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
+        if ($rankingStrategy instanceof WinDrawLossRanking) {
+            return;
+        }
+
+        throw new InvalidConfigurationException(
+            "A re-seeded bracket of {$participantCount} entrants has byes, and crediting a bye requires a win/draw/loss"
+                . ' ranking strategy: counting a bye as a tie won is undefined under other ranking scales.'
+                . ' Use a WinDrawLossRanking, a field that is a power of two, or a bracket on a fixed path',
+            ['ranking_strategy' => $rankingStrategy::class, 'participant_count' => $participantCount],
+            reason: InvalidConfigurationReason::IncompatibleOptions
+        );
+    }
+
+    /**
+     * Refuse a state whose recorded round is not the round the bracket has
+     * at that number: the recorded results would be read against ties that
+     * were never played. A state is in that condition when its rounds were
+     * paired under other rules than this engine's (another option, or the
+     * re-seeding order of an earlier release) or when its participant list
+     * changed after a round was recorded.
+     *
+     * @param list<array<Participant|null>> $playable The ties the bracket has in the round
+     *
+     * @throws InvalidConfigurationException When the recorded round pairs other participants
+     */
+    private function requireRecordedRoundToMatch(StageState $state, int $round, array $playable): void
+    {
+        $expected = [];
+        foreach ($playable as $pair) {
+            if ($pair[0] !== null && ($pair[1] ?? null) !== null) {
+                $expected[PairKey::of($pair[0]->getId(), $pair[1]->getId())] = true;
+            }
+        }
+
+        foreach ($state->getRoundsPlayed() as $recorded) {
+            if ($recorded->getRoundNumber() !== $round) {
+                continue;
+            }
+
+            $recordedPairs = [];
+            foreach ($recorded->getEvents() as $event) {
+                $recordedPairs[PairKey::of(...array_map(
+                    static fn(Participant $participant): string => $participant->getId(),
+                    array_values($event->getParticipants())
+                ))] = true;
+            }
+
+            // A recorded round may hold more than the bracket's ties (an
+            // event the application added is read by nothing); it may not
+            // lack one of them.
+            if (array_diff_key($expected, $recordedPairs) !== []) {
+                throw new InvalidConfigurationException(
+                    "The recorded round {$round} is not the round {$round} this bracket has: it pairs other participants."
+                        . ' The state was paired under other rules than this engine applies (other options, or the'
+                        . ' re-seeding order of an earlier release), or its participant list changed after the round'
+                        . ' was recorded. Rebuild the state from the rounds that stand.',
+                    ['round' => $round, 'recorded' => array_keys($recordedPairs), 'expected' => array_keys($expected)],
+                    reason: InvalidConfigurationReason::RecordedRoundMismatch
+                );
+            }
+        }
     }
 
     /**
@@ -336,21 +460,41 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * event of an earlier round counts as a win for whoever advanced from
      * it (see resultsForStandings()).
      *
+     * A bye is an advance like a tie won, so it is credited as one: a win
+     * for each leg of a tie. Without that an entrant who sat out the first
+     * round would rank below everyone who played it, and the top of the
+     * entrant list would be folded as the bottom of the round. Survivors
+     * the table leaves level are in the order of the participant list:
+     * no seed attribute, label or ID is read.
+     *
      * @param array<Participant> $survivors
      * @param array<string, Participant> $levelAdvancers
+     * @param array<int|string, int> $byes Byes of the earlier rounds, by participant ID
      * @return array<Participant>
+     *
+     * @throws InvalidConfigurationException When a survivor had a bye and the ranking strategy is
+     *                                       not a WinDrawLossRanking
      */
-    private function rankByStandings(array $survivors, StageState $state, int $beforeRound, array $levelAdvancers): array
-    {
+    private function rankByStandings(
+        array $survivors,
+        StageState $state,
+        int $beforeRound,
+        array $levelAdvancers,
+        array $byes
+    ): array {
         $priorResults = array_values(array_filter(
             $state->getResults(),
             fn($result) => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $beforeRound
         ));
 
-        $standings = $this->standingsCalculator->calculate(
-            $state->getAllSeenParticipants(),
-            $this->resultsForStandings($priorResults, $levelAdvancers)
-        );
+        $entrants = $state->getAllSeenParticipants();
+        $standings = $this->standingsCalculator
+            ->withByesCredited(
+                $this->standingsCalculator->calculate($entrants, $this->resultsForStandings($priorResults, $levelAdvancers)),
+                $byes,
+                $this->options->legsPerTie
+            )
+            ->withTiedSetsOrderedBy($entrants);
 
         $survivorIds = [];
         foreach ($survivors as $survivor) {

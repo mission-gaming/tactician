@@ -44,12 +44,14 @@ anything else that competes.
 | **Role** | The position of a participant in an event: first-named (index 0 of `getParticipants()`) or second-named (index 1). The neutral name for what a sport calls home and away, white and black, or server and receiver. |
 | **Role assignment** | The rule that decides which participant of each round-robin pairing is first-named (`RoleAssignmentInterface`), one leg at a time, without changing who meets whom or when. `RoundParityRoleAssignment` (the default) alternates with round parity; `BalancedRoleAssignment` ends each leg with every participant's two role counts at most 1 apart in a field of even size and equal in a field of odd size. See [Role Assignment](#role-assignment). |
 | **Bye** | A participant sitting out a round (odd participant counts). Byes are never emitted as events — round robin records them in the `byes` schedule metadata, and the Swiss/elimination engines report them on the round pairing. |
-| **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and the standings order uses it as part of its last fallback, between scores-for and the label (see **Tied set**). Whatever follows a table follows that fallback where entries are level: the first round of a Swiss stage, which is paired from a table with no results, the survivors of a re-seeded elimination round, and a rank selector. Bracket placement, serpentine pool distribution and pot membership do not read the seed: they take entrants from their position in the list they are given, so put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
+| **Seed** | A participant's ranking, as an optional attribute (`Participant::getSeed()`). Lower numbers are better; 1 is the top seed. The library reads it in two places: `SeedProtectionConstraint` takes the top seeds from it, and a standings table calculated on its own, with no entrant list, uses it in its last fallback, between scores-for and the ID (see **Tied set**). No stage reads it. Wherever an entrant list exists, the position in that list decides what results do not: bracket placement, serpentine pool distribution, pot membership, the pairing order and the byes of a Swiss stage, the survivors of a re-seeded elimination round, the table of an engine's outcome and a rank selection. Put the list in seeding order. Not the seed of a random draw (see [The seed and determinism](#the-seed-and-determinism)). |
 | **Schedule** | The complete, validated collection of generated events plus metadata. |
 | **Result** | The recorded outcome of a played event: a winner or a draw, with optional per-participant scores. |
 | **Standings** | The ordered table computed from results by `StandingsCalculator` — ranking values, records, and tiebreakers. |
 | **Ranking strategy** | The pluggable rule ordering a standings table (`RankingStrategy`): it computes each participant's primary ranking value from their results, higher is better. `WinDrawLossRanking` (points from wins/draws/losses) is the built-in implementation; placement- or score-aggregating strategies slot in without touching the calculator. |
-| **Tied set** | Two or more adjacent entries of a standings table that are **level**: equal on the ranking value, on every configured tiebreaker, on score difference and on scores-for, so that only the final fallback (seed, then label, then ID) orders them. `Standings::getTiedSets()` reports each one (`TiedSet`) with the positions it spans. |
+| **Tied set** | Two or more adjacent entries of a standings table that are **level**: equal on the ranking value, on every configured tiebreaker, on score difference and on scores-for (and, in the table of a bracket, out in the same round), so that no result orders them. What does is the position in the entrant list, in the table of a stage, and the final fallback (seed, then ID) in a table calculated on its own. `Standings::getTiedSets()` reports each one (`TiedSet`) with the positions it spans. |
+| **Entrant list** | The ordered list of participants a stage is given: `StageState::start()` for an engine, the list handed to a scheduler or to `PoolDistributor`, the last argument of a `StageOutcome` built by hand. Position 1 is first. Its order is authoritative: it places entrants, and it decides every order that results leave open. A label, a seed attribute or an ID never does. |
+| **Tier** | A group of entries of a table that a criterion before the records puts together (`Standings::getTiers()`). The table of an elimination outcome has tiers: the entrants who went out in the same round share one, and no record moves an entrant from one tier to another. |
 | **Constraint** | A hard rule on one candidate event, evaluated during generation (rounds between repeat meetings, seed protection, role limits...). Constraints either hold or generation fails loudly with diagnostics — there are no soft preferences. A constraint sees rounds, never times; rules about time are **timeline rules**. |
 | **Stage** | One phase of a multi-stage tournament (e.g. a group stage feeding a knockout) — Tactician's unit of work: participants in, a schedule or round-by-round pairings out, a `StageOutcome` when play completes. Stages compose via pools and progression selectors. |
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
@@ -61,8 +63,8 @@ anything else that competes.
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The serializable record of a results-driven stage between rounds (`StageState`): active participants, recorded pairings (with byes), and results. Pairings count as played even without results; withdrawals are `withoutParticipant()`, and a result of the last recorded round is corrected with `withResultReplaced()`. |
 | **Engine fingerprint** | An optional stamp on a stage state saying which engine pairs it (`StageState::withEngineFingerprint()`), as each engine's `getFingerprint()` gives it (`FingerprintedEngine`). An opaque string, compared for equality: it stands for the format and for the options that shape which rounds the format has or how they are paired, and an option at its default is not part of it, so an engine that gains an option still accepts the states stamped before. A patch release keeps the fingerprint of every configuration; a 0.x minor release may change the scheme ([how long it lasts](#recording-which-engine-pairs-a-state)). An engine refuses a stamped state whose fingerprint is not its own; an unstamped state is accepted by every engine. |
-| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. The ranking value it groups by includes a win for every bye a participant has had. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
-| **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, and the structural final round. Deliberately free of champion/winner vocabulary. The standings are a table of the whole stage, and rank 1 of an elimination stage is not always the participant who won its last tie: read that with `MatchOutcomeSelector::winners()` (see [Who won the bracket](#who-won-the-bracket)). |
+| **Score group** | In a Swiss stage, the participants who are level on ranking value. The engine pairs within the table order and shuffles within a score group when it has a randomizer. The ranking value it groups by includes a win for every bye a participant has had, as the table of the outcome does. Level means equal, with one allowance that is the Swiss engine's own and applies to the library's `WinDrawLossRanking` only: two of its totals that differ by no more than the rounding of a float sum are in one group, so the same results added in another order do not split a group. A standings table and `getTiedSets()` compare exactly, and so does the engine under any other ranking strategy. |
+| **Stage outcome** | The uniform completion product (`StageOutcome`): standings, results, bye counts, the structural final round and the entrant list. Deliberately free of champion/winner vocabulary. The standings are the table of the whole stage: for an elimination stage the bracket placement, so rank 1 is the participant who advanced from its last tie (see [Who won the bracket](#who-won-the-bracket)). |
 | **Round pairing** | One round's product from a stage engine (`RoundPairing`): round number, optional label ('semifinal'; null for Swiss), events, and byes. |
 | **Timeline** | A stage's declarative slot model (`TimelineDefinition`): a zoned start, a round interval, and optionally several slots per round. Round-aligned scheduling is the one-slot case; staggered kickoffs are more slots. One timeline per stage. |
 | **Slot** | One kickoff time within a round, holding one event per resource (one event total when no resources are declared). A round's events fill its slots deterministically: schedule order against slot time order, resource by resource within a slot. |
@@ -217,22 +219,19 @@ Two things to know when the IDs are numbers:
   library returns an array keyed by participant ID (`getByeCounts()`, the
   scores of a `Result`), cast the key back with `(string)` before you
   compare it with an ID.
-- The last fallback of the standings order compares IDs as PHP compares two
-  strings, which is as numbers when both are numeric: `'9'` sorts before
-  `'10'`, and two IDs that are equal as numbers (`'01'` and `'1'`) are not
-  ordered by it and keep the order they were given in. It is reached only
-  when ranking value, tiebreakers, scores, seed and label are all equal.
+- The last fallback of a standings table that stands alone orders IDs so
+  that every set of IDs has one order, whatever order the participants were
+  given in. An ID written as a whole number without a sign or a leading
+  zero comes first, in the order of the values: `'9'` sorts before `'10'`.
+  Every other ID follows, byte by byte: `'1'` is before `'01'`, and `'p10'`
+  before `'p2'`. It is reached only when ranking value, tiebreakers, scores
+  and seed are all equal, and never where the table belongs to an entrant
+  list, whose order decides instead (see [Tied sets](#tied-sets)).
 
-Use one `Participant` object per participant within a generation. Almost
-everything matches participants by ID, but `SeedProtectionConstraint` and
-the two `ConsecutiveRoleConstraint` factories (`homeAway()`, `position()`)
-look for the participant object itself in an event. Handed a second object
-with the same ID (a participant rebuilt from stored data and mixed with the
-originals), they do not recognise it and let through an event they would
-reject. The schedulers and engines pass on the objects they were given, and
-a state or schedule restored with `fromArray()` or `fromJson()` shares one
-object per ID, so this arises only where events and participants are put
-together by hand.
+A participant is who its ID says it is. Everything in the library matches
+participants by ID, the constraints included, so a second `Participant`
+object with the same ID (a participant rebuilt from stored data and mixed
+with the originals) is the same participant wherever it appears.
 
 ### Working with Events and Rounds
 
@@ -1033,8 +1032,10 @@ the sport conventions as named constructors — `threeOneZero()`
 construction via `WinDrawLossRanking::fromArray(['win' => 3, 'draw' => 1,
 'loss' => 0])` for config-driven platforms. `SonnebornBergerTiebreaker` is
 also available. Ties beyond the configured tiebreakers fall back to score
-difference, score for, seed (a participant without one after those that have
-one), natural-order label comparison, and finally the ID. Each event may
+difference and score for. Entries that are still level are ordered by seed
+(a participant without one after those that have one) and finally by ID, so
+that the table is the same for every order of the participants array; a
+label is never compared. Each event may
 have at most one result: the calculator throws an `InvalidInputException`
 for two results that hold the same `Event` object. It recognises an event by
 the object and does not compare events, so two `Event` objects for one match
@@ -1044,9 +1045,9 @@ it one result per match.
 ### Tied sets
 
 A standings table gives every entry a position of its own, also when no
-result separates two entries: the calculator then orders them by seed, by
-label and finally by ID, so that the same results always give the same table.
-That order says nothing about how the participants performed. An application
+result separates two entries: the calculator then orders them by seed and
+finally by ID, so that the same results always give the same table. That
+order says nothing about how the participants performed. An application
 that advances, relegates or seeds by position needs to know where it applies,
 and `Standings::getTiedSets()` reports it:
 
@@ -1114,13 +1115,45 @@ and `getPosition()` are what they were. Deciding a tie (a play-off, a drawing
 of lots, a shared rank) is the application's rule; apply it to the entrant
 list passed to the next stage, where position is authoritative.
 
+**Where the participants are an entrant list, its order decides.** The seed
+and the ID are the fallback of a table that stands alone. A stage has an
+entrant list, and wherever one exists, the position in it decides what
+results do not; a label, a seed attribute or an ID never does. The engines
+order their own tables that way, and `withTiedSetsOrderedBy()` does it for a
+table of yours. It moves entries inside a tied set only: every entry that
+results place stays where it is, and the sets and their positions are the
+same.
+
+```php
+// The list as entered, in the order that matters to the application
+$entrants = [$dave, $carol, $bob, $alice];
+
+$inListOrder = $calculator->calculate($entrants, [])->withTiedSetsOrderedBy($entrants);
+
+echo implode(', ', array_map(
+    fn ($entry): string => $entry->getParticipant()->getLabel(),
+    $inListOrder->getEntries()
+)) . "\n"; // Dave, Carol, Bob, Alice
+```
+
+A `StageOutcome` built with an entrant list (its last constructor argument)
+does the same to the table it is given, so that what a rank selector reads
+is the table the outcome shows.
+
 ## Swiss Tournaments
 
 `SwissPairingEngine` is a **stage engine** (`StageEngineInterface`): it
 pairs one round at a time from the recorded `StageState`. Participants are
 ordered by standings and paired adjacently (Monrad style), backtracking
 past repeat pairings. Byes rotate to the lowest-placed participant with
-the fewest so far and are credited as wins when ordering the next round.
+the fewest so far and count as wins: in the order the next round is paired
+from, and in the table of the outcome, which is the same table.
+
+Where no result separates two participants, their position in the list the
+stage was started with decides: the first round pairs position 1 with 2 and
+3 with 4, and its bye goes to the last position. No seed attribute, label
+or ID is read, so give `StageState::start()` the entrants in the order that
+matters.
 
 Participants who are level form a **score group**. With a `Randomizer` the
 engine shuffles the order within each group, and a credited bye is level
@@ -1170,6 +1203,17 @@ $outcome = $engine->getOutcome($state);
 $leader = $outcome->getStandings()->getEntries()[0];
 ```
 
+The outcome's standings are the table the rounds were paired from. A bye
+counts in it as it counts for pairing: the ranking value of an entry
+includes one win for each bye the participant had, and
+`StandingEntry::getByes()` says how many. Played, wins, draws and losses
+count results only, so a participant who had a bye and won twice in three
+rounds shows two played, two wins and nine points. Crediting a bye needs a
+value for a win, which only a `WinDrawLossRanking` has: under a ranking
+strategy of your own, a stage in which a bye is recorded is refused
+(`IncompatibleOptions`). A tiebreaker that reads opponents' ranking values
+(Buchholz, Sonneborn–Berger) counts an opponent's bye as nothing.
+
 `StageState` absorbs the between-round bookkeeping (bye threading, round
 numbers, played pairings) and serializes — `toArray()`/`fromArray()` and
 `toJson()`/`fromJson()` — so platforms persist it between rounds instead
@@ -1183,16 +1227,16 @@ For a whole Swiss schedule without recorded results, use the
 `SwissScheduler` preset, which drives this engine through the same loop
 while recording no results. With no results every participant of a field
 of even size is level, so each round is a non-repeat pairing of the field:
-drawn at random when the scheduler has a `Randomizer`, as below, and
-otherwise in the order of the table, the same on every call. A table with
-no results is in its fallback order: by seed, then label, then ID, and not
-by position in the list. In a field of odd size one participant has a bye
-in every round, and a bye counts as a win in the pairing order: the
-participants who have had a bye are ordered ahead of the others, with or
-without a `Randomizer`, and are the first to be paired, so those rounds are not a uniform draw. The scheduler refuses more rounds than the
-number of participants minus one. That is the most a field of even size
-can play without a repeat; a field of odd size could play one round more
-and is refused it:
+drawn at random when the scheduler has a source of draws, as below, and
+otherwise in the order of the list, the same on every call (the first round
+pairs position 1 with 2 and 3 with 4). In a field of odd size one
+participant has a bye in every round, and a bye counts as a win in the
+pairing order: the participants who have had a bye are ordered ahead of
+the others, with or without a source of draws, and are the first to be
+paired, so those rounds are not a uniform draw. The scheduler refuses more
+rounds than the number of participants minus one. That is the most a field
+of even size can play without a repeat; a field of odd size could play one
+round more and is refused it:
 
 ```php
 use MissionGaming\Tactician\Scheduling\SwissOptions;
@@ -1201,7 +1245,35 @@ use Random\Randomizer;
 
 $schedule = (new SwissScheduler(null, new Randomizer()))
     ->schedule($participants, new SwissOptions(rounds: 3));
+
+// A draw that repeats: the same participants, rounds and seed give the
+// same schedule on every call, also on one scheduler asked twice
+$drawn = (new SwissScheduler())->schedule($participants, new SwissOptions(rounds: 3, seed: 2026));
 ```
+
+The source of draws is the `seed` of the options or a `Randomizer` given to
+the scheduler, and not both (a scheduler that has both refuses the call,
+with the reason `IncompatibleOptions`). A seed is plain data
+(`SwissOptions::fromArray(['rounds' => 3, 'seed' => 2026])`) and builds a new
+`Randomizer` on the `Xoshiro256StarStar` engine for every call, so the engine
+is part of the output for a seed. A `Randomizer` has state: a scheduler that
+holds one continues its sequence, and two calls give two schedules.
+
+Every round count the scheduler accepts is generated when it has no
+constraints. A round is paired without a look at the rounds to come, so at
+the larger round counts a draw can reach a round that has no pairing left
+without a repeat. The scheduler then draws again, continuing the same
+sequence, so the schedule is still a function of the seed; a schedule that
+needs no second draw is the one the first draw gives. If twenty draws are
+not enough, or there is nothing to draw from, it builds the rounds by the
+rotation that lays out a round robin, which cannot fail. Without a source of
+draws there is one draw, and it needs the rotation at a few of the largest
+round counts (of the fields up to 44: 26 participants from 24 rounds on, 34
+from 32, and 37 at 36). The first round is the list as given there too,
+with the bye of a field of odd size at the last position; the later rounds
+are those of the rotation, in which nobody has a second bye. With constraints a
+schedule may not exist at all, and an `IncompleteScheduleException` reports
+the round the last draw could not pair.
 
 ### Correcting a Recorded Result
 
@@ -1300,14 +1372,35 @@ rule for experimental API and promises nothing beyond it (see
 [Versioning and stability](../README.md#versioning-and-stability)):
 
 - A patch release keeps the fingerprint of every configuration, so within
-  the 0.2.x series a stored stamp stays valid. The exception is the one
+  one 0.x series a stored stamp stays valid. The exception is the one
   the patch rule itself has: a fingerprint that was wrong (one string for
   two configurations that pair differently, for example) may be corrected,
   and the changelog then lists it under "Output change (fix)".
 - A 0.x minor release may change the scheme. The changelog of that release
   then has a migration note saying what a stored stamp is replaced with.
-  The string states the version of its scheme (`tactician:v1:`), so that a
-  stamp of a later scheme can be told from one of this scheme.
+  The string states the version of its scheme (`tactician:v2:`), so that a
+  stamp of another scheme can be told from one of this scheme.
+
+0.3.0 made that change, from `v1` to `v2`: it pairs a Swiss round and a
+re-seeded bracket round from another order than 0.2.x did (the position in
+the entrant list where 0.2.x read the seed attribute, the label and the ID,
+and a bye credited in a re-seeded bracket), so the same recorded state can
+give another next round. A state stamped by 0.2.x is therefore refused by
+every engine, with a message that says the stamp is of an earlier release.
+Once you have decided that the stage goes on under the rules of this
+release, stamp it again:
+
+```php
+$fingerprintOfThisRelease = $engine->getFingerprint();
+$stampedAgain = $state->withEngineFingerprint($fingerprintOfThisRelease);
+```
+
+Rounds already recorded stand. A Swiss stage pairs its later rounds by the
+new order. A fixed-path bracket and a double-elimination bracket pair as
+they always did. A re-seeded bracket is replayed from its entrant list, and
+a recorded round that this release pairs differently is refused whether
+the state is stamped or not (`RecordedRoundMismatch`): finish such a
+bracket on the release that started it.
 
 | Engine | Part of the fingerprint when not at the default | Not part of it |
 | --- | --- | --- |
@@ -1732,33 +1825,39 @@ $outcome = $engine->getOutcome($state);
 $titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];
 ```
 
-The outcome's standings are a win/loss table of every event of the stage.
-In the bracket above (single elimination, one event per tie, eight entrants)
-the table reads as a bracket placement: the winner 3-0, the runner-up 2-1,
-the semifinal losers 1-1 and the quarter-final losers 0-1. The two semifinal
-losers are level, and so are the four quarter-final losers: the table orders
-them by its fallback (seed, label, ID), and `getTiedSets()` reports them.
-That reading does not hold for every bracket; see
-[Who won the bracket](#who-won-the-bracket).
+The outcome's standings are the bracket placement, with the win/loss record
+of every entrant. In the bracket above (single elimination, one event per
+tie, eight entrants): the winner 3-0, the runner-up 2-1, the semifinal
+losers 1-1 and the quarter-final losers 0-1. The entrants who went out in
+the same round share a **tier** of the table. The two semifinal losers are
+level in theirs, and so are the four quarter-final losers: the table lists
+them in the order of the entrant list, and `getTiedSets()` reports them.
+See [Who won the bracket](#who-won-the-bracket) for what the table says of
+every bracket.
 
 `EliminationOptions` configures the preset (plain-data constructible via
 `fromArray()`):
 
 - `reseedEachRound: true` re-ranks survivors by standings and re-folds
   every round, instead of the default fixed bracket path. The standings
-  are the win/loss table of the stage so far. Survivors who are level in
-  it are ordered by the table's fallback, which is seed, label and ID and not list position.
-  A bye is no win in that table, so an entrant who had a bye ranks below
-  the winners of the round: in a field of five, the entrants in positions
-  1 and 2 meet in the semifinal.
+  are the win/loss table of the stage so far, in which a bye counts as the
+  tie it stands for, won in every leg: an entrant who sat out the first
+  round ranks with the winners of that round, not below them. Survivors
+  who are level are in the order of the entrant list, so in a field of
+  five the entrants in positions 1 and 2 are in opposite semifinals.
+  Crediting a bye needs a value for a win: a re-seeded bracket whose field
+  is not a power of two, which therefore has byes, is refused under a
+  ranking strategy that is not a `WinDrawLossRanking`
+  (`IncompatibleOptions`), from the first call on, before a round is
+  paired.
 - `legsPerTie: 2` plays every tie over two mirrored legs (annotated with
   `tie_leg` metadata). Whoever wins more legs advances; when the legs are
   level, the aggregate is **yours** to resolve — away goals, extra time,
   penalties are rules Tactician never owns — and you record the decision
   as `TieDecision::TIE_WINNER_KEY` (`'tie_winner'`) metadata on one leg's
-  result. Per-leg results remain ordinary results feeding standings: the
-  table counts each leg as it was recorded, and a decision changes nothing
-  in it.
+  result. Per-leg results remain ordinary results: the records of the
+  table count each leg as it was recorded, and the decision places the
+  entrant it sent on above the one it did not.
 
 `DoubleEliminationEngine` adds a losers bracket and a grand final: everyone
 must lose twice to be eliminated, so when the losers champion wins the grand
@@ -1770,13 +1869,29 @@ errors; partially recorded rounds are completed with
 
 ### Who won the bracket
 
-`MatchOutcomeSelector::winners()` reads who won the last tie of the stage
-from the recorded results, and that is the participant who won the bracket.
-Rank 1 of the outcome's standings is the participant with the best
-win/loss record over the whole stage. The two are the same in a
-single-elimination bracket of one event per tie whose field is a power of
-two: its winner has won every round and nobody else has. They can differ in
-three cases:
+Rank 1 of the outcome's standings is the participant who won the bracket,
+rank 2 the one it beat in the last tie, and everyone else follows by the
+round that put them out, the latest first. That holds for every bracket the
+two engines play: any field size, byes, one or two legs per tie, single and
+double elimination. `MatchOutcomeSelector::winners()` reads the same
+participant from the recorded results of the last round, and the two never
+differ.
+
+The table is ordered by the bracket first and by the records second:
+
+- The entrants who went out in the same round share a **tier**
+  (`Standings::getTiers()`): the winner alone, the other finalist alone,
+  then the two of the semifinals, the four of the quarter-finals, and so
+  on. In double elimination a tier is a round of the losers bracket, so the
+  places are 1, 2, 3, 4, then two, two, four, four.
+- Inside a tier the standings calculator orders the entrants from their
+  records: ranking value, tiebreakers, score difference, scores-for.
+- Where that leaves two of them level, their position in the entrant list
+  decides, and `getTiedSets()` reports them. A tied set never crosses a
+  tier.
+
+No record moves an entrant from one tier to another, and there are three
+cases in which the records alone would say something else:
 
 **Double elimination.** A participant who loses early, comes through the
 losers bracket and wins the first grand final has more wins than the
@@ -1814,15 +1929,14 @@ echo 'Won the bracket: ' . MatchOutcomeSelector::winners()->select($doubleOutcom
 ```
 
 ```text
-Rank 1: Heidi (5-2)
-Rank 2: Alice (4-1)
+Rank 1: Alice (4-1)
+Rank 2: Heidi (5-2)
 Won the bracket: Alice
 ```
 
 **A two-legged tie decided by `tie_winner`.** Each leg is recorded as it
-was played and the decision changes nothing in the table (see
-`legsPerTie` above), so two finalists who win a leg each are level in it.
-The table orders them by its fallback, which knows nothing of the decision:
+was played, so two finalists who win a leg each have the same record. The
+decision is what the bracket went by, and the table follows the bracket:
 
 ```php
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
@@ -1844,19 +1958,18 @@ $finalOutcome = $twoLegged->getOutcome($finalState);
 
 echo 'Rank 1: ' . $finalOutcome->getStandings()->getEntries()[0]->getParticipant()->getLabel() . "\n";
 echo 'Won the tie: ' . MatchOutcomeSelector::winners()->select($finalOutcome)[0]->getLabel() . "\n";
-echo count($finalOutcome->getStandings()->getTiedSets()) . " tied set\n";
+echo count($finalOutcome->getStandings()->getTiedSets()) . " tied sets\n";
 ```
 
 ```text
-Rank 1: Alice
+Rank 1: Heidi
 Won the tie: Heidi
-1 tied set
+0 tied sets
 ```
 
-**A bye.** A bye is not an event, so it is no win in the table (the Swiss
-engine credits a bye as a win when it orders a round; the bracket engines
-do not). A participant who has a bye and wins the bracket can therefore be
-level with the participant it beat in the final, who played a round more:
+**A bye.** A bye is not an event, so it is no win in a record. A
+participant who has a bye and wins the bracket has the same points as the
+participant it beat in the final, who played a round more:
 
 ```php
 $bob = $participants[1];
@@ -1880,20 +1993,24 @@ echo 'Won the bracket: ' . MatchOutcomeSelector::winners()->select($byeOutcome)[
 ```
 
 ```text
-Alice (1-1)
 Heidi (1-0)
+Alice (1-1)
 Won the bracket: Heidi
 ```
 
-Alice and Heidi both have three points from one win, and the fallback puts
-Alice first by label.
+Heidi and Alice both have three points from one win, and the bracket puts
+Heidi first.
 
-So read the winner of an elimination stage, and who advances from any
-knockout round, with `MatchOutcomeSelector`. Use the standings for what
-they are: a record of every participant's results, for a placement table
-or for re-seeding. A level single-leg event is different from a level
-two-legged tie here: its decision does count in the table (see
-[Recording a Level Event](#recording-a-level-event)).
+Use `MatchOutcomeSelector` to read who advances from one knockout round,
+which the table of a whole bracket does not say, and the standings for the
+placement of everyone. A rank selection over the table of a bracket reads
+the places the bracket decided: `RankRangeSelector::overall(1, 2)` is the
+two finalists. Where entrants of one tier are level (the two who went out
+in the semifinals, when no score separates them), a selection that takes
+one of them (`overall(3, 3)`) is refused, and so is one that takes both
+(`overall(1, 4)`), whose order is undecided, unless the selector is told to
+accept ties inside the selection (see
+[Selections that results do not decide](#selections-that-results-do-not-decide)).
 
 ### Recording a Level Event
 
@@ -1945,14 +2062,12 @@ echo ($recorded->isDraw() ? 'drawn' : 'won') . ', '
 
 In the outcome's standings a level event that was decided this way counts
 as a win for the participant who advanced and a loss for the other, with
-the scores as recorded. The table of a single-leg bracket therefore places
-it as it does when every event has a winner: in a single-elimination
-bracket without byes the participant who advanced from a level final is
-rank 1 and not level with the runner-up, and re-seeding
+the scores as recorded. The records of a single-leg bracket are therefore
+the ones it has when every event has a winner, and re-seeding
 (`reseedEachRound`) ranks the survivor of a level event with the other
-winners of the round. (With a bye in the bracket, rank 1 need not be the
-winner whether or not an event was level; see
-[Who won the bracket](#who-won-the-bracket).)
+winners of the round. The participant who advanced from a level final is
+rank 1, as in every bracket (see
+[Who won the bracket](#who-won-the-bracket)).
 
 Only the table the engine computes reads the decision. The outcome's
 results are the results as recorded, so a table you compute from them
@@ -2029,8 +2144,14 @@ and returning one `Result` per event):
 /** @return list<\MissionGaming\Tactician\DTO\Result> */
 function playPool(\MissionGaming\Tactician\DTO\Schedule $schedule): array
 {
+    // The participant whose label is first in the alphabet wins, so that
+    // results decide every place of a pool
     return array_map(
-        static fn (\MissionGaming\Tactician\DTO\Event $event) => new \MissionGaming\Tactician\DTO\Result($event, $event->getParticipants()[0]),
+        static function (\MissionGaming\Tactician\DTO\Event $event): \MissionGaming\Tactician\DTO\Result {
+            [$first, $second] = $event->getParticipants();
+
+            return new \MissionGaming\Tactician\DTO\Result($event, strcmp($first->getLabel(), $second->getLabel()) < 0 ? $first : $second);
+        },
         $schedule->getEvents()
     );
 }
@@ -2068,17 +2189,20 @@ foreach ($pools as $label => $poolParticipants) {
     // check every pairing has a result before qualifying
     assert($scheduler->getPlan($poolParticipants)->findUnplayedPairings($results) === []);
 
+    // The pool's entrant list goes with its table: where results leave
+    // two entries level, their position in it decides
     $poolOutcomes[$label] = new StageOutcome(
         $calculator->calculate($poolParticipants, $results),
-        $results
+        $results,
+        entrants: $poolParticipants
     );
 }
 
 // One combined outcome, optionally carrying the pool structure
-$combined = StageOutcome::combining($poolOutcomes, $calculator);
+$combined = StageOutcome::combining($poolOutcomes, $calculator, $participants);
 
-// The hand-off: top 2 per pool, pool winners first - exactly the ordering
-// fold seeding wants for cross-pool pairings (A1 vs B2, B1 vs A2)
+// The hand-off: top 2 per pool, pool winners first, in the order that
+// keeps a pool's two qualifiers apart in a bracket (A1 vs B2, B1 vs A2)
 $qualifiers = RankRangeSelector::topPerGroup(2)->select($combined);
 
 $knockout = new SingleEliminationEngine();
@@ -2087,11 +2211,8 @@ $knockoutState = StageState::start($qualifiers); // position 1 = seed 1
 
 **Progression selectors** are the hand-off between stages: they consume a
 `StageOutcome` and produce the ordered entrant list of the next stage.
-Order is authoritative: a bracket, a pool distribution and a pot draw seed
-from list position, so library selectors and consumer-derived lists behave
-identically. (A Swiss stage is the exception. It pairs its first round from
-a table with no results, which is ordered by the seed attribute, then label,
-then ID: give the entrants of a Swiss stage seeds if their order matters.)
+Order is authoritative: every stage takes its entrants from list position,
+so library selectors and consumer-derived lists behave identically.
 Two families cover the two legitimate substrates (and mixing them within
 one decision invites contradictory qualification — pick one ranking
 authority per decision):
@@ -2115,11 +2236,105 @@ say which class it belongs to, so store that beside it. Selectors are
 optional machinery, not a gate: a consumer computing its own qualification
 hands the next stage an ordered list directly, with no penalty.
 
+**A per-group selection is ordered for a bracket.** It lists every pool's
+first selected rank, then every pool's second, and so on. The first block
+is in pool order. Each later block is in the order that keeps the entrants
+of one pool apart when the whole list is folded into a bracket, as the
+elimination engines fold it: as few pairs of one pool as possible that can
+meet in the first round, then in the second, and so on. For the top two of
+every pool, a pool's winner and runner-up are always in opposite halves and
+can meet only in the final:
+
+| Pools | `topPerGroup(2)` returns | First round of the bracket |
+|-------|--------------------------|----------------------------|
+| 2 | A1, B1, A2, B2 | A1 v B2, B1 v A2 |
+| 3 | A1, B1, C1, C2, B2, A2 | C2 v B2, C1 v A2 (A1 and B1 have byes) |
+| 4 | A1, B1, C1, D1, B2, A2, D2, C2 | A1 v C2, D1 v B2, B1 v D2, C1 v A2 |
+
+The order depends on the number of pools and of ranks alone. It is the
+order for a bracket of exactly these entrants; put anywhere else (dealt
+into pools again, or into a bracket with others) it has no special meaning.
+
+### Selections that results do not decide
+
 A rank selector reads positions, and a standings table gives every entry a
-position even where no result separates two entries. Before you cut a table
-at a rank, look at [`getTiedSets()`](#tied-sets): a tied set that spans the
-cut means the fallback order (seed, label, ID) decides who goes through,
-unless you decide it.
+position even where no result separates two entries
+([tied sets](#tied-sets)). Acting on such a position would let something
+other than a result decide who goes through. So a `RankRangeSelector`
+**refuses** a selection that results do not decide, with an
+`UndecidedSelectionException` (an `InvalidConfigurationException`) that
+names the level participants, the places they hold between them and the
+pool:
+
+| The table | Reason (`getReason()`) |
+|-----------|------------------------|
+| has no recorded result at all | `UnplayedStage` |
+| has level entries on both sides of a boundary of the selected ranks: only some of them would be selected | `TieAcrossSelection` |
+| has level entries that are all inside the selected ranks: who is selected is decided, the order they are listed in is not | `TieWithinSelection` |
+
+A tie that touches none of the selected ranks is not refused.
+
+```php
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Exceptions\UndecidedSelectionException;
+
+// A pool of four, entered in this order, in which every event is drawn
+$drawnPool = [
+    new Participant('zed', 'Zed'),
+    new Participant('yan', 'Yan'),
+    new Participant('bob', 'Bob'),
+    new Participant('amy', 'Amy'),
+];
+$draws = array_map(
+    fn (Event $event) => new Result($event),
+    $scheduler->schedule($drawnPool)->getEvents()
+);
+$undecided = StageOutcome::combining([
+    'A' => new StageOutcome($calculator->calculate($drawnPool, $draws), $draws, entrants: $drawnPool),
+]);
+
+try {
+    RankRangeSelector::topPerGroup(2)->select($undecided);
+} catch (UndecidedSelectionException $e) {
+    echo "{$e->getReason()?->value}: pool {$e->getPool()}, places {$e->getFirstPlace()} to {$e->getLastPlace()}: "
+        . implode(', ', $e->getParticipantIds()) . "\n";
+}
+```
+
+```text
+tie_across_selection: pool A, places 1 to 4: zed, yan, bob, amy
+```
+
+What happens next is the application's rule: a play-off, a drawing of lots,
+a tiebreaker added to the calculator. Going on without one is a choice, and
+it is made on the selector:
+
+```php
+// Accept level entries when all of them are selected: who goes through is
+// still decided by results, and only their order is taken from the table
+$firstFour = RankRangeSelector::topPerGroup(4)->withTiesInsideSelectionAccepted()->select($undecided);
+
+// Accept the table as it stands, unplayed pools included: where results
+// decide nothing, the position in the entrant list does
+$firstTwo = RankRangeSelector::topPerGroup(2)->withTableOrderAccepted()->select($undecided);
+
+echo implode(', ', array_map(fn (Participant $p) => $p->getLabel(), $firstTwo)) . "\n"; // Zed, Yan
+```
+
+In an accepted selection level entries are in the order of the outcome's
+entrant list, which is why the pools above were given theirs. An outcome
+built without one keeps the table it was given, which for a table from
+`StandingsCalculator` is its own fallback order (seed, then ID). In plain
+data the choice is the key `ties` (`'refuse'`, the default,
+`'accept-inside-selection'` or `'accept-table-order'`); `toArray()` writes
+it only when it is not the default.
+
+The selector sees the table and nothing else. It recognises a pool with no
+result at all; it cannot know that a pool with some results still has
+events to play. Check that before you select, as the loop above does with
+`findUnplayedPairings()`, or with `isComplete()` for a stage an engine
+drives.
 
 **Ahead-of-time composition validation** checks that a declared
 multi-stage structure telescopes before any fixture exists:
@@ -3588,6 +3803,7 @@ parent type matches too.
 | `SchedulingException` (abstract) | `\Exception` | A scheduling failure. Its subclasses carry a diagnostic report (`getDiagnosticReport()`). |
 | `InvalidConfigurationException` | `SchedulingException` | A scheduler, engine, stage, timeline or grid is configured in a way that cannot work. `getReason()` says which mistake it was: see [Configuration Errors](#configuration-errors). |
 | `PinConflictException` | `InvalidConfigurationException` | A repack request pins one participant in two events at the same session and slot. It carries the two event IDs (`getEventIds()`). |
+| `UndecidedSelectionException` | `InvalidConfigurationException` | A `RankRangeSelector` is asked for ranks that results do not decide. It carries the IDs of the level participants (`getParticipantIds()`), the places they hold between them and the pool: see [Selections that results do not decide](#selections-that-results-do-not-decide). |
 | `IncompleteScheduleException` | `SchedulingException` | Constraints leave a schedule that cannot be completed. |
 | `NoValidPairingException` | `SchedulingException` | No complete pairing exists for a Swiss round. |
 | `RepackViolationsException` | `SchedulingException` | A repack leaves violations and `RepackOptions(throwOnViolations: true)` asked for an exception instead of the outcome. |
@@ -3818,6 +4034,9 @@ identifier for logs and stored data):
 | `UndecidedTie` | `undecided_tie` | A tie that must produce a winner has none |
 | `IncompatibleOutcome` | `incompatible_outcome` | A progression selector was given an outcome of a shape it cannot read |
 | `RankUnavailable` | `rank_unavailable` | A progression selector asked for a rank the standings do not have |
+| `UnplayedStage` | `unplayed_stage` | A rank selection was asked of a table with no recorded result (`UndecidedSelectionException`) |
+| `TieAcrossSelection` | `tie_across_selection` | A rank selection takes only some of the entries that no result separates (`UndecidedSelectionException`) |
+| `TieWithinSelection` | `tie_within_selection` | Entries that no result separates are all selected, and the order they are selected in is not decided (`UndecidedSelectionException`) |
 | `RoundOutOfSequence` | `round_out_of_sequence` | A round was recorded out of play order: its number is not above the last recorded one |
 | `EventNotInRound` | `event_not_in_round` | An event, or the event of a result, does not belong to the round it was recorded with (one with no round number at all is `EventWithoutRoundNumber`) |
 | `NoRoundRecorded` | `no_round_recorded` | Results were added or replaced in a stage with no recorded round |
@@ -3825,6 +4044,7 @@ identifier for logs and stored data):
 | `RoundSuperseded` | `round_superseded` | A result was to be replaced in a round that a later round was paired from |
 | `EmptyEngineFingerprint` | `empty_engine_fingerprint` | A stage state was to be stamped with an empty engine fingerprint |
 | `EngineFingerprintMismatch` | `engine_fingerprint_mismatch` | A stage state carries the fingerprint of another engine or configuration than the one reading it |
+| `RecordedRoundMismatch` | `recorded_round_mismatch` | A round recorded on a stage state lacks a tie the bracket has in that round: it was paired under other rules, or the participant list changed afterwards |
 | `EmptyEventId` | `empty_event_id` | A movable or pinned event has an empty ID |
 | `IdenticalParticipants` | `identical_participants` | An event names the same participant on both sides |
 | `DuplicateEventId` | `duplicate_event_id` | Two events of one repack request share an ID |
@@ -4080,7 +4300,11 @@ Three things to know beside that:
   `new ShuffledLegStrategy(new Randomizer())`, which says so in your own
   code.
 - A pot draw takes its seed as an option and keeps no state between calls
-  (see [The seed and determinism](#the-seed-and-determinism)).
+  (see [The seed and determinism](#the-seed-and-determinism)). So does a
+  pre-drawn Swiss schedule when its options have a seed
+  (`new SwissOptions(rounds: 3, seed: 2026)`): the scheduler builds a new
+  `Randomizer` from it on every call, and is refused a seed if it also
+  holds a `Randomizer` (see [Swiss Tournaments](#swiss-tournaments)).
 
 ## Real-World Examples
 

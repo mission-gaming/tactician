@@ -214,11 +214,12 @@ describe('what decides an order is not a tie', function (): void {
     it('does not report entries the fallback did not have to order, whatever their seeds, labels and ids', function (): void {
         // The same level pair under four different fallbacks: the tie is
         // reported each time, and only the order inside the set follows the
-        // fallback (seed, then label, then id).
+        // fallback of a table that stands alone (seed, then id). A label
+        // decides nothing.
         $cases = [
             'seed' => [new Participant('a', 'Amy', 2), new Participant('b', 'Bob', 1), ['b', 'a']],
             'seeded before unseeded' => [new Participant('a', 'Amy'), new Participant('b', 'Bob', 9), ['b', 'a']],
-            'label' => [new Participant('a', 'Zoe'), new Participant('b', 'Bob'), ['b', 'a']],
+            'a label that disagrees with the id' => [new Participant('a', 'Zoe'), new Participant('b', 'Bob'), ['a', 'b']],
             'id' => [new Participant('b', 'Same'), new Participant('a', 'Same'), ['a', 'b']],
         ];
 

@@ -45,12 +45,12 @@ document the shipped shapes.
 - **Selectors have no common plain-data form.** Each of the two classes has
   `fromArray()`/`toArray()` with a mode identifier; the interface declares
   neither, and nothing maps an identifier to a selector class.
-- **Rank 1 is not always the winner.** Sections 4 and 8 say the winner of a
-  bracket is derivable as rank 1 of the standings. That holds for a
-  single-elimination bracket of one event per tie with no byes. It does not
-  hold for double elimination, for a two-legged tie decided by `tie_winner`,
-  or where a bye is involved; `MatchOutcomeSelector::winners()` is the
-  derivation that always holds
+- **Rank 1 is the winner because the table is the placement.** Sections 4
+  and 8 say the winner of a bracket is derivable as rank 1 of the
+  standings. A table of wins and losses alone does not give that (double
+  elimination, a two-legged tie decided by `tie_winner` and a bye each
+  break it), so since 0.3.0 the table of an elimination outcome is ordered
+  by the bracket first, in tiers, and by the records inside a tier
   ([usage guide](../USAGE.md#who-won-the-bracket)).
 - **`SchedulingContext` still answers for a format without legs.** Its leg
   helpers treat such a format as one leg (`getTotalLegs()`, which did so
@@ -65,8 +65,8 @@ document the shipped shapes.
   `Randomizer` and no results "reproduces random non-repeat pairing". In a
   field of odd size a bye counts as a win in the pairing order, so the
   participants who have had one are ordered and paired first. Without a
-  `Randomizer` the order is that of a table with no results: seed, label,
-  ID, and not list position.
+  source of draws the order is list position
+  ([ADR 0004](../adr/0004-position-decides-where-results-do-not.md)).
 
 ## Why
 
