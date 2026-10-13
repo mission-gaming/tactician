@@ -271,7 +271,7 @@ final class ThrowSites
                     $found[] = [
                         'line' => $token->line,
                         'kind' => self::KIND_THROW_NEW,
-                        'subject' => $next === null ? '' : $next->text,
+                        'subject' => $next->text ?? '',
                         'classes' => [],
                         'variable' => null,
                         'problem' => 'the class thrown cannot be read from the source; throw `new Name`, a static factory with a declared return type, or a caught variable',
