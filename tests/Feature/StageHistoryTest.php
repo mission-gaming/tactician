@@ -334,6 +334,61 @@ describe('a state built from a history', function (): void {
         }
     })->with(array_keys(historyEngines()));
 
+    // The verbs keep the results in the order they were recorded, which is
+    // the order they came in; a history puts them in the order of the events.
+    // The two are then not the same array, and they are the same stage: the
+    // history is the array the verbs give when the results come in event
+    // order, and every engine reads the two alike.
+    it('is read as the state whose results were recorded in another order than the events', function (string $name): void {
+        $engine = historyEngines()[$name];
+        $points = 0;
+        $reordered = 0;
+
+        foreach ([4, 5, 8] as $size) {
+            $entrants = historyField($size);
+            $rng = new Randomizer(new Mt19937(7 * $size));
+            $state = $inOrder = StageState::start($entrants);
+
+            for ($round = 1; !$engine->isComplete($state); ++$round) {
+                if ($round > 40) {
+                    throw new LogicException('The stage did not complete.');
+                }
+
+                try {
+                    $pairing = $engine->pairNextRound($state);
+                } catch (NoValidPairingException) {
+                    break;
+                }
+                $results = historyResults($pairing, $rng);
+                $asTheyCame = $rng->shuffleArray($results);
+                $early = array_slice($asTheyCame, 0, $rng->getInt(0, count($asTheyCame)));
+
+                $partly = $state->withRoundPlayed($pairing, $early);
+                $state = $partly->withAdditionalResults(array_slice($asTheyCame, count($early)));
+                $steps = [
+                    [$partly, $inOrder->withRoundPlayed($pairing, array_values(array_filter(
+                        $results,
+                        static fn(Result $result): bool => in_array($result, $early, true)
+                    )))],
+                    [$state, $inOrder = $inOrder->withRoundPlayed($pairing, $results)],
+                ];
+
+                foreach ($steps as [$recorded, $inEventOrder]) {
+                    $rebuilt = historyRebuilt($recorded, $entrants, $rng);
+
+                    expect($rebuilt->toArray())->toBe($inEventOrder->toArray(), "{$name}, {$size} entrants, round {$round}")
+                        ->and(historyReading($engine, $rebuilt))->toBe(historyReading($engine, $recorded))
+                        ->and(historyReading($engine, historyRebuilt($recorded, $entrants, $rng, true)))->toBe(historyReading($engine, $recorded));
+                    ++$points;
+                    $reordered += $recorded->toArray() === $rebuilt->toArray() ? 0 : 1;
+                }
+            }
+        }
+
+        expect($points)->toBeGreaterThan(10)
+            ->and($reordered)->toBeGreaterThan(3);
+    })->with(array_keys(historyEngines()));
+
     it('carries no engine fingerprint, and takes one as every state does', function (): void {
         $engine = new SingleEliminationEngine();
         $entrants = historyField(4);
@@ -762,6 +817,61 @@ describe('a bracket tie that is level and awaits its decider', function (): void
         // The last round of a field of 4: the final, then the third-place tie
         ['single elimination with a third-place tie', 1],
     ]);
+
+    // The contract is one for every stage of a double elimination bracket:
+    // both brackets, the grand final and its reset, which the same two play.
+    it('is read and refuses only the next round in every stage of a double elimination bracket, the grand final and its reset included', function (): void {
+        $engine = new DoubleEliminationEngine();
+        $state = StageState::start(historyField(4));
+        $stages = [];
+
+        while (!$engine->isComplete($state)) {
+            if (count($stages) > 10) {
+                throw new LogicException('The bracket did not complete.');
+            }
+
+            $pairing = $engine->pairNextRound($state);
+            $events = $pairing->getEvents();
+            $stages[] = $pairing->getLabel();
+            $level = $state->withRoundPlayed($pairing, array_map(static fn(Event $event): Result => new Result($event), $events));
+            $readiness = $engine->getReadiness($level);
+            $rounds = $engine->getRecordedRounds($level);
+
+            expect($engine->isComplete($level))->toBeFalse()
+                ->and($engine->getOutcome($level))->toBeNull()
+                ->and($engine->getStandings($level)->getEntries())->toHaveCount(4)
+                ->and($readiness->isAwaitingResults())->toBeTrue()
+                ->and($readiness->getRoundNumber())->toBe($pairing->getRoundNumber())
+                ->and($readiness->getUndecidedEvents())->toBe($events)
+                ->and($readiness->getUnresolvedEvents())->toBe([])
+                ->and($rounds[count($rounds) - 1]->getUndecidedEvents())->toBe($events)
+                ->and($rounds[count($rounds) - 1]->isResolved())->toBeFalse();
+
+            try {
+                $engine->pairNextRound($level);
+                $this->fail("The stage after '{$pairing->getLabel()}' was paired while its tie awaited a decision.");
+            } catch (InvalidConfigurationException $exception) {
+                expect($exception)->not->toBeInstanceOf(UnresolvedRoundException::class)
+                    ->and($exception->getReason())->toBe(InvalidConfigurationReason::UndecidedTie)
+                    ->and($exception->getContext())->toBe([
+                        'round' => $pairing->getRoundNumber(),
+                        'participants' => historyIds($events[0]->getParticipants()),
+                    ]);
+            }
+
+            // The second-named entrant goes on from every tie, so the losers
+            // champion wins the grand final and the reset is played
+            $state = $level;
+            foreach ($events as $event) {
+                $state = $state->withResultReplaced(
+                    new Result($event, null, [], [], null, new Decider([$event->getParticipants()[1]->getId()]))
+                );
+            }
+        }
+
+        expect($stages)->toBe(['winners round 1', 'losers round 1', 'winners final', 'losers final', 'grand final', 'grand final reset'])
+            ->and($engine->getOutcome($state))->toBeInstanceOf(StageOutcome::class);
+    });
 
     it('is still refused by every call where what is recorded cannot be read: a decider on a tie its results decide', function (string $name): void {
         $engine = historyEngines()[$name];
