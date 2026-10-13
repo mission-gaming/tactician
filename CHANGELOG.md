@@ -395,6 +395,30 @@ heading **Output change (fix)**.
   every field size from 2 to 16, to the same schedule on every run from the
   same plain data, with and without a seeded scheduler.
 
+- **A shard of the `Mutation testing` workflow is no longer ended by a
+  runner shutdown before it reports.** Tooling only: nothing a consumer
+  installs changes. Some changes the mutation runner makes turn a counting
+  loop into one that never ends and adds to an array on every pass (in
+  `SessionPacker` and `ContiguityTargets`, a `++$slot` that becomes
+  `--$slot`). The runner stops a test process at a time limit only, and such
+  a process took all the memory of a CI runner before that, so the job ended
+  with "The runner has received a shutdown signal" and no summary. The test
+  process of every change now has a memory limit of one gigabyte
+  (`TACTICIAN_MUTATION_MEMORY_LIMIT` replaces it): a process that reaches it
+  ends with PHP's fatal error, the runner counts the change as tested and
+  goes on, and the process writes a line to `build/mutation-memory.log`. The
+  summary of a run says how many changes ended that way and in which source
+  files, and leaves them out of the share that a failing test noticed, as it
+  does for the changes that ran into the time limit. The limit comes with
+  `composer mutation`: the command now runs `tests/bin/run-mutation.php`,
+  which adds a directory to `PHP_INI_SCAN_DIR` (a value of your own is kept)
+  so that PHP runs `tests/mutation-memory.php` before the script of every
+  process of the run. Composer's autoloader does not load that file, and
+  `composer.json`'s autoload sections are unchanged. A run started as
+  `vendor/bin/pest --mutate` has no limit, as before, and its summary says
+  so. None of these changes shows a defect in the library: each removes the
+  bound of a loop that is bounded as written.
+
 ## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public
