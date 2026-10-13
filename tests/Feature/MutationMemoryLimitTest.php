@@ -162,8 +162,15 @@ describe('the memory limit of a mutation run', function (): void {
             $parallel ? $this->mutant : [...$this->mutant, 'PARATEST' => '1', 'TEST_TOKEN' => '1', 'UNIQUE_TEST_TOKEN' => '1_mutation']
         );
 
-        expect($status)->not->toBe(0, $output)
-            ->and($output)->toContain('Allowed memory size of 50331648 bytes exhausted');
+        expect($status)->not->toBe(0, $output);
+        if (!$parallel) {
+            // A worker does not get the `-d display_errors=1` of the process
+            // that started it: where PHP is configured not to display
+            // errors, as on a CI runner, the run with workers prints that a
+            // worker crashed and not why. The line below is written for
+            // PHP's memory error only, so it says why in both cases
+            expect($output)->toContain('Allowed memory size of 50331648 bytes exhausted');
+        }
         expect(is_file($this->log))->toBeTrue($output)
             ->and(MutationMemoryLimit::read((string) file_get_contents($this->log)))->toBe(['src/Repack/Internal/SessionPacker.php' => 1]);
     })->with([
