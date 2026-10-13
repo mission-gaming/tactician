@@ -10,6 +10,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\RankingStrategy;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
@@ -129,6 +130,68 @@ describe('Swiss score groups', function (): void {
             );
             $opponent = opponentIn($engine->pairNextRound($state), $this->field['a']);
             $opponents[$opponent?->getId()] = true;
+        }
+
+        ksort($opponents);
+        expect(array_keys($opponents))->toBe(['b', 'c', 'd']);
+    });
+
+    // An adjustment is one more term of a total, and can be far larger than
+    // a result is worth. Adding 100 to 1.058 and to 1.0579999999999998
+    // rounds both to the last bit of a number a hundred times their size,
+    // and the two totals come out further apart than the two sums were:
+    // 1.4e-14, where the bound for three results at these values is 4e-15.
+    it('keeps participants level whose level sums carry the same adjustment', function (): void {
+        $ranking = new WinDrawLossRanking(1.0, 0.029);
+        $state = ($this->levelLeaders)();
+        foreach (['a', 'b', 'c', 'd'] as $id) {
+            $state = $state->withAdjustment(new Adjustment($id, 100.0, 'carried over'));
+        }
+
+        // The premise: the totals of a and b differ by more than the bound
+        // for their results alone
+        $calculator = new StandingsCalculator($ranking);
+        $table = $calculator->withAdjustments(
+            $calculator->calculate(array_values($this->field), $state->getResults()),
+            $state->getAdjustments()
+        );
+        $apart = abs(
+            (float) $table->getEntryFor($this->field['a'])?->getRankingValue()
+            - (float) $table->getEntryFor($this->field['b'])?->getRankingValue()
+        );
+        expect($apart)->toBeGreaterThan(2.0 * 3 * 3 * PHP_FLOAT_EPSILON)
+            ->and($apart)->toBeLessThan(1e-12);
+
+        // a, b, c and d are still one group: shuffled, a meets each of them
+        $opponents = [];
+        for ($seed = 1; $seed <= 40; ++$seed) {
+            $engine = new SwissPairingEngine(
+                standingsCalculator: new StandingsCalculator($ranking),
+                randomizer: new Randomizer(new Mt19937($seed))
+            );
+            $opponent = opponentIn($engine->pairNextRound($state), $this->field['a']);
+            $opponents[$opponent?->getId()] = true;
+        }
+
+        ksort($opponents);
+        expect(array_keys($opponents))->toBe(['b', 'c', 'd']);
+    });
+
+    it('keeps totals apart that differ by an adjustment, however small', function (): void {
+        // The same four leaders on 1/0.5/0, where every sum is exact: an
+        // adjustment of a thousandth is a real difference, not rounding
+        $state = ($this->levelLeaders)()->withAdjustment(new Adjustment('a', 0.001));
+
+        $opponents = [];
+        for ($seed = 1; $seed <= 20; ++$seed) {
+            $engine = new SwissPairingEngine(
+                standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero()),
+                randomizer: new Randomizer(new Mt19937($seed))
+            );
+            $pairing = $engine->pairNextRound($state);
+            // a is alone on top, so it is paired first, in every shuffle
+            expect($pairing->getEvents()[0]->hasParticipant($this->field['a']))->toBeTrue();
+            $opponents[opponentIn($pairing, $this->field['a'])?->getId()] = true;
         }
 
         ksort($opponents);

@@ -45,6 +45,14 @@ use Random\Randomizer;
  * table the engine builds: the order a round is paired from and the table
  * of the outcome are the same table.
  *
+ * That table also has what the application recorded beside the play. An
+ * awarded result (DTO\Result::isAwarded()) is a result: it counts for the
+ * participants it names, and its event awaits no other outcome. An
+ * adjustment recorded on the state (StageState::withAdjustment()) is added
+ * to the ranking value of its participant, so the next round is paired from
+ * the adjusted totals, and the outcome shows the adjustment as a figure of
+ * its own.
+ *
  * Where no result separates two participants, their position in the
  * participant list of the state decides: the active participants in the
  * order the stage was started with. The first round pairs position 1 with
@@ -114,6 +122,8 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *   so it differs from every win/draw/loss scale; two strategies of
      *   your own are not told apart;
      * - the tiebreakers, by name and in order (default: none);
+     * - each of the two choices of the awarded result policy, when it is
+     *   off (default: both on);
      * - a subclass of StandingsCalculator, stated as custom in place of the
      *   two above: it may order the table by rules of its own, so nothing
      *   is read from it, and two subclasses are not told apart.
@@ -321,7 +331,10 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * The standings calculator computes it from the results. Each recorded
      * bye is then credited as a win (the Swiss convention), which is only
      * meaningful under a win/draw/loss ranking: anything else fails loudly
-     * rather than guessing what a win is worth on an unknown scale. Last,
+     * rather than guessing what a win is worth on an unknown scale. The
+     * adjustments recorded on the state are then applied
+     * (StageState::withAdjustment()): each is an amount of the ranking
+     * value, so it is defined under every ranking strategy. Last,
      * entries that no result separates are put in the order of the
      * entrant list (see entrants()). No seed attribute or label decides an
      * order, and no ID decides one between two active participants.
@@ -332,11 +345,15 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
     private function table(StageState $state): Standings
     {
         $entrants = $this->entrants($state);
+        $calculator = $this->standingsCalculator;
 
-        return $this->standingsCalculator
-            ->withByesCredited(
-                $this->standingsCalculator->calculate($entrants, $state->getResults()),
-                $state->getByeCounts()
+        return $calculator
+            ->withAdjustments(
+                $calculator->withByesCredited(
+                    $calculator->calculate($entrants, $state->getResults()),
+                    $state->getByeCounts()
+                ),
+                $state->getAdjustments()
             )
             ->withTiedSetsOrderedBy($entrants);
     }
@@ -530,6 +547,12 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * For 3/1/0 over 11 rounds that is 1.6e-13: sums of whole and half
      * points are exact, so nothing but equal values is ever inside it.
      *
+     * An adjustment (StandingEntry::getAdjustment()) is added to a total
+     * once, so an adjusted entry has one term more, and M is at least the
+     * largest magnitude of an adjustment in the table. The amounts are the
+     * application's: two totals that differ by more than the tolerance
+     * because their adjustments differ are two different totals.
+     *
      * The cap. A total that differs from another by a real result is one
      * step away: a result more (a win, draw or loss value that is not
      * zero) or a result changed (the difference of two of them). The
@@ -547,16 +570,23 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             return 0.0;
         }
 
-        $terms = 0;
-        foreach ($entries as $entry) {
-            $terms = max($terms, $entry->getPlayed() + $entry->getByes());
-        }
-
         $win = $rankingStrategy->getWinValue();
         $draw = $rankingStrategy->getDrawValue();
         $loss = $rankingStrategy->getLossValue();
 
-        $tolerance = 2.0 * $terms * $terms * PHP_FLOAT_EPSILON * max(abs($win), abs($draw), abs($loss));
+        // An adjustment is one more term of a total, and may be the
+        // largest: adding it rounds to the last bit of a total that large.
+        // A table without adjustments has the terms and the magnitude it
+        // had before they existed.
+        $terms = 0;
+        $magnitude = max(abs($win), abs($draw), abs($loss));
+        foreach ($entries as $entry) {
+            $adjustment = $entry->getAdjustment();
+            $terms = max($terms, $entry->getPlayed() + $entry->getByes() + ($adjustment === 0.0 ? 0 : 1));
+            $magnitude = max($magnitude, abs($adjustment));
+        }
+
+        $tolerance = 2.0 * $terms * $terms * PHP_FLOAT_EPSILON * $magnitude;
 
         foreach ([$win, $draw, $loss, $win - $draw, $draw - $loss, $win - $loss] as $step) {
             if ($step !== 0.0) {

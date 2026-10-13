@@ -540,6 +540,20 @@ describe('PHPUnit configuration', function () use ($root): void {
         expect((string) $configuration['executionOrder'])->toBe('random');
     });
 
+    // PHPUnit sets an `<ini>` value outright. For `memory_limit` that lowers
+    // the limit of a run that has a higher one or none: PHP has none on a CI
+    // runner, and a limit stated here ended the Coverage job where the
+    // coverage is reported. In the configuration of `composer mutation` it
+    // would also replace the limit the test process of a change has set for
+    // itself. tests/Pest.php raises a low limit and lowers none
+    // (tests/Feature/SuiteMemoryLimitTest.php).
+    it('sets no memory limit, which would lower a higher one', function (string $file) use ($root): void {
+        $configuration = simplexml_load_file($root . '/' . $file);
+        Assert::assertInstanceOf(SimpleXMLElement::class, $configuration);
+
+        expect($configuration->xpath('//ini[@name="memory_limit"]'))->toBe([]);
+    })->with(['phpunit.xml', 'phpunit.mutation.xml']);
+
     it('names a schema of the installed PHPUnit major version', function () use ($root): void {
         // A minor release keeps reading the schema of an earlier minor of the
         // same major version, so only the major version is pinned.

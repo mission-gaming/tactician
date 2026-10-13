@@ -211,6 +211,16 @@ final class ExampleResults
                 foreach ($entry->getTiebreakers() as $name => $tiebreaker) {
                     $line .= ' ' . $name . '=' . self::number($tiebreaker);
                 }
+                // Written only where there is something to say, so that a
+                // table without awarded results or adjustments has the line
+                // it had before the two figures existed
+                if ($entry->getAwarded() !== 0) {
+                    $line .= ' awarded=' . $entry->getAwarded();
+                }
+                if ($entry->getAdjustment() !== 0.0) {
+                    $line .= ' earned=' . self::number($entry->getEarnedRankingValue())
+                        . ' adjustment=' . self::number($entry->getAdjustment());
+                }
                 $lines[] = $line;
             }
 
@@ -287,7 +297,17 @@ final class ExampleResults
             }
         }
 
-        return $scores === [] ? $line : $line . ' (' . implode('-', $scores) . ')';
+        if ($scores !== []) {
+            $line .= ' (' . implode('-', $scores) . ')';
+        }
+
+        // Only an awarded result says so; a played one has the line it always had
+        $award = $result->getAward();
+        if ($award !== null) {
+            $line .= ' awarded' . ($award->getLabel() === null ? '' : ' "' . $award->getLabel() . '"');
+        }
+
+        return $line;
     }
 
     /**

@@ -36,6 +36,7 @@ $examples = [
         '20-double-elimination.php' => 'A double-elimination bracket with a grand final reset',
         '21-standings-and-tiebreakers.php' => 'A standings table and a chain of tiebreakers',
         '24-recording-bracket-results.php' => 'A stamped bracket state between requests: a level event decided, a result corrected, a wrong engine refused',
+        '25-awarded-results-and-adjustments.php' => 'A series that was never played is awarded and a squad has points removed: what the table counts, and what it shows beside it',
     ],
     'After generation' => [
         '15-timeline-assignment.php' => 'Kickoff times and resources for every event, under time rules',
