@@ -156,7 +156,9 @@ describe('the mutation report', function (): void {
 
         // Without a timeout the second figure is the score, and it is still
         // given: a reader does not have to know which case this is
-        $none = MutationReport::fromOutput("  Mutations: 1 untested, 3 tested\n  Score:     75.00%\n")->toMarkdown();
+        // (with an empty memory log: the run had the memory limit, and the
+        // summary of one that had none names the time limit for another reason)
+        $none = MutationReport::fromOutput("  Mutations: 1 untested, 3 tested\n  Score:     75.00%\n", '')->toMarkdown();
 
         expect($none)->toContain('**Score: 75.00%**')
             ->toContain('A failing test noticed 3 of 4 mutations, which is 75.00%.')
@@ -223,6 +225,81 @@ describe('the mutation report', function (): void {
             ->and($report->survivors)->toBe([])
             ->and($report->toMarkdown())->not->toContain('Untested mutations by file');
     });
+
+    // A mutation can make a search allocate without end. Its test process
+    // then ends at its memory limit (tests/Support/MutationMemoryLimit.php),
+    // and the runner counts it as tested and prints nothing else about it.
+    // The processes log it themselves; the summary counts that log.
+    it('says how many mutations ended at the memory limit, and does not count them as noticed by a failing test', function (): void {
+        // Two mutations of one file and one of another; the first ran in two
+        // processes, which both ended at the limit
+        $memoryLog = "src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\t101.1\n"
+            . "src/Scheduling/PotDrawScheduler.php\t0f0f0f0f0f0f0f0f\t102.2\n"
+            . "src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\t101.1\n"
+            . "src/Repack/Internal/SessionPacker.php\t1111111111111111\t103.3\n";
+
+        $report = MutationReport::fromOutput(mutationRunOutput(), $memoryLog);
+        $markdown = $report->toMarkdown();
+
+        expect($report->memoryLimited)->toBe(['src/Repack/Internal/SessionPacker.php' => 2, 'src/Scheduling/PotDrawScheduler.php' => 1])
+            // The score and the counts are the runner's, unchanged
+            ->and($markdown)->toContain('**Score: 71.43%**')
+            ->toContain('Mutations: 2 untested, 1 timeout, 4 tested.')
+            ->toContain('3 mutations ended at the memory limit of the test process: `src/Repack/Internal/SessionPacker.php` (2), `src/Scheduling/PotDrawScheduler.php` (1).')
+            ->toContain('The runner counts such a mutation as tested, although no test failed on it')
+            // Of the 4 the runner calls tested, a test failed on 1
+            ->toContain('A failing test noticed 1 of 7 mutations, which is 14.29%.');
+
+        expect(MutationReport::fromOutput(mutationRunOutput(), "src/A.php\tabc\t101.1\n")->toMarkdown())
+            ->toContain('1 mutation ended at the memory limit of the test process: `src/A.php` (1).')
+            ->toContain('A failing test noticed 3 of 7 mutations, which is 42.86%.');
+    });
+
+    it('says that no mutation ended at the memory limit when the run logged none', function (): void {
+        $report = MutationReport::fromOutput(mutationRunOutput(), '');
+
+        expect($report->memoryLimited)->toBe([])
+            ->and($report->toMarkdown())
+            ->toContain('No mutation ended at the memory limit of its test process.')
+            ->toContain('A failing test noticed 4 of 7 mutations, which is 57.14%.');
+    });
+
+    // A run started with `composer mutation` makes the log as it starts. A
+    // run that left none was started in another way, and its test processes
+    // had no limit: "none ended at the limit" would be untrue of it, and
+    // nothing at all would read as the same
+    it('says that a run had no memory limit when it left no memory log', function (string $output): void {
+        $report = MutationReport::fromOutput($output);
+
+        expect($report->memoryLimited)->toBeNull()
+            ->and($report->toMarkdown())
+            ->toContain('The test processes of this run had no memory limit: it left no memory log, which a run started with `composer mutation` does.')
+            ->and($report->toMarkdown())->not->toContain('ended at the memory limit');
+    })->with([
+        'a finished run' => [mutationRunOutput()],
+        'a stopped run' => ["  120 Mutations for 3 Files created\n\n  ..x.t"],
+    ]);
+
+    it('says how many mutations of a stopped run ended at the memory limit', function (): void {
+        $stopped = "  120 Mutations for 3 Files created\n\n  ..x.t";
+
+        $markdown = MutationReport::fromOutput($stopped, "src/A.php\tabc\t101.1\nsrc/A.php\tdef\t102.2\n")->toMarkdown();
+
+        expect($markdown)
+            ->toContain('It was stopped after 5 of 120 mutations: 3 tested, 1 untested, 1 timeout.')
+            ->toContain('2 mutations ended at the memory limit of the test process: `src/A.php` (2).')
+            ->and($markdown)->not->toContain('Score:');
+
+        expect(MutationReport::fromOutput($stopped, '')->toMarkdown())
+            ->toContain('No mutation ended at the memory limit of its test process.');
+    });
+
+    it('never gives a share below zero when the memory log names more mutations than the run calls tested', function (): void {
+        // A log left by another run: wrong, and not a reason to print nonsense
+        $markdown = MutationReport::fromOutput("  Mutations: 3 untested, 1 tested\n  Score:     25.00%\n", "src/A.php\ta\t101.1\nsrc/A.php\tb\t102.2\n")->toMarkdown();
+
+        expect($markdown)->toContain('A failing test noticed 0 of 4 mutations, which is 0.00%.');
+    });
 });
 
 describe('the mutation summary script', function (): void {
@@ -276,6 +353,43 @@ describe('the mutation summary script', function (): void {
         expect($status)->toBe(0)
             ->and($errors)->toBe('')
             ->and($output)->toStartWith("## Mutation testing: Swiss and backtracking\n\nMutated: `src/A.php`, `src/B.php`.\n");
+    });
+
+    // The memory log is the one the run wrote, build/mutation-memory.log,
+    // unless a fourth argument names another; these name their own, so that
+    // they do not read what a run in this checkout left behind
+    it('counts the memory log it is given, and takes a missing one for a run that had no memory limit', function () use ($run): void {
+        $log = tempnam(sys_get_temp_dir(), 'mutation-log-');
+        $memoryLog = tempnam(sys_get_temp_dir(), 'mutation-memory-');
+        Assert::assertIsString($log);
+        Assert::assertIsString($memoryLog);
+        file_put_contents($log, mutationRunOutput());
+        file_put_contents($memoryLog, "src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\t101.1\n");
+
+        try {
+            [$status, $output, $errors] = $run($log, '', '', $memoryLog);
+            // What a run with the limit leaves when no process ended there
+            file_put_contents($memoryLog, '');
+            [$statusEmpty, $outputEmpty, $errorsEmpty] = $run($log, '', '', $memoryLog);
+            unlink($memoryLog);
+            [$statusWithout, $outputWithout, $errorsWithout] = $run($log, '', '', $memoryLog);
+        } finally {
+            unlink($log);
+            if (is_file($memoryLog)) {
+                unlink($memoryLog);
+            }
+        }
+
+        expect($status)->toBe(0)
+            ->and($errors)->toBe('')
+            ->and($output)->toContain('1 mutation ended at the memory limit of the test process: `src/Repack/Internal/SessionPacker.php` (1).')
+            ->and($statusEmpty)->toBe(0)
+            ->and($errorsEmpty)->toBe('')
+            ->and($outputEmpty)->toContain('No mutation ended at the memory limit of its test process.')
+            ->and($statusWithout)->toBe(0)
+            ->and($errorsWithout)->toBe('')
+            ->and($outputWithout)->toContain('The test processes of this run had no memory limit')
+            ->and($outputWithout)->not->toContain('ended at the memory limit');
     });
 
     it('exits 1 with its usage when the log cannot be read', function (array $arguments) use ($run): void {
