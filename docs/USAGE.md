@@ -1239,8 +1239,12 @@ record, the scores and the awarded count are those of the results.
   nothing about how strong the opponent was to meet.
 - **An adjustment for a participant the table does not have is rejected**
   with an `InvalidInputException`.
-- **The order stays total.** Amounts for one participant are added
-  smallest first, so the figure does not depend on the order of the list.
+- **The order stays total.** The amounts for one participant are added
+  exactly and rounded once, so the figure does not depend on the order of
+  the list, and amounts that cancel leave nothing: 0.1 and 0.2 added and
+  each taken back again are 0.0, and the participant is level again with
+  whoever it was level with. Amounts that do not cancel are floats like any
+  others: 0.1 and 0.2 are not 0.3, and [level means equal](#tied-sets).
   Entries that are level after the adjustments keep the order they had in
   the table given; where the participants are an entrant list, follow with
   `withTiedSetsOrderedBy()`, as the engines do.

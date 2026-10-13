@@ -424,8 +424,12 @@ readonly class StandingsCalculator
      *
      * The adjustments replace any the table carries: give every adjustment
      * of the competition, in any order. An entry no adjustment names has
-     * 0.0. Amounts for one participant are added smallest first, so the
-     * figure is the same for every order of the list.
+     * 0.0. The amounts for one participant are added without the rounding
+     * of a running float total: the figure is the float nearest to their
+     * exact sum. So it is the same for every order of the list, and amounts
+     * that cancel leave nothing: 0.1 and 0.2 added and each taken back
+     * again are 0.0, where a running total would leave -2.8e-17 and place
+     * the participant below one it is level with.
      *
      * The table is ordered as calculate() orders one, by ranking value,
      * tiebreakers, score difference and scores-for. Entries that are level
@@ -441,7 +445,8 @@ readonly class StandingsCalculator
      * @param array<Adjustment> $adjustments Every adjustment of the participants of the table
      *
      * @throws InvalidInputException When an adjustment names a participant that has no entry
-     *                               in the table
+     *                               in the table, or the amounts for one participant add up
+     *                               to more than a float holds
      */
     public function withAdjustments(Standings $standings, array $adjustments): Standings
     {
@@ -464,11 +469,13 @@ readonly class StandingsCalculator
         $adjusted = [];
         $any = false;
         foreach ($standings->getEntries() as $entry) {
-            $own = $amounts[$entry->getParticipant()->getId()];
-            // A float sum depends on the order of its terms; a sorted one
-            // does not depend on the order the adjustments were given in
-            sort($own);
-            $sum = (float) array_sum($own);
+            $id = $entry->getParticipant()->getId();
+            $sum = self::exactSum($amounts[$id]);
+            if (!is_finite($sum)) {
+                throw new InvalidInputException(
+                    "The adjustments of participant {$id} add up to more than a float holds"
+                );
+            }
 
             $any = $any || $sum !== $entry->getAdjustment();
             $adjusted[] = $entry->withAdjustment($sum);
@@ -479,6 +486,78 @@ readonly class StandingsCalculator
         }
 
         return $this->inOrder($adjusted, $standings->getTiers());
+    }
+
+    /**
+     * The float nearest to the exact sum of the amounts, whatever order
+     * they are given in.
+     *
+     * A running float total rounds after every addition, so it depends on
+     * the order of its terms, and terms that cancel need not leave zero.
+     * This keeps the error of each addition as a term of its own (the
+     * error of a float addition is itself a float), so nothing is lost
+     * until the one rounding at the end; a sum that lies halfway between
+     * two floats is rounded as the exact sum is, to the even one. It is
+     * the summation of Shewchuk, as math.fsum of Python does it.
+     *
+     * The amounts are taken smallest first, so that a sum too large for a
+     * float is too large in every order of the list: the result is then
+     * not finite, or not a number.
+     *
+     * @param list<float> $amounts Finite amounts
+     */
+    private static function exactSum(array $amounts): float
+    {
+        sort($amounts);
+
+        /** @var list<float> $partials Terms that add up to the sum exactly, by rising magnitude */
+        $partials = [];
+        foreach ($amounts as $amount) {
+            $kept = [];
+            foreach ($partials as $partial) {
+                if (abs($amount) < abs($partial)) {
+                    [$amount, $partial] = [$partial, $amount];
+                }
+                $high = $amount + $partial;
+                $low = $partial - ($high - $amount);
+                if ($low !== 0.0) {
+                    $kept[] = $low;
+                }
+                $amount = $high;
+            }
+            $kept[] = $amount;
+            $partials = $kept;
+        }
+
+        $index = count($partials);
+        if ($index === 0) {
+            return 0.0;
+        }
+
+        $sum = $partials[--$index];
+        $low = 0.0;
+        while ($index > 0) {
+            $high = $sum;
+            $partial = $partials[--$index];
+            $sum = $high + $partial;
+            $low = $partial - ($sum - $high);
+            if ($low !== 0.0) {
+                break;
+            }
+        }
+
+        // Halfway between two floats, and what is left says which side the
+        // exact sum is on
+        if ($index > 0 && (($low < 0.0 && $partials[$index - 1] < 0.0) || ($low > 0.0 && $partials[$index - 1] > 0.0))) {
+            $twice = $low * 2.0;
+            $next = $sum + $twice;
+            if ($twice === $next - $sum) {
+                $sum = $next;
+            }
+        }
+
+        // 0.0 and never -0.0, which the amounts -0.0 alone would give
+        return $sum + 0.0;
     }
 
     /**

@@ -394,6 +394,55 @@ describe('Adjustments in a standings table', function (): void {
             ->and($figures[2])->toBe($figures[0]);
     });
 
+    it('leaves nothing of adjustments that were each taken back, so the entry is level again', function (array $amounts): void {
+        // p3 and p4 are level on their results. p4 is given 0.1 and 0.2,
+        // and each is taken back with the opposite amount. A running float
+        // total of these four is -2.8e-17, in whatever order they are added.
+        expect($this->table->getTiedSets())->toHaveCount(1);
+
+        $adjusted = $this->calculator->withAdjustments(
+            $this->table,
+            array_map(static fn(float $amount): Adjustment => new Adjustment('p4', $amount), $amounts)
+        );
+
+        expect(awardedTestEntry($adjusted, $this->p4)->getAdjustment())->toBe(0.0)
+            ->and(awardedTestEntry($adjusted, $this->p4)->getRankingValue())->toBe(0.0)
+            ->and(awardedTestOrder($adjusted))->toBe(awardedTestOrder($this->table))
+            ->and($adjusted->getTiedSets())->toHaveCount(1)
+            ->and($adjusted->getTiedSets()[0]->getParticipants())->toBe([$this->p3, $this->p4]);
+    })->with([
+        'in the order recorded' => [[0.1, 0.2, -0.1, -0.2]],
+        'smallest first' => [[-0.2, -0.1, 0.1, 0.2]],
+        'the last given first taken back' => [[0.1, 0.2, -0.2, -0.1]],
+    ]);
+
+    it('gives the float nearest to the exact sum of the amounts', function (array $amounts, float $sum): void {
+        $adjusted = $this->calculator->withAdjustments(
+            $this->table,
+            array_map(static fn(float $amount): Adjustment => new Adjustment('p4', $amount), $amounts)
+        );
+
+        expect(awardedTestEntry($adjusted, $this->p4)->getAdjustment())->toBe($sum);
+    })->with([
+        // Each sum is known without a float addition: the large amounts cancel
+        'a small amount beside two large ones that cancel' => [[1e16, 1.0, -1e16], 1.0],
+        'the same, the small amount last' => [[1e16, -1e16, 1.0], 1.0],
+        'the smallest float there is, kept beside what cancels' => [[5e-324, 1e100, -1e100], 5e-324],
+        'two amounts that only together reach the next float' => [[9007199254740992.0, 1.0, 1.0], 9007199254740994.0],
+        'a zero written with a sign' => [[-0.0], 0.0],
+        'amounts that cancel though their running total, smallest first, would not hold' => [[1.5e308, 1.5e308, -1.5e308], 1.5e308],
+    ]);
+
+    it('refuses amounts for one participant that add up to more than a float holds', function (array $amounts): void {
+        expect(fn() => $this->calculator->withAdjustments(
+            $this->table,
+            array_map(static fn(float $amount): Adjustment => new Adjustment('p4', $amount), $amounts)
+        ))->toThrow(InvalidInputException::class, 'The adjustments of participant p4 add up to more than a float holds');
+    })->with([
+        'above the largest float' => [[1.5e308, 1.5e308]],
+        'below the lowest' => [[-1.5e308, 1.0, -1.5e308]],
+    ]);
+
     it('replaces the adjustments a table carries, and returns a table without any as it is', function (): void {
         $adjusted = $this->calculator->withAdjustments($this->table, [new Adjustment('p1', -3.0)]);
 
