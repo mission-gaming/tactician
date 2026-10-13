@@ -293,7 +293,8 @@ trait EliminationBracketSupport
 
     /**
      * A new walk through the bracket of a state: its recorded rounds by
-     * number, its results by leg, and the entrants who have withdrawn.
+     * number, its results by leg, and the participants who have withdrawn,
+     * which is everyone the state has seen and no longer lists as active.
      *
      * @throws InvalidConfigurationException When a result cannot be indexed (see indexResults())
      */
@@ -315,9 +316,19 @@ trait EliminationBracketSupport
             }
         }
 
+        // Everyone the state has seen who is no longer active has withdrawn,
+        // whether or not the state knows the place it had: a state stored
+        // before the entrant list was kept names a withdrawn participant in
+        // its rounds only, and it is not to be paired again either.
+        $active = [];
+        foreach ($state->getParticipants() as $participant) {
+            $active[$participant->getId()] = true;
+        }
         $withdrawn = [];
-        foreach ($state->getWithdrawnEntrants() as $entrant) {
-            $withdrawn[$entrant->getId()] = true;
+        foreach ($state->getAllSeenParticipants() as $participant) {
+            if (!isset($active[$participant->getId()])) {
+                $withdrawn[$participant->getId()] = true;
+            }
         }
 
         return new BracketReading($recorded, $this->indexResults($state->getResults()), $withdrawn, $lastNamedIn);
@@ -380,15 +391,34 @@ trait EliminationBracketSupport
     }
 
     /**
-     * Whether a recorded round holds one of the given ties.
+     * Whether a recorded round names both entrants of one of the given
+     * ties, in one event or in two, or among its byes.
+     *
+     * This is how a recorded round is told from the round after it where
+     * the bracket has no tie left to play in a round, because an entrant of
+     * each has withdrawn. Such a round takes no number unless it was
+     * recorded before they withdrew, and then both entrants of a tie were
+     * still in the bracket and the round names them: as the tie itself, or,
+     * in a round that was paired by hand, each against somebody else. The
+     * round after it cannot name both: one of the two had withdrawn before
+     * it was paired, which is why the tie was not played.
      *
      * @param list<array{Participant, Participant}> $ties
      */
-    private function holdsOneOf(RoundPairing $recorded, array $ties): bool
+    private function namesBothEntrantsOfOneOf(RoundPairing $recorded, array $ties): bool
     {
-        $held = $this->recordedTies($recorded);
+        $named = [];
+        foreach ($recorded->getEvents() as $event) {
+            foreach ($event->getParticipants() as $participant) {
+                $named[$participant->getId()] = true;
+            }
+        }
+        foreach ($recorded->getByes() as $bye) {
+            $named[$bye->getId()] = true;
+        }
+
         foreach ($ties as [$first, $second]) {
-            if (isset($held['tie ' . PairKey::of($first->getId(), $second->getId())])) {
+            if (isset($named[$first->getId()], $named[$second->getId()])) {
                 return true;
             }
         }
@@ -515,6 +545,10 @@ trait EliminationBracketSupport
         }
 
         $ties = $this->recordedTies($recorded);
+        $recordedByes = [];
+        foreach ($recorded?->getByes() ?? [] as $bye) {
+            $recordedByes[$bye->getId()] = true;
+        }
         $rows = [];
         $extra = null;
         $inTie = [];
@@ -535,6 +569,14 @@ trait EliminationBracketSupport
 
         foreach ($inOrder as $key => $tie) {
             [$first, $second] = $tie['participants'];
+
+            // The two are read in the order of their slots, whichever the
+            // round names first: where the order shows (both have withdrawn
+            // and neither went on), it is the bracket's and not that of the
+            // events, which a history may supply in any order.
+            if (($position[$second->getId()] ?? PHP_INT_MAX) < ($position[$first->getId()] ?? PHP_INT_MAX)) {
+                [$first, $second] = [$second, $first];
+            }
 
             // An event is no tie of the bracket, and is read by nothing,
             // where the application added it: between two entrants neither
@@ -613,9 +655,11 @@ trait EliminationBracketSupport
 
                 // An entrant who has withdrawn goes on like any other: when
                 // it left is not known, and the tie it stands in next is
-                // settled for its opponent there.
+                // settled for its opponent there. It went on without playing
+                // where the round says so by listing it among its byes: that
+                // is recorded, and its leaving later does not take it back.
                 $rows[] = [$at, $sequence++, ['winner' => $occupant, 'losers' => []]];
-                if (!isset($reading->withdrawn[$occupant->getId()])) {
+                if (!isset($reading->withdrawn[$occupant->getId()]) || isset($recordedByes[$occupant->getId()])) {
                     $unplayed[] = $occupant;
                 }
                 $held = true;

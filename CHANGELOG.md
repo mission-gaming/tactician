@@ -532,7 +532,13 @@ entry on the engine fingerprint.
     that has no complete result is not played, the other entrant advances
     and is listed among the byes of the round, and in double elimination
     the withdrawn entrant takes the loss. Before the first round is
-    recorded a withdrawal removes the entrant, as it always did.
+    recorded a withdrawal removes the entrant, as it always did. A bracket
+    state stored before the entrant list was kept (by 0.2.x, whose bracket
+    engines refused a bracket somebody had withdrawn from) does not know
+    the place of a participant who had withdrawn: it is folded from the
+    active list, so `getRecordedRounds()` can report its recorded rounds as
+    manual, and the withdrawn participant is never paired again (a tie it
+    had advanced to is uncontested).
   - `StageState::getEventsWithoutResult(): list<Event>` lists the recorded
     events that have no result.
   - `paired_on_incomplete_results` and `entrants` are optional keys of

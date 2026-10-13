@@ -507,7 +507,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * walk stops there. A stage with no tie to play (bye propagation, or
      * ties an entrant has withdrawn from) advances its entrants without
      * consuming a round number, unless it is recorded: it was recorded
-     * when the entrants withdrew after it was paired.
+     * when the entrants withdrew after it was paired, and it is known by
+     * naming both entrants of one of the stage's ties (see
+     * namesBothEntrantsOfOneOf()).
      *
      * @param array<Participant|null> $slots
      * @return array{stopped: bool, winners: list<Participant|null>, losers: list<Participant|null>, out: list<Participant>}
@@ -535,7 +537,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         }
 
         $recorded = $reading->recorded[$reading->number + 1] ?? null;
-        $claimed = $recorded instanceof RoundPairing && ($toPlay || $this->holdsOneOf($recorded, $ties));
+        $claimed = $recorded instanceof RoundPairing && ($toPlay || $this->namesBothEntrantsOfOneOf($recorded, $ties));
         $derivation = $this->buildStagePairing($reading->number + 1, $stageName, $pairs, $reading->withdrawn);
         $stopped = ['stopped' => true, 'winners' => [], 'losers' => [], 'out' => []];
 

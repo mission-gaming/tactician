@@ -1121,6 +1121,181 @@ describe('a withdrawal from a live bracket', function (): void {
         'double elimination',
         'double elimination over two legs',
     ]);
+
+    // A round takes no number where the bracket has no tie left to play in
+    // it, so a recorded round has to be told from the round after it. A
+    // round drawn by hand holds none of the bracket's own ties; it is known
+    // by naming both entrants of one of them.
+    it('reads a round drawn by hand as the round it was, when withdrawals have since left the bracket no tie to play in it', function (): void {
+        [$h1, $h2, $h3, $h4] = $entrants = historyField(4);
+
+        // The bracket pairs h1 v h4 and h2 v h3. Drawn by hand: h1 v h3 and
+        // h2 v h4, won by h1 and h2, who then both withdraw. Each tie of
+        // the bracket's own first round now has an entrant who is gone.
+        $round = new Round(1, ['label' => 'semifinal']);
+        $events = [new Event([$h1, $h3], $round), new Event([$h2, $h4], $round)];
+        $state = StageState::fromHistory(
+            $entrants,
+            [new RoundPairing(1, 'semifinal', $events)],
+            [new Result($events[0], $h1), new Result($events[1], $h2)],
+            [$h1, $h2]
+        );
+
+        $engine = new SingleEliminationEngine();
+        $read = $engine->getRecordedRounds($state);
+
+        expect($read)->toHaveCount(1)
+            ->and($read[0]->isManual())->toBeTrue()
+            ->and($read[0]->getDerivation()?->getLabel())->toBe('semifinal')
+            ->and(historyPairs($read[0]->getDerivation()?->getEvents() ?? []))->toBe([])
+            ->and(historyIds($read[0]->getDerivation()?->getByes() ?? []))->toBe(['h4', 'h3'])
+            // The final is between two entrants who have withdrawn: nobody
+            // advances from it, so nobody is in the first tier. The two
+            // share the tier of the final, and the two who lost the ties
+            // that were played the tier of the round before it.
+            ->and($engine->isComplete($state))->toBeTrue()
+            ->and(historyIds(array_map(
+                static fn(StandingEntry $entry): Participant => $entry->getParticipant(),
+                $engine->getStandings($state)->getEntries()
+            )))->toBe(['h1', 'h2', 'h3', 'h4'])
+            ->and($engine->getStandings($state)->getTiers())->toBe([1, 1, 2, 2]);
+
+        // Double elimination: the same first round, the losers round the
+        // engine pairs from it, and then the two withdrawals. The state used
+        // to be refused, the first round being read as the winners final.
+        $double = new DoubleEliminationEngine();
+        $winners = new Round(1, ['label' => 'winners round 1']);
+        $events = [new Event([$h1, $h3], $winners), new Event([$h2, $h4], $winners)];
+        $state = StageState::fromHistory(
+            $entrants,
+            [new RoundPairing(1, 'winners round 1', $events)],
+            [new Result($events[0], $h1), new Result($events[1], $h2)]
+        );
+        $losers = $double->pairNextRound($state);
+        $state = $state->withRoundPlayed($losers, [new Result($losers->getEvents()[0], $h3)])
+            ->withoutParticipant($h1)
+            ->withoutParticipant($h2);
+
+        $read = $double->getRecordedRounds($state);
+
+        expect(historyPairs($losers->getEvents()))->toBe(['h3 v h4 leg 1'])
+            ->and(array_map(static fn(RecordedRound $round): int => $round->getRoundNumber(), $read))->toBe([1, 2])
+            ->and($read[0]->isManual())->toBeTrue()
+            ->and($read[0]->getDerivation()?->getLabel())->toBe('winners round 1')
+            ->and($read[1]->isManual())->toBeFalse()
+            // h3 is the one entrant left, and takes the bracket
+            ->and($double->isComplete($state))->toBeTrue()
+            ->and($double->getStandings($state)->getEntries()[0]->getParticipant()->getId())->toBe('h3');
+    });
+
+    // The other side of the same rule: the round after a round that was
+    // never played names one entrant of each of its ties and not both.
+    it('reads the round after a round nobody played as that round, also when one of its entrants withdraws later', function (): void {
+        $engine = new SingleEliminationEngine();
+        [$h1, $h2, $h3, $h4] = $entrants = historyField(8);
+
+        $state = StageState::start($entrants);
+        $first = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($first, array_map(
+            static fn(Event $event): Result => new Result($event, $event->getParticipants()[0]),
+            $first->getEvents()
+        ));
+
+        // h1 to h4 are in the semifinals, h1 v h4 and h2 v h3; h3 and h4
+        // withdraw, so neither is played and the final is the second round
+        $state = $state->withoutParticipant($h3)->withoutParticipant($h4);
+        $final = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($final, [new Result($final->getEvents()[0], $h1)]);
+
+        // ...and h2, who lost it, withdraws afterwards
+        $state = $state->withoutParticipant($h2);
+        $read = $engine->getRecordedRounds($state);
+
+        expect($final->getLabel())->toBe('final')
+            ->and($final->getRoundNumber())->toBe(2)
+            ->and(historyPairs($final->getEvents()))->toBe(['h1 v h2 leg 1'])
+            ->and(array_map(static fn(RecordedRound $round): ?string => $round->getDerivation()?->getLabel(), $read))
+            ->toBe(['quarterfinal', 'final'])
+            ->and($read[1]->isManual())->toBeFalse()
+            ->and($engine->isComplete($state))->toBeTrue()
+            ->and(array_slice(historyIds(array_map(
+                static fn(StandingEntry $entry): Participant => $entry->getParticipant(),
+                $engine->getStandings($state)->getEntries()
+            )), 0, 4))->toBe(['h1', 'h2', 'h3', 'h4']);
+    });
+
+    it('places two entrants who both withdrew from a tie by their slots, whatever order the round names them in', function (): void {
+        $engine = new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+        [, $h2, $h3] = $entrants = historyField(3);
+
+        // h1 has a bye; h2 v h3 is paired over two legs, and both withdraw
+        // before either is played
+        $first = $engine->pairNextRound(StageState::start($entrants));
+        $legs = $first->getEvents();
+        $reading = [];
+        foreach ([$legs, array_reverse($legs)] as $order) {
+            $state = StageState::fromHistory(
+                $entrants,
+                [new RoundPairing(1, $first->getLabel(), $order, $first->getByes())],
+                [],
+                [$h2, $h3]
+            );
+            $reading[] = historyReading($engine, $state);
+        }
+
+        expect($legs)->toHaveCount(2)
+            ->and($reading[1])->toBe($reading[0])
+            ->and($reading[0]['complete'])->toBeTrue()
+            ->and($reading[0]['standings'][0])->toBe(['h1 0', 'h2 0', 'h3 0']);
+    });
+
+    // A state stored before the entrant list was kept (0.2.x, and 0.3.0
+    // before this) names a withdrawn participant in its rounds only.
+    it('never pairs a participant who has withdrawn, also where the state does not know the place it had', function (string $name): void {
+        $engine = historyEngines()[$name];
+        [$h1] = $entrants = historyField(8);
+
+        // The first round, won by the better-placed entrant of every tie
+        $state = StageState::start($entrants);
+        $first = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($first, array_map(
+            static function (Event $event): Result {
+                [$one, $other] = $event->getParticipants();
+
+                return new Result($event, (int) substr($one->getId(), 1) < (int) substr($other->getId(), 1) ? $one : $other);
+            },
+            $first->getEvents()
+        ));
+
+        // h1 won its tie and then withdrew; stored without the entrant list
+        $stored = $state->withoutParticipant($h1)->toArray();
+        unset($stored['entrants']);
+        $read = StageState::fromArray($stored);
+        $rng = new Randomizer(new Mt19937(7));
+
+        expect($read->getWithdrawnEntrants())->toBe([]);
+
+        for ($round = 2; !$engine->isComplete($read); ++$round) {
+            expect($round)->toBeLessThan(20);
+
+            $pairing = $engine->pairNextRound($read);
+            foreach ($pairing->getEvents() as $event) {
+                expect(in_array('h1', historyIds($event->getParticipants()), true))->toBeFalse("{$name}, round {$round}");
+            }
+            expect(historyIds($pairing->getByes()))->not->toContain('h1');
+
+            $read = $read->withRoundPlayed($pairing, historyResults($pairing, $rng));
+        }
+
+        expect($engine->getOutcome($read))->toBeInstanceOf(StageOutcome::class);
+    })->with([
+        'single elimination',
+        'single elimination over two legs',
+        'single elimination, re-seeded',
+        'single elimination with a third-place tie',
+        'double elimination',
+        'double elimination over two legs',
+    ]);
 });
 
 describe('the stored form of a state', function (): void {

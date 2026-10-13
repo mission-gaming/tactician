@@ -68,7 +68,9 @@ final class BracketReading
     /**
      * @param array<int, RoundPairing> $recorded The recorded rounds by round number
      * @param array<string, Result> $resultIndex The recorded results by round, pairing and leg
-     * @param array<int|string, true> $withdrawn The IDs of the entrants who have withdrawn
+     * @param array<int|string, true> $withdrawn The IDs of the participants who have withdrawn:
+     *                                           everyone the state has seen and no longer
+     *                                           lists as active
      * @param array<int|string, int> $lastNamedIn The number of the last recorded round that names
      *                                            each participant, in an event or as a bye, by ID
      */

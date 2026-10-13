@@ -404,9 +404,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * A round in which no tie is to be played, because an entrant of each
      * has withdrawn, takes no round number unless it is recorded: it was
      * recorded when the entrants withdrew after it was paired. Whether a
-     * recorded round is that round is told by its ties: it is when the
-     * bracket has a tie to play in the round, or when the recorded round
-     * holds one of the ties the bracket has there.
+     * recorded round is that round is told by whom it names: it is when
+     * the bracket has a tie to play in the round, or when the recorded
+     * round names both entrants of one of the ties the bracket has there
+     * (see namesBothEntrantsOfOneOf()).
      *
      * @throws InvalidConfigurationException When a tie is broken, a recorded round holds a
      *                                       third-place tie this engine does not play, a bye
@@ -471,7 +472,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             }
 
             $recorded = $reading->recorded[$reading->number + 1] ?? null;
-            $claimed = $recorded instanceof RoundPairing && ($toPlay || $this->holdsOneOf($recorded, $ties));
+            $claimed = $recorded instanceof RoundPairing && ($toPlay || $this->namesBothEntrantsOfOneOf($recorded, $ties));
             $derivation = $this->buildRoundPairing($reading->number + 1, count($slots), $pairs, $thirdPlaceTie, $reading->withdrawn);
 
             if (!$claimed && $toPlay) {

@@ -114,8 +114,16 @@ state as they are and derives only the round that does not exist yet.
   another tie of that round) is still read by nothing.
 - A round with no tie left to play, because of withdrawals, takes no round
   number unless it is recorded. Whether a recorded round is such a round is
-  told by its ties; a round that was both drawn by hand and left without a
-  tie to play by later withdrawals cannot be told from the round after it.
+  told by whom it names: it is that round when it names both entrants of one
+  of the ties the bracket has there, as the tie itself or, in a round drawn
+  by hand, each against somebody else. The round after it cannot name both,
+  because one of the two had withdrawn before it was paired. A round drawn
+  by hand that names at most one entrant of every such tie is read as the
+  round after it, which pairs the same entrants.
+- Everyone a state has seen and no longer lists as active is read as
+  withdrawn, also a participant whose place the state does not know (a state
+  stored before the entrant list was kept): such a participant is never
+  paired again, and a tie it advanced to is uncontested.
 - `tests/Feature/StageHistoryTest.php` holds the rules: for every engine, a
   state built from a history equals the state the verbs built at every
   point of a stage, a shuffled supply reads the same, manual rounds never
