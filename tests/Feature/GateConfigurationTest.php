@@ -61,6 +61,45 @@ function gateNeonIncludes(string $neon): array
 }
 
 /**
+ * What is wrong with a Composer constraint as a floor for a package, or null
+ * when it allows no version before the minimum.
+ *
+ * Only `^<major>.<minor>` and `^<major>.<minor>.<patch>` are read: that is
+ * how composer.json writes every development tool, and the first version
+ * such a constraint allows is the one it names. Any other form (a range, an
+ * alternative, a branch) is refused, not interpreted, so that a constraint
+ * this function cannot read never passes. The minimum is `<major>.<minor>`.
+ */
+function gateFloorProblem(string $package, string $constraint, string $minimum): ?string
+{
+    if (preg_match('/^\^(\d+)\.(\d+)(?:\.\d+)?$/', $constraint, $floor) !== 1) {
+        return "{$package}: the constraint `{$constraint}` is not written as `^<major>.<minor>`, so its lowest version cannot be read.";
+    }
+
+    // Major and minor only, on both sides: version_compare() puts `2.7`
+    // before `2.7.0`, so a floor with a patch part is not compared whole.
+    return version_compare("{$floor[1]}.{$floor[2]}", $minimum, '>=')
+        ? null
+        : "{$package}: the constraint `{$constraint}` allows a version before {$minimum}.";
+}
+
+/**
+ * gateFloorProblem() for a development dependency of this checkout.
+ *
+ * @throws JsonException When composer.json is not JSON
+ * @throws PHPUnit\Framework\Exception When composer.json does not require the package as a string
+ */
+function gateDevelopmentFloorProblem(string $root, string $package, string $minimum): ?string
+{
+    $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+    Assert::assertIsArray($composer);
+    Assert::assertIsArray($composer['require-dev']);
+    Assert::assertIsString($composer['require-dev'][$package] ?? null, "composer.json does not require {$package} for development.");
+
+    return gateFloorProblem($package, $composer['require-dev'][$package], $minimum);
+}
+
+/**
  * How many entries the `ignoreErrors` list of a NEON file holds, in whatever
  * form an entry is written (a pattern on one line, or a block with `message`,
  * `messages`, `rawMessage` or `identifier`).
@@ -280,18 +319,33 @@ describe('Rector configuration', function () use ($root): void {
         // temporary file and renames it. rector.php leaves the workers on,
         // so no install may resolve to an earlier version, the lowest one
         // the constraint allows included.
-        $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
-        Assert::assertIsArray($composer);
-        Assert::assertIsString($composer['require-dev']['rector/rector']);
-
-        if (preg_match('/^\^(\d+\.\d+(?:\.\d+)?)$/', $composer['require-dev']['rector/rector'], $floor) !== 1) {
-            Assert::fail('composer.json does not require rector/rector as `^<major>.<minor>`.');
-        }
-
-        // Against `2.7`, not `2.7.0`: version_compare() puts `2.7` before
-        // `2.7.0`.
-        expect(version_compare($floor[1], '2.7', '>='))->toBeTrue();
+        expect(gateDevelopmentFloorProblem($root, 'rector/rector', '2.7'))->toBeNull();
     });
+
+    // The rule the test above applies, on constraints this checkout does not
+    // have: without these, the rule is only ever run on the one that passes.
+    it('accepts a floor at or above the minimum, however many parts it has', function (string $constraint): void {
+        expect(gateFloorProblem('rector/rector', $constraint, '2.7'))->toBeNull();
+    })->with([
+        'the minimum' => ['^2.7'],
+        'the minimum with a patch part' => ['^2.7.0'],
+        'a later patch' => ['^2.7.3'],
+        'a minor that sorts before 2.7 as text' => ['^2.10'],
+        'the next major' => ['^3.0'],
+    ]);
+
+    it('refuses a floor below the minimum, and a constraint whose floor it cannot read', function (string $constraint, string $problem): void {
+        expect(gateFloorProblem('rector/rector', $constraint, '2.7'))->toContain($problem);
+    })->with([
+        'the constraint before the upgrade' => ['^2.0', 'allows a version before 2.7'],
+        'the minor before' => ['^2.6', 'allows a version before 2.7'],
+        'the last patch of the minor before' => ['^2.6.7', 'allows a version before 2.7'],
+        'an earlier major' => ['^1.2', 'allows a version before 2.7'],
+        'an alternative that reaches below' => ['^2.0 || ^2.7', 'is not written as'],
+        'a range' => ['>=2.7', 'is not written as'],
+        'any version' => ['*', 'is not written as'],
+        'a branch' => ['dev-main', 'is not written as'],
+    ]);
 
     it('gives a reason for every rule it skips', function () use ($root): void {
         $configuration = (string) file_get_contents($root . '/rector.php');
