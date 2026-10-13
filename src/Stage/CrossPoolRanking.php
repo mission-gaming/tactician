@@ -19,6 +19,14 @@ use MissionGaming\Tactician\Standings\StandingEntry;
  * played, each figure is first divided by the number of events the entry
  * has played (an entry that has played none has 0 for each).
  *
+ * The ranking value is the total the table is ordered by
+ * (StandingEntry::getRankingValue()): what the entry earned plus its
+ * adjustment. Per event played the total is divided, the adjustment with
+ * it, so that the comparison per event agrees with the comparison of
+ * totals wherever the entries have played the same number of events. An
+ * entry that has played no event has nothing to divide by and is compared
+ * by its adjustment as it stands, which is 0 for an entry without one.
+ *
  * Entries that are equal on every figure are level: no result orders them.
  * They are returned as one group, in the order of the positions given,
  * which is what decides where results do not. The comparison reads nothing
@@ -70,6 +78,11 @@ final class CrossPoolRanking
                     static fn(float $figure): float => $played > 0 ? $figure / $played : 0.0,
                     $figures
                 );
+                if ($played === 0) {
+                    // Nothing was earned and there is nothing to divide by:
+                    // the adjustment is all the ranking value there is
+                    $figures[0] = $entry->getAdjustment();
+                }
             }
 
             $rows[] = [

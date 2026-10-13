@@ -82,9 +82,26 @@ and an accepted order is the order of the entrant list, as
   calculator that orders the combined table, or uses `DiscardLowest`, which
   calculates every tiebreaker again. Changing this needs the tiebreaker
   contract to say how a value scales, which is a decision of its own.
-- The combined table is calculated from results alone. A bye credited in a
-  pool's own table decides who holds the rank there and is not among the
-  figures the holders are compared by.
+- The combined table credits no bye. A bye credited in a pool's own table
+  decides who holds the rank there and is not among the figures the holders
+  are compared by.
+- An adjustment (`Standings\Adjustment`) is among them, under every method:
+  the ranking value compared is the total a table is ordered by, what was
+  earned plus the adjustment, which `StageOutcome::combining()` carries
+  over from the pools' tables. `PerEvent` divides that total, the
+  adjustment with what was earned. An adjustment is not earned per event,
+  and dividing it is a choice: it keeps the adjustment at the weight it has
+  in a table (three points taken away weigh what three points not won
+  weigh) and keeps the three methods in agreement wherever the compared
+  entrants have played the same number of events, which adding it whole to
+  a figure per event would not. An entrant that has played no event has
+  nothing to divide by and is compared by its adjustment as it stands.
+  `DiscardLowest` applies the adjustment of every entrant that is kept to
+  the table it calculates again, whole: an adjustment comes from no event,
+  so no result that is left out takes any of it away.
+- An awarded result is a result under every method: it is one of the
+  events played that `PerEvent` divides by, and `DiscardLowest` keeps it or
+  leaves it out with the other results of the two entrants.
 - The list a best-of-rank selection returns is ordered best first and is
   not placed for a bracket: appended to a per-group selection it can pair
   two entrants of one pool in the first round. Placing them depends on

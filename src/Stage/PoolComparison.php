@@ -40,6 +40,13 @@ enum PoolComparison: string
      * value, the score difference and scores-for. An entrant that has
      * played no event has 0 for each.
      *
+     * The ranking value divided is the total the table is ordered by, an
+     * adjustment (StandingEntry::getAdjustment()) included: the adjustment
+     * is spread over the events played as what was earned is, so that it
+     * weighs what the same number of wins would. An entrant that has
+     * played no event is compared by its adjustment as it stands, 0 when
+     * it has none. An awarded result is one of the events played.
+     *
      * A tiebreaker value is divided once, by the entrant's own events,
      * whatever it measures. That puts a value that adds up over the
      * entrant's events on one footing (WinsTiebreaker). It does not do so
@@ -61,6 +68,10 @@ enum PoolComparison: string
      * in each pool of 4 are dropped. Raw totals of that table are then
      * compared, so every compared entrant of a complete round robin has
      * the same number of events.
+     *
+     * An adjustment is no result and is not discarded: every entrant that
+     * is kept has the adjustment the outcome's table shows for it, whole,
+     * in the table that is calculated again.
      */
     case DiscardLowest = 'discard-lowest';
 }

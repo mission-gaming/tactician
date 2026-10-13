@@ -2853,8 +2853,8 @@ pool_comparison_required: {"A":3,"B":4,"C":4}
 | `PoolComparison` | Plain data | What is compared |
 |------------------|------------|------------------|
 | `RawTotals` | `'raw-totals'` | The figures as the table has them. An entrant of a larger pool has had more events to collect them in |
-| `PerEvent` | `'per-event'` | Every figure divided by the events the entrant has played: ranking value, each tiebreaker value, score difference, scores-for. An entrant with no event played has 0 for each |
-| `DiscardLowest` | `'discard-lowest'` | In every pool larger than the smallest, the entrants placed below the size of the smallest pool are left out with every result they are in, and the table is calculated again by the calculator of the outcome. Raw totals of that table are compared |
+| `PerEvent` | `'per-event'` | Every figure divided by the events the entrant has played: ranking value, each tiebreaker value, score difference, scores-for. An entrant with no event played has 0 for each, and its adjustment, if it has one, for the ranking value |
+| `DiscardLowest` | `'discard-lowest'` | In every pool larger than the smallest, the entrants placed below the size of the smallest pool are left out with every result they are in, and the table is calculated again by the calculator of the outcome, with the adjustments of the entrants that are kept. Raw totals of that table are compared |
 
 ```php
 $best = fn (PoolComparison $comparison): string => implode(', ', array_map(
@@ -2881,8 +2881,9 @@ events differ by design. `DiscardLowest` recalculates a table, which takes
 the calculator: `combining()` hands it to the outcome, and an outcome built
 by hand takes it as its last constructor argument.
 
-Two things to know before choosing `PerEvent` for a calculator with
-tiebreakers, and before comparing pools that had byes:
+Three things to know before choosing `PerEvent` for a calculator with
+tiebreakers, and before comparing pools that had byes, adjustments or
+awarded results:
 
 - **`PerEvent` divides a tiebreaker value once, by the entrant's own
   events.** That is right for a value that adds something up over the
@@ -2897,11 +2898,30 @@ tiebreakers, and before comparing pools that had byes:
   `DiscardLowest`, which calculates every tiebreaker again from the
   results that are left.
 - **A bye credited in a pool's table is not in the figures compared.** The
-  combined table is calculated from the results alone. Where a pool's own
-  table counts a bye as a win (`StandingsCalculator::withByesCredited()`,
-  as the table of a Swiss stage does), that credit decides who holds the
-  rank in the pool, and the holders are then compared by what they scored
-  in the events they played.
+  combined table is calculated from the results, and credits no bye. Where
+  a pool's own table counts a bye as a win
+  (`StandingsCalculator::withByesCredited()`, as the table of a Swiss stage
+  does), that credit decides who holds the rank in the pool, and the
+  holders are then compared by what they scored in the events they played.
+- **An [adjustment](#adjustments) is in the figures
+  compared, under every method, and an awarded result is a result.**
+  `combining()` carries the adjustment of a pool's table over to the
+  combined table, and the ranking value compared is the total a table is
+  ordered by: what was earned plus the adjustment. No other figure changes
+  with it. `RawTotals` compares that total. `PerEvent` divides it by the
+  events played, the adjustment with what was earned, so that three points
+  taken away weigh what three points not won weigh, and the methods still
+  agree where the entrants have played the same number of events; an
+  entrant that has played no event has nothing to divide by and is compared
+  by its adjustment as it stands (0 without one). `DiscardLowest`
+  calculates the table again from the results that are left and applies
+  the adjustment of every entrant that is kept again, whole: it comes from
+  no event, so no result that is left out takes any of it away, and an
+  entrant that is left out goes with its adjustment. An
+  [awarded result](#awarded-results) is one of the events played that
+  `PerEvent` divides by, and `DiscardLowest` keeps it or leaves it out with
+  the other results of the two entrants, counted as the calculator's
+  awarded result policy counts it.
 
 **A selection that results do not decide is refused**, exactly as a
 `RankRangeSelector` refuses one, with an `UndecidedSelectionException`:

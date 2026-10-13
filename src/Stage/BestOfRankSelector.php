@@ -10,6 +10,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UndecidedSelectionException;
 use MissionGaming\Tactician\Serialization\PlainData;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use Override;
@@ -31,9 +32,34 @@ use Override;
  * among entrants who met each other (a head-to-head measure) has none
  * between entrants of different pools, so give combining() a calculator
  * without it; the pools' own tables may still use it. The combined table
- * is calculated from the results alone: a bye credited in a pool's own
+ * credits no bye: a bye credited in a pool's own
  * table (StandingsCalculator::withByesCredited()) decides who holds the
  * rank there and is not in the figures the holders are compared by.
+ *
+ * **An adjustment is compared, under every method.** The ranking value
+ * compared is the total the table is ordered by
+ * (StandingEntry::getRankingValue()): what the entrant earned plus its
+ * adjustment, which combining() carries over from the pool's table. An
+ * adjustment changes that one figure and no other.
+ *
+ * - PoolComparison::RawTotals compares the total.
+ * - PoolComparison::PerEvent divides the total by the events the entrant
+ *   has played, the adjustment with what was earned: an adjustment worth
+ *   one win is worth one win in the comparison too, and the methods still
+ *   agree where the entrants have played the same number of events. An
+ *   entrant that has played no event has nothing to divide by, and is
+ *   compared by its adjustment as it stands.
+ * - PoolComparison::DiscardLowest calculates the table again from the
+ *   results that are left and applies again the adjustment of every entrant
+ *   that is kept, in full: it comes from no event, so no result that is
+ *   left out takes any of it away. An entrant that is left out goes with
+ *   its adjustment.
+ *
+ * An awarded result (DTO\Result::isAwarded()) is a result under every
+ * method: it is one of the events played that PerEvent divides by, and
+ * DiscardLowest leaves it out or keeps it with the other results of the
+ * two entrants, counted as the outcome's calculator counts it
+ * (AwardedResultPolicy).
  *
  * **Pools of unequal size need a comparison method.** Pools are unequal
  * when their tables do not have the same number of entries; the entrants
@@ -379,7 +405,9 @@ final readonly class BestOfRankSelector implements ProgressionSelector
 
     /**
      * The outcome's table calculated again without the given participants
-     * and without every result they are in.
+     * and without every result they are in. The adjustment the outcome's
+     * table shows for a participant that is kept is applied to the new
+     * table, whole.
      *
      * @param array<string, true> $leftOut By participant ID
      * @throws InvalidConfigurationException When the outcome has no calculator (reason
@@ -399,9 +427,15 @@ final readonly class BestOfRankSelector implements ProgressionSelector
         }
 
         $participants = [];
+        $adjustments = [];
         foreach ($outcome->getStandings()->getEntries() as $entry) {
-            if (!isset($leftOut[$entry->getParticipant()->getId()])) {
-                $participants[] = $entry->getParticipant();
+            if (isset($leftOut[$entry->getParticipant()->getId()])) {
+                continue;
+            }
+
+            $participants[] = $entry->getParticipant();
+            if ($entry->getAdjustment() !== 0.0) {
+                $adjustments[] = new Adjustment($entry->getParticipant()->getId(), $entry->getAdjustment());
             }
         }
 
@@ -415,6 +449,9 @@ final readonly class BestOfRankSelector implements ProgressionSelector
             return true;
         });
 
-        return $calculator->calculate($participants, array_values($results));
+        // An adjustment comes from no event, so no discarded result takes it
+        // away: calculate() knows none, and the ones the table shows for the
+        // entrants that are kept are applied again
+        return $calculator->withAdjustments($calculator->calculate($participants, array_values($results)), $adjustments);
     }
 }

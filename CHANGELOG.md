@@ -651,7 +651,13 @@ entry on the engine fingerprint.
   takes any of them and `RankRangeSelector::comparedBy()` the first two,
   for an overall selection; in plain data it is the key `comparison`,
   written only when a method was chosen. No method is applied by default:
-  see **Changed** for what that means for `overall()`.
+  see **Changed** for what that means for `overall()`. An adjustment is
+  compared under every method, as part of the ranking value a table is
+  ordered by: `PerEvent` divides that total by the events played (an
+  entrant that has played none is compared by its adjustment as it
+  stands), and `DiscardLowest` applies the adjustments of the entrants it
+  keeps to the table it calculates again. An awarded result is a result
+  under every method.
 - **What the selection across pools adds to existing types.**
   `StageOutcome` takes the calculator its table was calculated with as a
   seventh constructor argument (`calculator`, default none) and returns it

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Award;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -14,6 +15,7 @@ use MissionGaming\Tactician\Stage\PoolComparison;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageTransition;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
@@ -1161,5 +1163,205 @@ describe('the best of a rank over generated pools', function (): void {
         }
 
         expect($selections)->toBeGreaterThan(1000);
+    });
+});
+
+/**
+ * The same pooled outcome with adjustments: each pool's table has them
+ * applied, and the pools are combined again.
+ *
+ * @param array<string, float> $amounts The amount of each adjusted participant, by ID
+ */
+function bestOfRankAdjusted(StageOutcome $outcome, array $amounts, StandingsCalculator $calculator = new StandingsCalculator()): StageOutcome
+{
+    $pools = [];
+    foreach ($outcome->getPools() as $label => $pool) {
+        $adjustments = [];
+        foreach ($pool->getStandings()->getEntries() as $entry) {
+            $id = $entry->getParticipant()->getId();
+            if (isset($amounts[$id])) {
+                $adjustments[] = new Adjustment($id, $amounts[$id]);
+            }
+        }
+
+        $pools[$label] = new StageOutcome(
+            $calculator->withAdjustments($pool->getStandings(), $adjustments),
+            $pool->getResults(),
+            entrants: $pool->getEntrants()
+        );
+    }
+
+    return StageOutcome::combining($pools, $calculator, $outcome->getEntrants());
+}
+
+/**
+ * Two pools of three in which only the first two entrants have met: the
+ * first beat the second by the score given, and the third has played no
+ * event.
+ *
+ * @param array<string, int> $scores The winner's score in each pool, by label
+ * @param array<string, float> $amounts The amount of each adjusted participant, by ID
+ */
+function bestOfRankPoolsWithAnEntrantUnplayed(array $scores, array $amounts): StageOutcome
+{
+    $calculator = new StandingsCalculator();
+    $pools = [];
+    $all = [];
+    foreach ($scores as $label => $score) {
+        $entrants = [];
+        foreach ([1, 2, 3] as $number) {
+            $entrants[] = new Participant("{$label}{$number}", strtoupper("{$label}{$number}"));
+        }
+        $results = [new Result(
+            new Event([$entrants[0], $entrants[1]]),
+            $entrants[0],
+            [$entrants[0]->getId() => $score, $entrants[1]->getId() => 0]
+        )];
+
+        $adjustments = [];
+        foreach ($entrants as $entrant) {
+            if (isset($amounts[$entrant->getId()])) {
+                $adjustments[] = new Adjustment($entrant->getId(), $amounts[$entrant->getId()]);
+            }
+        }
+
+        $pools[$label] = new StageOutcome(
+            $calculator->withAdjustments($calculator->calculate($entrants, $results), $adjustments),
+            $results,
+            entrants: $entrants
+        );
+        $all = [...$all, ...$entrants];
+    }
+
+    return StageOutcome::combining($pools, $calculator, $all);
+}
+
+describe('adjustments and awarded results in a comparison across pools', function (): void {
+    // Pools of four, four and three (bestOfRankUnequalPools()). Without an
+    // adjustment the entrants placed third are a3 with 4 points from 3
+    // events, b3 with 3 from 3 and c3 with 3 from 2, and the orders are
+    // a3, b3, c3 by raw totals, c3, a3, b3 per event and b3, c3, a3 with
+    // the lowest-placed discarded (a3 1 point, b3 3, c3 3)
+    it('compares the total an entrant is ordered by, its adjustment included, under every method', function (
+        array $amounts,
+        array $thirds,
+        array $rawTotals,
+        array $perEvent,
+        array $discardLowest
+    ): void {
+        $outcome = bestOfRankAdjusted(bestOfRankOutcome(bestOfRankMatches(bestOfRankUnequalPools())), $amounts);
+
+        // The adjustment moves nobody out of third place, and the combined
+        // table carries it: [earned, adjustment, total, played]
+        $combined = [];
+        foreach (['a', 'b', 'c'] as $label) {
+            $third = array_values($outcome->getPool($label)?->getStandings()->getEntries() ?? [])[2]->getParticipant();
+            $entry = $outcome->getStandings()->getEntryFor($third);
+            $combined[$third->getId()] = [$entry?->getEarnedRankingValue(), $entry?->getAdjustment(), $entry?->getRankingValue(), $entry?->getPlayed()];
+        }
+        expect($combined)->toBe($thirds);
+
+        $order = fn(PoolComparison $comparison): array => bestOfRankIds(
+            BestOfRankSelector::ofRank(3, 3)->comparedBy($comparison)->select($outcome)
+        );
+        expect($order(PoolComparison::RawTotals))->toBe($rawTotals)
+            ->and($order(PoolComparison::PerEvent))->toBe($perEvent)
+            ->and($order(PoolComparison::DiscardLowest))->toBe($discardLowest);
+    })->with([
+        'two taken from a3' => [
+            ['a3' => -2.0],
+            ['a3' => [4.0, -2.0, 2.0, 3], 'b3' => [3.0, 0.0, 3.0, 3], 'c3' => [3.0, 0.0, 3.0, 2]],
+            // 3 points twice, b3 with the better score difference, then 2
+            ['b3', 'c3', 'a3'],
+            // 3/2, 3/3, then 2/3
+            ['c3', 'b3', 'a3'],
+            // b3 3 and c3 3; a3 has 1 point left and 2 taken: -1
+            ['b3', 'c3', 'a3'],
+        ],
+        'three taken from c3, and one from a4, who is left out by the discard' => [
+            ['c3' => -3.0, 'a4' => -1.0],
+            ['a3' => [4.0, 0.0, 4.0, 3], 'b3' => [3.0, 0.0, 3.0, 3], 'c3' => [3.0, -3.0, 0.0, 2]],
+            // 4, 3, 0
+            ['a3', 'b3', 'c3'],
+            // 4/3, 3/3, 0/2
+            ['a3', 'b3', 'c3'],
+            // b3 3, a3 1, and c3 has 3 points left and 3 taken: 0. The
+            // adjustment of a4 goes with a4
+            ['b3', 'a3', 'c3'],
+        ],
+    ]);
+
+    it('gives the same order under each method where the pools are of one size, with an adjustment', function (): void {
+        // a3 has 4 points (+1), b3 4 (0), c3 3: with 2 taken from a3 it has 2
+        $outcome = bestOfRankAdjusted(bestOfRankOutcome(bestOfRankMatches(bestOfRankThreePoolsOfFour())), ['a3' => -2.0]);
+
+        foreach (PoolComparison::cases() as $comparison) {
+            expect(bestOfRankIds(BestOfRankSelector::ofRank(3, 3)->comparedBy($comparison)->select($outcome)))
+                ->toBe(['b3', 'c3', 'a3'], $comparison->value);
+        }
+    });
+
+    it('compares an entrant that has played no event by its adjustment as it stands, per event played', function (): void {
+        // x1 beat x2 2-0 and y1 beat y2 1-0; x3 and y3 have played nothing,
+        // and x3 has one taken away
+        $outcome = bestOfRankPoolsWithAnEntrantUnplayed(['x' => 2, 'y' => 1], ['x3' => -1.0]);
+
+        $x3 = $outcome->getStandings()->getEntryFor(new Participant('x3', 'X3'));
+        expect([$x3?->getPlayed(), $x3?->getAdjustment(), $x3?->getRankingValue()])->toBe([0, -1.0, -1.0]);
+
+        // Third of x is x3, with -1 and no event; third of y is y2, who lost
+        // its one event 0-1: nothing per event, which is more than -1
+        expect(bestOfRankIds(BestOfRankSelector::ofRank(3, 2)->comparedBy(PoolComparison::PerEvent)->select($outcome)))
+            ->toBe(['y2', 'x3'])
+            ->and(bestOfRankIds(BestOfRankSelector::ofRank(3, 2)->comparedBy(PoolComparison::RawTotals)->select($outcome)))
+            ->toBe(['y2', 'x3']);
+
+        // The whole table per event: 3 points an event twice (score
+        // difference 2 and 1), then y3 with nothing, the two who lost by
+        // their score difference, and x3 below zero
+        expect(bestOfRankIds(RankRangeSelector::overall(1, 6)->comparedBy(PoolComparison::PerEvent)->select($outcome)))
+            ->toBe(['x1', 'y1', 'y3', 'y2', 'x2', 'x3']);
+    });
+
+    it('counts an awarded result as an event played, and discards it with the entrant it was against', function (): void {
+        // Pools of three and two. p1 beat p2 and p3 on the field; p2 was
+        // awarded its event against p3, which nobody played. q1 beat q2
+        $p = [new Participant('p1', 'P1'), new Participant('p2', 'P2'), new Participant('p3', 'P3')];
+        $q = [new Participant('q1', 'Q1'), new Participant('q2', 'Q2')];
+        $calculator = new StandingsCalculator();
+        $pResults = [
+            new Result(new Event([$p[0], $p[1]]), $p[0], ['p1' => 1, 'p2' => 0]),
+            new Result(new Event([$p[0], $p[2]]), $p[0], ['p1' => 1, 'p3' => 0]),
+            new Result(new Event([$p[1], $p[2]]), $p[1], award: new Award('no-show')),
+        ];
+        $qResults = [new Result(new Event([$q[0], $q[1]]), $q[0], ['q1' => 1, 'q2' => 0])];
+        $outcome = StageOutcome::combining([
+            'p' => new StageOutcome($calculator->calculate($p, $pResults), $pResults, entrants: $p),
+            'q' => new StageOutcome($calculator->calculate($q, $qResults), $qResults, entrants: $q),
+        ], $calculator, [...$p, ...$q]);
+
+        $p2 = $outcome->getStandings()->getEntryFor($p[1]);
+        expect([$p2?->getPlayed(), $p2?->getAwarded(), $p2?->getRankingValue()])->toBe([2, 1, 3.0]);
+
+        // The entrants placed second: p2 has 3 points from 2 events, one of
+        // them awarded, and q2 none from 1
+        $second = fn(PoolComparison $comparison): array => bestOfRankIds(
+            BestOfRankSelector::ofRank(2, 2)->comparedBy($comparison)->select($outcome)
+        );
+        expect($second(PoolComparison::RawTotals))->toBe(['p2', 'q2'])
+            // 3/2 against 0/1: the awarded event is one of the two
+            ->and($second(PoolComparison::PerEvent))->toBe(['p2', 'q2']);
+
+        // Without p3 the awarded result is gone with it: p2 and q2 have each
+        // lost their one event 0-1 and are level, where p2 would be ahead
+        // had its awarded win been kept
+        $level = null;
+        try {
+            BestOfRankSelector::ofRank(2, 1)->comparedBy(PoolComparison::DiscardLowest)->select($outcome);
+        } catch (UndecidedSelectionException $exception) {
+            $level = $exception->getParticipantIds();
+            sort($level);
+        }
+        expect($level)->toBe(['p2', 'q2']);
     });
 });
