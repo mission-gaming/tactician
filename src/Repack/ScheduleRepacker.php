@@ -488,8 +488,8 @@ final readonly class ScheduleRepacker
      * by the planner's rule: events between two over-capacity
      * participants first, as many as can count towards both shortfalls,
      * then for each participant still short (largest shortfall first) its
-     * remaining events, highest event id first, until its shortfall is
-     * covered. A participant never holds more positions than it has free,
+     * remaining events, the last in the repacker's order of events first,
+     * until its shortfall is covered. A participant never holds more positions than it has free,
      * so it always has enough events still unplaced.
      *
      * @param list<int> $stillLeft Event indexes, ascending

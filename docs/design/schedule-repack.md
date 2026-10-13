@@ -467,12 +467,34 @@ signature changed.
     participant up to such a symmetry (which of two like participants
     gets which part of the schedule follows the ids; it cannot follow
     anything else). It is not a canonical labelling, and no such thing is
-    claimed: two participants that differ but have equal descriptions
-    while the classes are still larger than one are ordered by id, and
-    past the work limit of the ordering (600,000 opponents looked at;
-    a round robin of 40 with five rounds played needs about 500,000,
-    and one with a single round played, where everybody is alike, twice
-    the limit) the classes left are put in id order. A full canonical
+    claimed. There are two exceptions, and a request is known for each
+    on which the counts differ under other participant ids. Two
+    participants that differ but have equal descriptions while the
+    classes are still larger than one are ordered by id: take the
+    Shrikhande graph and the four-by-four rook's graph side by side as
+    one request (32 participants with six events each, 96 events), which
+    refinement cannot tell apart and no symmetry exchanges; on 32
+    sessions of three slots with one event to a slot it came back with
+    83 late starts under one naming and 84 under another (every event
+    placed, no gap, no budget spent), and on tighter grids with other
+    numbers of gaps. No request that was not built for the purpose has
+    shown this (none of 31,000 relabellings of 10,000 generated
+    requests). And past the work limit of the ordering the classes left
+    are split no further and are put in id order. The limit is 1,500,000,
+    counted as one for every participant looked at and one for each of
+    its opponents, and it is sized for the hardest request of 40
+    participants: a complete round robin with one round played, where
+    everybody is alike and no two can simply be exchanged, needs
+    1,330,000 (under a tenth of a second), with 36 participants 870,000
+    and with 44 participants 1,940,000, which is past it. The limit was
+    600,000 at first, on the reasoning that five rounds played need
+    100,000 to 500,000; with one round played a round robin of 36, 38 or
+    40 then came back with other counts under other ids (40 on sessions
+    of four, five and six slots: no gap, nine gaps and ten gaps under
+    three namings), which is a request a season one round old makes. The
+    refinement itself also stops at the limit: a chain of participants
+    takes one pass for every two of them, and without that a chain of
+    3,000 took 1.5 seconds to order where it now takes 0.15. A full canonical
     labelling (individualisation and refinement with a search over every
     choice, pruned by the symmetries found) was rejected: on a request
     where everybody is alike and no two can simply be exchanged, its
@@ -483,9 +505,12 @@ signature changed.
     before: assignments and unplaced events by event id, violations by
     kind and then participant id and session, over-capacity participants
     by shortfall and then id (the audit and the orchestrator sort for
-    that, since the indexes no longer do). One tie changed: an event
-    dropped between two over-capacity participants of the same shortfall
-    names the one first in the structural order, not the lower id.
+    that, since the indexes no longer do). Two ties changed with the
+    indexes: an event dropped between two over-capacity participants of
+    the same shortfall names the one first in the structural order, not
+    the lower id; and of an over-capacity participant's events against
+    opponents of the same slack (decision 8) the one dropped is the last
+    in the repacker's order of events, not the one with the highest id.
 38. **The events are split into rounds before any session is chosen.**
     A round is a set of events that can share a slot. `RoundColouring`
     lays the rounds on the grid's positions in grid order, around the
@@ -553,15 +578,42 @@ signature changed.
     and every session after it was then packed greedily. The search of
     a session now gets a quarter of the steps left when it starts.
     A search its share stops is recorded as a search the budget stopped.
+    It has a cost the budget does not show. Before its search a session
+    works out which start slots can give gap-free runs at all, which is
+    not counted in steps and grows with two to the power of its slot
+    count; with a share each, more sessions get as far as doing it. On
+    800 events among 200 participants, whose sessions do not pack, a
+    repack took 3 seconds on sessions of 12 slots where 0.2.3 took 0.3,
+    and 10 seconds at 16 slots where it took 3.7 (with 767 and 1,104
+    gap slots for 1,336 and 1,703). A complete round robin on sessions
+    that wide packs without a search and takes milliseconds.
 42. **What did not get better.** Late starts are not an aim of any of
     this, and the reference scenario has 10 where it had 7 (no gap
     either way). Requests with many pins and sessions of unequal length
     still end with gaps and a spent budget more often than not at 30 to
     40 participants: the planner still decides sessions before slots,
-    and the rounds only make its choices better. One of the four repack
+    and the rounds only make its choices better. The searches are
+    heuristics on another order of events, so a request can come back
+    worse than it did: of 11,860 generated requests compared with 0.2.3
+    one by one, 23 placed fewer events (one fewer on 21 of them, 22 with
+    no budget spent) and 241 placed as many with more gap slots, against
+    3,271 that were better by events placed, then gap slots, then late
+    starts; the changelog has the table. Round robins of an odd number
+    of participants gained nothing in sum (408 gap slots for 372 on 142
+    of them without pins): a round of an odd number leaves one
+    participant out, and where that is in the middle of a session the
+    round laid out as it stands has a gap, so the rounds are no better a
+    schedule than the planned one there. Taking the number of rounds
+    from the participants as well as from the capacity (no round holds
+    more events than half the participants, so an odd round robin needs
+    one round more than its participants have events) was measured: the
+    layout was quicker and the gaps were the same, and it was left out.
+    One of the four repack
     benchmarks is slower (71 ms to 157 ms): 0.2.3 packed that request
-    without a search, and laying out its rounds around ten pins costs
-    0.1 seconds. Putting the positions first throughout, and deciding
+    without a search, and the layout leaves 35 of its 770 events over
+    after the first pass, which the search then fits into the same 39
+    rounds with 260,000 position checks, 0.1 seconds. That work is what
+    gives the planner whole rounds, so it was not cut. Putting the positions first throughout, and deciding
     sessions from them, is the design this points to and was not
     attempted here.
 
@@ -620,3 +672,25 @@ tests of their own, among them that `StructuralOrder` writes a request the
 same way under any numbering of its participants, on named requests (a
 ring, two rings of different lengths, a round robin with a round taken out
 or pinned) and on 60 random ones.
+
+The review of that change added the cases it had not looked at. Round
+robins of 36 and 40 with one round played must come back with the same
+counts under other participant ids (they did not, at the ordering's first
+work limit), and `StructuralOrder` must order the one of 40 within its
+limit as it does without one, and must stop splitting a chain of
+participants once it is past the limit. Two tests of the budget were
+restated, because the rounds changed what they could show. The second
+budget is no longer seen in the number of events placed (the rounds are a
+schedule made without a step, and they are returned when the planned
+schedule places fewer), so its test is now a request of three events that
+comes back without a gap only when the search for fewer gap slots has
+steps of its own. And the test that the last placement step spends nothing
+when only over-capacity drops are left over is on sessions of one slot,
+where no schedule has a gap: on the one session it was on, the search for
+fewer gap slots spends some 1,400 steps of the same budget, and a budget
+large enough for that no longer noticed an exchange search of 74. The
+relabelling tests compare schedules participant for participant on 733 of
+their 742 comparisons, 539 of them on requests with no symmetry at all,
+where the two schedules must simply be equal; the other nine are the round
+robins of 12, 16 and 20, which have too many participants for the
+symmetries to be found by trial and are compared by their counts.

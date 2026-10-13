@@ -2395,16 +2395,23 @@ each reason and the same violations but for the names in them; the
 schedule is the same participant for participant, up to a symmetry of
 the request (in a complete round robin any participant can stand for
 any other, and which of them gets which run of opponents follows the
-ids). The exception is narrow and is not ruled out: two participants
-that differ, in a request in which everything the repacker compares
-about them is equal, are ordered by id, and the outcome can then
-differ. The lists an outcome returns are still in id order.
+ids). There are two exceptions, in which the ids do decide and the
+counts can differ. The ordering has a fixed amount of work it may do,
+sized for 40 participants: in a larger request in which everybody is
+alike and no two participants can simply be exchanged (a complete round
+robin of 44 or more with one round already played), it stops and falls
+back to the ids. And two participants that differ, in a request in
+which everything the repacker compares about them is equal, are ordered
+by id; that takes a request built for the purpose, and none met in
+testing was one. The lists an outcome returns are still in id order.
 
 The repacker is deterministic (same input, same output, independent of
 input list order), pure (no clock reads, no I/O), and bounded in steps
 (the packing searches spend from one budget of
-`RepackOptions(stepBudget: ...)` steps, and the last placement step from
-a second of the same size, so a repack can spend up to twice that). The bound
+`RepackOptions(stepBudget: ...)` steps, and the steps after the packing
+from a second of the same size, so a repack can spend up to twice that;
+the ordering and the layout made before any session is chosen, and the
+search for fewer gap slots, also stop at fixed limits of their own). The bound
 makes a repack reproducible, which is what a preview that is later
 confirmed needs. It is not a bound on time: see
 [The Step Budget](#the-step-budget) for what a repack takes. Events that fall entirely outside the grid cannot collide with
@@ -2673,16 +2680,28 @@ in steps and has fixed limits of its own instead, which a small
 events out before any session is chosen (up to about 0.2 seconds at 40
 participants, a few milliseconds on most requests), and the search for
 fewer gap slots at the end (up to about a tenth of a second, only
-when a gap is left). A smaller `stepBudget` trades gaps and late starts
+when a gap is left). So a budget of one step does not make a large
+repack short: a round robin of 40 with 60 events pinned took 0.2
+seconds at a budget of one step and 0.85 at the default. A smaller
+`stepBudget` trades gaps and late starts
 for time. A step costs a few microseconds. Sessions of many slots add
 work the budget does not count, because the repacker first works out which
 start slots can give gap-free runs at all, and that grows with two to the
-power of the slot count: on the requests measured, up to several seconds
-at 16 slots per session and over ten seconds at 20, the widest it reasons
+power of the slot count. Every session whose search starts does that
+work, and since one session's search no longer takes the steps of the
+sessions after it, more of them start. It is the slowest thing a repack
+does, on a request of many participants with few events each, whose
+sessions do not pack: 800 events among 200 participants took 3 seconds
+on sessions of 12 slots, 10 seconds at 16 slots and 21 seconds at 18
+(0.2.3 took 0.3, 3.7 and 17 seconds on the same three, and left a third
+to three quarters more gap slots). 20 slots is the widest session the repacker reasons
 about (a wider session is packed greedily, and a request whose sessions
-pack without a search costs milliseconds at any width). That work takes
-memory too: on the same requests up to about 100 MB at 18 slots per
-session, 200 MB at 19 and 400 MB at 20, which is past PHP's default
+pack without a search costs milliseconds at any width: a complete round
+robin of 40 on sessions of 16 slots took 22 milliseconds). That work takes
+memory too, and how much depends on the request as well as on the width:
+up to about 100 MB at 18 slots per session, 200 MB at 19 and 400 MB at 20
+on one set of requests, and 230 MB at 16 slots and 890 MB at 18 on the
+request of 200 participants above. That is past PHP's default
 `memory_limit` of 128 MB, and running out of memory is not an exception a
 caller can catch. Give a wide grid a time limit of your own if the request
 is made while a person waits, and a memory limit that fits it. `composer bench` measures the machine at

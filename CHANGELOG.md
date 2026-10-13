@@ -53,9 +53,19 @@ heading **Output change (fix)**.
   of the request (where two participants are alike in the request, their
   ids decide which gets which part of the schedule). The tests hold the
   repacker to that on random requests with pins, on the small corpus, and
-  on round robins with rounds pinned. It is not proved for every request:
-  two participants that differ, but are equal in everything the ordering
-  compares, are ordered by id.
+  on round robins with rounds pinned, among them round robins of 36 and
+  40 with one round played. It does not hold for every request, and
+  there are two known exceptions in which the ids decide and the counts
+  differ. The ordering may do a fixed amount of work, sized for 40
+  participants: in a larger request in which everybody is alike and no
+  two participants can simply be exchanged (a complete round robin of 44
+  or more with one round already played) it stops and falls back to the
+  ids. And two participants that differ, but are equal in everything the
+  ordering compares, are ordered by id: a request built for the purpose
+  (two different graphs of 16 participants with six events each, which
+  the comparison cannot tell apart, side by side) came back with 83 late
+  starts under one naming and 84 under another. None of 10,000 generated
+  requests, each under three other namings, showed either.
 
   Before and after (0.2.3 against this release, default options):
 
@@ -72,10 +82,38 @@ heading **Output change (fix)**.
 
   Every complete round robin of an even number of participants from 6 to
   40, on sessions of four slots, now comes back with no violation at all
-  under each of three id schemes. Not everything is better everywhere:
-  the reference scenario (`tests/Fixtures/repack-scenario.json`) had 7
-  late starts and has 10, still with no gap, and its mis-pinned variant
-  went from 2 gaps and 6 late starts to no gap and 10 late starts.
+  under each of three id schemes.
+
+  *What is not better.* The repacker is a set of bounded searches, and
+  another order of events is better on most requests and worse on some.
+  On 11,860 generated requests (random requests of up to 90 events,
+  over-capacity requests, shuffled round robins of 5 to 40 participants
+  with one or two legs, up to 60 pins, sessions of three to six slots,
+  grids from too small to roomy), compared with 0.2.3 request by request:
+
+  | | 0.2.3 | Now |
+  |---|---|---|
+  | Events placed, of 263,445 | 214,288 | 214,314 |
+  | Gap slots | 10,024 | 3,382 |
+  | Late starts | 25,847 | 25,913 |
+  | Requests with no gap | 9,322 | 10,842 |
+
+  Counting events placed first, then gap slots, then late starts, 3,271
+  requests came back better and 1,072 worse. Of the worse ones, 808 have
+  as many events placed and as many gap slots and only more late starts,
+  which are not compared when one schedule is chosen over another. The
+  other 264 (2.2%) are worse in what the repacker puts first: 23 place
+  fewer events than 0.2.3 did, by one event on 21 of them and by two and
+  three on the others (22 of the 23 with no budget spent), and 241 place
+  as many with more gap slots. Outside that set, a round robin of 40
+  with ten pins on a grid with exactly as many places as events came
+  back with 768 of 770 placed where 0.2.3 placed all. Round robins of an
+  odd number of participants are not improved as those of an even number
+  are: without pins, 142 of them have 408 gap slots where they had 372,
+  and 30 came back with more gap slots against 31 with fewer. The
+  reference scenario (`tests/Fixtures/repack-scenario.json`) had 7 late
+  starts and has 10, still with no gap, and its mis-pinned variant went
+  from 2 gaps and 6 late starts to no gap and 10 late starts.
 
   *Time* (PHP 8.4, one core, `composer bench`, fastest of three):
 
@@ -91,8 +129,19 @@ heading **Output change (fix)**.
   rounds around the ten pins. Both return it with no gap. The work done
   before any session is chosen, and the search for fewer gap slots, have
   fixed limits of their own and do not draw on `stepBudget`, so a small
-  budget no longer makes a repack as short as it did (the usage guide
-  has the figures).
+  budget no longer makes a repack as short as it did: a round robin of
+  40 with 60 pins took 0.03 seconds at a budget of one step and takes
+  0.2. Requests that 0.2.3 packed without a search are the ones that are
+  slower, by up to six times on those measured (a round robin of 40
+  with 400 of its events pinned: 0.04 seconds, now 0.25; 800 events
+  between 800 separate pairs of participants: 0.12, now 0.4). And because one
+  session's search no longer takes the steps of the sessions after it,
+  more sessions do the work that is not counted in steps, which grows
+  with two to the power of a session's slot count: a request of 800
+  events among 200 participants, whose sessions do not pack, took 0.3
+  seconds on sessions of 12 slots and takes 3, and 3.7 seconds at 16
+  slots and takes 10 (with 767 gap slots for 1,336, and 1,104 for
+  1,703). The usage guide has the figures.
 
   *Who is affected.* Everyone who repacks. *What to check:* an outcome
   kept from an earlier release, or its fingerprint, no longer matches a
@@ -102,9 +151,14 @@ heading **Output change (fix)**.
   The order of the lists an outcome returns has not changed: assignments
   and unplaced events by event id, violations by kind and then by
   participant id and session, over-capacity participants by shortfall and
-  then id. Where two over-capacity participants share a dropped event and
-  have the same shortfall, the one it names is now the first in the
-  repacker's own order and no longer the one with the lower id.
+  then id. Two ties that the ids used to decide follow the repacker's
+  own order now. Where two over-capacity participants share a dropped
+  event and have the same shortfall, the one it names is the first in
+  that order and no longer the one with the lower id. And of an
+  over-capacity participant's events against opponents with the same
+  room to spare, the one left out is the last in that order and no
+  longer the one with the highest id. Code that predicted either from
+  the ids must read the unplaced list instead.
 
   Golden fixtures regenerated, each because the positions (and so the
   fingerprints) changed as described: `tests/Fixtures/golden/repack/round-robin.txt`

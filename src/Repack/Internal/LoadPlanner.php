@@ -31,7 +31,7 @@ use MissionGaming\Tactician\Repack\UnplacedReason;
  * can count towards both shortfalls (sharedDrops()); then each
  * participant still short, largest shortfall first, drops its events
  * against the opponents with the most slack (least damage to everyone
- * else's feasibility), tie-broken by event id descending. That drops no
+ * else's feasibility), tie-broken by event index descending. That drops no
  * more events than the shortfalls need when the search for shared drops
  * finishes; when it stops at its node limit it can drop more, and the
  * plan says so (LoadPlan::$leftOutAtLeast holds a bound that needs no

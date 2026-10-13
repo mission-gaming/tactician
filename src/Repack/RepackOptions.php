@@ -18,14 +18,25 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * higher consolidation weight accepts a later finish to give participants
  * fuller sessions, and consolidation deliberately dominates by default.
  *
- * The step budget bounds every search the repacker runs (session-load
- * improvement, per-session packing, repair swaps) in elementary search
- * steps — deterministic and reproducible, unlike wall-clock limits. The
- * last placement step, which runs only when an event is still unplaced,
- * gets a budget of its own of the same size, so a repack spends at most
+ * The step budget bounds the searches that choose sessions and pack
+ * them (session-load improvement, per-session packing, repair swaps) in
+ * elementary search steps — deterministic and reproducible, unlike
+ * wall-clock limits. The search of one session may spend a quarter of
+ * what is left when it starts. The steps after the packing (the last
+ * placement step, which runs only when an event is still unplaced, and
+ * the search for fewer gap slots, which runs only when a gap is left)
+ * get a budget of their own of the same size, so a repack spends at most
  * twice the budget. When a budget runs out, the repacker reports what is
  * left rather than pretending, and the outcome says so
  * ({@see RepackOutcome::isBudgetExhausted()}).
+ *
+ * The budget does not bound everything, and a small one does not make a
+ * large repack short. Ordering the participants and laying the events
+ * out before any session is chosen spend no step, and stop at fixed
+ * limits of their own, as do the last placement step and the search for
+ * fewer gap slots whatever the budget; and a session of many slots costs
+ * work that is not counted in steps. The usage guide ("The Step Budget")
+ * has the measured times.
  *
  * The weights are bounded so that the objective stays an integer. The
  * repacker scores a move as at most earlyFillWeight x (sessions - 1) +
@@ -56,8 +67,9 @@ final readonly class RepackOptions
      *                                 events into fewer sessions (0 disables)
      * @param int $earlyFillWeight Preference for filling earliest sessions first
      *                             (0 disables)
-     * @param int $stepBudget Elementary search steps shared by every phase, and
-     *                        as many again for the last placement step
+     * @param int $stepBudget Elementary search steps shared by the planning and
+     *                        the packing, and as many again for the steps
+     *                        after the packing
      * @param bool $throwOnViolations Throw RepackViolationsException instead of
      *                                returning an outcome carrying violations
      *
