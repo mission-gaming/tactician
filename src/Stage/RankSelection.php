@@ -22,9 +22,11 @@ use Override;
  * audited as decided outside the results. A participant that results
  * placed has no decision.
  *
- * A best-of-rank selection can settle two things about one participant by
- * decision: that it holds the rank in its pool, and where it stands among
- * the holders. Such a participant has both decisions, in that order.
+ * A best-of-rank selection can settle more than one thing about a
+ * participant by decision: that it holds the rank in its pool, who is left
+ * out of a larger pool before the holders are compared
+ * (`PoolComparison::DiscardLowest`), and where it stands among the holders.
+ * Such a participant has each of those decisions, in that order.
  *
  * @experimental
  */
@@ -82,9 +84,10 @@ final readonly class RankSelection implements Countable
     /**
      * The decisions that settled the place this participant was selected
      * at, in the order they were applied: empty for a participant that
-     * results placed, one decision for a tie in a table, and two where a
-     * best-of-rank selection settled both who holds the rank in the pool
-     * and the order of the holders.
+     * results placed, one decision for a tie in a table, and more than one
+     * where a best-of-rank selection settled several things by decision
+     * (who holds the rank in the pool, who is left out of a larger pool,
+     * the order of the holders).
      *
      * @return list<Decider>
      */

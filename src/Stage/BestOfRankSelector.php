@@ -209,7 +209,10 @@ final readonly class BestOfRankSelector implements ProgressionSelector
      * as before, and a pool with no result is refused whatever decisions
      * are given. A decision that fits neither order is rejected by
      * select(), and nothing is selected. A pool's table can carry
-     * decisions of its own; they count as given here.
+     * decisions of its own; they count as given here. The decisions of the
+     * outcome's own table are not read: the selection takes figures from
+     * that table and no order, and a tied set of it is not a group of
+     * level holders.
      *
      * @param array<Decider> $decisions One for each set of level entries to settle, in any order
      *
@@ -353,9 +356,14 @@ final readonly class BestOfRankSelector implements ProgressionSelector
      * A selected participant is marked with the decision that settled who
      * holds the rank in its pool, when it holds it as one of a decided
      * tied set, and with the decision that settled its place among the
-     * holders, in that order. A participant that results placed is not
-     * marked, and neither is one of an undecided order that the selector
-     * accepted.
+     * holders, in that order. Under PoolComparison::DiscardLowest a
+     * decision can also settle who is left out of a larger pool (a decided
+     * tied set on both sides of the place below which its entrants are
+     * left out). Every holder is then compared on figures calculated
+     * without those entrants, so every selected participant is marked with
+     * that decision, between the other two. A participant that results
+     * placed is not marked, and neither is one of an undecided order that
+     * the selector accepted.
      *
      * @throws InvalidConfigurationException As select()
      * @throws UndecidedSelectionException As select()
@@ -405,6 +413,7 @@ final readonly class BestOfRankSelector implements ProgressionSelector
         $holders = [];
         $leftOut = [];
         $marks = [];
+        $cutDecisions = [];
         foreach ($outcome->getPools() as $label => $poolOutcome) {
             $standings = SelectionTies::decidedTable(
                 $poolOutcome->getStandings(),
@@ -428,6 +437,17 @@ final readonly class BestOfRankSelector implements ProgressionSelector
                 $this->requireCutDecided($standings, (string) $label, $smallest);
                 foreach (array_slice($entries, $smallest) as $entry) {
                     $leftOut[$entry->getParticipant()->getId()] = true;
+                }
+
+                // A decided set on both sides of the cut: its decision says
+                // whose results are left out of every figure compared below
+                $lastKept = $entries[$smallest - 1]->getParticipant();
+                $decision = $standings->getDecisionFor($lastKept);
+                if (
+                    $decision instanceof Decider
+                    && in_array($entries[$smallest]->getParticipant()->getId(), $decision->getParticipantIds(), true)
+                ) {
+                    $cutDecisions[] = $decision;
                 }
             }
         }
@@ -479,6 +499,16 @@ final readonly class BestOfRankSelector implements ProgressionSelector
             $this->rank
         );
         SelectionTies::requireOrderDecided($settled['groups'], 1, $this->count, $this->ties, $this->rank, $settled['decided']);
+
+        // Every holder is compared on figures calculated without the entrants
+        // a decision left out, so that decision is behind every place
+        foreach ($cutDecisions as $decision) {
+            foreach ($holders as $holder) {
+                if (!in_array($decision, $marks[$holder->getId()] ?? [], true)) {
+                    $marks[$holder->getId()][] = $decision;
+                }
+            }
+        }
 
         foreach ($settled['decided'] as $index => $decision) {
             foreach ($settled['groups'][$index] as $entry) {
