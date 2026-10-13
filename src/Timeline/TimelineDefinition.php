@@ -34,7 +34,10 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * February, 31 March, 30 April; from 30 January it is the end of February
  * and the 30th of every other month. A local time the clocks skip (01:30 on
  * the night they go forward) is moved on by the skipped hour, for the round
- * that lands on it and for no other.
+ * that lands on it and for no other. A local time that occurs twice (01:30
+ * on the night they go back) is the first of the two; where the interval
+ * also has a time part, it is the one at the start's own offset from UTC,
+ * which is how PHP reads it.
  *
  * An interval's time part (hours, minutes, seconds: `PT168H`, `PT24H`) is
  * elapsed time: a weekly kickoff written as `PT168H` is 168 hours later,
@@ -50,11 +53,11 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * `DateInterval::createFromDateString()` (`next weekday`) has no multiple:
  * it alone is added one step at a time, each step from the one before.
  *
- * The slots of one round are before the first slot of the next round. The
- * constructor checks that for the first two rounds, and
- * {@see TimelineAssigner} for every round it assigns (the length of a
- * month, and a clock change, can make a later round shorter than the
- * first).
+ * The slots of one round are at rising times, and all of them before the
+ * first slot of the next round. The constructor checks that for the first
+ * two rounds, and {@see TimelineAssigner} for every round it assigns (the
+ * length of a month, and a clock change, can make a later round shorter
+ * than the first, or put two of its slots at one time).
  *
  * The definition owns the mechanism only: which slots exist. Parsing
  * competition config into a slot pattern, persistence, notifications,
@@ -68,11 +71,13 @@ final readonly class TimelineDefinition
     private array $resources;
 
     /**
-     * Nothing bounds the number of rounds: a definition answers for any
-     * round number from 1 up. A slot interval given with one slot per round
-     * is checked, kept and written by toArray(), and no slot time uses it.
-     * The first round's last slot must be before the second round's first
-     * slot; the assigner checks the same of every round it assigns.
+     * The definition has no number of rounds: it answers for any round
+     * number from 1 up whose time PHP can compute (getSlotTime() says where
+     * that ends). A slot interval given with one slot per round is checked,
+     * kept and written by toArray(), and no slot time uses it. The first
+     * round's slots must be at rising times and its last slot before the
+     * second round's first slot; the assigner checks the same of every
+     * round it assigns.
      *
      * @param DateTimeImmutable $start The first round's first slot, in the stage's timezone;
      *                                 its timezone is the one the intervals are added in
@@ -89,9 +94,10 @@ final readonly class TimelineDefinition
      * @throws InvalidConfigurationException When there is less than one slot per round, several
      *                                       slots without a slot interval, an interval that
      *                                       does not move the start forward, a first round
-     *                                       whose last slot is at or after the second round's
-     *                                       first, or a resource that is not a non-empty
-     *                                       string or is named twice
+     *                                       with two slots at one time or whose last slot is
+     *                                       at or after the second round's first, or a
+     *                                       resource that is not a non-empty string or is
+     *                                       named twice
      */
     public function __construct(
         private DateTimeImmutable $start,
@@ -132,7 +138,29 @@ final readonly class TimelineDefinition
             );
         }
 
-        if ($slotInterval !== null && $slotsPerRound > 1 && $this->slotTime(1, $slotsPerRound - 1) >= $this->slotTime(2, 0)) {
+        // An interval PHP adds as local time (one from diff()) can put two
+        // slots of a round at one instant where the clocks skip an hour
+        $lastSlot = $this->slotTime(1, 0);
+        for ($slot = 1; $slot < $slotsPerRound; ++$slot) {
+            $time = $this->slotTime(1, $slot);
+            if ($time <= $lastSlot) {
+                throw new InvalidConfigurationException(
+                    'The slots of a round must be at rising times: slot ' . $slot . ' of round 1 is at '
+                        . $time->format('Y-m-d H:i:s') . ' and the slot before it at ' . $lastSlot->format('Y-m-d H:i:s'),
+                    [
+                        'slot_interval' => $slotInterval instanceof DateInterval ? self::formatInterval($slotInterval) : null,
+                        'round' => 1,
+                        'slot' => $slot,
+                        'slot_time' => $time->format('Y-m-d H:i:s'),
+                        'previous_slot_time' => $lastSlot->format('Y-m-d H:i:s'),
+                    ],
+                    reason: InvalidConfigurationReason::OverlappingTime
+                );
+            }
+            $lastSlot = $time;
+        }
+
+        if ($slotInterval !== null && $slotsPerRound > 1 && $lastSlot >= $this->slotTime(2, 0)) {
             throw new InvalidConfigurationException(
                 'The slots of a round must all be before the next round starts: '
                     . "{$slotsPerRound} slots " . self::formatInterval($slotInterval)
@@ -141,7 +169,7 @@ final readonly class TimelineDefinition
                     'round_interval' => self::formatInterval($roundInterval),
                     'slot_interval' => self::formatInterval($slotInterval),
                     'slots_per_round' => $slotsPerRound,
-                    'last_slot_of_round_1' => $this->slotTime(1, $slotsPerRound - 1)->format('Y-m-d H:i:s'),
+                    'last_slot_of_round_1' => $lastSlot->format('Y-m-d H:i:s'),
                     'first_slot_of_round_2' => $this->slotTime(2, 0)->format('Y-m-d H:i:s'),
                 ],
                 reason: InvalidConfigurationReason::OverlappingTime
@@ -358,7 +386,11 @@ final readonly class TimelineDefinition
      * @param int $round 1-based round number
      * @param int $slot 0-based slot index within the round
      *
-     * @throws InvalidConfigurationException When the round or slot is out of range
+     * @throws InvalidConfigurationException When the round or slot is out of range, or the
+     *                                       round is so far from the start that its time
+     *                                       cannot be computed (reason `ValueOutOfRange`:
+     *                                       some 270 billion years, the range of PHP's
+     *                                       own timestamps)
      */
     public function getSlotTime(int $round, int $slot = 0): DateTimeImmutable
     {
@@ -387,6 +419,8 @@ final readonly class TimelineDefinition
      *
      * @param int $round 1-based round number, already checked
      * @param int $slot 0-based slot index, already checked
+     *
+     * @throws InvalidConfigurationException When the round is too far from the start to compute
      */
     private function slotTime(int $round, int $slot): DateTimeImmutable
     {

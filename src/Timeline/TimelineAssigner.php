@@ -26,12 +26,15 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  * per slot), and schedules carrying round-less events (which the
  * round-grouped view would silently drop), fail with diagnostics.
  *
- * A round whose slots do not all come before the first slot of the next
- * round fails too: the next round would start, on the same resources and
- * with the same participants, while this one is still being played. The
- * definition checks its first two rounds when it is built, and the
- * assigner every round it assigns, because the length of a month or a
- * clock change can make a later round shorter than the first.
+ * A round whose slots are not at rising times, all of them before the
+ * first slot of the next round, fails too: two slots would be one kickoff,
+ * or the next round would start, on the same resources and with the same
+ * participants, while this one is still being played. The definition
+ * checks its first two rounds when it is built, and the assigner every
+ * round it assigns, because the length of a month or a clock change can
+ * make a later round shorter than the first. The check is of the slots the
+ * timeline declares for the round, filled or not, and of the round after
+ * it whether or not the schedule has one.
  *
  * Not checked unless a rule checks it: that a participant is in one event
  * of a slot only. MinimumRestRule reports it.
@@ -80,9 +83,9 @@ final readonly class TimelineAssigner
      *
      * @throws InvalidConfigurationException When the schedule carries round-less events,
      *                                       a round has more events than the timeline has
-     *                                       slots, the slots of a round run up to or past
-     *                                       the next round's first slot, or a time-aware
-     *                                       rule is violated
+     *                                       slots, the slots of a round are not at rising
+     *                                       times or run up to or past the next round's
+     *                                       first slot, or a time-aware rule is violated
      */
     public function assign(Schedule $schedule, TimelineDefinition $timeline): ScheduledSchedule
     {
@@ -131,9 +134,9 @@ final readonly class TimelineAssigner
      * @return array<ScheduledEvent> In slot order, the pairing's events in their order
      *
      * @throws InvalidConfigurationException When the round has more events than the timeline has
-     *                                       slots, its slots run up to or past the next
-     *                                       round's first slot, or a time-aware rule is
-     *                                       violated
+     *                                       slots, its slots are not at rising times or run
+     *                                       up to or past the next round's first slot, or a
+     *                                       time-aware rule is violated
      */
     public function assignRound(RoundPairing $pairing, TimelineDefinition $timeline): array
     {
@@ -197,10 +200,34 @@ final readonly class TimelineAssigner
             );
         }
 
-        // A round of one slot cannot run into the next: the round interval
-        // moves time forward
-        if ($events !== [] && $timeline->getSlotsPerRound() > 1) {
-            $lastSlot = $timeline->getSlotTime($roundNumber, $timeline->getSlotsPerRound() - 1);
+        if ($events === []) {
+            return [];
+        }
+
+        // Every slot the round declares, in order: each after the one
+        // before it, and the last before the next round's first
+        $slotTimes = [];
+        $lastSlot = null;
+        for ($slot = 0; $slot < $timeline->getSlotsPerRound(); ++$slot) {
+            $time = $timeline->getSlotTime($roundNumber, $slot);
+            if ($lastSlot !== null && $time <= $lastSlot) {
+                throw new InvalidConfigurationException(
+                    "Round {$roundNumber} has two slots that are not at rising times: slot {$slot} is at "
+                        . $time->format('Y-m-d H:i:s') . ' UTC and the slot before it at ' . $lastSlot->format('Y-m-d H:i:s') . ' UTC',
+                    [
+                        'round' => $roundNumber,
+                        'slot' => $slot,
+                        'slot_time' => $time->format(DATE_ATOM),
+                        'previous_slot_time' => $lastSlot->format(DATE_ATOM),
+                    ],
+                    reason: InvalidConfigurationReason::OverlappingTime
+                );
+            }
+            $slotTimes[] = $time;
+            $lastSlot = $time;
+        }
+
+        if ($lastSlot !== null) {
             $nextRound = $timeline->getSlotTime($roundNumber + 1);
             if ($lastSlot >= $nextRound) {
                 throw new InvalidConfigurationException(
@@ -222,7 +249,7 @@ final readonly class TimelineAssigner
             $slot = intdiv($index, $capacityPerSlot);
             $scheduledEvents[] = new ScheduledEvent(
                 $event,
-                $timeline->getSlotTime($roundNumber, $slot),
+                $slotTimes[$slot],
                 $timeline->getResourceAt($index % $capacityPerSlot)
             );
         }

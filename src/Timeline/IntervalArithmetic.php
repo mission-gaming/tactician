@@ -6,6 +6,8 @@ namespace MissionGaming\Tactician\Timeline;
 
 use DateInterval;
 use DateTimeImmutable;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
 /**
  * Several steps of one interval from an anchor, as a single calendar step.
@@ -33,8 +35,13 @@ use DateTimeImmutable;
  *   the skipped hour, as PHP moves it.
  *
  * An interval made by `DateInterval::createFromDateString()` (`next
- * weekday`, `last day of next month`) has no multiple, so it is added one
- * step at a time, as PHP adds it.
+ * weekday`, `last day of next month`, and `1 month` or `7 days` as well:
+ * PHP does not show the parts of such an interval) has no multiple, so it
+ * is added one step at a time, as PHP adds it.
+ *
+ * The steps multiplied out must stay in the range PHP's own arithmetic is
+ * exact in ({@see self::MAX_DAYS}); past it the result would be a wrong
+ * date and no error, so it is refused.
  *
  * @internal Not public API: the arithmetic behind
  *           TimelineDefinition::getSlotTime() and SessionGrid::getSlotTime(),
@@ -43,10 +50,21 @@ use DateTimeImmutable;
 final class IntervalArithmetic
 {
     /**
+     * The furthest from its anchor a result may be, in days: about 270
+     * billion years, which is what a 64-bit count of seconds holds. PHP adds
+     * a larger interval without complaint and returns a date that has
+     * wrapped round.
+     */
+    public const int MAX_DAYS = 100_000_000_000_000;
+
+    /**
      * The anchor moved on by a number of steps of the interval, in the
      * anchor's timezone.
      *
-     * @param int $steps How many intervals to add; 0 returns the anchor
+     * @param int $steps How many intervals to add, 0 or more; 0 returns the anchor
+     *
+     * @throws InvalidConfigurationException When the steps multiplied out are further from the
+     *                                       anchor than MAX_DAYS
      */
     public static function advance(DateTimeImmutable $anchor, DateInterval $interval, int $steps): DateTimeImmutable
     {
@@ -60,6 +78,23 @@ final class IntervalArithmetic
             }
 
             return $anchor;
+        }
+
+        // Measured in floating point, which does not overflow: every
+        // product below is a whole number of the size this allows
+        $span = (float) $steps * (
+            (abs($interval->y) * 12.0 + abs($interval->m)) * 31.0
+            + abs($interval->d)
+            + abs($interval->h) / 24.0
+            + abs($interval->i) / 1440.0
+            + abs($interval->s) / 86400.0
+        );
+        if ($span > self::MAX_DAYS) {
+            throw new InvalidConfigurationException(
+                "{$steps} steps of the interval are too far from the time they are counted from to be computed",
+                ['steps' => $steps, 'interval' => TimelineDefinition::formatInterval($interval)],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
         }
 
         // PHP negates every part of an inverted interval when it adds it

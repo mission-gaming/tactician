@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Repack\SessionGrid;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 
@@ -226,6 +228,31 @@ describe('Slot times computed from the anchor', function (): void {
                 }
             }
         }
+    });
+
+    it('refuses a round too far from the start to compute, where PHP would return a date that has wrapped round', function (): void {
+        $start = new DateTimeImmutable('2026-01-31 19:00', new DateTimeZone('UTC'));
+
+        foreach (['P7D', 'P1D', 'P1M', 'P1Y', 'PT1H', 'P1M7DT1H'] as $interval) {
+            $timeline = new TimelineDefinition($start, new DateInterval($interval));
+            $reason = null;
+            try {
+                $timeline->getSlotTime(PHP_INT_MAX);
+            } catch (InvalidConfigurationException $exception) {
+                $reason = $exception->getReason();
+            }
+
+            expect($reason)->toBe(InvalidConfigurationReason::ValueOutOfRange);
+        }
+
+        // A round far away and in range is exact: a thousand million days
+        $daily = new TimelineDefinition($start, new DateInterval('P1D'));
+        expect($daily->getSlotTime(1_000_000_001)->getTimestamp() - $start->getTimestamp())->toBe(86_400 * 1_000_000_000);
+
+        // An interval that is itself out of range is refused when the timeline is built
+        $huge = new DateInterval('P1D');
+        $huge->d = PHP_INT_MAX;
+        expect(fn() => new TimelineDefinition($start, $huge))->toThrow(InvalidConfigurationException::class, 'too far');
     });
 
     it('takes the months of a mixed interval first and its days after, from the start', function (): void {

@@ -37,6 +37,18 @@ function overlapReason(Closure $build): ?InvalidConfigurationReason
     return null;
 }
 
+/**
+ * One hour as `diff()` returns it. PHP adds the hours of such an interval
+ * as local time, where it adds those of `new DateInterval('PT1H')` as
+ * elapsed time.
+ */
+function overlapLocalHour(): DateInterval
+{
+    $utc = new DateTimeZone('UTC');
+
+    return (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
+}
+
 describe('A timeline whose rounds overlap', function (): void {
     it('is rejected when the last slot of a round is the first slot of the next', function (): void {
         // The reported case: hourly rounds of two slots an hour apart. Round
@@ -141,6 +153,85 @@ describe('A timeline whose rounds overlap', function (): void {
     });
 });
 
+describe('A timeline with two slots at one time', function (): void {
+    // PHP adds the hours of an interval that diff() returned as local time.
+    // In London 01:30 does not exist on 29 March 2026, and PHP reads it as
+    // 02:30: one hour and two hours after 00:30 are then the same instant.
+    it('is rejected when it is built, if the first round has them', function (): void {
+        $build = fn() => new TimelineDefinition(
+            new DateTimeImmutable('2026-03-29 00:30', new DateTimeZone('Europe/London')),
+            new DateInterval('P7D'),
+            slotsPerRound: 3,
+            slotInterval: overlapLocalHour()
+        );
+
+        expect($build)->toThrow(InvalidConfigurationException::class, 'must be at rising times')
+            ->and(overlapReason($build))->toBe(InvalidConfigurationReason::OverlappingTime);
+    });
+
+    it('is rejected at assignment, if a later round has them', function (): void {
+        $london = new DateTimeZone('Europe/London');
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-03-22 00:30', $london),
+            new DateInterval('P7D'),
+            slotsPerRound: 3,
+            slotInterval: overlapLocalHour()
+        );
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $assigner = new TimelineAssigner();
+
+        // Round 1 is 00:30, 01:30, 02:30 on a night with all three
+        expect($assigner->assignRound(new RoundPairing(1, null, [new Event([$a, $b], new Round(1))]), $timeline))->toHaveCount(1);
+
+        // Round 2 is the night the clocks go forward. One event fills one
+        // slot: the check is of the slots the round declares
+        $second = new RoundPairing(2, null, [new Event([$a, $b], new Round(2))]);
+        expect(fn() => $assigner->assignRound($second, $timeline))
+            ->toThrow(InvalidConfigurationException::class, 'Round 2 has two slots that are not at rising times')
+            ->and(overlapReason(fn() => $assigner->assignRound($second, $timeline)))
+            ->toBe(InvalidConfigurationReason::OverlappingTime)
+            ->and(overlapReason(fn() => $assigner->assign(new Schedule($second->getEvents()), $timeline)))
+            ->toBe(InvalidConfigurationReason::OverlappingTime);
+
+        // The same slots an hour of elapsed time apart are three instants
+        $elapsed = new TimelineDefinition(
+            new DateTimeImmutable('2026-03-22 00:30', $london),
+            new DateInterval('P7D'),
+            slotsPerRound: 3,
+            slotInterval: new DateInterval('PT1H')
+        );
+        expect($assigner->assignRound($second, $elapsed))->toHaveCount(1);
+    });
+
+    it('is rejected at assignment when two rounds of one slot each are at one time', function (): void {
+        // Rounds one local hour apart from 00:30: rounds 2 and 3 are both
+        // 02:30, so round 2 has not ended when round 3 starts
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-03-29 00:30', new DateTimeZone('Europe/London')),
+            overlapLocalHour()
+        );
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $assigner = new TimelineAssigner();
+
+        expect($timeline->getSlotTime(2)->format('H:i'))->toBe('01:30')
+            ->and($timeline->getSlotTime(3)->format('H:i'))->toBe('01:30')
+            ->and($assigner->assign(new Schedule([new Event([$a, $b], new Round(1))]), $timeline))->toHaveCount(1)
+            ->and(overlapReason(fn() => $assigner->assign(new Schedule([new Event([$a, $b], new Round(2))]), $timeline)))
+            ->toBe(InvalidConfigurationReason::OverlappingTime);
+    });
+
+    it('assigns no kickoff and makes no check for a round with no events', function (): void {
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-03-29 00:30', new DateTimeZone('Europe/London')),
+            overlapLocalHour()
+        );
+
+        expect((new TimelineAssigner())->assignRound(new RoundPairing(2, null, []), $timeline))->toBe([]);
+    });
+});
+
 describe('A session grid whose sessions overlap', function (): void {
     it('is rejected when a session runs up to the start of the next', function (): void {
         // The reported case: sessions at 20:00 and 20:25, two slots 25
@@ -216,6 +307,63 @@ describe('A session grid whose sessions overlap', function (): void {
             ->toBe(InvalidConfigurationReason::OverlappingTime);
         // A default that overlaps, made shallow enough by an override
         expect(overlapReason(fn() => new SessionGrid($starts, $interval, 4, [0 => 3])))->toBeNull();
+    });
+
+    it('is rejected when two slots of one session are at one instant', function (): void {
+        // Slots one local hour apart from 00:30 on the night London skips
+        // 01:30: slots 1 and 2 are both 02:30 local. It is so in the last
+        // session too, which nothing follows
+        $london = new DateTimeZone('Europe/London');
+        $build = fn() => new SessionGrid(
+            [new DateTimeImmutable('2026-03-22 00:30', $london), new DateTimeImmutable('2026-03-29 00:30', $london)],
+            overlapLocalHour(),
+            slotsPerSession: 3
+        );
+
+        expect($build)->toThrow(InvalidConfigurationException::class, 'The slots of session 1 must be at rising times')
+            ->and(overlapReason($build))->toBe(InvalidConfigurationReason::OverlappingTime);
+
+        // Two slots are 00:30 and 02:30, and the grid is built
+        $grid = new SessionGrid(
+            [new DateTimeImmutable('2026-03-22 00:30', $london), new DateTimeImmutable('2026-03-29 00:30', $london)],
+            overlapLocalHour(),
+            slotsPerSession: 2
+        );
+        expect($grid->positionOf($grid->getSlotTime(1, 1)))->toBe(['session' => 1, 'slot' => 1]);
+
+        // An hour of elapsed time apart, the three slots are three instants
+        expect(overlapReason(fn() => new SessionGrid(
+            [new DateTimeImmutable('2026-03-22 00:30', $london), new DateTimeImmutable('2026-03-29 00:30', $london)],
+            new DateInterval('PT1H'),
+            slotsPerSession: 3
+        )))->toBeNull();
+    });
+
+    it('accepts sessions that touch nothing: a session of one slot just before the next', function (): void {
+        // One slot per session has no last slot to run on, so starts a
+        // second apart are a valid grid of two instants
+        $utc = new DateTimeZone('UTC');
+        $grid = new SessionGrid(
+            [new DateTimeImmutable('2026-08-12 20:00:00', $utc), new DateTimeImmutable('2026-08-12 20:00:01', $utc)],
+            new DateInterval('PT25M')
+        );
+
+        expect($grid->getPositionCount())->toBe(2)
+            ->and($grid->positionOf(new DateTimeImmutable('2026-08-12 20:00:01', $utc)))->toBe(['session' => 1, 'slot' => 0]);
+    });
+
+    it('accepts a last slot one second before the next session and refuses it at the same second', function (): void {
+        $utc = new DateTimeZone('UTC');
+        $first = new DateTimeImmutable('2026-08-12 20:00:00', $utc);
+        $build = fn(string $second) => fn() => new SessionGrid(
+            [$first, new DateTimeImmutable($second, $utc)],
+            new DateInterval('PT25M'),
+            slotsPerSession: 2
+        );
+
+        expect(overlapReason($build('2026-08-12 20:25:01')))->toBeNull()
+            ->and(overlapReason($build('2026-08-12 20:25:00')))->toBe(InvalidConfigurationReason::OverlappingTime)
+            ->and(overlapReason($build('2026-08-12 20:24:59')))->toBe(InvalidConfigurationReason::OverlappingTime);
     });
 
     it('does not apply to a shape-only grid, which has no instants to overlap', function (): void {
