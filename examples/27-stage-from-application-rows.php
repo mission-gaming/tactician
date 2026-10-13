@@ -14,6 +14,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Stage\Withdrawal;
 
 // A badminton knockout whose fixtures and results live in the application's
 // own tables. No stage state is stored anywhere: every request maps the rows
@@ -27,30 +28,36 @@ use MissionGaming\Tactician\Stage\StageState;
 $playerRows = [
     ['id' => 15, 'name' => 'Emre', 'seeding' => 5],
     ['id' => 11, 'name' => 'Aiko', 'seeding' => 1],
-    ['id' => 18, 'name' => 'Noor', 'seeding' => 8],
+    ['id' => 18, 'name' => 'Noor', 'seeding' => 7],
     ['id' => 12, 'name' => 'Bram', 'seeding' => 2],
     ['id' => 14, 'name' => 'Dara', 'seeding' => 4],
     ['id' => 13, 'name' => 'Chidi', 'seeding' => 3],
-    ['id' => 17, 'name' => 'Goran', 'seeding' => 7],
     ['id' => 16, 'name' => 'Farah', 'seeding' => 6],
 ];
 
-// The quarter-finals as the organiser drew them. The bracket has 1 v 8 and
-// 4 v 5 in its upper half; Dara and Emre train at one club, so the organiser
-// had them change places: 1 v 5 and 4 v 8. Three of the four are played.
+// The quarter-finals as the organiser drew them. With seven players the top
+// of the list sits the round out, and the bracket has 4 v 5 and 2 v 7; Dara
+// and Emre train at one club, so the organiser had Emre and Noor change
+// places: 4 v 7 and 2 v 5. Two of the three are played.
 $fixtureRows = [
-    ['round' => 1, 'label' => 'quarterfinal', 'first' => 12, 'second' => 17, 'winner' => 12],
-    ['round' => 1, 'label' => 'quarterfinal', 'first' => 11, 'second' => 15, 'winner' => 11],
-    ['round' => 1, 'label' => 'quarterfinal', 'first' => 13, 'second' => 16, 'winner' => null],
+    ['round' => 1, 'label' => 'quarterfinal', 'first' => 12, 'second' => 15, 'winner' => 12],
     ['round' => 1, 'label' => 'quarterfinal', 'first' => 14, 'second' => 18, 'winner' => 18],
+    ['round' => 1, 'label' => 'quarterfinal', 'first' => 13, 'second' => 16, 'winner' => null],
 ];
 
-/** @var list<int> $withdrawalRows The ids of the players who have withdrawn */
+// Who went on from a round without a fixture. A bye is no event, so it has
+// no fixture row, and it is a fact of the round all the same: the engine
+// reads a round from its fixtures and its byes together.
+$byeRows = [
+    ['round' => 1, 'player' => 11],
+];
+
+/** @var list<array{player: int, after_round: int}> $withdrawalRows Who has withdrawn, and after which round, in the order they did */
 $withdrawalRows = [];
 
 // --- The adapter: rows in, a stage state out ------------------------------
 // This is all the mapping there is. Nothing here pairs, ranks or replays.
-$stateFromRows = static function (array $playerRows, array $fixtureRows, array $withdrawalRows): StageState {
+$stateFromRows = static function (array $playerRows, array $fixtureRows, array $byeRows, array $withdrawalRows): StageState {
     usort($playerRows, static fn(array $one, array $other): int => $one['seeding'] <=> $other['seeding']);
 
     $players = [];
@@ -75,23 +82,33 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
         }
     }
 
+    $byes = [];
+    foreach ($byeRows as $row) {
+        $byes[$row['round']][] = $players[$row['player']];
+    }
+
     $rounds = [];
     foreach ($events as $number => $ofRound) {
-        $rounds[] = new RoundPairing($number, $labels[$number], $ofRound);
+        $rounds[] = new RoundPairing($number, $labels[$number], $ofRound, $byes[$number] ?? []);
     }
 
     return StageState::fromHistory(
         entrants: array_values($players),
         rounds: $rounds,
         results: $results,
-        withdrawals: array_map(static fn(int $id): Participant => $players[$id], $withdrawalRows)
+        // Each withdrawal with the round it happened after, so that the
+        // engine reads every round from who was in the stage at the time
+        withdrawals: array_map(
+            static fn(array $row): Withdrawal => new Withdrawal($players[$row['player']], $row['after_round']),
+            $withdrawalRows
+        )
     );
 };
 
 $engine = new SingleEliminationEngine();
 
 // --- Request 1: the bracket page, with one quarter-final still to play ----
-$state = $stateFromRows($playerRows, $fixtureRows, $withdrawalRows);
+$state = $stateFromRows($playerRows, $fixtureRows, $byeRows, $withdrawalRows);
 
 // Nothing throws for a round that is still being played
 $completeWhileUnplayed = $engine->isComplete($state);
@@ -105,11 +122,11 @@ $asDrawnByTheEngine = $quarterFinals->getDerivation()?->getEvents() ?? [];
 
 // --- Request 2: the last quarter-final is played; pair the semifinals -----
 $fixtureRows[2]['winner'] = 16;
-$state = $stateFromRows($playerRows, $fixtureRows, $withdrawalRows);
+$state = $stateFromRows($playerRows, $fixtureRows, $byeRows, $withdrawalRows);
 
-// The semifinals follow from the quarter-finals that were played: Aiko and
-// Noor won the two ties of the upper half and meet now, where the engine's
-// own draw had them meet a round earlier
+// The semifinals follow from the quarter-finals that were played: Noor won
+// the tie the organiser moved her to and meets Aiko now, where the engine's
+// own draw had her in the lower half
 $semifinals = $engine->pairNextRound($state);
 foreach ($semifinals->getEvents() as $event) {
     [$first, $second] = $event->getParticipants();
@@ -121,10 +138,15 @@ foreach ($semifinals->getEvents() as $event) {
         'winner' => null,
     ];
 }
+// A round the engine pairs is stored whole: its byes with its fixtures
+foreach ($semifinals->getByes() as $bye) {
+    $byeRows[] = ['round' => $semifinals->getRoundNumber(), 'player' => (int) $bye->getId()];
+}
 
 // --- Request 3: Noor withdraws before her semifinal -----------------------
-$withdrawalRows[] = 18;
-$state = $stateFromRows($playerRows, $fixtureRows, $withdrawalRows);
+// The semifinals are the last round on record, and the row says so
+$withdrawalRows[] = ['player' => 18, 'after_round' => $semifinals->getRoundNumber()];
+$state = $stateFromRows($playerRows, $fixtureRows, $byeRows, $withdrawalRows);
 
 // Nothing is drawn again. Her semifinal is not played and awaits no result;
 // the bracket waits for the other one only
@@ -133,8 +155,8 @@ $notPlayed = $afterTheWithdrawal->getUncontestedEvents();
 $stillWaitingFor = $engine->getReadiness($state)->getUnresolvedEvents();
 
 // --- Request 4: the other semifinal is played; pair the final -------------
-$fixtureRows[5]['winner'] = 16;
-$state = $stateFromRows($playerRows, $fixtureRows, $withdrawalRows);
+$fixtureRows[4]['winner'] = 16;
+$state = $stateFromRows($playerRows, $fixtureRows, $byeRows, $withdrawalRows);
 
 // Aiko is in the final without having played her semifinal
 $final = $engine->pairNextRound($state);
@@ -146,9 +168,12 @@ $fixtureRows[] = [
     'second' => (int) $second->getId(),
     'winner' => 11,
 ];
+foreach ($final->getByes() as $bye) {
+    $byeRows[] = ['round' => $final->getRoundNumber(), 'player' => (int) $bye->getId()];
+}
 
 // --- Request 5: the outcome ------------------------------------------------
-$state = $stateFromRows($playerRows, $fixtureRows, $withdrawalRows);
+$state = $stateFromRows($playerRows, $fixtureRows, $byeRows, $withdrawalRows);
 $outcome = $engine->getOutcome($state);
 if ($outcome === null) {
     throw new RuntimeException('The bracket should be complete');
@@ -170,8 +195,9 @@ try {
     $notEntered = $exception;
 }
 
-return Example::present(__FILE__, 'A stage resolved from the application\'s own rows', 'A badminton knockout of eight whose fixtures, results and withdrawals are rows of the application. Each request builds a stage state from them with StageState::fromHistory(). The quarter-finals were drawn by hand and are read as drawn; one of them is still unplayed and nothing throws; a semifinalist withdraws and her opponent goes on without the bracket being drawn again.', [
+return Example::present(__FILE__, 'A stage resolved from the application\'s own rows', 'A badminton knockout of seven whose fixtures, byes, results and withdrawals are rows of the application. Each request builds a stage state from them with StageState::fromHistory(). The quarter-finals were drawn by hand and are read as drawn, with the bye of the round beside them; one of them is still unplayed and nothing throws; a semifinalist withdraws and her opponent goes on without the bracket being drawn again.', [
     'Quarter-finals, as the organiser drew them' => $quarterFinals->getPairing()->getEvents(),
+    'Went on without a quarter-final' => implode(', ', array_map(static fn(Participant $bye): string => $bye->getLabel(), $quarterFinals->getPairing()->getByes())),
     'Quarter-finals, as the engine would have drawn them' => $asDrawnByTheEngine,
     'Reported as paired by hand' => $quarterFinals->isManual(),
     'With one quarter-final unplayed' => [

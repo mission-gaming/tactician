@@ -10,15 +10,16 @@
 # Review it, then regenerate with `composer golden-update`.
 
 == Quarter-finals, as the organiser drew them ==
-- R1: 12-17
-- R1: 11-15
-- R1: 13-16
+- R1: 12-15
 - R1: 14-18
+- R1: 13-16
+
+== Went on without a quarter-final ==
+Aiko
 
 == Quarter-finals, as the engine would have drawn them ==
-- R1: 11-18
 - R1: 14-15
-- R1: 12-17
+- R1: 12-18
 - R1: 13-16
 
 == Reported as paired by hand ==
@@ -46,14 +47,13 @@ Waiting for round: 1
 - R3: 11-16
 
 == Final standings ==
-1. 11 played=2 wins=2 draws=0 losses=0 value=6 for=0 against=0
+1. 11 played=1 wins=1 draws=0 losses=0 value=3 for=0 against=0
 2. 16 played=3 wins=2 draws=0 losses=1 value=6 for=0 against=0
 3. 12 played=2 wins=1 draws=0 losses=1 value=3 for=0 against=0
 4. 18 played=1 wins=1 draws=0 losses=0 value=3 for=0 against=0
 5. 13 played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
 6. 14 played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
 7. 15 played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
-8. 17 played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
 
 == A fixture for a player who was not entered ==
 MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid scheduler configuration: The history names participant 99 (in an event), who is not one of the entrants

@@ -321,7 +321,7 @@ There are two ways, and both give the engine the same thing.
 
 <!-- excerpt: examples/27-stage-from-application-rows.php -->
 ```php
-$stateFromRows = static function (array $playerRows, array $fixtureRows, array $withdrawalRows): StageState {
+$stateFromRows = static function (array $playerRows, array $fixtureRows, array $byeRows, array $withdrawalRows): StageState {
     usort($playerRows, static fn(array $one, array $other): int => $one['seeding'] <=> $other['seeding']);
 
     $players = [];
@@ -346,16 +346,26 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
         }
     }
 
+    $byes = [];
+    foreach ($byeRows as $row) {
+        $byes[$row['round']][] = $players[$row['player']];
+    }
+
     $rounds = [];
     foreach ($events as $number => $ofRound) {
-        $rounds[] = new RoundPairing($number, $labels[$number], $ofRound);
+        $rounds[] = new RoundPairing($number, $labels[$number], $ofRound, $byes[$number] ?? []);
     }
 
     return StageState::fromHistory(
         entrants: array_values($players),
         rounds: $rounds,
         results: $results,
-        withdrawals: array_map(static fn(int $id): Participant => $players[$id], $withdrawalRows)
+        // Each withdrawal with the round it happened after, so that the
+        // engine reads every round from who was in the stage at the time
+        withdrawals: array_map(
+            static fn(array $row): Withdrawal => new Withdrawal($players[$row['player']], $row['after_round']),
+            $withdrawalRows
+        )
     );
 };
 ```
@@ -368,6 +378,14 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
     those who have withdrawn since, whom you name under `withdrawals`.
     The order places the entrants of a bracket and decides every order
     that results leave open.
+  - **When each of them withdrew**: the number of the last round that
+    was on record at that moment, as a `Withdrawal`, and those of one
+    round in the order they left. An engine reads a round from who was
+    in the stage when it was paired. A withdrawal given as a plain
+    participant is one whose time is not known: the engine then reads
+    what the rounds show and guesses nothing, which leaves two things
+    open that the round would settle (see
+    [When a Withdrawal or an Adjustment Happened](../USAGE.md#when-a-withdrawal-or-an-adjustment-happened)).
   - **Their IDs, and nothing else about them, for the pairing order.**
     No stage reads a label or a seed attribute to order entrants, so a
     club renamed in mid-stage changes no pairing. (A constraint the
@@ -377,12 +395,16 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
     every event, the event's metadata (a two-legged tie carries its leg
     number there as `tie_leg`, a third-place tie its mark as
     `bracket_tie`, and the engine reads both) and the participants who
-    had a bye, which a Swiss table counts. The rows of a round may come
-    back in any order.
+    had a bye. A bye is no event, so it needs a row of its own (the
+    `$byeRows` above): a Swiss table counts it, and a bracket reads from
+    it who went on without playing. The rows of a round may come back in
+    any order.
   - **Every result whole**: its event, its winner or none, its scores
     and its metadata, which is where a level event names who advanced.
     A result finds its event by round number, participants and leg.
-  - **Adjustments**, where you make any.
+  - **Adjustments**, where you make any, each with the round it was made
+    after (`Adjustment::madeAfterRound()`): a round is ranked from the
+    adjustments made before it was paired.
 
   `fromHistory()` checks what rows can get wrong and a stored state
   cannot: round numbers that are not 1, 2, 3 and so on
