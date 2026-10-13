@@ -66,11 +66,15 @@ final class RepackAuditor
 
         $violations = [];
 
+        // Scopes are reported in participant id order, which is not the
+        // order of the indexes
+        $byId = static fn(int $x, int $y): int => strcmp($participants[$x]->getId(), $participants[$y]->getId());
+
         ksort($occupants);
         foreach ($occupants as $session => $slots) {
             ksort($slots);
             foreach ($slots as $slot => $byParticipant) {
-                ksort($byParticipant);
+                uksort($byParticipant, $byId);
                 foreach ($byParticipant as $pid => $collidingIds) {
                     if (count($collidingIds) < 2) {
                         continue;
@@ -91,7 +95,7 @@ final class RepackAuditor
         // then session order — the stable kind sort downstream preserves
         // that scope order within each kind
         $lateStarts = [];
-        ksort($movableSlots);
+        uksort($movableSlots, $byId);
         foreach ($movableSlots as $pid => $sessions) {
             ksort($sessions);
             foreach ($sessions as $session => $slots) {

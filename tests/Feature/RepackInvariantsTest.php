@@ -802,13 +802,23 @@ describe('Repack step budget flag', function (): void {
         $ample = $run(PHP_INT_MAX);
         expect($ample->isBudgetExhausted())->toBeFalse();
 
-        foreach ([1, 3, 10, 30, 100, 1_000, 10_000, 200_000] as $budget) {
-            $outcome = $run($budget);
+        // Below the default budget the searches that count their own work
+        // (the round layout, the last placement step, the search for fewer
+        // gap slots) have a share of their limits and no more, so that is
+        // where a false flag has most to answer for: most of these budgets
+        // are below it, one is the last below it, and two are above
+        $budgets = [1, 3, 10, 30, 100, 300, 1_000, 3_000, 10_000, 30_000, 100_000, 199_999, 200_000, 1_400_000];
+        $outcomes = array_map($run, $budgets);
 
+        foreach ($outcomes as $at => $outcome) {
             if (!$outcome->isBudgetExhausted()) {
-                // What the docblock promises of a false flag
+                // What the docblock promises of a false flag: every larger
+                // budget gives this outcome, and stops nothing either
                 expect($outcome->toArray())->toBe($ample->toArray());
-                expect($run($budget * 7)->toArray())->toBe($ample->toArray());
+                foreach (array_slice($outcomes, $at + 1) as $larger) {
+                    expect($larger->toArray())->toBe($outcome->toArray())
+                        ->and($larger->isBudgetExhausted())->toBeFalse();
+                }
             }
 
             // Whatever the budget, the hard guarantees hold
@@ -817,8 +827,182 @@ describe('Repack step budget flag', function (): void {
         }
 
         // A single step cannot carry any search of these instances through
-        expect($run(1)->isBudgetExhausted())->toBeTrue();
+        expect($outcomes[0]->isBudgetExhausted())->toBeTrue();
     })->with(range(1, 12));
+
+    it('says so when a budget below the default cuts short a search that counts its own work', function (): void {
+        // Participant 1 has nine events for six positions, three against
+        // each of three others, and 2 and 3 meet twice: eleven events on
+        // three sessions of two slots, three events to a slot. Eight is the
+        // most that can be placed, and the default budget places eight.
+        //
+        // A budget of 100 steps is more than the planning and the packing
+        // of this request spend, so no step is ever refused. What it does
+        // shorten is the laying out of the events before any session is
+        // chosen, which spends no step: that search has 250 position checks
+        // where it has 500,000 at the default, stops there, and the outcome
+        // is another one. The flag must say so. A budget of 1,000 steps is
+        // enough for every search to end, and gives the default's outcome
+        $p = [];
+        for ($i = 1; $i <= 4; ++$i) {
+            $p[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [];
+        foreach ([[1, 2], [1, 4], [2, 3], [1, 2], [1, 3], [2, 3], [1, 2], [1, 3], [1, 4], [1, 4], [1, 3]] as $k => [$a, $b]) {
+            $movable[] = new MovableEvent(sprintf('m%02d', $k), $p[$a], $p[$b]);
+        }
+        $repacker = new ScheduleRepacker();
+        $run = static fn(?int $budget): RepackOutcome => $repacker->repack(new RepackRequest(
+            $movable,
+            [],
+            SessionGrid::shapeOnly(3, 2, [], 3),
+            $budget === null ? new RepackOptions() : new RepackOptions(stepBudget: $budget)
+        ));
+
+        $default = $run(null);
+        expect($default->getAssignments())->toHaveCount(8)
+            ->and($default->isBudgetExhausted())->toBeFalse();
+
+        $short = $run(100);
+        expect($short->fingerprint())->not->toBe($default->fingerprint())
+            ->and($short->isBudgetExhausted())->toBeTrue();
+        assertProperness($short, $movable, []);
+
+        $enough = $run(1_000);
+        expect($enough->toArray())->toBe($default->toArray())
+            ->and($enough->isBudgetExhausted())->toBeFalse();
+    });
+
+    it('reports the over-capacity participants alike at every budget, and says a budget stopped a search where the capacity of the grid is not what the default reports', function (): void {
+        // Eleven events among five participants on one session of two
+        // slots, two events to a slot: four places. Participant 3 has six
+        // events for its two positions, 2 and 4 five each and 1 four, so
+        // they are short by four, three, three and two: twelve in all. An
+        // event between two of them counts for both, and six such events
+        // cover the twelve exactly (three of 3 v 4, and m10, m11 and m04),
+        // so six events is the fewest that have to be left out for them.
+        // That leaves five events for four places, which is what the
+        // default budget reports for the grid.
+        //
+        // The four participants are counted from the request, so every
+        // budget reports them alike. The six events are found by a search,
+        // which a budget below the default leaves a share of its nodes:
+        // with a smaller set more events are left out for the participants
+        // and the grid's own violation has a smaller demand or is missing
+        // (it was missing at every budget here up to 100 steps when this
+        // was written). The outcome may say less about the grid then; it
+        // must say that a budget stopped a search
+        $p = [];
+        for ($i = 1; $i <= 5; ++$i) {
+            $p[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [];
+        foreach ([1 => [3, 1], [2, 5], [3, 4], [1, 2], [3, 4], [2, 4], [1, 4], [3, 4], [3, 5], [3, 2], [2, 1]] as $k => [$a, $b]) {
+            $movable[] = new MovableEvent(sprintf('m%02d', $k), $p[$a], $p[$b]);
+        }
+        $repacker = new ScheduleRepacker();
+        $run = static fn(?int $budget): RepackOutcome => $repacker->repack(new RepackRequest(
+            $movable,
+            [],
+            SessionGrid::shapeOnly(1, 2, [], 2),
+            $budget === null ? new RepackOptions() : new RepackOptions(stepBudget: $budget)
+        ));
+        $capacity = static fn(RepackOutcome $outcome): array => array_map(
+            static fn(CapacityExceeded $violation): array => [
+                $violation->getParticipant()?->getId(),
+                $violation->getDemand(),
+                $violation->getCapacity(),
+            ],
+            $outcome->getCapacityExceededViolations()
+        );
+        $ofParticipants = [['p3', 6, 2], ['p2', 5, 2], ['p4', 5, 2], ['p1', 4, 2]];
+
+        $default = $run(null);
+        expect($capacity($default))->toBe([...$ofParticipants, [null, 5, 4]])
+            ->and($default->isBudgetExhausted())->toBeFalse();
+
+        foreach ([1, 3, 10, 30, 100, 300, 1_000, 10_000, 100_000] as $budget) {
+            $outcome = $run($budget);
+            $reported = $capacity($outcome);
+
+            expect(array_slice($reported, 0, 4))->toBe($ofParticipants, "budget {$budget}");
+            foreach (array_slice($reported, 4) as [$participant, $demand, $places]) {
+                // The grid's own, never with more than is true of it
+                expect($participant)->toBeNull()
+                    ->and($places)->toBe(4)
+                    ->and($demand)->toBeLessThanOrEqual(5);
+            }
+            if ($reported !== $capacity($default)) {
+                expect($outcome->isBudgetExhausted())->toBeTrue("budget {$budget}");
+            }
+            assertProperness($outcome, $movable, []);
+        }
+    });
+
+    it('is false below the default budget only when a larger budget changes nothing, where the round layout has to search', function (int $n, int $pins): void {
+        // A complete round robin with some of its events pinned at
+        // scattered positions, on a grid with one position to spare: the
+        // first pass of the round layout leaves events over, and how far
+        // its search for them gets is what a budget below the default
+        // decides. These are the requests on which a budget's share of a
+        // work limit, and not its steps, is what stops a search
+        $rng = new Randomizer(new Mt19937(7 * $n + $pins));
+        $participants = [];
+        for ($i = 0; $i < $n; ++$i) {
+            $participants[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $pairs = [];
+        for ($a = 0; $a < $n; ++$a) {
+            for ($b = $a + 1; $b < $n; ++$b) {
+                $pairs[] = [$a, $b];
+            }
+        }
+        $pairs = $rng->shuffleArray($pairs);
+        $slots = 4;
+        $sessions = intdiv($n + $slots - 1, $slots);
+        $movable = [];
+        $pinned = [];
+        $taken = [];
+        $countAt = [];
+        foreach ($pairs as $k => [$a, $b]) {
+            $session = $rng->getInt(0, $sessions - 1);
+            $slot = $rng->getInt(0, $slots - 1);
+            $at = "{$session}:{$slot}";
+            if (
+                count($pinned) < $pins
+                && !isset($taken["{$at}:{$a}"])
+                && !isset($taken["{$at}:{$b}"])
+                && ($countAt[$at] ?? 0) < intdiv($n, 2)
+            ) {
+                $pinned[] = new PinnedEvent("x{$k}", $participants[$a], $participants[$b], $session, $slot);
+                $taken["{$at}:{$a}"] = true;
+                $taken["{$at}:{$b}"] = true;
+                $countAt[$at] = ($countAt[$at] ?? 0) + 1;
+                continue;
+            }
+            $movable[] = new MovableEvent("m{$k}", $participants[$a], $participants[$b]);
+        }
+        $grid = SessionGrid::shapeOnly($sessions, $slots, [], intdiv($n, 2));
+        $repacker = new ScheduleRepacker();
+        $budgets = [1, 30, 300, 1_000, 3_000, 10_000, 30_000, 100_000, 200_000, 400_000];
+        $outcomes = array_map(
+            static fn(int $budget): RepackOutcome => $repacker->repack(
+                new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
+            ),
+            $budgets
+        );
+
+        foreach ($outcomes as $at => $outcome) {
+            if (!$outcome->isBudgetExhausted()) {
+                foreach (array_slice($outcomes, $at + 1) as $larger) {
+                    expect($larger->toArray())->toBe($outcome->toArray())
+                        ->and($larger->isBudgetExhausted())->toBeFalse();
+                }
+            }
+            assertProperness($outcome, $movable, $pinned);
+            expect(count($outcome->getAssignments()) + count($outcome->getUnplaced()))->toBe(count($movable));
+        }
+    })->with([[8, 6], [8, 12], [10, 8], [10, 20], [12, 10], [12, 30]]);
 
     it('is true for some outcome that a larger budget would have changed', function (): void {
         // Without this the property above could hold with the flag stuck on
@@ -884,15 +1068,43 @@ describe('Repack step budget flag', function (): void {
         }
     })->with(array_slice(array_keys(smallRepackCorpus()), 0, 40));
 
-    it('gives the last placement step a budget of its own, so a run whose searches spent theirs still places every event', function (): void {
-        // A complete round robin of 24 on six four-slot sessions: the
-        // packing searches spend the whole default budget, and 26 events
-        // were left unplaced before the last placement step existed
-        $outcome = (new ScheduleRepacker())->repack(completeGraphRequest(24, 'from one'));
+    it('gives the steps after the packing a budget of their own, so a run whose searches spent theirs still closes a gap', function (): void {
+        // Three participants who all meet, one event to a slot, on two
+        // sessions of three slots. In one session the three events follow
+        // each other and the participant of the first and the third waits
+        // a slot; two events in one session and one in the other leave no
+        // gap. Three steps do not carry the planning and packing through,
+        // and what they leave has the gap. The search for fewer gap slots
+        // closes it on three steps of its own; on the steps the searches
+        // left, which is none, it could not.
+        //
+        // The count of placed events no longer shows the second budget (a
+        // complete round robin of 24 was the case here, and then a request
+        // of seven events): the rounds the events are ordered by are a
+        // schedule of their own, made without a step of either budget, and
+        // they are returned when the planned schedule places fewer
+        $p = [];
+        for ($i = 1; $i <= 3; ++$i) {
+            $p[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [
+            new MovableEvent('a', $p[1], $p[2]),
+            new MovableEvent('b', $p[2], $p[3]),
+            new MovableEvent('c', $p[1], $p[3]),
+        ];
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+            $movable,
+            [],
+            SessionGrid::shapeOnly(2, 3, [], 1),
+            new RepackOptions(stepBudget: 3)
+        ));
 
         expect($outcome->isBudgetExhausted())->toBeTrue()
             ->and($outcome->getUnplaced())->toBe([])
-            ->and($outcome->getAssignments())->toHaveCount(276);
+            ->and($outcome->getAssignments())->toHaveCount(3)
+            ->and($outcome->getContiguityBrokenViolations())->toBe([]);
+        assertProperness($outcome, $movable, []);
     });
 
     it('spends no budget on the last placement step when every group of participants already fills the positions it can', function (): void {
@@ -927,39 +1139,52 @@ describe('Repack step budget flag', function (): void {
     });
 
     it('spends no budget on the last placement step when only the over-capacity drops are left over', function (): void {
-        // p1 has seven events for five slots, so two of them cannot be
-        // placed, and every other event is. Placing a dropped event would
-        // only leave out another of p1's, so there is nothing to search
-        // for, and a budget of 50 that the earlier phases do not use up
-        // must not be reported as having stopped one
+        // p1 has five events for the three positions of one session, so
+        // two of them cannot be placed, and every other event is. Placing
+        // a dropped event would only leave out another of p1's, so there
+        // is nothing to search for: the planner tells the last placement
+        // step that two events fit nowhere, and the step then searches for
+        // no exchange. A budget of 100 steps is more than every search of
+        // this request needs (75 are enough) and fewer than a needless
+        // search for an exchange spends with them (the flag is true up to
+        // 160 steps when the step is not told), so the flag shows which
+        // happened.
+        //
+        // This was shown by a request of ten events at 60 steps until a
+        // budget below the default began to shorten the round layout too:
+        // on that request the layout's own search is cut short at every
+        // budget small enough to notice the exchange search, and the flag
+        // reports that. On this one the layout places everything it can
+        // within its share. The two halves are also held where they are
+        // made, in tests/Unit/Repack/LeftoverRecolourerTest.php: "tells
+        // the last placement step how many events no placement can hold"
+        // and "searches for no exchange when the events left over are as
+        // many as no placement can hold"
         $p = [];
-        for ($i = 1; $i <= 6; ++$i) {
+        foreach ([1, 2, 3, 4, 6] as $i) {
             $p[$i] = new Participant("p{$i}", "P{$i}");
         }
-        $movable = [
-            new MovableEvent('m01', $p[1], $p[3]),
-            new MovableEvent('m02', $p[1], $p[6]),
-            new MovableEvent('m03', $p[2], $p[4]),
-            new MovableEvent('m04', $p[2], $p[5]),
-            new MovableEvent('m05', $p[2], $p[1]),
-            new MovableEvent('m06', $p[6], $p[1]),
-            new MovableEvent('m07', $p[1], $p[3]),
-            new MovableEvent('m08', $p[6], $p[1]),
-            new MovableEvent('m09', $p[6], $p[4]),
-            new MovableEvent('m10', $p[4], $p[1]),
-        ];
-        $pinned = [new PinnedEvent('x1', $p[5], $p[4], 0, 1)];
+        $movable = [];
+        foreach ([1 => [1, 6], [2, 6], [1, 3], [3, 1], [1, 4], [3, 4], [1, 2]] as $k => [$a, $b]) {
+            $movable[] = new MovableEvent("m0{$k}", $p[$a], $p[$b]);
+        }
 
         $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
             $movable,
-            $pinned,
-            SessionGrid::shapeOnly(1, 5, [], 4),
-            new RepackOptions(stepBudget: 50)
+            [],
+            SessionGrid::shapeOnly(1, 3, [], 3),
+            new RepackOptions(stepBudget: 100)
         ));
 
-        expect($outcome->getAssignments())->toHaveCount(8)
-            ->and(array_map(static fn(UnplacedEvent $u): string => $u->getReason()->value, $outcome->getUnplaced()))
-            ->toBe(['participant_over_capacity', 'participant_over_capacity'])
+        expect($outcome->getAssignments())->toHaveCount(5)
+            ->and(array_map(
+                static fn(UnplacedEvent $u): array => [$u->getReason(), $u->getParticipant()?->getId()],
+                $outcome->getUnplaced()
+            ))
+            ->toBe([
+                [UnplacedReason::ParticipantOverCapacity, 'p1'],
+                [UnplacedReason::ParticipantOverCapacity, 'p1'],
+            ])
             ->and($outcome->isBudgetExhausted())->toBeFalse();
     });
 
@@ -1213,6 +1438,149 @@ function largestSharedDrops(array $edges, array $need): int
     return $best;
 }
 
+/**
+ * A random request with a few participants in most of the events, small
+ * enough for RepackBruteForce: four to eight participants, one to three
+ * sessions of one to three slots each, a capacity of 2, 3, 4 or unbounded,
+ * six to eleven events of which seven in ten have one of one to three
+ * "hub" participants, and up to four legal pins. A hub has more events
+ * than positions, so which of its events are left out decides what else
+ * fits, which is where the last placement step has to exchange events.
+ *
+ * @return array{0: array<MovableEvent>, 1: array<PinnedEvent>, 2: SessionGrid}
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ * @throws Random\RandomException
+ */
+function hubRepackInstance(int $seed): array
+{
+    $rng = new Randomizer(new Mt19937($seed));
+    $participantCount = $rng->getInt(4, 8);
+    $participants = [];
+    for ($i = 1; $i <= $participantCount; ++$i) {
+        $participants[] = new Participant("p{$i}", "P{$i}");
+    }
+    $sessions = $rng->getInt(1, 3);
+    $slotsBySession = [];
+    for ($session = 0; $session < $sessions; ++$session) {
+        $slotsBySession[$session] = $rng->getInt(1, 3);
+    }
+    $capacity = [2, 3, 4, null][$rng->getInt(0, 3)];
+    $grid = SessionGrid::shapeOnly($sessions, 1, $slotsBySession, $capacity);
+
+    $hubs = $rng->getInt(1, 3);
+    $movable = [];
+    $eventCount = $rng->getInt(6, 11);
+    for ($i = 1; $i <= $eventCount; ++$i) {
+        $a = $rng->getInt(0, 9) < 7 ? $rng->getInt(0, $hubs - 1) : $rng->getInt(0, $participantCount - 1);
+        $b = $rng->getInt(0, $participantCount - 2);
+        if ($b >= $a) {
+            ++$b;
+        }
+        $movable[] = new MovableEvent(sprintf('m%02d', $i), $participants[$a], $participants[$b]);
+    }
+
+    $pinned = [];
+    $pinnedAt = [];
+    $countAt = [];
+    $attempts = $rng->getInt(0, 4);
+    for ($i = 1; $i <= $attempts; ++$i) {
+        $a = $rng->getInt(0, $participantCount - 1);
+        $b = $rng->getInt(0, $participantCount - 2);
+        if ($b >= $a) {
+            ++$b;
+        }
+        $session = $rng->getInt(0, $sessions - 1);
+        $slot = $rng->getInt(0, $slotsBySession[$session] - 1);
+        $position = "{$session}:{$slot}";
+        if ($capacity !== null && ($countAt[$position] ?? 0) >= $capacity) {
+            continue;
+        }
+        if (isset($pinnedAt["{$position}:{$a}"]) || isset($pinnedAt["{$position}:{$b}"])) {
+            continue;
+        }
+        $pinned[] = new PinnedEvent("x{$i}", $participants[$a], $participants[$b], $session, $slot);
+        $pinnedAt["{$position}:{$a}"] = true;
+        $pinnedAt["{$position}:{$b}"] = true;
+        $countAt[$position] = ($countAt[$position] ?? 0) + 1;
+    }
+
+    return [$movable, $pinned, $grid];
+}
+
+/**
+ * The requests of tests/Fixtures/repack/placed-by-0.2.3.json, each with
+ * the number of events release 0.2.3 placed on it.
+ *
+ * They were found by repacking some 11,860 generated requests, and 151
+ * large ones with many pins, with 0.2.3 and with the change that made a
+ * repack independent of its ids (issue #49): on these that change, as it
+ * first stood or without one of the things it then gained, placed fewer
+ * events than 0.2.3 had. The last three are round robins of 40 with 60,
+ * 200 and 400 events pinned, which came out short for as long as the
+ * last placement step had the same limit on its work for every size of
+ * request. The counts were measured with a copy of that release's
+ * source, so that this test needs no code of it. A request is plain
+ * data there: the participant
+ * ids, the slots of each session, the capacity of a slot (null for
+ * unbounded), the movable events as [id, participant, participant] and
+ * the pinned ones as [id, participant, participant, session, slot], a
+ * participant being its place in the list of ids.
+ *
+ * The file is read again for every request and nothing is kept: the
+ * requests are large, and a test process that held them all to the end
+ * of the suite would need the memory for it.
+ *
+ * @return array<string, array{participants: list<string>, slots: list<int>, capacity: int|null, movable: list<array{string, int, int}>, pinned: list<array{string, int, int, int, int}>, placed: int}>
+ *
+ * @throws JsonException
+ */
+function requestsPlacedByTheLastRelease(): array
+{
+    /** @var array<string, array{participants: list<string>, slots: list<int>, capacity: int|null, movable: list<array{string, int, int}>, pinned: list<array{string, int, int, int, int}>, placed: int}> $data */
+    $data = json_decode(
+        (string) file_get_contents(__DIR__ . '/../Fixtures/repack/placed-by-0.2.3.json'),
+        true,
+        flags: JSON_THROW_ON_ERROR
+    );
+
+    return $data;
+}
+
+/**
+ * One request of that fixture as the objects a repack takes, with the
+ * number of events release 0.2.3 placed on it.
+ *
+ * @return array{0: array<MovableEvent>, 1: array<PinnedEvent>, 2: SessionGrid, 3: int}
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ * @throws JsonException
+ */
+function requestPlacedByTheLastRelease(string $name): array
+{
+    $request = requestsPlacedByTheLastRelease()[$name];
+
+    $participants = [];
+    foreach ($request['participants'] as $id) {
+        $participants[] = new Participant($id, "P {$id}");
+    }
+    $movable = [];
+    foreach ($request['movable'] as [$id, $a, $b]) {
+        $movable[] = new MovableEvent($id, $participants[$a], $participants[$b]);
+    }
+    $pinned = [];
+    foreach ($request['pinned'] as [$id, $a, $b, $session, $slot]) {
+        $pinned[] = new PinnedEvent($id, $participants[$a], $participants[$b], $session, $slot);
+    }
+
+    return [
+        $movable,
+        $pinned,
+        SessionGrid::shapeOnly(count($request['slots']), 1, $request['slots'], $request['capacity']),
+        $request['placed'],
+    ];
+}
+
 describe('Repacking every placeable event', function (): void {
     it('places every event of a complete round robin that fits the grid', function (int $n, string $idFormat): void {
         $request = completeGraphRequest($n, $idFormat);
@@ -1290,6 +1658,50 @@ describe('Repacking every placeable event', function (): void {
             expect($covered[$id] ?? 0)->toBeGreaterThanOrEqual($shortfall);
         }
     })->with(array_keys(smallRepackCorpus()));
+
+    it('places as many events as the best placement there is where a few participants have most of the events', function (int $from): void {
+        // A hundred hub instances to a row. Three seeds came out one event
+        // short before: 350 while the last placement step could not take
+        // two events out for one, 257 while a path could not move an event
+        // an exchange had brought in, and 792 while there was no third
+        // schedule from another order of the events
+        for ($seed = $from; $seed < $from + 100; ++$seed) {
+            [$movable, $pinned, $grid] = hubRepackInstance($seed);
+
+            $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+
+            expect(count($outcome->getAssignments()))
+                ->toBe(RepackBruteForce::maxPlaced($movable, $pinned, $grid), "hub instance {$seed}");
+            assertProperness($outcome, $movable, $pinned);
+            assertNoSlotAvailableIsLiteral($outcome, $movable, $pinned, $grid);
+        }
+    })->with(range(1, 701, 100));
+
+    it('places at least as many events as release 0.2.3 did on the requests an order of events once lost one on', function (string $name): void {
+        [$movable, $pinned, $grid, $placedBefore] = requestPlacedByTheLastRelease($name);
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+
+        expect(count($outcome->getAssignments()))->toBeGreaterThanOrEqual($placedBefore);
+        assertProperness($outcome, $movable, $pinned);
+        assertNoSlotAvailableIsLiteral($outcome, $movable, $pinned, $grid);
+        expect(count($outcome->getAssignments()) + count($outcome->getUnplaced()))->toBe(count($movable));
+
+        // Pins hold capacity: no position holds more than the grid allows
+        $capacity = $grid->getCapacityLimit();
+        if ($capacity !== null) {
+            $perPosition = [];
+            foreach ($pinned as $pin) {
+                $key = "{$pin->getSession()}:{$pin->getSlot()}";
+                $perPosition[$key] = ($perPosition[$key] ?? 0) + 1;
+            }
+            foreach ($outcome->getAssignments() as $assignment) {
+                $key = "{$assignment->getSession()}:{$assignment->getSlot()}";
+                $perPosition[$key] = ($perPosition[$key] ?? 0) + 1;
+            }
+            expect($perPosition === [] ? 0 : max($perPosition))->toBeLessThanOrEqual($capacity);
+        }
+    })->with(array_keys(requestsPlacedByTheLastRelease()));
 
     it('places every event it can when the search for shared drops stops at its node limit', function (): void {
         // Thirteen participants on one session of six slots, no capacity
@@ -1414,4 +1826,485 @@ describe('Repacking every placeable event', function (): void {
         ]);
         expect($outcome->getAssignments())->toHaveCount(2);
     });
+});
+
+/**
+ * The gap slots an outcome reports, over all its ContiguityBroken
+ * violations.
+ */
+function reportedGapSlots(RepackOutcome $outcome): int
+{
+    return array_sum(array_map(
+        static fn(ContiguityBroken $violation): int => $violation->getGapSlots(),
+        $outcome->getContiguityBrokenViolations()
+    ));
+}
+
+/**
+ * The same request under other names: every participant and every event
+ * is given a new id by a seeded shuffle, the two participants of an event
+ * change places at random, and both lists come in another order. The grid
+ * is the same object.
+ *
+ * @param array<MovableEvent> $movable
+ * @param array<PinnedEvent> $pinned
+ *
+ * @return array{0: RepackRequest, 1: array<string, string>} The request, and old participant id by new one
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ */
+function relabelledRequest(array $movable, array $pinned, SessionGrid $grid, int $seed, ?RepackOptions $options = null): array
+{
+    $rng = new Randomizer(new Mt19937($seed));
+
+    $oldIds = [];
+    foreach ([...$movable, ...$pinned] as $event) {
+        foreach ($event->getParticipants() as $participant) {
+            $oldIds[$participant->getId()] = true;
+        }
+    }
+    $oldIds = array_map(strval(...), array_keys($oldIds));
+    $names = $rng->shuffleArray(array_map(static fn(int $i): string => 'q' . dechex(4096 + $i * 37 % 1009), array_keys($oldIds)));
+    $renamed = [];
+    $oldByNew = [];
+    foreach ($oldIds as $i => $oldId) {
+        $renamed[$oldId] = new Participant($names[$i], "Renamed {$names[$i]}");
+        $oldByNew[$names[$i]] = $oldId;
+    }
+
+    $eventNames = $rng->shuffleArray(array_map(static fn(int $i): string => 'z' . ($i * 7919 % 10007), array_keys(array_values($movable))));
+    $newMovable = [];
+    foreach (array_values($movable) as $i => $event) {
+        $pair = [$renamed[$event->getParticipantA()->getId()], $renamed[$event->getParticipantB()->getId()]];
+        if ($rng->getInt(0, 1) === 1) {
+            $pair = array_reverse($pair);
+        }
+        $newMovable[] = new MovableEvent($eventNames[$i], $pair[0], $pair[1]);
+    }
+    $newPinned = [];
+    foreach (array_values($pinned) as $i => $pin) {
+        $newPinned[] = new PinnedEvent(
+            'y' . (9973 - $i),
+            $renamed[$pin->getParticipantB()->getId()],
+            $renamed[$pin->getParticipantA()->getId()],
+            $pin->getSession(),
+            $pin->getSlot()
+        );
+    }
+
+    return [
+        new RepackRequest($rng->shuffleArray($newMovable), $rng->shuffleArray($newPinned), $grid, $options ?? new RepackOptions()),
+        $oldByNew,
+    ];
+}
+
+/**
+ * What an outcome says, with no event id in it and every participant
+ * under the name the map gives: each assignment as its two participants
+ * and its position, each unplaced event as its two participants, its
+ * reason and the participant it names, and each violation as its wire
+ * shape. Two outcomes with the same description are the same schedule up
+ * to which of the events between the same two participants is which.
+ *
+ * @param array<MovableEvent> $movable The request's movable events
+ * @param array<string, string>|null $oldByNew Null when the ids are the ones to describe by
+ *
+ * @return array{assignments: list<string>, unplaced: list<string>, violations: list<string>}
+ *
+ * @throws JsonException
+ */
+function outcomeDescription(RepackOutcome $outcome, array $movable, ?array $oldByNew = null): array
+{
+    $name = static fn(?string $id): ?string => $id === null || $oldByNew === null ? $id : $oldByNew[$id];
+    $pairOf = [];
+    foreach ($movable as $event) {
+        $pair = [(string) $name($event->getParticipantA()->getId()), (string) $name($event->getParticipantB()->getId())];
+        sort($pair);
+        $pairOf[$event->getId()] = implode(' v ', $pair);
+    }
+
+    $assignments = [];
+    foreach ($outcome->getAssignments() as $assignment) {
+        $assignments[] = "{$pairOf[$assignment->getEventId()]} at {$assignment->getSession()}:{$assignment->getSlot()}";
+    }
+    $unplaced = [];
+    foreach ($outcome->getUnplaced() as $event) {
+        $unplaced[] = "{$pairOf[$event->getEventId()]}: {$event->getReason()->value} for " . ($name($event->getParticipant()?->getId()) ?? 'nobody');
+    }
+    $violations = [];
+    foreach ($outcome->getViolations() as $violation) {
+        $shape = $violation->toArray();
+        if (isset($shape['event_id']) && is_string($shape['event_id'])) {
+            $shape['event_id'] = $pairOf[$shape['event_id']];
+        }
+        if (isset($shape['participant']) && is_string($shape['participant'])) {
+            $shape['participant'] = $name($shape['participant']);
+        }
+        $violations[] = json_encode($shape, JSON_THROW_ON_ERROR);
+    }
+    sort($assignments);
+    sort($unplaced);
+    sort($violations);
+
+    return ['assignments' => $assignments, 'unplaced' => $unplaced, 'violations' => $violations];
+}
+
+/**
+ * What an outcome says that can be said without an id: how many events
+ * each position holds, how many are unplaced for each reason, and every
+ * violation with its numbers and without its participant or event.
+ *
+ * @return array{positions: array<string, int>, unplaced: array<string, int>, violations: list<string>}
+ *
+ * @throws JsonException
+ */
+function labelFreeDescription(RepackOutcome $outcome): array
+{
+    $positions = [];
+    foreach ($outcome->getAssignments() as $assignment) {
+        $key = "{$assignment->getSession()}:{$assignment->getSlot()}";
+        $positions[$key] = ($positions[$key] ?? 0) + 1;
+    }
+    ksort($positions);
+
+    $unplaced = [];
+    foreach ($outcome->getUnplaced() as $event) {
+        $unplaced[$event->getReason()->value] = ($unplaced[$event->getReason()->value] ?? 0) + 1;
+    }
+    ksort($unplaced);
+
+    $violations = [];
+    foreach ($outcome->getViolations() as $violation) {
+        $shape = $violation->toArray();
+        unset($shape['event_id'], $shape['event_ids']);
+        if (isset($shape['participant'])) {
+            $shape['participant'] = 'somebody';
+        }
+        $violations[] = json_encode($shape, JSON_THROW_ON_ERROR);
+    }
+    sort($violations);
+
+    return ['positions' => $positions, 'unplaced' => $unplaced, 'violations' => $violations];
+}
+
+/**
+ * Every renaming of the participants that leaves a request as it is: the
+ * same number of movable events between every two of them, and the same
+ * pins at the same positions. The first is always the renaming of each to
+ * itself. Found by trying every renaming that keeps what each participant
+ * has for itself, one participant at a time; it returns null, for "not
+ * tried", when the request has more than ten participants or more than
+ * $limit symmetries.
+ *
+ * @param array<MovableEvent> $movable
+ * @param array<PinnedEvent> $pinned
+ *
+ * @return list<array<string, string>>|null Each as new id by old id
+ */
+function requestSymmetries(array $movable, array $pinned, int $limit = 2_000): ?array
+{
+    $between = [];
+    $own = [];
+    foreach ($movable as $event) {
+        $a = $event->getParticipantA()->getId();
+        $b = $event->getParticipantB()->getId();
+        $between[$a][$b]['events'] = ($between[$a][$b]['events'] ?? 0) + 1;
+        $between[$b][$a]['events'] = ($between[$b][$a]['events'] ?? 0) + 1;
+        $own[$a]['events'] = ($own[$a]['events'] ?? 0) + 1;
+        $own[$b]['events'] = ($own[$b]['events'] ?? 0) + 1;
+    }
+    foreach ($pinned as $pin) {
+        $a = $pin->getParticipantA()->getId();
+        $b = $pin->getParticipantB()->getId();
+        $at = "{$pin->getSession()}:{$pin->getSlot()}";
+        $between[$a][$b]['pins'][] = $at;
+        $between[$b][$a]['pins'][] = $at;
+        $own[$a]['pins'][] = $at;
+        $own[$b]['pins'][] = $at;
+    }
+    $normal = static function (?array $facts): string {
+        $pins = $facts['pins'] ?? [];
+        sort($pins);
+
+        return ($facts['events'] ?? 0) . '|' . implode(',', $pins);
+    };
+    $ids = array_map(strval(...), array_keys($own));
+    if (count($ids) > 10) {
+        // Trying renamings one participant at a time does not end in
+        // reasonable time on a larger request in which all are alike
+        return null;
+    }
+
+    $found = [];
+    $image = [];
+    $used = [];
+    $extend = static function (int $at) use (&$extend, &$found, &$image, &$used, $ids, $own, $between, $normal, $limit): bool {
+        if ($at === count($ids)) {
+            $found[] = $image;
+
+            return count($found) <= $limit;
+        }
+        $id = $ids[$at];
+        foreach ($ids as $candidate) {
+            if (isset($used[$candidate]) || $normal($own[$id]) !== $normal($own[$candidate])) {
+                continue;
+            }
+            foreach (array_slice($ids, 0, $at) as $earlier) {
+                if ($normal($between[$id][$earlier] ?? null) !== $normal($between[$candidate][$image[$earlier]] ?? null)) {
+                    continue 2;
+                }
+            }
+            $image[$id] = $candidate;
+            $used[$candidate] = true;
+            $more = $extend($at + 1);
+            unset($image[$id], $used[$candidate]);
+            if (!$more) {
+                return false;
+            }
+        }
+
+        return true;
+    };
+
+    return $extend(0) ? $found : null;
+}
+
+/**
+ * Assert that a relabelled request was repacked as the original was: the
+ * same in everything that can be said without an id, and the same
+ * schedule, participant for participant, up to a symmetry of the request
+ * (where two participants are alike in the request, their ids decide
+ * which of them gets which part of the schedule, and nothing else).
+ *
+ * @param array<MovableEvent> $movable
+ * @param array<PinnedEvent> $pinned
+ * @param array<string, string> $oldByNew
+ *
+ * @throws JsonException
+ */
+function expectSameRepack(
+    RepackOutcome $original,
+    array $movable,
+    array $pinned,
+    RepackOutcome $renamed,
+    RepackRequest $renamedRequest,
+    array $oldByNew
+): void {
+    expect(labelFreeDescription($renamed))->toBe(labelFreeDescription($original));
+
+    $symmetries = requestSymmetries($movable, $pinned);
+    if ($symmetries === null) {
+        return;
+    }
+    $expected = outcomeDescription($original, $movable);
+    $matched = false;
+    foreach ($symmetries as $symmetry) {
+        $names = array_map(static fn(string $old): string => $symmetry[$old], $oldByNew);
+        if (outcomeDescription($renamed, $renamedRequest->getMovableEvents(), $names) === $expected) {
+            $matched = true;
+            break;
+        }
+    }
+    expect($matched)->toBeTrue();
+}
+
+describe('Repacking the same request under other ids', function (): void {
+    it('gives the same schedule, the same unplaced events and the same violations', function (int $seed): void {
+        [$movable, $pinned, $grid] = randomRepackInstance($seed);
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+
+        foreach ([1, 2, 3] as $shuffle) {
+            [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, 1000 * $seed + $shuffle);
+            $renamed = (new ScheduleRepacker())->repack($request);
+
+            expectSameRepack($outcome, $movable, $pinned, $renamed, $request, $oldByNew);
+
+            // What is ordered by id is still ordered by id
+            assertScopeOrder($renamed);
+            $ids = array_map(static fn(SlotAssignment $a): string => $a->getEventId(), $renamed->getAssignments());
+            $sorted = $ids;
+            usort($sorted, strcmp(...));
+            expect($ids)->toBe($sorted);
+        }
+    })->with(range(1, 40));
+
+    it('gives the same schedule under other ids at a budget below the default too', function (int $seed, int $budget): void {
+        // A small budget shortens searches and so changes the schedule. It
+        // does not change what the schedule is made from: the order of the
+        // participants is worked out in full whatever the budget, so the
+        // ids decide no more at one step than they do at the default
+        [$movable, $pinned, $grid] = randomRepackInstance($seed);
+        $options = new RepackOptions(stepBudget: $budget);
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+
+        [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, 1000 * $seed + $budget, $options);
+
+        expectSameRepack($outcome, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+    })->with(range(1, 12))->with([1, 100, 2_000, 20_000]);
+
+    it('gives the same schedule on the small corpus, where pins, capacity and over-capacity drops decide it', function (string $name): void {
+        [$movable, $pinned, $grid] = smallRepackCorpus()[$name];
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+
+        foreach ([1, 2] as $shuffle) {
+            [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, $shuffle);
+
+            expectSameRepack($outcome, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+        }
+    })->with(array_keys(smallRepackCorpus()));
+
+    it('gives a complete round robin the same clean schedule whatever its events are called', function (int $n): void {
+        $described = [];
+        foreach (['from one', 'from a thousand', 'scrambled'] as $idFormat) {
+            $request = completeGraphRequest($n, $idFormat);
+            $outcome = (new ScheduleRepacker())->repack($request);
+
+            // No gap, no late start, nothing unplaced: on the ids from one
+            // and from a thousand, 0.2.3 reported gaps for most n from 10
+            expect($outcome->isClean())->toBeTrue();
+            $described[] = outcomeDescription($outcome, $request->getMovableEvents());
+        }
+
+        expect($described[1])->toBe($described[0])
+            ->and($described[2])->toBe($described[0]);
+    })->with(range(6, 40, 2));
+
+    it('gives a round robin with rounds already played the same schedule under other participant ids', function (int $n): void {
+        // The first three rounds of the circle method are pinned in the
+        // first session; every participant then has the same number of
+        // events and pins at the same positions, so only who plays whom
+        // tells them apart
+        $participants = [];
+        for ($i = 0; $i < $n; ++$i) {
+            $participants[$i] = new Participant(sprintf('t%02d', $i), "T{$i}");
+        }
+        $movable = [];
+        $pinned = [];
+        for ($i = 0; $i < $n; ++$i) {
+            for ($j = $i + 1; $j < $n; ++$j) {
+                $round = $j === $n - 1 ? (2 * $i) % ($n - 1) : ($i + $j) % ($n - 1);
+                if ($round < 3) {
+                    $pinned[] = new PinnedEvent("x{$i}-{$j}", $participants[$i], $participants[$j], 0, $round);
+                } else {
+                    $movable[] = new MovableEvent("m{$i}-{$j}", $participants[$i], $participants[$j]);
+                }
+            }
+        }
+        $grid = SessionGrid::shapeOnly(intdiv($n + 2, 4), 4, [], intdiv($n, 2));
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+
+        foreach ([1, 2, 3] as $shuffle) {
+            [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, $shuffle);
+
+            expectSameRepack($outcome, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+        }
+
+        // And at budgets below the default, where every search but the
+        // ordering of the participants is cut short
+        foreach ([1, 2_000, 20_000] as $budget) {
+            $options = new RepackOptions(stepBudget: $budget);
+            $short = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+            [$request, $oldByNew] = relabelledRequest($movable, $pinned, $grid, $budget, $options);
+
+            expectSameRepack($short, $movable, $pinned, (new ScheduleRepacker())->repack($request), $request, $oldByNew);
+        }
+    })->with([8, 12, 16, 20]);
+
+    it('gives a large round robin with one round played the same counts under other participant ids', function (int $n): void {
+        // One round played is the hardest request of its size to order:
+        // everybody has the same events and the same pin, and no two
+        // participants can simply be exchanged. With the ordering's work
+        // limit at 600,000 these fell back to the ids, and a round robin
+        // of 40 on sessions of four, five and six slots came back with no
+        // gap under one naming and with nine and ten gaps under two others
+        $participants = [];
+        for ($i = 0; $i < $n; ++$i) {
+            $participants[$i] = new Participant(sprintf('t%02d', $i), "T{$i}");
+        }
+        $movable = [];
+        $pinned = [];
+        for ($i = 0; $i < $n; ++$i) {
+            for ($j = $i + 1; $j < $n; ++$j) {
+                $round = $j === $n - 1 ? (2 * $i) % ($n - 1) : ($i + $j) % ($n - 1);
+                if ($round === 0) {
+                    $pinned[] = new PinnedEvent("x{$i}-{$j}", $participants[$i], $participants[$j], 0, 0);
+                } else {
+                    $movable[] = new MovableEvent("m{$i}-{$j}", $participants[$i], $participants[$j]);
+                }
+            }
+        }
+        $slots = [];
+        for ($positions = 0; $positions < $n + 1; $positions += 4 + (count($slots) - 1) % 3) {
+            $slots[] = 4 + count($slots) % 3;
+        }
+        $grid = SessionGrid::shapeOnly(count($slots), 4, $slots, intdiv($n, 2));
+        $described = labelFreeDescription((new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid)));
+
+        foreach ([1, 2] as $shuffle) {
+            [$request] = relabelledRequest($movable, $pinned, $grid, $shuffle);
+
+            expect(labelFreeDescription((new ScheduleRepacker())->repack($request)))->toBe($described);
+        }
+    })->with([36, 40]);
+});
+
+describe('Repacking without an avoidable gap', function (): void {
+    it('reports no more gap slots than the best placement of as many events has', function (string $name): void {
+        [$movable, $pinned, $grid] = smallRepackCorpus()[$name];
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
+
+        expect(count($outcome->getAssignments()))->toBe(RepackBruteForce::maxPlaced($movable, $pinned, $grid))
+            ->and(reportedGapSlots($outcome))->toBe(RepackBruteForce::fewestGapSlots($movable, $pinned, $grid))
+            ->and($outcome->isBudgetExhausted())->toBeFalse();
+        assertProperness($outcome, $movable, $pinned);
+        assertNoSlotAvailableIsLiteral($outcome, $movable, $pinned, $grid);
+    })->with(array_keys(smallRepackCorpus()));
+
+    it('splits events over two sessions where one session cannot hold them without a gap', function (): void {
+        // Sessions of two and four slots, one event per slot. p4 plays p3,
+        // p2 and p1, and p3 plays p1: in one session the three events
+        // between p4, p3 and p1 follow each other, and one of the three
+        // participants waits a slot between its two. Two events in each
+        // session leave no gap. The consolidation weight alone puts all
+        // four in the second session
+        $p = [];
+        for ($i = 1; $i <= 4; ++$i) {
+            $p[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [
+            new MovableEvent('100', $p[4], $p[3]),
+            new MovableEvent('101', $p[4], $p[2]),
+            new MovableEvent('102', $p[3], $p[1]),
+            new MovableEvent('103', $p[4], $p[1]),
+        ];
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(2, 2, [1 => 4], 1)));
+
+        expect($outcome->getAssignments())->toHaveCount(4)
+            ->and($outcome->getContiguityBrokenViolations())->toBe([])
+            ->and($outcome->isBudgetExhausted())->toBeFalse();
+        assertProperness($outcome, $movable, []);
+    });
+
+    it('packs a complete round robin of six without a gap however wide the one session is', function (int $slots): void {
+        // Five slots of three events hold it. A session of more than 20
+        // slots is not searched for gap-free runs, and was packed with
+        // slot loads of 3, 2, 2, 2, 2, 2, 2 and four gaps
+        $participants = [];
+        for ($i = 1; $i <= 6; ++$i) {
+            $participants[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [];
+        for ($i = 1; $i <= 6; ++$i) {
+            for ($j = $i + 1; $j <= 6; ++$j) {
+                $movable[] = new MovableEvent("k{$i}{$j}", $participants[$i], $participants[$j]);
+            }
+        }
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, $slots, [], 3)));
+
+        expect($outcome->isClean())->toBeTrue()
+            ->and($outcome->getAssignments())->toHaveCount(15);
+    })->with([5, 6, 10, 20, 21, 22, 30]);
 });

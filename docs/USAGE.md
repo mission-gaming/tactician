@@ -99,7 +99,7 @@ anything else that competes.
 | **Pinned event** | An event already on the grid that must not move (`PinnedEvent`). It occupies its position for both participants, consumes slot capacity, and may name participants absent from the movable set. Which events are pinned is caller policy about historical provenance. |
 | **Repack violation** | One structured compromise in a repack outcome (`RepackViolation`): double-booking (audited, never produced), unplaced events, interior gaps, late starts, exceeded capacity — data with participant/session/magnitude, never prose. The caller renders its own messages and decides what is fatal. |
 | **Unplaced event** | A movable event the repack gave no position (`UnplacedEvent`), with the reason (`UnplacedReason`). Every movable event is either assigned or unplaced. |
-| **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the last placement step has a second one of its own, so a repack can spend up to twice that number. Steps, not time, so the result is the same on every machine. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
+| **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the steps after the packing (the last placement step and the search for fewer gap slots) have a second one of their own, so a repack can spend up to twice that number. Steps, not time, so the result is the same on every machine. The searches that count their own work and not steps (laying the events out before any session is chosen, the last placement step, the search for fewer gap slots) have limits that are fixed at the default budget and above, and the same share of those limits as the budget is of the default below it, so a smaller budget shortens every search. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
 | **Last placement step** | The part of a repack that runs only when an event is still unplaced: it moves placed events along alternating paths, and exchanges one placed event for one unplaced event where that lets a further one in, to place events the earlier phases left over. It never double-books, never moves a pin and never exceeds a slot's capacity. |
 | **Outcome fingerprint** | A short string identifying what a repack outcome holds (`RepackOutcome::fingerprint()`): equal for the same assignments, unplaced events and violations, different when any differs, and the same on every PHP version and platform. For detecting that a plan computed again is not the plan that was shown. |
 | **Pin conflict** | One participant pinned in two events at the same session and slot of a repack request. The request is rejected with a `PinConflictException`, which carries the IDs of the two events; the caller moves or unpins one of them. Where the two events also exceed the capacity of the slot, the request reports that instead (`PinCapacityExceeded`). |
@@ -4418,21 +4418,71 @@ packing leaves an event without a position, a **last placement step**
 moves events that are already placed to make room for it: along an
 alternating path (the event takes a position where one placed event is
 in its way, that event moves to a position of its own, and so on), and
-where that is not enough, by taking one placed event out for an
-unplaced one when that lets a further one in. It may move events
+where that is not enough, by taking placed events out for unplaced
+ones when that lets one more in: one for one, two for one, or as many
+as it takes at a single position. That is how it changes which events
+of a participant with more events than positions are the ones left
+out, which decides whether the rest fill the grid. It may move events
 between sessions and leave a gap or a late start, which are reported
 like any other. It never double-books, never moves a pin and never
 exceeds a slot's capacity, and an outcome with nothing unplaced never
 reaches it.
 
+Keeping a session contiguous comes before the two weights. The weights
+choose a session for each event, and a choice that looks best by them
+can be one no slot order lays out without a gap. So the repacker also
+lays the events out with no regard to the weights (whole sets of events
+that can share a slot, one set to a position in grid order, around the
+pins), and returns that schedule when it places more events than the
+one the weights chose, or as many with fewer gap slots. A schedule that
+still has a gap is then searched for another placement of as many
+events with fewer gap slots; on a small request that search tries every
+placement, so a gap it reports is one no placement of as many events
+avoids, and on a large one it stops at a limit of its own.
+
+Both of those schedules come from the events taken set by set, and no
+one order of the events is the best for every request. So where the
+result still places fewer events than a bound on what any placement can
+hold, or still has a gap, the repacker plans and packs the events once
+more in the order of their participants, with the steps its budgets
+have left, and returns that third schedule when it places more events,
+or as many with fewer gap slots. A result that is already clean costs
+nothing more.
+
+**The ids decide as little as they can.** The repacker takes the
+participants and the events in an order made from the request itself:
+how many events a participant has, where it is pinned and whom it
+plays. An id decides only which of several events between the same two
+participants is which, and between participants the request does not
+tell apart. Give the same request other ids and the outcome has the
+same number of events at every position, the same number unplaced for
+each reason and the same violations but for the names in them; the
+schedule is the same participant for participant, up to a symmetry of
+the request (in a complete round robin any participant can stand for
+any other, and which of them gets which run of opponents follows the
+ids). There are two exceptions, in which the ids do decide and the
+counts can differ. The ordering has a fixed amount of work it may do,
+sized for 40 participants: in a larger request in which everybody is
+alike and no two participants can simply be exchanged (a complete round
+robin of 44 or more with one round already played), it stops and falls
+back to the ids. And two participants that differ, in a request in
+which everything the repacker compares about them is equal, are ordered
+by id; that takes a request built for the purpose, and none met in
+testing was one. The lists an outcome returns are still in id order.
+
 The repacker is deterministic (same input, same output, independent of
 input list order), pure (no clock reads, no I/O), and bounded in steps
 (the packing searches spend from one budget of
-`RepackOptions(stepBudget: ...)` steps, and the last placement step from
-a second of the same size, so a repack can spend up to twice that). The bound
+`RepackOptions(stepBudget: ...)` steps, and the steps after the packing
+from a second of the same size, so a repack can spend up to twice that;
+the layout made before any session is chosen, the last placement step
+and the search for fewer gap slots also stop at limits on their own
+work, which a budget below the default makes smaller in proportion; the
+ordering of the participants has a fixed limit of its own). The bound
 makes a repack reproducible, which is what a preview that is later
-confirmed needs. It is not a bound on time: see
-[The Step Budget](#the-step-budget) for what a repack takes. Events that fall entirely outside the grid cannot collide with
+confirmed needs. It is a bound on work and not on seconds: see
+[The Step Budget](#the-step-budget) for what a repack takes at which
+budget. Events that fall entirely outside the grid cannot collide with
 it and are the caller's to filter before the request — collision is
 exact position identity, by design; there is no fuzzy time-overlap
 detection.
@@ -4608,15 +4658,16 @@ foreach ($crowded->getLateStartViolations() as $violation) {
     echo "{$violation->getParticipant()->getLabel()} starts at slot {$violation->getFirstSlot()} "
         . "of session {$violation->getSession()}\n";
 }
+// Athletic Bilbao starts at slot 2 of session 0
 // Rayo Vallecano starts at slot 2 of session 0
 
 foreach ($crowded->getUnplaced() as $unplaced) {
     $because = $unplaced->getParticipant()?->getLabel() ?? 'nobody in particular';
     echo "{$unplaced->getEventId()}: {$unplaced->getReason()->value} ({$because})\n";
 }
+// e04: no_slot_available (nobody in particular)
 // e05: participant_over_capacity (Celtic)
 // e06: no_slot_available (nobody in particular)
-// e07: no_slot_available (nobody in particular)
 
 echo count($crowded->getEventUnplacedViolations()), "\n";      // 3
 echo count($crowded->getContiguityBrokenViolations()), "\n";   // 0
@@ -4652,15 +4703,39 @@ unplaced as `participant_over_capacity`.
 `RepackOptions(stepBudget: ...)` is counted in search steps, not in
 time: the same request and budget give the same outcome on every
 machine. There are two budgets of that size. The load planning and the
-packing of each session spend from the first. The last placement step,
-which runs only when an event is still unplaced, spends from a second
-one of its own, so that it still runs when the searches before it spent
-theirs. **A repack can therefore spend up to twice `stepBudget`.** The
-last placement step also stops after a fixed number of position checks
-of its own, whatever the budget, so that a request whose leftovers
-cannot be placed does not spend its whole second budget looking. When a
-budget runs out the repacker stops searching and returns
-what it has reached, with everything that is left reported as usual.
+packing of each session spend from the first, and the search of one
+session may spend no more than a quarter of what is left of it when it
+starts, so that a session whose search does not end leaves steps for
+the sessions after it. The last placement step, which runs only when an
+event is still unplaced, and the search for fewer gap slots, which runs
+only when a gap is left, spend from a second one of their own, so that
+they still run when the searches before them spent theirs. The third
+schedule, made only where the result leaves something to gain, has no
+budget of its own: it is planned and packed with what the first has
+left, and placed and searched with what the second has left. **A repack can therefore spend up to twice `stepBudget`.**
+
+A step is not a fixed amount of work, so some searches count their own
+work as well, in position checks (one look at whether an event fits a
+position), and stop at a limit on it: the laying out of the events
+before any session is chosen, which spends no step at all; the last
+placement step, half a million checks on a request of up to 200 events
+on 25 positions, a hundred for every event and position on a larger
+one, and three million at most; and the search for fewer gap slots,
+200,000. **The budget governs those limits too.** At the default budget
+of 200,000 steps and at every larger one they are as stated, so a larger
+budget never changes what those searches do. Below the default each is
+the same share of its limit as the budget is of the default: a budget
+of 20,000 steps gives every one of them a tenth of its position checks,
+and the search for the events that two over-capacity participants share
+a tenth of its nodes. The last placement step never has fewer than one
+check for every event and position, whatever the budget. So a smaller
+`stepBudget` shortens every search of a repack, and the default and
+anything above it behave exactly alike in everything that is not
+counted in steps.
+
+When a budget runs out, or a search reaches a limit that a budget below
+the default made smaller, the repacker stops searching and returns what
+it has reached, with everything that is left reported as usual.
 `isBudgetExhausted()` says whether that happened:
 
 ```php
@@ -4675,39 +4750,132 @@ $starved = (new ScheduleRepacker())->repack(new RepackRequest(
 var_dump($starved->isBudgetExhausted());   // bool(true)
 ```
 
-How long a repack takes depends on the request and on the machine, and
-the budget does not turn into a number of seconds. Measured with the
-default budget of 200,000 steps (PHP 8.4, no OPcache, one core): a
-complete single round robin of 24 participants took between 0.05 and 1.0
-seconds over sessions of four to six slots, and one of 40 participants
-between 0.1 and 1.3 seconds; the slower figures are requests that use the
-whole budget. A request that leaves events over also runs the last
-placement step, with a budget of its own, so it can take up to twice as
-long: one that nearly fits a two-leg season of 38 participants (657
-events on seven sessions of five slots) took about one second, most of
-it the first budget, and a single round robin of 40 on one session fewer
-than its events need took about 0.8 seconds. A smaller `stepBudget`
-trades placed events for time. A step costs a few microseconds. Sessions of many slots add
-work the budget does not count, because the repacker first works out which
-start slots can give gap-free runs at all, and that grows with two to the
-power of the slot count: on the requests measured, up to several seconds
-at 16 slots per session and over ten seconds at 20, the widest it reasons
-about (a wider session is packed greedily, and a request whose sessions
-pack without a search costs milliseconds at any width). That work takes
-memory too: on the same requests up to about 100 MB at 18 slots per
-session, 200 MB at 19 and 400 MB at 20, which is past PHP's default
-`memory_limit` of 128 MB, and running out of memory is not an exception a
-caller can catch. Give a wide grid a time limit of your own if the request
-is made while a person waits, and a memory limit that fits it. `composer bench` measures the machine at
-hand.
-
-- **True**: at least one search wanted another step and was refused. A
-  larger budget may give a different outcome for the same request. It is
-  not a promise of a better one: the request may have no better packing,
-  and the searches are heuristics.
+- **True**: the budget cut at least one search short. Either a search
+  wanted another step and was refused, or the budget was below the
+  default and a search reached the share of its work limit that such a
+  budget leaves it. A larger budget may give a different outcome for the
+  same request. It is not a promise of a better one: the request may
+  have no better packing, and the searches are heuristics.
 - **False**: the budget stopped nothing, so a larger budget gives the
-  same outcome. It does not mean the outcome is the best possible; the
-  searches have limits of their own that the budget does not lift.
+  same outcome. It does not mean the outcome is the best possible: at
+  the default budget and above, a search that stops at its own work
+  limit is not one the budget stopped, because no budget lifts that
+  limit.
+
+**What a budget buys, measured.** How long a repack takes depends on
+the request and on the machine; the budget bounds the work and does not
+turn into a number of seconds. These are the median and the longest
+time in milliseconds, and the events placed, on PHP 8.4 with no OPcache
+on one core. The seasons are round robins of one and two legs with a
+fifth or a half of their rounds already played and pinned, on grids
+that fit exactly, have a position to spare or are short (16 requests a
+row); the scattered pins are 200 round robins of 16 to 40 participants
+with an eighth to a half of their events pinned at positions drawn at
+random.
+
+| Request | 1 step | 2,000 steps | 20,000 steps | 200,000 steps (default) |
+|---|---|---|---|---|
+| Season of 20, one leg (1,944 events in all) | 9 / 30 ms, 1,769 | 9 / 25 ms, 1,824 | 9 / 79 ms, 1,824 | 8 / 501 ms, 1,824 |
+| Season of 20, two legs (3,944) | 16 / 39 ms, 3,714 | 24 / 56 ms, 3,787 | 36 / 111 ms, 3,824 | 59 / 364 ms, 3,824 |
+| Season of 24, one leg (2,808) | 13 / 27 ms, 2,562 | 20 / 37 ms, 2,639 | 19 / 70 ms, 2,664 | 21 / 527 ms, 2,664 |
+| Season of 24, two legs (5,784) | 33 / 48 ms, 5,479 | 43 / 81 ms, 5,609 | 82 / 171 ms, 5,640 | 127 / 393 ms, 5,640 |
+| Season of 30, one leg (4,464) | 22 / 38 ms, 4,110 | 38 / 54 ms, 4,217 | 42 / 176 ms, 4,284 | 58 / 360 ms, 4,284 |
+| Season of 30, two legs (9,024) | 56 / 92 ms, 8,608 | 95 / 123 ms, 8,726 | 225 / 500 ms, 8,836 | 286 / 1,043 ms, 8,844 |
+| Season of 36, one leg (6,504) | 35 / 59 ms, 6,061 | 60 / 91 ms, 6,202 | 61 / 120 ms, 6,288 | 85 / 449 ms, 6,288 |
+| Season of 36, two legs (13,128) | 106 / 128 ms, 12,569 | 142 / 189 ms, 12,774 | 318 / 683 ms, 12,881 | 686 / 1,460 ms, 12,912 |
+| Season of 40, one leg (8,024) | 43 / 67 ms, 7,495 | 74 / 107 ms, 7,688 | 91 / 371 ms, 7,783 | 173 / 922 ms, 7,784 |
+| Season of 40, two legs (16,184) | 125 / 171 ms, 15,517 | 183 / 259 ms, 15,749 | 379 / 719 ms, 15,895 | 792 / 1,762 ms, 15,944 |
+| Scattered pins (55,573) | 17 / 57 ms, 53,072 | 31 / 117 ms, 53,721 | 106 / 511 ms, 54,706 | 576 / 3,048 ms, 55,265 |
+| The slowest request found: two legs among 29, 807 events, five pinned | 96 ms, 793 | 137 ms, 793 | 504 ms, 793 | 4,086 ms, 793 |
+
+Read it this way. **The budget bounds the work of a repack, and the
+bound follows the budget**: the most any search may do at 20,000 steps
+is a tenth of what it may do at the default, and the longest time falls
+with it (3 seconds to half a second on the scattered pins, 4 seconds to
+half a second on the slowest request). It does not make every repack
+take a tenth as long: a search that ended well inside its limit at the
+default is not shortened by a tenth of that limit, and a phase has more
+to do when the one before it was cut short, so the seasons of 40 over
+two legs take half their default time at 20,000 steps. For the same
+reason a smaller budget is a smaller bound and not a promise that one
+request takes less time: where the default budget ends a search just
+inside its limit and a smaller one cuts it off, the phases after it
+have what it left to do, and the request can take longer than at the
+default. The largest difference found on 4,666 generated requests at up
+to 17 budgets was 80 events among 11 participants, five of them with more
+events than the 12 positions: 36 milliseconds at the default, 160 to
+180 at 100,000 steps, 100 at 50,000 and 7 at 1,000. At a budget of one
+step the largest was a few milliseconds (12 for 11). What no budget
+shortens is in the first column: reading the request, ordering the
+participants (bounded by a fixed limit of its own, at most about a
+tenth of a second and 12 milliseconds on these seasons; it is left
+whole so that the ids of a request decide no more at a small budget
+than at a large one), the passes over the events that are not searches,
+one position check for every event and position in the layout and the
+last placement step, and a second plan where the first leaves something
+to gain. That comes to about 0.04 seconds for a season of 40 over one
+leg and 0.12 over two (1,560 events). A smaller `stepBudget` trades
+events placed, gaps and late starts for time, as the columns show;
+where a repack runs while a person waits, choose the budget from the
+column that fits, and bound the size of the request too, because the
+first column grows with it.
+
+A budget below the default can also change what an outcome says about
+capacity, where two or more participants have more events than free
+positions. Every such participant is reported at every budget, with the
+same demand and capacity: that is counted from the request and needs no
+search. Which events are left out for them is searched for (an event
+between two of them counts for both), and with a share of its nodes that
+search can leave out more events than the shortfalls need. The grid's
+own `CapacityExceeded`, the one with no participant, counts the events
+left after those. So below the default it can state a smaller demand
+than the default budget states, or be missing where the default budget
+reports it, and an unplaced event can have the reason
+`ParticipantOverCapacity` where the default budget gives it
+`NoSlotAvailable`. `isBudgetExhausted()` is true for such an outcome. Of
+6,000 generated requests of 5 to 11 events with over-capacity
+participants, 201 have the grid's violation at the default budget; 31
+of them came back without it at one step, 3 at 100 steps and none at
+2,000. Read the capacity of the grid from an outcome whose flag is
+false.
+
+Requests that pack without a search cost the same at every budget: a
+complete single round robin of 24 participants took 5 to 11
+milliseconds over sessions of four to six slots, and one of 40
+participants about 16 milliseconds, with no pins. A request that does
+not come back clean costs more than its searches, because the repacker
+then tries again: it runs the last placement step where events are left
+over, and where the result still places fewer events than could be
+placed, or has a gap, it plans and packs a third schedule. Sixty round
+robins of 40 with 10 to 400 events pinned, on grids from too small to
+roomy, took 0.75 seconds at the median and 3 seconds at most at the
+default budget; round robins of two legs among 40 (1,460 events) with
+100 pinned took 2 seconds at the median and 4.8 at most.
+
+One thing is still not counted in steps or in position checks, and no
+budget shortens it: sessions of many slots, on a request of many
+participants with few events each, whose sessions do not pack. Before a
+session's exact search the repacker works out a table of which start
+slots can give gap-free runs at all, which grows with two to the power
+of the slot count. That table is paid for in steps (16 steps for every
+1,024 entries of a row, nothing for a session of up to seven slots),
+and a session whose share of the budget cannot pay for it is packed
+greedily, with `isBudgetExhausted()` true. The planning before it still
+scores wide sessions by work that is not counted, which is what is left
+at 16 slots and more: 800 events among 200 participants took 0.9
+seconds on sessions of 12 slots, 2.6 seconds at 16, 10 seconds at 18
+and 34 seconds at 20 at the default budget (0.2.3 took 0.3, 3.7 and 17
+seconds on the first three, and left a third to three quarters more gap
+slots). 20 slots is the widest session the repacker reasons about (a
+wider session is packed greedily, and a request whose sessions pack
+without a search costs milliseconds at most widths: a complete round
+robin of 40 on sessions of 16 slots took 22 milliseconds, and 1.3
+seconds at 19). It takes little memory now that the table is paid for:
+16 MB at 18 slots and 54 MB at 20 on the request of 200 participants
+above, which took 230 MB at 16 slots and 890 MB at 18 before. Give a
+grid of sessions that wide a time limit of your own if the request is
+made while a person waits. `composer bench` measures the machine at
+hand.
 
 The flag says nothing about violations: an outcome can be clean with the
 flag true, and can carry violations with it false. It is not part of

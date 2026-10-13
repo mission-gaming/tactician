@@ -229,7 +229,12 @@ describe('repacking where no other test went', function (): void {
     // The improvement pass spends steps of the shared budget. Whatever
     // budget it is stopped at, the outcome is a proper one, and the flag
     // says whether a search was cut short: once a budget is enough it stays
-    // enough, and the outcome is then the one an ample budget gives.
+    // enough, and the outcome is then the one an ample budget gives. The
+    // sweep goes to 200 steps because the first budget that is enough for
+    // every search of this request is 154: a budget below the default also
+    // sets how many position checks the searches after the packing may
+    // make, and they need more of those than the improvement pass needs
+    // steps (64, where the sweep used to end at 120).
     it('returns a proper outcome whatever step budget the improvement pass is stopped at', function (): void {
         [$p1, $p2, $p3] = array_map(static fn(int $i): Participant => new Participant("p{$i}", "P{$i}"), [1, 2, 3]);
         $movable = [
@@ -246,7 +251,7 @@ describe('repacking where no other test went', function (): void {
 
         $stopped = 0;
         $enough = false;
-        for ($budget = 1; $budget <= 120; ++$budget) {
+        for ($budget = 1; $budget <= 200; ++$budget) {
             $outcome = $repacker->repack(new RepackRequest($movable, [], $grid, new RepackOptions(stepBudget: $budget)));
 
             expect(uncoveredPathsRepackFaults($outcome, $movable, [], 1))->toBe([], "budget {$budget}");
