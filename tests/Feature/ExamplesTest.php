@@ -1152,6 +1152,55 @@ $demonstrations = [
             ]);
     },
 
+    // The two best of the entrants placed third are the two with the best records among them, best first;
+    // with a pool of three nothing is compared until a method is named, and each method selects another pair
+    '26-best-next-placed-qualifiers' => function (array $results): void {
+        $tables = exampleArray($results, 'Pool tables');
+        $topTwo = exampleArray($results, 'Top two of every pool');
+        $bestThirds = exampleArray($results, 'The two best third-placed clubs, best first');
+        $unequal = exampleArray($results, 'With a west pool of three');
+
+        expect(array_keys($tables))->toBe(['North', 'East', 'West']);
+        $thirds = [];
+        $higher = [];
+        foreach ($tables as $table) {
+            assert($table instanceof Standings);
+            $entries = array_values($table->getEntries());
+            expect($entries)->toHaveCount(4)
+                ->and($table->getTiedSets())->toBe([]);
+            $thirds[$entries[2]->getParticipant()->getId()] = [$entries[2]->getRankingValue(), $entries[2]->getScoreDifference()];
+            array_push($higher, $entries[0]->getParticipant()->getId(), $entries[1]->getParticipant()->getId());
+        }
+
+        // The records of the issue's example: 4 points and +1, 4 points and 0, 3 points
+        expect($thirds)->toBe(['gavle' => [4.0, 1.0], 'tartu' => [4.0, 0.0], 'molde' => [3.0, -1.0]]);
+
+        $ids = static fn(array $participants): array => array_map(
+            static fn(Participant $participant): string => $participant->getId(),
+            array_values(array_filter($participants, static fn(mixed $participant): bool => $participant instanceof Participant))
+        );
+        $qualified = $ids($topTwo);
+        sort($qualified);
+        sort($higher);
+        expect($ids($bestThirds))->toBe(['gavle', 'tartu'])
+            ->and($bestThirds)->toHaveCount(2)
+            ->and($qualified)->toBe($higher);
+
+        // The pool of three: its third has 3 points from 2 events
+        $west = exampleResult($unequal, 'West table', Standings::class);
+        $third = array_values($west->getEntries())[2];
+        expect($west->getEntries())->toHaveCount(3)
+            ->and([$third->getParticipant()->getId(), $third->getRankingValue(), $third->getPlayed()])->toBe(['molde', 3.0, 2])
+            ->and($unequal['No method chosen'])->toBe(InvalidConfigurationReason::PoolComparisonRequired->value)
+            ->and($unequal['Pool sizes named by the refusal'])->toBe(['North' => 4, 'East' => 4, 'West' => 3])
+            // 4 points from 3 events twice, against 3 from 2
+            ->and($unequal['Best two by raw totals'])->toBe('Gavle, Tartu')
+            // 1.5 points an event, then 1.33 with the better score difference
+            ->and($unequal['Best two per event played'])->toBe('Molde, Gavle')
+            // Without the last-placed of their pools: Tartu 3 points (score difference 0), Molde 3 (-2), Gavle 1
+            ->and($unequal['Best two without the results against the last-placed of the larger pools'])->toBe('Tartu, Molde');
+    },
+
     // The application's rows are the stage: a round drawn by hand is read as drawn and reported, an unplayed
     // quarter-final holds the next round back without an exception, and a withdrawal sends the opponent on
     '27-stage-from-application-rows' => function (array $results): void {

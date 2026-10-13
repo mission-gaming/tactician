@@ -5,8 +5,6 @@ Status: accepted. Narrows the first sentence of
 keeps no state of its own, and it no longer resolves the recorded rounds
 again.
 
-(0006 is the number of a record that is under review with another change.)
-
 ## Context
 
 A results-driven engine keeps nothing between calls. Through 0.2.x the two

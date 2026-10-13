@@ -60,7 +60,9 @@ anything else that competes.
 | **Pool** | A bucket of participants (`PoolDistributor::serpentine()`): what format the bucket plays, how it is scored, and how it progresses are separate, configurable concerns. |
 | **Pot** | One of the equal blocks a seeded list of entrants is cut into for a pot draw, in list order: the first block is pot 1, the next pot 2, and so on. A pot is not a pool: the members of a pool play each other and are ranked together, while a pot only limits who an entrant can draw. |
 | **Pot draw** | A format in which every round is drawn before any event is played (`PotDrawScheduler`): every entrant meets the same number of opponents from every pot, its own included, with no rematch, and is in every round. Often called "Swiss", but nothing is paired from results. See [Pot Draws](#pot-draws). |
-| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
+| **Progression selector** | The hand-off between stages (`ProgressionSelector`): consumes a `StageOutcome`, returns the ordered entrant list of the destination stage. Standings-based (`RankRangeSelector`, `BestOfRankSelector`) or outcome-based (`MatchOutcomeSelector`) — never winners reconstructed through points arithmetic. Optional machinery: a bare ordered list is always a valid stage entry. |
+| **Best of a rank** | The best few of the entrants that hold one rank in their pools, compared with each other across the pools and listed best first (`BestOfRankSelector`): the two best of those placed third. See [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
+| **Pool comparison** | How entrants of pools of unequal size are compared (`PoolComparison`): by raw totals, per event played, or without the results against the lowest-placed entrants of the larger pools. The caller's choice; a selection across pools of unequal size is refused until it is made. Pools are unequal when their tables do not have the same number of entries. |
 | **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as `tie_winner` metadata on the event's result, or on a leg's result. Ties are not legs: brackets have no legs concept. |
 | **Third-place tie** | An opt-in second tie in the last round of a single elimination bracket (`EliminationOptions(thirdPlace: true)`), between the two entrants who went out in the round before it. It decides places 3 and 4, which the bracket otherwise leaves to the records. It is in the same round as the final and has the same round label, so each event of that round carries which tie it belongs to (**bracket tie**). See [A third-place tie](#a-third-place-tie). |
 | **Bracket tie** | The typed statement of which tie of a bracket's last round an event belongs to (`BracketTie`: `Final` or `ThirdPlace`), written by the engine as a string under `bracket_tie` in the event's metadata and read back with `BracketTie::of()`. Present only on the events of the last round of a bracket with a third-place tie option. |
@@ -83,7 +85,8 @@ anything else that competes.
 | **Resource** | A named host of concurrent events within a slot (venue, pitch, court, board...). A slot holds one event per resource; no declared resources means one anonymous resource. Each scheduled event carries its assigned resource. |
 | **Quality metric** | A graded, lower-is-better measure of a valid schedule (`QualityMetric`): role balance, alternation streaks, rest rhythm, repeat spacing. Metrics measure defects — zero is ideal. Composed with weights by `ScheduleScorer`; policy (which metrics, what weights) stays application-side. |
 | **Optimization** | Best-of-N sampling (`ScheduleOptimizer`): generate N candidate schedules from one master seed, score each, keep the best. Deterministic when every randomness source uses the supplied child randomizer. Whole-schedule generators only. |
-| **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach. Greedy always runs first; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
+| **Backtracking generation** | An opt-in round-robin search (`RoundRobinOptions(backtracking: true)`) over the round decompositions the circle method's rotations cannot reach, and over the roles of every leg. Greedy always runs first; the search is deterministic and step-bounded, and failing it distinguishes a proven-unsatisfiable configuration from an exhausted budget. |
+| **Role search** | What the round-robin scheduler does when a constraint rejects a role that is free to change: it gives the event the other role and, when that is rejected too, changes the roles of earlier events, with the pairings and rounds held. Free are the roles of the later legs of a leg strategy that states them as preferences (the shuffled legs), always, and the roles of the first leg with backtracking generation. Bounded by a count of rejected roles; see [Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints). |
 | **Timeline rule** | A time-aware rule (`TimelineRule`) validated over the assigned kickoffs — a minimum time between a participant's kickoffs (`MinimumRestRule`), blackout windows (`BlackoutRule`). Assignment is deterministic, so a violated rule fails loudly rather than being routed around; rules are not generation constraints. |
 | **Session** | One match night (or day) on a repack grid: an ordered position in the grid's explicit session list, holding a fixed number of slots. Deliberately not a "round" — a round is a set of concurrent events, a session is a container of consecutive slots. |
 | **Session grid** | The declarative position model repacking assigns onto (`SessionGrid`): an explicit ordered list of zoned session starts, a slot interval, a per-session slot count (overridable — final sessions often run deeper), and a per-slot concurrency capacity. Irregular by design, unlike `TimelineDefinition`'s cadence. A grid built this way is instant-based; see **Shape-only grid** for the other form. |
@@ -400,8 +403,10 @@ that an event it is asked about ends up in the schedule:
   that rejects, so a later constraint may be asked the second time only.
 - **Retries ask everything again.** A round robin that fails under one
   participant order is generated again under up to min(participants, 25)
-  rotated orders, and the backtracking search and the Swiss round search
-  put many candidate events to the constraints that they then discard.
+  rotated orders, and the backtracking search, a search of roles and the
+  Swiss round search put many candidate events to the constraints that they
+  then discard. A backtracking search over several legs asks about the
+  events of a first leg it found a second time, when it searches the roles.
 - **A failure analysis asks about events that were never candidates**: each
   missing pairing, in every round, with either participant first-named,
   against the events of the failed attempt.
@@ -472,7 +477,10 @@ scheduler without a `Randomizer`:
 | Two mirrored legs from a scheduler with a `Randomizer` | Can fail, depending on the seed: the later legs are not the first leg mirrored |
 
 A limit the roles break fails generation with an
-`IncompleteScheduleException`; the scheduler does not look for other roles.
+`IncompleteScheduleException`. The scheduler looks for other roles only
+where a role is free to change: in the later legs of a shuffled schedule,
+and in the first leg with `backtracking: true`
+([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)).
 Repeated legs give every participant the roles of the first leg again, so
 the totals drift by a leg's worth with every leg, and a limit has to allow
 for that. `BalancedRoleAssignment` lowers what a single leg needs to 1 in a
@@ -567,6 +575,120 @@ var_dump($scheduler->schedule($participants, $shuffledOptions)->toJson() === $sh
 Options whose shuffled strategy holds a `Randomizer` have no plain-data
 form, and `toArray()` refuses them (reason `NotSerializable`).
 
+### Leg Strategies and Role Constraints
+
+A constraint on roles reads every leg, and a leg that keeps it by itself can
+break it where two legs meet. What the scheduler may do about that depends
+on what the leg strategy says its roles are:
+
+| Leg strategy | Its roles in a later leg | When a constraint rejects one |
+|--------------|--------------------------|-------------------------------|
+| `MirroredLegStrategy` | A **rule**: the roles of the pairing's first-leg event, reversed in the even-numbered legs | The event is never given another role. Only other roles in the first leg can help, and those are searched with `backtracking: true` only |
+| `RepeatedLegStrategy` | A **rule**: the roles of the pairing's first-leg event | The same |
+| `ShuffledLegStrategy` | A **preference**: a draw | The event is given the other role. When that is rejected too, the roles of earlier events of the later legs are changed until every event is accepted or every choice was tried. The first leg is not touched |
+
+So a schedule of shuffled legs under a role constraint has the roles that
+were drawn wherever the constraints accept them, and others where they do
+not; without constraints, or when none rejects a role, it is exactly the
+draw. Nothing is drawn again, so a seed still names one schedule. A schedule
+of repeated or mirrored legs has the roles the role assignment gave the
+first leg, or fails; with `backtracking: true` the search chooses the roles
+of the first leg, and every later leg follows from it by the rule.
+
+```php
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+
+$league = [];
+foreach (['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as $letter) {
+    $league[] = new Participant("club-{$letter}", 'Club ' . strtoupper($letter));
+}
+
+// Nobody plays more than two events in a row in the same role
+$twoInARow = new RoundRobinScheduler(
+    ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build()
+);
+
+// Shuffled legs: the draws that break the limit are changed
+$shuffledLeague = $twoInARow->schedule(
+    $league,
+    new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 2026))
+);
+echo count($shuffledLeague), " events\n";
+
+// Repeated legs: the roles of the first leg, played twice, break the limit
+// where the legs meet, and without backtracking they are not searched
+try {
+    $twoInARow->schedule($league, new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy()));
+} catch (IncompleteScheduleException $failure) {
+    echo "Without backtracking: no schedule\n";
+}
+
+// With it, the search chooses a first leg that can be played twice
+$repeatedLeague = $twoInARow->schedule(
+    $league,
+    new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy(), backtracking: true)
+);
+echo count($repeatedLeague), " events\n";
+```
+
+The block prints:
+
+```
+56 events
+Without backtracking: no schedule
+56 events
+```
+
+Both searches are bounded, and a failure says which case it is:
+
+- **Every choice was tried.** Without backtracking the message says that the
+  constraints reject every choice of roles for the later legs in this
+  layout, and that the pairings, their rounds and the roles of the first leg
+  were not searched; it names `RoundRobinOptions(backtracking: true)` as
+  the option that searches them. So does the failure of a repeated or
+  mirrored leg, when it was a `ConsecutiveRoleConstraint` or a
+  `RoleBalanceConstraint` that rejected one of its events (a custom
+  constraint does not say whether it reads roles, so nothing is advised
+  for one). A backtracking search that went through every way to
+  play the first leg, with every choice of roles, says that the
+  configuration is unsatisfiable with this leg strategy.
+- **A bound stopped the search.** A search of roles stops after 20,000
+  rejected roles for one layout, and a backtracking search after its step
+  budget of 200,000 steps ([Backtracking Generation](#backtracking-generation)),
+  which the steps of its role searches count against. The message names the bound and says that
+  roles may exist beyond it; it does not say that none exist. A search the
+  budget stopped says of how many first legs it went through every choice
+  of roles, and of how many a bound stopped it.
+
+A schedule that fails pays for the search. Without backtracking the roles
+of shuffled later legs are searched once for every rotated participant
+order tried, up to 25, each up to the bound of rejected roles: 24
+participants and two shuffled legs under a limit of two in a row, with a
+custom constraint that leaves one pairing no round in the second leg, take
+49 seconds to fail (17 before the roles were searched).
+
+How far the search goes back when a role is rejected depends on the
+constraint set. For a set of `ConsecutiveRoleConstraint`,
+`RoleBalanceConstraint`, `MinimumRestPeriodsConstraint`,
+`SeedProtectionConstraint` and `NoRepeatPairings` objects it goes straight
+to an earlier event of the same participants: under a limit of two in a
+row, and under a limit on the role totals, it found the roles of two to
+four shuffled legs for every seed measured up to 40 participants. For a set
+that holds anything else (a custom
+constraint, a metadata rule, a class of your own) it goes back one event at
+a time, which is as thorough and slower: under a limit of two in a row
+beside a custom constraint, the roles of two to four shuffled legs were
+found for every seed measured up to 24 participants, and the bound stopped
+some from 30 up. The measurements are in
+`docs/design/backtracking-generation.md`.
+
+A leg strategy of your own states which of the two its roles are in the
+`LegPlanContribution` it returns from `planLegs()`
+(`rolesArePreferences: true` for a preference). The default is a rule, so a
+strategy that says nothing is never reversed.
+
 ### Backtracking Generation
 
 The greedy generator retries bounded rotated orderings when constraints
@@ -579,7 +701,6 @@ set: every rotation the greedy generator tries violates it, and the
 search finds the schedule that satisfies it:
 
 ```php
-use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\DTO\Event;
 
 // Celtic must meet Athletic in round 1, Livorno in round 2 and Red Star
@@ -613,9 +734,16 @@ The rules of the search (see `docs/design/backtracking-generation.md`):
   are fixed, and a step budget bounds the exponential worst case. The
   failure diagnostic distinguishes a proven-unsatisfiable configuration
   (search space exhausted) from one that ran out of budget.
-- **Leg scope.** Leg 1 is searched; later legs derive from its actual
-  rounds through the leg strategy. A later leg rejected by constraints
-  fails loudly — the search does not cross leg boundaries.
+- **Leg scope.** The search is over how the pairings of leg 1 fall into
+  rounds, and over roles. Later legs derive from the actual rounds of
+  leg 1 through the leg strategy. For every first leg it finds, the search
+  holds the pairings and rounds and searches the roles of all legs: those
+  of the first leg, and those of the later legs where the leg strategy
+  states them as preferences
+  ([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)).
+  A first leg that no roles complete is a dead end, and the search goes on
+  to the next. The roles of the layout the rotations started from are
+  searched once as well, after the first leg found has failed.
 
 ### Multi-Leg Schedule Analysis
 
@@ -773,13 +901,15 @@ Two things the table does not promise:
   repeats a role at most twice there in a field of even size, and three
   times in a field of odd size from 9 participants up. Add a
   `ConsecutiveRoleConstraint` if a schedule of several legs must not do
-  that; it then fails loudly where the roles break it.
+  that. Mirrored and repeated legs then fail loudly where the roles of the
+  first leg break it, unless `backtracking: true` lets the scheduler choose
+  them ([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)).
 
 #### Role assignments and constraints
 
 Constraints stay hard filters. A constraint sees every event with the roles
-the role assignment gave it, and the scheduler never falls back to other
-roles to satisfy one:
+the role assignment gave it, and the scheduler never gives a leg other roles
+than its role assignment would to satisfy one:
 
 - **Role constraints the balanced roles satisfy.** For a single leg of 2 to 30
   participants, `ConsecutiveRoleConstraint` with a limit of 2 holds, and so
@@ -795,10 +925,14 @@ roles to satisfy one:
   role of one participant or of one pairing ("the first participant is
   first-named against the second") can reject the roles
   `BalancedRoleAssignment` chooses although other balanced roles would
-  satisfy it, and although the default roles do. The scheduler does not
-  search for them, with or without `backtracking`. If such a rule matters
-  more than the balance, keep `RoundParityRoleAssignment` for that schedule,
-  or write a role assignment that honours the rule.
+  satisfy it, and although the default roles do. Without `backtracking` the
+  scheduler does not search for them. With it, the search looks for a first
+  leg that satisfies the constraints and that the role assignment keeps as
+  it is, which finds a balanced leg where the search happens on one and not
+  otherwise: a single leg whose pinned role the balanced roles break still
+  fails. If such a rule matters more than the balance, keep
+  `RoundParityRoleAssignment` for that schedule, or write a role assignment
+  that honours the rule.
 - **Rotated retries.** Every retry lays the legs out again and asks the role
   assignment again, so a schedule that needed a retry keeps the limits above.
 - **Backtracking.** The search chooses the roles of the first leg itself,
@@ -810,7 +944,11 @@ roles to satisfy one:
   rejection fails with an `IncompleteScheduleException`: the scheduler does
   not keep the roles of the search, because that would silently drop the
   balance that was asked for. Constraints that do not read roles are never
-  affected.
+  affected. In a schedule of several legs the search may then change roles
+  of that first leg again, to make the later legs fit; the leg is put to the
+  role assignment once more and is returned only when the role assignment
+  keeps it as it is. Otherwise the search goes on to the next first leg, and
+  a failure says that roles exist which the role assignment would change.
 
 #### Writing a role assignment
 
@@ -2878,6 +3016,22 @@ function playPool(\MissionGaming\Tactician\DTO\Schedule $schedule): array
         $schedule->getEvents()
     );
 }
+
+/** @return list<\MissionGaming\Tactician\DTO\Result> */
+function playPoolByMargin(\MissionGaming\Tactician\DTO\Schedule $schedule, int $margin): array
+{
+    // The same winners, each by the given score to nil
+    return array_map(
+        static function (\MissionGaming\Tactician\DTO\Event $event) use ($margin): \MissionGaming\Tactician\DTO\Result {
+            [$first, $second] = $event->getParticipants();
+            $winner = strcmp($first->getLabel(), $second->getLabel()) < 0 ? $first : $second;
+            $loser = $winner === $first ? $second : $first;
+
+            return new \MissionGaming\Tactician\DTO\Result($event, $winner, [$winner->getId() => $margin, $loser->getId() => 0]);
+        },
+        $schedule->getEvents()
+    );
+}
 -->
 
 ```php
@@ -2941,20 +3095,22 @@ one decision invites contradictory qualification — pick one ranking
 authority per decision):
 
 ```php
+use MissionGaming\Tactician\Stage\BestOfRankSelector;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 
 // Standings-based (rank slices):
 RankRangeSelector::topPerGroup(2);            // the classic qualifiers
 RankRangeSelector::perGroup(from: 3, to: 4);  // a losers' route
 RankRangeSelector::overall(from: 1, to: 8);   // best 8 across all pools
+BestOfRankSelector::ofRank(rank: 3, count: 2); // the 2 best of those placed third
 
 // Outcome-based (recorded match results - never points arithmetic):
 MatchOutcomeSelector::winners();              // knockout round -> next round
 MatchOutcomeSelector::losers();               // knockout round -> repechage
 ```
 
-Both selector classes are plain-data constructible
-(`fromArray()`/`toArray()`) with stable mode identifiers; the data does not
+The three selector classes are plain-data constructible
+(`fromArray()`/`toArray()`) with stable identifiers; the data does not
 say which class it belongs to, so store that beside it. Selectors are
 optional machinery, not a gate: a consumer computing its own qualification
 hands the next stage an ordered list directly, with no penalty.
@@ -3092,6 +3248,185 @@ Consumer-derived selections participate by declaring expected entrant
 counts (a transition without a selector); concurrent routes (winners
 forward, losers to a repechage) validate as separate chains from the same
 source.
+
+### The best of a rank across pools
+
+Some formats take the top of every pool and then the best few of those
+placed next: the top two of three pools and the two best of the entrants
+placed third. `RankRangeSelector::perGroup(3, 3)` returns the three
+entrants placed third in pool order; `BestOfRankSelector` ranks them
+against each other and returns the best, best first
+(`playPoolByMargin()` stands for your application: the same winners as
+`playPool()`, each by that score to nil):
+
+```php
+// Twelve entrants in three pools of four
+$field = array_map(
+    fn (string $name) => new Participant(strtolower($name), $name),
+    ['Ada', 'Ben', 'Cy', 'Di', 'Eli', 'Fay', 'Gus', 'Hal', 'Ian', 'Joy', 'Kit', 'Lou']
+);
+$margins = ['A' => 1, 'B' => 2, 'C' => 3];
+$stagePools = [];
+foreach (PoolDistributor::serpentine($field, pools: 3) as $label => $members) {
+    $results = playPoolByMargin($scheduler->schedule($members), $margins[$label]);
+    $stagePools[$label] = new StageOutcome($calculator->calculate($members, $results), $results, entrants: $members);
+}
+$stage = StageOutcome::combining($stagePools, $calculator, $field);
+
+// Third in their pools: Gus (3 points, score difference -1), Hal (3, -2), Ian (3, -3)
+$bestThirds = BestOfRankSelector::ofRank(rank: 3, count: 2)->select($stage);
+
+echo implode(', ', array_map(fn (Participant $p) => $p->getLabel(), $bestThirds)) . "\n"; // Gus, Hal
+```
+
+Who holds the rank in a pool is read from that pool's own table. The
+holders are then compared by the figures the **combined** table has for
+them (the table of the outcome `StageOutcome::combining()` builds), in the
+order a table is ordered by: ranking value, each tiebreaker of the
+calculator given to `combining()`, score difference, scores-for. A
+tiebreaker that means something only among entrants who met each other (a
+head-to-head measure) means nothing between entrants of different pools:
+keep it on the calculator of the pools' tables and give `combining()` a
+calculator without it. The selection is the same whatever order the pools,
+their entrants and their results were given in.
+
+**Pools of unequal size need a comparison method.** Pools are unequal when
+their tables do not have the same number of entries. Their entrants have
+then played different numbers of events, and what is compared changes who
+goes through, so the selector applies no method of its own: it refuses
+until one is chosen, with the reason `PoolComparisonRequired` and the pool
+sizes in the context.
+
+```php
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Stage\PoolComparison;
+
+// The same stage without Lou: pool A has three entrants, who play two events each
+$poolA = [$field[0], $field[5], $field[6]];
+$resultsA = playPoolByMargin($scheduler->schedule($poolA), 1);
+$unequal = StageOutcome::combining(
+    ['A' => new StageOutcome($calculator->calculate($poolA, $resultsA), $resultsA, entrants: $poolA)] + $stagePools,
+    $calculator,
+    array_slice($field, 0, 11)
+);
+
+try {
+    BestOfRankSelector::ofRank(3, 2)->select($unequal);
+} catch (InvalidConfigurationException $e) {
+    echo "{$e->getReason()?->value}: " . json_encode($e->getContext()['pool_sizes']) . "\n";
+}
+```
+
+```text
+pool_comparison_required: {"A":3,"B":4,"C":4}
+```
+
+| `PoolComparison` | Plain data | What is compared |
+|------------------|------------|------------------|
+| `RawTotals` | `'raw-totals'` | The figures as the table has them. An entrant of a larger pool has had more events to collect them in |
+| `PerEvent` | `'per-event'` | Every figure divided by the events the entrant has played: ranking value, each tiebreaker value, score difference, scores-for. An entrant with no event played has 0 for each, and its adjustment, if it has one, for the ranking value |
+| `DiscardLowest` | `'discard-lowest'` | In every pool larger than the smallest, the entrants placed below the size of the smallest pool are left out with every result they are in, and the table is calculated again by the calculator of the outcome, with the adjustments of the entrants that are kept. Raw totals of that table are compared |
+
+```php
+$best = fn (PoolComparison $comparison): string => implode(', ', array_map(
+    fn (Participant $p) => $p->getLabel(),
+    BestOfRankSelector::ofRank(3, 2)->comparedBy($comparison)->select($unequal)
+));
+
+// Gus is third of three with no point from 2 events; Hal and Ian have 3 from 3
+echo $best(PoolComparison::RawTotals) . "\n";     // Hal, Ian
+echo $best(PoolComparison::PerEvent) . "\n";      // Hal, Ian: 1 point an event each
+// Without their wins over the entrant placed fourth, Hal and Ian have no
+// point either, and Gus has the best score difference of the three
+echo $best(PoolComparison::DiscardLowest) . "\n"; // Gus, Hal
+```
+
+With pools of one size no method is needed. One that was chosen is still
+applied, and where every compared entrant has played the same number of
+events the three give the same order. The selector counts entries, not
+events: it does not see that pools of one size played different numbers of
+events (a pool with events still to play, pools of different leg counts, a
+pool in which an entrant sat a round out or withdrew), so check
+completeness before you select, and choose `PerEvent` where the numbers of
+events differ by design. `DiscardLowest` recalculates a table, which takes
+the calculator: `combining()` hands it to the outcome, and an outcome built
+by hand takes it as its last constructor argument.
+
+Three things to know before choosing `PerEvent` for a calculator with
+tiebreakers, and before comparing pools that had byes, adjustments or
+awarded results:
+
+- **`PerEvent` divides a tiebreaker value once, by the entrant's own
+  events.** That is right for a value that adds something up over the
+  entrant's events, as `WinsTiebreaker` does. It is not enough for
+  `BuchholzTiebreaker` and `SonnebornBergerTiebreaker`, which add up the
+  ranking values of opponents: those values have themselves been collected
+  over more events in a larger pool, so after the division the entrant of
+  the larger pool is still ahead for no reason but the size of its pool.
+  And a tiebreaker of your own that is already a ratio is divided as well,
+  which a ratio should not be. Give `combining()` a calculator without
+  such a tiebreaker (the pools' own tables may keep it), or choose
+  `DiscardLowest`, which calculates every tiebreaker again from the
+  results that are left.
+- **A bye credited in a pool's table is not in the figures compared.** The
+  combined table is calculated from the results, and credits no bye. Where
+  a pool's own table counts a bye as a win
+  (`StandingsCalculator::withByesCredited()`, as the table of a Swiss stage
+  does), that credit decides who holds the rank in the pool, and the
+  holders are then compared by what they scored in the events they played.
+- **An [adjustment](#adjustments) is in the figures
+  compared, under every method, and an awarded result is a result.**
+  `combining()` carries the adjustment of a pool's table over to the
+  combined table, and the ranking value compared is the total a table is
+  ordered by: what was earned plus the adjustment. No other figure changes
+  with it. `RawTotals` compares that total. `PerEvent` divides it by the
+  events played, the adjustment with what was earned, so that three points
+  taken away weigh what three points not won weigh, and the methods still
+  agree where the entrants have played the same number of events; an
+  entrant that has played no event has nothing to divide by and is compared
+  by its adjustment as it stands (0 without one). `DiscardLowest`
+  calculates the table again from the results that are left and applies
+  the adjustment of every entrant that is kept again, whole: it comes from
+  no event, so no result that is left out takes any of it away, and an
+  entrant that is left out goes with its adjustment. An
+  [awarded result](#awarded-results) is one of the events played that
+  `PerEvent` divides by, and `DiscardLowest` keeps it or leaves it out with
+  the other results of the two entrants, counted as the calculator's
+  awarded result policy counts it.
+
+**A selection that results do not decide is refused**, exactly as a
+`RankRangeSelector` refuses one, with an `UndecidedSelectionException`:
+
+| What is undecided | The exception |
+|-------------------|---------------|
+| A pool has no result, or level entries of a pool hold the rank: who holds it is not decided | names the pool (`getPool()`) |
+| Holders that are level on every compared figure are on both sides of the cut (`TieAcrossSelection`) or are all selected (`TieWithinSelection`) | names the rank (`getRankAcrossPools()`); the places are places among the holders, best first, and the pool is null |
+| Under `DiscardLowest`, level entries of a larger pool are on both sides of the place below which its entrants are left out | names the pool; the ranks run from the selected rank to the size of the smallest pool |
+
+The same two choices go on regardless: `withTiesInsideSelectionAccepted()`
+and `withTableOrderAccepted()`. Level holders are then listed in the order
+of the outcome's entrant list, and in the order of its table when it has
+none. In plain data the selector is `['rank' => 3, 'count' => 2]`, with
+`comparison` and `ties` written when they were chosen and
+[`format_version`](#format-versions) written first; an unknown key is
+refused.
+
+**`RankRangeSelector::overall()` takes the same setting.** It reads the
+combined table, which ranks entrants of every pool together, so across
+pools of unequal size it refuses with `PoolComparisonRequired` until
+`comparedBy()` says how: `RawTotals` takes the table as it stands, and
+`PerEvent` puts it in the order of its figures per event played. It takes
+no `DiscardLowest` (the entrants left out would have no place in the table)
+and a per-group selection takes no method at all; both are refused with
+`IncompatibleOptions`.
+
+**The selector states its yield, and does not place for a bracket.**
+`getSelectionSize()` is the count, so composition validation checks a
+transition that uses it. The list is best first and nothing else: put
+after a per-group selection (`[...$topTwo, ...$bestThirds]`) it can pair an
+entrant with one of its own pool in the first round of a bracket, because
+where each has to go depends on which pools the selected entrants come
+from. Order the combined list yourself where that matters.
 
 ## Timeline Assignment
 
@@ -4412,12 +4747,11 @@ records with its reasons:
   own array and has the key.
 - **An array without the key is version 1.** Version 1 is the form 0.2.x
   wrote, and beside it the optional keys 0.3.0 added (`strategy_seed` in
-  round-robin options, `seed` in Swiss options, `ties` in a rank range
-  selector, `third_place` in elimination options, `award` in a result,
-  `adjustments` and `entrants` in a stage state,
+  round-robin options, `seed` in Swiss options, `ties` and `comparison` in
+  a rank range selector, `third_place` in elimination options, `award` in a
+  result, `adjustments` and `entrants` in a stage state,
   `paired_on_incomplete_results` in a round pairing), each of which may be
-  left out. So rows
-  stored by 0.2.x load
+  left out. So rows stored by 0.2.x load
   unchanged. There is nothing to migrate, and no need to add the key to
   stored data.
 - **A version the library does not know is refused**, as is a value below 1
@@ -4736,7 +5070,7 @@ parent type matches too.
 | `InvalidConfigurationException` | `SchedulingException` | A scheduler, engine, stage, timeline or grid is configured in a way that cannot work. `getReason()` says which mistake it was: see [Configuration Errors](#configuration-errors). |
 | `PinConflictException` | `InvalidConfigurationException` | A repack request pins one participant in two events at the same session and slot. It carries the two event IDs (`getEventIds()`). |
 | `UnresolvedRoundException` | `InvalidConfigurationException` | The next round of a results-driven stage is asked for while an event of a recorded round still awaits its result. It carries the events (`getUnresolvedEvents()`) and the round (`getRoundNumber()`): see [Rounds That Are Not Finished](#rounds-that-are-not-finished). |
-| `UndecidedSelectionException` | `InvalidConfigurationException` | A `RankRangeSelector` is asked for ranks that results do not decide. It carries the IDs of the level participants (`getParticipantIds()`), the places they hold between them and the pool: see [Selections that results do not decide](#selections-that-results-do-not-decide). |
+| `UndecidedSelectionException` | `InvalidConfigurationException` | A `RankRangeSelector` or a `BestOfRankSelector` is asked for a selection that results do not decide. It carries the IDs of the level participants (`getParticipantIds()`), the places they hold between them and the pool, or, where the holders of one rank were compared across pools, that rank (`getRankAcrossPools()`): see [Selections that results do not decide](#selections-that-results-do-not-decide) and [The best of a rank across pools](#the-best-of-a-rank-across-pools). |
 | `IncompleteScheduleException` | `SchedulingException` | Constraints leave a schedule that cannot be completed. |
 | `NoValidPairingException` | `SchedulingException` | No complete pairing exists for a Swiss round. |
 | `RepackViolationsException` | `SchedulingException` | A repack leaves violations and `RepackOptions(throwOnViolations: true)` asked for an exception instead of the outcome. |
@@ -4971,6 +5305,7 @@ identifier for logs and stored data):
 | `UnplayedStage` | `unplayed_stage` | A rank selection was asked of a table with no recorded result (`UndecidedSelectionException`) |
 | `TieAcrossSelection` | `tie_across_selection` | A rank selection takes only some of the entries that no result separates (`UndecidedSelectionException`) |
 | `TieWithinSelection` | `tie_within_selection` | Entries that no result separates are all selected, and the order they are selected in is not decided (`UndecidedSelectionException`) |
+| `PoolComparisonRequired` | `pool_comparison_required` | A selection that compares entrants of different pools was asked of pools of unequal size, with no comparison method chosen. The context lists the pool sizes (`pool_sizes`) |
 | `RoundOutOfSequence` | `round_out_of_sequence` | A round was recorded out of play order: its number is not above the last recorded one. From `StageState::fromHistory()`: the round numbers are not 1, 2, 3 and so on |
 | `ParticipantNotAnEntrant` | `participant_not_an_entrant` | A history given to `StageState::fromHistory()` names a participant who is not one of its entrants |
 | `ParticipantTwiceInRound` | `participant_twice_in_round` | A round of a history given to `StageState::fromHistory()` holds one participant twice |

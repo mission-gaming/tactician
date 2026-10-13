@@ -42,9 +42,15 @@ odd size it plays an even number, so 0 apart is possible.
 - **Before the constraints.** The roles of a leg are decided before any
   constraint sees an event, and each event is then checked as before. A role
   constraint that the assigned roles break fails generation loudly. The
-  scheduler does not try other roles: constraints are hard filters, and a
-  schedule that silently had other roles than the ones asked for would be
-  worse than a failure. The cost is real and is accepted here: a role
+  scheduler does not try other roles for the role assignment's leg:
+  constraints are hard filters, and a schedule that silently had other roles
+  than the ones asked for would be worse than a failure. (Since 0.3.0 it
+  does change a role where the contract of whoever decided it leaves it
+  free, which is the draw of a shuffled later leg, and the first leg of a
+  backtracking search as far as the role assignment keeps the result:
+  [backtracking-generation.md](backtracking-generation.md#roles-across-legs).
+  The roles a role assignment gives the first leg without backtracking are
+  not among them.) The cost is real and is accepted here: a role
   assignment does not see the constraints, so a constraint that fixes the
   role of one pairing can reject the balanced roles although other balanced
   roles would satisfy it, and the scheduler does not look for them. Of the
@@ -69,7 +75,12 @@ odd size it plays an even number, so 0 apart is possible.
   leg it changes is replayed against the constraints, and a rejection is an
   `IncompleteScheduleException`. Keeping the search's roles instead would
   have returned an unbalanced schedule to a caller who asked for a balanced
-  one, with nothing to say so.
+  one, with nothing to say so. The same holds for a first leg whose roles
+  the search changes afterwards, to make the later legs fit: it is put to
+  the role assignment again and returned only when the role assignment
+  keeps it as it is. There the search goes on to the next first leg instead
+  of failing, and the failure, if none is kept, says that roles exist which
+  the role assignment would change.
 
 ## The circle rule
 
