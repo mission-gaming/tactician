@@ -2972,7 +2972,13 @@ set), so that the round can later be told from one paired on full results;
 pass it to the `RoundPairing` you build when your rows hold the rounds.
 When nothing was missing, the method is `pairNextRound()` and marks
 nothing. An event that is never played is not left without a result: give
-it an [awarded result](#awarded-results), which is a result. A bracket
+it an [awarded result](#awarded-results), which is a result. The result
+that was missing still has to arrive: until it does the stage is not
+complete, and `pairNextRound()` goes on refusing. `withAdditionalResults()`
+adds to the last recorded round only, so once the early round is recorded a
+result of the round before it is supplied with the history
+(`fromHistory()` takes the results of any round), or the state is rebuilt
+from its rounds with that result in its place. A bracket
 has no such method: its next round holds who advanced, and that is not
 known before the ties are decided.
 

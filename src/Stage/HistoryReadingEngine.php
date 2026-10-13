@@ -39,8 +39,7 @@ interface HistoryReadingEngine
      * complete means isComplete() is true. Ready means that nothing
      * recorded stands in the way of the next round: a bracket engine then
      * pairs it. The Swiss engine can still find that no pairing exists
-     * (NoValidPairingException), which only the search tells, and refuses
-     * a table it cannot build as getStandings() does.
+     * (NoValidPairingException), which only the search tells.
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the state cannot be read at all
      */

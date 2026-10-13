@@ -551,6 +551,32 @@ describe('a round with some of its results, or none', function (): void {
             ->and($engine->pairNextRound($state)->toArray())->toBe($first->toArray());
     })->with(array_keys(historyEngines()));
 
+    // The verbs accept two results of one event, so a state can hold them
+    // (a history cannot). The Swiss engine pairs from the table, which such
+    // a state has none of.
+    it('does not call a Swiss stage ready whose table cannot be built: it refuses as the pairing does', function (): void {
+        $engine = new SwissPairingEngine(plannedRounds: 3);
+        $state = StageState::start(historyField(4));
+        $first = $engine->pairNextRound($state);
+        [$one, $other] = $first->getEvents();
+        $state = $state->withRoundPlayed($first, [new Result($one, $one->getParticipants()[0]), new Result($other, $other->getParticipants()[0])])
+            ->withAdditionalResults([new Result($one, $one->getParticipants()[1])]);
+
+        $refusals = [];
+        foreach ([fn() => $engine->getReadiness($state), fn() => $engine->pairNextRound($state), fn() => $engine->getStandings($state)] as $call) {
+            try {
+                $call();
+                $refusals[] = null;
+            } catch (InvalidInputException $exception) {
+                $refusals[] = str_contains($exception->getMessage(), 'Two results reference the same event');
+            }
+        }
+
+        expect($refusals)->toBe([true, true, true])
+            // Reading whether the stage is over needs no table
+            ->and($engine->isComplete($state))->toBeFalse();
+    });
+
     it('says three things of a stage and exactly one of them', function (): void {
         $ready = PairingReadiness::ready(3);
         $event = new Event(historyField(2), new Round(2));
@@ -788,6 +814,31 @@ describe('a Swiss round paired before the results are in', function (): void {
         expect($engine->isComplete($finished))->toBeTrue()
             ->and($engine->getReadiness($finished)->isComplete())->toBeTrue()
             ->and($engine->getOutcome($finished))->toBeInstanceOf(StageOutcome::class);
+    });
+
+    // The result that was missing still has to arrive, and the verb that
+    // adds results reaches the last recorded round only.
+    it('leaves the earlier event awaiting its result, which arrives with the history once the early round is recorded', function (): void {
+        $early = $this->engine->pairNextRoundOnIncompleteResults($this->unfinished);
+        $rng = new Randomizer(new Mt19937(2));
+        $state = $this->unfinished->withRoundPlayed($early, historyResults($early, $rng));
+        $late = new Result($this->awaited, $this->awaited->getParticipants()[1]);
+
+        // Round 2 is played in full, and the stage still waits for round 1
+        expect($this->engine->getReadiness($state)->getRoundNumber())->toBe(1)
+            ->and($this->engine->getReadiness($state)->getUnresolvedEvents())->toBe([$this->awaited])
+            ->and(fn(): RoundPairing => $this->engine->pairNextRound($state))->toThrow(UnresolvedRoundException::class)
+            ->and(fn(): StageState => $state->withAdditionalResults([$late]))
+            ->toThrow(InvalidConfigurationException::class, 'different round');
+
+        $caughtUp = StageState::fromHistory($this->entrants, $state->getRoundsPlayed(), [...$state->getResults(), $late]);
+
+        expect($this->engine->getReadiness($caughtUp)->isReady())->toBeTrue()
+            ->and($this->engine->pairNextRound($caughtUp)->getRoundNumber())->toBe(3)
+            ->and($this->engine->pairNextRound($caughtUp)->isPairedOnIncompleteResults())->toBeFalse()
+            // The mark of round 2 stays: it says how the round was paired
+            ->and($this->engine->getRecordedRounds($caughtUp)[1]->isPairedOnIncompleteResults())->toBeTrue()
+            ->and($this->engine->getRecordedRounds($caughtUp)[0]->isResolved())->toBeTrue();
     });
 
     it('is settled by an awarded result for an event that is never played', function (): void {

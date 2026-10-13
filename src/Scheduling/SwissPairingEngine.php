@@ -267,6 +267,13 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * this is pairNextRound() and the pairing carries no mark. In
      * results-free mode no event awaits a result, so nothing is marked.
      *
+     * The event still awaits its result afterwards: pairNextRound()
+     * refuses and isComplete() is false until it has one. Once the round
+     * paired here is recorded, StageState::withAdditionalResults() no
+     * longer reaches the earlier round (it adds to the last round only):
+     * supply the late result with the history (StageState::fromHistory()),
+     * or rebuild the state from its rounds.
+     *
      * @throws InvalidConfigurationException For every case pairNextRound() names but the
      *                                       unfinished round
      * @throws NoValidPairingException When no complete pairing exists for the round
@@ -286,7 +293,19 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * A stage with fewer than 2 active participants is complete, as
      * isComplete() has it.
      *
-     * @throws InvalidConfigurationException When the state is stamped with another engine's fingerprint
+     * Ready means that no recorded event awaits a result and that the
+     * table the round is paired from can be built. The search for the
+     * round is not run here, so pairNextRound() can still find that no
+     * pairing is left that nobody has played (NoValidPairingException).
+     *
+     * @throws InvalidConfigurationException When the state is stamped with another engine's
+     *                                       fingerprint, or the next round could be paired and a
+     *                                       bye is recorded under a ranking strategy that is not a
+     *                                       WinDrawLossRanking, as pairNextRound() refuses it
+     * @throws InvalidInputException When the next round could be paired and the table cannot be
+     *                               built from the results, as pairNextRound() refuses it: an
+     *                               event has two results (a state StageState::fromHistory()
+     *                               refuses)
      */
     #[Override]
     public function getReadiness(StageState $state): PairingReadiness
@@ -299,6 +318,11 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         if ($unresolved !== []) {
             return PairingReadiness::awaitingResults($unresolved[0]->getRound()?->getNumber() ?? 0, $unresolved);
         }
+
+        // The round is paired from the table: a state the table cannot be
+        // built from is refused here as pairNextRound() refuses it, and is
+        // not called ready
+        $this->table($state);
 
         return PairingReadiness::ready($state->getNextRoundNumber());
     }
