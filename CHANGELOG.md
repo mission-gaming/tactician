@@ -51,6 +51,102 @@ heading **Output change (fix)**.
   `docs/design/backtracking-generation.md` ("Roles across legs") and
   `docs/ROADMAP.md`; the usage guide has the contract of each strategy
   ("Leg Strategies and Role Constraints").
+- **Mirrored legs alternate: `MirroredLegStrategy` reverses the roles in the
+  even-numbered legs only.** It reversed them in every leg after the first,
+  so a pair that met three times was split 1:2 and a pair that met four
+  times 1:3, and the imbalance grew with every leg. The odd-numbered legs
+  now have the roles of the first leg and the even-numbered legs have them
+  reversed. A pair's meetings are split as evenly as their number allows
+  (level over an even number of legs, one apart over an odd number), an even
+  number of legs ends with every participant first-named as often as
+  second-named, and an odd number ends as a single leg does.
+
+  **Who is affected.** A round robin of three or more legs under
+  `MirroredLegStrategy`, which is the default leg strategy, so
+  `new RoundRobinOptions(legs: 3)` and `['legs' => 3]` are included: with
+  either role assignment, with or without constraints, a `Randomizer` or
+  backtracking. Schedules of one or two legs are byte for byte what they
+  were. So is every schedule under `RepeatedLegStrategy` or
+  `ShuffledLegStrategy`, and every two-legged elimination tie.
+
+  **What changes.** In the third leg, and in every odd-numbered leg after
+  it, each event has its two participants in the other order. Which pair
+  meets in which round does not change, and neither do the byes, the round
+  numbers, the metadata or the number of events. Before and after for four
+  participants `1` to `4` over three legs, with the default options (rounds
+  1 to 6, the first two legs, are the same in both):
+
+  ```
+            before        after
+  R7:       4-1 3-2       1-4 2-3
+  R8:       1-2 3-4       2-1 4-3
+  R9:       3-1 2-4       1-3 4-2
+  ```
+
+  Before, 1 met 4 as `1-4`, `4-1`, `4-1`; after, as `1-4`, `4-1`, `1-4`.
+  The same field over four legs had one participant first-named in nine
+  events in a row and ended 6 apart; it now repeats a role three times at
+  most and ends level.
+
+  **What to check (migration).**
+  - A schedule of three or more mirrored legs that was generated before and
+    is stored: it is not regenerated identically. Keep the stored events if
+    they are published; regenerate if the even split is wanted. Anything
+    that compares a fresh schedule with a stored one, or with its hash,
+    for such options will see a difference.
+  - Code that read "leg 2 and later" as "roles reversed": the rule is now
+    "even-numbered legs".
+  - A `RoleBalanceConstraint` or `ConsecutiveRoleConstraint` on such a
+    schedule sees the new roles. What that does depends on the scheduler:
+    - **Without a `Randomizer`**, a limit that two mirrored legs satisfy is
+      now satisfied by any number of them, so a configuration that failed
+      with an `IncompleteScheduleException` at four mirrored legs (a role
+      balance limit of 3 in a field of even size, for example) can now
+      succeed. None is known that succeeded and now fails: the tests compare
+      the old roles with the new for both constraints at every limit from 1
+      to 5, in fields of 2 to 8, over three and four legs and with either
+      role assignment.
+    - **With a `Randomizer`**, a configuration can also fail where it
+      succeeded. The scheduler lays the second and third legs out from the
+      same order, so the third leg used to repeat the second and now meets
+      it as two mirrored legs of a scheduler without a `Randomizer` meet,
+      and a role can repeat more often there. Five participants over three
+      legs with `ConsecutiveRoleConstraint::homeAway(3)` and the default
+      roles completed in 0.2.x and now throw an
+      `IncompleteScheduleException`, for every seed tried. Generate such a
+      configuration again before relying on it: it fails loudly if the
+      limit no longer holds.
+  - To keep the old roles, pass a leg strategy of your own that reverses
+    every leg after the first. `LegStrategyInterface` has two methods:
+    `generateEventForLeg()` returns the pairing as given for leg 1 and
+    reversed for every other leg, and `planLegs()` states what
+    `MirroredLegStrategy` states. The tests hold such a strategy to the
+    "before" column above.
+  - A leg strategy of your own that states `rolesMirrorAcrossLegs: true` is
+    not affected. The flag is documented as "reverses the roles in the
+    even-numbered legs" from this release; the library carries it and acts
+    on nothing in it.
+
+  With a scheduler that holds a `Randomizer`, only the first leg is laid
+  out from the shuffled field, as before, so the later legs are not the
+  first leg reversed. They alternate among themselves: leg 3 is leg 2
+  reversed. A pair is then one apart over an odd number of legs and level or
+  two apart over an even number.
+
+  Six golden fixtures change, in their sections for three and four legs and
+  in the rounds of the third leg only (their sections for one and two legs
+  are unchanged): `round-robin/mirrored-unseeded.txt`,
+  `round-robin/mirrored-seed-1.txt`, `round-robin/mirrored-seed-42.txt`,
+  `round-robin/mirrored-seed-1337.txt`,
+  `round-robin/balanced-mirrored-unseeded.txt` and
+  `round-robin/balanced-mirrored-seed-42.txt`.
+
+  The documents that described the old behaviour as the contract are
+  corrected with it: the docblocks of `MirroredLegStrategy`,
+  `LegPlanContribution`, `RoundRobinPlan` and `RoleBalanceConstraint`, the
+  tables under "Role-Based Constraints" and "Legs after the first" in the
+  usage guide, the architecture document, the roadmap's limitations and the
+  role assignment design note.
 
 ### Added
 
@@ -171,6 +267,46 @@ heading **Output change (fix)**.
   asked once for each event of a layout, as before. Who is affected: a
   constraint or a strategy that counts its calls, which the usage guide
   already excludes for constraints ("What a constraint may rely on").
+- Tooling only; no output and no public signature changes. The development
+  tools are raised to Rector 2.7 and PHPStan 2.3 (`rector/rector: ^2.7`,
+  `phpstan/phpstan: ^2.3`, `phpstan/phpstan-strict-rules: ^2.1`; the lock
+  file holds Rector 2.7.0, PHPStan 2.3.1 and
+  `phpstan/phpstan-strict-rules` 2.1.0), and Rector runs with its
+  parallel workers again. Rector 2.7.0 writes a cache entry to a temporary
+  file and renames it, so a worker can no longer load an entry that another
+  has half written; `->withoutParallel()` is removed from `rector.php`, and
+  the Rector step of the gate takes about half as long. The test that
+  required the one-process setting is replaced by one that fails when
+  `composer.json` allows a Rector earlier than 2.7, and another does the
+  same for strict rules earlier than 2.1
+  (`tests/Feature/GateConfigurationTest.php`). What the new versions found
+  is fixed in the code, with nothing added to a baseline or to
+  `ignoreErrors`:
+  - Rector's new `TernaryToNullsafeCoalesceRector` asked for one expression
+    in `Timeline\ZonedTime` and one in a test helper
+    (`tests/Support/ThrowSites.php`) to change from
+    `$x !== null ? $x->y() : $z` to `$x?->y() ?? $z`. In both, what is read
+    from `$x` is never `null`, so the two forms give the same value. The
+    test helper reads a property, where PHPStan 2.3 in turn reports the
+    `?->` as unnecessary on the left of `??` (`nullsafe.neverNull`); it is
+    written `$x->y ?? $z`, which both tools accept.
+  - PHPStan 2.3 reported that an offset might not exist (12 findings) in the
+    oracle of `tests/Feature/StandingsTiedSetsInvariantsTest.php`, which
+    counted into `$record[$id]['wins']` and the like. The oracle now reads a
+    participant's whole line, changes it and writes it back; it computes the
+    same figures.
+  - Nothing was changed for `foreach.valueOverwrite`, which PHPStan 2.3
+    reports at two loops in `src/` (`Repack\Internal\SessionPacker`,
+    `Scheduling\DoubleEliminationEngine`) with the strict rules 2.0.12 and
+    not with 2.1.0. Each loop names its value variable as an earlier loop
+    that has ended named its own, and nothing reads the variable between
+    the two; 2.1.0 reports the overwrite only of a variable that was
+    assigned before the loop and is read after it. That is why the
+    constraint on the strict rules is raised: with `^2.0` an install could
+    hold a version that reports the two loops.
+
+  The scheduled workflow's `Unlocked dependencies` jobs, which install the
+  newest versions and had been failing on these findings, pass again.
 
 ### Fixed
 

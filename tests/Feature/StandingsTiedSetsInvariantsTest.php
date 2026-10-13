@@ -157,18 +157,26 @@ function tiedSetOracle(array $participants, array $games, array $values, array $
 
     foreach ($games as $game) {
         foreach ([[$game['home'], $game['away'], 0, 1], [$game['away'], $game['home'], 1, 0]] as [$id, $opponent, $own, $their]) {
+            // The whole line is read, changed and written back. A write to
+            // one figure through `$record[$id]` would, for an id that has no
+            // line, make a line with that figure alone, so static analysis
+            // could no longer say that every line holds all five.
+            $line = $record[$id];
+
             if ($game['winner'] === null) {
-                ++$record[$id]['draws'];
+                ++$line['draws'];
             } elseif ($game['winner'] === $id) {
-                ++$record[$id]['wins'];
+                ++$line['wins'];
             } else {
-                ++$record[$id]['losses'];
+                ++$line['losses'];
             }
 
             if ($game['scores'] !== null) {
-                $record[$id]['for'] += $game['scores'][$own];
-                $record[$id]['against'] += $game['scores'][$their];
+                $line['for'] += $game['scores'][$own];
+                $line['against'] += $game['scores'][$their];
             }
+
+            $record[$id] = $line;
         }
     }
 

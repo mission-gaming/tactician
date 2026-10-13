@@ -41,7 +41,8 @@ final readonly class RoundRobinPlan implements PairwisePlan
      *
      * @param array<Participant> $participants The field; IDs are not checked for uniqueness here
      * @param int $legs How many times each participant meets each other participant
-     * @param bool $rolesMirrorAcrossLegs Whether the leg strategy reverses event roles in later legs
+     * @param bool $rolesMirrorAcrossLegs Whether the leg strategy reverses event roles in the
+     *                                    even-numbered legs
      * @param bool $requiresRandomization Whether the leg strategy needs a randomizer during generation
      * @param array<string> $warnings Non-fatal notes from plan construction
      * @throws InvalidConfigurationException When legs is below 1 (reason `InvalidLegCount`) or
@@ -170,8 +171,8 @@ final readonly class RoundRobinPlan implements PairwisePlan
     }
 
     /**
-     * Whether the leg strategy says it reverses event roles in later
-     * legs. The plan carries the strategy's statement as given; it does
+     * Whether the leg strategy says it reverses event roles in the
+     * even-numbered legs. The plan carries the strategy's statement as given; it does
      * not derive or check it.
      */
     public function rolesMirrorAcrossLegs(): bool

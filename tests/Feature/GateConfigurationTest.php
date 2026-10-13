@@ -61,53 +61,42 @@ function gateNeonIncludes(string $neon): array
 }
 
 /**
- * What is wrong with the worker setting of a Rector configuration, given the
- * locked Rector version, or null when nothing is.
+ * What is wrong with a Composer constraint as a floor for a package, or null
+ * when it allows no version before the minimum.
  *
- * Rector before 2.7.0 copies a cache entry onto its final path, and every
- * Rector process loads and rewrites the entry for the configuration when it
- * starts. Parallel workers start together, so one can load the entry while
- * another has written part of it: PHP then reports a syntax error in the
- * half-written file, the worker dies and the run fails with "Child process
- * error". Rector 2.7.0 writes the entry to a temporary file and renames it.
- * So before 2.7.0 the configuration must turn the workers off, and from
- * 2.7.0 it must not: one process takes about twice as long, and a workaround
- * that nothing asks to be removed stays for ever.
- *
- * A version that does not compare as 2.7.0 or later (a pre-release of
- * 2.7.0, a branch such as `dev-main`) is treated as one that still writes in
- * place. Comments and string literals are left out of the configuration
- * before it is searched, so only a call that PHP runs counts.
+ * Only `^<major>.<minor>` and `^<major>.<minor>.<patch>` are read: that is
+ * how composer.json writes every development tool, and the first version
+ * such a constraint allows is the one it names. Any other form (a range, an
+ * alternative, a branch) is refused, not interpreted, so that a constraint
+ * this function cannot read never passes. The minimum is `<major>.<minor>`.
  */
-function gateRectorWorkerProblem(string $lockedVersion, string $configuration): ?string
+function gateFloorProblem(string $package, string $constraint, string $minimum): ?string
 {
-    $code = '';
-
-    foreach (token_get_all($configuration) as $token) {
-        if (!is_array($token)) {
-            $code .= $token;
-
-            continue;
-        }
-
-        if (!in_array($token[0], [T_COMMENT, T_DOC_COMMENT, T_WHITESPACE, T_CONSTANT_ENCAPSED_STRING], true)) {
-            $code .= $token[1];
-        }
+    if (preg_match('/^\^(\d+)\.(\d+)(?:\.\d+)?$/', $constraint, $floor) !== 1) {
+        return "{$package}: the constraint `{$constraint}` is not written as `^<major>.<minor>`, so its lowest version cannot be read.";
     }
 
-    $version = ltrim($lockedVersion, 'v');
-    $turnsWorkersOff = str_contains($code, '->withoutParallel()');
-    $turnsWorkersOn = str_contains($code, '->withParallel(');
-
-    if (version_compare($version, '2.7.0', '>=')) {
-        return $turnsWorkersOff
-            ? "Rector {$version} writes its cache atomically, so its parallel workers are safe again: remove ->withoutParallel() and the comment above it from rector.php, then this test and gateRectorWorkerProblem()."
-            : null;
-    }
-
-    return $turnsWorkersOff && !$turnsWorkersOn
+    // Major and minor only, on both sides: version_compare() puts `2.7`
+    // before `2.7.0`, so a floor with a patch part is not compared whole.
+    return version_compare("{$floor[1]}.{$floor[2]}", $minimum, '>=')
         ? null
-        : "Rector {$version} writes its cache in place, so parallel workers can read a half-written entry: rector.php must call ->withoutParallel() and must not call ->withParallel().";
+        : "{$package}: the constraint `{$constraint}` allows a version before {$minimum}.";
+}
+
+/**
+ * gateFloorProblem() for a development dependency of this checkout.
+ *
+ * @throws JsonException When composer.json is not JSON
+ * @throws PHPUnit\Framework\Exception When composer.json does not require the package as a string
+ */
+function gateDevelopmentFloorProblem(string $root, string $package, string $minimum): ?string
+{
+    $composer = json_decode((string) file_get_contents($root . '/composer.json'), true, flags: JSON_THROW_ON_ERROR);
+    Assert::assertIsArray($composer);
+    Assert::assertIsArray($composer['require-dev']);
+    Assert::assertIsString($composer['require-dev'][$package] ?? null, "composer.json does not require {$package} for development.");
+
+    return gateFloorProblem($package, $composer['require-dev'][$package], $minimum);
 }
 
 /**
@@ -297,6 +286,16 @@ describe('PHPStan configuration', function () use ($root): void {
         'src/' => ['phpstan/baseline.neon', 7],
         'tests/ and examples/support/' => ['phpstan/tests-baseline.neon', 28],
     ]);
+
+    it('requires the strict rules that the code is held to, the lowest version the constraint allows included', function () use ($root): void {
+        // The strict rules before 2.1.0 report a `foreach` whose value
+        // variable was the variable of an earlier loop that has ended
+        // (`foreach.valueOverwrite`), which src/ does in two places; 2.1.0
+        // reports it only where the variable was assigned before the loop
+        // and is read after it. With a floor below 2.1 the gate would pass
+        // on the locked version and fail on another the constraint allows.
+        expect(gateDevelopmentFloorProblem($root, 'phpstan/phpstan-strict-rules', '2.1'))->toBeNull();
+    });
 });
 
 describe('Rector configuration', function () use ($root): void {
@@ -321,84 +320,41 @@ describe('Rector configuration', function () use ($root): void {
             ->and($configuration)->toContain("->withPaths([\n        __DIR__ . '/src',\n        __DIR__ . '/tests',\n    ])");
     });
 
-    it('runs as one process for as long as the locked Rector writes its cache in place, and no longer', function () use ($root): void {
-        // The gate failed on CI with "Child process error" on commits that
-        // changed nothing Rector reads; gateRectorWorkerProblem() says why
-        // and what it asks of rector.php on each side of Rector 2.7.0.
-        $lock = json_decode((string) file_get_contents($root . '/composer.lock'), true, flags: JSON_THROW_ON_ERROR);
-        Assert::assertIsArray($lock);
-        Assert::assertIsArray($lock['packages-dev']);
-
-        $locked = null;
-
-        foreach ($lock['packages-dev'] as $package) {
-            Assert::assertIsArray($package);
-
-            if ($package['name'] === 'rector/rector') {
-                Assert::assertIsString($package['version']);
-                $locked = $package['version'];
-            }
-        }
-
-        Assert::assertNotNull($locked, 'composer.lock does not lock rector/rector.');
-
-        $problem = gateRectorWorkerProblem($locked, (string) file_get_contents($root . '/rector.php'));
-
-        Assert::assertNull($problem, (string) $problem);
+    it('requires a Rector that writes its cache atomically, since its parallel workers are on', function () use ($root): void {
+        // Rector before 2.7.0 copies a cache entry onto its final path, and
+        // every worker loads and rewrites the entry for the configuration as
+        // it starts, so one could load an entry another had half written:
+        // the gate failed on CI with "Child process error" on commits that
+        // changed nothing Rector reads. Rector 2.7.0 writes the entry to a
+        // temporary file and renames it. rector.php leaves the workers on,
+        // so no install may resolve to an earlier version, the lowest one
+        // the constraint allows included.
+        expect(gateDevelopmentFloorProblem($root, 'rector/rector', '2.7'))->toBeNull();
     });
 
-    // The rule the test above applies, on configurations and versions that
-    // this checkout does not have: without these, the rule is only ever run
-    // on the one case that passes.
-    it('accepts a configuration that turns the workers off while the cache is written in place', function (string $version): void {
-        expect(gateRectorWorkerProblem($version, "<?php\n\nreturn RectorConfig::configure()\n    ->withoutParallel()\n    ->withPhpSets(php83: true);\n"))
-            ->toBeNull();
+    // The rule the test above applies, on constraints this checkout does not
+    // have: without these, the rule is only ever run on the one that passes.
+    it('accepts a floor at or above the minimum, however many parts it has', function (string $constraint): void {
+        expect(gateFloorProblem('rector/rector', $constraint, '2.7'))->toBeNull();
     })->with([
-        'the locked version when this was written' => ['2.6.7'],
-        'a version with a v prefix' => ['v2.6.7'],
-        'an earlier minor' => ['2.6.0'],
-        'a release candidate of 2.7.0' => ['2.7.0-RC1'],
-        'a beta of 2.7.0 with a v prefix' => ['v2.7.0-beta2'],
-        'a branch' => ['dev-main'],
-        'a branch alias' => ['2.7.x-dev'],
+        'the minimum' => ['^2.7'],
+        'the minimum with a patch part' => ['^2.7.0'],
+        'a later patch' => ['^2.7.3'],
+        'a minor that sorts before 2.7 as text' => ['^2.10'],
+        'the next major' => ['^3.0'],
     ]);
 
-    it('refuses a configuration that leaves the workers on while the cache is written in place', function (string $configuration): void {
-        expect(gateRectorWorkerProblem('2.6.7', "<?php\n\nreturn RectorConfig::configure()\n{$configuration}    ->withPhpSets(php83: true);\n"))
-            ->toContain('must call ->withoutParallel()');
+    it('refuses a floor below the minimum, and a constraint whose floor it cannot read', function (string $constraint, string $problem): void {
+        expect(gateFloorProblem('rector/rector', $constraint, '2.7'))->toContain($problem);
     })->with([
-        'no call at all' => [''],
-        'the call in a line comment' => ["    // ->withoutParallel()\n"],
-        'the call on a line of its own inside a block comment' => ["    /*\n    ->withoutParallel()\n    */\n"],
-        'the call in a string' => ["    ->withSkip(['->withoutParallel()'])\n"],
-        'the workers turned on again afterwards' => ["    ->withoutParallel()\n    ->withParallel()\n"],
-        'the workers turned on again with arguments' => ["    ->withoutParallel()\n    ->withParallel(120, 4)\n"],
-    ]);
-
-    it('counts the call however it is laid out, and ignores a mention of the parallel call in a comment', function (string $configuration): void {
-        expect(gateRectorWorkerProblem('2.6.7', "<?php\n\nreturn RectorConfig::configure()\n{$configuration}    ->withPhpSets(php83: true);\n"))
-            ->toBeNull();
-    })->with([
-        'on the line of the call before it' => ["    ->withPaths([__DIR__ . '/src'])->withoutParallel()\n"],
-        'with the arrow on the line above' => ["    ->\n        withoutParallel()\n"],
-        'beside a comment that names ->withParallel()' => ["    // Not ->withParallel(): see below.\n    ->withoutParallel()\n"],
-    ]);
-
-    it('asks for the one-process setting to be removed once the locked Rector writes its cache atomically', function (string $version): void {
-        $workersOff = "<?php\n\nreturn RectorConfig::configure()\n    ->withoutParallel()\n    ->withPhpSets(php83: true);\n";
-        $default = "<?php\n\nreturn RectorConfig::configure()\n    // ->withoutParallel() was here.\n    ->withPhpSets(php83: true);\n";
-        $workersOn = "<?php\n\nreturn RectorConfig::configure()\n    ->withParallel(120, 4)\n    ->withPhpSets(php83: true);\n";
-
-        expect(gateRectorWorkerProblem($version, $workersOff))->toContain('remove ->withoutParallel()')
-            ->and(gateRectorWorkerProblem($version, $default))->toBeNull()
-            ->and(gateRectorWorkerProblem($version, $workersOn))->toBeNull();
-    })->with([
-        'the first version that does' => ['2.7.0'],
-        'that version with a v prefix' => ['v2.7.0'],
-        'a later patch' => ['2.7.1'],
-        'a minor that sorts before 2.7 as text' => ['2.10.0'],
-        'a release candidate of a later minor' => ['2.10.0-RC1'],
-        'the next major' => ['3.0.0'],
+        'the constraint before the upgrade' => ['^2.0', 'allows a version before 2.7'],
+        'the minor before' => ['^2.6', 'allows a version before 2.7'],
+        'the last patch of the minor before' => ['^2.6.7', 'allows a version before 2.7'],
+        'an earlier major' => ['^1.2', 'allows a version before 2.7'],
+        'an alternative that reaches below' => ['^2.0 || ^2.7', 'is not written as'],
+        'a range' => ['>=2.7', 'is not written as'],
+        'any version' => ['*', 'is not written as'],
+        'a branch' => ['dev-main', 'is not written as'],
     ]);
 
     it('gives a reason for every rule it skips', function () use ($root): void {
