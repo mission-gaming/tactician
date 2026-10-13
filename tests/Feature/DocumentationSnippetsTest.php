@@ -1196,10 +1196,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
-        // "a kickoff that falls in the hour the clocks skip ... every later round keeps
-        // the moved time". Records a known defect (issue #56: slot times are computed by
-        // adding the interval repeatedly)
-        'a kickoff in the hour the clocks skip moves every later round' => [
+        // "a kickoff that falls in the hour the clocks skip ... is moved an hour later by
+        // PHP, for that round alone": every round is computed from the start
+        'a kickoff in the hour the clocks skip moves that round and no later one' => [
             'docs/USAGE.md',
             "foreach (['P7D', 'PT168H'] as \$roundInterval)",
             <<<'PHP'
@@ -1212,12 +1211,109 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 foreach ($skipped->getEventsByRound() as $roundEvents) {
                     $times[] = $roundEvents[0]->getKickoff()->setTimezone($londonTime)->format('j M H:i');
                 }
-                assert($times === ['22 Mar 01:30', '29 Mar 02:30', '5 Apr 02:30']);
+                assert($times === ['22 Mar 01:30', '29 Mar 02:30', '5 Apr 01:30']);
+                PHP,
+        ],
+        // "`P1M` from 31 January is 28 February (29 in a leap year), 31 March, 30 April;
+        // from 30 January it is the end of February and the 30th of every other month",
+        // "round N is the start plus N−1 times the months, and then N−1 times the days",
+        // and "`createFromDateString('1 month')` from 31 January is still 3 March, 3 April,
+        // 3 May"
+        'months keep the day or the month end, except for an interval made from a relative string' => [
+            'docs/USAGE.md',
+            "foreach (['P7D', 'PT168H'] as \$roundInterval)",
+            <<<'PHP'
+                $dates = static function (string $start, DateInterval $interval) use ($londonTime): array {
+                    $monthly = new TimelineDefinition(new DateTimeImmutable($start, $londonTime), $interval);
+
+                    return array_map(
+                        static fn (int $round): string => $monthly->getSlotTime($round)->setTimezone($londonTime)->format('j M'),
+                        [2, 3, 4]
+                    );
+                };
+                assert($dates('2026-01-31 19:00', new DateInterval('P1M')) === ['28 Feb', '31 Mar', '30 Apr']);
+                assert($dates('2028-01-31 19:00', new DateInterval('P1M')) === ['29 Feb', '31 Mar', '30 Apr']);
+                assert($dates('2026-01-30 19:00', new DateInterval('P1M')) === ['28 Feb', '30 Mar', '30 Apr']);
+                assert($dates('2026-01-31 19:00', new DateInterval('P1M7D')) === ['7 Mar', '14 Apr', '21 May']);
+                assert($dates('2026-01-31 19:00', DateInterval::createFromDateString('1 month')) === ['3 Mar', '3 Apr', '3 May']);
+                PHP,
+        ],
+        // "A local time that occurs twice (01:30 on the night the clocks go back) is the
+        // first of the two": 01:30 British Summer Time is 00:30 UTC
+        'a kickoff at a local time that occurs twice is the first of the two' => [
+            'docs/USAGE.md',
+            "foreach (['P7D', 'PT168H'] as \$roundInterval)",
+            <<<'PHP'
+                $repeated = new TimelineDefinition(new DateTimeImmutable('2026-10-18 01:30', $londonTime), new DateInterval('P7D'));
+                assert($repeated->getSlotTime(2)->format('j M H:i') === '25 Oct 00:30');
+                assert($repeated->getSlotTime(3)->format('j M H:i') === '1 Nov 01:30');
+                // "whatever season the start is in": 1 February is on winter time
+                $fromWinter = new TimelineDefinition(new DateTimeImmutable('2026-02-01 01:30', $londonTime), new DateInterval('P7D'));
+                assert($fromWinter->getSlotTime(39)->format('j M H:i') === '25 Oct 00:30');
+                // An interval with a time part: "the first where the timezone database marks the
+                // start as daylight-saving time and the second where it does not"
+                $mixed = static fn (string $start): string => (new TimelineDefinition(new DateTimeImmutable($start, $londonTime), new DateInterval('P1DT12H')))
+                    ->getSlotTime(3)->format('j M H:i');
+                assert($mixed('2026-10-23 01:30') === '26 Oct 00:30');
+                // From winter time, 266 days and an hour: the second 01:30 (01:30 UTC), and an hour
+                $winterMixed = new TimelineDefinition(new DateTimeImmutable('2026-02-01 01:30', $londonTime), new DateInterval('P266DT1H'));
+                assert($winterMixed->getSlotTime(2)->format('j M H:i') === '25 Oct 02:30');
+                PHP,
+        ],
+        // "Hourly rounds of two slots an hour apart are refused (`OverlappingTime`)" and
+        // "A round whose time is more than some 270 billion years from the start ... fails
+        // with the reason `ValueOutOfRange`"
+        'rounds that overlap and a round too far away are refused' => [
+            'docs/USAGE.md',
+            "foreach (['P7D', 'PT168H'] as \$roundInterval)",
+            <<<'PHP'
+                $reason = static function (Closure $build): ?\MissionGaming\Tactician\Exceptions\InvalidConfigurationReason {
+                    try {
+                        $build();
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        return $e->getReason();
+                    }
+
+                    return null;
+                };
+                $evening = new DateTimeImmutable('2026-10-17 19:00', $londonTime);
+                assert($reason(static fn () => new TimelineDefinition($evening, new DateInterval('PT1H'), 2, new DateInterval('PT1H')))
+                    === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::OverlappingTime);
+                assert($reason(static fn () => new TimelineDefinition($evening, new DateInterval('PT2H'), 2, new DateInterval('PT1H'))) === null);
+                assert($reason(static fn () => (new TimelineDefinition($evening, new DateInterval('P7D')))->getSlotTime(9_000_000_000_000_000_000))
+                    === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                PHP,
+        ],
+        // "A grid with sessions at 20:00 and 20:25 and two slots 25 minutes apart is
+        // refused when it is built (`InvalidConfigurationException`, reason
+        // `OverlappingTime`)", "nothing follows the last session, so that one can run
+        // as deep as it needs to", and "unless its slots are days apart across a calendar
+        // day the timezone skipped, as `Pacific/Apia` skipped 30 December 2011"
+        'a grid whose sessions overlap is refused' => [
+            'docs/USAGE.md',
+            "'slots_per_session_overrides' => [1 => 4],  // final session runs deeper",
+            <<<'PHP'
+                $overlapping = ['sessions' => ['2026-08-12 20:00', '2026-08-12 20:25'], 'timezone' => 'Europe/London', 'slot_interval' => 'PT25M', 'slots_per_session' => 2];
+                try {
+                    SessionGrid::fromArray($overlapping);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::OverlappingTime);
+                }
+                $deepLast = SessionGrid::fromArray(['slots_per_session' => 1, 'slots_per_session_overrides' => [1 => 40]] + $overlapping);
+                assert($deepLast->getPositionCount() === 41);
+                $skippedDay = ['sessions' => ['2011-12-28 10:00'], 'timezone' => 'Pacific/Apia', 'slot_interval' => 'P1D'];
+                assert(SessionGrid::fromArray($skippedDay + ['slots_per_session' => 3])->getPositionCount() === 3);
+                try {
+                    SessionGrid::fromArray($skippedDay + ['slots_per_session' => 4]);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::OverlappingTime);
+                }
                 PHP,
         ],
         // "without a rule it accepts a schedule that has one participant in two events at
-        // the same time ... add a MinimumRestRule". Issue #56 covers what the assigner
-        // does not check
+        // the same time ... add a MinimumRestRule"
         'the assigner checks who plays only when it has a rest rule' => [
             'docs/USAGE.md',
             "foreach (['P7D', 'PT168H'] as \$roundInterval)",

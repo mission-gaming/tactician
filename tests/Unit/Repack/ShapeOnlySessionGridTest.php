@@ -240,19 +240,17 @@ describe('SessionGrid positions', function (): void {
         expect($grid->positionOf(new DateTimeImmutable('2026-08-13 04:30', new DateTimeZone('Asia/Tokyo'))))->toBe(['session' => 0, 'slot' => 1]);
     });
 
-    it('returns the first position in grid order when two share an instant', function (): void {
-        // The first session runs three hours on; the second starts one hour in
-        $grid = new SessionGrid(
+    it('never has two positions at one instant, because sessions that overlap are rejected', function (): void {
+        // The first session would run three hours on; the second starts one
+        // hour in, at the instant of the first session's second slot
+        expect(fn() => new SessionGrid(
             [
                 new DateTimeImmutable('2026-08-12 18:00', new DateTimeZone('UTC')),
                 new DateTimeImmutable('2026-08-12 19:00', new DateTimeZone('UTC')),
             ],
             new DateInterval('PT1H'),
             3
-        );
-
-        expect($grid->positionOf(new DateTimeImmutable('2026-08-12 19:00', new DateTimeZone('UTC'))))->toBe(['session' => 0, 'slot' => 1]);
-        expect($grid->positionOf(new DateTimeImmutable('2026-08-12 21:00', new DateTimeZone('UTC'))))->toBe(['session' => 1, 'slot' => 2]);
+        ))->toThrow(InvalidConfigurationException::class, 'Session 0 must end before session 1 starts');
     });
 });
 

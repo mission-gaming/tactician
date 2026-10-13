@@ -11,6 +11,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Serialization\PlainData;
+use MissionGaming\Tactician\Timeline\IntervalArithmetic;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use MissionGaming\Tactician\Timeline\ZonedTime;
 
@@ -34,11 +35,22 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
  * far apart, and their local times move by the hour the clocks moved. A
  * slot interval written in days or longer (`P1D`) keeps the local time of
  * day instead, except that a slot in the hour the clocks skip is moved an
- * hour later, and so is every slot after it in the session. All of this is
- * said of an interval built from an ISO 8601 duration
+ * hour later; the slots after it are not, because every slot is computed
+ * from its session's start and none from the slot before it. A slot at a
+ * local time that occurs twice, where the clocks go back, is at the first
+ * of the two. All of this
+ * is said of an interval built from an ISO 8601 duration
  * (`new DateInterval('PT1H')`, or `slot_interval` in plain data): PHP adds
  * an interval made by `DateInterval::createFromDateString()` or by `diff()`
- * as local time, whatever its parts.
+ * as local time, whatever its parts, and the first of those two is added
+ * one slot at a time, having no multiple.
+ *
+ * Sessions do not overlap: the slots of a session are at rising instants
+ * and the last of them is before the start of the next session, so the
+ * positions of a grid are at distinct instants in grid order. A grid whose
+ * sessions run into one another, or whose slot interval puts two slots of
+ * a session at one instant (one that PHP adds as local time can, where the
+ * clocks skip an hour), is rejected when it is built.
  *
  * A grid comes in two forms. An instant-based grid (the constructor given
  * session starts, or fromArray() given `sessions`) knows when every
@@ -100,6 +112,13 @@ final readonly class SessionGrid
     private array $slotCounts;
 
     /**
+     * @var array<int, array<int, DateTimeImmutable>> The instant of every position, by session and
+     *                                                slot, in the declared timezone; empty on a
+     *                                                shape-only grid
+     */
+    private array $slotTimes;
+
+    /**
      * Build an instant-based grid from its session starts.
      *
      * Call this with session starts and a slot interval, and nothing else
@@ -132,8 +151,12 @@ final readonly class SessionGrid
      *                                       the slot interval is missing or does not move
      *                                       time forward, a session count is given with a
      *                                       slot interval, a slot count is not an integer
-     *                                       of 1 or more, the capacity is below 1, or an
-     *                                       override names a session the grid does not have
+     *                                       of 1 or more, the capacity is below 1, an
+     *                                       override names a session the grid does not have,
+     *                                       a slot of a session is not after the slot before
+     *                                       it, the last slot of a session is at or after
+     *                                       the start of the next session, or a slot is too
+     *                                       far from its session's start to be computed
      */
     public function __construct(
         array|int $sessionStarts,
@@ -229,7 +252,7 @@ final readonly class SessionGrid
             );
         }
 
-        if ($slotInterval instanceof DateInterval && $starts[0]->add($slotInterval) <= $starts[0]) {
+        if ($slotInterval instanceof DateInterval && IntervalArithmetic::advance($starts[0], $slotInterval, 1) <= $starts[0]) {
             throw new InvalidConfigurationException(
                 'The slot interval must move time forward',
                 ['slot_interval' => TimelineDefinition::formatInterval($slotInterval)],
@@ -266,9 +289,57 @@ final readonly class SessionGrid
             $slotCounts[$session] = $slots;
         }
 
+        // Two positions at one instant, or out of grid order, are what the
+        // repacker cannot see: it would hold a participant in both and
+        // report no double booking. So every slot is after the one before it, and a
+        // session's last slot is before the next session starts
+        $slotTimes = [];
+        if ($slotInterval instanceof DateInterval) {
+            foreach ($starts as $session => $start) {
+                $lastSlot = $start;
+                $slotTimes[$session] = [$start];
+                for ($slot = 1; $slot < $slotCounts[$session]; ++$slot) {
+                    $time = IntervalArithmetic::advance($start, $slotInterval, $slot);
+                    if ($time <= $lastSlot) {
+                        throw new InvalidConfigurationException(
+                            "The slots of session {$session} must be at rising times: slot {$slot} is at "
+                                . $time->format('Y-m-d H:i:s') . ' and the slot before it at ' . $lastSlot->format('Y-m-d H:i:s'),
+                            [
+                                'session' => $session,
+                                'slot' => $slot,
+                                'slot_interval' => TimelineDefinition::formatInterval($slotInterval),
+                                'slot_time' => $time->format('Y-m-d H:i:s'),
+                                'previous_slot_time' => $lastSlot->format('Y-m-d H:i:s'),
+                            ],
+                            reason: InvalidConfigurationReason::OverlappingTime
+                        );
+                    }
+                    $slotTimes[$session][$slot] = $time;
+                    $lastSlot = $time;
+                }
+
+                $next = $starts[$session + 1] ?? null;
+                if ($next !== null && $slotCounts[$session] > 1 && $lastSlot >= $next) {
+                    throw new InvalidConfigurationException(
+                        "Session {$session} must end before session " . ($session + 1) . ' starts: its last slot is at '
+                            . $lastSlot->format('Y-m-d H:i:s') . ' and the next session starts at ' . $next->format('Y-m-d H:i:s'),
+                        [
+                            'session' => $session,
+                            'slots' => $slotCounts[$session],
+                            'slot_interval' => TimelineDefinition::formatInterval($slotInterval),
+                            'last_slot' => $lastSlot->format('Y-m-d H:i:s'),
+                            'next_session_start' => $next->format('Y-m-d H:i:s'),
+                        ],
+                        reason: InvalidConfigurationReason::OverlappingTime
+                    );
+                }
+            }
+        }
+
         $this->sessionStarts = $starts;
         $this->slotInterval = $slotInterval;
         $this->slotCounts = $slotCounts;
+        $this->slotTimes = $slotTimes;
     }
 
     /**
@@ -656,9 +727,8 @@ final readonly class SessionGrid
      * Given an integer, it is the position with that ordinal. Given an
      * instant, it is the position whose slot time is that instant; the
      * comparison is of the instants, so the timezone the argument is
-     * written in does not matter. Where one session runs on past the start
-     * of the next, two positions can share an instant, and the first in
-     * grid order is returned.
+     * written in does not matter. No two positions share an instant: a
+     * grid in which two would is rejected when it is built.
      *
      * @param DateTimeImmutable|int $at A position's ordinal, or a slot's instant
      *
@@ -686,15 +756,13 @@ final readonly class SessionGrid
             return null;
         }
 
-        $interval = $this->requireInstants('the position of an instant');
+        $this->requireInstants('the position of an instant');
 
-        foreach ($this->slotCounts as $session => $slots) {
-            $time = $this->sessionStarts[$session];
-            for ($slot = 0; $slot < $slots; ++$slot) {
+        foreach ($this->slotTimes as $session => $times) {
+            foreach ($times as $slot => $time) {
                 if (($time <=> $at) === 0) {
                     return ['session' => $session, 'slot' => $slot];
                 }
-                $time = $time->add($interval);
             }
         }
 
@@ -705,8 +773,9 @@ final readonly class SessionGrid
      * The kickoff time of one slot, in UTC.
      *
      * The session's start plus the slot interval once for each slot before
-     * this one, added in the grid's declared timezone; the result is
-     * normalized to UTC, matching the timeline family's convention. An
+     * this one, added to the start as one step in the grid's declared
+     * timezone; the result is normalized to UTC, matching the timeline
+     * family's convention. An
      * interval of hours, minutes or seconds is elapsed time, so the slots
      * of a session that runs across a daylight-saving change stay that far
      * apart; one of days or longer keeps the local time of day (see the
@@ -721,18 +790,13 @@ final readonly class SessionGrid
      */
     public function getSlotTime(int $session, int $slot): DateTimeImmutable
     {
-        $interval = $this->requireInstants('a slot time');
+        $this->requireInstants('a slot time');
 
         if (!$this->hasPosition($session, $slot)) {
             throw self::positionNotOnGrid($session, $slot, $this->slotCounts);
         }
 
-        $time = $this->sessionStarts[$session];
-        for ($i = 0; $i < $slot; ++$i) {
-            $time = $time->add($interval);
-        }
-
-        return $time->setTimezone(new DateTimeZone('UTC'));
+        return $this->slotTimes[$session][$slot]->setTimezone(new DateTimeZone('UTC'));
     }
 
     /**
