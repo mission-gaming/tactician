@@ -17,6 +17,7 @@ use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\PoolComparison;
 use MissionGaming\Tactician\Stage\PoolDistributor;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
@@ -209,9 +210,16 @@ describe('position decides where results do not', function (): void {
             }
             $combined = StageOutcome::combining($outcomes, $calculator, $field);
 
+            // Pools of unequal size are compared by a method the caller
+            // names: raw totals are the table as it stands
             return [
                 positionIds(RankRangeSelector::topPerGroup(2)->withTableOrderAccepted()->select($combined)),
-                positionIds(RankRangeSelector::overall(1, $pools)->withTableOrderAccepted()->select($combined)),
+                positionIds(
+                    RankRangeSelector::overall(1, $pools)
+                        ->comparedBy(PoolComparison::RawTotals)
+                        ->withTableOrderAccepted()
+                        ->select($combined)
+                ),
             ];
         };
 

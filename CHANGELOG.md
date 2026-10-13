@@ -491,9 +491,60 @@ entry on the engine fingerprint.
   (`planned_rounds_played`) and `ParticipantDoubleBooked`
   (`participant_double_booked`). A `match` over the reason needs a
   `default` arm, as the enum has always said.
+- **The best of a rank across pools: `BestOfRankSelector`.**
+  `BestOfRankSelector::ofRank(rank: 3, count: 2)` returns the two best of
+  the entrants placed third in their pools, best first: the selection
+  behind "the top two of each pool and the two best third-placed". Who
+  holds the rank is read from each pool's own table; the holders are
+  compared by the figures the combined table of the outcome has for them
+  (ranking value, each tiebreaker of the calculator given to
+  `StageOutcome::combining()`, score difference, scores-for). It has
+  `fromArray()`/`toArray()` (`rank`, `count`, and `comparison` and `ties`
+  when chosen; an unknown key is refused), states its count as its
+  selection size for `CompositionValidator`, and refuses an undecided
+  selection as `RankRangeSelector` does, with the same two choices to go
+  on (`withTiesInsideSelectionAccepted()`, `withTableOrderAccepted()`). The
+  list is best first and is not placed for a bracket (#94).
+- **`PoolComparison`, the method pools of unequal size are compared by**,
+  an enum with three cases: `RawTotals` (`raw-totals`), `PerEvent`
+  (`per-event`: every figure divided by the events the entrant has played)
+  and `DiscardLowest` (`discard-lowest`: the entrants placed below the size
+  of the smallest pool are left out of each larger pool with their results,
+  and the table is calculated again). `BestOfRankSelector::comparedBy()`
+  takes any of them and `RankRangeSelector::comparedBy()` the first two,
+  for an overall selection; in plain data it is the key `comparison`,
+  written only when a method was chosen. No method is applied by default:
+  see **Changed** for what that means for `overall()`.
+- **What the selection across pools adds to existing types.**
+  `StageOutcome` takes the calculator its table was calculated with as a
+  seventh constructor argument (`calculator`, default none) and returns it
+  with `getCalculator()`; `StageOutcome::combining()` passes on the one it
+  is given, and `DiscardLowest` needs it.
+  `UndecidedSelectionException` has an eighth constructor parameter,
+  `rankAcrossPools` (default null), and `getRankAcrossPools()`: the rank
+  whose holders were compared, when the tie is among them; its context then
+  holds the key `rank_across_pools`, and has the six keys it had otherwise.
+  One case of `InvalidConfigurationReason`, `PoolComparisonRequired`
+  (`pool_comparison_required`). New example:
+  `examples/25-best-next-placed-qualifiers.php`.
 
 ### Changed
 
+- **Breaking: an overall rank selection across pools of unequal size is
+  refused until a comparison method is chosen.**
+  `RankRangeSelector::overall()` reads the combined table of a pooled
+  outcome, which compares raw totals: across pools of 4 and 3 entrants, 9
+  points from 3 events ranked level with 9 from 2, silently. `select()` now
+  throws an `InvalidConfigurationException` with the reason
+  `PoolComparisonRequired` for an outcome whose pools do not have the same
+  number of entries, with the pool sizes in the context (`pool_sizes`),
+  whatever the tie policy of the selector. Who is affected: every use of
+  `overall()` on a pooled outcome with pools of unequal size. Migration:
+  `RankRangeSelector::overall(1, 8)->comparedBy(PoolComparison::RawTotals)`
+  (`'comparison' => 'raw-totals'` in plain data) selects exactly what the
+  selector selected before; `PoolComparison::PerEvent` compares per event
+  played instead. Unchanged: an outcome without pools, pools of one size,
+  and every per-group selection (#94).
 - **Breaking: a rank selection that results do not decide is refused.**
   `RankRangeSelector::select()` read positions from a table whatever
   decided them. A pool in which every event was drawn, entered as Zed, Yan,

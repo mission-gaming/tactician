@@ -200,6 +200,14 @@ enum InvalidConfigurationReason: string
      */
     case TieWithinSelection = 'tie_within_selection';
 
+    /**
+     * A selection that compares entrants of different pools was asked of
+     * pools of unequal size, and the selector was not told how to compare
+     * them. The context lists the pool sizes by pool label (`pool_sizes`)
+     * and the methods there are (`known`).
+     */
+    case PoolComparisonRequired = 'pool_comparison_required';
+
     // Recording a results-driven stage
 
     /**

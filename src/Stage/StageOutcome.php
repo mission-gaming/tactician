@@ -66,6 +66,9 @@ final readonly class StageOutcome
      * @param array<Participant> $entrants The entrant list of the stage, position 1 first; empty
      *                                     when the stage has none, and the table is then kept
      *                                     as given
+     * @param StandingsCalculator|null $calculator The calculator the standings were calculated
+     *                                             with, for a selector that has to calculate a
+     *                                             table again (see getCalculator())
      */
     public function __construct(
         Standings $standings,
@@ -73,7 +76,8 @@ final readonly class StageOutcome
         private array $byes = [],
         private ?RoundPairing $finalRound = null,
         private array $pools = [],
-        array $entrants = []
+        array $entrants = [],
+        private ?StandingsCalculator $calculator = null
     ) {
         $this->entrants = array_values($entrants);
         $this->standings = $this->entrants === [] ? $standings : $standings->withTiedSetsOrderedBy($this->entrants);
@@ -132,8 +136,25 @@ final readonly class StageOutcome
             $byes,
             null,
             $pools,
-            $entrants
+            $entrants,
+            $calculator
         );
+    }
+
+    /**
+     * The calculator the outcome's table was calculated with, when the
+     * outcome was given it: combining() passes on the one that ordered the
+     * combined table. Null for an outcome built without one, an engine's
+     * outcome included.
+     *
+     * A selector reads it when it has to calculate a table again, as
+     * BestOfRankSelector does to compare pools of unequal size without the
+     * results against the lowest-placed entrants of the larger ones
+     * (PoolComparison::DiscardLowest).
+     */
+    public function getCalculator(): ?StandingsCalculator
+    {
+        return $this->calculator;
     }
 
     /**

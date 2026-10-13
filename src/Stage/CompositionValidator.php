@@ -32,8 +32,9 @@ final readonly class CompositionValidator
      * wrong is in the returned list.
      *
      * How many a selector yields is known ahead of time in two cases
-     * only. A selector that states its size (an overall rank range) is
-     * taken at its word. A match-outcome selector is counted from the
+     * only. A selector that states its size (an overall rank range, or the
+     * best few of one rank across pools, whose size is its count) is taken
+     * at its word. A match-outcome selector is counted from the
      * shape of the stage before it, which the transition declares because
      * the validator runs nothing and cannot see it. By default that stage
      * is one knockout round of all its entrants: half of them go on,
