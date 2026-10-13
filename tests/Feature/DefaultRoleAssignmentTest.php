@@ -94,27 +94,21 @@ describe('the default role assignment', function (): void {
     // counting, because a leg strategy only decides which way round each
     // pairing of leg 1 is played again:
     //
-    // - mirrored: leg 1 one way, every later leg the other way. A
-    //   participant d apart after leg 1 is d - (legs - 1) * d apart at the
-    //   end: |legs - 2| times the single-leg figure, so 0 for two legs.
+    // - mirrored: the odd-numbered legs one way, the even-numbered legs the
+    //   other way. Two legs cancel, so an even number of legs ends 0 apart
+    //   and an odd number ends as a single leg does: the factor is the leg
+    //   count modulo 2.
     // - repeated: every leg as leg 1, so legs times the single-leg figure.
     //
-    // A change in either direction fails: these are exact values.
-    //
-    // For mirrored legs the count starts from what the strategy does today,
-    // and for three legs or more that is not what is wanted: issue #47
-    // (mirrored legs reverse every leg after the first instead of
-    // alternating) changes it to a reversal in the even-numbered legs only.
-    // The factor is then 1 for an odd number of legs and 0 for an even
-    // one, so the rows for four mirrored legs here, and the mirrored rows
-    // for three and four legs of the next test, are a record of the output
-    // before that fix and change with it. One and two legs do not.
+    // A change in either direction fails: these are exact values. Before
+    // 0.3.0 the mirrored factor was |legs - 2|, because every leg after the
+    // first was reversed.
     it('ends several legs out of balance by the single-leg figure times what the leg strategy makes of it', function (
         string $strategyName,
         int $legs
     ): void {
         for ($size = 2; $size <= 30; ++$size) {
-            $factor = $strategyName === 'mirrored' ? abs($legs - 2) : $legs;
+            $factor = $strategyName === 'mirrored' ? $legs % 2 : $legs;
 
             $schedule = (new RoundRobinScheduler())->schedule(
                 defaultRoleField($size),
@@ -129,11 +123,18 @@ describe('the default role assignment', function (): void {
         }
     })
         ->with([['mirrored'], ['repeated']])
-        ->with([[1], [2], [3], [4]]);
+        ->with([[1], [2], [3], [4], [5], [6]]);
 
     // The longest run of one role over several legs, pinned as it is: where
     // one leg ends and the next begins a role can repeat more often than
     // inside a leg. From twelve participants on the figure is regular.
+    //
+    // For mirrored legs the figure of two legs is the figure of any larger
+    // number, and that is counted, not measured: every leg is leg 1 or its
+    // reverse, by turns, so every boundary between two legs is the one
+    // between legs 1 and 2 or that one with both roles exchanged, and a run
+    // cannot be longer than a leg and its neighbour allow (a participant
+    // with one role throughout a leg has the other role throughout the next).
     it('repeats a role across the legs as often as pinned here', function (
         string $strategyName,
         int $legs,
@@ -154,8 +155,10 @@ describe('the default role assignment', function (): void {
         }
     })->with([
         'mirrored, 2 legs' => ['mirrored', 2, [1, 2, 3, 4, 2, 4, 2, 3, 2, 3], fn(int $size): int => $size % 2 === 0 ? 2 : 3],
-        'mirrored, 3 legs' => ['mirrored', 3, [2, 4, 6, 4, 4, 5, 3, 4, 3, 3], fn(int $size): int => 3],
-        'mirrored, 4 legs' => ['mirrored', 4, [3, 6, 9, 4, 4, 5, 3, 4, 3, 3], fn(int $size): int => 3],
+        'mirrored, 3 legs' => ['mirrored', 3, [1, 2, 3, 4, 2, 4, 2, 3, 2, 3], fn(int $size): int => $size % 2 === 0 ? 2 : 3],
+        'mirrored, 4 legs' => ['mirrored', 4, [1, 2, 3, 4, 2, 4, 2, 3, 2, 3], fn(int $size): int => $size % 2 === 0 ? 2 : 3],
+        'mirrored, 5 legs' => ['mirrored', 5, [1, 2, 3, 4, 2, 4, 2, 3, 2, 3], fn(int $size): int => $size % 2 === 0 ? 2 : 3],
+        'mirrored, 6 legs' => ['mirrored', 6, [1, 2, 3, 4, 2, 4, 2, 3, 2, 3], fn(int $size): int => $size % 2 === 0 ? 2 : 3],
         'repeated, 2 legs' => ['repeated', 2, [2, 4, 6, 3, 4, 5, 3, 4, 3, 3], fn(int $size): int => 3],
         'repeated, 3 legs' => ['repeated', 3, [3, 6, 9, 3, 4, 5, 3, 4, 3, 3], fn(int $size): int => 3],
         'repeated, 4 legs' => ['repeated', 4, [4, 8, 12, 3, 4, 5, 3, 4, 3, 3], fn(int $size): int => 3],
