@@ -128,6 +128,21 @@ describe('RoundColouring', function (): void {
         assertRoundsAreProper($edges, $positions);
     });
 
+    it('searches the fewest rounds for room before it uses a position after them', function (): void {
+        // Six events of five participants, none of whom has more than
+        // three: three rounds hold them. Taking each event at the first of
+        // those rounds free for it leaves one over, which only moving
+        // events within the three rounds places there; the slots after
+        // them are free and are not used
+        $edges = [[0, 2], [0, 4], [1, 2], [1, 3], [1, 4], [2, 4]];
+
+        $positions = RoundColouring::of($edges, [], [], [12], 4);
+
+        expect($positions)->toHaveCount(6)
+            ->and(array_keys(eventsPerPosition($positions)))->toBe(['0:0', '0:1', '0:2']);
+        assertRoundsAreProper($edges, $positions);
+    });
+
     it('lays out random requests properly, within capacity and around their pins', function (int $seed): void {
         $rng = new Randomizer(new Mt19937($seed));
         $count = $rng->getInt(4, 9);
