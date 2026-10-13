@@ -1072,21 +1072,55 @@ describe('Repack step budget flag', function (): void {
             ->and($outcome->isBudgetExhausted())->toBeFalse();
     });
 
-    // That the last placement step searches for no exchange when only the
-    // over-capacity drops are left over was shown here by a budget flag: a
-    // budget of 60 steps on a request of ten events, which the earlier
-    // phases do not use up and a needless exchange search does. It cannot
-    // be shown that way any more. A budget below the default now shortens
-    // the round layout too, whose own search for the same drops is what
-    // the flag then reports, at every budget small enough to notice the
-    // exchange search (below 154 steps on that request; the exchange
-    // search takes 74). The two halves are held where they are made:
-    // "tells the last placement step how many events no placement can
-    // hold" (LoadPlanner) and "searches for no exchange when the events
-    // left over are as many as no placement can hold" (LeftoverRecolourer),
-    // both in tests/Unit/Repack/LeftoverRecolourerTest.php. That the
-    // repacker hands the one number to the other has no test: nothing an
-    // outcome says depends on it at any budget
+    it('spends no budget on the last placement step when only the over-capacity drops are left over', function (): void {
+        // p1 has five events for the three positions of one session, so
+        // two of them cannot be placed, and every other event is. Placing
+        // a dropped event would only leave out another of p1's, so there
+        // is nothing to search for: the planner tells the last placement
+        // step that two events fit nowhere, and the step then searches for
+        // no exchange. A budget of 100 steps is more than every search of
+        // this request needs (75 are enough) and fewer than a needless
+        // search for an exchange spends with them (the flag is true up to
+        // 160 steps when the step is not told), so the flag shows which
+        // happened.
+        //
+        // This was shown by a request of ten events at 60 steps until a
+        // budget below the default began to shorten the round layout too:
+        // on that request the layout's own search is cut short at every
+        // budget small enough to notice the exchange search, and the flag
+        // reports that. On this one the layout places everything it can
+        // within its share. The two halves are also held where they are
+        // made, in tests/Unit/Repack/LeftoverRecolourerTest.php: "tells
+        // the last placement step how many events no placement can hold"
+        // and "searches for no exchange when the events left over are as
+        // many as no placement can hold"
+        $p = [];
+        foreach ([1, 2, 3, 4, 6] as $i) {
+            $p[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [];
+        foreach ([1 => [1, 6], [2, 6], [1, 3], [3, 1], [1, 4], [3, 4], [1, 2]] as $k => [$a, $b]) {
+            $movable[] = new MovableEvent("m0{$k}", $p[$a], $p[$b]);
+        }
+
+        $outcome = (new ScheduleRepacker())->repack(new RepackRequest(
+            $movable,
+            [],
+            SessionGrid::shapeOnly(1, 3, [], 3),
+            new RepackOptions(stepBudget: 100)
+        ));
+
+        expect($outcome->getAssignments())->toHaveCount(5)
+            ->and(array_map(
+                static fn(UnplacedEvent $u): array => [$u->getReason(), $u->getParticipant()?->getId()],
+                $outcome->getUnplaced()
+            ))
+            ->toBe([
+                [UnplacedReason::ParticipantOverCapacity, 'p1'],
+                [UnplacedReason::ParticipantOverCapacity, 'p1'],
+            ])
+            ->and($outcome->isBudgetExhausted())->toBeFalse();
+    });
 
     it('reports no exhausted budget when the last placement step ends at limits of its own', function (): void {
         // Four participants with 34 events on three sessions of six slots,
