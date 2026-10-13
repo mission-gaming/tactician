@@ -11,6 +11,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
+use MissionGaming\Tactician\Standings\Adjustment;
 
 /**
  * The full state of a results-driven stage between rounds.
@@ -41,12 +42,18 @@ final readonly class StageState
      * @param array<RoundPairing> $roundsPlayed Pairings recorded so far, in play order
      * @param array<Result> $results Results of every recorded round
      * @param string|null $engineFingerprint The stamp of the engine that pairs this stage, when one was set
+     * @param list<Adjustment> $adjustments Adjustments to ranking values, in the order recorded
+     * @param array<string, Participant> $adjustedParticipants The participant each adjustment is
+     *                                                         for, by ID, so that one who has
+     *                                                         withdrawn since is still known
      */
     private function __construct(
         private array $participants,
         private array $roundsPlayed = [],
         private array $results = [],
-        private ?string $engineFingerprint = null
+        private ?string $engineFingerprint = null,
+        private array $adjustments = [],
+        private array $adjustedParticipants = []
     ) {}
 
     /**
@@ -138,7 +145,9 @@ final readonly class StageState
             $this->participants,
             [...$this->roundsPlayed, $pairing],
             [...$this->results, ...array_values($results)],
-            $this->engineFingerprint
+            $this->engineFingerprint,
+            $this->adjustments,
+            $this->adjustedParticipants
         );
     }
 
@@ -222,7 +231,9 @@ final readonly class StageState
             $this->participants,
             $this->roundsPlayed,
             [...$this->results, ...array_values($results)],
-            $this->engineFingerprint
+            $this->engineFingerprint,
+            $this->adjustments,
+            $this->adjustedParticipants
         );
     }
 
@@ -316,7 +327,14 @@ final readonly class StageState
             );
         }
 
-        return new self($this->participants, $this->roundsPlayed, $results, $this->engineFingerprint);
+        return new self(
+            $this->participants,
+            $this->roundsPlayed,
+            $results,
+            $this->engineFingerprint,
+            $this->adjustments,
+            $this->adjustedParticipants
+        );
     }
 
     /**
@@ -336,8 +354,76 @@ final readonly class StageState
             )),
             $this->roundsPlayed,
             $this->results,
-            $this->engineFingerprint
+            $this->engineFingerprint,
+            $this->adjustments,
+            $this->adjustedParticipants
         );
+    }
+
+    /**
+     * Record an adjustment: an amount added to, or taken from, one
+     * participant's ranking value for a reason that is no event (see
+     * Adjustment). The application decides it; the state records it.
+     *
+     * Every table an engine builds from the state has it: the table a
+     * Swiss round is paired from, the ranking a re-seeded bracket folds
+     * its survivors by, the order of the entrants a bracket put out in the
+     * same round, and the table of the outcome. The entry of the
+     * participant shows the sum of its adjustments as a figure of its own
+     * (StandingEntry::getAdjustment()) and is ordered by what it earned
+     * plus that sum. So an adjustment recorded between two rounds changes
+     * the rounds paired after it and none of those recorded before.
+     *
+     * Adjustments are kept in the order recorded and are never merged: two
+     * for one participant are two entries of getAdjustments(), and the
+     * table adds them. There is no verb that removes one; record the
+     * opposite amount to take one back, which also keeps the record of
+     * both.
+     *
+     * The participant must be one the stage has seen (see
+     * getAllSeenParticipants()): active, or withdrawn and still named by a
+     * recorded round, a result or an earlier adjustment. One that withdraws
+     * afterwards keeps its adjustment and stays among the participants seen.
+     *
+     * @throws InvalidInputException When the adjustment names a participant the stage has not seen
+     */
+    public function withAdjustment(Adjustment $adjustment): self
+    {
+        $id = $adjustment->getParticipantId();
+
+        $participant = null;
+        foreach ($this->getAllSeenParticipants() as $seen) {
+            if ($seen->getId() === $id) {
+                $participant = $seen;
+                break;
+            }
+        }
+
+        if ($participant === null) {
+            throw new InvalidInputException(
+                "Adjustment references participant {$id} who is not in the stage"
+            );
+        }
+
+        return new self(
+            $this->participants,
+            $this->roundsPlayed,
+            $this->results,
+            $this->engineFingerprint,
+            [...$this->adjustments, $adjustment],
+            $this->adjustedParticipants + [$id => $participant]
+        );
+    }
+
+    /**
+     * Every recorded adjustment, in the order recorded; empty when the
+     * stage has none.
+     *
+     * @return list<Adjustment>
+     */
+    public function getAdjustments(): array
+    {
+        return $this->adjustments;
     }
 
     /**
@@ -377,7 +463,14 @@ final readonly class StageState
             throw new InvalidConfigurationException('An engine fingerprint cannot be empty', [], reason: InvalidConfigurationReason::EmptyEngineFingerprint);
         }
 
-        return new self($this->participants, $this->roundsPlayed, $this->results, $fingerprint);
+        return new self(
+            $this->participants,
+            $this->roundsPlayed,
+            $this->results,
+            $fingerprint,
+            $this->adjustments,
+            $this->adjustedParticipants
+        );
     }
 
     /**
@@ -525,9 +618,10 @@ final readonly class StageState
 
     /**
      * Every participant the stage has seen: the active list plus withdrawn
-     * participants still referenced by recorded rounds (events or byes) or
-     * results. This is what plans and outcome standings cover — a
-     * withdrawn participant's played games remain part of the record.
+     * participants still referenced by recorded rounds (events or byes),
+     * results or adjustments. This is what plans and outcome standings
+     * cover — a withdrawn participant's played games, and an adjustment
+     * made to it, remain part of the record.
      *
      * @return array<Participant>
      */
@@ -563,6 +657,10 @@ final readonly class StageState
             }
         }
 
+        foreach ($this->adjustedParticipants as $participant) {
+            $add($participant);
+        }
+
         return $participants;
     }
 
@@ -570,14 +668,16 @@ final readonly class StageState
      * Convert this state to a serializable array.
      *
      * The participant registry lists every participant seen — active ones
-     * plus any withdrawn participants still referenced by recorded rounds
-     * or results — so rehydration resolves all references.
+     * plus any withdrawn participants still referenced by recorded rounds,
+     * results or adjustments — so rehydration resolves all references.
      *
      * The `engine_fingerprint` key is present only when the state is
-     * stamped (see withEngineFingerprint()), so an unstamped state has the
-     * shape it has always had.
+     * stamped (see withEngineFingerprint()), and the `adjustments` key only
+     * when an adjustment is recorded (see withAdjustment()), so a state
+     * with neither has the shape it has always had. A result carries an
+     * `award` key only when it is awarded.
      *
-     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}>, engine_fingerprint?: string}
+     * @return array{participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}}>, engine_fingerprint?: string, adjustments?: list<array{participant: string, amount: float, label: string|null, reason: string|null}>}
      */
     public function toArray(): array
     {
@@ -601,6 +701,9 @@ final readonly class StageState
                 $registry[$participant->getId()] ??= $participant;
             }
         }
+        foreach ($this->adjustedParticipants as $participant) {
+            $registry[$participant->getId()] ??= $participant;
+        }
 
         $data = [
             'participants' => array_values(array_map(
@@ -619,6 +722,13 @@ final readonly class StageState
             $data['engine_fingerprint'] = $this->engineFingerprint;
         }
 
+        if ($this->adjustments !== []) {
+            $data['adjustments'] = array_map(
+                fn(Adjustment $adjustment) => $adjustment->toArray(),
+                $this->adjustments
+            );
+        }
+
         return $data;
     }
 
@@ -627,7 +737,10 @@ final readonly class StageState
      *
      * The `engine_fingerprint` key is optional: data stored before the
      * stamp existed, or by a caller that does not stamp, loads as an
-     * unstamped state.
+     * unstamped state. So is `adjustments`: data without it, which is all
+     * data stored before adjustments existed, loads as a state with none.
+     * Every adjustment must name a participant of the `participants`
+     * registry.
      *
      * The shape is checked, that every ID resolves in the `participants`
      * registry, and that no ID is listed twice in `participants` or in
@@ -712,7 +825,28 @@ final readonly class StageState
             throw new InvalidInputException('Stage state engine fingerprint must be a non-empty string');
         }
 
-        return new self($active, $rounds, $results, $fingerprint);
+        $adjustmentsData = $data['adjustments'] ?? [];
+        if (!is_array($adjustmentsData)) {
+            throw new InvalidInputException('Stage state adjustments must be an array');
+        }
+        $adjustments = [];
+        $adjustedParticipants = [];
+        foreach ($adjustmentsData as $adjustmentData) {
+            if (!is_array($adjustmentData)) {
+                throw new InvalidInputException('Each stage state adjustment must be an array');
+            }
+            $adjustment = Adjustment::fromArray($adjustmentData);
+            $adjustedId = $adjustment->getParticipantId();
+            if (!isset($registry[$adjustedId])) {
+                throw new InvalidInputException(
+                    "Stage state adjustment references unknown participant {$adjustedId}"
+                );
+            }
+            $adjustments[] = $adjustment;
+            $adjustedParticipants[$adjustedId] = $registry[$adjustedId];
+        }
+
+        return new self($active, $rounds, $results, $fingerprint, $adjustments, $adjustedParticipants);
     }
 
     /**

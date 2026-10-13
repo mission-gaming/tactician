@@ -47,6 +47,16 @@ use Override;
  * decision on the result (see TieDecision); a level tie without one is
  * refused by every call.
  *
+ * An awarded result (DTO\Result::isAwarded()) is the result of its event:
+ * the winner it names advances from a single-leg tie, and in a two-legged
+ * tie it is a leg won, so a tie that is not played at all is settled by
+ * an awarded result for each leg. One that names no winner leaves the tie
+ * level, like a draw, and the tie decision is then needed. Adjustments
+ * recorded on the state (StageState::withAdjustment()) are in the ranking
+ * values of every table the engine builds: they order the entrants a round
+ * put out together and the survivors of a re-seeded round, and never
+ * decide who advances.
+ *
  * There is deliberately no champion accessor. The participant who
  * advances from the final is rank 1 of the outcome's standings, which are
  * in bracket placement order (see getOutcome()), and is what
@@ -83,8 +93,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * calculator are part of it as well, when they are not the default:
      * the ranking scale (the three values of a WinDrawLossRanking, default
      * 3/1/0; any other RankingStrategy is stated as custom and not told
-     * apart from another of your own) and the tiebreakers by name and in
-     * order, or, in their place, that the calculator is a subclass of
+     * apart from another of your own), the tiebreakers by name and in
+     * order, and each choice of the awarded result policy that is off, or,
+     * in their place, that the calculator is a subclass of
      * StandingsCalculator (stated as custom; nothing is read from it, and
      * two subclasses are not told apart).
      *
@@ -223,7 +234,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $this->standingsCalculator,
                 $entrants,
                 $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers']),
-                $resolution['placement']
+                $resolution['placement'],
+                $state->getAdjustments()
             ),
             $state->getResults(),
             $state->getByeCounts(),
@@ -381,7 +393,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * were never played. A state is in that condition when its rounds were
      * paired under other rules than this engine's (another option, or the
      * re-seeding order of an earlier release) or when its participant list
-     * changed after a round was recorded.
+     * changed after a round was recorded. An adjustment recorded after a
+     * re-seeded round was paired can do it too, by changing the ranking that
+     * round is folded from (see rankByStandings()).
      *
      * @param list<array<Participant|null>> $playable The ties the bracket has in the round
      *
@@ -417,7 +431,11 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                     "The recorded round {$round} is not the round {$round} this bracket has: it pairs other participants."
                         . ' The state was paired under other rules than this engine applies (other options, or the'
                         . ' re-seeding order of an earlier release), or its participant list changed after the round'
-                        . ' was recorded. Rebuild the state from the rounds that stand.',
+                        . ' was recorded. Rebuild the state from the rounds that stand.'
+                        . ($this->options->reseedEachRound && $state->getAdjustments() !== []
+                            ? ' The state carries adjustments, and a re-seeded bracket ranks its survivors with every'
+                                . ' adjustment recorded: one recorded after a round was paired can change that round.'
+                            : ''),
                     ['round' => $round, 'recorded' => array_keys($recordedPairs), 'expected' => array_keys($expected)],
                     reason: InvalidConfigurationReason::RecordedRoundMismatch
                 );
@@ -467,6 +485,14 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * the table leaves level are in the order of the participant list:
      * no seed attribute, label or ID is read.
      *
+     * Every adjustment recorded on the state is in the ranking, whenever
+     * it was recorded: an adjustment belongs to no round, so there is no
+     * "earlier" to hold it to. Recording one after a round was paired
+     * changes how that round is replayed, and the engine then refuses the
+     * state because the recorded round is no longer the round it has
+     * (`RecordedRoundMismatch`). In a re-seeded bracket, record an
+     * adjustment before the round it is to count for is paired.
+     *
      * @param array<Participant> $survivors
      * @param array<string, Participant> $levelAdvancers
      * @param array<int|string, int> $byes Byes of the earlier rounds, by participant ID
@@ -489,10 +515,13 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         $entrants = $state->getAllSeenParticipants();
         $standings = $this->standingsCalculator
-            ->withByesCredited(
-                $this->standingsCalculator->calculate($entrants, $this->resultsForStandings($priorResults, $levelAdvancers)),
-                $byes,
-                $this->options->legsPerTie
+            ->withAdjustments(
+                $this->standingsCalculator->withByesCredited(
+                    $this->standingsCalculator->calculate($entrants, $this->resultsForStandings($priorResults, $levelAdvancers)),
+                    $byes,
+                    $this->options->legsPerTie
+                ),
+                $state->getAdjustments()
             )
             ->withTiedSetsOrderedBy($entrants);
 

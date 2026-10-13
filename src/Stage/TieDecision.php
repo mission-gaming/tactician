@@ -22,6 +22,12 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * either leg's result. A level tie with no recorded decision is an error:
  * an elimination tie must send one participant on.
  *
+ * An awarded result (DTO\Result::isAwarded()) is read as any other result:
+ * the winner it names advances from a single-leg tie and has won the leg
+ * of a two-legged one, and an awarded result that names no winner is level
+ * like a draw. A two-legged tie needs a result for each leg, so a tie that
+ * is not played at all is settled by an awarded result for each.
+ *
  * The decision is read only when the results leave the tie level. Where
  * the event's winner or the leg wins decide, 'tie_winner' is not read at
  * all: it cannot overturn a decisive result, and a value that names
