@@ -26,7 +26,7 @@ final readonly class LegPlanContribution
     /**
      * Nothing is validated: the value holds what it is given.
      *
-     * @param bool $rolesMirrorAcrossLegs Whether the strategy reverses event roles in later legs
+     * @param bool $rolesMirrorAcrossLegs Whether the strategy reverses event roles in the even-numbered legs
      * @param bool $requiresRandomization Whether the strategy needs a randomizer during generation
      * @param array<string> $unsatisfiableReasons Non-empty means plan construction fails with diagnostics
      * @param array<string> $warnings Non-fatal notes carried onto the plan

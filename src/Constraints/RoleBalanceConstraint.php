@@ -23,16 +23,14 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * running imbalance of a single leg never exceeds 3 in a field of even size
  * and 4 in a field of odd size (the bye shifts one participant's parity).
  * A limit at or above that bound is therefore satisfied by a single leg,
- * and by two or three mirrored legs: the second leg undoes the first, so
- * two mirrored legs end with every participant balanced, and the third
- * drifts as far the other way.
+ * and by any number of mirrored legs: every even-numbered leg undoes the
+ * leg before it, so every two mirrored legs end with every participant
+ * balanced, and the next leg starts from there as the first did.
  *
  * The same limit is not satisfied in general:
  *
  * - by the repeated leg strategy at two or more legs, where every leg adds
  *   the drift of the first (up to 6 and 8 after two legs);
- * - by four or more mirrored legs: every leg after the first is the reverse
- *   of the first, so the fourth leg drifts twice as far as a single one;
  * - by the shuffled leg strategy, which draws the roles of later legs;
  * - by a multi-leg schedule from a scheduler that was given a randomizer.
  *
