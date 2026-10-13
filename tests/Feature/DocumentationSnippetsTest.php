@@ -419,14 +419,54 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         'elimination round labels' => ['docs/USAGE.md', 'echo "{$pairing->getLabel()}\n";', ["quarterfinal\nsemifinal\nfinal\n"], []],
         'a level elimination event that names who advances' => [
             'docs/USAGE.md',
-            '[TieDecision::TIE_WINNER_KEY => $dave->getId()]',
+            'decider: new Decider([$dave->getId()], \'tie-break\', \'Level after the event\')',
             ["Dave v Bob\n"],
             [],
         ],
+        // The result still reads 1-1: the decider changes no score
         'who advanced, read from a level result' => [
             'docs/USAGE.md',
             'TieDecision::advancer([$recorded]',
-            ["drawn, Dave advances\n"],
+            ["drawn, Dave advances\n1-1, decided for dave by tie-break\n"],
+            [],
+        ],
+        'a decider through the JSON of a stage state' => [
+            'docs/USAGE.md',
+            '[$level, $won] = $restored->toArray()[\'results\'];',
+            [
+                '{"participants":["dave"],"label":"tie-break","reason":"Level after the event"}' . "\n"
+                . '{"alice":1,"dave":1}' . "\nno decider\nDave v Bob\n",
+            ],
+            [],
+        ],
+        'a decider on a tie that its results decide refused' => [
+            'docs/USAGE.md',
+            '// Alice won 2-1: there is nothing left to decide',
+            ["invalid_result\n"],
+            ['Paired'],
+        ],
+        'an awarded result that names no winner, settled by its decider' => [
+            'docs/USAGE.md',
+            "award: new Award('double no-show')",
+            ["Dave v Bob\n"],
+            [],
+        ],
+        'a two-legged tie settled by the decider on its second leg' => [
+            'docs/USAGE.md',
+            'decider: new Decider([$heidi->getId()], \'tie-break\')',
+            ["Rank 1: Heidi\nWon the tie: Heidi\n0 tied sets\nScores: 2 for, 2 against\n"],
+            [],
+        ],
+        'the decider in place of the deprecated metadata key' => [
+            'docs/USAGE.md',
+            '$level = new Result($event, null, $scores, decider: new Decider([\'athletic\']));',
+            ["Athletic Bilbao\n"],
+            [],
+        ],
+        'stored results moved from the deprecated metadata key to the decider' => [
+            'docs/USAGE.md',
+            '$migrated = StageState::fromArray($stored);',
+            ['{"participants":["athletic"],"label":null,"reason":null}' . "\nAthletic Bilbao\n"],
             [],
         ],
         // The block is there to show the refusal
@@ -435,7 +475,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             '$engine->pairNextRound($undecided);',
             [
                 'undecided_tie: Invalid scheduler configuration: Elimination events cannot end in a draw (Alice vs Dave)'
-                . ": the event is level, so record who advances as 'tie_winner' metadata on its result\n",
+                . ": the event is level, so record who advances as the decider of its result\n"
+                . '{"round":1,"participants":["alice","dave"]}' . "\n",
             ],
             ['Paired'],
         ],

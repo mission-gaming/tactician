@@ -47,7 +47,7 @@ MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid schedu
 engine_fingerprint_mismatch
 
 == A level event with nobody named ==
-MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid scheduler configuration: Elimination events cannot end in a draw (Ana vs Dia): the event is level, so record who advances as 'tie_winner' metadata on its result
+MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid scheduler configuration: Elimination events cannot end in a draw (Ana vs Dia): the event is level, so record who advances as the decider of its result
 
 == The reason for that ==
 undecided_tie

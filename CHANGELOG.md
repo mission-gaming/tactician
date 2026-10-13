@@ -420,6 +420,71 @@ entry on the engine fingerprint.
 
 ### Added
 
+- **A typed decider for a knockout tie that finishes level.** A `Result`
+  can carry the decision that settled its tie: `new Result($event, null,
+  $scores, decider: new Decider([$participant->getId()], 'label',
+  'reason'))`. `DTO\Decider` (new) holds the IDs of the participants who
+  advance, as a list, and an optional label and an optional reason that
+  the library stores and never reads: it records that the tie was decided
+  outside its results and for whom, and never how. `Result::getDecider()`
+  reads it, and the constructor of `Result` has a sixth parameter,
+  `decider`, default none. It is the one way to settle a level tie for a
+  single event and for two legs alike, in both elimination engines and in
+  every round of them (the losers bracket, the grand final and its reset,
+  and a third-place tie), and `MatchOutcomeSelector` and
+  `TieDecision::advancer()` read it the same way (#98).
+  - The result keeps the scores of the event as played. The decider holds
+    no score and changes none, and `isDraw()` and `getWinner()` say what
+    they said: scores-for, scores-against and the score difference of
+    every table come from the scores of the events only. The table of an
+    elimination outcome counts a decided level single-leg event as a win
+    for the participant who advanced, as it did when the decision was
+    metadata.
+  - A tie between two sends one participant on, so its decider names
+    exactly one. The list is there because the type assumes no number of
+    sides (ADR 0003); a decider that names two participants of such a tie
+    is refused with the reason `InvalidResult`.
+  - A decider settles a level tie and nothing else. One on a tie that its
+    results already decide (an event with a winner, a two-legged tie the
+    leg wins decide) is refused with `InvalidResult`, and so is a decider
+    on each leg of one tie, whether the two agree or not. `Result` itself
+    refuses a decider that names a participant who is not in its event
+    (`InvalidInputException`), when it is built and when it is read from
+    plain data.
+  - In a two-legged tie the decider is on one leg's result. Either leg is
+    read; the second is where it is recorded when the tie ends.
+  - An awarded result that names no winner leaves its tie level, and may
+    carry the decider that settles it: the award says the event was not
+    played, the decider who goes on.
+  - A level tie without a decider leaves its round unresolved, as before,
+    and the engines now say which tie it is: the `UndecidedTie` exception
+    of `isComplete()`, `pairNextRound()` and `getOutcome()` carries the
+    round beside the two participants in its context (`['round' => 1,
+    'participants' => ['p1', 'p4']]`). Two entrants can meet twice in a
+    bracket, in the grand final and its reset, so the pair alone did not
+    say.
+  - A result writes the decider under the key `decider` (`participants`,
+    `label`, `reason`), only when it has one, so the array of every other
+    result is unchanged, an array written by an earlier release loads
+    unchanged, and a stage state that holds decided ties is replayed from
+    `toArray()` and from JSON. `decider` is one more optional key of
+    version 1 of the result form (ADR 0005). An earlier release that reads
+    such an array does not see the key and finds the tie undecided.
+  - Only the elimination engines and `MatchOutcomeSelector` read a
+    decider. A standings calculator, the Swiss engine and a round robin
+    carry it with the result and do not read it.
+  - With no decider recorded, every pairing, table and fingerprint is what
+    it was: no existing golden fixture changed but for the wording of one
+    message (see **Changed**). New fixtures:
+    `elimination-decided-ties.txt` (brackets of level ties settled by a
+    decider, which are pairing for pairing the brackets the same advancers
+    win) and `wire/stage-state-decided-tie.json`.
+
+  What this commits the library to: `DTO\Decider` is `@api`, in a stable
+  namespace, so its constructor, `getParticipantIds()`, `getLabel()`,
+  `getReason()`, its plain-data form, `Result::getDecider()` and the sixth
+  parameter of `Result` are kept under the compatibility policy from the
+  release that ships them. The usage guide has it under "Recording a Level Event".
 - **Awarded results.** A `Result` can say that its event was not played and
   that the application gave it this outcome: `new Result($event, $winner,
   $scores, award: new Award('label', 'reason'))`. `DTO\Award` (new) is the
@@ -630,6 +695,17 @@ entry on the engine fingerprint.
 
 ### Changed
 
+- **The message of an undecided tie names the decider.** A level
+  elimination tie with no decision is refused as before, with the reason
+  `UndecidedTie`; its message told the caller to record `'tie_winner'`
+  metadata, which is deprecated (see **Deprecated**), and now says to
+  record the decider: "... the event is level, so record who advances as
+  the decider of its result", and for two legs "... the legs are level, so
+  record who advances as the decider of one leg's result". Code that
+  branches on the reason is unaffected; code that matched the message text
+  on `tie_winner` is not, and should branch on the reason. Golden fixture:
+  `examples/24-recording-bracket-results.txt` (that one line; the example
+  now records a decider and prints the results it printed).
 - **Breaking: every array a `toArray()` returns starts with
   `format_version`, and a version the library does not know is refused.**
   No serialized form said which release's rules it was written under, so
@@ -1282,8 +1358,49 @@ entry on the engine fingerprint.
   workflow still uses Xdebug, and `composer test-coverage` works with either
   driver as before. Nothing a consumer installs changes.
 
-### Fixed
+### Deprecated
 
+- **The `'tie_winner'` metadata of a result, and
+  `TieDecision::TIE_WINNER_KEY`, which names it.** Who advances from a
+  level elimination tie is recorded as the decider of the result (see
+  **Added**). The metadata key is still read, and decides what it decided
+  before, wherever a level tie has no decider; it is no longer read from
+  `1.0.0`, when the constant is removed and a level tie that carries only
+  the key is undecided.
+  - **What to change.** Where a result is built with `['tie_winner' =>
+    $id]` in its metadata, pass `decider: new Decider([$id])` in its place.
+    Stored results keep loading and keep deciding until `1.0.0`; to move
+    them over, give each result of a level tie that carries the key a
+    `decider` of `['participants' => [$id]]` and remove the key. The usage
+    guide has both as executed snippets ("The `tie_winner` metadata key").
+  - **How it is raised.** A metadata key cannot carry an attribute, so the
+    library raises the notice itself: a call that takes an advancer from
+    the key emits one `E_USER_DEPRECATED` notice, whatever the number of
+    ties the key decided in that call, and on every PHP version, PHP 8.3
+    included. Those calls are `isComplete()`, `pairNextRound()` and
+    `getOutcome()` of the two elimination engines,
+    `MatchOutcomeSelector::select()` and `TieDecision::advancer()`. An
+    application that turns every notice into an exception will see them
+    fail until it records deciders. The constant carries the `@deprecated`
+    tag and the `#[\Deprecated]` attribute, as the deprecated methods do,
+    so a use of it is reported by an IDE and PHPStan, and emits a notice of
+    its own from PHP 8.4.
+  - **Where nothing is raised.** A key that is not read: on a result of a
+    tie that its results decide, where it never was read; on a result that
+    is only stored, loaded or counted in a table; and on a tie that carries
+    a decider.
+  - **Where the two differ.** The key on a tie that its results decide was
+    not read and went unnoticed; a decider there is refused
+    (`InvalidResult`). The key could hold any value and was refused only
+    when the engine read one that named nobody in the tie; a decider must
+    name a participant of the event when the result is built.
+  - **Both at once.** A tie that carries a decider is settled by the
+    decider. A `tie_winner` beside it that names the same participant
+    raises nothing, so an application can write both while it changes over;
+    one that names another participant is refused with `InvalidResult`,
+    because the library does not choose between two answers.
+
+### Fixed
 - **A schedule with shuffled legs can be repeated from its configuration.**
   `RoundRobinOptions::fromArray(['strategy' => 'shuffled'])` could not seed
   the strategy it built, so a scheduler with a seeded `Randomizer` gave a

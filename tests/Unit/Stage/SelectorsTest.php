@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -12,7 +13,6 @@ use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageOutcome;
-use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 
 /**
@@ -150,7 +150,7 @@ describe('MatchOutcomeSelector', function (): void {
         $leg2 = new Event([$this->bob, $this->alice], new Round(1), ['tie_leg' => 2]);
         $results = [
             new Result($leg1, $this->alice),
-            new Result($leg2, $this->bob, [], [TieDecision::TIE_WINNER_KEY => 'p2']),
+            new Result($leg2, $this->bob, [], [], null, new Decider(['p2'])),
         ];
         $finalRound = new RoundPairing(1, 'final', [$leg1, $leg2]);
 
