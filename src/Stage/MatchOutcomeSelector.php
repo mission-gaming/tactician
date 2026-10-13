@@ -26,8 +26,9 @@ use Override;
  * Losers come from played events only.
  *
  * A tie that finished level (one event drawn, or two legs that do not
- * decide) is read through its recorded tie decision: the participant it
- * names is the winner and the other one the loser (see TieDecision).
+ * decide) is read through its recorded tie decision, the decider of one of
+ * its results: the participant it names is the winner and the other one
+ * the loser (see TieDecision).
  *
  * @experimental
  */
@@ -122,7 +123,9 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      * Only the final round is read, from the outcome's results for that
      * round's events; the standings are not consulted. Every tie of the
      * round must be complete, and one that finished level must carry its
-     * tie decision (see TieDecision).
+     * tie decision (see TieDecision). A selection that takes a participant
+     * from the deprecated 'tie_winner' metadata raises the deprecation of
+     * the key once, however many ties of the round it decided.
      *
      * The selector is pairwise by nature: a winner and a loser are a
      * reading of two participants. Every event of the final round must
@@ -135,7 +138,8 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      *                                       more than two participants (`IncompatibleOutcome`); when a
      *                                       tie of the round lacks a result, or is level with no
      *                                       tie decision (`UndecidedTie`); when a tie decision or a
-     *                                       leg's winner names a participant outside the tie
+     *                                       leg's winner names a participant outside the tie, or a
+     *                                       decider is one TieDecision refuses
      *                                       (`InvalidResult`); or when an event of the round or of
      *                                       a result has no round number (`EventWithoutRoundNumber`)
      */
@@ -167,6 +171,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
         $resultsByEvent = $this->indexResultsByEvent($outcome);
 
         $selected = [];
+        $tieWinnerDeprecationRaised = false;
         foreach ($this->groupEventsByTie($finalRound->getEvents()) as $tieEvents) {
             // A third-place tie places its two entrants and sends neither
             // on: it is no part of the selection, wherever the round lists it
@@ -185,10 +190,16 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
                 }
             }
 
-            // TieDecision handles both single events and two-legged ties:
-            // a level one needs a recorded tie_winner decision, and null
-            // means legs are missing results.
-            $advancer = TieDecision::advancer($legResults, $first, $second, count($tieEvents));
+            // The reading TieDecision states, for single events and
+            // two-legged ties alike: a level one needs its decider, and
+            // null means legs are missing results.
+            $resolution = TieResolution::of($legResults, $first, $second, count($tieEvents));
+            if ($resolution->readTieWinnerMetadata && !$tieWinnerDeprecationRaised) {
+                $tieWinnerDeprecationRaised = true;
+                TieResolution::raiseTieWinnerDeprecation();
+            }
+
+            $advancer = $resolution->advancer;
             if ($advancer === null) {
                 throw new InvalidConfigurationException(
                     'Final round tie has no complete recorded result',

@@ -1,0 +1,50 @@
+# Elimination brackets whose ties finish level and are settled by a
+# decider (DTO\Decider, on the result), driven round by round to completion.
+# Entrants are "1".."n" in list order (position is the seeding). Each
+# section names the rule that decides every event. `R<round> [<label>]:
+# a-b c-d | byes: e f` lists the round's events in generated order,
+# first-named participant first, then the participants advancing without
+# playing; `standings:` is the final ranking as id(wins-losses).
+#
+# A difference from this file is a change to generated output. It must be
+# explained in the changelog; regenerate with `composer golden-update`.
+#
+# A level single-leg event counts in the standings as a win for the
+# participant its decider names; the legs of a two-legged tie count as
+# recorded, so its entrants have a win and a loss for every tie.
+
+== single n=8, every event level, the last-named advances ==
+R1 [quarterfinal]: 1-8 4-5 2-7 3-6
+R2 [semifinal]: 8-5 7-6
+R3 [final]: 5-6
+standings: 6(3-0) 5(2-1) 7(1-1) 8(1-1) 1(0-1) 2(0-1) 3(0-1) 4(0-1)
+
+== single n=8 reseedEachRound, every event level, the last-named advances ==
+R1 [quarterfinal]: 1-8 4-5 2-7 3-6
+R2 [semifinal]: 5-8 6-7
+R3 [final]: 7-8
+standings: 8(3-0) 7(2-1) 5(1-1) 6(1-1) 1(0-1) 2(0-1) 3(0-1) 4(0-1)
+
+== single n=8 thirdPlace, every event level, the last-named advances ==
+R1 [quarterfinal]: 1-8 4-5 2-7 3-6
+R2 [semifinal]: 8-5 7-6
+R3 [final]: 5-6{"bracket_tie":"final"} 8-7{"bracket_tie":"third-place"}
+standings: 6(3-0) 5(2-1) 7(2-1) 8(1-2) 1(0-1) 2(0-1) 3(0-1) 4(0-1)
+
+== double n=8, every event level, the last-named advances ==
+R1 [winners round 1]: 1-8 4-5 2-7 3-6
+R2 [losers round 1]: 1-4 2-3
+R3 [winners round 2]: 8-5 7-6
+R4 [losers round 2]: 7-4 8-3
+R5 [losers round 3]: 4-3
+R6 [winners final]: 5-6
+R7 [losers final]: 5-3
+R8 [grand final]: 6-3
+R9 [grand final reset]: 6-3
+standings: 3(6-1) 6(3-2) 5(2-2) 4(2-2) 7(1-2) 8(1-2) 1(0-2) 2(0-2)
+
+== single n=5 legsPerTie=2, a leg each, the first-named of leg 1 advances ==
+R1 [quarterfinal]: 4-5{"tie_leg":1} 5-4{"tie_leg":2} | byes: 1 2 3
+R2 [semifinal]: 1-4{"tie_leg":1} 4-1{"tie_leg":2} 2-3{"tie_leg":1} 3-2{"tie_leg":2}
+R3 [final]: 1-2{"tie_leg":1} 2-1{"tie_leg":2}
+standings: 1(2-2) 2(2-2) 4(2-2) 3(1-1) 5(1-1)

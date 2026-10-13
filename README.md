@@ -41,7 +41,8 @@ the last one, which is about the library as a whole.
   labels, one- or two-legged ties; re-seeding each round and an optional
   third-place tie for single elimination, and an optional grand-final reset
   for double elimination. An event or a tie that finishes level is decided
-  by naming who advances.
+  by a typed decider on its result, which names who advances and changes no
+  score.
   [Elimination brackets](docs/USAGE.md#elimination-brackets),
   [a third-place tie](docs/USAGE.md#a-third-place-tie),
   [recording a level event](docs/USAGE.md#recording-a-level-event)

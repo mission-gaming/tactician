@@ -30,6 +30,14 @@ use MissionGaming\Tactician\Serialization\PlainData;
  * (Standings\AwardedResultPolicy): whether its scores count, and whether a
  * tiebreaker computed between the tied participants only reads it.
  *
+ * A result may also carry a Decider: the decision of the application that
+ * settled a knockout tie which the results left level, naming who advances
+ * (see getDecider()). It is a fact beside the outcome and no part of it: the
+ * winner, isDraw() and every score are what they are without it, and only
+ * the elimination engines and the match-outcome selector read it (see
+ * Stage\TieDecision). A standings calculator, a Swiss engine and a round
+ * robin do not.
+ *
  * @api
  */
 readonly class Result
@@ -46,22 +54,30 @@ readonly class Result
      * @param array<int|string, int|float> $scores Optional numeric scores keyed by participant ID
      *                                             (numeric-string IDs become int keys in PHP)
      * @param array<string, mixed> $metadata Free-form annotations. The library reads one key,
-     *                                       'tie_winner': the ID of the participant who advances
-     *                                       from an elimination tie that finished level (see
+     *                                       'tie_winner', which is deprecated: the ID of the
+     *                                       participant who advances from an elimination tie
+     *                                       that finished level. Pass a decider instead (see
      *                                       Stage\TieDecision)
      * @param Award|null $award The mark of an awarded result: the event was not played. The
      *                          scores are then the nominal score of the award, where the
      *                          application gives one. Null for a result of an event that
      *                          was played
+     * @param Decider|null $decider The decision that settled the knockout tie this event belongs
+     *                              to, where the results left it level: the participants who
+     *                              advance. It goes on one result of the tie, with or without a
+     *                              winner or an award beside it, and never changes them or a
+     *                              score. Null when the tie needed no decision, and for every
+     *                              result that is not of a knockout tie
      *
-     * @throws InvalidInputException When the winner or a score references a participant not in the event
+     * @throws InvalidInputException When the winner, a score or the decider references a participant not in the event
      */
     public function __construct(
         private Event $event,
         private ?Participant $winner = null,
         private array $scores = [],
         private array $metadata = [],
-        private ?Award $award = null
+        private ?Award $award = null,
+        private ?Decider $decider = null
     ) {
         if ($winner !== null && !$event->hasParticipant($winner)) {
             throw new InvalidInputException('Winner must be a participant in the event');
@@ -77,6 +93,14 @@ readonly class Result
             if (!in_array((string) $participantId, $participantIds, true)) {
                 throw new InvalidInputException(
                     "Score references participant {$participantId} who is not in the event"
+                );
+            }
+        }
+
+        foreach ($decider?->getParticipantIds() ?? [] as $participantId) {
+            if (!in_array($participantId, $participantIds, true)) {
+                throw new InvalidInputException(
+                    "Decider references participant {$participantId} who is not in the event"
                 );
             }
         }
@@ -155,6 +179,20 @@ readonly class Result
     }
 
     /**
+     * The decision that settled the knockout tie this event belongs to,
+     * with the participants who advance and the label and the reason the
+     * application gave it, or null when the result carries none.
+     *
+     * A result with a decider is not thereby won: getWinner(), isDraw()
+     * and the scores say what the event was, and the decider says who went
+     * on from the tie.
+     */
+    public function getDecider(): ?Decider
+    {
+        return $this->decider;
+    }
+
+    /**
      * The metadata as given to the constructor.
      *
      * @return array<string, mixed>
@@ -194,9 +232,11 @@ readonly class Result
      * The `award` key is present only for an awarded result (see
      * isAwarded()), so the array of a played result has no key but the
      * version and the four it has always had. The award is written without
-     * a version of its own.
+     * a version of its own. The `decider` key is present only for a
+     * result that carries a decider (see getDecider()), written the same
+     * way, after the award where the result has both.
      *
-     * @return array{format_version: int, event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}}
+     * @return array{format_version: int, event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}, decider?: array{participants: list<string>, label: string|null, reason: string|null}}
      */
     public function toArray(): array
     {
@@ -217,6 +257,12 @@ readonly class Result
             $data['award'] = $award;
         }
 
+        if ($this->decider instanceof Decider) {
+            $decider = $this->decider->toArray();
+            unset($decider[PlainData::VERSION_KEY]);
+            $data['decider'] = $decider;
+        }
+
         return $data;
     }
 
@@ -229,8 +275,11 @@ readonly class Result
      * A missing 'award', or one that is null, is a result of an event that
      * was played, which is every result stored before the key existed; an
      * array under it, the empty one included, is an awarded result.
+     * A missing 'decider', or one that is null, is a result without one,
+     * which again is every result stored before the key existed.
      * Any other key is refused, so that a misspelt 'winner' is not silently
-     * read as a draw, nor a misspelt 'award' as a result that was played.
+     * read as a draw, a misspelt 'award' as a result that was played, nor a
+     * misspelt 'decider' as a tie nobody decided.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
@@ -238,13 +287,14 @@ readonly class Result
      * @throws InvalidInputException When the format version is not one this release reads,
      *                               a key is unknown, a field has the wrong type, a score is not an int
      *                               or a float, a participant ID is not in the registry,
-     *                               the winner or a score names a participant who is
-     *                               not in the event, or the award is not an array of a
-     *                               label and a reason
+     *                               the winner, a score or the decider names a participant
+     *                               who is not in the event, the award is not an array of a
+     *                               label and a reason, or the decider is not an array of
+     *                               participant IDs, a label and a reason
      */
     public static function fromArray(array $data, array $participantsById): self
     {
-        PlainData::checkFields($data, ['event', 'winner', 'scores', 'metadata', 'award'], 'result data');
+        PlainData::checkFields($data, ['event', 'winner', 'scores', 'metadata', 'award', 'decider'], 'result data');
 
         $eventData = $data['event'] ?? null;
         if (!is_array($eventData)) {
@@ -291,6 +341,18 @@ readonly class Result
             throw new InvalidInputException('Result award must be an array or null');
         }
 
-        return new self($event, $winner, $scores, $metadata, $rawAward === null ? null : Award::fromArray($rawAward));
+        $rawDecider = $data['decider'] ?? null;
+        if ($rawDecider !== null && !is_array($rawDecider)) {
+            throw new InvalidInputException('Result decider must be an array or null');
+        }
+
+        return new self(
+            $event,
+            $winner,
+            $scores,
+            $metadata,
+            $rawAward === null ? null : Award::fromArray($rawAward),
+            $rawDecider === null ? null : Decider::fromArray($rawDecider)
+        );
     }
 }

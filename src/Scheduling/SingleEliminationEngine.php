@@ -44,9 +44,11 @@ use Override;
  *
  * Ties are played over one event or two mirrored legs (legsPerTie). A tie
  * that finishes level - a drawn single event, or two legs that do not
- * decide - is the application's to decide and is recorded as a tie
- * decision on the result (see TieDecision); a level tie without one is
- * refused by every call.
+ * decide - is the application's to decide and is recorded as the decider
+ * of a result of the tie (DTO\Decider; see TieDecision for the reading). A
+ * level tie without one is unresolved, and every call refuses the state
+ * with the reason `UndecidedTie` and, in the context of the exception, the
+ * round of the tie and its two participants.
  *
  * A third-place tie (thirdPlace, off by default) makes the bracket decide
  * places 3 and 4: the last round then holds two ties, the final and a tie
@@ -66,7 +68,8 @@ use Override;
  * the winner it names advances from a single-leg tie, and in a two-legged
  * tie it is a leg won, so a tie that is not played at all is settled by
  * an awarded result for each leg. One that names no winner leaves the tie
- * level, like a draw, and the tie decision is then needed. Adjustments
+ * level, like a draw, and the decider is then needed, which the awarded
+ * result may carry. Adjustments
  * recorded on the state (StageState::withAdjustment()) are in the ranking
  * values of every table the engine builds: they order the entrants a round
  * put out together and the survivors of a re-seeded round, and never
@@ -191,7 +194,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *                                       event or is recorded twice, a round is partially
      *                                       resolved (record the missing results via
      *                                       StageState::withAdditionalResults()), a completed tie
-     *                                       is level without a usable tie decision, a recorded
+     *                                       is level without a decider (`UndecidedTie`) or
+     *                                       carries a decider TieDecision refuses
+     *                                       (`InvalidResult`), a recorded
      *                                       round pairs other participants than the bracket has
      *                                       in it, or holds a third-place tie where this engine
      *                                       plays none (reason `RecordedRoundMismatch`), a re-seeded
@@ -326,6 +331,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         $wentOutInPreviousRound = [];
         $thirdPlaceTie = null;
         $thirdPlaceAdvancer = null;
+        // One deprecation for the replay, however many ties the deprecated
+        // 'tie_winner' metadata decides in it
+        $tieWinnerDeprecationRaised = false;
 
         for ($round = 1; $round <= $totalRounds; ++$round) {
             // Re-seeded path: after the entry round, survivors are
@@ -345,7 +353,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             foreach ($pairs as $pair) {
                 if ($pair[0] !== null && ($pair[1] ?? null) !== null) {
                     $playable[] = $pair;
-                    if ($this->lookupAdvancer($resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie) !== null) {
+                    if ($this->lookupAdvancer($resultIndex, $round, $pair[0], $pair[1], $this->options->legsPerTie, $tieWinnerDeprecationRaised) !== null) {
                         ++$resolved;
                     }
                 }
@@ -359,7 +367,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             }
             if ($thirdPlaceTie !== null) {
                 $playable[] = $thirdPlaceTie;
-                $thirdPlaceAdvancer = $this->lookupAdvancer($resultIndex, $round, $thirdPlaceTie[0], $thirdPlaceTie[1], $this->options->legsPerTie);
+                $thirdPlaceAdvancer = $this->lookupAdvancer($resultIndex, $round, $thirdPlaceTie[0], $thirdPlaceTie[1], $this->options->legsPerTie, $tieWinnerDeprecationRaised);
                 $resolved += $thirdPlaceAdvancer instanceof Participant ? 1 : 0;
             }
 
@@ -387,7 +395,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             foreach ($pairs as $pair) {
                 [$first, $second] = [$pair[0], $pair[1] ?? null];
                 if ($first !== null && $second !== null) {
-                    $advancer = $this->lookupAdvancer($resultIndex, $round, $first, $second, $this->options->legsPerTie);
+                    $advancer = $this->lookupAdvancer($resultIndex, $round, $first, $second, $this->options->legsPerTie, $tieWinnerDeprecationRaised);
                     $this->noteLevelAdvancer($levelAdvancers, $resultIndex, $round, $first, $second, $this->options->legsPerTie, $advancer);
                     $nextSlots[] = $advancer;
                     $wentOut = $advancer?->getId() === $first->getId() ? $second : $first;

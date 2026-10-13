@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -19,10 +20,14 @@ use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Tests\Support\TieWinnerDeprecation;
 
 // A single-leg elimination event that finishes level is decided by the
-// application, which records who advances as 'tie_winner' metadata on the
-// event's result: the key and the reading a level two-legged tie has.
+// application, which records who advances as the decider of the event's
+// result: the reading a level two-legged tie has. Before the typed decider
+// the decision was 'tie_winner' metadata, which is deprecated and still
+// read; the tests of what that key alone does (a value that is no ID, a
+// value on a result that is not level) record it on purpose.
 
 /**
  * @return array<Participant>
@@ -38,9 +43,11 @@ function levelEventField(int $count): array
 }
 
 /**
- * A result that finished level 1-1, with who advances when one is named.
+ * A result that finished level 1-1, with who advances when one is named:
+ * as the decider of the result, or as the deprecated 'tie_winner' metadata,
+ * which unlike a decider can name a participant who is not in the event.
  */
-function levelResult(Event $event, ?string $advancingId = null): Result
+function levelResult(Event $event, ?string $advancingId = null, bool $asMetadata = false): Result
 {
     [$first, $second] = $event->getParticipants();
 
@@ -48,7 +55,9 @@ function levelResult(Event $event, ?string $advancingId = null): Result
         $event,
         null,
         [$first->getId() => 1, $second->getId() => 1],
-        $advancingId === null ? [] : [TieDecision::TIE_WINNER_KEY => $advancingId]
+        $advancingId === null || !$asMetadata ? [] : [TieWinnerDeprecation::KEY => $advancingId],
+        null,
+        $advancingId === null || $asMetadata ? null : new Decider([$advancingId])
     );
 }
 
@@ -197,7 +206,7 @@ describe('a level single-leg event in single elimination', function (): void {
         expect($recorded->isDraw())->toBeTrue();
         expect($recorded->getWinner())->toBeNull();
         expect($recorded->getScores())->toBe(['p1' => 1, 'p2' => 1]);
-        expect($recorded->getMetadataValue(TieDecision::TIE_WINNER_KEY))->toBe('p2');
+        expect($recorded->getDecider()?->getParticipantIds())->toBe(['p2']);
         expect($state->getResults()[0])->toBe($recorded);
 
         // Who advanced is read from the result with the reading the engines use.
@@ -280,7 +289,7 @@ describe('a level single-leg event in single elimination', function (): void {
             $won[] = new Result($event, $advancer, $scores);
             $level[] = $advancing[$index] === 'p4'
                 ? new Result($event, $advancer, $scores)
-                : new Result($event, null, $scores, [TieDecision::TIE_WINNER_KEY => $advancing[$index]]);
+                : new Result($event, null, $scores, [], null, new Decider([$advancing[$index]]));
         }
 
         $afterLevel = $engine->pairNextRound($start->withRoundPlayed($quarterfinals, $level));
@@ -304,7 +313,7 @@ describe('a level single-leg event in single elimination', function (): void {
         $restored = StageState::fromJson($state->toJson());
 
         expect($restored->toArray())->toBe($state->toArray());
-        expect($restored->getResults()[0]->getMetadataValue(TieDecision::TIE_WINNER_KEY))->toBe('p4');
+        expect($restored->getResults()[0]->getDecider()?->getParticipantIds())->toBe(['p4']);
         expect(levelEventPairs($engine->pairNextRound($restored)->getEvents()))->toBe(['p4 v p2']);
     });
 });
@@ -402,7 +411,7 @@ describe('a level single-leg event in double elimination', function (): void {
 });
 
 describe('a level single-leg event with no usable decision', function (): void {
-    it('is refused by every engine call, with a message naming the key to set', function (
+    it('is refused by every engine call, with a message that says how to record the decision', function (
         StageEngineInterface $engine
     ): void {
         $state = StageState::start(levelEventField(4));
@@ -420,10 +429,11 @@ describe('a level single-leg event with no usable decision', function (): void {
 
             assert($thrown !== null, "{$call}() accepted a level event that names nobody.");
             expect($thrown->getMessage())->toBe(
-                "Invalid scheduler configuration: Elimination events cannot end in a draw (P1 vs P4): the event is level, so record who advances as 'tie_winner' metadata on its result"
+                'Invalid scheduler configuration: Elimination events cannot end in a draw (P1 vs P4): the event is level, so record who advances as the decider of its result'
             );
             expect($thrown->getReason())->toBe(InvalidConfigurationReason::UndecidedTie);
-            expect($thrown->getContext())->toBe(['participants' => ['p1', 'p4']]);
+            // Which tie: its round, and its two participants
+            expect($thrown->getContext())->toBe(['round' => 1, 'participants' => ['p1', 'p4']]);
         }
     })->with([
         'single elimination' => [fn() => new SingleEliminationEngine()],
@@ -439,7 +449,7 @@ describe('a level single-leg event with no usable decision', function (): void {
         $pairing = $engine->pairNextRound($state);
         [$first, $second] = $pairing->getEvents();
         $state = $state->withRoundPlayed($pairing, [
-            new Result($first, null, [], [TieDecision::TIE_WINNER_KEY => $decision]),
+            new Result($first, null, [], [TieWinnerDeprecation::KEY => $decision]),
             decisiveResult($second, 'p2'),
         ]);
 
@@ -473,7 +483,7 @@ describe('a level single-leg event with no usable decision', function (): void {
         [$leg1, $leg2] = $pairing->getEvents();
         $state = $state->withRoundPlayed($pairing, [
             new Result($leg1),
-            new Result($leg2, null, [], [TieDecision::TIE_WINNER_KEY => 'ghost']),
+            new Result($leg2, null, [], [TieWinnerDeprecation::KEY => 'ghost']),
         ]);
 
         try {
@@ -510,7 +520,7 @@ describe('a level single-leg event with no usable decision', function (): void {
         $stuck = StageState::fromJson(
             $state->withRoundPlayed($pairing, array_map(levelResult(...), $pairing->getEvents()))->toJson()
         );
-        expect(fn() => $engine->isComplete($stuck))->toThrow(InvalidConfigurationException::class, "'tie_winner'");
+        expect(fn() => $engine->isComplete($stuck))->toThrow(InvalidConfigurationException::class, 'record who advances as the decider of its result');
 
         // One replacement for each event of the round, read back from the
         // stored state; the second participant of each event advances.
@@ -528,7 +538,7 @@ describe('a level single-leg event with no usable decision', function (): void {
         foreach (array_slice($repaired->getResults(), -count($advancing)) as $index => $result) {
             expect($result->isDraw())->toBeTrue();
             expect($result->getScores())->toBe($stuck->getResults()[count($stuck->getResults()) - count($advancing) + $index]->getScores());
-            expect($result->getMetadataValue(TieDecision::TIE_WINNER_KEY))->toBe($advancing[$index]);
+            expect($result->getDecider()?->getParticipantIds())->toBe([$advancing[$index]]);
         }
 
         // The bracket goes on, and every participant a decision names
@@ -565,18 +575,20 @@ describe('a level single-leg event with no usable decision', function (): void {
         $state = StageState::start(levelEventField(2));
         $pairing = $engine->pairNextRound($state);
         $state = $state->withRoundPlayed($pairing, [
-            new Result($pairing->getEvents()[0], null, [], [TieDecision::TIE_WINNER_KEY => null]),
+            new Result($pairing->getEvents()[0], null, [], [TieWinnerDeprecation::KEY => null]),
         ]);
 
         expect(fn() => $engine->isComplete($state))
-            ->toThrow(InvalidConfigurationException::class, "record who advances as 'tie_winner' metadata");
+            ->toThrow(InvalidConfigurationException::class, 'record who advances as the decider of its result');
     });
 });
 
-describe('a decision on a result that is not level', function (): void {
-    // The decision is read only when the results leave the tie level, for
+describe('tie_winner metadata on a result that is not level', function (): void {
+    // The metadata is read only when the results leave the tie level, for
     // one leg as for two: a decisive result is not overturned by it, and a
-    // value that names nobody in the event goes unread.
+    // value that names nobody in the event goes unread. Nothing is raised
+    // either: the suite fails on a deprecation, and these calls raise none.
+    // (A decider on such a result is refused: see TypedTieDeciderTest.)
     it('is not read for a single-leg event that has a winner', function (
         StageEngineInterface $engine,
         mixed $decision
@@ -588,7 +600,7 @@ describe('a decision on a result that is not level', function (): void {
 
         $plain = $state->withRoundPlayed($pairing, [new Result($first, $p1), decisiveResult($second, 'p2')]);
         $carrying = $state->withRoundPlayed($pairing, [
-            new Result($first, $p1, [], [TieDecision::TIE_WINNER_KEY => $decision]),
+            new Result($first, $p1, [], [TieWinnerDeprecation::KEY => $decision]),
             decisiveResult($second, 'p2'),
         ]);
 
@@ -612,7 +624,7 @@ describe('a decision on a result that is not level', function (): void {
 
         $state = $state->withRoundPlayed($pairing, [
             new Result($leg1, $p1),
-            new Result($leg2, null, [], [TieDecision::TIE_WINNER_KEY => $decision]),
+            new Result($leg2, null, [], [TieWinnerDeprecation::KEY => $decision]),
         ]);
 
         expect($engine->isComplete($state))->toBeTrue();
@@ -646,7 +658,7 @@ describe('the match outcome selector over a level single-leg round', function ()
         expect($ids(MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p1', 'p3']);
     });
 
-    it('refuses a level event with no decision, naming the key, in both modes', function (
+    it('refuses a level event with no decision, saying how to record it, in both modes', function (
         string $mode
     ): void {
         $selector = MatchOutcomeSelector::fromArray(['mode' => $mode]);
@@ -656,7 +668,7 @@ describe('the match outcome selector over a level single-leg round', function ()
 
         expect(fn() => $selector->select($outcome))->toThrow(
             InvalidConfigurationException::class,
-            "Elimination events cannot end in a draw (P1 vs P4): the event is level, so record who advances as 'tie_winner' metadata on its result"
+            'Elimination events cannot end in a draw (P1 vs P4): the event is level, so record who advances as the decider of its result'
         );
     })->with([
         'winners' => ['winners'],
@@ -664,7 +676,9 @@ describe('the match outcome selector over a level single-leg round', function ()
     ]);
 
     it('refuses a decision for a participant outside the event', function (): void {
-        $results = [levelResult($this->first, 'p2'), levelResult($this->second, 'p2')];
+        // Only the metadata can say this: a result refuses a decider for
+        // a participant who is not in its event
+        $results = [levelResult($this->first, 'p2', true), levelResult($this->second, 'p2')];
         $standings = (new StandingsCalculator())->calculate([$this->p1, $this->p2, $this->p3, $this->p4], $results);
         $outcome = new StageOutcome($standings, $results, [], $this->round);
 
