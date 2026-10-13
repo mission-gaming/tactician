@@ -433,8 +433,14 @@ describe('a state built from a history', function (): void {
         try {
             $history();
         } catch (InvalidConfigurationException $exception) {
+            // What is listed is in the context with that value. For a
+            // participant who is no entrant the list is the whole context:
+            // who, in which role, and in which round where there is one.
             expect($exception->getReason())->toBe($reason)
                 ->and(array_intersect_key($exception->getContext(), $context))->toBe($context);
+            if ($reason === InvalidConfigurationReason::ParticipantNotAnEntrant) {
+                expect($exception->getContext())->toBe($context);
+            }
 
             return;
         }
@@ -478,27 +484,32 @@ describe('a state built from a history', function (): void {
             'an event with a participant who is no entrant' => [
                 fn() => StageState::fromHistory($entrants, [new RoundPairing(1, null, [new Event([$one, $stranger], $first)])]),
                 InvalidConfigurationReason::ParticipantNotAnEntrant,
-                ['participant' => 'z', 'round' => 1],
+                ['participant' => 'z', 'role' => 'in an event', 'round' => 1],
             ],
             'a bye for a participant who is no entrant' => [
                 fn() => StageState::fromHistory($entrants, [new RoundPairing(1, null, [$oneVersusTwo], [$stranger])]),
                 InvalidConfigurationReason::ParticipantNotAnEntrant,
-                ['participant' => 'z', 'round' => 1],
+                ['participant' => 'z', 'role' => 'with a bye', 'round' => 1],
             ],
             'a result of a participant who is no entrant' => [
                 fn() => StageState::fromHistory($entrants, [$roundOne], [new Result(new Event([$stranger, $one], $first), $one)]),
                 InvalidConfigurationReason::ParticipantNotAnEntrant,
-                ['participant' => 'z'],
+                ['participant' => 'z', 'role' => 'in a result', 'round' => 1],
             ],
             'a withdrawal of a participant who is no entrant' => [
                 fn() => StageState::fromHistory($entrants, [$roundOne], [], [$stranger]),
                 InvalidConfigurationReason::ParticipantNotAnEntrant,
-                ['participant' => 'z'],
+                ['participant' => 'z', 'role' => 'as withdrawn', 'round' => null],
+            ],
+            'a withdrawal with its round of a participant who is no entrant' => [
+                fn() => StageState::fromHistory($entrants, [$roundOne], [], [new Withdrawal($stranger, 1)]),
+                InvalidConfigurationReason::ParticipantNotAnEntrant,
+                ['participant' => 'z', 'role' => 'as withdrawn', 'round' => null],
             ],
             'an adjustment for a participant who is no entrant' => [
                 fn() => StageState::fromHistory($entrants, [$roundOne], [], [], [new Adjustment('z', 1.0)]),
                 InvalidConfigurationReason::ParticipantNotAnEntrant,
-                ['participant' => 'z'],
+                ['participant' => 'z', 'role' => 'in an adjustment', 'round' => null],
             ],
             'a participant in two events of a round' => [
                 fn() => StageState::fromHistory($entrants, [new RoundPairing(1, null, [$oneVersusTwo, new Event([$one, $three], $first)])]),
@@ -605,7 +616,15 @@ describe('a round with some of its results, or none', function (): void {
                     expect($exception->getReason())->toBe(InvalidConfigurationReason::RoundPartiallyResolved)
                         ->and($exception->getRoundNumber())->toBe($readiness->getRoundNumber())
                         ->and($exception->getUnresolvedEvents())->toBe($readiness->getUnresolvedEvents())
-                        ->and($exception->getContext()['round'] ?? null)->toBe($readiness->getRoundNumber());
+                        // The context says the same as plain data: the round, and the
+                        // participant IDs of each event that is awaited, in play order
+                        ->and($exception->getContext())->toBe([
+                            'round' => $readiness->getRoundNumber(),
+                            'unresolved' => array_map(
+                                static fn(Event $event): array => historyIds($event->getParticipants()),
+                                $readiness->getUnresolvedEvents()
+                            ),
+                        ]);
                 }
             }
         }
