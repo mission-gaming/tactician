@@ -20,10 +20,13 @@ the last one, which is about the library as a whole.
 **Formats**
 
 - **Round robin**, single or multi-leg, by the circle method. Roles (first-named
-  and second-named, read as home and away) are balanced: the split of a leg
-  is as even as the field allows, and where a constraint rejects those roles
-  the scheduler looks for other balanced ones. The roles of 0.2.x, which
-  alternate by round and are bounded, not equal, are kept by naming them.
+  and second-named, read as home and away) are balanced where possible: the
+  split of a leg is as even as the field allows, and where a constraint
+  rejects those roles the scheduler looks for other balanced ones. Where it
+  finds none it falls back to the roles of 0.2.x, which alternate by round
+  and are bounded, not equal, and marks the schedule; so nothing fails for
+  the sake of balance. Naming a role assignment gives either strictly:
+  balanced or refused, or the roles of 0.2.x.
   Legs after the first are mirrored, repeated or shuffled, and an odd field
   gets a bye in every round.
   [Basic usage](docs/USAGE.md#basic-usage),
@@ -73,7 +76,10 @@ the last one, which is about the library as a whole.
   it blocks; a partial schedule is never returned. The scheduler first retries
   a bounded number of rotated participant orders, then looks for other roles
   its role assignment keeps, and an opt-in backtracking
-  search covers the round layouts those cannot reach. Every exception the
+  search covers the round layouts those cannot reach. (Balanced roles are a
+  preference of the default and not a constraint: a schedule that has none
+  is returned with the roles the generator proposes and a mark, not
+  refused.) Every exception the
   library throws on purpose implements one interface, and a configuration
   error carries a reason that code can match without reading the message.
   [Backtracking generation](docs/USAGE.md#backtracking-generation),

@@ -867,6 +867,41 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             '$balancedOptions->toArray();',
             "assert(\$balancedOptions->toArray() === ['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced']);",
         ],
+        'the default of the options, named, round trips under its own identifier' => [
+            'docs/USAGE.md',
+            '$namedDefault->toArray();',
+            <<<'PHP'
+                assert($namedDefault->toArray() === ['format_version' => 1, 'legs' => 2, 'strategy' => 'mirrored', 'backtracking' => false, 'role_assignment' => 'balanced_where_possible']);
+                assert($namedDefault->roleAssignment::class === (new RoundRobinOptions())->roleAssignment::class);
+                PHP,
+        ],
+        // "The block prints: balanced_roles_rejected / balanced_roles_rejected / Balanced, named: no schedule",
+        // the two values in its comments, and "a schedule that fell back is the one
+        // RoundParityRoleAssignment gives ... with one more metadata key"
+        'the fall-back of the default, its mark and the strict role assignment' => [
+            'docs/USAGE.md',
+            '$fallback = RoleFallback::of($awaySchedule);',
+            <<<'PHP'
+                assert($fallback === RoleFallback::BalancedRolesRejected);
+                assert($fallback->value === 'balanced_roles_rejected');
+                assert($awaySchedule->getMetadataValue(RoleFallback::METADATA_KEY) === 'balanced_roles_rejected');
+                assert(RoleFallback::of(Schedule::fromArray($awaySchedule->toArray())) === RoleFallback::BalancedRolesRejected);
+                assert(RoleFallback::of((new RoundRobinScheduler())->schedule($participants)) === null);
+                assert($failure instanceof IncompleteScheduleException);
+
+                $underRoundParity = (new RoundRobinScheduler($awayOnly))->schedule(
+                    $participants,
+                    new RoundRobinOptions(roleAssignment: new \MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment())
+                );
+                $withoutTheMark = $awaySchedule->toArray();
+                unset($withoutTheMark['metadata']['role_fallback']);
+                assert($withoutTheMark === $underRoundParity->toArray());
+                assert(array_keys($awaySchedule->getMetadata()) === [...array_keys($underRoundParity->getMetadata()), 'role_fallback']);
+                foreach ($awaySchedule as $event) {
+                    assert($event->getParticipants()[0]->getId() !== 'livorno');
+                }
+                PHP,
+        ],
         // The custom role assignment of the document is honoured in every event
         'a custom role assignment names the better seed first' => [
             'docs/USAGE.md',

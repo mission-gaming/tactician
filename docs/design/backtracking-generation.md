@@ -91,7 +91,7 @@ for.
 |----------|-----------|-------|
 | A later leg, mirrored or repeated | The leg strategy, as a **rule**: the first-leg event, reversed in the even-numbered legs of a mirrored schedule and kept everywhere else | No. Another role would not be a mirrored or a repeated leg |
 | A later leg, shuffled | The leg strategy, as a **preference**: a draw | Yes: the reverse is a role it could have drawn |
-| The first leg, under a role assignment that states a rule (`BalancedRoleAssignment`, the default) | The role assignment, which says with its rule which legs it keeps | Yes, within the rule: any leg it keeps is a leg that was asked for ([role-assignment.md](role-assignment.md#the-default)) |
+| The first leg, under a role assignment that states a rule (`BalancedRoleAssignment`, and the default, `BalancedWherePossibleRoleAssignment`) | The role assignment, which says with its rule which legs it keeps | Yes, within the rule: any leg it keeps is a leg that was asked for ([role-assignment.md](role-assignment.md#the-default)). The default also accepts the leg the generator proposes where no leg within the rule is found, and marks the schedule |
 | The first leg, under a role assignment that states none (`RoundParityRoleAssignment`), without backtracking | The role assignment | No. Constraints are hard filters on the roles that were asked for |
 | The first leg, under a role assignment that states none, with backtracking | The search, which proposes; the role assignment, which is asked about the leg | Yes, as far as the role assignment keeps the result |
 
@@ -297,6 +297,18 @@ the role assignment keeps it as it is.
   it again: the schedule is returned only when the role assignment keeps
   that leg, and the failure says so when roles exist that it would change.
   `RoundParityRoleAssignment` keeps every leg.
+- The default, `BalancedWherePossibleRoleAssignment`, is searched as the
+  balanced role assignment is, and a balanced leg that a search returns is
+  the leg `BalancedRoleAssignment` gets. It is the one role assignment
+  under which a first leg outside its rule is returned: where no balanced
+  leg is found, the scheduler starts the generation again with the roles
+  the generator proposes, exactly as under `RoundParityRoleAssignment`
+  (with backtracking, the leg the search chooses), and writes the reason
+  into the metadata of the schedule. That is not a search overruling a role
+  assignment: it is what this one asks for. Under constraints the role
+  search cannot reason about exactly, the roles the generator proposes are
+  tried before the searches of this section, and with their schedule in
+  hand the search that goes back one event at a time is left out.
 
 [role-assignment.md](role-assignment.md#the-default) has the decision and
 what was measured.

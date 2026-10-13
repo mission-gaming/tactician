@@ -1,9 +1,13 @@
 # Design note: Role Assignment
 
 **Status: IMPLEMENTED.** `BalancedRoleAssignment` shipped as an opt-in in
-0.2.2 (`RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())`)
-and is the default since 0.3.0. [The default](#the-default) records that
-decision, the bar it had to meet, and what was built to meet it.
+0.2.2 (`RoundRobinOptions(roleAssignment: new BalancedRoleAssignment())`).
+Since 0.3.0 the default is balanced where possible
+(`BalancedWherePossibleRoleAssignment`): the balanced roles wherever the
+scheduler finds a schedule with them, and otherwise the round-parity roles,
+with a mark. [The default](#the-default) records that decision, the bar it
+had to meet, what was built to meet it, and why the default is not
+`BalancedRoleAssignment` itself.
 
 The usage guide states what a caller can rely on
 ([Role Assignment](../USAGE.md#role-assignment)). This note records why the
@@ -47,6 +51,8 @@ odd size it plays an even number, so 0 apart is possible.
   roles than the ones asked for would be worse than a failure: so a role is
   changed only where the contract of whoever decided it leaves it free
   ([backtracking-generation.md](backtracking-generation.md#roles-across-legs)).
+  (The default of 0.3.0 asks for balanced roles where they can be had, and
+  its other roles are not silent: the schedule is marked.)
   In 0.2.2 that left the first leg of a role assignment untouched, at a cost
   that was real and was accepted then: a role assignment did not see the
   constraints, so a constraint that fixes the role of one pairing could
@@ -79,7 +85,12 @@ odd size it plays an even number, so 0 apart is possible.
   search on to the next. (In 0.2.2 the role assignment was asked about the
   leg afterwards, its changes were replayed against the constraints, and a
   rejection ended the search with an `IncompleteScheduleException`; that is
-  still what happens under a role assignment that states no rule.)
+  still what happens under a role assignment that states no rule.) Under
+  the default a balanced leg is looked for in the same way, and where none
+  is found the roles of the search are returned after all, by a second
+  generation under round parity and with a mark: the caller who named
+  nothing is told, and the caller who named `BalancedRoleAssignment` is
+  refused.
 
 ## The circle rule
 
@@ -195,8 +206,17 @@ assignment states.
 
 ## The default
 
-**Decision (0.3.0, issue #51): `BalancedRoleAssignment` is the default.**
+**Decision (0.3.0, issue #51): the default is balanced where possible.**
+`RoundRobinOptions` that name no role assignment get
+`BalancedWherePossibleRoleAssignment`: the balanced roles where the
+scheduler finds a schedule with them, and otherwise the roles the generator
+proposes, with the reason in the schedule's metadata. `BalancedRoleAssignment`
+stays, and naming it is the strict choice: balanced or refused.
 `RoundParityRoleAssignment` stays, and naming it gives the roles of 0.2.x.
+
+The first form of the decision was that `BalancedRoleAssignment` itself
+became the default. [Why not balanced or refused](#why-not-balanced-or-refused)
+records what a review of that found and why it was withdrawn.
 
 ### The bar
 
@@ -210,6 +230,11 @@ four participants have none that fails while a balanced leg exists; and the
 role assignment receives what it needs for that, since the interface was
 experimental and could still change.
 
+`BalancedRoleAssignment` is held to that bar, and what follows under "What
+was built" is how. The default was then held to a second one: no
+configuration that completed with the default of 0.2.x may fail under the
+new one, and none may take much longer to come back.
+
 ### What was built
 
 - **The interface says more, in both directions.** `assignRoles()` takes a
@@ -217,8 +242,8 @@ experimental and could still change.
   the constraints have fixed. An object, so that more can be told later
   without breaking an implementer again. And the role assignment states,
   with `rule()`, what it holds a first leg to, as a constraint on one event
-  (`LegBalanceRule` for the balanced one: no participant has a role more
-  often in the leg than half its events rounded up), or null.
+  (`LegBalanceRule` for the two balanced ones: no participant has a role
+  more often in the leg than half its events rounded up), or null.
 - **The constraints are not handed over.** The issue offered "the leg and
   the constraints, or a way to ask whether a seating is allowed". Neither
   was taken as it stands. Whether a seating is allowed is a question about a
@@ -250,58 +275,297 @@ experimental and could still change.
   treated as before in every respect, which is how the round-parity roles
   of 0.2.x stay byte for byte what they were, failures included.
 
+### Why not balanced or refused
+
+With `BalancedRoleAssignment` as the default, a review compared the branch
+with 0.2.x under default options and found two classes of configuration
+that completed before and failed after. Nothing was wrong with either
+failure as a failure of `BalancedRoleAssignment`; both were wrong as the
+behaviour of options that name nothing.
+
+- **A limit on roles that the caller writes itself.** The search of roles
+  knows what the library's two role limits read and goes straight back to
+  the event that matters. A closure, a class of the caller's, a subclass of
+  the library's constraint, or a subclass of `ConstraintSet` does not say,
+  so the search goes back one event at a time. Two mirrored legs under a
+  closure that does what `ConsecutiveRoleConstraint::homeAway(2)` does:
+  0.2.x completed every field of even size from 6 to 40 in milliseconds,
+  because round parity keeps that limit where the legs meet; the strict
+  default completed 6, 8 and 10 participants and failed for 12, 16, 20, 24,
+  32 and 40 at a bound, after 1 to 13 seconds (over four legs, 20 seconds
+  with 16 participants and minutes from 24). Most of that time was not the
+  search but the failure analysis of every rotated order, which a
+  constraint set the library does not know has always had, and which the
+  rejected default roles now reached.
+- **A rule that leaves no balanced leg at all.** 3,662 small
+  configurations in which a caller pins roles so that some participant is
+  out of balance whatever else is chosen completed with the round-parity
+  roles, where those happened to agree with the rule, and failed.
+
+With the library's own role limits nothing regressed (1,120 configurations:
+477 complete in both, 438 failed before and complete now, 205 fail in
+both), and a brute-force oracle found no case in which a balanced schedule
+exists within what the scheduler searches and it misses it.
+
+Three ways out were weighed.
+
+- *Keep the strict default and document the two classes.* A caller who set
+  no option would get a failure, seconds late, for a league that scheduled
+  before, and the remedy (name round parity) is one it has no reason to
+  know. Balance is something the default prefers; nobody who left the
+  option out asked for it at the price of the schedule.
+- *Search as if every verdict were local* (go straight back for a closure
+  as for the library's limits, and put what is found to the constraints
+  event by event, so that it is valid). A schedule found that way is right,
+  but a search that fails that way has shown nothing, the second class is
+  not helped by it at all, and the cost of a failed search stays.
+- *Balanced where possible.* The default keeps its preference and gives it
+  up, visibly, where it cannot have it. This was chosen. It makes the two
+  classes complete again, costs nothing where balanced roles are found, and
+  leaves the strict behaviour to the caller who names it.
+
+### Balanced where possible
+
+**What it is.** `BalancedWherePossibleRoleAssignment` is a role assignment
+like the other two: it answers `assignRoles()` and `rule()` exactly as
+`BalancedRoleAssignment` does. The fall-back is not something a role
+assignment can do in `assignRoles()`, which decides one leg and sees no
+constraint; it is a second generation of the whole schedule. So the
+scheduler does it, and it knows the class: `RoundRobinScheduler` runs its
+generation under the balanced roles and, where that finds nothing, under
+`RoundParityRoleAssignment`. No further method was added to
+`RoleAssignmentInterface` for this, which had already been changed in
+the release: a caller's own role assignment cannot ask for the fall-back,
+and one that wraps the default is held to its rule. The class has an
+identifier in plain data, `balanced_where_possible`, so that options can
+name the default and stay on it when a later release changes the default;
+options that name nothing are written without the key, as before
+([ADR 0005](../adr/0005-serialized-forms-carry-a-format-version.md)).
+
+**What a caller is told.** A schedule that fell back says so in its
+metadata, under `role_fallback` (`RoleFallback::METADATA_KEY`), with one of
+three reasons as a string; `RoleFallback::of()` reads it as an enum case.
+The metadata is where the scheduler already records what it knows of a
+generated schedule (its byes, its shape), it is part of the schedule's
+plain data, and a key that is absent from every balanced schedule leaves
+those byte for byte what they were. The reasons are chosen to answer the
+question a caller has next, which is whether naming
+`BalancedRoleAssignment` would help:
+
+| Reason | Means | `BalancedRoleAssignment`, named |
+|--------|-------|---------------------------------|
+| `no_balanced_roles` | Every choice of balanced roles that is searched was tried | Fails |
+| `search_stopped_at_bound` | A bound stopped the search | Stops at the same bound and fails |
+| `balanced_roles_rejected` | The constraints rejected the balanced roles put to them, and with a schedule in hand the rest was not searched | Searches to its bounds; may find a schedule, may take seconds |
+
+**The order of the attempts.** What decides it is whether the search of
+roles can reason about the constraints exactly
+(`ConstraintPurity::readsOwnEventsOnly()`: a `ConstraintSet` of the
+library's own classes, or no constraints).
+
+Where it can:
+
+1. Everything `BalancedRoleAssignment` does: the balanced roles as given in
+   every rotated order, the search within the balance in those layouts, the
+   backtracking search where it is asked for.
+2. Everything `RoundParityRoleAssignment` does. Its schedule is returned
+   with the reason step 1 ended on; its failure is the failure of the call.
+
+The search of step 1 is bounded and goes straight back to the events that
+matter, and it is what finds the 438 schedules that 0.2.x refused. A
+fall-back after it is rare: with the library's built-in role
+limits, alone or beside its rest, repeat and seed-protection rules, none was
+seen in 8,464 configurations of 2 to 20 participants, which ended balanced or
+failed and were never marked. One can be built from the library's classes (a
+`ConsecutiveRoleConstraint` whose extractor fixes the roles of one
+participant, `tests/Feature/RoleConstraintsAcrossLegsTest.php`): with four
+participants the search shows that no balanced leg exists, and with six it
+runs 0.8 seconds to its bound before the fall-back, with eight 1.9.
+
+Where it cannot:
+
+1. The balanced roles as given, in the first layout only.
+2. Everything `RoundParityRoleAssignment` does. The schedule, or the
+   failure, is kept.
+3. Everything `BalancedRoleAssignment` does, from the first layout again.
+   With nothing in hand it has its usual bounds. With a schedule in hand:
+   - it is held to 4,000 events put to the constraints
+     (`RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND`);
+   - the pass that fixes seatings is made in each layout, and the two
+     searches that follow it under the strict role assignment are not,
+     unless it was one of the library's role limits that rejected last;
+   - it ends at the first event a constraint of unknown reach rejects in
+     its context and accepts with no event before it;
+   - a backtracking search is made only where the schedule in hand came
+     from one, with what is left of the 4,000 as its step budget.
+4. A balanced schedule from step 3, or the schedule of step 2 with the
+   reason, or the failure of step 2.
+
+Why this order. The roles as given come first in both because they cost one
+pass and are the answer for every schedule without constraints and for most
+with them. Round parity comes before the search wherever the search can
+spend its whole allowance without a result, which is wherever it goes back
+one event at a time; it does not come first of all, because under a
+constraint set the library does not know a failure of round parity is
+analysed once for every rotated order, and a schedule the balanced roles
+complete at once should not wait for that. With a schedule in hand, a valid
+answer exists and balance is a preference, so what is still spent on it is
+what is cheap and exact (the seatings a constraint fixes, solved by the
+repair) and not what is expensive and blind. The test for "turns on what
+came before" is one more question to the constraint, with an empty context:
+a rule that fixes a role rejects the event whatever came before it, and a
+limit on a streak or a running total accepts an event that stands alone.
+It is a heuristic about a constraint the library cannot see into, used only
+to decide when to stop looking, never to accept an event: every event of a
+schedule that is returned was accepted by the constraints in its own
+context.
+
+Each run of the generation starts where a call starts. The shuffles a
+`Randomizer` gives a call are drawn once and read again by every run
+(`RoundRobinScheduler::shuffled()`), so that the round-parity run under the
+default is the run of `RoundParityRoleAssignment` from the same seed, and
+the randomizer moves on by what a call drew and no further. A leg strategy
+that draws is asked for its plan again, which is where a
+`ShuffledLegStrategy` built from a seed starts its draws again; one that
+holds a randomizer of its own draws on, and its fall-back is a schedule of
+round parity for other draws.
+
+A failure of a balanced run never reaches the caller, so none is analysed,
+and a rotated order is left at the first event the constraints reject
+instead of being generated to its end.
+
 ### What was measured
 
-- The 729 cases: no case fails while a balanced leg exists, with and
-  without backtracking (`tests/Feature/RoleAssignmentTest.php`).
+- The 729 cases: under `BalancedRoleAssignment` no case fails while a
+  balanced leg exists, with and without backtracking; under the default
+  every case with a balanced leg gets the same schedule, and every other
+  case that round parity completes gets that one, marked
+  (`tests/Feature/RoleAssignmentTest.php`).
 - Against an exhaustive oracle (`tests/Support/RoleScheduleOracle.php`),
   fields of three to five (and to eight for a single leg), one to four
   legs, the three leg strategies, limits on streaks and on totals, pinned
-  roles and combinations: with backtracking, a schedule is returned exactly
-  when some way to play the first leg has balanced roles that keep the rule
-  in every leg, and every failure says "unsatisfiable"; without it, exactly
-  when one of the circle layouts tried has such roles
-  (`tests/Feature/RoleConstraintsAcrossLegsTest.php`). The 20 cases of three
-  participants with a pinned role that the search of 0.2.x-era roles missed
-  under the balanced role assignment are among them.
-- Against the round-parity default of 0.2.x, over role limits (streaks of 1
-  to 4, totals 1 to 4 apart), 3 to 16 participants, one to four legs and the
-  three leg strategies, 1,120 configurations: none that completed before
-  fails, and 438 that failed complete. Over pinned roles in fields of 3 to
-  8: the configurations that completed before and fail now are those whose
-  rule leaves no balanced leg at all (three participants, one of them named
-  first in both of its events).
+  roles and combinations. Under `BalancedRoleAssignment`: with
+  backtracking, a schedule is returned exactly when some way to play the
+  first leg has balanced roles that keep the rule in every leg, and every
+  failure says "unsatisfiable"; without it, exactly when one of the circle
+  layouts tried has such roles. The 20 cases of three participants with a
+  pinned role that the search of 0.2.x-era roles missed under the balanced
+  role assignment are among them. Under the default: a schedule is returned
+  wherever one exists with the roles the generator proposes, it is balanced
+  and unmarked wherever balanced roles exist in what is searched, and it is
+  marked exactly when its first leg is not balanced
+  (`tests/Feature/RoleConstraintsAcrossLegsTest.php`).
+- Against 0.2.x, under default options: 40,888 configurations (fields of
+  2 to 20; 1,520 without constraints; the library's role limits alone and
+  beside rest, repeat and seed-protection rules; limits, pinned roles and
+  metadata rules written as closures, as a class and a subclass of the
+  caller's, and inside a subclass of `ConstraintSet`; one to four legs, the
+  three strategies, with and without a `Randomizer`, backtracking on and
+  off in the small fields; 0.2.x is `origin/main` at `6156e26`).
+  - Never worse: without a `Randomizer` no configuration that completed
+    fails. Of the 22,106 that completed, 17,761 complete with balanced
+    roles and 4,242 fall back; the 2,175 fall-backs without a `Randomizer`
+    have the events 0.2.x gave them, and every fall-back is the schedule
+    `RoundParityRoleAssignment` gives on the branch (3,965 compared). 103
+    with a `Randomizer` fail, and each fails under
+    `RoundParityRoleAssignment` too: the later legs of a seeded schedule
+    derive from the first since 0.3.0, and mirrored legs that really mirror
+    cannot keep a role pinned in every leg.
+  - A failure is the failure of round parity: the same message in all
+    5,651 failures compared with `RoundParityRoleAssignment` named, and in
+    all 4,253 failures without a `Randomizer` that 0.2.x answered within
+    the 20 seconds the comparison gave it.
+  - Balanced as before: of 27,278 configurations the strict default
+    balanced, 26,952 get the same schedule byte for byte and 326 fall back
+    ("What it costs, and what is short"). Every unmarked schedule compared
+    with `BalancedRoleAssignment` named is its schedule (18,213).
+  - 9,034 configurations that failed in 0.2.x complete with balanced
+    roles; among the library's role limits alone (2,720, with and without a
+    `Randomizer` and backtracking), 1,366 complete in both, 875 failed and
+    complete, 479 fail in both, and none falls back.
+- Time, for the case of the review (two and four mirrored legs under a
+  limit of two in a row written as a closure): the closure is asked 2.0 to 2.3
+  times as often as under round parity over two legs and 1.5 to 1.6 times
+  over four, for every field of even size from 6 to 40; the time is 1.5 to
+  2.0 times that of 0.2.x over two legs and 1.1 to 1.3 times over four.
+
+  | Participants | Two legs, 0.2.x | Two legs, default | Four legs, 0.2.x | Four legs, default |
+  |---|---|---|---|---|
+  | 12 | 2.2 ms | 3.8 ms | 8.8 ms | 11.6 ms |
+  | 16 | 5.6 ms | 8.7 ms | 22.7 ms | 27.4 ms |
+  | 20 | 11.3 ms | 17.7 ms | 47.7 ms | 55.2 ms |
+  | 24 | 20.7 ms | 31.0 ms | 89.6 ms | 101.4 ms |
+  | 32 | 50.5 ms | 77.1 ms | 225.4 ms | 253.3 ms |
+  | 40 | 104.3 ms | 159.2 ms | 459.6 ms | 527.4 ms |
+
+  (Fastest of five runs. The strict default failed these after 1 to 13
+  seconds over two legs, and after 20 seconds to minutes over four.)
 
 ### What it costs, and what is short
 
 - A schedule without constraints pays for the circle rule and nothing
-  else. A constrained schedule that the roles as given complete pays
-  nothing more than it did.
-- A constrained schedule that fails pays for the search: one allowance of
-  20,000 rejected roles and 200,000 events put to the constraints for all
-  the layouts of a call. The passes that fix seatings count against the
-  events: a closure that fixes the role of every pairing of 40
-  participants, with no balanced leg, put 1.8 million events to the
-  constraints in those passes before they were counted, and took 20
-  seconds to fail where it now takes 3. Where a failed rotation would have had its failure
-  analysed only to be thrown away, and the constraints are the library's
-  own role limits, the analysis is built once, after the search.
+  else. A constrained schedule that the roles as given complete in the
+  first layout pays nothing more than it did.
+- **The default is not always balanced, and a caller that does not read
+  the mark does not learn it.** Under the library's own constraints a
+  fall-back was not seen in what was measured. Under constraints of the
+  caller's it happens in two cases: a rule that leaves no balanced leg, and
+  a limit on what a participant did before, which is not searched for once
+  round parity has completed the schedule. The second is a schedule that
+  `BalancedRoleAssignment` may find: of the 27,278 configurations of the
+  sweeps that the strict default balanced, 26,952 get the same schedule
+  byte for byte, and the other 326 fall back. All 326 are limits on what a
+  participant did before, written as a closure, a class or subclass of the
+  caller's, or inside a subclass of `ConstraintSet`, in fields of 3 to 17
+  (a limit of two in a row at 6, 8 and 10 participants among them), which
+  the strict role assignment finds by going back one event at a time: in
+  tens of milliseconds in the smallest fields, and for the limit of two in
+  a row not at all from 12 participants up.
+- Under the library's own constraints a fall-back, or a failure, comes
+  after the whole search for balanced roles: one allowance of 20,000
+  rejected roles and 200,000 events put to the constraints for all the
+  layouts of a call, and the step budget of a backtracking search. The
+  passes that fix seatings count against the events: a closure that fixes
+  the role of every pairing of 40 participants, with no balanced leg, put
+  1.8 million events to the constraints in those passes before they were
+  counted, and took 20 seconds to fail where it now takes 3 (under
+  `BalancedRoleAssignment`; the default falls back or fails as round parity
+  does).
+- A schedule balanced by a search costs more than the round-parity schedule
+  0.2.x gave for the same input, since every rotated order is tried with the
+  roles as given first: two mirrored legs under the
+  library's limit of two in a row take 14 ms for 2.3 with 12 participants,
+  86 for 12 with 20 and 860 for 108 with 40, six to eight times the time of
+  0.2.x. (The strict default took 32, 248 and 2,900 ms: a rotated order is
+  now left at the first event the constraints reject.) Under a constraint
+  of the caller's with `backtracking: true`, where the schedule in hand
+  came from a backtracking search, the search for a balanced first leg can
+  spend what is left of the 4,000 steps before the fall-back: a median of
+  60 ms more at five and six participants, where 0.2.x took 4 to 9.
 - The search is bounded, and beyond its bound it does not know. Two
   mirrored legs under a limit of two in a row: found for every field of
   even size from 6 to 30 and for 3 to 11 participants of odd size; stopped
   at the bound for every field of odd size from 13 to 29, after some
-  seconds. It says so, and does not say that no roles exist. Four
-  participants have no first leg that keeps that limit, with any roles. A
-  limit of three in a row is found for every field from 3 to 20 over one
-  to four legs.
+  seconds. Round parity breaks the limit in those fields as well, so they
+  fail under every role assignment. Four participants have no first leg
+  that keeps that limit, with any roles. A limit of three in a row is found
+  for every field from 3 to 20 over one to four legs.
 - Without backtracking only the circle layouts are searched. A limit that
   no balanced roles keep there, and that another way to play the leg would
   keep, needs `backtracking: true`.
 - A constraint of unknown reach that rejects a seating both ways round is
-  not proof that no roles exist, since it may read anything. The search
-  that follows goes back one event at a time for such a rejection, and for
-  a rule that truly leaves no schedule (a role pinned in every leg, over
-  two mirrored legs) it ends at its bound, not with a proof.
+  not proof that no roles exist, since it may read anything. Under
+  `BalancedRoleAssignment` the search that follows goes back one event at a
+  time for such a rejection, and for a rule that truly leaves no schedule (a
+  role pinned in every leg, over two mirrored legs) it ends at its bound,
+  not with a proof. Under the default with a schedule in hand that search
+  is not made, and the reason says only that the balanced roles were
+  rejected.
+- A constraint that keeps state is asked more questions under the default
+  than under round parity, before and after, and may answer differently
+  for it. The usage guide has always asked for pure predicates; the
+  guarantee that the default completes wherever round parity does holds for
+  those.
 
 ## What is not promised
 
@@ -321,7 +585,10 @@ experimental and could still change.
   the fixed seat in the last two rounds. So the rule stays, and a schedule
   that must not repeat a role three times says so with a
   `ConsecutiveRoleConstraint`: in a field of even size the scheduler then
-  reverses those two seatings, which is the balanced leg its search finds.
+  reverses those two seatings, which is the balanced leg its search finds
+  (for the library's constraint; the same limit as a closure is not
+  searched for once round parity has completed the schedule, see "Balanced
+  where possible").
   A field of odd size has no fixed seat, and there the search finds a leg
   under a limit of two up to 11 participants and stops at its bound from 13
   up ("What it costs, and what is short"); a limit of three, which rules
