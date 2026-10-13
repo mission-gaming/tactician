@@ -1137,10 +1137,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
-        // "a kickoff that falls in the hour the clocks skip ... every later round keeps
-        // the moved time". Records a known defect (issue #56: slot times are computed by
-        // adding the interval repeatedly)
-        'a kickoff in the hour the clocks skip moves every later round' => [
+        // "a kickoff that falls in the hour the clocks skip ... is moved an hour later by
+        // PHP, for that round alone": every round is computed from the start
+        'a kickoff in the hour the clocks skip moves that round and no later one' => [
             'docs/USAGE.md',
             "foreach (['P7D', 'PT168H'] as \$roundInterval)",
             <<<'PHP'
@@ -1153,12 +1152,11 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 foreach ($skipped->getEventsByRound() as $roundEvents) {
                     $times[] = $roundEvents[0]->getKickoff()->setTimezone($londonTime)->format('j M H:i');
                 }
-                assert($times === ['22 Mar 01:30', '29 Mar 02:30', '5 Apr 02:30']);
+                assert($times === ['22 Mar 01:30', '29 Mar 02:30', '5 Apr 01:30']);
                 PHP,
         ],
         // "without a rule it accepts a schedule that has one participant in two events at
-        // the same time ... add a MinimumRestRule". Issue #56 covers what the assigner
-        // does not check
+        // the same time ... add a MinimumRestRule"
         'the assigner checks who plays only when it has a rest rule' => [
             'docs/USAGE.md',
             "foreach (['P7D', 'PT168H'] as \$roundInterval)",

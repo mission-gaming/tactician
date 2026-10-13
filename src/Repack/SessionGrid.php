@@ -10,6 +10,7 @@ use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
+use MissionGaming\Tactician\Timeline\IntervalArithmetic;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use MissionGaming\Tactician\Timeline\ZonedTime;
 
@@ -33,11 +34,18 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
  * far apart, and their local times move by the hour the clocks moved. A
  * slot interval written in days or longer (`P1D`) keeps the local time of
  * day instead, except that a slot in the hour the clocks skip is moved an
- * hour later, and so is every slot after it in the session. All of this is
- * said of an interval built from an ISO 8601 duration
+ * hour later; the slots after it are not, because every slot is computed
+ * from its session's start and none from the slot before it. All of this
+ * is said of an interval built from an ISO 8601 duration
  * (`new DateInterval('PT1H')`, or `slot_interval` in plain data): PHP adds
  * an interval made by `DateInterval::createFromDateString()` or by `diff()`
- * as local time, whatever its parts.
+ * as local time, whatever its parts, and the first of those two is added
+ * one slot at a time, having no multiple.
+ *
+ * Sessions do not overlap: the last slot of a session is before the start
+ * of the next one, so the positions of a grid are at distinct instants in
+ * grid order. A grid whose sessions run into one another is rejected when
+ * it is built.
  *
  * A grid comes in two forms. An instant-based grid (the constructor given
  * session starts, or fromArray() given `sessions`) knows when every
@@ -117,8 +125,10 @@ final readonly class SessionGrid
      *                                       the slot interval is missing or does not move
      *                                       time forward, a session count is given with a
      *                                       slot interval, a slot count is not an integer
-     *                                       of 1 or more, the capacity is below 1, or an
-     *                                       override names a session the grid does not have
+     *                                       of 1 or more, the capacity is below 1, an
+     *                                       override names a session the grid does not have,
+     *                                       or the last slot of a session is at or after
+     *                                       the start of the next session
      */
     public function __construct(
         array|int $sessionStarts,
@@ -214,7 +224,7 @@ final readonly class SessionGrid
             );
         }
 
-        if ($slotInterval instanceof DateInterval && $starts[0]->add($slotInterval) <= $starts[0]) {
+        if ($slotInterval instanceof DateInterval && IntervalArithmetic::advance($starts[0], $slotInterval, 1) <= $starts[0]) {
             throw new InvalidConfigurationException(
                 'The slot interval must move time forward',
                 ['slot_interval' => TimelineDefinition::formatInterval($slotInterval)],
@@ -630,9 +640,8 @@ final readonly class SessionGrid
      * Given an integer, it is the position with that ordinal. Given an
      * instant, it is the position whose slot time is that instant; the
      * comparison is of the instants, so the timezone the argument is
-     * written in does not matter. Where one session runs on past the start
-     * of the next, two positions can share an instant, and the first in
-     * grid order is returned.
+     * written in does not matter. No two positions share an instant,
+     * because sessions do not overlap.
      *
      * @param DateTimeImmutable|int $at A position's ordinal, or a slot's instant
      *
@@ -663,12 +672,11 @@ final readonly class SessionGrid
         $interval = $this->requireInstants('the position of an instant');
 
         foreach ($this->slotCounts as $session => $slots) {
-            $time = $this->sessionStarts[$session];
             for ($slot = 0; $slot < $slots; ++$slot) {
+                $time = IntervalArithmetic::advance($this->sessionStarts[$session], $interval, $slot);
                 if (($time <=> $at) === 0) {
                     return ['session' => $session, 'slot' => $slot];
                 }
-                $time = $time->add($interval);
             }
         }
 
@@ -679,8 +687,9 @@ final readonly class SessionGrid
      * The kickoff time of one slot, in UTC.
      *
      * The session's start plus the slot interval once for each slot before
-     * this one, added in the grid's declared timezone; the result is
-     * normalized to UTC, matching the timeline family's convention. An
+     * this one, added to the start as one step in the grid's declared
+     * timezone; the result is normalized to UTC, matching the timeline
+     * family's convention. An
      * interval of hours, minutes or seconds is elapsed time, so the slots
      * of a session that runs across a daylight-saving change stay that far
      * apart; one of days or longer keeps the local time of day (see the
@@ -701,12 +710,8 @@ final readonly class SessionGrid
             throw self::positionNotOnGrid($session, $slot, $this->slotCounts);
         }
 
-        $time = $this->sessionStarts[$session];
-        for ($i = 0; $i < $slot; ++$i) {
-            $time = $time->add($interval);
-        }
-
-        return $time->setTimezone(new DateTimeZone('UTC'));
+        return IntervalArithmetic::advance($this->sessionStarts[$session], $interval, $slot)
+            ->setTimezone(new DateTimeZone('UTC'));
     }
 
     /**
