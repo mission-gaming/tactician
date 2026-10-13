@@ -6,6 +6,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Timeline\BlackoutRule;
 use MissionGaming\Tactician\Timeline\MinimumRestRule;
@@ -93,6 +94,66 @@ describe('MinimumRestRule', function (): void {
         expect(fn() => new MinimumRestRule(new DateInterval('PT0S')))
             ->toThrow(InvalidConfigurationException::class, 'move time forward');
     });
+
+    // The rest was written as formatInterval() shows it, and that method
+    // shows a fraction, a sign and a relative date string in forms
+    // fromArray() refuses: the rule was written as data that did not load.
+    it('refuses to write a rest that fromArray() could not read', function (DateInterval $rest, string $shown): void {
+        $rule = new MinimumRestRule($rest);
+
+        try {
+            $rule->toArray();
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::NotSerializable)
+                ->and($exception->getContext())->toBe(['rest' => $shown])
+                // Refusing to write it does not refuse to use it
+                ->and($rule->getName())->toBe("Minimum Rest ({$shown})");
+
+            return;
+        }
+
+        $this->fail('A rest was written that fromArray() refuses: ' . json_encode($rule->toArray()));
+    })->with([
+        'a relative date string that is not amounts of time' => [DateInterval::createFromDateString('next weekday'), 'next weekday'],
+        'a fraction of a second' => [(static function (): DateInterval {
+            $rest = new DateInterval('PT1S');
+            $rest->f = 0.5;
+
+            return $rest;
+        })(), 'PT1.5S'],
+        'a negative part' => [(static function (): DateInterval {
+            $rest = new DateInterval('P2D');
+            $rest->h = -1;
+
+            return $rest;
+        })(), 'P2DT-1H'],
+    ]);
+
+    // The rule adds its rest once, in UTC, where local time and elapsed
+    // time are one: the amounts of such an interval are its duration
+    it('writes a rest of amounts of time from a relative date string or from diff(), and reads it back', function (
+        DateInterval $rest,
+        string $written
+    ): void {
+        $rule = new MinimumRestRule($rest);
+        $readBack = MinimumRestRule::fromArray($rule->toArray());
+
+        [$a, $b] = [new Participant('a', 'A'), new Participant('b', 'B')];
+        $from = utc('2026-10-24 12:00');
+        $timeline = static fn(DateTimeImmutable $second): ScheduledSchedule => new ScheduledSchedule([
+            new ScheduledEvent(new Event([$a, $b], new Round(1)), $from),
+            new ScheduledEvent(new Event([$b, $a], new Round(2)), $second),
+        ]);
+        $exactly = $from->add($rest);
+
+        expect($rule->toArray())->toBe(['rest' => $written])
+            ->and($readBack->validate($timeline($exactly)))->toBe([])
+            ->and($readBack->validate($timeline($exactly->modify('-1 second'))))->toHaveCount(2);
+    })->with([
+        'hours from a relative date string' => [DateInterval::createFromDateString('48 hours'), 'PT48H'],
+        'a day from a relative date string' => [DateInterval::createFromDateString('1 day'), 'P1D'],
+        'hours from diff()' => [(new DateTimeImmutable('2026-01-01 00:00'))->diff(new DateTimeImmutable('2026-01-03 06:00')), 'P2DT6H'],
+    ]);
 });
 
 describe('BlackoutRule', function (): void {
@@ -217,6 +278,27 @@ describe('BlackoutRule', function (): void {
         ]);
 
         expect(array_column($rule->toArray()['windows'], 'label'))->toBe(['international break', 'blackout 2']);
+    });
+
+    // A bound was written to the second, so a window inside one second was
+    // written as one that ends when it starts, which fromArray() refuses
+    it('writes a fraction of a second of a bound, and reads the window back', function (): void {
+        $rule = new BlackoutRule([[
+            'from' => new DateTimeImmutable('2026-11-01 12:00:00.250000', new DateTimeZone('Europe/London')),
+            'to' => new DateTimeImmutable('2026-11-01 12:00:00.750000', new DateTimeZone('Europe/London')),
+        ]]);
+
+        $data = $rule->toArray();
+
+        expect($data['windows'][0]['from'])->toBe('2026-11-01 12:00:00.250000')
+            ->and($data['windows'][0]['to'])->toBe('2026-11-01 12:00:00.750000')
+            ->and(BlackoutRule::fromArray($data)->toArray())->toBe($data);
+    });
+
+    it('writes a bound on a whole second as it did', function (): void {
+        $rule = new BlackoutRule([['from' => utc('2026-11-01 00:00'), 'to' => utc('2026-11-02 00:00')]]);
+
+        expect($rule->toArray()['windows'][0]['from'])->toBe('2026-11-01 00:00:00');
     });
 
     it('names the key of a window that does not end after it starts', function (): void {

@@ -51,11 +51,14 @@ function diffInterval(string $from, string $to): DateInterval
  *
  * @throws DateMalformedIntervalStringException
  */
-function alteredInterval(string $duration, float $fraction = 0.0, bool $inverted = false): DateInterval
+function alteredInterval(string $duration, float $fraction = 0.0, bool $inverted = false, int $negativeHours = 0): DateInterval
 {
     $interval = new DateInterval($duration);
     $interval->f = $fraction;
     $interval->invert = $inverted ? 1 : 0;
+    if ($negativeHours !== 0) {
+        $interval->h = -$negativeHours;
+    }
 
     return $interval;
 }
@@ -142,10 +145,8 @@ describe('TimelineDefinition::writeInterval()', function (): void {
         'an ISO duration of hours' => [new DateInterval('PT20H'), 'PT20H'],
         'an ISO duration of days and hours' => [new DateInterval('P1DT2H'), 'P1DT2H'],
         'an ISO duration of a month' => [new DateInterval('P1M'), 'P1M'],
-        'days from a relative date string' => [relativeInterval('1 day'), 'P1D'],
-        'a week from a relative date string' => [relativeInterval('+1 week'), 'P7D'],
-        'a month and days from a relative date string' => [relativeInterval('1 month 2 days'), 'P1M2D'],
         'whole days from diff()' => [diffInterval('2026-01-01 00:00', '2026-01-08 00:00'), 'P7D'],
+        'a month and days from diff()' => [diffInterval('2026-01-01 00:00', '2026-02-03 00:00'), 'P1M2D'],
     ]);
 
     it('refuses an interval that would not read back as the same interval', function (DateInterval $interval, string $why): void {
@@ -167,9 +168,28 @@ describe('TimelineDefinition::writeInterval()', function (): void {
             relativeInterval('last day of next month'),
             'it was made from a relative date string, which a duration cannot state',
         ],
+        // Amounts of time alone are refused too: the timeline and the grid
+        // add such an interval one step at a time, each step from the one
+        // before, and a duration read back is multiplied out and added once
         'minutes from a relative date string' => [
             relativeInterval('25 minutes'),
-            'PHP adds its hours, minutes and seconds as local time, and those of a duration read back as elapsed time',
+            'it was made from a relative date string: such an interval is added one step at a time and as local time, and a duration read back is not',
+        ],
+        'a day from a relative date string' => [
+            relativeInterval('1 day'),
+            'it was made from a relative date string: such an interval is added one step at a time and as local time, and a duration read back is not',
+        ],
+        'a week from a relative date string' => [
+            relativeInterval('+1 week'),
+            'it was made from a relative date string: such an interval is added one step at a time and as local time, and a duration read back is not',
+        ],
+        'a month and days from a relative date string' => [
+            relativeInterval('1 month 2 days'),
+            'it was made from a relative date string: such an interval is added one step at a time and as local time, and a duration read back is not',
+        ],
+        'a negative part' => [
+            alteredInterval('P8D', negativeHours: 1),
+            'it has a negative part, which a duration PHP reads cannot hold',
         ],
         'hours from diff()' => [
             diffInterval('2026-01-01 00:00', '2026-01-01 02:00'),
@@ -258,11 +278,57 @@ describe('a timeline definition written as plain data', function (): void {
         }
     })->with([
         'weekly, from an ISO duration' => [new DateInterval('P7D'), null],
-        'weekly, from a relative date string' => [relativeInterval('1 week'), null],
         'weekly, from diff()' => [diffInterval('2026-01-01 00:00', '2026-01-08 00:00'), null],
         'weekly with slots two hours apart' => [new DateInterval('P7D'), new DateInterval('PT2H')],
         'every 168 hours' => [new DateInterval('PT168H'), null],
+        'monthly, from diff()' => [diffInterval('2026-01-01 00:00', '2026-02-01 00:00'), null],
     ]);
+
+    // The timeline adds an interval made from a relative date string one
+    // step at a time, each step from the one before, and a duration all its
+    // steps at once from the start. Written as the duration its amounts
+    // spell, such a timeline read back to other slot times: `1 month` from
+    // 31 January is 3 March and 3 April, and `P1M` is 28 February and 31
+    // March; a weekly 01:30 stays at 02:30 once the clocks have skipped it,
+    // and `P7D` goes back to 01:30.
+    it('is refused when an interval of it was made from amounts of time in a relative date string', function (
+        string $start,
+        string $dateString,
+        string $duration,
+        int $round,
+        string $given,
+        string $readBack
+    ): void {
+        $london = new DateTimeZone('Europe/London');
+        $definition = new TimelineDefinition(new DateTimeImmutable($start, $london), relativeInterval($dateString));
+        $asDuration = new TimelineDefinition(new DateTimeImmutable($start, $london), new DateInterval($duration));
+
+        // Why: the two are not one timeline
+        expect($definition->getSlotTime($round)->setTimezone($london)->format('j M H:i'))->toBe($given)
+            ->and($asDuration->getSlotTime($round)->setTimezone($london)->format('j M H:i'))->toBe($readBack);
+
+        $exception = intervalError(fn() => $definition->toArray());
+
+        expect($exception->getReason())->toBe(InvalidConfigurationReason::NotSerializable)
+            ->and($exception->getContext())->toBe(['round_interval' => $duration]);
+    })->with([
+        'a month, from the 31st' => ['2026-01-31 19:00:00', '1 month', 'P1M', 2, '3 Mar 19:00', '28 Feb 19:00'],
+        'a week, at a time of day the clocks skip once' => ['2026-03-15 01:30:00', '1 week', 'P7D', 4, '5 Apr 02:30', '5 Apr 01:30'],
+    ]);
+
+    // parseInterval() refuses a part with a minus sign, so a definition that
+    // wrote one could not be read again
+    it('is refused when an interval of it has a negative part', function (): void {
+        $definition = new TimelineDefinition(
+            new DateTimeImmutable('2026-08-01 19:00:00', new DateTimeZone('Europe/London')),
+            alteredInterval('P8D', negativeHours: 1)
+        );
+
+        $exception = intervalError(fn() => $definition->toArray());
+
+        expect($exception->getReason())->toBe(InvalidConfigurationReason::NotSerializable)
+            ->and($exception->getContext())->toBe(['round_interval' => 'P8DT-1H']);
+    });
 });
 
 describe('a session grid written as plain data', function (): void {
@@ -279,6 +345,35 @@ describe('a session grid written as plain data', function (): void {
             ->and($exception->getContext())->toBe(['slot_interval' => 'PT25M'])
             // Refusing to write it does not refuse to use it
             ->and($grid->getSlotTime(0, 1)->format('H:i'))->toBe('19:25');
+    });
+
+    it('is refused when its slot interval is whole days from a relative date string', function (): void {
+        $grid = new SessionGrid(
+            [new DateTimeImmutable('2026-03-15 01:30:00', new DateTimeZone('Europe/London'))],
+            relativeInterval('1 week'),
+            4
+        );
+
+        expect(intervalError(fn() => $grid->toArray())->getReason())->toBe(InvalidConfigurationReason::NotSerializable);
+    });
+
+    it('keeps a fraction of a second of a session start', function (): void {
+        $grid = new SessionGrid(
+            [
+                new DateTimeImmutable('2026-08-12 20:00:00.250000', new DateTimeZone('Europe/London')),
+                new DateTimeImmutable('2026-08-19 20:00:00', new DateTimeZone('Europe/London')),
+            ],
+            new DateInterval('PT25M'),
+            2
+        );
+
+        $data = $grid->toArray();
+        $readBack = SessionGrid::fromArray($data);
+
+        // A start on a whole second is written as it was
+        expect($data['sessions'] ?? null)->toBe(['2026-08-12 20:00:00.250000', '2026-08-19 20:00:00'])
+            ->and($readBack->getSlotTime(0, 1)->format('U.u'))->toBe($grid->getSlotTime(0, 1)->format('U.u'))
+            ->and($readBack->positionOf($grid->getSlotTime(0, 1)))->toBe($grid->positionOf($grid->getSlotTime(0, 1)));
     });
 
     it('is written as it was when its slot interval is an ISO duration, or has none', function (): void {

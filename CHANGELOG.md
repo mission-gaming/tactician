@@ -225,8 +225,14 @@ heading **Output change (fix)**.
   It now writes `-P7D`, `PT1.5S` and `next weekday`: forms that
   `parseInterval()` refuses, where the old ones read back as another
   interval. An interval built from an ISO 8601 duration is written as
-  before. `MinimumRestRule::toArray()` and the rule's name use the same
-  method and change with it for such a rest (#121, item 6).
+  before. The name of a `MinimumRestRule` and its violation messages use
+  the same method and change with it for such a rest; its `toArray()`
+  refuses such a rest (see Changed). `SessionGrid::toArray()` and
+  `BlackoutRule::toArray()` write the fraction of a second of a session
+  start and of a window bound the same way: a start of `20:00:00.25` was
+  written `20:00:00`, and a blackout window inside one second was written
+  as one that ends when it starts, which `fromArray()` refuses. A time on a
+  whole second is written as before by all three (#121, item 6).
 
 ### Added
 
@@ -486,24 +492,66 @@ heading **Output change (fix)**.
   `P1M`. Both methods now write an interval through the new
   `TimelineDefinition::writeInterval(DateInterval $interval, string $key):
   string`, which throws an `InvalidConfigurationException` with the reason
-  `NotSerializable` for: an interval made by `createFromDateString()` from
-  anything but amounts of time; an inverted interval; an interval with a
-  fraction of a second; and an interval from `createFromDateString()` or
-  from `diff()` that has hours, minutes or seconds, because PHP adds those
-  as local time and the hours of a duration read back are elapsed time, an
-  hour apart across a daylight-saving change. An interval of whole days,
-  months and years from either source is written as before (`1 week` is
-  still `P7D`), and so is every interval built from an ISO 8601 duration.
-  The refusal is made when the object is serialised and not when it is
-  built: a timeline or a grid with such an interval works, and gives the
-  slot times it gave before; it has no plain-data form. Who is affected:
-  code that builds a `TimelineDefinition` or a `SessionGrid` with
-  `DateInterval::createFromDateString('25 minutes')` (or another interval
-  listed above) and calls `toArray()` on it. What to change: build the
-  interval from a duration, `new DateInterval('PT25M')`. Before: a
-  duration string that could mean another interval. After: the exception.
-  Both `toArray()` methods declare it, so code analysed with checked
-  exceptions sees one more `@throws` (#121, item 15).
+  `NotSerializable` for:
+
+  - *an interval made by `createFromDateString()`, whatever the string.*
+    One made from more than amounts of time (`next weekday`) has no
+    duration. One made from amounts of time alone has a duration, and it is
+    another interval. PHP does not show the parts of an interval made from a
+    string, so a timeline and a grid add it one step at a time, each step
+    from the one before, and its hours, minutes and seconds as local time; a
+    duration read back is added as all its steps at once from the start, and
+    its hours as elapsed time (see "Every slot time is computed from the
+    start" under Output change). `createFromDateString('1 month')` from 31
+    January gives 3 March and 3 April, and the `P1M` it was written as gives
+    28 February and 31 March; `createFromDateString('25 minutes')` from the
+    first 01:50 of the night the clocks go back in London gives 02:15 GMT,
+    and `PT25M` gives 01:15 GMT;
+  - *an interval from `diff()` that has hours, minutes or seconds*, because
+    PHP adds those as local time too. An interval from `diff()` of whole
+    days, months and years is written as before: those are calendar steps
+    in both forms;
+  - *an inverted interval, one with a negative part, and one with a
+    fraction of a second*, none of which a duration PHP reads can hold.
+
+  Every interval built from an ISO 8601 duration is written as before. The
+  refusal is made when the object is serialised and not when it is built: a
+  timeline or a grid with such an interval works, and gives the slot times
+  it gave before; it has no plain-data form. In a timezone that never
+  changes its clocks (`UTC`, a fixed offset) the hours of the two forms
+  agree, and the interval is refused all the same: the rule does not
+  depend on the timezone. Who is affected: code that builds a
+  `TimelineDefinition` or a `SessionGrid` with
+  `DateInterval::createFromDateString()` (`'25 minutes'`, `'1 week'`), or
+  with what `diff()` returned for two times of day, and calls `toArray()`
+  on it; nothing else that reads such a timeline or grid changes, and
+  `RepackOutcome::fingerprint()` does not cover the grid. What to change:
+  build the interval from a duration, `new DateInterval('PT25M')` or
+  `new DateInterval('P7D')`. The duration is not the same interval in the
+  cases listed under "Every slot time is computed from the start" (a month
+  end, a time of day the clocks skip or repeat), so compare the slot times
+  where one applies; to keep the times of the relative interval, keep
+  building it and store the string it is made from in your own
+  configuration. Before: a duration string that could mean another
+  interval. After: the exception. Both `toArray()` methods declare it, so
+  code analysed with checked exceptions sees one more `@throws`
+  (#121, item 15).
+- **Breaking: `MinimumRestRule::toArray()` refuses a rest that
+  `fromArray()` could not read.** The rest is written as
+  `TimelineDefinition::formatInterval()` shows it, and that method now
+  shows a fraction of a second, a sign and a relative date string (see
+  Output change); none of the three is a duration `fromArray()` reads, so
+  the rule would have been written as data that fails when it is loaded.
+  `toArray()` now throws an `InvalidConfigurationException` with the reason
+  `NotSerializable` for such a rest. A rest of amounts of time made by
+  `createFromDateString()` (`48 hours`) or by `diff()` is written as
+  before, unlike the interval of a timeline: the rule adds its rest once
+  and in UTC, where it equals its duration. Who is affected: code that
+  builds the rule with `createFromDateString('next weekday')` or the like,
+  with a fraction of a second or with a negative part, and stores it.
+  Before: `PT0S`, or a duration without the fraction or the sign, which
+  loaded as another rest or not at all. After: the exception
+  (#121, items 6 and 15).
 - **Breaking: `TimelineAssigner` refuses a round that puts one participant
   in two events at the same instant.** A slot with two or more resources
   holds several events, and nothing stopped two of them from holding the

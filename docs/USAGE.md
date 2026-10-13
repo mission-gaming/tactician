@@ -2229,14 +2229,28 @@ years, months, days, hours, minutes and whole seconds. A `DateInterval` can
 hold more, and a definition or a session grid built with such an interval
 works, and is refused by `toArray()` with the reason `NotSerializable`: it
 is never written as a duration that means something else. The intervals
-refused are one made by `DateInterval::createFromDateString()` from anything
-but amounts of time (`next weekday`, `last day of next month`); one with a
-fraction of a second; an inverted one; and one from
-`createFromDateString()` or `diff()` that has hours, minutes or seconds,
-because PHP adds those as local time and the hours of a duration are elapsed
-time. Build the interval as `new DateInterval('PT25M')` where the
-configuration has to be stored. A start with a fraction of a second is
-written with it (`2026-08-01 18:00:00.250000`).
+refused are:
+
+- one made by `DateInterval::createFromDateString()`, whatever the string.
+  `next weekday` and `last day of next month` have no duration. Amounts of
+  time alone (`1 week`, `1 month`, `25 minutes`) have one, and it gives
+  other slot times: such an interval is added one step at a time and its
+  hours as local time, as described above, and the duration is not (`1
+  month` from 31 January is 3 March where `P1M` is 28 February);
+- one from `diff()` that has hours, minutes or seconds, because PHP adds
+  those as local time and the hours of a duration are elapsed time. An
+  interval of whole days, months and years that `diff()` returned is
+  written;
+- one with a fraction of a second, an inverted one, and one with a negative
+  part.
+
+Build the interval as `new DateInterval('PT25M')` where the configuration
+has to be stored. A start with a fraction of a second is written with it
+(`2026-08-01 18:00:00.250000`), and so are a session start of a grid and
+a bound of a blackout window. A `MinimumRestRule` adds its rest once and
+in UTC, so its `toArray()` writes a rest of amounts of time from either
+source (`48 hours` is `PT48H`) and refuses only what has no duration: a
+relative string that is more than amounts, a fraction of a second, a sign.
 
 **A datetime in plain data states its date in full**: the year, the month
 and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of

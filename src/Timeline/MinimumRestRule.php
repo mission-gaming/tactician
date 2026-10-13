@@ -62,18 +62,50 @@ final readonly class MinimumRestRule implements TimelineRule
     }
 
     /**
-     * Serialize back to the plain-data form fromArray() accepts, the rest
-     * written by TimelineDefinition::formatInterval(). A rest that method
-     * cannot state as a duration (a fraction of a second, a relative date
-     * string such as `next weekday`) is written as that method shows it,
-     * which fromArray() refuses: build the rest from an ISO 8601 duration
-     * where the rule has to be stored.
+     * Serialize back to the plain-data form fromArray() accepts: the rest
+     * as the ISO 8601 duration TimelineDefinition::formatInterval() gives.
+     *
+     * A rest that has no such duration is refused, and never written as
+     * text that fromArray() would refuse or read as another rest: one with
+     * a fraction of a second, an inverted one or one with a negative part,
+     * and one made by `DateInterval::createFromDateString()` from anything
+     * but amounts of time (`next weekday`). The rule itself works with such
+     * a rest. A rest of amounts of time from `createFromDateString()` (`48
+     * hours`) or from `diff()` is written: the rule adds its rest once and
+     * in UTC, where it is the same as its duration. (A timeline and a grid
+     * refuse to write those too, because they add an interval in a
+     * timezone and in steps: TimelineDefinition::writeInterval().)
      *
      * @return array{rest: string}
+     *
+     * @throws InvalidConfigurationException When the rest has no ISO 8601 duration that reads
+     *                                       back as the same rest (reason `NotSerializable`)
      */
     public function toArray(): array
     {
-        return ['rest' => TimelineDefinition::formatInterval($this->minimumRest)];
+        $written = TimelineDefinition::formatInterval($this->minimumRest);
+        $reference = new DateTimeImmutable('@0');
+
+        try {
+            $readsBack = $reference->add(TimelineDefinition::parseInterval($written, 'rest')) == $reference->add($this->minimumRest);
+            $previous = null;
+        } catch (InvalidConfigurationException $exception) {
+            $readsBack = false;
+            $previous = $exception;
+        }
+
+        if (!$readsBack) {
+            throw new InvalidConfigurationException(
+                'rest cannot be written as an ISO 8601 duration that reads back as the same rest',
+                ['rest' => $written],
+                '',
+                0,
+                $previous,
+                reason: InvalidConfigurationReason::NotSerializable
+            );
+        }
+
+        return ['rest' => $written];
     }
 
     /**

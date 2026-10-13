@@ -280,7 +280,7 @@ final readonly class TimelineDefinition
     public function toArray(): array
     {
         $data = [
-            'start' => $this->start->format($this->start->format('u') === '000000' ? 'Y-m-d H:i:s' : 'Y-m-d H:i:s.u'),
+            'start' => ZonedTime::write($this->start),
             'timezone' => $this->start->getTimezone()->getName(),
             'round_interval' => self::writeInterval($this->roundInterval, 'round_interval'),
             'slots_per_round' => $this->slotsPerRound,
@@ -494,15 +494,18 @@ final readonly class TimelineDefinition
      * an inverted interval (`-P7D`), a fraction of a second (`PT1.5S`), and,
      * for an interval made by `DateInterval::createFromDateString()` from
      * anything but amounts of time (`1 week`, `25 minutes`), the relative
-     * date string itself (`next weekday`). One thing is not shown: PHP adds
-     * the hours, minutes and seconds of an interval from
-     * `createFromDateString()` or from `diff()` as local time, and `PT2H`
-     * looks the same for it. To write an interval as plain data use
+     * date string itself (`next weekday`). A part that is negative is
+     * written with its sign (`P8DT-1H`), which parseInterval() refuses too.
+     * Two things are not shown: PHP adds the hours, minutes and seconds of
+     * an interval from `createFromDateString()` or from `diff()` as local
+     * time, and `PT2H` looks the same for it; and an interval made from
+     * amounts of time in a string is added one step at a time, where the
+     * duration shown is not. To write an interval as plain data use
      * writeInterval(), which refuses all of these.
      */
     public static function formatInterval(DateInterval $interval): string
     {
-        $relative = self::relativeDateString($interval);
+        $relative = IntervalArithmetic::relativeDateString($interval);
         if ($relative !== null && !self::isAmountsOnly($relative)) {
             return $relative;
         }
@@ -546,23 +549,32 @@ final readonly class TimelineDefinition
     /**
      * Write an interval for plain data: the ISO 8601 duration
      * formatInterval() gives, where parseInterval() reads that back as an
-     * interval that adds what this one adds. Any other interval is refused,
-     * and never written as a duration that means something else.
+     * interval that gives a timeline or a grid the slot times this one
+     * gives. Any other interval is refused, and never written as a duration
+     * that means something else.
      *
-     * Refused, because no duration PHP reads can state it:
+     * Refused:
      *
-     * - an interval made by `DateInterval::createFromDateString()` from
-     *   anything but amounts of time (`next weekday`, `3 weekdays`, `last day
-     *   of next month`, `1 day ago`). Amounts are a number and a unit, with
-     *   or without a `+`: `1 week`, `+2 days`, `1 month 2 days`;
-     * - an inverted interval;
+     * - an interval made by `DateInterval::createFromDateString()`, whatever
+     *   the string. One that is more than amounts of time (`next weekday`,
+     *   `3 weekdays`, `last day of next month`) has no duration at all. One
+     *   that is amounts of time alone (`1 week`, `1 month`, `25 minutes`)
+     *   has one, and it is another interval: PHP does not show the parts of
+     *   an interval made from a string, so the timeline and the grid add it
+     *   one step at a time, each step from the one before, and its hours,
+     *   minutes and seconds as local time, where a duration read back is
+     *   added as all its steps at once from the start and its hours as
+     *   elapsed time. `1 month` from 31 January is 3 March and then 3
+     *   April; `P1M` is 28 February and then 31 March;
+     * - an inverted interval, and one with a negative part (hours set to
+     *   -1): a duration PHP reads has no sign;
      * - an interval with a fraction of a second;
-     * - an interval from `createFromDateString()` or from
-     *   `DateTimeImmutable::diff()` that has hours, minutes or seconds. PHP
-     *   adds those as local time, and the hours of a duration read back are
-     *   elapsed time: across a daylight-saving change the two are an hour
-     *   apart. Such an interval of whole days, months and years is written,
-     *   because days are calendar days in both.
+     * - an interval from `DateTimeImmutable::diff()` that has hours,
+     *   minutes or seconds. PHP adds those as local time, and the hours of a
+     *   duration read back are elapsed time: across a daylight-saving change
+     *   the two are an hour apart. An interval from `diff()` of whole days,
+     *   months and years is written, because those are calendar steps in
+     *   both.
      *
      * Refusing to write an interval does not refuse to use it: a timeline or
      * a grid built with one gives its slot times as before. To have plain
@@ -576,14 +588,17 @@ final readonly class TimelineDefinition
      */
     public static function writeInterval(DateInterval $interval, string $key): string
     {
-        $relative = self::relativeDateString($interval);
+        $relative = IntervalArithmetic::relativeDateString($interval);
         $hasTime = $interval->h !== 0 || $interval->i !== 0 || $interval->s !== 0;
+        $hasNegativePart = min($interval->y, $interval->m, $interval->d, $interval->h, $interval->i, $interval->s) < 0;
 
         $why = match (true) {
             $relative !== null && !self::isAmountsOnly($relative) => 'it was made from a relative date string, which a duration cannot state',
+            $relative !== null => 'it was made from a relative date string: such an interval is added one step at a time and as local time, and a duration read back is not',
             $interval->invert === 1 => 'it is negative, and a duration PHP reads has no sign',
+            $hasNegativePart => 'it has a negative part, which a duration PHP reads cannot hold',
             round(abs($interval->f) * 1_000_000) >= 1.0 => 'it has a fraction of a second, which a duration PHP reads cannot hold',
-            $hasTime && ($relative !== null || $interval->days !== false) => 'PHP adds its hours, minutes and seconds as local time, and those of a duration read back as elapsed time',
+            $hasTime && $interval->days !== false => 'PHP adds its hours, minutes and seconds as local time, and those of a duration read back as elapsed time',
             default => null,
         };
 
@@ -596,20 +611,6 @@ final readonly class TimelineDefinition
         }
 
         return self::formatInterval($interval);
-    }
-
-    /**
-     * The relative date string an interval was made from by
-     * `DateInterval::createFromDateString()`; null for any other interval.
-     */
-    private static function relativeDateString(DateInterval $interval): ?string
-    {
-        // Read through an array cast: the two properties are listed for
-        // such an interval and cannot be read by name
-        $properties = (array) $interval;
-        $dateString = $properties['date_string'] ?? null;
-
-        return ($properties['from_string'] ?? false) === true && is_string($dateString) ? $dateString : null;
     }
 
     /**

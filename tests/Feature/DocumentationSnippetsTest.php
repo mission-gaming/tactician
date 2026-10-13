@@ -764,6 +764,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     \DateInterval::createFromDateString('next weekday'),
                     \DateInterval::createFromDateString('last day of next month'),
                     \DateInterval::createFromDateString('25 minutes'),
+                    // "amounts of time alone (`1 week`, `1 month`) included"
+                    \DateInterval::createFromDateString('1 week'),
+                    \DateInterval::createFromDateString('1 month'),
                     (new \DateTimeImmutable('2026-01-01 00:00', $zone))->diff(new \DateTimeImmutable('2026-01-01 02:00', $zone)),
                 ];
                 $fraction = new \DateInterval('PT1S');
@@ -800,6 +803,21 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     new \DateInterval('P7D')
                 );
                 assert($withFraction->toArray()['start'] === '2026-08-01 18:00:00.250000');
+                // "An interval of whole days, months and years that `diff()` returned is written"
+                $fromDiff = new \MissionGaming\Tactician\Timeline\TimelineDefinition(
+                    new \DateTimeImmutable('2026-08-01 18:00:00', $zone),
+                    (new \DateTimeImmutable('2026-01-01 00:00', $zone))->diff(new \DateTimeImmutable('2026-01-08 00:00', $zone))
+                );
+                assert($fromDiff->toArray()['round_interval'] === 'P7D');
+                // "A `MinimumRestRule` ... writes a rest of amounts of time from either source"
+                $rest = new \MissionGaming\Tactician\Timeline\MinimumRestRule(\DateInterval::createFromDateString('48 hours'));
+                assert($rest->toArray() === ['rest' => 'PT48H']);
+                try {
+                    (new \MissionGaming\Tactician\Timeline\MinimumRestRule(\DateInterval::createFromDateString('next weekday')))->toArray();
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::NotSerializable);
+                }
                 PHP,
         ],
         'timeline kickoffs' => [

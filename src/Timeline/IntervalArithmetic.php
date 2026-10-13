@@ -206,9 +206,21 @@ final class IntervalArithmetic
      */
     private static function isRelative(DateInterval $interval): bool
     {
-        // Read through an array cast: the property is listed for every
-        // interval and cannot be read by name
-        return (((array) $interval)['from_string'] ?? false) === true;
+        return self::relativeDateString($interval) !== null;
+    }
+
+    /**
+     * The relative date string an interval was made from by
+     * `DateInterval::createFromDateString()`; null for any other interval.
+     */
+    public static function relativeDateString(DateInterval $interval): ?string
+    {
+        // Read through an array cast: the two properties are listed for
+        // such an interval and cannot be read by name
+        $properties = (array) $interval;
+        $dateString = $properties['date_string'] ?? null;
+
+        return ($properties['from_string'] ?? false) === true && is_string($dateString) ? $dateString : null;
     }
 
     /**
