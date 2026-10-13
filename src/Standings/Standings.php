@@ -7,8 +7,10 @@ namespace MissionGaming\Tactician\Standings;
 use ArrayIterator;
 use Countable;
 use IteratorAggregate;
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Exceptions\RejectedDecisionException;
 use Override;
 
 /**
@@ -25,17 +27,30 @@ use Override;
  * the semifinals share the third. Entries of different tiers are never
  * level, whatever their records.
  *
+ * A table can carry decisions: the order of a tied set, settled outside
+ * the results by the application (withDecisions()). The entries of such a
+ * set are in the order of its decision, and the table says of every
+ * position whether a decision settled it (getDecisionFor()).
+ *
  * @implements IteratorAggregate<int, StandingEntry>
  *
  * @experimental
  */
 readonly class Standings implements IteratorAggregate, Countable
 {
+    /** @var array<StandingEntry> */
+    private array $entries;
+
     /** @var list<int> */
     private array $tiers;
 
+    /** @var list<Decider> In table order */
+    private array $decisions;
+
     /**
-     * The entries are kept as given and are not sorted.
+     * The entries are kept as given and are not sorted, with one exception:
+     * the entries of a tied set that a decision names are put in the order
+     * of that decision, in the places the set holds.
      *
      * @param array<StandingEntry> $entries Entries ordered best-first. The order of the array
      *                                      is the order of the table; its keys decide nothing
@@ -43,11 +58,16 @@ readonly class Standings implements IteratorAggregate, Countable
      * @param array<int> $tiers The tier of each entry, in the order of the entries and
      *                          never falling from one entry to the next; empty for a
      *                          table without tiers
+     * @param array<Decider> $decisions The decisions that settle tied sets of the table, in any
+     *                                  order, under the rules of withDecisions(); empty for a
+     *                                  table without any
      *
      * @throws InvalidInputException When tiers are given and there is not one for each entry,
      *                               or a tier is lower than the one before it
+     * @throws RejectedDecisionException When a decision does not order one whole tied set of the
+     *                                   table, or two decisions name one participant
      */
-    public function __construct(private array $entries, array $tiers = [])
+    public function __construct(array $entries, array $tiers = [], array $decisions = [])
     {
         $tiers = array_values($tiers);
 
@@ -64,6 +84,49 @@ readonly class Standings implements IteratorAggregate, Countable
         }
 
         $this->tiers = $tiers;
+
+        if ($decisions === []) {
+            $this->entries = $entries;
+            $this->decisions = [];
+
+            return;
+        }
+
+        // The keys stay at the places they were given at; the entries of a
+        // decided set change places among themselves
+        $settled = DecidedOrder::apply(self::levelGroups(array_values($entries), $tiers), $decisions);
+        $inOrder = array_merge(...$settled['groups']);
+        $this->entries = array_combine(array_keys($entries), $inOrder);
+        $this->decisions = array_values($settled['decided']);
+    }
+
+    /**
+     * The entries as groups of adjacent level entries of one tier, in
+     * table order: a group of one is an entry that results place.
+     *
+     * @param list<StandingEntry> $entries
+     * @param list<int> $tiers
+     * @return list<list<StandingEntry>>
+     */
+    private static function levelGroups(array $entries, array $tiers): array
+    {
+        $groups = [];
+        $group = [];
+        foreach ($entries as $index => $entry) {
+            $group[] = $entry;
+
+            $next = $entries[$index + 1] ?? null;
+            if (
+                $next === null
+                || ($tiers[$index] ?? 0) !== ($tiers[$index + 1] ?? 0)
+                || !$entry->isLevelWith($next)
+            ) {
+                $groups[] = $group;
+                $group = [];
+            }
+        }
+
+        return $groups;
     }
 
     /**
@@ -138,6 +201,10 @@ readonly class Standings implements IteratorAggregate, Countable
      * level entries are always adjacent. A table constructed by hand is read
      * as it is given: only adjacent level entries form a set.
      *
+     * A set whose order a decision settled is still reported: its entries
+     * are level, and no result orders them. {@see TiedSet::getDecision()}
+     * tells it from a set that is still undecided.
+     *
      * @return list<TiedSet>
      */
     public function getTiedSets(): array
@@ -157,12 +224,96 @@ readonly class Standings implements IteratorAggregate, Countable
             }
 
             if ($index > $start) {
-                $tiedSets[] = new TiedSet(array_slice($entries, $start, $index - $start + 1), $start + 1);
+                $tiedSets[] = new TiedSet(
+                    array_slice($entries, $start, $index - $start + 1),
+                    $start + 1,
+                    $this->decisions === [] ? null : $this->getDecisionFor($entries[$start]->getParticipant())
+                );
             }
             $start = $index + 1;
         }
 
         return $tiedSets;
+    }
+
+    /**
+     * The table with the given decisions applied: the entries of each
+     * tied set a decision names are in the order of that decision, and the
+     * table carries the decision as the mark of those positions.
+     *
+     * A decision is a `DTO\Decider`: the IDs of the participants of one
+     * tied set, best first, with an optional label and reason that the
+     * library stores and never reads. It says that the order was settled
+     * outside the results and never how.
+     *
+     * **A decision never overrides a result.** It orders one whole tied
+     * set ({@see getTiedSets()}) and nothing else: the set keeps the
+     * positions it spans, every entry outside it stays where it is, and no
+     * entry passes one it is not level with or leaves its tier. A decision
+     * is rejected, and the table is not changed, when it
+     *
+     * - names a participant the table has no entry for (`UnknownParticipant`);
+     * - names a participant another decision names as well, one given in
+     *   the same call or one the table already carries
+     *   (`SetAlreadyDecided`);
+     * - names participants that are not level with each other, or one
+     *   participant that is level with nobody (`ParticipantsNotLevel`);
+     * - names only some of the entries of a tied set (`PartOfLevelSet`):
+     *   a decision orders the whole set, also where only its first places
+     *   matter to the caller, so that the table has one order whatever is
+     *   read from it.
+     *
+     * The decisions given are added to those the table carries. To change
+     * a decision, apply the new one to the table as it was calculated.
+     * The result is the same for every order the decisions are given in.
+     *
+     * Apply decisions last, after everything that changes a ranking value:
+     * `StandingsCalculator::withAdjustments()` and `withByesCredited()`
+     * refuse a table whose decisions no longer match it (`Stale`).
+     * {@see withTiedSetsOrderedBy()} leaves a decided set as it is.
+     *
+     * @param array<Decider> $decisions One for each tied set to settle, in any order
+     *
+     * @throws RejectedDecisionException When a decision is rejected; its reason says why
+     */
+    public function withDecisions(array $decisions): self
+    {
+        if ($decisions === []) {
+            return $this;
+        }
+
+        return new self($this->entries, $this->tiers, [...$this->decisions, ...array_values($decisions)]);
+    }
+
+    /**
+     * The decisions the table carries, in table order: the decision of the
+     * highest-placed decided set first. Empty for a table in which no
+     * position was settled by a decision.
+     *
+     * @return list<Decider>
+     */
+    public function getDecisions(): array
+    {
+        return $this->decisions;
+    }
+
+    /**
+     * The decision that settled the position of the participant with this
+     * ID, or null when results placed it, when its tied set is undecided,
+     * and when the table has no entry for it.
+     *
+     * A position with a decision was not decided by a result: show it as
+     * such, with the label and the reason the decision carries.
+     */
+    public function getDecisionFor(Participant $participant): ?Decider
+    {
+        foreach ($this->decisions as $decision) {
+            if (in_array($participant->getId(), $decision->getParticipantIds(), true)) {
+                return $decision;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -188,6 +339,9 @@ readonly class Standings implements IteratorAggregate, Countable
      * that results place is where it was. Of the entries of one set, those
      * whose participant is in the list come first, in list order; the
      * others follow in the order they had. Participants are matched by ID.
+     * A tied set that a decision settled keeps the order of its decision,
+     * and the table keeps its decisions: the list decides only where
+     * nothing else has.
      *
      * The engines do this to every table they build, with the participant
      * list of the stage. Do it to a table of your own when its participants
@@ -219,7 +373,9 @@ readonly class Standings implements IteratorAggregate, Countable
             }
         }
 
-        return new self($entries, $this->tiers);
+        // The decisions go with the table, and the constructor puts every
+        // decided set back in the order of its decision
+        return new self($entries, $this->tiers, $this->decisions);
     }
 
     /**

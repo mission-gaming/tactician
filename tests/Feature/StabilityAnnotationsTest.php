@@ -173,6 +173,7 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
             'Stage\PairKey',
             'Stage\SelectionTies',
             'Stage\TieResolution',
+            'Standings\DecidedOrder',
             'Standings\EntryOrder',
             'Timeline\DateTimeString',
             'Timeline\IntervalArithmetic',

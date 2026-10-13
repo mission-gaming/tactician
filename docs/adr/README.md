@@ -17,6 +17,7 @@ there is not repeated here.
 | [0005](0005-serialized-forms-carry-a-format-version.md) | Serialized forms carry a format version |
 | [0006](0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md) | Pools of unequal size are compared by a method the caller names |
 | [0007](0007-recorded-rounds-are-read-not-derived.md) | Recorded rounds are read, not derived |
+| [0008](0008-a-decision-orders-level-entries-and-never-a-result.md) | A decision orders level entries and never a result |
 
 ## Adding a record
 

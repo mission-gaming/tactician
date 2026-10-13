@@ -32,11 +32,27 @@ namespace MissionGaming\Tactician\Exceptions;
  * exception then says which rank ({@see self::getRankAcrossPools()}), the
  * places are places among those holders, best first, and the pool is null.
  *
+ * So the exception says which of three orders the tie is in:
+ *
+ * - a tied set of one table: the pool's ({@see self::getPool()} names it),
+ *   or the outcome's own when the pool is null and neither of the next two
+ *   applies;
+ * - the holders of one rank across pools
+ *   ({@see self::getRankAcrossPools()} is that rank);
+ * - the entries of a pooled outcome compared per event played
+ *   ({@see self::isPerEvent()}).
+ *
+ * In the last two the participants are level in a comparison the selector
+ * makes, and need not be a tied set of any table. Whichever it is, the
+ * application can settle a tie (not an unplayed table) by its own rule and
+ * give the selector that refused a decision that orders exactly the
+ * participants named here (`withDecisions()` of the selector).
+ *
  * It is an {@see InvalidConfigurationException}, so a catch clause written
  * for that class still matches. Its context holds the same values as the
  * accessors, under the keys `participants`, `first_place`, `last_place`,
- * `pool`, `from` and `to`, and under `rank_across_pools` when the order is
- * one across pools.
+ * `pool`, `from` and `to`, under `rank_across_pools` when the order is
+ * one across pools, and under `per_event` when it is one per event played.
  *
  * @api
  */
@@ -56,6 +72,9 @@ final class UndecidedSelectionException extends InvalidConfigurationException
      * @param bool $played Whether the table has any recorded result
      * @param int|null $rankAcrossPools The rank whose holders in every pool the places are
      *                                  places among; null when they are places of one table
+     * @param bool $perEvent Whether the participants are level on their figures per event
+     *                       played, in a table put in that order, and not as a tied set of
+     *                       the table as it stands
      */
     public function __construct(
         array $participantIds,
@@ -65,12 +84,14 @@ final class UndecidedSelectionException extends InvalidConfigurationException
         private readonly int $from,
         private readonly int $to,
         bool $played = true,
-        private readonly ?int $rankAcrossPools = null
+        private readonly ?int $rankAcrossPools = null,
+        private readonly bool $perEvent = false
     ) {
         $this->participantIds = array_values($participantIds);
 
         $where = match (true) {
             $rankAcrossPools !== null => "the entrants placed {$rankAcrossPools} in their pools",
+            $perEvent => 'the standings per event played',
             $pool === null => 'the standings',
             default => "pool {$pool}",
         };
@@ -95,6 +116,7 @@ final class UndecidedSelectionException extends InvalidConfigurationException
                 'from' => $from,
                 'to' => $to,
                 ...($rankAcrossPools === null ? [] : ['rank_across_pools' => $rankAcrossPools]),
+                ...($perEvent ? ['per_event' => true] : []),
             ],
             reason: match (true) {
                 !$played => InvalidConfigurationReason::UnplayedStage,
@@ -169,5 +191,18 @@ final class UndecidedSelectionException extends InvalidConfigurationException
     public function getRankAcrossPools(): ?int
     {
         return $this->rankAcrossPools;
+    }
+
+    /**
+     * Whether the participants are level on their figures per event
+     * played (`PoolComparison::PerEvent` in an overall selection) and not
+     * as a tied set of the outcome's table: that table can place them
+     * apart, so a decision for them is one for the selector to take and
+     * not one the table accepts. False for a tie in one table and for a
+     * tie among the holders of a rank ({@see self::getRankAcrossPools()}).
+     */
+    public function isPerEvent(): bool
+    {
+        return $this->perEvent;
     }
 }
