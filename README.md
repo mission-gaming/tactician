@@ -84,7 +84,11 @@ the last one, which is about the library as a whole.
 **Results, time and repair**
 
 - **Results and standings**: a ranking strategy (3/1/0 and 1/½/0 presets), then
-  a chain of tiebreakers (wins, Buchholz, Sonneborn–Berger). The table gives
+  a chain of tiebreakers (wins, score difference, scores-for, Buchholz,
+  Sonneborn–Berger, and any of them over the events between the tied
+  participants only), which plain data can build. What a bye is worth is the
+  caller's choice, and the same value orders the next round and stands in the
+  final table. The table gives
   every entry its own position and reports the sets of entries that no result
   separates. The table of a bracket is its placement: rank 1 is the entrant
   who won it.

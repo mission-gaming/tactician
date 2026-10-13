@@ -547,7 +547,7 @@ describe('re-seeding an elimination bracket', function (): void {
     // The bracket knows from its entrant list that it has byes, so it
     // refuses before the first round is paired, and not after it has been
     // played, when the bracket could no longer be finished.
-    it('refuses a bye it cannot credit on a scale that has no value for a win, before any round is paired', function (int $size): void {
+    it('refuses a bye it cannot credit on a scale that has no value for a bye, before any round is paired', function (int $size): void {
         $engine = new SingleEliminationEngine(
             new EliminationOptions(reseedEachRound: true),
             new StandingsCalculator(new class implements MissionGaming\Tactician\Standings\RankingStrategy {
@@ -570,7 +570,7 @@ describe('re-seeding an elimination bracket', function (): void {
                 $ask();
             } catch (InvalidConfigurationException $exception) {
                 expect($exception->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions)
-                    ->and($exception->getMessage())->toContain('win/draw/loss');
+                    ->and($exception->getMessage())->toContain('a ranking strategy that says what a bye is worth');
 
                 continue;
             }

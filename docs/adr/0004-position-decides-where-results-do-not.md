@@ -79,7 +79,10 @@ Two consequences of "the table of a stage" belong to the same decision:
 
 - The table of a Swiss stage counts a bye as it counts for pairing, as a
   win, so that the outcome's table is the table the rounds were paired
-  from.
+  from. (What a bye is worth has since become the ranking strategy's to
+  say, with a win as the default:
+  [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md). That the
+  two are one table is unchanged.)
 - The table of an elimination stage is the bracket placement. The round an
   entrant went out in is a tier of the table that no record crosses; the
   calculator orders the entrants of one tier from their records, and

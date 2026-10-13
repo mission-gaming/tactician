@@ -17,6 +17,8 @@ there is not repeated here.
 | [0005](0005-serialized-forms-carry-a-format-version.md) | Serialized forms carry a format version |
 | [0006](0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md) | Pools of unequal size are compared by a method the caller names |
 | [0008](0008-a-decision-orders-level-entries-and-never-a-result.md) | A decision orders level entries and never a result |
+| [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says |
+| [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md) | A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table |
 
 ## Adding a record
 

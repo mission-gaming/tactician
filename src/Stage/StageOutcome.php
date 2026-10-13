@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Stage;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
@@ -21,7 +22,8 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  *
  * The standings are the table of the stage, rank 1 first. For a league or
  * a Swiss stage that is the table of the recorded results (a Swiss stage
- * counts a bye as a win in it). For an elimination stage it is the bracket
+ * credits a bye in it with what the ranking strategy says a bye is worth,
+ * a win by default). For an elimination stage it is the bracket
  * placement: the entrant who advanced from the last round is rank 1, the
  * one it beat there is rank 2, and the others follow by the round they
  * went out in, later first, with the calculator's order of their records
@@ -121,6 +123,9 @@ final readonly class StageOutcome
      * @param StandingsCalculator $calculator Orders the combined table
      * @param array<Participant> $entrants The entrant list of the whole pooled stage, if the
      *                                     combined table is to follow it where entries are level
+     *
+     * @throws InvalidConfigurationException Not thrown by the library's calculator: the combined
+     *                                       table is given no bye, which is all it refuses
      */
     public static function combining(
         array $pools,
@@ -150,10 +155,7 @@ final readonly class StageOutcome
         }
 
         return new self(
-            $calculator->withAdjustments(
-                $calculator->calculate(array_values($participantsById), $results),
-                $adjustments
-            ),
+            $calculator->calculateWith(array_values($participantsById), $results, [], $adjustments),
             $results,
             $byes,
             null,

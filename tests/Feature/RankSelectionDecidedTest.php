@@ -290,6 +290,8 @@ describe('a rank selection that results do not decide', function (): void {
 /**
  * A pooled outcome of the given shape in which results decide every place:
  * pool X has entrants X1, X2, ... in that order of the table.
+ *
+ * @throws InvalidConfigurationException When the calculator refuses the table (not expected here)
  */
 function crossPoolOutcome(int $pools, int $ranks): StageOutcome
 {

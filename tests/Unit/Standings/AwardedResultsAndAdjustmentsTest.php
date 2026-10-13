@@ -289,11 +289,14 @@ describe('Awarded results between the tied participants', function (): void {
             ->and(awardedTestEntry($table, $this->bao)->getLosses())->toBe(1);
     });
 
-    it('hands such a tiebreaker the entries of the whole table, awarded results included', function (): void {
+    // Ada and Bao are level on 3 and Cyd is alone on 0. The one event
+    // between Ada and Bao is the awarded one, so the tiebreaker is handed it
+    // or nothing, and the entries of the two of them from just that.
+    it('hands such a tiebreaker the results between the tied set and the entries they give', function (bool $counted, array $expected): void {
         $seen = new ArrayObject();
         $spy = new readonly class ($seen) implements TiedParticipantsTiebreaker {
             /**
-             * @param ArrayObject<int, array{results: int, wins: int}> $seen
+             * @param ArrayObject<int, array{results: int, entries: list<int|string>, wins: int}> $seen
              */
             public function __construct(private ArrayObject $seen) {}
 
@@ -307,7 +310,11 @@ describe('Awarded results between the tied participants', function (): void {
             public function calculate(Participant $participant, array $results, array $entries): float
             {
                 if ($participant->getId() === 'ada') {
-                    $this->seen->append(['results' => count($results), 'wins' => $entries['ada']->getWins()]);
+                    $this->seen->append([
+                        'results' => count($results),
+                        'entries' => array_keys($entries),
+                        'wins' => $entries['ada']->getWins(),
+                    ]);
                 }
 
                 return 0.0;
@@ -316,11 +323,14 @@ describe('Awarded results between the tied participants', function (): void {
 
         (new StandingsCalculator(
             tiebreakers: [$spy],
-            awardedResults: new AwardedResultPolicy(countBetweenTiedParticipants: false)
+            awardedResults: new AwardedResultPolicy(countBetweenTiedParticipants: $counted)
         ))->calculate($this->field, $this->results);
 
-        expect($seen->getArrayCopy())->toBe([['results' => 1, 'wins' => 1]]);
-    });
+        expect($seen->getArrayCopy())->toBe([$expected]);
+    })->with([
+        'awarded results counted' => [true, ['results' => 1, 'entries' => ['ada', 'bao'], 'wins' => 1]],
+        'awarded results left out' => [false, ['results' => 0, 'entries' => ['ada', 'bao'], 'wins' => 0]],
+    ]);
 
     it('leaves every other tiebreaker with all the results when the exclusion is on', function (): void {
         $table = (new StandingsCalculator(

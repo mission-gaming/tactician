@@ -81,10 +81,22 @@ and an accepted order is the order of the entrant list, as
   cannot do better; the caller leaves such a tiebreaker out of the
   calculator that orders the combined table, or uses `DiscardLowest`, which
   calculates every tiebreaker again. Changing this needs the tiebreaker
-  contract to say how a value scales, which is a decision of its own.
+  contract to say how a value scales, which is a decision of its own. It
+  was not taken with the tiebreakers 0.3.0 added: a score difference and
+  scores-for add up over the entrant's own events, as wins do, and are
+  exact under `PerEvent`; a tiebreaker between the tied participants
+  (`BetweenTiedParticipants`) adds up over the events inside a tied set
+  of the combined table, in which entrants of different pools have not
+  met; it says little across pools under any method, and the caller
+  leaves it out of the calculator that orders the combined table, as with
+  the two above.
 - The combined table credits no bye. A bye credited in a pool's own table
   decides who holds the rank there and is not among the figures the holders
-  are compared by.
+  are compared by. That holds whatever the ranking strategy says a bye is
+  worth ([0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md)):
+  the entries of the combined table have no bye, so a tiebreaker that
+  reads byes finds none there. Crediting them would need `PerEvent` to say
+  whether a bye is an event played, which is not decided.
 - An adjustment (`Standings\Adjustment`) is among them, under every method:
   the ranking value compared is the total a table is ordered by, what was
   earned plus the adjustment, which `StageOutcome::combining()` carries
