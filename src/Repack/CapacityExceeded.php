@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Repack;
 
 use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -91,13 +92,16 @@ final readonly class CapacityExceeded implements RepackViolation
 
     /**
      * Serialize to plain data; the participant by its ID, or null.
+     * The first key is `format_version`, the version of this form (1);
+     * a repack outcome writes its records without it.
      *
-     * @return array{kind: string, participant: string|null, demand: int, capacity: int, shortfall: int}
+     * @return array{format_version: int, kind: string, participant: string|null, demand: int, capacity: int, shortfall: int}
      */
     #[Override]
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'kind' => $this->getKind()->value,
             'participant' => $this->participant?->getId(),
             'demand' => $this->demand,

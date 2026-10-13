@@ -86,7 +86,7 @@ describe('MinimumRestRule', function (): void {
 
     it('is config-constructible and rejects hollow durations', function (): void {
         $rule = MinimumRestRule::fromArray(['rest' => 'PT48H']);
-        expect($rule->toArray())->toBe(['rest' => 'PT48H']);
+        expect($rule->toArray())->toBe(['format_version' => 1, 'rest' => 'PT48H']);
         expect($rule->getName())->toBe('Minimum Rest (PT48H)');
 
         expect(fn() => MinimumRestRule::fromArray(['rest' => 'whenever']))
@@ -146,7 +146,7 @@ describe('MinimumRestRule', function (): void {
         ]);
         $exactly = $from->add($rest);
 
-        expect($rule->toArray())->toBe(['rest' => $written])
+        expect($rule->toArray())->toBe(['format_version' => 1, 'rest' => $written])
             ->and($readBack->validate($timeline($exactly)))->toBe([])
             ->and($readBack->validate($timeline($exactly->modify('-1 second'))))->toHaveCount(2);
     })->with([
@@ -199,7 +199,7 @@ describe('BlackoutRule', function (): void {
             'label' => 'international break',
         ]]]);
 
-        expect($rule->toArray())->toBe(['windows' => [[
+        expect($rule->toArray())->toBe(['format_version' => 1, 'windows' => [[
             'from' => '2026-11-09 00:00:00',
             'to' => '2026-11-17 00:00:00',
             'timezone' => 'UTC',

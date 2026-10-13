@@ -55,7 +55,9 @@ final class GeneratedEvents
                     : $field[$randomizer->getInt(0, count($field) - 1)];
             }
             $round = $randomizer->getInt(0, 7) === 0 ? null : new Round($randomizer->getInt(1, $maxRound));
-            $events[] = new Event($members, $round);
+            // A participant drawn twice is the degenerate event the readers still
+            // guard against; Event itself refuses to be constructed with one
+            $events[] = UncheckedEvent::orEvent($members, $round);
         }
 
         return $events;

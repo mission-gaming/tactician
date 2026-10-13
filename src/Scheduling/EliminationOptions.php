@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * Options for the elimination bracket presets.
@@ -51,14 +52,24 @@ final readonly class EliminationOptions
      * ['legs_per_tie' => 2, 'reseed_each_round' => false, 'grand_final_reset' => true].
      *
      * Every key is optional and takes the constructor's default when it is
-     * left out. A key this class does not have is ignored.
+     * left out. A key this class does not have is refused, so that a
+     * misspelt option is not silently read as its default.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value has the wrong type, or legs_per_tie is
-     *                                       not 1 or 2
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), a
+     *                                       value has the wrong type, or legs_per_tie is not 1
+     *                                       or 2
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions(
+            $config,
+            ['legs_per_tie', 'reseed_each_round', 'grand_final_reset'],
+            'elimination options'
+        );
+
         $legsPerTie = $config['legs_per_tie'] ?? 1;
         if (!is_int($legsPerTie)) {
             throw new InvalidConfigurationException(
@@ -82,13 +93,15 @@ final readonly class EliminationOptions
     }
 
     /**
-     * The plain-data form fromArray() accepts: all three keys, always.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then all three options, always.
      *
-     * @return array{legs_per_tie: int, reseed_each_round: bool, grand_final_reset: bool}
+     * @return array{format_version: int, legs_per_tie: int, reseed_each_round: bool, grand_final_reset: bool}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'legs_per_tie' => $this->legsPerTie,
             'reseed_each_round' => $this->reseedEachRound,
             'grand_final_reset' => $this->grandFinalReset,

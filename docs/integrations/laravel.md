@@ -74,9 +74,10 @@ final class LeagueFixtureGenerator
 }
 ```
 
-If the options come from `config()` or from a column, check their keys
-yourself: most `fromArray()` methods ignore a key they do not know. The
-Symfony guide says [which](symfony.md#the-call).
+If the options come from `config()` or from a column, pass the library's
+keys and no others: every `fromArray()` refuses a key it does not know, so
+a misspelt option fails loudly and is not read as its default. The Symfony
+guide says [more](symfony.md#the-call).
 
 ## One step of a stage, under a lock
 

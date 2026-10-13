@@ -1,0 +1,860 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MissionGaming\Tactician\Tests\Support;
+
+use Closure;
+use DateInterval;
+use DateTimeImmutable;
+use DateTimeZone;
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
+use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\Repack\CapacityExceeded;
+use MissionGaming\Tactician\Repack\ContiguityBroken;
+use MissionGaming\Tactician\Repack\EventUnplaced;
+use MissionGaming\Tactician\Repack\LateStart;
+use MissionGaming\Tactician\Repack\ParticipantDoubleBooked;
+use MissionGaming\Tactician\Repack\RepackOptions;
+use MissionGaming\Tactician\Repack\RepackOutcome;
+use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\Repack\SlotAssignment;
+use MissionGaming\Tactician\Repack\UnplacedEvent;
+use MissionGaming\Tactician\Repack\UnplacedReason;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
+use MissionGaming\Tactician\Scheduling\EliminationOptions;
+use MissionGaming\Tactician\Scheduling\PotDrawOptions;
+use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
+use MissionGaming\Tactician\Scheduling\SwissOptions;
+use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\RankRangeSelector;
+use MissionGaming\Tactician\Stage\RoundPairing;
+use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
+use MissionGaming\Tactician\Timeline\BlackoutRule;
+use MissionGaming\Tactician\Timeline\MinimumRestRule;
+use MissionGaming\Tactician\Timeline\ScheduledEvent;
+use MissionGaming\Tactician\Timeline\ScheduledSchedule;
+use MissionGaming\Tactician\Timeline\TimelineDefinition;
+use Random\Randomizer;
+
+/**
+ * Every form the library reads from plain data or writes as it: one entry
+ * for each `fromArray()` in `src/`, one for each array nested in such a form
+ * that has keys of its own (a blackout window), and the forms that are
+ * written and have no reader (a repack outcome and its records).
+ *
+ * An entry holds what a test needs to treat the forms alike: whether the
+ * form is configuration or data (which decides the exception it raises),
+ * the keys it reads, a sample that holds every one of those keys with a
+ * valid value, the call that reads an array of the form, and a generator of
+ * instances for the round-trip sweeps. A form that refers to participants
+ * by ID is read against a registry: {@see self::registry()} for the
+ * samples, the generated field for generated instances.
+ *
+ * `tests/Feature/PlainDataFormsTest.php` compares the entries with the
+ * `fromArray()` and `toArray()` methods `src/` declares, so a new one fails
+ * the suite until it is listed here.
+ */
+final class PlainDataForms
+{
+    public const string CONFIGURATION = 'configuration';
+
+    public const string DATA = 'data';
+
+    private const array SESSION_GRID_KEYS = [
+        'sessions',
+        'timezone',
+        'slot_interval',
+        'session_count',
+        'slots_per_session',
+        'slots_per_session_overrides',
+        'capacity_per_slot',
+    ];
+
+    /**
+     * The forms that are read.
+     *
+     * @return array<string, array{
+     *     class: class-string,
+     *     kind: self::CONFIGURATION|self::DATA,
+     *     keys: list<string>,
+     *     sample: array<string, mixed>,
+     *     read: Closure(array<array-key, mixed>, array<string, Participant>): object,
+     *     generate: (Closure(Randomizer, array<Participant>): object)|null,
+     * }> Keyed by a name for the form. `generate` is null for a form that is only a part of
+     *    another entry's array and has no class of its own
+     */
+    public static function all(): array
+    {
+        $event = ['participants' => ['a', 'b'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => ['court' => 2]];
+        $participants = [
+            ['id' => 'a', 'label' => 'Alice', 'seed' => 1, 'metadata' => []],
+            ['id' => 'b', 'label' => 'Bob', 'seed' => 2, 'metadata' => []],
+            ['id' => 'c', 'label' => 'Carol', 'seed' => null, 'metadata' => []],
+        ];
+        $window = ['from' => '2026-11-09 00:00', 'to' => '2026-11-17 00:00', 'timezone' => 'Europe/London', 'label' => 'break'];
+
+        return [
+            'round-robin options' => [
+                'class' => RoundRobinOptions::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['legs', 'strategy', 'backtracking', 'strategy_seed', 'role_assignment'],
+                'sample' => [
+                    'legs' => 2,
+                    'strategy' => 'shuffled',
+                    'backtracking' => true,
+                    'strategy_seed' => 7,
+                    'role_assignment' => 'balanced',
+                ],
+                'read' => static fn(array $data, array $registry): object => RoundRobinOptions::fromArray(self::stringKeyed($data)),
+                'generate' => static fn(Randomizer $random, array $field): object => new RoundRobinOptions(
+                    $random->getInt(1, 4),
+                    match ($random->getInt(0, 2)) {
+                        0 => null,
+                        1 => new RepeatedLegStrategy(),
+                        default => new ShuffledLegStrategy(seed: $random->getInt(-9, 9_999)),
+                    },
+                    $random->getInt(0, 1) === 1,
+                    match ($random->getInt(0, 2)) {
+                        0 => null,
+                        1 => new RoundParityRoleAssignment(),
+                        default => new BalancedRoleAssignment(),
+                    }
+                ),
+            ],
+            'Swiss options' => [
+                'class' => SwissOptions::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['rounds', 'seed'],
+                'sample' => ['rounds' => 5, 'seed' => 2026],
+                'read' => static fn(array $data, array $registry): object => SwissOptions::fromArray(self::stringKeyed($data)),
+                // Half of them with a seed, which is any integer, 0 included
+                'generate' => static fn(Randomizer $random, array $field): object => new SwissOptions(
+                    $random->getInt(1, 11),
+                    $random->getInt(0, 1) === 1 ? [0, -7, PHP_INT_MAX, PHP_INT_MIN, $random->getInt(1, 9_999)][$random->getInt(0, 4)] : null
+                ),
+            ],
+            'pot draw options' => [
+                'class' => PotDrawOptions::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['pots', 'opponents_per_pot', 'seed'],
+                'sample' => ['pots' => 4, 'opponents_per_pot' => 2, 'seed' => 2026],
+                'read' => static fn(array $data, array $registry): object => PotDrawOptions::fromArray(self::stringKeyed($data)),
+                'generate' => static fn(Randomizer $random, array $field): object => new PotDrawOptions(
+                    $random->getInt(1, 6),
+                    $random->getInt(1, 4),
+                    $random->getInt(PHP_INT_MIN, PHP_INT_MAX)
+                ),
+            ],
+            'elimination options' => [
+                'class' => EliminationOptions::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['legs_per_tie', 'reseed_each_round', 'grand_final_reset'],
+                'sample' => ['legs_per_tie' => 2, 'reseed_each_round' => true, 'grand_final_reset' => false],
+                'read' => static fn(array $data, array $registry): object => EliminationOptions::fromArray(self::stringKeyed($data)),
+                'generate' => static fn(Randomizer $random, array $field): object => new EliminationOptions(
+                    $random->getInt(1, 2),
+                    $random->getInt(0, 1) === 1,
+                    $random->getInt(0, 1) === 1
+                ),
+            ],
+            'repack options' => [
+                'class' => RepackOptions::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['consolidation_weight', 'early_fill_weight', 'step_budget', 'throw_on_violations'],
+                'sample' => [
+                    'consolidation_weight' => 5,
+                    'early_fill_weight' => 2,
+                    'step_budget' => 1_000,
+                    'throw_on_violations' => true,
+                ],
+                'read' => static fn(array $data, array $registry): object => RepackOptions::fromArray(self::stringKeyed($data)),
+                'generate' => static fn(Randomizer $random, array $field): object => new RepackOptions(
+                    $random->getInt(0, 50),
+                    $random->getInt(0, 50),
+                    $random->getInt(1, 500_000),
+                    $random->getInt(0, 1) === 1
+                ),
+            ],
+            'win-draw-loss ranking' => [
+                'class' => WinDrawLossRanking::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['win', 'draw', 'loss'],
+                'sample' => ['win' => 2.0, 'draw' => 0.5, 'loss' => -1.0],
+                'read' => static fn(array $data, array $registry): object => WinDrawLossRanking::fromArray(self::stringKeyed($data)),
+                'generate' => static fn(Randomizer $random, array $field): object => new WinDrawLossRanking(
+                    $random->getInt(-4, 12) / 2,
+                    $random->getInt(-4, 12) / 4,
+                    $random->getInt(-4, 12) / 8
+                ),
+            ],
+            'match outcome selector' => [
+                'class' => MatchOutcomeSelector::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['mode'],
+                'sample' => ['mode' => 'losers'],
+                'read' => static fn(array $data, array $registry): object => MatchOutcomeSelector::fromArray(self::stringKeyed($data)),
+                'generate' => static fn(Randomizer $random, array $field): object => $random->getInt(0, 1) === 1
+                    ? MatchOutcomeSelector::winners()
+                    : MatchOutcomeSelector::losers(),
+            ],
+            'rank range selector' => [
+                'class' => RankRangeSelector::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['mode', 'from', 'to', 'ties'],
+                'sample' => ['mode' => 'per-group', 'from' => 2, 'to' => 3, 'ties' => 'accept-inside-selection'],
+                'read' => static fn(array $data, array $registry): object => RankRangeSelector::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $from = $random->getInt(1, 8);
+                    $to = $from + $random->getInt(0, 8);
+
+                    $selector = match ($random->getInt(0, 2)) {
+                        0 => RankRangeSelector::overall($from, $to),
+                        1 => RankRangeSelector::perGroup($from, $to),
+                        default => RankRangeSelector::topPerGroup($to),
+                    };
+
+                    // A selector that refuses an undecided order writes no
+                    // `ties` key; the other two write theirs
+                    return match ($random->getInt(0, 2)) {
+                        0 => $selector,
+                        1 => $selector->withTiesInsideSelectionAccepted(),
+                        default => $selector->withTableOrderAccepted(),
+                    };
+                },
+            ],
+            'minimum rest rule' => [
+                'class' => MinimumRestRule::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['rest'],
+                'sample' => ['rest' => 'PT48H'],
+                'read' => static fn(array $data, array $registry): object => MinimumRestRule::fromArray(self::stringKeyed($data)),
+                'generate' => static fn(Randomizer $random, array $field): object => new MinimumRestRule(
+                    new DateInterval(['PT48H', 'P1D', 'PT90M', 'P2DT12H', 'P1M', 'PT45S'][$random->getInt(0, 5)])
+                ),
+            ],
+            'blackout rule' => [
+                'class' => BlackoutRule::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['windows'],
+                'sample' => ['windows' => [$window]],
+                'read' => static fn(array $data, array $registry): object => BlackoutRule::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $windows = [];
+                    for ($i = $random->getInt(1, 3); $i > 0; --$i) {
+                        $from = self::instant($random);
+                        $window = [
+                            'from' => self::sometimesWithFraction($random, $from),
+                            'to' => $from->setTimestamp($from->getTimestamp() + 3_600 * $random->getInt(1, 400)),
+                        ];
+                        if ($random->getInt(0, 1) === 1) {
+                            $window['label'] = 'closure ' . $random->getInt(1, 99);
+                        }
+                        $windows[] = $window;
+                    }
+
+                    return new BlackoutRule($windows);
+                },
+            ],
+            'blackout window' => [
+                'class' => BlackoutRule::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['from', 'to', 'timezone', 'label'],
+                'sample' => $window,
+                'read' => static fn(array $data, array $registry): object => BlackoutRule::fromArray(['windows' => [$data]]),
+                'generate' => null,
+            ],
+            'timeline definition' => [
+                'class' => TimelineDefinition::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['start', 'timezone', 'round_interval', 'slots_per_round', 'slot_interval', 'resources'],
+                'sample' => [
+                    'start' => '2026-08-01 19:00:00',
+                    'timezone' => 'Europe/London',
+                    'round_interval' => 'P7D',
+                    'slots_per_round' => 2,
+                    'slot_interval' => 'PT1H',
+                    'resources' => ['Court 1', 'Court 2'],
+                ],
+                'read' => static fn(array $data, array $registry): object => TimelineDefinition::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $slots = $random->getInt(1, 3);
+
+                    // Three slots at most, 90 minutes apart at most: a round ends
+                    // well inside the day the shortest round interval gives it
+                    return new TimelineDefinition(
+                        self::sometimesWithFraction($random, self::localEvening($random)),
+                        new DateInterval(['P7D', 'P1D', 'P14D', 'PT48H', 'P1M'][$random->getInt(0, 4)]),
+                        $slots,
+                        $slots > 1 || $random->getInt(0, 1) === 1
+                            ? new DateInterval(['PT1H', 'PT90M', 'PT25M'][$random->getInt(0, 2)])
+                            : null,
+                        array_slice(['Court 1', 'Court 2', 'Hall'], 0, $random->getInt(0, 3))
+                    );
+                },
+            ],
+            'session grid with instants' => [
+                'class' => SessionGrid::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => self::SESSION_GRID_KEYS,
+                'sample' => [
+                    'sessions' => ['2026-08-12 20:15:00', '2026-08-19 20:15:00'],
+                    'timezone' => 'Europe/London',
+                    'slot_interval' => 'PT25M',
+                    'slots_per_session' => 4,
+                    'capacity_per_slot' => 7,
+                    'slots_per_session_overrides' => [1 => 6],
+                ],
+                'read' => static fn(array $data, array $registry): object => SessionGrid::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $first = self::sometimesWithFraction($random, self::localEvening($random));
+                    $sessions = [];
+                    for ($i = 0, $count = $random->getInt(1, 5); $i < $count; ++$i) {
+                        $sessions[] = $first->add(new DateInterval('P' . ($i * 7) . 'D'));
+                    }
+                    $slots = $random->getInt(1, 5);
+
+                    return new SessionGrid(
+                        $sessions,
+                        new DateInterval(['PT25M', 'PT30M', 'PT20M'][$random->getInt(0, 2)]),
+                        $slots,
+                        $random->getInt(0, 1) === 1 ? [$random->getInt(0, count($sessions) - 1) => $slots + 1] : [],
+                        $random->getInt(0, 3) === 0 ? null : $random->getInt(1, 8)
+                    );
+                },
+            ],
+            'session grid of a shape only' => [
+                'class' => SessionGrid::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => self::SESSION_GRID_KEYS,
+                'sample' => [
+                    'session_count' => 2,
+                    'slots_per_session' => 4,
+                    'capacity_per_slot' => 'unbounded',
+                    'slots_per_session_overrides' => [1 => 6],
+                ],
+                'read' => static fn(array $data, array $registry): object => SessionGrid::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $sessions = $random->getInt(1, 6);
+                    $slots = $random->getInt(1, 5);
+
+                    return SessionGrid::shapeOnly(
+                        $sessions,
+                        $slots,
+                        $random->getInt(0, 1) === 1 ? [$random->getInt(0, $sessions - 1) => $slots + 2] : [],
+                        $random->getInt(0, 3) === 0 ? null : $random->getInt(1, 8)
+                    );
+                },
+            ],
+            'participant' => [
+                'class' => Participant::class,
+                'kind' => self::DATA,
+                'keys' => ['id', 'label', 'seed', 'metadata'],
+                'sample' => ['id' => 'a', 'label' => 'Alice', 'seed' => 1, 'metadata' => ['club' => 'North']],
+                'read' => static fn(array $data, array $registry): object => Participant::fromArray(self::stringKeyed($data)),
+                'generate' => static fn(Randomizer $random, array $field): object => new Participant(
+                    $field[$random->getInt(0, count($field) - 1)]->getId(),
+                    'Label ' . $random->getInt(0, 999),
+                    $random->getInt(0, 2) === 0 ? null : $random->getInt(-3, 64),
+                    self::metadata($random)
+                ),
+            ],
+            'round' => [
+                'class' => Round::class,
+                'kind' => self::DATA,
+                'keys' => ['number', 'metadata'],
+                'sample' => ['number' => 3, 'metadata' => ['label' => 'semifinal']],
+                'read' => static fn(array $data, array $registry): object => Round::fromArray(self::stringKeyed($data)),
+                'generate' => static fn(Randomizer $random, array $field): object => new Round($random->getInt(1, 60), self::metadata($random)),
+            ],
+            'event' => [
+                'class' => Event::class,
+                'kind' => self::DATA,
+                'keys' => ['participants', 'round', 'metadata'],
+                'sample' => $event,
+                'read' => static fn(array $data, array $registry): object => Event::fromArray(self::stringKeyed($data), $registry),
+                'generate' => self::event(...),
+            ],
+            'result' => [
+                'class' => Result::class,
+                'kind' => self::DATA,
+                'keys' => ['event', 'winner', 'scores', 'metadata'],
+                'sample' => ['event' => $event, 'winner' => 'a', 'scores' => ['a' => 2, 'b' => 1], 'metadata' => ['note' => 'x']],
+                'read' => static fn(array $data, array $registry): object => Result::fromArray(self::stringKeyed($data), $registry),
+                'generate' => static fn(Randomizer $random, array $field): object => self::result($random, self::event($random, $field)),
+            ],
+            'round pairing' => [
+                'class' => RoundPairing::class,
+                'kind' => self::DATA,
+                'keys' => ['round', 'label', 'events', 'byes'],
+                'sample' => ['round' => 1, 'label' => 'semifinal', 'events' => [$event], 'byes' => ['c']],
+                'read' => static fn(array $data, array $registry): object => RoundPairing::fromArray(self::stringKeyed($data), $registry),
+                'generate' => static fn(Randomizer $random, array $field): object => self::pairing($random, $field, $random->getInt(1, 30)),
+            ],
+            'schedule' => [
+                'class' => Schedule::class,
+                'kind' => self::DATA,
+                'keys' => ['participants', 'events', 'metadata'],
+                'sample' => ['participants' => $participants, 'events' => [$event], 'metadata' => ['algorithm' => 'by hand']],
+                'read' => static fn(array $data, array $registry): object => Schedule::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $events = [];
+                    for ($i = $random->getInt(0, 12); $i > 0; --$i) {
+                        $events[] = self::event($random, $field);
+                    }
+
+                    // Half of them state their entrants, in an order of their own
+                    // and with those who have no event; the rest leave the list
+                    // to be read from the events
+                    return new Schedule(
+                        $events,
+                        self::metadata($random),
+                        $random->getInt(0, 1) === 1 ? $random->shuffleArray(array_values($field)) : null
+                    );
+                },
+            ],
+            'stage state' => [
+                'class' => StageState::class,
+                'kind' => self::DATA,
+                'keys' => ['participants', 'active', 'rounds', 'results', 'engine_fingerprint'],
+                'sample' => [
+                    'participants' => $participants,
+                    'active' => ['a', 'b', 'c'],
+                    'rounds' => [['round' => 1, 'label' => null, 'events' => [$event], 'byes' => ['c']]],
+                    'results' => [['event' => $event, 'winner' => 'a', 'scores' => [], 'metadata' => []]],
+                    'engine_fingerprint' => 'an engine of our own',
+                ],
+                'read' => static fn(array $data, array $registry): object => StageState::fromArray(self::stringKeyed($data)),
+                'generate' => self::stageState(...),
+            ],
+            'scheduled event' => [
+                'class' => ScheduledEvent::class,
+                'kind' => self::DATA,
+                'keys' => ['event', 'kickoff', 'resource'],
+                'sample' => ['event' => $event, 'kickoff' => '2026-08-01T18:00:00Z', 'resource' => 'Court 1'],
+                'read' => static fn(array $data, array $registry): object => ScheduledEvent::fromArray(self::stringKeyed($data), $registry),
+                'generate' => self::scheduledEvent(...),
+            ],
+            'scheduled schedule' => [
+                'class' => ScheduledSchedule::class,
+                'kind' => self::DATA,
+                'keys' => ['participants', 'events'],
+                'sample' => [
+                    'participants' => $participants,
+                    'events' => [['event' => $event, 'kickoff' => '2026-08-01T18:00:00Z', 'resource' => null]],
+                ],
+                'read' => static fn(array $data, array $registry): object => ScheduledSchedule::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $events = [];
+                    for ($i = $random->getInt(0, 10); $i > 0; --$i) {
+                        $events[] = self::scheduledEvent($random, $field);
+                    }
+
+                    return new ScheduledSchedule($events);
+                },
+            ],
+        ];
+    }
+
+    /**
+     * The forms that are written and never read: a repack outcome and the
+     * records it holds.
+     *
+     * @return array<string, array{class: class-string, generate: Closure(Randomizer, array<Participant>): object}>
+     */
+    public static function writtenOnly(): array
+    {
+        $one = static fn(Randomizer $random, array $field): Participant => $field[$random->getInt(0, count($field) - 1)];
+        $reason = static fn(Randomizer $random): UnplacedReason => UnplacedReason::cases()[$random->getInt(0, 1)];
+
+        $assignment = static fn(Randomizer $random, array $field): object => new SlotAssignment(
+            'e' . $random->getInt(1, 9_999),
+            $random->getInt(0, 9),
+            $random->getInt(0, 9),
+            $random->getInt(0, 3) === 0 ? null : self::instant($random)
+        );
+        $unplaced = static fn(Randomizer $random, array $field): object => new UnplacedEvent(
+            'e' . $random->getInt(1, 9_999),
+            $reason($random),
+            $random->getInt(0, 1) === 1 ? $one($random, $field) : null
+        );
+        $violations = [
+            'participant double booked' => [ParticipantDoubleBooked::class, static fn(Randomizer $random, array $field): object => new ParticipantDoubleBooked(
+                $one($random, $field),
+                $random->getInt(0, 9),
+                $random->getInt(0, 9),
+                ['e' . $random->getInt(1, 99), 'e' . $random->getInt(100, 199)]
+            )],
+            'contiguity broken' => [ContiguityBroken::class, static fn(Randomizer $random, array $field): object => new ContiguityBroken(
+                $one($random, $field),
+                $random->getInt(0, 9),
+                $random->getInt(1, 4),
+                [0, $random->getInt(2, 6)]
+            )],
+            'event unplaced' => [EventUnplaced::class, static fn(Randomizer $random, array $field): object => new EventUnplaced(
+                'e' . $random->getInt(1, 9_999),
+                $reason($random),
+                $random->getInt(0, 1) === 1 ? $one($random, $field) : null
+            )],
+            'late start' => [LateStart::class, static fn(Randomizer $random, array $field): object => new LateStart(
+                $one($random, $field),
+                $random->getInt(0, 9),
+                $random->getInt(1, 9)
+            )],
+            'capacity exceeded' => [CapacityExceeded::class, static fn(Randomizer $random, array $field): object => new CapacityExceeded(
+                $random->getInt(0, 1) === 1 ? $one($random, $field) : null,
+                $random->getInt(5, 9),
+                $random->getInt(0, 4)
+            )],
+        ];
+
+        $forms = [
+            'slot assignment' => ['class' => SlotAssignment::class, 'generate' => $assignment],
+            'unplaced event' => ['class' => UnplacedEvent::class, 'generate' => $unplaced],
+        ];
+        foreach ($violations as $name => [$class, $generate]) {
+            $forms[$name] = ['class' => $class, 'generate' => $generate];
+        }
+
+        $forms['repack outcome'] = [
+            'class' => RepackOutcome::class,
+            'generate' => static function (Randomizer $random, array $field) use ($assignment, $unplaced, $violations): object {
+                $assignments = [];
+                for ($i = $random->getInt(0, 6); $i > 0; --$i) {
+                    $made = $assignment($random, $field);
+                    $assignments[$made->getEventId()] = $made;
+                }
+                $left = [];
+                for ($i = $random->getInt(0, 3); $i > 0; --$i) {
+                    $left[] = $unplaced($random, $field);
+                }
+                $found = [];
+                foreach ($violations as [, $generate]) {
+                    if ($random->getInt(0, 1) === 1) {
+                        $found[] = $generate($random, $field);
+                    }
+                }
+
+                return new RepackOutcome(array_values($assignments), $left, $found, $random->getInt(0, 1) === 1);
+            },
+        ];
+
+        return $forms;
+    }
+
+    /**
+     * Alice (`a`), Bob (`b`) and Carol (`c`), keyed by ID: the participants
+     * the samples refer to.
+     *
+     * @return array<string, Participant>
+     */
+    public static function registry(): array
+    {
+        return [
+            'a' => new Participant('a', 'Alice', 1),
+            'b' => new Participant('b', 'Bob', 2),
+            'c' => new Participant('c', 'Carol'),
+        ];
+    }
+
+    /**
+     * Participants keyed by ID, as the readers take a registry.
+     *
+     * @param array<Participant> $field
+     *
+     * @return array<string, Participant>
+     */
+    public static function registryOf(array $field): array
+    {
+        $registry = [];
+        foreach ($field as $participant) {
+            $registry[$participant->getId()] = $participant;
+        }
+
+        /** @var array<string, Participant> $registry A numeric ID is an integer key, which is what a registry built in an application holds too */
+        return $registry;
+    }
+
+    /**
+     * Ways to mistype a key that leave one wrong key: a character left out,
+     * two neighbours swapped, a character doubled, the first letter in
+     * upper case, a plural, a space in front, a hyphen for an underscore,
+     * and the camel-case spelling of the constructor. A spelling that is
+     * the key itself, or another key the form knows, is left out.
+     *
+     * @param list<string> $known Every key the form reads
+     *
+     * @return list<string>
+     */
+    public static function typosOf(string $key, array $known): array
+    {
+        $typos = [];
+        $length = strlen($key);
+
+        for ($i = 0; $i < $length; ++$i) {
+            $typos[] = substr($key, 0, $i) . substr($key, $i + 1);
+            $typos[] = substr($key, 0, $i) . $key[$i] . substr($key, $i);
+            if ($i + 1 < $length) {
+                $typos[] = substr($key, 0, $i) . $key[$i + 1] . $key[$i] . substr($key, $i + 2);
+            }
+        }
+
+        $typos[] = ucfirst($key);
+        $typos[] = $key . 's';
+        $typos[] = ' ' . $key;
+        $typos[] = str_replace('_', '-', $key);
+        $typos[] = lcfirst(str_replace('_', '', ucwords($key, '_')));
+
+        return array_values(array_unique(array_filter(
+            $typos,
+            static fn(string $typo): bool => $typo !== $key && !in_array($typo, $known, true)
+        )));
+    }
+
+    /**
+     * The array with one key renamed and everything else, the order
+     * included, as it was.
+     *
+     * @param array<string, mixed> $data
+     *
+     * @return array<array-key, mixed>
+     */
+    public static function withKeyRenamed(array $data, string $from, string $to): array
+    {
+        $renamed = [];
+        foreach ($data as $key => $value) {
+            $renamed[$key === $from ? $to : $key] = $value;
+        }
+
+        return $renamed;
+    }
+
+    /**
+     * Free-form metadata as JSON holds it: strings, integers, booleans,
+     * null, floats with a fraction, and lists and maps of them.
+     *
+     * @return array<string, mixed>
+     */
+    public static function metadata(Randomizer $random): array
+    {
+        $values = [
+            'North',
+            '',
+            'é 日本',
+            0,
+            -17,
+            true,
+            false,
+            null,
+            2.5,
+            ['a', 'b'],
+            ['home' => 'Court 1', 'tags' => [1, 2, 3]],
+            [],
+        ];
+
+        $metadata = [];
+        for ($i = $random->getInt(0, 3); $i > 0; --$i) {
+            $metadata['key' . $random->getInt(1, 6)] = $values[$random->getInt(0, count($values) - 1)];
+        }
+
+        return $metadata;
+    }
+
+    /**
+     * An event of two different participants of the field, in a round or
+     * in none.
+     *
+     * @param array<Participant> $field
+     */
+    private static function event(Randomizer $random, array $field): Event
+    {
+        $field = array_values($field);
+        $first = $random->getInt(0, count($field) - 1);
+        $second = ($first + $random->getInt(1, count($field) - 1)) % count($field);
+
+        return new Event(
+            [$field[$first], $field[$second]],
+            $random->getInt(0, 5) === 0 ? null : new Round($random->getInt(1, 30), self::metadata($random)),
+            self::metadata($random)
+        );
+    }
+
+    /**
+     * A result of the event: a win for either side or a draw, with scores
+     * or without.
+     */
+    private static function result(Randomizer $random, Event $event): Result
+    {
+        [$first, $second] = array_values($event->getParticipants());
+
+        return new Result(
+            $event,
+            [$first, $second, null][$random->getInt(0, 2)],
+            match ($random->getInt(0, 2)) {
+                0 => [],
+                1 => [$first->getId() => $random->getInt(0, 9), $second->getId() => $random->getInt(0, 9)],
+                default => [$second->getId() => $random->getInt(0, 20) / 4 + 0.125],
+            },
+            self::metadata($random)
+        );
+    }
+
+    /**
+     * A pairing of one round: the field paired off in a shuffled order,
+     * some of it left with a bye. Now and then a pair meets over two legs,
+     * which is two events of one round told apart by `tie_leg`.
+     *
+     * @param array<Participant> $field
+     */
+    private static function pairing(Randomizer $random, array $field, int $number): RoundPairing
+    {
+        $order = $random->shuffleArray($field);
+        $round = new Round($number, $random->getInt(0, 1) === 1 ? ['label' => 'round of ' . count($field)] : []);
+        $paired = intdiv(count($order), 2) - $random->getInt(0, 1);
+
+        $events = [];
+        for ($i = 0; $i < $paired; ++$i) {
+            [$first, $second] = [$order[2 * $i], $order[2 * $i + 1]];
+            if ($random->getInt(0, 4) === 0) {
+                $events[] = new Event([$first, $second], $round, ['tie_leg' => 1]);
+                $events[] = new Event([$second, $first], $round, ['tie_leg' => 2]);
+            } else {
+                $events[] = new Event([$first, $second], $round, self::metadata($random));
+            }
+        }
+
+        return new RoundPairing(
+            $number,
+            $random->getInt(0, 1) === 1 ? 'label ' . $number : null,
+            $events,
+            array_slice($order, 2 * $paired)
+        );
+    }
+
+    /**
+     * A stage state recorded the way an application records one: started,
+     * rounds recorded in order (now and then with a gap in the numbers),
+     * some events with a result and some without, a result added later, a
+     * withdrawal, and a stamp or none.
+     *
+     * @param array<Participant> $field
+     *
+     * @throws InvalidConfigurationException When the generator records something a state refuses
+     */
+    private static function stageState(Randomizer $random, array $field): StageState
+    {
+        $field = array_values($field);
+        $state = StageState::start($random->shuffleArray($field));
+
+        $number = 0;
+        for ($rounds = $random->getInt(0, 4); $rounds > 0; --$rounds) {
+            $number += $random->getInt(0, 4) === 0 ? 2 : 1;
+            $pairing = self::pairing($random, $field, $number);
+
+            $results = [];
+            $later = [];
+            foreach ($pairing->getEvents() as $event) {
+                match ($random->getInt(0, 3)) {
+                    0 => null,
+                    1 => $later[] = self::result($random, $event),
+                    default => $results[] = self::result($random, $event),
+                };
+            }
+
+            $state = $state->withRoundPlayed($pairing, $results);
+            if ($later !== []) {
+                $state = $state->withAdditionalResults($later);
+            }
+            if ($random->getInt(0, 5) === 0) {
+                $state = $state->withoutParticipant($field[$random->getInt(0, count($field) - 1)]);
+            }
+        }
+
+        return match ($random->getInt(0, 2)) {
+            0 => $state,
+            1 => $state->withEngineFingerprint('an engine of our own'),
+            default => $state->withEngineFingerprint((new SwissPairingEngine())->getFingerprint()),
+        };
+    }
+
+    /**
+     * @param array<Participant> $field
+     */
+    private static function scheduledEvent(Randomizer $random, array $field): ScheduledEvent
+    {
+        return new ScheduledEvent(
+            self::event($random, $field),
+            self::instant($random),
+            $random->getInt(0, 1) === 1 ? 'Court ' . $random->getInt(1, 4) : null
+        );
+    }
+
+    /**
+     * An instant on a whole second, in UTC.
+     */
+    private static function instant(Randomizer $random): DateTimeImmutable
+    {
+        return (new DateTimeImmutable('@0'))
+            ->setTimezone(new DateTimeZone('UTC'))
+            ->setTimestamp(1_785_610_800 + $random->getInt(0, 40_000_000));
+    }
+
+    /**
+     * 19:00, 19:30 or 20:15 local time on a day of 2026 or 2027, in one of
+     * a handful of timezones: a time of day no clock change skips or
+     * repeats.
+     */
+    private static function localEvening(Randomizer $random): DateTimeImmutable
+    {
+        $zone = match ($random->getInt(0, 4)) {
+            0 => new DateTimeZone('UTC'),
+            1 => new DateTimeZone('Europe/London'),
+            2 => new DateTimeZone('America/New_York'),
+            3 => new DateTimeZone('Asia/Kolkata'),
+            default => new DateTimeZone('+02:00'),
+        };
+        [$hour, $minute] = [[19, 0], [19, 30], [20, 15]][$random->getInt(0, 2)];
+
+        // Day 1 + n of January 2026 counts on through the months
+        return (new DateTimeImmutable('2026-01-01 00:00:00', $zone))
+            ->setDate(2026, 1, 1 + $random->getInt(0, 700))
+            ->setTime($hour, $minute);
+    }
+
+    /**
+     * The time, one draw in three with a fraction of a second: a timeline
+     * start, a session start and a bound of a blackout window are written
+     * with the fraction they have, and without one when they have none.
+     */
+    private static function sometimesWithFraction(Randomizer $random, DateTimeImmutable $time): DateTimeImmutable
+    {
+        return $random->getInt(0, 2) === 0
+            ? $time->setTime((int) $time->format('G'), (int) $time->format('i'), (int) $time->format('s'), [250_000, 1, 999_999][$random->getInt(0, 2)])
+            : $time;
+    }
+
+    /**
+     * The same array, typed as the `fromArray()` methods take it. PHP turns
+     * a key that is a numeric string into an integer, so an array cannot be
+     * forced to string keys; what a reader does with such a key is part of
+     * what is tested.
+     *
+     * @param array<array-key, mixed> $data
+     *
+     * @return array<string, mixed>
+     */
+    private static function stringKeyed(array $data): array
+    {
+        /** @var array<string, mixed> $data */
+        return $data;
+    }
+}

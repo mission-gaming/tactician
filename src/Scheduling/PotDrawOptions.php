@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -69,20 +70,15 @@ final readonly class PotDrawOptions implements SchedulerOptions
      * its default.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a key is unknown, a value is not an integer,
-     *                                       or pots or opponents_per_pot is below 1
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), a value is not an integer, or
+     *                                       pots or opponents_per_pot is below 1
      */
     #[Override]
     public static function fromArray(array $config): static
     {
-        $unknown = array_values(array_diff(array_keys($config), self::KEYS));
-        if ($unknown !== []) {
-            throw new InvalidConfigurationException(
-                'Unknown pot draw option',
-                ['unknown' => $unknown, 'known' => self::KEYS],
-                reason: InvalidConfigurationReason::UnknownOptionKey
-            );
-        }
+        PlainData::checkOptions($config, self::KEYS, 'pot draw options');
 
         $values = [];
         foreach (self::KEYS as $key) {
@@ -105,15 +101,17 @@ final readonly class PotDrawOptions implements SchedulerOptions
     }
 
     /**
-     * The plain-data form fromArray() accepts: all three keys, always, so
-     * that a stored draw names its seed.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then all three options, always, so that a
+     * stored draw names its seed.
      *
-     * @return array{pots: int, opponents_per_pot: int, seed: int}
+     * @return array{format_version: int, pots: int, opponents_per_pot: int, seed: int}
      */
     #[Override]
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'pots' => $this->pots,
             'opponents_per_pot' => $this->opponentsPerPot,
             'seed' => $this->seed,

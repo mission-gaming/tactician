@@ -4,6 +4,7 @@
 
 # Golden fixtures are compared byte for byte: keep their line endings fixed
 tests/Fixtures/golden/** text eol=lf
+tests/Fixtures/stored-by-0.2/** text eol=lf
 
 # The dist archive carries only what is needed to use the library: src/,
 # composer.json, LICENSE, README.md and CHANGELOG.md. Everything else at the

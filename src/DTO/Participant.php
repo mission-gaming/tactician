@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * Anything that competes: a player, a club, a squad.
@@ -19,21 +20,29 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 readonly class Participant
 {
     /**
-     * Nothing is validated here. The schedulers and StageState::start()
-     * reject a field in which two participants share an ID.
+     * The ID must not be empty; nothing else is validated here. An ID that
+     * is not empty is taken as it is, whitespace and `'0'` included. The
+     * schedulers and StageState::start() reject a field in which two
+     * participants share an ID.
      *
-     * @param string $id The identity. Use a non-empty string: fromArray() refuses an empty one
+     * @param string $id The identity: any string but the empty one
      * @param string $label Display name; the library orders nothing by it
      * @param int|null $seed Seeding number, lower is better; null for unseeded. Stages seed
      *                       entrants from their position in the list, not from this
      * @param array<string, mixed> $metadata Free-form data; MetadataConstraint reads the key it is given
+     *
+     * @throws InvalidInputException When the ID is the empty string
      */
     public function __construct(
         private string $id,
         private string $label,
         private ?int $seed = null,
         private array $metadata = []
-    ) {}
+    ) {
+        if ($id === '') {
+            throw new InvalidInputException('A participant ID cannot be empty');
+        }
+    }
 
     /**
      * The ID that identifies this participant.
@@ -111,13 +120,17 @@ readonly class Participant
      * The plain-data form fromArray() accepts.
      *
      * The metadata is included as it is; whether it can be encoded (as
-     * JSON, say) is up to the values in it.
+     * JSON, say) is up to the values in it. The first key is
+     * `format_version`, the version of this form (1). A form that holds
+     * participants (a schedule, a stage state) writes them without it: one
+     * array has one version, at its top.
      *
-     * @return array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}
+     * @return array{format_version: int, id: string, label: string, seed: int|null, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'id' => $this->id,
             'label' => $this->label,
             'seed' => $this->seed,
@@ -129,16 +142,20 @@ readonly class Participant
      * Recreate a participant from the array form toArray() produces.
      *
      * 'id' and 'label' are required; a missing 'seed' is null and a missing
-     * 'metadata' is empty. Other keys are ignored.
+     * 'metadata' is empty. Any other key is refused: data of your own
+     * belongs in the metadata.
      *
      * @param array<string, mixed> $data
      *
-     * @throws InvalidInputException When the ID is not a non-empty string, the label is not
-     *                               a string, the seed is neither an integer nor null, or
-     *                               the metadata is not an array
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, the ID is not a non-empty string,
+     *                               the label is not a string, the seed is neither an
+     *                               integer nor null, or the metadata is not an array
      */
     public static function fromArray(array $data): self
     {
+        PlainData::checkFields($data, ['id', 'label', 'seed', 'metadata'], 'participant data');
+
         $id = $data['id'] ?? null;
         $label = $data['label'] ?? null;
         if (!is_string($id) || $id === '' || !is_string($label)) {

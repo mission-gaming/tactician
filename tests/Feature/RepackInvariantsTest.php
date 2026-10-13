@@ -1354,11 +1354,11 @@ describe('Repacking every placeable event', function (): void {
 
         expect(array_map(static fn(SlotAssignment $a): string => $a->getEventId(), $outcome->getAssignments()))->toBe(['e2', 'e3'])
             ->and(array_map(static fn(UnplacedEvent $u): array => $u->toArray(), $outcome->getUnplaced()))->toBe([
-                ['event_id' => 'e1', 'reason' => 'participant_over_capacity', 'participant' => 'p3'],
+                ['format_version' => 1, 'event_id' => 'e1', 'reason' => 'participant_over_capacity', 'participant' => 'p3'],
             ])
             ->and(array_map(static fn(CapacityExceeded $v): array => $v->toArray(), $outcome->getCapacityExceededViolations()))->toBe([
-                ['kind' => 'capacity_exceeded', 'participant' => 'p3', 'demand' => 2, 'capacity' => 1, 'shortfall' => 1],
-                ['kind' => 'capacity_exceeded', 'participant' => 'p5', 'demand' => 2, 'capacity' => 1, 'shortfall' => 1],
+                ['format_version' => 1, 'kind' => 'capacity_exceeded', 'participant' => 'p3', 'demand' => 2, 'capacity' => 1, 'shortfall' => 1],
+                ['format_version' => 1, 'kind' => 'capacity_exceeded', 'participant' => 'p5', 'demand' => 2, 'capacity' => 1, 'shortfall' => 1],
             ]);
     });
 
@@ -1381,8 +1381,8 @@ describe('Repacking every placeable event', function (): void {
         $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, [], SessionGrid::shapeOnly(1, 1, [], null)));
 
         expect(array_map(static fn(CapacityExceeded $v): array => $v->toArray(), $outcome->getCapacityExceededViolations()))->toBe([
-            ['kind' => 'capacity_exceeded', 'participant' => 'p1', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
-            ['kind' => 'capacity_exceeded', 'participant' => 'p2', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
+            ['format_version' => 1, 'kind' => 'capacity_exceeded', 'participant' => 'p1', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
+            ['format_version' => 1, 'kind' => 'capacity_exceeded', 'participant' => 'p2', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
         ]);
         // The two events they share are the two dropped, and both others fit
         expect(array_map(static fn(SlotAssignment $a): string => $a->getEventId(), $outcome->getAssignments()))->toBe(['e3', 'e4']);
@@ -1409,8 +1409,8 @@ describe('Repacking every placeable event', function (): void {
         $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, SessionGrid::shapeOnly(1, 2, [], null)));
 
         expect(array_map(static fn(CapacityExceeded $v): array => $v->toArray(), $outcome->getCapacityExceededViolations()))->toBe([
-            ['kind' => 'capacity_exceeded', 'participant' => 'p1', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
-            ['kind' => 'capacity_exceeded', 'participant' => 'p2', 'demand' => 3, 'capacity' => 2, 'shortfall' => 1],
+            ['format_version' => 1, 'kind' => 'capacity_exceeded', 'participant' => 'p1', 'demand' => 3, 'capacity' => 1, 'shortfall' => 2],
+            ['format_version' => 1, 'kind' => 'capacity_exceeded', 'participant' => 'p2', 'demand' => 3, 'capacity' => 2, 'shortfall' => 1],
         ]);
         expect($outcome->getAssignments())->toHaveCount(2);
     });
