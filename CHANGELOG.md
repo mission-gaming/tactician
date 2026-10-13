@@ -42,9 +42,17 @@ heading **Output change (fix)**.
   The rounds are also a schedule of their own: they are returned where
   they place more events than the planned schedule, or as many with fewer
   gap slots. A schedule that still has a gap is then searched for a
-  placement of as many events with fewer gap slots. One session's exact
-  search may spend at most a quarter of the steps left, where one that
-  did not end used to take them all from the sessions after it.
+  placement of as many events with fewer gap slots. Where the result
+  places fewer events than a bound on what any placement can hold, or
+  still has a gap, the events are planned and packed once more in the
+  order of their participants, on the steps the two budgets have left,
+  and that third schedule is returned when it places more events, or as
+  many with fewer gap slots. The last placement step, which moves placed
+  events to make room for an unplaced one, searches further than it did
+  (below). One session's exact search may spend at most a quarter of
+  the steps left, where one that did not end used to take them all from
+  the sessions after it; the table that search starts from is paid for
+  out of the same quarter once a session has eight slots or more.
 
   *What is and is not promised about ids.* For the same request under
   other ids, the number of events at every position, the unplaced counts
@@ -77,7 +85,7 @@ heading **Output change (fix)**.
   | Complete round robin of 24 on six four-slot sessions, ids `1`–`276` | 14 gaps, 6 late starts, budget spent | clean |
   | Complete round robin of 40 on ten four-slot sessions | 24 gaps, 8 late starts, budget spent | clean |
   | Complete round robin of 6 on one session of 21 slots, capacity 3 | 4 gaps (8 gap slots) | clean |
-  | 84 season-like requests of 14 to 40 participants (shuffled round robins, sessions of four to six slots, up to 32 pins) | 643 gaps, 908 late starts, 47 without a gap | 93 gaps, 281 late starts, 63 without a gap |
+  | 84 season-like requests of 14 to 40 participants (shuffled round robins, sessions of four to six slots, up to 32 pins) | 643 gaps, 908 late starts, 47 without a gap | 77 gaps, 201 late starts, 64 without a gap |
   | 2,000 small random requests compared with an exhaustive search | 9% with a gap that a placement of as many events avoids; 31% with other counts under other event ids | none; none |
 
   Every complete round robin of an even number of participants from 6 to
@@ -93,55 +101,104 @@ heading **Output change (fix)**.
 
   | | 0.2.3 | Now |
   |---|---|---|
-  | Events placed, of 263,445 | 214,288 | 214,314 |
-  | Gap slots | 10,024 | 3,382 |
-  | Late starts | 25,847 | 25,913 |
-  | Requests with no gap | 9,322 | 10,842 |
+  | Events placed, of 263,445 | 214,288 | 214,357 |
+  | Gap slots | 10,024 | 2,504 |
+  | Late starts | 25,847 | 25,712 |
+  | Requests with no gap | 9,322 | 11,040 |
 
-  Counting events placed first, then gap slots, then late starts, 3,271
-  requests came back better and 1,072 worse. Of the worse ones, 808 have
+  No request places fewer events than 0.2.3 did, and 52 place more.
+  Counting events placed first, then gap slots, then late starts, 3,385
+  requests came back better and 958 worse. Of the worse ones, 812 have
   as many events placed and as many gap slots and only more late starts,
   which are not compared when one schedule is chosen over another. The
-  other 264 (2.2%) are worse in what the repacker puts first: 23 place
-  fewer events than 0.2.3 did, by one event on 21 of them and by two and
-  three on the others (22 of the 23 with no budget spent), and 241 place
-  as many with more gap slots. Outside that set, a round robin of 40
-  with ten pins on a grid with exactly as many places as events came
-  back with 768 of 770 placed where 0.2.3 placed all. Round robins of an
-  odd number of participants are not improved as those of an even number
-  are: without pins, 142 of them have 408 gap slots where they had 372,
-  and 30 came back with more gap slots against 31 with fewer. The
-  reference scenario (`tests/Fixtures/repack-scenario.json`) had 7 late
-  starts and has 10, still with no gap, and its mis-pinned variant went
-  from 2 gaps and 6 late starts to no gap and 10 late starts.
+  other 146 (1.2%) place as many events with more gap slots, 380 more
+  between them; on 63 of them a budget stopped a search. Round robins of
+  an odd number of participants are not improved as those of an even
+  number are: without pins, 142 of them have 376 gap slots where they
+  had 372, and 27 came back with more gap slots against 34 with fewer.
+  A round of an odd number leaves one participant out, so the rounds
+  laid out as they stand have a gap wherever that falls inside a
+  session, and the schedule has to come from the planner. The reference
+  scenario (`tests/Fixtures/repack-scenario.json`) had 7 late starts and
+  has 10, still with no gap, and its mis-pinned variant went from 2 gaps
+  and 6 late starts to no gap and 10 late starts.
+
+  *Events placed come first.* As this change first stood, it placed
+  fewer events than 0.2.3 on 23 of those requests (one fewer on 21 of
+  them), 768 of 770 on a round robin of 40 with ten pins on a grid with
+  exactly as many places as events, and fewer on 13 of 151 larger
+  requests (round robins of 39 and 40 with up to 400 events pinned, of
+  two legs with 100 pinned, and 800 random events, on grids from too
+  small to roomy). Nearly all are requests whose participants have more
+  events than positions, or whose grid has fewer places than events:
+  which events are left out decides whether every place can be filled,
+  and the new order left others out. Three things were added for them.
+  The last placement step searches further: it tries every single
+  exchange before any chain of two, takes two events out for one where
+  both participants of an unplaced event are in the way wherever it
+  goes, puts one more event at a position along an augmenting path
+  among the events there and the unplaced ones, and lets a path move an
+  event that an exchange brought in. The third schedule above starts
+  from another order where the first two leave something to gain. And
+  the limit on the step's own work, which was 500,000 position checks
+  on every request, is now a hundred checks for every event and
+  position, never fewer than 500,000 and never more than 3,000,000: on
+  770 events and 39 positions the fixed limit stopped the step while it
+  was still placing events. With the three, none of the 11,860 requests
+  and none of the 151 places fewer events than 0.2.3 did (the 151 place
+  104,693 events for 104,392, with 9,463 gap slots for 22,166), and the
+  round robin of 40 places all 770. Twenty-nine of those requests are
+  in the tests with the counts 0.2.3 placed
+  (`tests/Fixtures/repack/placed-by-0.2.3.json`), and requests in which
+  a few participants have most of the events are compared with an
+  exhaustive search. It is not a promise for every request: the
+  repacker is still a set of bounded searches from three orders of the
+  events.
 
   *Time* (PHP 8.4, one core, `composer bench`, fastest of three):
 
   | Benchmark | 0.2.3 | Now |
   |---|---|---|
-  | 24 participants, even sessions | 166 ms | 5 ms |
-  | 24 participants, uneven sessions with pins | 469 ms | 52 ms |
-  | 40 participants, even sessions | 649 ms | 17 ms |
-  | 40 participants, uneven sessions with pins | 71 ms | 157 ms |
+  | 24 participants, even sessions | 162 ms | 5 ms |
+  | 24 participants, uneven sessions with pins | 464 ms | 51 ms |
+  | 40 participants, even sessions | 638 ms | 17 ms |
+  | 40 participants, uneven sessions with pins | 70 ms | 154 ms |
 
   The last one is slower: 0.2.3 happened to pack that request without a
   search, and this release spends about 0.1 seconds laying out its
-  rounds around the ten pins. Both return it with no gap. The work done
-  before any session is chosen, and the search for fewer gap slots, have
-  fixed limits of their own and do not draw on `stepBudget`, so a small
+  rounds around the ten pins. Both return it with no gap. A request
+  that comes back clean costs what its first schedule costs. One that
+  does not is planned a second time and searched further for events to
+  place, and that is where the time goes: the 11,860 requests took 288
+  seconds in all where 0.2.3 took 106, the slowest of them 1.8 seconds
+  (a round robin of 40 with four pins, which took 0.5
+  seconds in 0.2.3). The 151 larger requests took 148 seconds where
+  0.2.3 took 79: a round robin of 40 with pins a median of 0.75 seconds
+  and 3 at most, one of two legs among 40 (1,460 events) a median of 2
+  seconds and 4.8 at most, where 0.2.3 took 0.9 and placed ten events
+  fewer with 18 more gap slots. The work done before any session is
+  chosen, the last placement step and the search for fewer gap slots
+  have limits of their own and do not draw on `stepBudget`, so a small
   budget no longer makes a repack as short as it did: a round robin of
   40 with 60 pins took 0.03 seconds at a budget of one step and takes
-  0.2. Requests that 0.2.3 packed without a search are the ones that are
-  slower, by up to six times on those measured (a round robin of 40
-  with 400 of its events pinned: 0.04 seconds, now 0.25; 800 events
-  between 800 separate pairs of participants: 0.12, now 0.4). And because one
-  session's search no longer takes the steps of the sessions after it,
-  more sessions do the work that is not counted in steps, which grows
-  with two to the power of a session's slot count: a request of 800
+  0.6 (and places all 720 events without a gap, where 0.2.3 placed 650
+  at that budget and 718 at the default). Requests that 0.2.3 packed
+  without a search are the ones that are slower by the most: a round
+  robin of 40 with 400 of its events pinned took 0.03 seconds and takes
+  0.5 (with 84 gap slots for 157), 800 events between 800 separate
+  pairs of participants 0.12 and 0.35, and 800 events of one participant
+  against three others, of which 60 can be placed and the step cannot
+  prove it, 0.2 and 1.5. Sessions of many slots were the slowest thing
+  a repack did, and still are, though less so: the table a session's
+  exact search starts from grows with two to the power of its slot
+  count, and it is now paid for in steps, so a session whose share of
+  the budget cannot pay for it is packed greedily. A request of 800
   events among 200 participants, whose sessions do not pack, took 0.3
-  seconds on sessions of 12 slots and takes 3, and 3.7 seconds at 16
-  slots and takes 10 (with 767 gap slots for 1,336, and 1,104 for
-  1,703). The usage guide has the figures.
+  seconds on sessions of 12 slots and takes 0.9, 3.7 seconds at 16 slots
+  and takes 2.6, and 17 seconds and 890 MB at 18 slots and takes 10
+  seconds and 16 MB (with 767 gap slots for 1,336 at 12 slots, 1,104 for
+  1,703 at 16 and 1,551 for 2,037 at 18). The usage guide has the
+  figures.
 
   *Who is affected.* Everyone who repacks. *What to check:* an outcome
   kept from an earlier release, or its fingerprint, no longer matches a
@@ -166,7 +223,13 @@ heading **Output change (fix)**.
   as above; the mis-pinned variant leaves out event `1009` where it left
   out `1022`), `repack/budget-stops.txt` (a round robin without pins now
   gives the same clean outcome at every budget, where a budget of one
-  step left events unplaced), `examples/19-repacking-a-season.txt` (the
+  step left events unplaced; every case with pins has fewer violations
+  than it had at every budget, at the default one 9 for 15 with eight
+  participants, 12 for 37 with twelve, 43 for 76 with sixteen, 51 for
+  124 with twenty and 61 for 193 with twenty-four; and the case of
+  eight participants with pins says at a budget of 1,000 steps that a
+  budget stopped a search, where it said none did, because the third
+  schedule is made on what is left), `examples/19-repacking-a-season.txt` (the
   same counts, one late start named for another participant) and
   `examples/23-application-adapter-and-repack.txt` (three of five events
   placed as before; `fx10` is placed and `fx09` left out, where it was

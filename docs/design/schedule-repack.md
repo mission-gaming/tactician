@@ -358,7 +358,8 @@ returned; the changelog lists what changed for the others.
     search ran to its limits on every round: up to eight seconds on
     requests of 300 to 800 events that 0.2.2 repacked in under half a
     second. So the whole step also stops searching after 500,000 position
-    checks (`WORK_LIMIT`, about a sixth of a second), a limit of its own
+    checks (`WORK_LIMIT`, about a sixth of a second; more on a large
+    request since 0.3.0, decision 48), a limit of its own
     like the others. It is about 25 times what the complete round robins
     of up to 40 participants and the small corpus need, which still reach
     their optimum; on a few requests it leaves an event unplaced that a
@@ -606,15 +607,15 @@ signature changed.
     and every session after it was then packed greedily. The search of
     a session now gets a quarter of the steps left when it starts.
     A search its share stops is recorded as a search the budget stopped.
-    It has a cost the budget does not show. Before its search a session
-    works out which start slots can give gap-free runs at all, which is
-    not counted in steps and grows with two to the power of its slot
-    count; with a share each, more sessions get as far as doing it. On
-    800 events among 200 participants, whose sessions do not pack, a
-    repack took 3 seconds on sessions of 12 slots where 0.2.3 took 0.3,
-    and 10 seconds at 16 slots where it took 3.7 (with 767 and 1,104
-    gap slots for 1,336 and 1,703). A complete round robin on sessions
-    that wide packs without a search and takes milliseconds.
+    It had a cost the budget did not show: with a share each, every
+    session of a request whose sessions do not pack did work that one
+    session used to do, some of it not counted in steps. On 800 events
+    among 200 participants a repack took 3 seconds on sessions of 12
+    slots where 0.2.3 took 0.3, and 10 seconds at 16 slots where it took
+    3.7 (with 767 and 1,104 gap slots for 1,336 and 1,703). Decision 47
+    says what that work was and what was done about it. A complete round
+    robin on sessions that wide packs without a search and takes
+    milliseconds.
 44. **What did not get better.** Late starts are not an aim of any of
     this, and the reference scenario has 10 where it had 7 (no gap
     either way). Requests with many pins and sessions of unequal length
@@ -622,28 +623,187 @@ signature changed.
     40 participants: the planner still decides sessions before slots,
     and the rounds only make its choices better. The searches are
     heuristics on another order of events, so a request can come back
-    worse than it did: of 11,860 generated requests compared with 0.2.3
-    one by one, 23 placed fewer events (one fewer on 21 of them, 22 with
-    no budget spent) and 241 placed as many with more gap slots, against
-    3,271 that were better by events placed, then gap slots, then late
-    starts; the changelog has the table. Round robins of an odd number
-    of participants gained nothing in sum (408 gap slots for 372 on 142
-    of them without pins): a round of an odd number leaves one
-    participant out, and where that is in the middle of a session the
-    round laid out as it stands has a gap, so the rounds are no better a
-    schedule than the planned one there. Taking the number of rounds
+    worse than it did. Of 11,860 generated requests compared with 0.2.3
+    one by one, none places fewer events (decisions 45 to 48; 23 did
+    before them) and 146 place as many with more gap slots (241 before
+    them), 380 gap slots more between them, against 3,385 that are
+    better by events placed, then gap slots, then late starts; the
+    changelog has the table. Of the 146, 63 are runs a budget stopped.
+    Round robins of an odd number of participants gain next to nothing
+    in sum (376 gap slots for 372 on 142 of them without pins, more on
+    27 and fewer on 34; 408 before the third schedule): a round of an
+    odd number leaves one participant out, and where that is in the
+    middle of a session the round laid out as it stands has a gap, so
+    the rounds are no schedule there and it has to come from the
+    planner, whose order of events 0.2.3 happened to be given at random
+    by the ids of these requests. Taking the number of rounds
     from the participants as well as from the capacity (no round holds
     more events than half the participants, so an odd round robin needs
     one round more than its participants have events) was measured: the
     layout was quicker and the gaps were the same, and it was left out.
     One of the four repack
-    benchmarks is slower (71 ms to 157 ms): 0.2.3 packed that request
+    benchmarks is slower (70 ms to 154 ms): 0.2.3 packed that request
     without a search, and the layout leaves 35 of its 770 events over
     after the first pass, which the search then fits into the same 39
     rounds with 260,000 position checks, 0.1 seconds. That work is what
     gives the planner whole rounds, so it was not cut. Putting the positions first throughout, and deciding
     sessions from them, is the design this points to and was not
     attempted here.
+45. **The last placement step searches further, because the events
+    placed come first.** Compared request by request with 0.2.3 (11,860
+    generated requests), the change of order as it first stood placed
+    fewer events on 23 of them, and on a round robin of 40 with ten pins
+    on a grid it fills exactly (768 of 770). All but a few are requests
+    in which participants have more events than positions, or the grid
+    fewer places than events: 0.2.3 filled every place, and the new plan
+    ended one place short with nothing the step could do about it. Which
+    events of an over-capacity participant are left out decides whether
+    the rest can fill the grid, the order of the events decides which
+    are dropped first, and the step could change that by one exchange at
+    a time and no further. Four things changed in it. Every single
+    exchange is tried before any chain of two (the search went depth
+    first, and spent its 2,000 nodes under the first few unplaced events,
+    several of them copies of one pairing; a copy is now skipped, and so
+    is an exchange of an event for another of the same two
+    participants). Between the two it tries an exchange that takes two
+    events out: the unplaced event takes a position where both its
+    participants have an event, both leave, and two of the events
+    waiting must then be placed; that is what leaves a state in which
+    every unplaced event has two events in its way wherever it goes,
+    which is where the round robin of 40 stood. Before either, a
+    position with room takes one more event along an augmenting path
+    among the events placed there and the unplaced ones, as a matching
+    is augmented: any number of events out and one more in, at one
+    position. And an alternating path may move an event an exchange
+    brought in (it could not, and on a request of six events that left
+    one out that fits). The moves spend steps of the second budget and
+    count towards the step's own limit of position checks, as the others
+    do. A swap of the chain between two positions, tried for every pair
+    of positions an unplaced event's participants are free at, was built
+    and taken out again: on the 11,860 requests no request placed fewer
+    events than 0.2.3 with it or without it once the augmenting path was
+    there, and the totals differed by one event and four gap slots.
+    Without both, two requests of 30 and 36 participants placed one
+    event fewer than 0.2.3.
+    A move that rearranges placed events without placing one more, so as
+    to make room for a later move, was not built: it has no measure to
+    steer by, and the third schedule (decision 46) is the cheaper way to
+    start from somewhere else.
+46. **A third schedule, in the order of the participants, where the
+    first two leave something to gain.** The stronger step alone still
+    left five of the 11,860 requests with fewer events than 0.2.3 placed
+    (three of them new ones: the round layout uses the same step, so its
+    rounds changed, and with them the order of every event). No order of
+    the events is best for every request: with the step as it was, the
+    events taken round by round placed fewer than 0.2.3 on all 24
+    requests (that is how they were found), taken by their participants
+    on 8 of them, and in a third order made from the request on 10, not
+    the same ones. So
+    where the schedule chosen from the first two places fewer events
+    than the ceiling of the last placement step (a bound no placement
+    passes), or has a gap after the search for fewer gap slots, the
+    events are planned, packed and swept once more in the order of their
+    two participants, the last placement step and the search for fewer
+    gap slots are run on the result, and it is returned when it places
+    more events, or as many with fewer gap slots; on a tie the earlier
+    schedule stands. That order is what 0.2.3 had in effect, with the
+    structural order of the participants in place of their ids, so the
+    outcome is still a function of the request written in that order
+    and depends on the ids exactly as far as decision 39 says. It is
+    made on what the two budgets have left and has none of its own: a
+    repack still spends at most twice `stepBudget`, and a request whose
+    searches spent the first budget gets a third schedule from the
+    greedy packing only. A schedule that is already clean, or that
+    places as many events as the ceiling and has no gap, costs nothing
+    more. With both changes, none of the 11,860 requests places fewer
+    events than 0.2.3 did, 52 place more, and the requests that place as
+    many with more gap slots went from 241 to 148; the round robin of 40
+    places all 770. The cost is time on the requests that are not clean:
+    the 11,860 took 281 seconds in all where they took 220 (0.2.3: 106),
+    and the 84 season-like requests of decision 40 took 16.8 seconds
+    where they took 11.0 (0.2.3: 20.6), with 79 gaps for 93. Decision 48
+    has the figures as they are with that decision too. More orders
+    would be more of the same trade and were not added. What is still
+    worse than 0.2.3 is in decision 44.
+47. **The table of a session's exact search is paid for in steps.**
+    Before it enumerates run placements a session works out, for every
+    participant, the cheapest way to each parity mask: a table of up to
+    two to the power of its slot count entries a row, which was not
+    counted in steps. With a share of the budget for each session
+    (decision 43) every session built one. A row now costs 16 steps for
+    every full 1,024 entries, charged to the search's share before the
+    row is made, and a table the share cannot pay for is given up: the
+    session is packed greedily, and the outcome says a budget stopped a
+    search. A row of fewer than 1,024 entries is free, which is every
+    row of a session of up to seven slots, so those sessions spend
+    exactly the steps they spent and no outcome on them changes (the
+    reference implementation in the tests still spends the same). At
+    the default budget the rows that are paid for come to at most 12.8
+    million entries in a repack. The slowness measured on wide sessions
+    had a second cause, and the larger one at twelve slots: the repair
+    that follows a failed search counted the events of a slot, and
+    looked up a participant's event in a slot, by going through every
+    event of the session at every step, so a step cost work in
+    proportion to the session, and with a share for each session the
+    repair ran in all of them where it used to find the budget spent.
+    It keeps both up to date as it moves events now; it makes the same
+    moves and the outcomes are the same. On 800 events among 200
+    participants a repack takes 0.9 seconds on sessions of 12 slots, 2.6
+    at 16 and 10 at 18, where the first version of this change took 3.4,
+    9.9 and 21 and 0.2.3 took 0.3, 3.7 and 17; the memory at 18 slots
+    went from 890 MB to 16 MB. What is left at 16 slots and more is the
+    planner's parity score and the check made on a spent budget, which
+    still work through every mask of a session and are not counted in
+    steps; no session of more than 20 slots is reasoned about that way,
+    which bounds them. Twelve slots are still three times slower than
+    0.2.3 on that request, because every session's search and repair
+    now run where one did, and that is what the share is for.
+48. **The step's limit on position checks grows with the request.**
+    The 11,860 requests are of 40 participants at most and most are much
+    smaller. On 151 larger and harder ones (round robins of 39 and 40
+    with up to 400 events pinned, of two legs with 100 pinned, 800
+    random events among 12 to 800 participants, on grids from too small
+    to roomy), decisions 45 and 46 still placed fewer events than 0.2.3
+    on 11, by one to five events (13 before them). With six times the
+    limit of 500,000 position checks (decision 33) they placed as many
+    or more on every one of them, most with far fewer gaps: the step
+    was stopped while it was still placing events. A fixed number of
+    checks is not the same amount of search on every request. An
+    alternating path lifts each placed event once at most and looks at
+    each position for it a few times, so the events times the positions
+    is about what one search that fails costs, and 500,000 checks are
+    the work of some five hundred of them on 45 events and 7 positions
+    and of five on 770 events and 39. The limit is now 100 checks for
+    every event and position, never fewer than 500,000 (so a request of
+    up to 200 events on 25 positions has the limit it had) and never
+    more than 3,000,000: without the upper end a round robin of two legs
+    among 40 (1,460 events on 75 positions) had 11 million each time the
+    step ran, and took eight seconds. It is fixed for a request and does
+    not depend on the budget, like the limit it replaces, and the round
+    layout has it too. With 50 for every event and position two of the
+    eleven were still short; a limit on the work since the last event
+    was placed, in place of a larger one, left two short as well. On
+    the 151 requests none places fewer events than 0.2.3 now and 34
+    place more (104,693 events for 104,392, 9,463 gap slots for 22,166);
+    three place as many with more gap slots. With decisions 45 and 46,
+    the 11,860 requests place 214,357 events (0.2.3: 214,288; this
+    change as it first stood: 214,314) with 2,504 gap slots (10,024;
+    3,382), none places fewer events than 0.2.3 and 146 place as many
+    with more gap slots (241). The cost is time on requests that leave
+    events over or keep a gap. The 11,860 took 288 seconds in all (0.2.3:
+    106; as it first stood: 220), the slowest 1.8; the 84 season-like
+    requests of decision 40 took 19.7 seconds (20.6; 11.0), with 77 gaps
+    for 93; and the 151 took 148 seconds where 0.2.3 took 79, a round
+    robin of 40 with pins 0.75 seconds at the median and 3 at most, one
+    of two legs a median of 2 seconds and 4.8 at most, where 0.2.3 took
+    0.9 and placed ten events fewer. A repack runs the step up to four
+    times (twice for the round layout, once for each planned schedule),
+    so its work in this step is at most 12 million position checks,
+    some four seconds. It is longest for nothing where the leftovers
+    cannot be placed and the ceiling does not see it: 800 events of one
+    participant against three others, of which 60 fit, took 0.2 seconds
+    and takes 1.5. A bound from a set of participants that every event
+    touches would see that one, and was not added here.
 
 ## Testing
 
@@ -722,3 +882,39 @@ their 742 comparisons, 539 of them on requests with no symmetry at all,
 where the two schedules must simply be equal; the other nine are the round
 robins of 12, 16 and 20, which have too many participants for the
 symmetries to be found by trial and are compared by their counts.
+
+The comparison with 0.2.3 request by request (decisions 45 to 48) added
+the tests for what it found. "Places at least as many events as the last
+release" has no oracle but that release, so 29 requests are kept as plain
+data with the counts 0.2.3 placed, measured with a copy of its source
+(`tests/Fixtures/repack/placed-by-0.2.3.json`), and the repacker must
+place at least as many on each: the 24 on which the change placed fewer
+as it first stood, two that a version of the fix between lost an event on,
+and three of the large ones (round robins of 40 with 60, 200 and 400
+events pinned). Against the change as it first stood 26 of the 29 fail:
+all but the two from the version between and the one with 400 events
+pinned. Seen with each thing switched off in a
+copy of the final source: without the exchange for two events one request
+of 30 participants fails, without the path that moves an exchanged event
+the request of six events, without the third schedule two requests,
+without the limit that grows with the request the last three. Where a
+request is small enough there is a real oracle: 800 requests in which up
+to three participants have most of six to eleven events are compared with
+the exhaustive search, and three of them were one event short before (one
+of them still is without the exchange for two, another without the path
+that moves an exchanged event). The last placement step has a unit test
+for each of its new moves on a state small enough to read (an exchange for
+two events on five events, an augmenting path that takes three events out
+of one slot, a path that moves an exchanged event), each seen to fail with
+that move taken out. The cost table is tested from both sides: a session
+of twelve slots is given up on a budget that cannot pay for its table, and
+a session of seven slots spends the steps the reference implementation
+spends, which does not count the table at all. One thing has no test that
+fails without it: that every single exchange is tried before a chain of
+two. It mattered while the step's limit was 500,000 position checks (the
+round robin of 40 on a full grid came out two events short with the
+search depth first), and with the limit of decision 48 every request of
+the fixture passes either way. The augmenting path fails its unit test
+when it is taken out and no request of the fixture, for the same reason.
+Both are kept: they find at a cost of a few steps what the exchanges
+find late or not at all.
