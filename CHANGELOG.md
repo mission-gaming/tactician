@@ -147,6 +147,19 @@ heading **Output change (fix)**.
   What to check: whether anything relied on the key. Before:
   `new Standings([5 => $a, 9 => $b])->getPosition($b)` was 10. After: 2
   (#121, item 3).
+- **Breaking: `SeedProtectionConstraint` accepts an event that has no
+  round.** Such an event was counted as round 0, which is inside every
+  protection window, so an event of two top seeds was rejected even with a
+  period of 0.0, which protects no round. An event with no round is in no
+  round and therefore in no protected one: `isSatisfied()` now returns
+  true for it, as it does where the plan has no total number of rounds.
+  Every event the schedulers and the engines build carries a round, so no
+  generated schedule changes. Who is affected: code that calls
+  `isSatisfied()`, or `ConstraintSet::isSatisfied()` with this constraint
+  in the set, on an event built without a `Round`. What to check: give such
+  an event its round where the protection is meant to apply. Before:
+  `false` for two top seeds in an event with no round. After: `true`
+  (#121, item 4).
 
 ### Fixed
 
