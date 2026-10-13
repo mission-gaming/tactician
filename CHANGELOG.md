@@ -1758,7 +1758,12 @@ entry on the engine fingerprint.
     and with a schedule in hand puts an event a constraint of yours
     rejected to it once more with a context that holds no events. The
     usage guide asks for pure predicates ("What a constraint may rely on"),
-    and what is said above holds for those.
+    and what is said above holds for those. That context is one no
+    generation makes for an event of a later leg, where a constraint may
+    rely on the first leg being there (the first meeting of a pair, read
+    for the return meeting): what a constraint throws for that one question
+    is read as "the rejection turns on what came before", the schedule in
+    hand is returned, marked, and the exception does not reach the caller.
 
   **Golden fixtures.** Every fixture of a round robin with default options
   changes, in roles only: `round-robin/mirrored-unseeded.txt`,

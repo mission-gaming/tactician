@@ -75,7 +75,8 @@ enum RoleFallback: string
      * seatings were rejected or do not exist, and everything ended at the
      * first event such a constraint rejected for what came before it (an
      * event it accepts with no event before it, as a limit on a streak or
-     * on a running total does). The whole is held to
+     * on a running total does, or one it cannot answer for without them
+     * and throws). The whole is held to
      * `RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND`
      * events put to the constraints, a backtracking search included, and
      * that search is made only where the schedule in hand came from a

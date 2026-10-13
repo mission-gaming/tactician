@@ -415,7 +415,12 @@ that an event it is asked about ends up in the schedule:
   ([Balanced where possible](#balanced-where-possible)). With a schedule in
   hand, an event that a constraint of yours rejected is put to that
   constraint once more against a context that holds no events, to learn
-  whether the rejection turns on what came before.
+  whether the rejection turns on what came before. That is the one context
+  no generation makes for an event of a later leg (the leg is the event's,
+  and the first leg is not in it), so a constraint that reads the first
+  meeting of a pair there may find none. What it throws for that question
+  is taken as the answer that the rejection does turn on what came before,
+  and does not reach you.
 - **A failure analysis asks about events that were never candidates**: each
   missing pairing, in every round, with either participant first-named,
   against the events of the failed attempt.
@@ -1150,7 +1155,9 @@ the order depends on what the search of roles can know about them:
        constraint of yours rejects an event that it accepts by itself, with
        no event before it, everything ends at once: such a rejection turns
        on what came before (a streak, a running total), and the scheduler
-       cannot tell which earlier event to change. (Beside one of the
+       cannot tell which earlier event to change. A constraint that throws
+       when it is asked about the event by itself is read the same way.
+       (Beside one of the
        library's role limits the search is still made where it is that
        limit which rejects, since it knows how to go back for it.)
 

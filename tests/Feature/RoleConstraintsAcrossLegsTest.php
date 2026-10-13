@@ -41,6 +41,14 @@ use Random\Randomizer;
 // streak allows.
 
 /**
+ * A constraint set of the caller's: not ConstraintSet itself, and it
+ * changes nothing. The scheduler cannot know that, so it reasons about no
+ * constraint in it, the library's own included, and asks the set as a
+ * whole.
+ */
+final readonly class RoleSweepConstraintSetOfTheCallers extends ConstraintSet {}
+
+/**
  * Whether this run collects line coverage: it was started with one of the
  * `--coverage` options, as `composer test-coverage` starts it.
  *
@@ -1152,6 +1160,57 @@ describe('the default, balanced where possible', function (): void {
             ->and(RoleCounts::worstEndImbalance(RoleCounts::leg($own, 1, $roundsPerLeg)))->toBe(1)
             ->and(roleSweepFaults($own, $field, 2, 'mirrored', RoleScheduleOracle::streakRule(2)))->toBe([]);
     })->with([12, 16, 20]);
+
+    // With a schedule in hand the scheduler asks a constraint of the
+    // caller's one question that no generation asks: about an event it
+    // rejected, against a context that holds no events, to learn whether
+    // the rejection turns on what came before. For an event of a later leg
+    // no generation makes that context, and a constraint may rely on what
+    // every generation gives it there: the first meeting of the pair. This
+    // one says so and throws without it. Up to 0.2.x it was never asked
+    // such a thing, and the league completed with the roles of round
+    // parity. It still does: a constraint that cannot answer without the
+    // events before is one whose verdict turns on them, and what it throws
+    // for the made-up context does not reach the caller.
+    //
+    // The same inside a constraint set of the caller's, which is asked as
+    // a whole and throws what its constraint throws.
+    it('completes a league whose constraint cannot judge an event of a later leg without the first leg', function (int $size, bool $inASetOfTheCallers): void {
+        $field = roleSweepField($size);
+        $limit = ConsecutiveRoleConstraint::homeAway(2);
+        $constraints = ConstraintSet::create()->custom(
+            static function (Event $event, SchedulingContext $context) use ($limit): bool {
+                if (!$limit->isSatisfied($event, $context)) {
+                    return false;
+                }
+                if ($context->getCurrentLeg() === 1) {
+                    return true;
+                }
+
+                [$first, $second] = $event->getParticipants();
+                $meetings = array_values($context->getEventsBetween($first, $second));
+                if ($meetings === []) {
+                    throw new LogicException('A return meeting was put to the constraint without the first meeting.');
+                }
+
+                return $meetings[0]->getParticipants()[0]->getId() === $second->getId();
+            },
+            'Two in a row, and the return meeting the other way round'
+        )->build();
+        if ($inASetOfTheCallers) {
+            $constraints = new RoleSweepConstraintSetOfTheCallers($constraints->getConstraints());
+        }
+
+        $underRoundParity = (new RoundRobinScheduler($constraints))->schedule($field, new RoundRobinOptions(2, null, false, new RoundParityRoleAssignment()));
+        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, new RoundRobinOptions(2));
+
+        expect(RoleFallback::of($schedule))->toBe(RoleFallback::BalancedRolesRejected)
+            ->and(roleSweepWithoutTheMark($schedule))->toBe($underRoundParity->toArray())
+            ->and(roleSweepFaults($schedule, $field, 2, 'mirrored', RoleScheduleOracle::streakRule(2)))->toBe([]);
+    })->with([8, 12])->with([
+        'in a ConstraintSet' => [false],
+        'in a constraint set of the caller\'s' => [true],
+    ]);
 
     // A caller who names the balanced role assignment has asked for
     // balanced roles and nothing else: the same league is refused, as it

@@ -31,6 +31,7 @@ use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ValidatesScheduleCompleteness;
 use Override;
 use Random\Randomizer;
+use Throwable;
 
 /**
  * Generates a complete round-robin schedule up front: every participant
@@ -1446,7 +1447,12 @@ class RoundRobinScheduler implements SchedulerInterface
      * which can spend a whole allowance without a result.
      *
      * Each event is put to the constraints once more for this, with a
-     * context that holds no events.
+     * context that holds no events. No generation makes that context for
+     * an event of a later leg, so a constraint may be unable to answer
+     * there and throw: one that reads the first meeting of a pair when it
+     * is asked about the second. That is an answer to this question, and
+     * not a failure of the call: such a constraint turns on earlier events
+     * (acceptsWithNoEventBefore()).
      *
      * @param list<array{Event, SchedulingContext}> $rejections
      */
@@ -1457,16 +1463,8 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         foreach ($rejections as [$event, $context]) {
-            $byItself = new SchedulingContext(
-                $context->getParticipants(),
-                $context->getPlan(),
-                [],
-                $context->getCurrentLeg(),
-                $context->getParticipantsPerEvent()
-            );
-
             if ($this->constraints::class !== ConstraintSet::class) {
-                if (!$this->constraints->isSatisfied($event, $context) && $this->constraints->isSatisfied($event, $byItself)) {
+                if (!$this->constraints->isSatisfied($event, $context) && $this->acceptsWithNoEventBefore($this->constraints, $event, $context)) {
                     return true;
                 }
 
@@ -1477,7 +1475,7 @@ class RoundRobinScheduler implements SchedulerInterface
                 if (
                     !ConstraintPurity::constraintReadsOwnEventsOnly($constraint)
                     && !$constraint->isSatisfied($event, $context)
-                    && $constraint->isSatisfied($event, $byItself)
+                    && $this->acceptsWithNoEventBefore($constraint, $event, $context)
                 ) {
                     return true;
                 }
@@ -1485,6 +1483,33 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         return false;
+    }
+
+    /**
+     * Whether a constraint, or a whole set, accepts the event when it is
+     * put to it with the same participants, plan and leg and no event
+     * before it. True as well when it throws: the context is one the
+     * scheduler makes up for this question alone, and a constraint that
+     * cannot answer without the events before it is one whose verdict
+     * turns on them. Nothing it throws there reaches the caller; what it
+     * throws when asked about an event in the context of a generation
+     * still does.
+     */
+    private function acceptsWithNoEventBefore(ConstraintInterface|ConstraintSet $constraints, Event $event, SchedulingContext $context): bool
+    {
+        $byItself = new SchedulingContext(
+            $context->getParticipants(),
+            $context->getPlan(),
+            [],
+            $context->getCurrentLeg(),
+            $context->getParticipantsPerEvent()
+        );
+
+        try {
+            return $constraints->isSatisfied($event, $byItself);
+        } catch (Throwable) {
+            return true;
+        }
     }
 
     /**
