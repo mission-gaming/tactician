@@ -35,6 +35,40 @@ use MissionGaming\Tactician\Tests\Support\RoundRobinAudit;
 // streak allows.
 
 /**
+ * Whether this run collects line coverage: it was started with one of the
+ * `--coverage` options, as `composer test-coverage` starts it.
+ *
+ * The two sweeps against the oracle that run every strategy (without
+ * backtracking, and with it under the round-parity role assignment) do not
+ * run then. Under Xdebug's coverage driver the scheduler takes about twenty
+ * times what it takes without one, and the two took 67 s and 50 s of the
+ * 236 s of this file, where they take 3.3 s and 2.8 s in a plain run. They
+ * were compared, line by line, with a coverage run of the whole suite
+ * without this file: they reach no line of `src/` that the tests which
+ * still run under the driver do not reach (the balanced sweep and the field
+ * of thirteen reach the 17 lines of RoundRobinScheduler that nothing else
+ * does). Every job without a coverage driver runs them, which is every job
+ * of the gate but the one that measures coverage.
+ */
+function roleSweepIsUnderCoverage(): bool
+{
+    $arguments = $_SERVER['argv'] ?? [];
+    if (!is_array($arguments)) {
+        return false;
+    }
+
+    foreach ($arguments as $argument) {
+        if (is_string($argument) && str_starts_with($argument, '--coverage')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+const ROLE_SWEEP_NOT_UNDER_COVERAGE = 'Not run under a coverage driver: it covers no line of its own there and takes about a minute. roleSweepIsUnderCoverage() has the measurements.';
+
+/**
  * @return list<Participant>
  */
 function roleSweepField(int $size): array
@@ -313,7 +347,7 @@ describe('roles over several legs, without backtracking', function (): void {
             // The sweep means nothing unless it holds both answers
             ->and($found)->toBeGreaterThan(0)
             ->and($refused)->toBeGreaterThan(0);
-    })->with([3, 4, 5, 6, 7]);
+    })->with([3, 4, 5, 6, 7])->skip(roleSweepIsUnderCoverage(), ROLE_SWEEP_NOT_UNDER_COVERAGE);
 });
 
 describe('roles over several legs, with backtracking', function (): void {
@@ -388,7 +422,7 @@ describe('roles over several legs, with backtracking', function (): void {
             ->and($stopped)->toBe([])
             ->and($found)->toBeGreaterThan(0)
             ->and($proven)->toBeGreaterThan(0);
-    })->with([4, 5]);
+    })->with([4, 5])->skip(roleSweepIsUnderCoverage(), ROLE_SWEEP_NOT_UNDER_COVERAGE);
 
     // The balanced role assignment changes roles the search chose, so a
     // schedule of the oracle may be one it does not keep, and "exists" is
