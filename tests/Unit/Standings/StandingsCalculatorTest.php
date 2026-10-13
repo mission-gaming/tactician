@@ -12,6 +12,30 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use MissionGaming\Tactician\Standings\WinsTiebreaker;
 
+/**
+ * Every order of the given values.
+ *
+ * @param list<string> $values
+ * @return list<list<string>>
+ */
+function standingsPermutations(array $values): array
+{
+    if (count($values) <= 1) {
+        return [$values];
+    }
+
+    $permutations = [];
+    foreach ($values as $index => $value) {
+        $rest = $values;
+        unset($rest[$index]);
+        foreach (standingsPermutations(array_values($rest)) as $permutation) {
+            $permutations[] = [$value, ...$permutation];
+        }
+    }
+
+    return $permutations;
+}
+
 describe('Result', function (): void {
     beforeEach(function (): void {
         $this->alice = new Participant('p1', 'Alice');
@@ -193,7 +217,7 @@ describe('StandingsCalculator', function (): void {
         );
         $standings = $calculator->calculate($this->participants, $results);
 
-        // Alice and Bob tie on Buchholz (3.0) and fall back to label order;
+        // Alice and Bob tie on Buchholz (3.0) and fall back to id order;
         // Carol's weaker opposition (0.0) ranks her below both.
         expect($standings->getPosition($this->alice))->toBe(1);
         expect($standings->getPosition($this->bob))->toBe(2);
@@ -226,7 +250,7 @@ describe('StandingsCalculator', function (): void {
         expect($aliceEntry?->getTiebreakerValue('sonneborn-berger'))->toBe(1.25);
     });
 
-    it('orders deterministically by label when fully tied', function (): void {
+    it('orders deterministically by id when fully tied and unseeded', function (): void {
         $standings = (new StandingsCalculator())->calculate($this->participants, []);
 
         $labels = array_map(
@@ -237,7 +261,7 @@ describe('StandingsCalculator', function (): void {
         expect($labels)->toBe(['Alice', 'Bob', 'Carol', 'Dave']);
     });
 
-    it('breaks full ties by seed before label', function (): void {
+    it('breaks full ties by seed before id', function (): void {
         $participants = [
             new Participant('z', 'Zeta', 2),
             new Participant('a', 'Alpha'),      // unseeded sorts last
@@ -250,16 +274,64 @@ describe('StandingsCalculator', function (): void {
         expect($ids)->toBe(['m', 'z', 'a']);
     });
 
-    it('compares tied labels in natural order', function (): void {
+    it('never reads a label to order a full tie', function (): void {
+        // The labels are in the opposite order to the ids, in natural
+        // order and in byte order alike
         $participants = [
-            new Participant('p10', 'Player 10'),
-            new Participant('p2', 'Player 2'),
+            new Participant('b', 'Player 2'),
+            new Participant('a', 'Player 10'),
         ];
 
         $standings = (new StandingsCalculator())->calculate($participants, []);
 
-        $labels = array_map(fn($entry) => $entry->getParticipant()->getLabel(), $standings->getEntries());
-        expect($labels)->toBe(['Player 2', 'Player 10']);
+        $ids = array_map(fn($entry) => $entry->getParticipant()->getId(), $standings->getEntries());
+        expect($ids)->toBe(['a', 'b']);
+    });
+
+    // The last step of the fallback. PHP's own comparison of two strings
+    // reads numeric strings as numbers, which is no order at all for ids
+    // that mix the two kinds: '2' < '10' < '1a' < '2'. A table sorted by
+    // it depended on the order its participants were given in.
+    it('gives a full tie the same order for every order of the participants array', function (array $ids, array $expected): void {
+        $orders = [];
+        foreach (standingsPermutations(array_values(array_map(strval(...), $ids))) as $permutation) {
+            $standings = (new StandingsCalculator())->calculate(
+                array_map(fn(string $id): Participant => new Participant($id, 'Same label'), $permutation),
+                []
+            );
+            $orders[implode(' ', array_map(
+                fn($entry): string => $entry->getParticipant()->getId(),
+                $standings->getEntries()
+            ))] = true;
+        }
+
+        expect(array_keys($orders))->toBe([implode(' ', $expected)]);
+    })->with([
+        'numeric and other ids mixed' => [['2', '10', '1a'], ['2', '10', '1a']],
+        'ids that are equal as numbers' => [['01', '1', '1.0', '1e0'], ['1', '01', '1.0', '1e0']],
+        'whole numbers of any length, in the order of their values' => [
+            ['9', '10', '100', '99999999999999999999', '99999999999999999998'],
+            ['9', '10', '100', '99999999999999999998', '99999999999999999999'],
+        ],
+        'a zero, a signed number and an empty-looking one' => [['0', '-1', '00', ' 1'], ['0', ' 1', '-1', '00']],
+        'plain names' => [['p10', 'p2', 'P2', 'p1'], ['P2', 'p1', 'p10', 'p2']],
+    ]);
+
+    it('puts a seeded participant before an unseeded one whatever their ids, and seeds in order', function (): void {
+        $orders = [];
+        foreach (standingsPermutations(['a', 'b', 'c', 'd']) as $permutation) {
+            $seeds = ['a' => null, 'b' => 2, 'c' => 1, 'd' => null];
+            $standings = (new StandingsCalculator())->calculate(
+                array_map(fn(string $id): Participant => new Participant($id, strtoupper($id), $seeds[$id]), $permutation),
+                []
+            );
+            $orders[implode(' ', array_map(
+                fn($entry): string => $entry->getParticipant()->getId(),
+                $standings->getEntries()
+            ))] = true;
+        }
+
+        expect(array_keys($orders))->toBe(['c b a d']);
     });
 
     it('returns null entries and positions for absentees', function (): void {
