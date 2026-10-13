@@ -295,8 +295,17 @@ heading **Output change (fix)**.
   Before: `$options->toArray() === ['rounds' => 5]`. After:
   `$options->toArray() === ['format_version' => 1, 'rounds' => 5]`. Code
   that reads single keys (`$schedule->toArray()['events']`) and code that
-  passes a stored array back to `fromArray()` needs no change. An array
-  written by 0.3.0 is still read by 0.2.x, which ignores the key.
+  passes a stored array back to `fromArray()` needs no change.
+
+  Rolling back: an array written by 0.3.0 is still read by 0.2.x, which
+  cannot check the version and ignores the key, as it ignores every key it
+  does not know (`strategy_seed`, and before 0.2.2 `role_assignment` and
+  `engine_fingerprint`, are read as left out). The one exception is
+  `PotDrawOptions::fromArray()` of 0.2.2 and 0.2.3, which refused unknown
+  keys already and refuses `format_version` (`Unknown pot draw option`):
+  remove the key from stored pot draw options before reading them with
+  those releases. A schedule written by 0.3.0 and written again by 0.2.x
+  has its participants back in the order of first appearance.
 
   Golden fixtures: `tests/Fixtures/golden/wire/schedule.json` and
   `tests/Fixtures/golden/wire/stage-state.json` gain `"format_version":1`

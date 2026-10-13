@@ -3327,6 +3327,12 @@ records with its reasons:
   form takes the next number, the changelog says what differs, and
   `fromArray()` keeps reading the earlier versions. A patch release never
   changes a form.
+- **An earlier release does not check the version.** 0.2.x reads an array
+  written by 0.3.0 as it read its own, ignoring `format_version` and every
+  other key it does not know, so an application that rolls back keeps
+  reading its rows. The exception is `PotDrawOptions::fromArray()` of 0.2.2
+  and 0.2.3, which refuses the key: remove it from stored pot draw options
+  before reading them with those releases.
 
 `format_version` is not the `v1` inside an engine fingerprint
 ([Recording Which Engine Pairs a State](#recording-which-engine-pairs-a-state))

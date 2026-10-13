@@ -40,11 +40,26 @@ accepts the key on a nested form too, provided it is a version it reads, so
 an array put together by hand from separately serialized parts loads.
 
 **A missing version is version 1.** Version 1 of every form is the form
-that 0.2.x wrote, which had no version key. An array without the key is
-therefore read as version 1, under the rules of version 1, and data stored
-by 0.2.x keeps loading. 0.3.0 writes version 1 with the key: the forms did
-not change in 0.3.0, the key was added to say so. Because 0.2.x ignored
-keys it did not know, an array written by 0.3.0 is read by 0.2.x as well.
+0.3.0 writes: what 0.2.x wrote, which had no version key, and beside it
+the optional keys 0.3.0 added before the key existed (`strategy_seed` in
+round-robin options is one). Each of those may be left out and is then read
+as 0.2.x behaved, so an array without the version key is read as version 1,
+under the rules of version 1, and data stored by 0.2.x keeps loading.
+`tests/Fixtures/stored-by-0.2/` holds every form as the 0.2.x tags wrote it,
+and a test reads it on every run. From 0.3.0 on a key is not added to a
+form without the form taking its next version (see "Changing a form").
+
+**An earlier release reads a later array as it always did.** 0.2.x does
+not know the key and cannot check it. Its readers ignored keys they did not
+know, so an array written by 0.3.0 loads in 0.2.x with the version, and
+whatever else 0.2.x has no key for, left unread: an application that rolls
+back from 0.3.0 keeps reading its rows. One reader is the exception:
+`PotDrawOptions::fromArray()` of 0.2.2 and 0.2.3 refused unknown keys
+already, and refuses `format_version` with them; drop the key from stored
+pot draw options before reading them with those releases. From 0.3.0 on
+every reader refuses a key and a version it does not know, so the question
+does not come up again in this form: a later array is either the same form
+or is refused.
 
 One form says more in 0.3.0 than it did, and is still version 1. The
 `participants` of a schedule are its entrants in their order, where 0.2.x
@@ -83,8 +98,10 @@ Such a change:
    checked, for the reader to branch on);
 3. is made in a minor release, never in a patch, with a changelog entry
    that names the form, the two versions and what differs;
-4. shows as a diff of the wire fixtures in `tests/Fixtures/golden/wire/`,
-   which is reviewed with the change.
+4. shows as a diff that is reviewed with the change: of the wire fixtures
+   in `tests/Fixtures/golden/wire/` for a schedule and a stage state, the
+   two forms that have one, and of the arrays the tests of the form expect
+   for every other form.
 
 An earlier version stops being read only in a major release, and the
 changelog of that release says so.
@@ -107,6 +124,16 @@ scheme: the form stores the string and does not interpret it.
   0.3.0 lists each case.
 - Every stored array is one key longer. Nested forms are not, so the cost
   does not grow with the number of events.
+- A nested form has no version of its own to be read by. Its reader, called
+  for a part that carries no key, reads version 1. So a form that is held
+  in others (an event in a schedule, a result, a round pairing, a stage
+  state, a scheduled event) cannot change by itself: the forms that hold it
+  take their next version with it, and their readers tell the reader of the
+  part which version to read. A part cut out of a stored array and handed to
+  its own `fromArray()` is read as version 1 whatever array it came from,
+  which is right only while the part's form is at version 1. That is the
+  price of one key to an array, and it is to be paid in the release that
+  first changes a nested form.
 - An array written by a later release fails loudly on an older one where
   its form has changed, and loads where it has not.
 - A reader that meets `format_version` under a key it does not otherwise
