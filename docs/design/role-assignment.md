@@ -56,10 +56,13 @@ odd size it plays an even number, so 0 apart is possible.
   which is one reason the namespace is experimental.
 - **Leg strategies keep their meaning.** The role assignment decides the base
   roles of every leg the circle method lays out; the leg strategy then
-  mirrors, repeats or shuffles them exactly as it did. "Mirrored" still means
-  that every leg after the first has the roles of the first reversed, so four
-  mirrored legs are not balanced in a field of even size. Balancing them would
-  need a leg strategy that alternates, which is a separate feature.
+  mirrors, repeats or shuffles them exactly as it did. When this was decided,
+  "mirrored" meant that every leg after the first had the roles of the first
+  reversed, so four mirrored legs were not balanced in a field of even size.
+  Since 0.3.0 `MirroredLegStrategy` alternates (the even-numbered legs are
+  reversed), which was a change to the leg strategy and none to the role
+  assignment: an even number of mirrored legs is balanced, and an odd number
+  is one apart in a field of even size.
 - **A searched leg is balanced or refused.** The backtracking search chooses
   roles while it satisfies the constraints, so its leg is consistent and may
   be far from balanced. The role assignment is asked about that leg too. A

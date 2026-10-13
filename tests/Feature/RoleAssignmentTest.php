@@ -258,15 +258,21 @@ describe('the balanced role assignment', function (): void {
 
                 if ($seeded) {
                     // The scheduler shuffles the first leg only, so the legs
-                    // are balanced one by one and can add up
-                    Assert::assertLessThanOrEqual($legs, $worst, $label);
+                    // are balanced one by one and can add up. The mirrored
+                    // legs after the first alternate, so they add up to
+                    // nothing where there is an even number of them and to
+                    // one leg's worth otherwise
+                    $bound = $strategyName === 'mirrored' ? 2 - $legs % 2 : $legs;
+                    Assert::assertLessThanOrEqual($bound, $worst, $label);
 
                     continue;
                 }
 
-                // Mirrored: leg 1 one way, every later leg the other way.
+                // Mirrored: the odd-numbered legs one way, the even-numbered
+                // legs the other way, so each pairing is split evenly over
+                // an even number of legs and one apart over an odd number.
                 // Repeated: the same roles in every leg.
-                $pairingSplit = $strategyName === 'mirrored' ? abs($legs - 2) : $legs;
+                $pairingSplit = $strategyName === 'mirrored' ? $legs % 2 : $legs;
 
                 Assert::assertSame($pairingSplit, $worst, $label);
                 Assert::assertSame([$pairingSplit], array_values(array_unique(RoleCounts::pairingSplits($events))), $label);

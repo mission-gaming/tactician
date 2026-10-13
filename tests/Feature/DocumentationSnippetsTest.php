@@ -893,10 +893,11 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($plain->schedule($participants)->toJson() === $plain->schedule($participants)->toJson());
                 PHP,
         ],
-        // Where the legs fail is what the roles of today reach, not a promise: issues #47
-        // (mirrored legs) and #51 (balanced roles by default) change it.
-        // The table under "Role-Based Constraints", at its two smallest failing sizes
-        // and one that holds
+        // Where the repeated legs fail is what the roles of today reach, not a promise:
+        // issue #51 (balanced roles by default) changes it. That mirrored legs hold is
+        // one: they alternate, so every two of them end level.
+        // The table under "Role-Based Constraints", at the two smallest sizes repeated
+        // legs fail for and two more
         'where a role balance limit of 3 or 4 holds and where it fails' => [
             'docs/USAGE.md',
             '$balanceConstraint = RoleBalanceConstraint::homeAway(3);',
@@ -921,13 +922,14 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions()));
                     assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 2)));
                     assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 3)));
-                    assert(!$completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 4)));
+                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 4)));
+                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 5)));
+                    assert($completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 6)));
                     assert(!$completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 2, strategy: $repeated)));
                     assert(!$completes($size, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 3, strategy: $repeated)));
                 }
-                // "three repeated legs fail for every size from 3"; 5 is a size four mirrored legs complete
+                // "three repeated legs fail for every size from 3"
                 assert(!$completes(3, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 3, strategy: $repeated)));
-                assert($completes(5, new \MissionGaming\Tactician\Scheduling\RoundRobinOptions(legs: 4)));
                 PHP,
         ],
         // "In a single leg no pair meets twice, so there it rejects nothing"

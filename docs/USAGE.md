@@ -450,8 +450,7 @@ scheduler without a `Randomizer`:
 | Schedule | A limit of 3 (field of even size) or 4 (field of odd size) |
 |----------|-------------------------------------------------------------|
 | One leg | Holds, for 2 to 30 participants (also with a `Randomizer`) |
-| Two or three mirrored legs | Holds, for 2 to 30 participants |
-| Four mirrored legs | Fails for 4 participants and for every size from 6 to 30 |
+| Two to six mirrored legs | Holds, for 2 to 30 participants: every even-numbered leg undoes the leg before it |
 | Two repeated legs | Fails for 4 participants and for every size from 6 to 30; three repeated legs fail for every size from 3 to 30 |
 | Two mirrored legs from a scheduler with a `Randomizer` | Can fail, depending on the seed: the later legs are not the first leg mirrored |
 
@@ -485,7 +484,8 @@ $participants = [
 
 $scheduler = new RoundRobinScheduler();
 
-// Home and away legs (the roles of every pairing reversed in the second leg)
+// Home and away legs (the roles of every pairing reversed in the second
+// leg, and in every even-numbered leg when there are more)
 $mirroredSchedule = $scheduler->schedule(
     $participants,
     new RoundRobinOptions(legs: 2, strategy: new MirroredLegStrategy())
@@ -504,6 +504,15 @@ $shuffledSchedule = $scheduler->schedule(
     new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 2026))
 );
 ```
+
+`MirroredLegStrategy` alternates. The odd-numbered legs have the roles of the
+first leg and the even-numbered legs have them reversed, so the meetings of a
+pair are split as evenly as their number allows: two each way over four legs,
+and two one way and one the other over three. An even number of mirrored
+legs ends with every participant first-named as often as second-named, and
+an odd number ends as a single leg does. (Up to 0.2.x every leg after the
+first was reversed, which split a pair 1:2 over three legs and 1:3 over
+four.)
 
 The shuffled strategy is the one that draws, so it is given what it draws
 from: an integer seed, as above, or a `Random\Randomizer`
@@ -716,7 +725,7 @@ no leg strategy changes its meaning. With `BalancedRoleAssignment`, for 1 to
 
 | Leg strategy | Each leg on its own | Whole schedule, even field | Whole schedule, odd field | Each pairing |
 |--------------|---------------------|----------------------------|---------------------------|--------------|
-| `MirroredLegStrategy` | Every leg is within the limit of a single leg | 1, 0, 1, 2, 3 and 4 apart for 1 to 6 legs: leg 1 is played one way and every later leg the other way | 0 apart | One meeting one way and the others the other way: an even split for 2 legs, one apart for 3 legs |
+| `MirroredLegStrategy` | Every leg is within the limit of a single leg | 1 apart for an odd number of legs and 0 apart for an even number: the odd-numbered legs are played one way and the even-numbered legs the other way | 0 apart | As even as the number of meetings allows: an even split for 2, 4 and 6 legs, one apart for 1, 3 and 5 legs |
 | `RepeatedLegStrategy` | Every leg is within the limit of a single leg | As many apart as there are legs: every leg has the roles of leg 1 | 0 apart | Every meeting the same way |
 | `ShuffledLegStrategy` | Leg 1 is within the limit of a single leg | No limit: the roles of the later legs are random | No limit | Random after leg 1 |
 
@@ -727,11 +736,17 @@ Two things the table does not promise:
   legs out from the order as given, so they are not the first leg mirrored or
   repeated pairing by pairing. Each leg is still within the limit of a single
   leg: the whole schedule is 0 apart in a field of odd size, and at most as
-  many apart as there are legs in a field of even size. The columns "Whole
-  schedule, even field" and "Each pairing" are for a scheduler without a
-  `Randomizer`.
+  many apart as there are legs in a field of even size. Mirrored legs after
+  the first alternate among themselves, so with `MirroredLegStrategy` that is
+  at most 1 apart for an odd number of legs and 2 for an even number, and a
+  pairing can be split two apart over an even number of legs. The columns
+  "Whole schedule, even field" and "Each pairing" are for a scheduler without
+  a `Randomizer`.
 - **Streaks across two legs.** The limit of two in a row holds inside a leg.
-  Where one leg ends and the next begins, a role can repeat more often. Two
+  Where one leg ends and the next begins, a role can repeat more often. What
+  follows is for two mirrored legs and holds for any larger number of them,
+  because every boundary between two mirrored legs is the first one again or
+  the first one with the two roles exchanged. Two
   mirrored legs end balanced under either role assignment; the balanced one
   also balances the halfway point, and across the middle of the schedule it
   can put a participant in the same role three times in a row in a field of
