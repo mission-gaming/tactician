@@ -896,6 +896,37 @@ signature changed.
       and its depth of two (decision 33) are not scaled: an exchange
       spends a step and counts position checks, so both of the others
       already bound it.
+    - **What a share of the shared-events search changes in the
+      report.** Found by the last review, and a consequence of the
+      point above, not a change to it. Until this decision that search
+      was the same at every budget, so the capacity violations of a
+      request were too. The over-capacity participants still are (their
+      demand and capacity are counted before any event is dropped). The
+      grid's own violation is not: it counts the events left after the
+      drops for the participants (decision 35), and a search with a
+      share of its nodes can drop more than the shortfalls need. A
+      budget of one step leaves the search no node at all (its share of
+      100,000 rounds down to none) and the greedy set stands. Of 6,000
+      generated requests of 5 to 11 events with over-capacity
+      participants, 201 have the grid's violation at the default; at one
+      step 31 of them came back without it and one with a smaller
+      demand, at 10 steps 27, at 100 steps 3, at 2,000 none. It was
+      never reported where the default does not report it and never
+      with a larger demand, and the flag was true on every outcome
+      whose capacity violations were not the default's. The reasons of
+      the unplaced events follow in the same way: with a smaller shared
+      set more of them are `ParticipantOverCapacity` (on 120 of the
+      6,000 at one step, where it was 14 before this decision, and on
+      12 at 100 steps, where it was none). A floor of nodes for this
+      search, like the one of the last placement step, was measured and
+      not taken here: 100 nodes brought the 31 back on those small
+      requests, but of 300 larger ones (up to five participants with
+      more events than positions each, 167 with the grid's violation at
+      the default) the grid's violation at one step was still not the
+      default's on 18 at a floor of 1,000 nodes and on 13 at 5,000,
+      where it is not on 44 without a floor: a floor mends the small
+      requests and not the report. The usage guide says what a caller
+      can and cannot read from an outcome below the default.
     - **The order of the participants is not scaled.** A share of its
       work limit (decision 39) would send requests back to their ids
       that the whole limit orders, and the ids would then decide more at
@@ -1006,7 +1037,22 @@ signature changed.
     the last placement step takes three times as long at a tenth of the
     budget as at the default, because the layout handed it more events
     to place), so those seasons take half their default time at a tenth
-    of the budget and not a tenth. What no budget shortens is in the
+    of the budget and not a tenth. One request can even take longer at
+    a smaller budget than at the default, which the last review
+    measured: 4,650 generated requests at 17 budgets each and 16 large
+    ones at five, the largest
+    difference a request of 80 events among 11 participants, five of
+    them with more events than the 12 positions, which takes 36
+    milliseconds at the default, 160 to 180 at 100,000 steps, 100 at
+    50,000 and 7 at 1,000 (before this decision it took about 40 at
+    every budget). The round layout is the same at both budgets there;
+    what differs is the plan made from a shorter search for shared
+    events, which leaves the last placement step a hundred times the
+    position checks and has a third schedule made where the default
+    needs none. The sum of the limits is what falls with the
+    budget, not the time of every request; at one step the largest
+    difference was a few milliseconds (12 for 11 on a round robin of
+    two legs among 16). What no budget shortens is in the
     first column: the order of the participants, the passes that are
     not searches, the floor above, and two plans where the first leaves
     something to gain. That is 0.04 seconds for a season of 40 over one
@@ -1187,20 +1233,46 @@ shared-events search and the planner's use of it), and `StepBudget` of
 the arithmetic, of a share that carries the caller's budget, and of the
 default it takes from the options. The relabelling tests repeat at
 budgets of 1, 100, 2,000 and 20,000 steps; they fail when the order of
-the participants is given a share of its limit.
+the participants is given a share of its limit. And one request of
+eleven events holds what the capacity violations may say below the
+default (decision 49): the four over-capacity participants alike at
+nine budgets, the grid's own violation never with more than the five
+events for four places that are true of it, and the flag true wherever
+the report is not the default's. It fails at 100 steps when the
+shared-events search does not tell its budget that a smaller limit
+stopped it.
 
-One test could not be kept. "Spends no budget on the last placement
+One test changed its request. "Spends no budget on the last placement
 step when only the over-capacity drops are left over" showed, by the
 flag at a budget of 60 steps, that the step is told how many events no
 placement can hold and so searches for no exchange. At any budget small
 enough to notice that search (below 154 steps on its request) the round
 layout's own search for the same drops is now cut short, and that is
-what the flag reports. The two halves are tested where they are made:
-the planner's count on that request, and the step's use of a count it
-is given. That the repacker passes the one to the other has no test,
-because nothing an outcome says depends on it at any budget. Nor has
-one other thing: that the search for shared events follows the budget
-when the unplaced events are given their reasons, as it does in the
-planner. It shows in time and, on one of 1,600 requests tried, in a flag
-that is true where the outcome is the default's; no request was found
-on which a test could state what it must return.
+what the flag reports, so the test was taken out with the decision and
+its two halves tested where they are made: the planner's count on that
+request, and the step's use of a count it is given. That left the
+passing of the one to the other without a test. The last review found
+that it does show in an outcome, on other requests: with the count not
+passed in a copy, the flag was true where it is false on 15 of 3,000
+outcomes of over-capacity requests and on 124 of 100,000 of very small
+ones, the outcome the same. The test is back on one of those: seven
+events on one session of three slots, five of them of one participant,
+at 100 steps, where every search ends by 75 steps and a needless
+exchange search keeps the flag true up to 160. It fails with the count
+not passed.
+
+One thing has no test: that the search for shared events follows the
+budget when the unplaced events are given their reasons, as it does in
+the planner. It shows in time, and in which reason an unplaced event has
+below the default: with that one search left at its whole limit in a
+copy, 666 of 35,700 outcomes of 2,100 over-capacity requests at 17
+budgets were other outcomes, and 206 the same outcome with another flag
+(the smallest request found on which it shows has seven events: at one
+step the share gives one unplaced event the reason
+`ParticipantOverCapacity` where the whole search gives it
+`NoSlotAvailable`).
+Both are outcomes the contract allows, and which of them the share
+gives depends on the greedy set the search starts from, which follows
+the repacker's own order of the events: a test could only repeat what
+the code returns, and none was written. The test file says so where
+the search is tested.

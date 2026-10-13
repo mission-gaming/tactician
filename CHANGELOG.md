@@ -711,16 +711,36 @@ entry on the engine fingerprint.
   a tenth of the default places fewer events than 0.2.3 placed at that
   budget (fewer on 135 of the 200 requests at 2,000 steps and more on
   12), in about the same time; at one step and at the default it places
-  more. The usage guide ("The Step Budget") has the table by size of
+  more. Two more things hold below the default. A smaller budget is a
+  smaller bound and not less time for every request: one whose search
+  the default ends just inside a limit can take longer at a smaller
+  budget, because the phases after a search that was cut short have
+  more to do (the largest difference found: 36 milliseconds at the
+  default and 160 to 180 at half of it). And where two or more
+  participants have more events than positions, the grid's own
+  `CapacityExceeded` (the one with no participant) can state a smaller
+  demand than at the default or be missing, and an unplaced event can
+  have the reason `ParticipantOverCapacity` where the default gives
+  `NoSlotAvailable`; `isBudgetExhausted()` is true for such an outcome,
+  and the over-capacity participants themselves are reported alike at
+  every budget. In 0.2.3 the capacity violations did not depend on the
+  budget. The usage guide ("The Step Budget") has the table by size of
   season and what no budget shortens.
 
   *Who is affected.* Everyone who repacks. *What to check:* an outcome
   kept from an earlier release, or its fingerprint, no longer matches a
   new run of the same request, so repack again before comparing; code
   that expected a particular event at a particular position for a fixed
-  request; time limits set close to what a repack used to take; and a
-  `stepBudget` chosen below the default for the time it gave, which now
-  buys other outcomes and other times (the table above).
+  request; the number of events placed where the pins are scattered
+  over the grid and not whole rounds, which is lower by one to three on
+  about one such request in twenty and higher on about half (above);
+  time limits set close to what a repack used to take, because a
+  request that does not come back clean takes longer than it did (the
+  slowest found, 4.1 seconds for 0.4), and a `stepBudget` below the
+  default is the way to bound that, for fewer events placed and more
+  gaps as the table shows; and a `stepBudget` already chosen below the
+  default for the time it gave, which now buys other outcomes and other
+  times (the table above).
   The order of the lists an outcome returns has not changed: assignments
   and unplaced events by event id, violations by kind and then by
   participant id and session, over-capacity participants by shortfall and

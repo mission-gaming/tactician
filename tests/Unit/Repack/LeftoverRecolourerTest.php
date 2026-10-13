@@ -607,6 +607,18 @@ describe('LoadPlanner::sharedDrops', function (): void {
             ->and($oneStep->stoppedASearch())->toBeTrue();
     });
 
+    // The repacker asks this search twice: in the planner, and again when
+    // the last placement step has placed a dropped event and the events
+    // still unplaced are given their reasons (ScheduleRepacker::label()).
+    // The tests here and of the planner above hold the search and the
+    // first use. That the second use hands the search the budget too has
+    // no test. Taking the budget away there changes how long a repack
+    // below the default takes and which reason some unplaced events have
+    // (ParticipantOverCapacity or NoSlotAvailable; 666 of 35,700 outcomes
+    // of over-capacity requests when it was tried), and both outcomes are
+    // ones the contract allows: which of them a share of the nodes gives
+    // follows from the greedy set, and so from the repacker's own order of
+    // the events, which a test could only copy from what the code returns
     it('does not report a node limit that stopped it with a set as large as any can be', function (): void {
         // The path above at a budget of one step: the greedy start is
         // already the two end events, no set is larger, and no longer

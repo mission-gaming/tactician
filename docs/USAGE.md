@@ -4284,7 +4284,16 @@ half a second on the slowest request). It does not make every repack
 take a tenth as long: a search that ended well inside its limit at the
 default is not shortened by a tenth of that limit, and a phase has more
 to do when the one before it was cut short, so the seasons of 40 over
-two legs take half their default time at 20,000 steps. What no budget
+two legs take half their default time at 20,000 steps. For the same
+reason a smaller budget is a smaller bound and not a promise that one
+request takes less time: where the default budget ends a search just
+inside its limit and a smaller one cuts it off, the phases after it
+have what it left to do, and the request can take longer than at the
+default. The largest difference found on 4,666 generated requests at up
+to 17 budgets was 80 events among 11 participants, five of them with more
+events than the 12 positions: 36 milliseconds at the default, 160 to
+180 at 100,000 steps, 100 at 50,000 and 7 at 1,000. At a budget of one
+step the largest was a few milliseconds (12 for 11). What no budget
 shortens is in the first column: reading the request, ordering the
 participants (bounded by a fixed limit of its own, at most about a
 tenth of a second and 12 milliseconds on these seasons; it is left
@@ -4298,6 +4307,25 @@ events placed, gaps and late starts for time, as the columns show;
 where a repack runs while a person waits, choose the budget from the
 column that fits, and bound the size of the request too, because the
 first column grows with it.
+
+A budget below the default can also change what an outcome says about
+capacity, where two or more participants have more events than free
+positions. Every such participant is reported at every budget, with the
+same demand and capacity: that is counted from the request and needs no
+search. Which events are left out for them is searched for (an event
+between two of them counts for both), and with a share of its nodes that
+search can leave out more events than the shortfalls need. The grid's
+own `CapacityExceeded`, the one with no participant, counts the events
+left after those. So below the default it can state a smaller demand
+than the default budget states, or be missing where the default budget
+reports it, and an unplaced event can have the reason
+`ParticipantOverCapacity` where the default budget gives it
+`NoSlotAvailable`. `isBudgetExhausted()` is true for such an outcome. Of
+6,000 generated requests of 5 to 11 events with over-capacity
+participants, 201 have the grid's violation at the default budget; 31
+of them came back without it at one step, 3 at 100 steps and none at
+2,000. Read the capacity of the grid from an outcome whose flag is
+false.
 
 Requests that pack without a search cost the same at every budget: a
 complete single round robin of 24 participants took 5 to 11
