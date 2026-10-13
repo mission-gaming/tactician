@@ -286,6 +286,16 @@ describe('PHPStan configuration', function () use ($root): void {
         'src/' => ['phpstan/baseline.neon', 7],
         'tests/ and examples/support/' => ['phpstan/tests-baseline.neon', 28],
     ]);
+
+    it('requires the strict rules that the code is held to, the lowest version the constraint allows included', function () use ($root): void {
+        // The strict rules before 2.1.0 report a `foreach` whose value
+        // variable was the variable of an earlier loop that has ended
+        // (`foreach.valueOverwrite`), which src/ does in two places; 2.1.0
+        // reports it only where the variable was assigned before the loop
+        // and is read after it. With a floor below 2.1 the gate would pass
+        // on the locked version and fail on another the constraint allows.
+        expect(gateDevelopmentFloorProblem($root, 'phpstan/phpstan-strict-rules', '2.1'))->toBeNull();
+    });
 });
 
 describe('Rector configuration', function () use ($root): void {
