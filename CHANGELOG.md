@@ -27,6 +27,20 @@ heading **Output change (fix)**.
   and no fingerprint of an outcome it returned, changes; only an
   assignment constructed by hand with a kickoff in another timezone is
   written differently (#121, item 9).
+- **`TimelineDefinition::toArray()` writes the fraction of a second of a
+  start that has one, and `formatInterval()` shows the sign, the fraction
+  and the relative date string of an interval.** A start of
+  `19:00:00.25` was written `19:00:00`, so the definition read back a
+  quarter of a second earlier; it is written `2026-08-01 19:00:00.250000`,
+  which `fromArray()` reads. A start on a whole second is written as
+  before. `TimelineDefinition::formatInterval()`, which errors use to
+  describe an interval, wrote an inverted `P7D` as `P7D`, an interval of a
+  second and a half as `PT1S`, and one made from `next weekday` as `PT0S`.
+  It now writes `-P7D`, `PT1.5S` and `next weekday`: forms that
+  `parseInterval()` refuses, where the old ones read back as another
+  interval. An interval built from an ISO 8601 duration is written as
+  before. `MinimumRestRule::toArray()` and the rule's name use the same
+  method and change with it for such a rest (#121, item 6).
 
 ### Added
 
@@ -192,6 +206,34 @@ heading **Output change (fix)**.
   What to check: read the winner of such an event from its `Result`
   directly. Before: a participant list. After: the exception
   (#121, item 13).
+- **Breaking: `TimelineDefinition::toArray()` and `SessionGrid::toArray()`
+  refuse an interval that would not read back as the same interval.** An
+  ISO 8601 duration, as PHP reads one, holds years, months, days, hours,
+  minutes and whole seconds. A `DateInterval` can hold more, and that part
+  was dropped without a word: an interval made by
+  `DateInterval::createFromDateString('next weekday')` was written `PT0S`,
+  which does not even load again, and `last day of next month` was written
+  `P1M`. Both methods now write an interval through the new
+  `TimelineDefinition::writeInterval(DateInterval $interval, string $key):
+  string`, which throws an `InvalidConfigurationException` with the reason
+  `NotSerializable` for: an interval made by `createFromDateString()` from
+  anything but amounts of time; an inverted interval; an interval with a
+  fraction of a second; and an interval from `createFromDateString()` or
+  from `diff()` that has hours, minutes or seconds, because PHP adds those
+  as local time and the hours of a duration read back are elapsed time, an
+  hour apart across a daylight-saving change. An interval of whole days,
+  months and years from either source is written as before (`1 week` is
+  still `P7D`), and so is every interval built from an ISO 8601 duration.
+  The refusal is made when the object is serialised and not when it is
+  built: a timeline or a grid with such an interval works, and gives the
+  slot times it gave before; it has no plain-data form. Who is affected:
+  code that builds a `TimelineDefinition` or a `SessionGrid` with
+  `DateInterval::createFromDateString('25 minutes')` (or another interval
+  listed above) and calls `toArray()` on it. What to change: build the
+  interval from a duration, `new DateInterval('PT25M')`. Before: a
+  duration string that could mean another interval. After: the exception.
+  Both `toArray()` methods declare it, so code analysed with checked
+  exceptions sees one more `@throws` (#121, item 15).
 
 ### Fixed
 

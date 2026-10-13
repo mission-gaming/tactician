@@ -425,7 +425,16 @@ final readonly class SessionGrid
      * sessions whose slot count is not the default, and is left out when
      * there is none.
      *
+     * The slot interval is written by TimelineDefinition::writeInterval(),
+     * which refuses one that would not read back as the same interval (one
+     * made by `DateInterval::createFromDateString()` from `25 minutes`, for
+     * example: build it as `new DateInterval('PT25M')`). The grid itself
+     * works with such an interval; it has no plain-data form.
+     *
      * @return array{sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}|array{session_count: int, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}
+     *
+     * @throws InvalidConfigurationException When the slot interval has no ISO 8601 duration that
+     *                                       reads back as the same interval (`NotSerializable`)
      */
     public function toArray(): array
     {
@@ -443,7 +452,7 @@ final readonly class SessionGrid
                     $this->sessionStarts
                 ),
                 'timezone' => $this->sessionStarts[0]->getTimezone()->getName(),
-                'slot_interval' => TimelineDefinition::formatInterval($this->slotInterval),
+                'slot_interval' => TimelineDefinition::writeInterval($this->slotInterval, 'slot_interval'),
                 'slots_per_session' => $this->slotsPerSession,
                 'capacity_per_slot' => $this->capacityPerSlot ?? self::UNBOUNDED,
             ];

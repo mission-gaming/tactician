@@ -2154,6 +2154,21 @@ $timeline = TimelineDefinition::fromArray([
 ]);
 ```
 
+`toArray()` writes a definition back to that form, and what it writes reads
+back to the same slot times. An ISO 8601 duration, as PHP reads one, holds
+years, months, days, hours, minutes and whole seconds. A `DateInterval` can
+hold more, and a definition or a session grid built with such an interval
+works, and is refused by `toArray()` with the reason `NotSerializable`: it
+is never written as a duration that means something else. The intervals
+refused are one made by `DateInterval::createFromDateString()` from anything
+but amounts of time (`next weekday`, `last day of next month`); one with a
+fraction of a second; an inverted one; and one from
+`createFromDateString()` or `diff()` that has hours, minutes or seconds,
+because PHP adds those as local time and the hours of a duration are elapsed
+time. Build the interval as `new DateInterval('PT25M')` where the
+configuration has to be stored. A start with a fraction of a second is
+written with it (`2026-08-01 18:00:00.250000`).
+
 **A datetime in plain data states its date in full**: the year, the month
 and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
 day is optional and defaults to midnight (`2026-11-09` is

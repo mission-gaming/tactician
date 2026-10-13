@@ -63,7 +63,11 @@ final readonly class MinimumRestRule implements TimelineRule
 
     /**
      * Serialize back to the plain-data form fromArray() accepts, the rest
-     * written by TimelineDefinition::formatInterval().
+     * written by TimelineDefinition::formatInterval(). A rest that method
+     * cannot state as a duration (a fraction of a second, a relative date
+     * string such as `next weekday`) is written as that method shows it,
+     * which fromArray() refuses: build the rest from an ISO 8601 duration
+     * where the rule has to be stored.
      *
      * @return array{rest: string}
      */

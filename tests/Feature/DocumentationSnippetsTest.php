@@ -752,6 +752,56 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 PHP,
         ],
         'composition chain telescopes' => ['docs/USAGE.md', '->validateChain(16, [', 'assert($violations === []);'],
+        // "what it writes reads back to the same slot times ... refused by toArray() with the reason NotSerializable"
+        'a timeline definition written as plain data' => [
+            'docs/USAGE.md',
+            "'slots_per_round' => 3,",
+            <<<'PHP'
+                $readBack = \MissionGaming\Tactician\Timeline\TimelineDefinition::fromArray($timeline->toArray());
+                assert($readBack->getSlotTime(4, 2) == $timeline->getSlotTime(4, 2));
+                $zone = new \DateTimeZone('Europe/London');
+                $unwritable = [
+                    \DateInterval::createFromDateString('next weekday'),
+                    \DateInterval::createFromDateString('last day of next month'),
+                    \DateInterval::createFromDateString('25 minutes'),
+                    (new \DateTimeImmutable('2026-01-01 00:00', $zone))->diff(new \DateTimeImmutable('2026-01-01 02:00', $zone)),
+                ];
+                $fraction = new \DateInterval('PT1S');
+                $fraction->f = 0.5;
+                $unwritable[] = $fraction;
+                foreach ($unwritable as $interval) {
+                    // It works, and it has no plain-data form
+                    $definition = new \MissionGaming\Tactician\Timeline\TimelineDefinition(
+                        new \DateTimeImmutable('2026-08-03 18:00:00', $zone),
+                        $interval
+                    );
+                    assert($definition->getSlotTime(2) > $definition->getSlotTime(1));
+                    try {
+                        $definition->toArray();
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::NotSerializable);
+                    }
+                }
+                $grid = new \MissionGaming\Tactician\Repack\SessionGrid(
+                    [new \DateTimeImmutable('2026-08-12 20:00:00', $zone)],
+                    \DateInterval::createFromDateString('25 minutes'),
+                    4
+                );
+                try {
+                    $grid->toArray();
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::NotSerializable);
+                }
+                // "A start with a fraction of a second is written with it"
+                $withFraction = new \MissionGaming\Tactician\Timeline\TimelineDefinition(
+                    new \DateTimeImmutable('2026-08-01 18:00:00.250000', $zone),
+                    new \DateInterval('P7D')
+                );
+                assert($withFraction->toArray()['start'] === '2026-08-01 18:00:00.250000');
+                PHP,
+        ],
         'timeline kickoffs' => [
             'docs/USAGE.md',
             '$scheduled = (new TimelineAssigner())->assign($schedule, $timeline);',
