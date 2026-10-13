@@ -185,4 +185,41 @@ describe('PairingSpacingMetric', function (): void {
             expect($metric->measure($bunched))->toEqualWithDelta(5 / 3, 1e-12);
         }
     });
+
+    it('counts the rounds between the lowest and the highest, a round with no event among them', function (): void {
+        [$a, $b] = qualityField(2);
+        $metric = new PairingSpacingMetric();
+
+        // Rounds 5 and 9 and nothing between: five rounds spanned, ideal
+        // gap 2.5, gap 4
+        $gapped = new Schedule([new Event([$a, $b], new Round(5)), new Event([$b, $a], new Round(9))]);
+        expect($metric->measure($gapped))->toBe(1.5);
+
+        // The same two meetings with the rounds between them played by
+        // others measure the same: the span is what counts, not how many
+        // rounds have an event
+        [, , $c, $d] = qualityField(4);
+        $filled = new Schedule([
+            ...$gapped->getEvents(),
+            new Event([$c, $d], new Round(6)),
+            new Event([$c, $d], new Round(7)),
+            new Event([$c, $d], new Round(8)),
+        ]);
+        // A and B: gap 4 against 2.5. C and D: three meetings, ideal 5/3, gaps 1 and 1
+        expect($metric->measure($filled))->toEqualWithDelta((1.5 + 2 / 3 + 2 / 3) / 3, 1e-12);
+    });
+
+    it('is zero for no events, for events with no round, and measures two meetings in one round', function (): void {
+        [$a, $b] = qualityField(2);
+        $metric = new PairingSpacingMetric();
+
+        expect($metric->measure(new Schedule([])))->toBe(0.0)
+            ->and($metric->measure(new Schedule([new Event([$a, $b]), new Event([$b, $a])])))->toBe(0.0);
+
+        // One round spanned, wherever it is: ideal gap 0.5, gap 0
+        foreach ([1, 7, 400] as $round) {
+            $twice = new Schedule([new Event([$a, $b], new Round($round)), new Event([$b, $a], new Round($round))]);
+            expect($metric->measure($twice))->toBe(0.5);
+        }
+    });
 });
