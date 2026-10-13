@@ -558,11 +558,12 @@ trait EliminationBracketSupport
      * throws. Where an entrant of such a tie has withdrawn, the withdrawal
      * gives the tie away as it does any tie the results do not decide.
      *
-     * Where both have withdrawn, one of them may have gone on before it
-     * left: the state does not say when an entrant withdrew, and the
-     * recorded rounds do. The one that a later recorded round names went
-     * on from the tie; where a later round names neither, or both, nobody
-     * did.
+     * Where both have withdrawn, the order of the two withdrawals decides,
+     * when the state knows it (StageState::getWithdrawals()): the first of
+     * them to withdraw gave the tie to the other, who went on and left
+     * later. That holds whether the round holds the tie or not, and
+     * whenever the bracket is read: the answer for a history does not
+     * depend on the moment an engine was asked for it.
      *
      * Where the state does not know when one of them withdrew, the
      * recorded rounds say what they can: the one that a later recorded
@@ -636,13 +637,20 @@ trait EliminationBracketSupport
         }
 
         if ($firstOut && $secondOut) {
-            $firstWentOn = ($reading->lastNamedIn[$first->getId()] ?? 0) > $reading->number;
-            $secondWentOn = ($reading->lastNamedIn[$second->getId()] ?? 0) > $reading->number;
-            if ($firstWentOn === $secondWentOn) {
-                return ['winner' => null, 'losers' => [$first, $second], 'open' => false, 'uncontested' => true, 'undecided' => false, 'refusal' => null];
-            }
+            $nobody = ['winner' => null, 'losers' => [$first, $second], 'open' => false, 'uncontested' => true, 'undecided' => false, 'refusal' => null];
 
-            $firstOut = !$firstWentOn;
+            if ($reading->knowsWithdrawalOf($first->getId()) && $reading->knowsWithdrawalOf($second->getId())) {
+                // The one who left first gave the tie away
+                $firstOut = $reading->withdrawals[$first->getId()][1] < $reading->withdrawals[$second->getId()][1];
+            } else {
+                $firstWentOn = ($reading->lastNamedIn[$first->getId()] ?? 0) > $reading->number;
+                $secondWentOn = ($reading->lastNamedIn[$second->getId()] ?? 0) > $reading->number;
+                if ($firstWentOn === $secondWentOn) {
+                    return $nobody;
+                }
+
+                $firstOut = !$firstWentOn;
+            }
         }
 
         return [

@@ -456,6 +456,128 @@ describe('a Swiss stage with adjustments and withdrawals between its rounds', fu
     });
 });
 
+describe('a tie both of whose entrants have withdrawn', function (): void {
+    /**
+     * Four entrants on a fixed path: the semifinals are played, p1 and p2
+     * are the finalists, and the final is recorded with no result or is
+     * not paired at all.
+     *
+     * @return array{SingleEliminationEngine, StageState, list<Participant>}
+     */
+    $beforeTheFinal = function (bool $finalRecorded): array {
+        $engine = new SingleEliminationEngine();
+        $field = timesField(4);
+        $state = timesPlayRound($engine, StageState::start($field));
+
+        return [$engine, $finalRecorded ? $state->withRoundPlayed($engine->pairNextRound($state), []) : $state, $field];
+    };
+
+    // The first to withdraw gave the final away, and the other won the
+    // bracket then. Its own withdrawal afterwards takes nothing back.
+    it('was won by the one who withdrew second: an entrant who went on from an uncontested final and then withdraws is still first', function (
+        bool $finalRecorded,
+        int $first,
+        int $second
+    ) use ($beforeTheFinal): void {
+        [$engine, $state, $field] = $beforeTheFinal($finalRecorded);
+
+        $one = $state->withoutParticipant($field[$first]);
+        $both = $one->withoutParticipant($field[$second]);
+
+        foreach ([$one, $both] as $withdrawn) {
+            $outcome = $engine->getOutcome($withdrawn);
+            assert($outcome instanceof StageOutcome);
+
+            expect($engine->isComplete($withdrawn))->toBeTrue()
+                ->and($outcome->getStandings()->getEntries()[0]->getParticipant())->toBe($field[$second])
+                ->and($outcome->getStandings()->getEntries()[1]->getParticipant())->toBe($field[$first])
+                ->and($outcome->getStandings()->getTiers())->toBe([0, 1, 2, 2])
+                ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([$field[$second]])
+                ->and(MatchOutcomeSelector::losers()->select($outcome))->toBe([$field[$first]]);
+        }
+    })->with([
+        'the final recorded, the second finalist leaves first' => [true, 1, 0],
+        'the final recorded, the first finalist leaves first' => [true, 0, 1],
+        'the final never paired, the second finalist leaves first' => [false, 1, 0],
+        'the final never paired, the first finalist leaves first' => [false, 0, 1],
+    ]);
+
+    it('is read the same from rows: the withdrawals of one round in the order they happened', function () use ($beforeTheFinal): void {
+        [$engine, $state, $field] = $beforeTheFinal(true);
+
+        $rows = static fn(array $withdrawals): StageState => StageState::fromHistory(
+            $field,
+            $state->getRoundsPlayed(),
+            $state->getResults(),
+            $withdrawals
+        );
+        $first = static fn(StageState $state): ?string => $engine->getOutcome($state)?->getStandings()->getEntries()[0]->getParticipant()->getId();
+
+        expect($first($rows([new Withdrawal($field[1], 2), new Withdrawal($field[0], 2)])))->toBe('p1')
+            ->and($first($rows([new Withdrawal($field[0], 2), new Withdrawal($field[1], 2)])))->toBe('p2');
+    });
+
+    // Rows that do not say when: which of the two left first is not known,
+    // and no later round names either. Neither is read as the winner.
+    it('has no winner where the state does not know when the two withdrew: they share the tier of the final', function () use ($beforeTheFinal): void {
+        [$engine, $state, $field] = $beforeTheFinal(true);
+
+        $unstated = StageState::fromHistory($field, $state->getRoundsPlayed(), $state->getResults(), [$field[1], $field[0]]);
+        $outcome = $engine->getOutcome($unstated);
+        assert($outcome instanceof StageOutcome);
+
+        expect($outcome->getStandings()->getTiers())->toBe([1, 1, 2, 2])
+            ->and(timesIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe([])
+            ->and(timesIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p1', 'p2'])
+            ->and($outcome->getSettledTies())->toEqual([new SettledTie(null, [$field[0], $field[1]])]);
+    });
+
+    it('is settled by its results where they are complete, whoever withdraws and in whatever order', function () use ($beforeTheFinal): void {
+        [$engine, $state, $field] = $beforeTheFinal(true);
+        $final = $state->getLastRound()?->getEvents()[0];
+        assert($final instanceof Event);
+
+        // p2 won the final; p2 withdraws first, then p1
+        $played = $state->withAdditionalResults([new Result($final, $field[1])])
+            ->withoutParticipant($field[1])
+            ->withoutParticipant($field[0]);
+
+        expect($engine->getOutcome($played)?->getStandings()->getEntries()[0]->getParticipant())->toBe($field[1]);
+    });
+
+    it('sends the one who withdrew second on from a double elimination tie too, and the first to the losers bracket', function (
+        int $leavesFirst,
+        int $leavesSecond
+    ): void {
+        $engine = new DoubleEliminationEngine();
+        $field = timesField(4);
+
+        // Winners round 1 (p1 v p4, p2 v p3) is recorded; both entrants of
+        // its first tie leave before it is played, and p2 wins the other
+        $state = StageState::start($field);
+        $state = $state->withRoundPlayed($engine->pairNextRound($state), [])
+            ->withoutParticipant($field[$leavesFirst])
+            ->withoutParticipant($field[$leavesSecond]);
+        $first = $state->getRoundsPlayed()[0];
+        $state = $state->withAdditionalResults([new Result($first->getEvents()[1], $field[1])]);
+
+        // The one who left second went on to the winners final, gives it to
+        // p2 there and drops to the losers final, which it gives to p3. The
+        // one who left first dropped at once and gave p3 the tie before
+        // that. Nothing is left to play but the grand final.
+        $next = $engine->pairNextRound($state);
+        $tiers = timesTiers($engine->getStandings($state));
+
+        expect($engine->getRecordedRounds($state)[0]->getUncontestedEvents())->toBe([$first->getEvents()[0]])
+            ->and($next->getLabel())->toBe('grand final')
+            ->and(timesPairs($next))->toBe(['p2 v p3'])
+            ->and($tiers[$field[$leavesSecond]->getId()])->toBeLessThan($tiers[$field[$leavesFirst]->getId()]);
+    })->with([
+        'p4 leaves, then p1' => [3, 0],
+        'p1 leaves, then p4' => [0, 3],
+    ]);
+});
+
 describe('the match outcome selector over a bracket a finalist withdrew from', function (): void {
     /**
      * A bracket of four played up to its last tie, which is between the
