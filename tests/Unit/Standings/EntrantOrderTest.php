@@ -9,6 +9,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Stage\StageOutcome;
+use MissionGaming\Tactician\Standings\EntryOrder;
 use MissionGaming\Tactician\Standings\RankingStrategy;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
@@ -249,6 +250,107 @@ describe('crediting byes in a table', function (): void {
             ->and($entry->getTiebreakerValue('wins'))->toBe(1.0)
             ->and((new StandingEntry($this->a, 1, 1, 0, 0, 3.0))->getByes())->toBe(0);
     });
+});
+
+// The ID step of the fallback has to be an order: for any two IDs one answer,
+// the opposite answer the other way round, equal only for the same string,
+// and no three IDs in a circle. PHP's own comparison of two strings fails
+// each of these for some of the IDs below.
+describe('the order of participant IDs', function (): void {
+    beforeEach(function (): void {
+        $this->ids = [
+            // whole numbers as written, among them values past the integer range
+            '0', '1', '2', '7', '9', '10', '100', '1000', '9223372036854775807', '9223372036854775808',
+            '99999999999999999999999999', '100000000000000000000000000',
+            // equal to one of those as numbers, and not written as it is
+            '01', '00', '007', '1.0', '1e0', '+1', ' 1', '1 ', "\t1", "1\n", '1e3', '0x1A', '-0', '-1', '.5', '0.5', '1e1000', '0e0',
+            // not numbers
+            '', ' ', '1a', '1_0', 'a', 'A', 'ab', 'b', 'e', 'E', 'p2', 'p10', 'P2', 'null', 'true', 'INF', 'NAN',
+            // outside ASCII
+            'é', '١', '１',
+        ];
+    });
+
+    it('answers every pair one way, and equal only for the same string', function (): void {
+        foreach ($this->ids as $first) {
+            foreach ($this->ids as $second) {
+                $forward = EntryOrder::compareIds($first, $second);
+
+                expect($forward)->toBeIn([-1, 0, 1])
+                    ->and(EntryOrder::compareIds($second, $first))->toBe(-$forward)
+                    ->and($forward === 0)->toBe($first === $second);
+            }
+        }
+    });
+
+    it('puts no three IDs in a circle', function (): void {
+        $circles = [];
+        foreach ($this->ids as $first) {
+            foreach ($this->ids as $second) {
+                if (EntryOrder::compareIds($first, $second) >= 0) {
+                    continue;
+                }
+                foreach ($this->ids as $third) {
+                    if (EntryOrder::compareIds($second, $third) < 0 && EntryOrder::compareIds($first, $third) >= 0) {
+                        $circles[] = json_encode([$first, $second, $third]);
+                    }
+                }
+            }
+        }
+
+        expect($circles)->toBe([]);
+    });
+
+    it('puts IDs written as whole numbers first, in the order of their values', function (): void {
+        $ordered = $this->ids;
+        usort($ordered, EntryOrder::compareIds(...));
+
+        expect(array_slice($ordered, 0, 12))->toBe([
+            '0', '1', '2', '7', '9', '10', '100', '1000', '9223372036854775807', '9223372036854775808',
+            '99999999999999999999999999', '100000000000000000000000000',
+        ]);
+
+        // The others follow byte by byte, as strcmp() has them
+        $others = array_slice($ordered, 12);
+        $byBytes = $others;
+        usort($byBytes, static fn(string $first, string $second): int => strcmp($first, $second) <=> 0);
+        expect($others)->toBe($byBytes);
+    });
+
+    it('sorts every arrangement of a set of awkward IDs to one list', function (int $seed): void {
+        $randomizer = new Randomizer(new Mt19937($seed));
+        $set = array_map(fn(int|string $key): string => $this->ids[$key], $randomizer->pickArrayKeys($this->ids, 6));
+
+        $permute = static function (array $items) use (&$permute): array {
+            if (count($items) <= 1) {
+                return [$items];
+            }
+            $all = [];
+            foreach ($items as $index => $item) {
+                $rest = $items;
+                unset($rest[$index]);
+                foreach ($permute(array_values($rest)) as $tail) {
+                    $all[] = [$item, ...$tail];
+                }
+            }
+
+            return $all;
+        };
+
+        // Through the calculator: unseeded participants with no results, so
+        // that nothing but the ID decides
+        $calculator = new StandingsCalculator();
+        $answers = [];
+        foreach ($permute($set) as $arrangement) {
+            $table = entrantOrderIds($calculator->calculate(
+                array_map(static fn(string $id): Participant => new Participant($id, 'Entry'), $arrangement),
+                []
+            ));
+            $answers[json_encode($table, JSON_INVALID_UTF8_SUBSTITUTE)] = true;
+        }
+
+        expect($answers)->toHaveCount(1);
+    })->with([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12]]);
 });
 
 // A table calculated on its own has no entrant list to fall back on. It is

@@ -367,6 +367,33 @@ describe('a per-group selection folded into a bracket', function (): void {
         expect(selectionIds(RankRangeSelector::topPerGroup(2)->select(crossPoolOutcome(2, 2))))->toBe(['A1', 'B1', 'A2', 'B2']);
     });
 
+    // Pool order is what 0.2.x listed every rank in. It stays the order
+    // wherever it keeps the pools apart as well as any other: for one pool
+    // and for two, whatever the number of ranks, and for a single rank of
+    // any number of pools.
+    it('keeps one pool and two pools in pool order for every number of ranks', function (int $pools): void {
+        for ($ranks = 1; $ranks <= 9; ++$ranks) {
+            $inPoolOrder = [];
+            for ($rank = 1; $rank <= $ranks; ++$rank) {
+                for ($pool = 0; $pool < $pools; ++$pool) {
+                    $inPoolOrder[] = chr(65 + $pool) . $rank;
+                }
+            }
+
+            expect(selectionIds(RankRangeSelector::topPerGroup($ranks)->select(crossPoolOutcome($pools, $ranks))))
+                ->toBe($inPoolOrder, "{$pools} pool(s), {$ranks} rank(s)");
+        }
+    })->with([[1], [2]]);
+
+    it('keeps a single rank of any number of pools in pool order', function (): void {
+        for ($pools = 1; $pools <= 26; ++$pools) {
+            foreach ([1, 2, 3] as $rank) {
+                expect(selectionIds(RankRangeSelector::perGroup($rank, $rank)->select(crossPoolOutcome($pools, 3))))
+                    ->toBe(array_map(fn(int $pool): string => chr(65 + $pool) . $rank, range(0, $pools - 1)));
+            }
+        }
+    });
+
     // The top two of every pool: for any number of pools, a pool's first
     // and second are in opposite halves of the bracket, so they can only
     // meet in its final.
