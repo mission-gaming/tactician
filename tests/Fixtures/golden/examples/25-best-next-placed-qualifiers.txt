@@ -1,0 +1,53 @@
+# The results of examples/25-best-next-placed-qualifiers.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Pool tables ==
+North:
+  1. alta played=3 wins=3 draws=0 losses=0 value=9 for=4 against=0
+  2. bodo played=3 wins=1 draws=1 losses=1 value=4 for=5 against=3
+  3. gavle played=3 wins=1 draws=1 losses=1 value=4 for=3 against=2
+  4. kemi played=3 wins=0 draws=0 losses=3 value=0 for=0 against=7
+East:
+  1. lahti played=3 wins=2 draws=1 losses=0 value=7 for=3 against=1
+  2. narva played=3 wins=1 draws=1 losses=1 value=4 for=5 against=2
+  3. tartu played=3 wins=1 draws=1 losses=1 value=4 for=1 against=1
+  4. vantaa played=3 wins=0 draws=1 losses=2 value=1 for=0 against=5
+West:
+  1. bergen played=3 wins=3 draws=0 losses=0 value=9 for=4 against=0
+  2. floro played=3 wins=2 draws=0 losses=1 value=6 for=3 against=3
+  3. molde played=3 wins=1 draws=0 losses=2 value=3 for=2 against=3
+  4. voss played=3 wins=0 draws=0 losses=3 value=0 for=0 against=3
+
+== Top two of every pool ==
+- alta "Alta"
+- lahti "Lahti"
+- bergen "Bergen"
+- floro "Floro"
+- narva "Narva"
+- bodo "Bodo"
+
+== The two best third-placed clubs, best first ==
+- gavle "Gavle"
+- tartu "Tartu"
+
+== With a west pool of three ==
+West table:
+  1. bergen played=2 wins=1 draws=0 losses=1 value=3 for=3 against=1
+  2. floro played=2 wins=1 draws=0 losses=1 value=3 for=1 against=1
+  3. molde played=2 wins=1 draws=0 losses=1 value=3 for=1 against=3
+No method chosen: pool_comparison_required
+Pool sizes named by the refusal:
+  North: 4
+  East: 4
+  West: 3
+Best two by raw totals: Gavle, Tartu
+Best two per event played: Molde, Gavle
+Best two without the results against the last-placed of the larger pools: Tartu, Molde
