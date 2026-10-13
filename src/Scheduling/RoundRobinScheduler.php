@@ -40,8 +40,9 @@ use Random\Randomizer;
  *
  * Without a Randomizer the output is a function of the input: the same
  * participants in the same order, options and constraints give the same
- * schedule, as long as the leg strategy draws nothing (a ShuffledLegStrategy
- * has a randomizer of its own) and the constraints answer from the event
+ * schedule, as long as the leg strategy holds no randomizer (a
+ * ShuffledLegStrategy built from a seed does not: its draws start again
+ * from the seed on every call) and the constraints answer from the event
  * and the context alone. With one, the participant list is shuffled before the first
  * leg is laid out (and before a backtracking search), so:
  *
@@ -83,8 +84,9 @@ class RoundRobinScheduler implements SchedulerInterface
      *                                        no constraints, which cannot fail on a pairing
      * @param Randomizer|null $randomizer Shuffles the participant list before the first leg is
      *                                    laid out (see the class docblock for what that does to
-     *                                    later legs); null for the list order as given. A leg
-     *                                    strategy that draws has a randomizer of its own
+     *                                    later legs); null for the list order as given. It is
+     *                                    not passed on: a leg strategy that draws has a seed
+     *                                    or a randomizer of its own
      */
     public function __construct(
         private ?ConstraintSet $constraints = null,

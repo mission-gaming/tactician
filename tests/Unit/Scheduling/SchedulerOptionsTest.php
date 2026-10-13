@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
@@ -14,6 +15,22 @@ use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissScheduler;
+use Random\Engine\Mt19937;
+use Random\Randomizer;
+
+/**
+ * @param Closure(): mixed $build
+ */
+function roundRobinOptionsRefusal(Closure $build): ?InvalidConfigurationException
+{
+    try {
+        $build();
+    } catch (InvalidConfigurationException $refusal) {
+        return $refusal;
+    }
+
+    return null;
+}
 
 describe('RoundRobinOptions', function (): void {
     it('defaults to a single mirrored leg', function (): void {
@@ -28,11 +45,88 @@ describe('RoundRobinOptions', function (): void {
     })->throws(InvalidConfigurationException::class);
 
     it('round-trips through plain configuration data', function (): void {
-        foreach (['mirrored', 'repeated', 'shuffled'] as $identifier) {
+        foreach (['mirrored', 'repeated'] as $identifier) {
             $options = RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => $identifier]);
 
             expect($options->toArray())->toBe(['legs' => 2, 'strategy' => $identifier, 'backtracking' => false]);
         }
+    });
+
+    // The shuffled strategy draws, so its plain data names the seed of the
+    // draws: stored options then say everything that decides the schedule
+    it('round-trips the shuffled strategy with its seed', function (int $seed): void {
+        $data = ['legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false, 'strategy_seed' => $seed];
+        $options = RoundRobinOptions::fromArray($data);
+
+        expect($options->strategy)->toBeInstanceOf(ShuffledLegStrategy::class)
+            ->and($options->strategy instanceof ShuffledLegStrategy ? $options->strategy->seed : null)->toBe($seed)
+            ->and($options->toArray())->toBe($data)
+            ->and((new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: $seed)))->toArray())->toBe($data);
+    })->with([[0], [7], [-3], [PHP_INT_MAX]]);
+
+    it('writes the seed before the role assignment a caller named', function (): void {
+        $data = ['legs' => 3, 'strategy' => 'shuffled', 'backtracking' => true, 'strategy_seed' => 7, 'role_assignment' => 'balanced'];
+
+        expect(RoundRobinOptions::fromArray($data)->toArray())->toBe($data);
+    });
+
+    // The defect of issue #52: 'shuffled' in plain data used to build a
+    // strategy that no seed controlled
+    it('refuses the shuffled strategy without a seed', function (array $data): void {
+        $refusal = roundRobinOptionsRefusal(fn(): RoundRobinOptions => RoundRobinOptions::fromArray($data));
+
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions)
+            ->and($refusal?->getMessage())->toContain('strategy_seed');
+    })->with([
+        'the identifier alone' => [['strategy' => 'shuffled']],
+        'with legs' => [['legs' => 2, 'strategy' => 'shuffled', 'backtracking' => false]],
+    ]);
+
+    it('refuses a seed that is not an integer, whatever the strategy', function (string $strategy, mixed $seed): void {
+        $refusal = roundRobinOptionsRefusal(
+            fn(): RoundRobinOptions => RoundRobinOptions::fromArray(['strategy' => $strategy, 'strategy_seed' => $seed])
+        );
+
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::WrongValueType)
+            ->and($refusal?->getMessage())->toContain('strategy_seed must be an integer');
+    })
+        ->with([['shuffled'], ['mirrored'], ['repeated']])
+        ->with([['7'], [7.0], [true], [[7]]]);
+
+    // Null is the key left out, as it is for the role assignment: a stored
+    // row with an empty seed column reads as a row without one
+    it('reads a null seed as no seed', function (): void {
+        expect(RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'repeated', 'strategy_seed' => null])->toArray())
+            ->toBe(['legs' => 2, 'strategy' => 'repeated', 'backtracking' => false]);
+
+        $refusal = roundRobinOptionsRefusal(
+            fn(): RoundRobinOptions => RoundRobinOptions::fromArray(['strategy' => 'shuffled', 'strategy_seed' => null])
+        );
+
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions);
+    });
+
+    // A seed beside a strategy that draws nothing would decide nothing, and
+    // toArray() could not give it back
+    it('refuses a seed for a strategy that does not draw', function (array $data): void {
+        $refusal = roundRobinOptionsRefusal(fn(): RoundRobinOptions => RoundRobinOptions::fromArray($data));
+
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions)
+            ->and($refusal?->getMessage())->toContain('no other strategy draws');
+    })->with([
+        'mirrored' => [['strategy' => 'mirrored', 'strategy_seed' => 7]],
+        'repeated' => [['strategy' => 'repeated', 'strategy_seed' => 7]],
+        'the default strategy' => [['legs' => 2, 'strategy_seed' => 0]],
+    ]);
+
+    // The state of a randomizer is not plain data: 'shuffled' alone would be
+    // data that fromArray() refuses, and a made-up seed would be a lie
+    it('refuses to serialize a shuffled strategy that holds a randomizer', function (): void {
+        $options = new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937(7))));
+        $refusal = roundRobinOptionsRefusal(fn(): array => $options->toArray());
+
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::NotSerializable)
+            ->and($refusal?->getMessage())->toContain('holds a randomizer');
     });
 
     it('maps stable strategy identifiers to the built-in strategies', function (): void {
@@ -40,7 +134,7 @@ describe('RoundRobinOptions', function (): void {
             ->toBeInstanceOf(MirroredLegStrategy::class);
         expect(RoundRobinOptions::fromArray(['strategy' => 'repeated'])->strategy)
             ->toBeInstanceOf(RepeatedLegStrategy::class);
-        expect(RoundRobinOptions::fromArray(['strategy' => 'shuffled'])->strategy)
+        expect(RoundRobinOptions::fromArray(['strategy' => 'shuffled', 'strategy_seed' => 1])->strategy)
             ->toBeInstanceOf(ShuffledLegStrategy::class);
     });
 
@@ -177,7 +271,7 @@ describe('Scheduler options type checks', function (): void {
     it('builds the round-robin plan from the configured strategy', function (): void {
         $plan = (new RoundRobinScheduler())->getPlan(
             $this->participants,
-            new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy())
+            new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 1))
         );
 
         expect($plan->getLegs())->toBe(2);

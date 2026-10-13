@@ -113,7 +113,7 @@ timeline, repack, quality and standings components have no leg concept.
 - **LegStrategyInterface**: Two methods. `planLegs()` returns a `LegPlanContribution`; `generateEventForLeg()` is handed the two participants of one seating of a leg and returns the event for it, which is where a strategy decides the roles of that leg
 - **MirroredLegStrategy**: Every leg after the first has the two participants of each seating in the other order
 - **RepeatedLegStrategy**: Every leg has the seatings as they are laid out
-- **ShuffledLegStrategy**: Every leg after the first has each seating in a random order, from the `Randomizer` it was given or from an unseeded one of its own
+- **ShuffledLegStrategy**: Every leg after the first has each seating in a random order, drawn from the integer seed or from the `Randomizer` it was given, and it is refused without either. With a seed its draws start again from that seed whenever `planLegs()` is called, which the scheduler does at the start of every `schedule()` call, so the roles are the same on every call
 - **LegPlanContribution**: What a strategy states about itself (role mirroring, randomization, unsatisfiable reasons, warnings). A non-empty list of unsatisfiable reasons fails plan construction with an `InvalidConfigurationException` (`UnsatisfiableLegStrategy`); none of the three built-in strategies returns one, so this is an extension point for a strategy of the caller's. The three built-in strategies do not read the `ConstraintSet` that `planLegs()` receives
 
 ### Constraint System
@@ -333,7 +333,8 @@ maps to and from them.
 - **Determinism.** `src/` never asks for the current time and calls no
   global random function. Randomness comes from a `Random\Randomizer` the
   caller passes in (`PotDrawScheduler` builds its own from the seed in its
-  options; `ShuffledLegStrategy` builds an unseeded one when given none).
+  options, and `ShuffledLegStrategy` from the seed it is given in place of
+  a randomizer). Nothing in `src/` builds an unseeded one.
   A `Randomizer` has state: a scheduler that holds one continues its
   sequence on every call, so the same seed gives the same schedule on a
   fresh scheduler and a different one on the second call of the same
