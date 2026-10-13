@@ -187,7 +187,11 @@ entry on the engine fingerprint.
   look at the rounds to come. A draw that reaches a round with no pairing is now drawn again from
   the same sequence, up to twenty draws, and after that, or with nothing to
   draw from, the rounds are built by the rotation that lays out a round
-  robin. Who is affected: calls that threw. A schedule that 0.2.x
+  robin. Without a source of draws there is one draw, and the rotation is
+  what generates the schedule where that draw fails (26 participants from
+  24 rounds on, 34 from 32 and 37 at 36, of the fields up to 44); its first
+  round is the list as given, as in every schedule drawn without a source.
+  Who is affected: calls that threw. A schedule that 0.2.x
   generated is generated again unchanged, apart from the list-order change
   above: the first draw is tried first and is the same draw. With
   constraints a schedule may not exist, and the exception is still thrown,

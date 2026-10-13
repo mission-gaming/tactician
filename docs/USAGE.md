@@ -1130,7 +1130,12 @@ without a repeat. The scheduler then draws again, continuing the same
 sequence, so the schedule is still a function of the seed; a schedule that
 needs no second draw is the one the first draw gives. If twenty draws are
 not enough, or there is nothing to draw from, it builds the rounds by the
-rotation that lays out a round robin, which cannot fail. With constraints a
+rotation that lays out a round robin, which cannot fail. Without a source of
+draws there is one draw, and it needs the rotation at a few of the largest
+round counts (of the fields up to 44: 26 participants from 24 rounds on, 34
+from 32, and 37 at 36). The first round is the list as given there too,
+with the bye of a field of odd size at the last position; the later rounds
+are those of the rotation, in which nobody has a second bye. With constraints a
 schedule may not exist at all, and an `IncompleteScheduleException` reports
 the round the last draw could not pair.
 

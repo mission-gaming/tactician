@@ -155,12 +155,43 @@ describe('a pre-drawn Swiss schedule', function (): void {
         }
     });
 
+    // Without a source of draws there is one draw, and it reaches a round
+    // with no pairing at 26 participants from 24 rounds on, at 34 from 32
+    // and at 37 at 36: there the scheduler builds the rounds by rotation.
+    // The schedule is held to the same rules either way, nobody has a
+    // second bye in a rotation, and the first round is the list as given,
+    // with the bye of a field of odd size at the last position, whichever
+    // way the rounds were built.
+    it('is generated where the one draw without a source reaches a round with no pairing', function (int $size, int $rounds): void {
+        $field = preDrawnField($size);
+        $schedule = (new SwissScheduler())->schedule($field, new SwissOptions($rounds));
+
+        expect(preDrawnProblems($schedule, $size, $rounds))->toBe([]);
+
+        $byes = $schedule->getMetadataValue('byes');
+        assert(is_array($byes));
+        expect(count($byes))->toBe(count(array_unique($byes)));
+
+        $listed = [];
+        for ($position = 1; $position < $size; $position += 2) {
+            $listed[] = '1: p' . ($position + 1) . " v p{$position}";
+        }
+        expect(array_slice(preDrawnLines($schedule), 0, intdiv($size, 2)))->toBe($listed)
+            ->and($byes[1] ?? null)->toBe($size % 2 === 1 ? "p{$size}" : null);
+
+        // The round count before the first one that needs the rotation is
+        // drawn through the engine, and starts with the same round
+        $drawn = (new SwissScheduler())->schedule($field, new SwissOptions(1));
+        expect(array_slice(preDrawnLines($schedule), 0, intdiv($size, 2)))->toBe(preDrawnLines($drawn));
+    })->with([[26, 24], [26, 25], [34, 32], [34, 33], [37, 36]]);
+
     // The rotation is what makes generation certain: it is what the
     // scheduler builds when every draw has reached a round with no pairing.
-    // No input is known to get that far (a schedule drawn without a
-    // randomizer goes through at every size tried, and a seeded one within
-    // four draws of the twenty), so the method is called here directly, by
-    // reflection, and held to the same rules as a drawn schedule.
+    // The test above reaches it without a source of draws. With one, no
+    // input is known to get that far (a seeded draw goes through within
+    // four draws of the twenty), so the method is also called here
+    // directly, by reflection, and held to the same rules as a drawn
+    // schedule.
     it('can always be built by rotation, with or without a source of draws', function (): void {
         $rotation = new ReflectionMethod(SwissScheduler::class, 'drawByRotation');
         $problems = [];

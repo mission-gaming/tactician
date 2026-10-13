@@ -259,27 +259,33 @@ class SwissScheduler implements SchedulerInterface
      * One participant keeps its seat and the others rotate around it, a
      * seat on one side meeting the seat opposite. A field of odd size has
      * an empty seat, and the participant opposite it has the bye of the
-     * round; nobody has a second one. With a randomizer the participants
-     * take their seats in a drawn order and the rounds are taken in a drawn
-     * order; without one both are the order given. The first-named
-     * participant of an event is the one who has been first-named less
-     * often so far.
+     * round; nobody has a second one. The first-named participant of an
+     * event is the one who has been first-named less often so far.
+     *
+     * Without a randomizer the participants are seated so that the first
+     * round is the list as given, as the engine draws it: position 1 with
+     * 2 and 3 with 4, the later position first-named, and the bye of a
+     * field of odd size at the last position (seatsInListOrder()). The
+     * rounds follow in the order of the rotation. This is reached: the one
+     * draw without a randomizer leaves a round without a pairing at 26
+     * participants from 24 rounds on, for example. With a randomizer the
+     * participants take their seats in a drawn order and the rounds are
+     * taken in a drawn order.
      *
      * @param list<Participant> $participants
      * @return array{events: list<Event>, byes: array<int, string>, failure: null}
      */
     private function drawByRotation(array $participants, int $rounds, ?Randomizer $randomizer): array
     {
-        $seats = [];
-        foreach ($randomizer?->shuffleArray($participants) ?? $participants as $participant) {
-            $seats[] = $participant;
-        }
-        if (count($seats) % 2 === 1) {
-            $seats[] = null;
+        if ($randomizer === null) {
+            [$seats, $fixed] = self::seatsInListOrder($participants);
+        } else {
+            $seats = array_values($randomizer->shuffleArray($participants));
+            // A field of odd size has an empty seat, and it is the fixed one
+            $fixed = count($seats) % 2 === 1 ? null : array_pop($seats);
         }
 
-        $rotating = count($seats) - 1;
-        $fixed = $seats[$rotating];
+        $rotating = count($seats);
         $steps = range(0, $rotating - 1);
         if ($randomizer !== null) {
             $steps = array_values($randomizer->shuffleArray($steps));
@@ -319,6 +325,39 @@ class SwissScheduler implements SchedulerInterface
         }
 
         return ['events' => $events, 'byes' => $byes, 'failure' => null];
+    }
+
+    /**
+     * The seats of a rotation whose first round is the list as given.
+     *
+     * The first round of a rotation pairs the first rotating seat with the
+     * fixed seat, the second with the last, the third with the last but
+     * one, and so on. So the pairs of the list (positions 1 and 2, 3 and
+     * 4, ...) are put on those seats, the later position of each pair on
+     * the seat that is named first. In a field of odd size the fixed seat
+     * is empty and the last position sits opposite it, where the bye is.
+     *
+     * @param list<Participant> $participants At least two
+     * @return array{list<Participant>, Participant|null} The rotating seats in order, and the
+     *                                                    occupant of the fixed seat
+     */
+    private static function seatsInListOrder(array $participants): array
+    {
+        $count = count($participants);
+        $odd = $count % 2 === 1;
+
+        $fixed = $odd ? null : $participants[0];
+        $seats = [0 => $odd ? $participants[$count - 1] : $participants[1]];
+        $rotating = $odd ? $count : $count - 1;
+
+        $others = $odd ? array_slice($participants, 0, $count - 1) : array_slice($participants, 2);
+        foreach (array_chunk($others, 2) as $index => $pair) {
+            $seats[$index + 1] = $pair[1];
+            $seats[$rotating - $index - 1] = $pair[0];
+        }
+        ksort($seats);
+
+        return [array_values($seats), $fixed];
     }
 
     /**
