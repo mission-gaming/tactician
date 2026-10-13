@@ -766,6 +766,16 @@ entry on the engine fingerprint.
   with four legs); 16 participants in 1.8 seconds before and 14 now.
   Every such search is bounded by a count and not by time, and the failure
   names the bound when one stopped it.
+- **A role search uses memory in proportion to the square of the number
+  of events.** It keeps the context of every round it has placed (of every
+  event, with backtracking) to go back to. Who is affected: a schedule of
+  shuffled legs with a constraint set, and a backtracking search over
+  several legs, in a large field. Four shuffled legs under a limit of two
+  in a row take 16 MB for 24 participants, 52 MB for 40 and 120 MB for 56,
+  where 40 participants without constraints take 6 MB; four repeated
+  legs with backtracking take 84 MB for 32 participants. What to check:
+  PHP's `memory_limit` for a field of that size
+  (`docs/design/backtracking-generation.md`, "Bounds").
 - **Constraints and leg strategies are asked more often in a search.** A
   backtracking search over several legs puts the events of each first leg
   it finds to the constraints again when it searches the roles, and asks a

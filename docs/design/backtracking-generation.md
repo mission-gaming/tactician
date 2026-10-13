@@ -208,6 +208,20 @@ that satisfies them without a search. The role search starts from the roles
 it is handed and changes as few as it must, from the last event back, which
 is a poor way to reach a leg whose roles differ in most places.
 
+**Memory.** A role search keeps the context of every event it has placed,
+to go back to: one for each round without backtracking, and one for each
+event with it, each holding the events before it. Memory therefore grows
+with the square of the number of events, where generation without a role
+search keeps one context. Measured as PHP's peak allocation for a schedule
+that was found: four shuffled legs under a limit of two in a row take 16 MB
+for 24 participants, 52 MB for 40 and 120 MB for 56 (6 MB for 40 with
+no constraints); four repeated legs under the same limit with
+backtracking take 32 MB for 24 participants and 84 MB for 32. Nothing
+bounds this but the size of the schedule, and PHP's memory limit ends a
+process that exceeds it with an error no caller can catch: a very large
+field with several legs and a role constraint needs a limit that allows
+for it.
+
 A search that a bound stopped says so in the exception message, and does
 not say that no roles exist. A backtracking search that spent its budget
 says of how many first legs it went through every choice of roles and of
