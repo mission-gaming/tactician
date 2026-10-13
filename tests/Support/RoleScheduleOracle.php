@@ -31,7 +31,8 @@ use MissionGaming\Tactician\DTO\Event;
  * enumeration: a later leg has the pairings of the first in the same rounds
  * of the leg, and each of its events has
  *
- * - `mirrored`: the roles of its first-leg event reversed;
+ * - `mirrored`: the roles of its first-leg event, reversed in the
+ *   even-numbered legs;
  * - `repeated`: the roles of its first-leg event;
  * - `shuffled`: either role.
  */
@@ -91,7 +92,7 @@ final class RoleScheduleOracle
             $round = $legRound + ($leg - 1) * $roundsPerLeg;
             $choices = [[$first, $second], [$second, $first]];
             if ($strategy === 'mirrored') {
-                $choices = [[$second, $first]];
+                $choices = $leg % 2 === 0 ? [[$second, $first]] : [[$first, $second]];
             } elseif ($strategy === 'repeated') {
                 $choices = [[$first, $second]];
             }

@@ -172,7 +172,10 @@ function roleSweepFaults(Schedule $schedule, array $field, int $legs, string $st
 
         foreach ($byLeg[$leg] as $meeting => $firstNamed) {
             $sameRoles = $firstNamed === $byLeg[1][$meeting];
-            if (($strategy === 'mirrored' && $sameRoles) || ($strategy === 'repeated' && !$sameRoles)) {
+            // A mirrored leg reverses the first in the even-numbered legs
+            // and has its roles in the odd-numbered ones
+            $mirroredWrong = $sameRoles === ($leg % 2 === 0);
+            if (($strategy === 'mirrored' && $mirroredWrong) || ($strategy === 'repeated' && !$sameRoles)) {
                 $faults[] = "leg {$leg}, {$meeting}: not the roles a {$strategy} leg has";
             }
         }
