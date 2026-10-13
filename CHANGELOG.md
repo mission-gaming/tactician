@@ -385,6 +385,38 @@ entry on the engine fingerprint.
   tables under "Role-Based Constraints" and "Legs after the first" in the
   usage guide, the architecture document, the roadmap's limitations and the
   role assignment design note.
+- **`SlotAssignment::toArray()` writes a kickoff that is not in UTC as the
+  instant it is.** The kickoff was formatted as it was held and a `Z` was
+  put after it, so an assignment built by hand with 20:15 in London was
+  written `...T20:15:00Z`, an hour away from the instant it holds, and
+  `RepackOutcome::fingerprint()` covered that string. The kickoff is now
+  converted to UTC before it is written (`...T19:15:00Z` in August), and
+  two outcomes that hold one instant in two timezones have one
+  fingerprint. `getKickoff()` still returns the object it was given. The
+  repacker always builds its assignments in UTC, so nothing it returns,
+  and no fingerprint of an outcome it returned, changes; only an
+  assignment constructed by hand with a kickoff in another timezone is
+  written differently (#121, item 9).
+- **`TimelineDefinition::toArray()` writes the fraction of a second of a
+  start that has one, and `formatInterval()` shows the sign, the fraction
+  and the relative date string of an interval.** A start of
+  `19:00:00.25` was written `19:00:00`, so the definition read back a
+  quarter of a second earlier; it is written `2026-08-01 19:00:00.250000`,
+  which `fromArray()` reads. A start on a whole second is written as
+  before. `TimelineDefinition::formatInterval()`, which errors use to
+  describe an interval, wrote an inverted `P7D` as `P7D`, an interval of a
+  second and a half as `PT1S`, and one made from `next weekday` as `PT0S`.
+  It now writes `-P7D`, `PT1.5S` and `next weekday`: forms that
+  `parseInterval()` refuses, where the old ones read back as another
+  interval. An interval built from an ISO 8601 duration is written as
+  before. The name of a `MinimumRestRule` and its violation messages use
+  the same method and change with it for such a rest; its `toArray()`
+  refuses such a rest (see Changed). `SessionGrid::toArray()` and
+  `BlackoutRule::toArray()` write the fraction of a second of a session
+  start and of a window bound the same way: a start of `20:00:00.25` was
+  written `20:00:00`, and a blackout window inside one second was written
+  as one that ends when it starts, which `fromArray()` refuses. A time on a
+  whole second is written as before by all three (#121, item 6).
 
 ### Added
 
@@ -450,6 +482,15 @@ entry on the engine fingerprint.
 - **`InvalidConfigurationReason::OverlappingTime`** (`overlapping_time`), the
   reason of the two overlap rejections under Changed. A `match` over every
   case of the enum needs an arm for it.
+- **What the fixes of #121 add to the public surface.** Each is described
+  with its fix under Changed or Fixed below:
+  `TimelineDefinition::writeInterval(DateInterval $interval, string $key):
+  string`; the optional fourth constructor parameter and public property
+  `StageTransition::$afterWholeBracket` (`bool`, default `false`); and two
+  cases of `InvalidConfigurationReason`, `PlannedRoundsPlayed`
+  (`planned_rounds_played`) and `ParticipantDoubleBooked`
+  (`participant_double_booked`). A `match` over the reason needs a
+  `default` arm, as the enum has always said.
 
 ### Changed
 
@@ -723,6 +764,158 @@ entry on the engine fingerprint.
 
   The scheduled workflow's `Unlocked dependencies` jobs, which install the
   newest versions and had been failing on these findings, pass again.
+- **Breaking: `SwissPairingEngine::pairNextRound()` refuses a round beyond
+  the planned rounds.** With `plannedRounds: 1` and round 1 recorded,
+  `isComplete()` was true and `pairNextRound()` still returned a second
+  round; the bracket engines refuse in the same position. It now throws an
+  `InvalidConfigurationException` with the new reason `PlannedRoundsPlayed`
+  (`planned_rounds_played`) and the context `planned_rounds` and
+  `next_round`. An engine built without `plannedRounds` pairs as before,
+  for as long as a pairing exists. Who is affected: code that calls
+  `pairNextRound()` without asking `isComplete()` first, or that plays more
+  rounds than the number it gave the engine. What to check: every loop that
+  pairs a Swiss stage. Before: a pairing of round `plannedRounds + 1`.
+  After: the exception. To play a longer stage, build the engine with the
+  new number of rounds; the planned rounds are not part of the engine's
+  fingerprint, so the recorded state is still accepted (#121, item 1).
+- **Breaking: `Standings::getPosition()` counts the order of the table and
+  no longer reads the array keys.** A `Standings` built by hand from an
+  array with the keys 5 and 9 reported the positions 6 and 10, and one with
+  string keys raised a raw `TypeError`, while `getTiedSets()` and iteration
+  counted the same entries as 1 and 2. The position is now the entry's
+  place in the order of the array, from 1. A table from
+  `StandingsCalculator`, and any table built from a list, gives the
+  positions it gave before. Who is affected: code that constructs
+  `Standings` itself from an array that is not a list (the result of
+  `array_filter()` without `array_values()`, say) and reads `getPosition()`.
+  What to check: whether anything relied on the key. Before:
+  `new Standings([5 => $a, 9 => $b])->getPosition($b)` was 10. After: 2
+  (#121, item 3).
+- **Breaking: `SeedProtectionConstraint` accepts an event that has no
+  round.** Such an event was counted as round 0, which is inside every
+  protection window, so an event of two top seeds was rejected even with a
+  period of 0.0, which protects no round. An event with no round is in no
+  round and therefore in no protected one: `isSatisfied()` now returns
+  true for it, as it does where the plan has no total number of rounds.
+  Every event the schedulers and the engines build carries a round, so no
+  generated schedule changes. Who is affected: code that calls
+  `isSatisfied()`, or `ConstraintSet::isSatisfied()` with this constraint
+  in the set, on an event built without a `Round`. What to check: give such
+  an event its round where the protection is meant to apply. Before:
+  `false` for two top seeds in an event with no round. After: `true`
+  (#121, item 4).
+- **Breaking: `MatchOutcomeSelector` refuses a final round that holds an
+  event of more than two participants.** A winner and a loser are a
+  reading of two participants. Given an event of three, the losers mode
+  returned the first participant, or the second when the first had won,
+  and said nothing of the third: with the third as the winner it named the
+  first the loser. The winners mode returned the recorded winner. Both
+  modes now throw an `InvalidConfigurationException` with the reason
+  `IncompatibleOutcome` and the context `mode` and `participants`, in line
+  with ADR 0003 (`docs/adr/0003-multi-participant-events-are-a-2-0-goal.md`):
+  a component that is pairwise by nature refuses such an event and never
+  answers as if it were pairwise. Nothing in the library generates an
+  event of more than two participants, so no outcome an engine returns is
+  affected. Who is affected: code that builds a `StageOutcome` by hand
+  whose final round holds such an event and passes it to the selector.
+  What to check: read the winner of such an event from its `Result`
+  directly. Before: a participant list. After: the exception
+  (#121, item 13).
+- **Breaking: `TimelineDefinition::toArray()` and `SessionGrid::toArray()`
+  refuse an interval that would not read back as the same interval.** An
+  ISO 8601 duration, as PHP reads one, holds years, months, days, hours,
+  minutes and whole seconds. A `DateInterval` can hold more, and that part
+  was dropped without a word: an interval made by
+  `DateInterval::createFromDateString('next weekday')` was written `PT0S`,
+  which does not even load again, and `last day of next month` was written
+  `P1M`. Both methods now write an interval through the new
+  `TimelineDefinition::writeInterval(DateInterval $interval, string $key):
+  string`, which throws an `InvalidConfigurationException` with the reason
+  `NotSerializable` for:
+
+  - *an interval made by `createFromDateString()`, whatever the string.*
+    One made from more than amounts of time (`next weekday`) has no
+    duration. One made from amounts of time alone has a duration, and it is
+    another interval. PHP does not show the parts of an interval made from a
+    string, so a timeline and a grid add it one step at a time, each step
+    from the one before, and its hours, minutes and seconds as local time; a
+    duration read back is added as all its steps at once from the start, and
+    its hours as elapsed time (see "Every slot time is computed from the
+    start" under Output change). `createFromDateString('1 month')` from 31
+    January gives 3 March and 3 April, and the `P1M` it was written as gives
+    28 February and 31 March; `createFromDateString('25 minutes')` from the
+    first 01:50 of the night the clocks go back in London gives 02:15 GMT,
+    and `PT25M` gives 01:15 GMT;
+  - *an interval from `diff()` that has hours, minutes or seconds*, because
+    PHP adds those as local time too. An interval from `diff()` of whole
+    days, months and years is written as before: those are calendar steps
+    in both forms;
+  - *an inverted interval, one with a negative part, and one with a
+    fraction of a second*, none of which a duration PHP reads can hold.
+
+  Every interval built from an ISO 8601 duration is written as before. The
+  refusal is made when the object is serialised and not when it is built: a
+  timeline or a grid with such an interval works, and gives the slot times
+  it gave before; it has no plain-data form. In a timezone that never
+  changes its clocks (`UTC`, a fixed offset) the hours of the two forms
+  agree, and the interval is refused all the same: the rule does not
+  depend on the timezone. Who is affected: code that builds a
+  `TimelineDefinition` or a `SessionGrid` with
+  `DateInterval::createFromDateString()` (`'25 minutes'`, `'1 week'`), or
+  with what `diff()` returned for two times of day, and calls `toArray()`
+  on it; nothing else that reads such a timeline or grid changes, and
+  `RepackOutcome::fingerprint()` does not cover the grid. What to change:
+  build the interval from a duration, `new DateInterval('PT25M')` or
+  `new DateInterval('P7D')`. The duration is not the same interval in the
+  cases listed under "Every slot time is computed from the start" (a month
+  end, a time of day the clocks skip or repeat), so compare the slot times
+  where one applies; to keep the times of the relative interval, keep
+  building it and store the string it is made from in your own
+  configuration. Before: a duration string that could mean another
+  interval. After: the exception. Both `toArray()` methods declare it, so
+  code analysed with checked exceptions sees one more `@throws`
+  (#121, item 15).
+- **Breaking: `MinimumRestRule::toArray()` refuses a rest that
+  `fromArray()` could not read.** The rest is written as
+  `TimelineDefinition::formatInterval()` shows it, and that method now
+  shows a fraction of a second, a sign and a relative date string (see
+  Output change); none of the three is a duration `fromArray()` reads, so
+  the rule would have been written as data that fails when it is loaded.
+  `toArray()` now throws an `InvalidConfigurationException` with the reason
+  `NotSerializable` for such a rest. A rest of amounts of time made by
+  `createFromDateString()` (`48 hours`) or by `diff()` is written as
+  before, unlike the interval of a timeline: the rule adds its rest once
+  and in UTC, where it equals its duration. Who is affected: code that
+  builds the rule with `createFromDateString('next weekday')` or the like,
+  with a fraction of a second or with a negative part, and stores it.
+  Before: `PT0S`, or a duration without the fraction or the sign, which
+  loaded as another rest or not at all. After: the exception
+  (#121, items 6 and 15).
+- **Breaking: `TimelineAssigner` refuses a round that puts one participant
+  in two events at the same instant.** A slot with two or more resources
+  holds several events, and nothing stopped two of them from holding the
+  same participant: `assign()` and `assignRound()` returned a timeline in
+  which one participant plays on two pitches at once, unless a
+  `MinimumRestRule` happened to be configured. Both now throw an
+  `InvalidConfigurationException` with the new reason
+  `ParticipantDoubleBooked` (`participant_double_booked`); the context has
+  the round under `round` and, under `double_bookings`, every participant
+  concerned with the kickoff and the two events. The assigner refuses, as
+  it does for a violated rule, and does not report: its filling is
+  deterministic, so it cannot move one of the two events, and no policy
+  accepts a participant in two places at once. Participants are matched by
+  ID. Two events of one participant in different slots of a round are
+  assigned as before; whether the time between them is enough stays a
+  rule's to say. No schedule a generator returns has a participant twice in
+  a round, so no generated schedule is affected. Who is affected: code that
+  assigns a schedule or a pairing built by hand, or by a format of its own,
+  in which a participant has two events in one round, on a timeline with
+  resources. What to check: the order of the round's events, which decides
+  the slot each lands in, or give the round more slots than resources.
+  Before: two scheduled events of one participant with the same kickoff.
+  After: the exception. Where a `MinimumRestRule` reported such a clash,
+  the reason changes from `TimeRuleViolation` to `ParticipantDoubleBooked`,
+  because the round is refused before the rules are asked (#121, item 10).
 
 ### Fixed
 
@@ -733,6 +926,77 @@ entry on the engine fingerprint.
   property tests now hold every leg strategy, at one to three legs and
   every field size from 2 to 16, to the same schedule on every run from the
   same plain data, with and without a seeded scheduler.
+- **`new BlackoutRule([...])` labels an unlabelled window by its position,
+  not by its array key.** The default label added 1 to the key, so a window
+  under a string key raised a raw `TypeError`, and windows under keys 3 and
+  7 were labelled `blackout 4` and `blackout 8`. The label is now
+  `blackout N` with N the position of the window in the array, counted from
+  1, whatever the keys are. A list is labelled as before, and
+  `BlackoutRule::fromArray()`, which always built a list, is unchanged
+  (#121, items 2 and 16).
+- **`TieDecision::advancer()` refuses a single-leg result whose winner is
+  not in the tie.** With one leg it returned the winner the result
+  recorded, whoever that was; with two legs the same input was refused. It
+  now throws the `InvalidConfigurationException` of the two-legged case
+  (reason `InvalidResult`, context `winner` and `participants`). The winner
+  is matched by ID, and a winner who is one of the two is returned as
+  before, so no bracket the engines resolved changes (#121, item 5).
+- **`MetadataConstraint` casts its validator's answer to bool.** A
+  validator that returned anything but a bool (the 1 of a `preg_match()`,
+  a count, null) raised a raw `TypeError` when the constraint was asked,
+  where `CallableConstraint` casts its predicate's answer. Both now cast:
+  0, null, an empty string and an empty array reject the event. A
+  validator that returns a bool is read as before (#121, item 7).
+- **`CompositionValidator::validateChain()` can be told that a stage plays
+  a whole bracket.** It counted every `MatchOutcomeSelector` as the
+  hand-off after one knockout round, half the previous stage's entrants,
+  and nothing could tell it otherwise: after a whole bracket of 16 the
+  selector returns the 1 winner of the final and the validator computed 8.
+  The validator runs nothing, so the shape of the stage is declared:
+  `StageTransition` has a fourth, optional constructor parameter and public
+  property, `bool $afterWholeBracket = false`. With it true, a
+  match-outcome selection is counted as 1 participant, which the validator
+  reports against the entrants the next stage declares. A transition that
+  does not pass it is counted as before, so no chain that validated
+  changes its answer (#121, item 8).
+- **`StageState` refuses an ID listed twice as active, and a round
+  numbered below 1.** `StageState::fromArray()` (and `fromJson()`) accepted
+  stored data whose `active` list named one ID twice, which `start()`
+  refuses and from which an engine would pair a participant against
+  itself; it now throws an `InvalidInputException`, as it does for an ID
+  listed twice in `participants`. `withRoundPlayed()` accepted a pairing
+  numbered 0 or below as the first round, although round numbers are
+  1-based; it now throws an `InvalidConfigurationException` with the reason
+  `ValueOutOfRange`. Data that `toArray()` wrote, and every pairing an
+  engine returns, is accepted as before (#121, item 11).
+- **`RoundRobinPlan` and `MatchOutcomeSelector` read the participants of
+  an event in their order, whatever the array keys are.** An `Event` keeps
+  the participant array it is given, keys included. With string keys or
+  sparse integer keys, `RoundRobinPlan::validateIntegrity()` and
+  `findUnplayedPairings()` raised a raw `Error` (a call on null), and
+  `MatchOutcomeSelector::select()` a raw `TypeError` or an unknown named
+  argument. All three now take the first and the second participant in the
+  order the event holds them. An event built from a list is read as before
+  (#121, item 12).
+- **An incomplete round robin no longer blames constraints for a leg its
+  strategy left short, and its report no longer lists round 0.** When a
+  leg strategy returned no event for a pairing, the message of the
+  `IncompleteScheduleException` ended "Constraints may be preventing
+  complete schedule generation", also from a scheduler with no constraints
+  at all. It now says how many pairings of the leg the strategy returned no
+  event for, and how many more constraints rejected; under backtracking it
+  names the pairing. A leg that only constraints left short keeps its
+  message. In `getDiagnosticReport()`, a rejection recorded without a round
+  was listed under "Affected rounds" as round 0; it is left out there, as
+  `ConstraintViolationCollector::getAffectedRounds()` leaves it out. The
+  suggestions at the end of the report told a scheduler with no constraints
+  to "Try relaxing constraint requirements" and to "Use fewer or less
+  restrictive constraints". When no rejection was recorded they now say
+  so, give the advice about constraints as a condition ("if the scheduler
+  has constraints"), and, for a stage with legs, say to check that a leg
+  strategy of the caller's returns an event for every pairing. A report
+  with a recorded rejection has the suggestions it had. The texts are for
+  people and are not a contract (#121, item 14).
 
 - **A shard of the `Mutation testing` workflow is no longer ended by a
   runner shutdown before it reports.** Tooling only: nothing a consumer

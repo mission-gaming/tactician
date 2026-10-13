@@ -7,6 +7,8 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
 
@@ -248,4 +250,55 @@ describe('StageState', function (): void {
             'results' => [],
         ]);
     })->throws(InvalidArgumentException::class);
+
+    // start() refuses two participants with one ID. Stored data that lists
+    // one ID twice as active made the same state, and an engine would pair
+    // the participant against itself.
+    it('rejects an ID listed twice as active in serialized data', function (): void {
+        $data = [
+            'participants' => [
+                ['id' => 'p1', 'label' => 'Alice', 'seed' => null, 'metadata' => []],
+                ['id' => 'p2', 'label' => 'Bob', 'seed' => null, 'metadata' => []],
+            ],
+            'active' => ['p1', 'p2', 'p1'],
+            'rounds' => [],
+            'results' => [],
+        ];
+
+        expect(fn() => StageState::fromArray($data))
+            ->toThrow(InvalidInputException::class, "Stage state lists active participant 'p1' twice")
+            ->and(fn() => StageState::fromJson((string) json_encode($data)))
+            ->toThrow(InvalidInputException::class, "Stage state lists active participant 'p1' twice");
+    });
+
+    it('reads back the active list a state wrote, withdrawals included', function (): void {
+        $state = StageState::start($this->participants)->withoutParticipant($this->bob);
+
+        expect(array_map(
+            fn(Participant $participant): string => $participant->getId(),
+            StageState::fromArray($state->toArray())->getParticipants()
+        ))->toBe(['p1', 'p3', 'p4']);
+    });
+
+    // Round numbers are 1-based. Every later round has to exceed the one
+    // before it, so the first was the one that could be 0 or negative.
+    it('rejects a first round numbered below 1', function (int $number): void {
+        try {
+            StageState::start($this->participants)->withRoundPlayed(new RoundPairing($number, null, []), []);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange)
+                ->and($exception->getConfigurationIssue())->toBe('Round numbers are 1-based: a round cannot be recorded with a number below 1')
+                ->and($exception->getContext())->toBe(['pairing_round' => $number]);
+
+            return;
+        }
+
+        $this->fail("A round numbered {$number} was recorded.");
+    })->with([0, -1]);
+
+    it('records a first round numbered 1 or above', function (int $number): void {
+        $state = StageState::start($this->participants)->withRoundPlayed(new RoundPairing($number, null, []), []);
+
+        expect($state->getLastRound()?->getRoundNumber())->toBe($number);
+    })->with([1, 3]);
 });

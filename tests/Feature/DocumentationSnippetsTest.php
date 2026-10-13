@@ -802,6 +802,74 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 PHP,
         ],
         'composition chain telescopes' => ['docs/USAGE.md', '->validateChain(16, [', 'assert($violations === []);'],
+        // "what it writes reads back to the same slot times ... refused by toArray() with the reason NotSerializable"
+        'a timeline definition written as plain data' => [
+            'docs/USAGE.md',
+            "'slots_per_round' => 3,",
+            <<<'PHP'
+                $readBack = \MissionGaming\Tactician\Timeline\TimelineDefinition::fromArray($timeline->toArray());
+                assert($readBack->getSlotTime(4, 2) == $timeline->getSlotTime(4, 2));
+                $zone = new \DateTimeZone('Europe/London');
+                $unwritable = [
+                    \DateInterval::createFromDateString('next weekday'),
+                    \DateInterval::createFromDateString('last day of next month'),
+                    \DateInterval::createFromDateString('25 minutes'),
+                    // "amounts of time alone (`1 week`, `1 month`) included"
+                    \DateInterval::createFromDateString('1 week'),
+                    \DateInterval::createFromDateString('1 month'),
+                    (new \DateTimeImmutable('2026-01-01 00:00', $zone))->diff(new \DateTimeImmutable('2026-01-01 02:00', $zone)),
+                ];
+                $fraction = new \DateInterval('PT1S');
+                $fraction->f = 0.5;
+                $unwritable[] = $fraction;
+                foreach ($unwritable as $interval) {
+                    // It works, and it has no plain-data form
+                    $definition = new \MissionGaming\Tactician\Timeline\TimelineDefinition(
+                        new \DateTimeImmutable('2026-08-03 18:00:00', $zone),
+                        $interval
+                    );
+                    assert($definition->getSlotTime(2) > $definition->getSlotTime(1));
+                    try {
+                        $definition->toArray();
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::NotSerializable);
+                    }
+                }
+                $grid = new \MissionGaming\Tactician\Repack\SessionGrid(
+                    [new \DateTimeImmutable('2026-08-12 20:00:00', $zone)],
+                    \DateInterval::createFromDateString('25 minutes'),
+                    4
+                );
+                try {
+                    $grid->toArray();
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::NotSerializable);
+                }
+                // "A start with a fraction of a second is written with it"
+                $withFraction = new \MissionGaming\Tactician\Timeline\TimelineDefinition(
+                    new \DateTimeImmutable('2026-08-01 18:00:00.250000', $zone),
+                    new \DateInterval('P7D')
+                );
+                assert($withFraction->toArray()['start'] === '2026-08-01 18:00:00.250000');
+                // "An interval of whole days, months and years that `diff()` returned is written"
+                $fromDiff = new \MissionGaming\Tactician\Timeline\TimelineDefinition(
+                    new \DateTimeImmutable('2026-08-01 18:00:00', $zone),
+                    (new \DateTimeImmutable('2026-01-01 00:00', $zone))->diff(new \DateTimeImmutable('2026-01-08 00:00', $zone))
+                );
+                assert($fromDiff->toArray()['round_interval'] === 'P7D');
+                // "A `MinimumRestRule` ... writes a rest of amounts of time from either source"
+                $rest = new \MissionGaming\Tactician\Timeline\MinimumRestRule(\DateInterval::createFromDateString('48 hours'));
+                assert($rest->toArray() === ['rest' => 'PT48H']);
+                try {
+                    (new \MissionGaming\Tactician\Timeline\MinimumRestRule(\DateInterval::createFromDateString('next weekday')))->toArray();
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::NotSerializable);
+                }
+                PHP,
+        ],
         'timeline kickoffs' => [
             'docs/USAGE.md',
             '$scheduled = (new TimelineAssigner())->assign($schedule, $timeline);',
@@ -1409,9 +1477,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
-        // "without a rule it accepts a schedule that has one participant in two events at
-        // the same time ... add a MinimumRestRule"
-        'the assigner checks who plays only when it has a rest rule' => [
+        // "It refuses a round that puts one participant in two events at the same time ...
+        // with or without a rule"
+        'the assigner refuses one participant in two events at the same time' => [
             'docs/USAGE.md',
             "foreach (['P7D', 'PT168H'] as \$roundInterval)",
             <<<'PHP'
@@ -1425,14 +1493,27 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     roundInterval: new DateInterval('P7D'),
                     resources: ['Pitch 1', 'Pitch 2'],
                 );
-                [$firstEvent, $secondEvent] = (new TimelineAssigner())->assign($clash, $evening)->getScheduledEvents();
-                assert($firstEvent->getKickoff() == $secondEvent->getKickoff());
-                try {
-                    (new TimelineAssigner([new \MissionGaming\Tactician\Timeline\MinimumRestRule(new DateInterval('PT1S'))]))->assign($clash, $evening);
-                    assert(false);
-                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
-                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::TimeRuleViolation);
+                $assigners = [
+                    new TimelineAssigner(),
+                    new TimelineAssigner([new \MissionGaming\Tactician\Timeline\MinimumRestRule(new DateInterval('PT1S'))]),
+                ];
+                foreach ($assigners as $assigner) {
+                    try {
+                        $assigner->assign($clash, $evening);
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ParticipantDoubleBooked);
+                    }
                 }
+                // "Two events of one participant in different slots of a round are assigned"
+                $twoSlots = new TimelineDefinition(
+                    start: new DateTimeImmutable('2026-10-17 19:00', $londonTime),
+                    roundInterval: new DateInterval('P7D'),
+                    slotsPerRound: 2,
+                    slotInterval: new DateInterval('PT2H'),
+                );
+                [$firstEvent, $secondEvent] = (new TimelineAssigner())->assign($clash, $twoSlots)->getScheduledEvents();
+                assert($firstEvent->getKickoff() < $secondEvent->getKickoff());
                 PHP,
         ],
         // "the participants who have had a bye are ordered ahead of the others, with or
@@ -1491,6 +1572,10 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     ));
                 }
                 assert(count(MatchOutcomeSelector::winners()->select($knockout->getOutcome($knockoutState))) === 1);
+                // "say it on the transition that leaves a whole bracket ... counted as a selection of 1"
+                assert($validator->validateChain(16, [
+                    new StageTransition('next', 8, MatchOutcomeSelector::winners(), afterWholeBracket: true),
+                ]) === ["Stage 'next' expects 8 entrants but its selection yields 1 from the previous stage's 16."]);
                 PHP,
         ],
         'skill tiers never skip a tier' => [

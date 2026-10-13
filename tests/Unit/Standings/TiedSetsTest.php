@@ -524,3 +524,38 @@ describe('TiedSet', function (): void {
             ->toThrow(InvalidInputException::class, 'The first position of a tied set must be 1 or higher');
     })->with([0, -1]);
 });
+
+describe('the position of an entry in a table built by hand', function (): void {
+    // A position is the place in the order of the table. It was read from
+    // the array key, which getTiedSets() and iteration never did.
+    it('is its place in the order, whatever the array keys are', function (array $keys): void {
+        $first = new Participant('a', 'Alice');
+        $second = new Participant('b', 'Bob');
+        $standings = new Standings([
+            $keys[0] => new StandingEntry($first, 1, 1, 0, 0, 3.0),
+            $keys[1] => new StandingEntry($second, 1, 0, 0, 1, 0.0),
+        ]);
+
+        expect($standings->getPosition($first))->toBe(1)
+            ->and($standings->getPosition($second))->toBe(2)
+            ->and($standings->getPosition(new Participant('c', 'Carol')))->toBeNull()
+            ->and(array_keys(iterator_to_array($standings)))->toBe([0, 1]);
+    })->with([
+        'a list' => [[0, 1]],
+        'sparse integer keys' => [[5, 9]],
+        'keys in descending order' => [[1, 0]],
+        'string keys' => [['winner', 'runner-up']],
+    ]);
+
+    it('agrees with the positions of a tied set', function (): void {
+        $entries = [];
+        foreach (['a', 'b', 'c'] as $offset => $id) {
+            $entries[10 * ($offset + 1)] = new StandingEntry(new Participant($id, strtoupper($id)), 0, 0, 0, 0, 0.0);
+        }
+        $standings = new Standings($entries);
+        $tiedSet = $standings->getTiedSets()[0];
+
+        expect($standings->getPosition($tiedSet->getParticipants()[0]))->toBe($tiedSet->getFirstPosition())
+            ->and($standings->getPosition($tiedSet->getParticipants()[2]))->toBe($tiedSet->getLastPosition());
+    });
+});

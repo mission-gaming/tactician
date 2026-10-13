@@ -242,6 +242,7 @@ describe('the reason of a configuration error', function (): void {
             'OddPotWithOddOpponents' => 'odd_pot_with_odd_opponents',
             'ConfigurationNotYetSupported' => 'configuration_not_yet_supported',
             'BracketComplete' => 'bracket_complete',
+            'PlannedRoundsPlayed' => 'planned_rounds_played',
             'RoundPartiallyResolved' => 'round_partially_resolved',
             'EventWithoutRoundNumber' => 'event_without_round_number',
             'InvalidResult' => 'invalid_result',
@@ -273,6 +274,7 @@ describe('the reason of a configuration error', function (): void {
             'OverlappingTime' => 'overlapping_time',
             'TimeRuleViolation' => 'time_rule_violation',
             'TimelineCapacityExceeded' => 'timeline_capacity_exceeded',
+            'ParticipantDoubleBooked' => 'participant_double_booked',
             'ConstraintViolation' => 'constraint_violation',
             'InvalidSchedule' => 'invalid_schedule',
         ]);
@@ -933,6 +935,12 @@ function stageStateMistakes(): array
             InvalidConfigurationReason::DuplicateParticipantIds,
             'All participants must have unique IDs',
             ['participant_count' => 3, 'unique_ids' => 2],
+        ],
+        'a first round numbered 0' => [
+            fn() => $start()->withRoundPlayed(new RoundPairing(0, null, []), []),
+            InvalidConfigurationReason::ValueOutOfRange,
+            'Round numbers are 1-based: a round cannot be recorded with a number below 1',
+            ['pairing_round' => 0],
         ],
         'a round recorded a second time' => [
             fn() => $start()->withRoundPlayed($roundOne, [])->withRoundPlayed($roundOne, []),

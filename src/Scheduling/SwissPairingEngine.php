@@ -167,11 +167,12 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * of the pairing order down, and every active participant is in exactly
      * one of them, but for the one who has the bye in a field of odd size.
      * No two participants are paired who are paired in a round recorded on
-     * the state. The call does not record anything and does not check the
-     * planned rounds, so ask isComplete() first, and pass the pairing and
-     * its results to StageState::withRoundPlayed(). (Known limitation, not
-     * behaviour to rely on: asked about a stage that has played its planned
-     * rounds, it pairs a round beyond them.)
+     * the state. The call does not record anything: pass the pairing and
+     * its results to StageState::withRoundPlayed(). A stage that has played
+     * its planned rounds has no next round, and asking for one is refused,
+     * as the bracket engines refuse a round after the final; ask
+     * isComplete() first. A stage with no planned rounds is never refused
+     * for its length.
      *
      * The search is exhaustive: the exception means that no complete
      * pairing exists, not that the search gave up. In a field of odd size
@@ -179,8 +180,9 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * docblock gives, before it is thrown.
      *
      * @throws InvalidConfigurationException When fewer than 2 active participants remain, the
-     *                                       state is stamped with another engine's fingerprint,
-     *                                       or a bye is recorded and the standings calculator's
+     *                                       planned rounds have all been played (reason
+     *                                       `PlannedRoundsPlayed`), the state is stamped with
+     *                                       another engine's fingerprint, or a bye is recorded and the standings calculator's
      *                                       ranking strategy is not a WinDrawLossRanking (the
      *                                       win a bye is credited as has no value there)
      * @throws NoValidPairingException When no complete pairing exists for the round
@@ -194,6 +196,13 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         $this->validateParticipants($participants);
 
         $roundNumber = $state->getNextRoundNumber();
+        if ($this->plannedRounds !== null && $roundNumber > $this->plannedRounds) {
+            throw new InvalidConfigurationException(
+                'The planned rounds have all been played; no further round exists',
+                ['planned_rounds' => $this->plannedRounds, 'next_round' => $roundNumber],
+                reason: InvalidConfigurationReason::PlannedRoundsPlayed
+            );
+        }
 
         // Include withdrawn participants referenced by results so their games
         // still count toward standings, then keep only active participants
