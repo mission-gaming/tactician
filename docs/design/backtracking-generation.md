@@ -1,7 +1,8 @@
 # Design note: Backtracking Generation
 
-**Status: IMPLEMENTED** in 0.1.0 for round robin, the first leg only
-(searching across legs is [deferred](../ROADMAP.md#deferred-work)). It is
+**Status: IMPLEMENTED** in 0.1.0 for round robin, the first leg only; since
+0.3.0 the search crosses the boundary of the first leg and searches roles
+over every leg ([Roles across legs](#roles-across-legs)). It is
 Phase 5's answer to the repository's longest-recorded known limitation: greedy
 circle-method generation retries bounded rotated orderings when
 constraints reject a schedule, and throws `IncompleteScheduleException`
@@ -58,12 +59,197 @@ constraint-satisfaction problem over perfect matchings:
   matching greedy). The same inputs, and for a scheduler with a
   `Randomizer` the same state of it, always produce the same schedule or
   the same failure.
-- **Multi-leg scope**: leg 1 is searched; later legs derive from leg 1's
-  *actual* rounds through the leg strategy (the greedy path re-derives
-  from circle order, which a backtracked leg 1 no longer has). A later
-  leg rejected by constraints fails the attempt loudly — the search does
-  not (yet) backtrack across leg boundaries. Recorded as a limitation.
+- **Multi-leg scope**: the round decompositions of leg 1 are searched;
+  later legs derive from leg 1's *actual* rounds through the leg strategy
+  (the greedy path re-derives from circle order, which a backtracked leg 1
+  no longer has). A first leg whose later legs the constraints reject is a
+  dead end like any other, and the search goes on to the next first leg:
+  see [Roles across legs](#roles-across-legs). Until 0.3.0 it failed
+  there, at the first leg it found.
 - **Round robin only.** Swiss pairing already backtracks per round; the
   elimination presets have no search space. Extending the searched
   generation to other whole-schedule formats is future work if any grow
   one.
+
+## Roles across legs
+
+A constraint on roles (a limit on same-role events in a row, a limit on how
+far the two role counts drift apart, a rule that pins the role of one
+pairing) reads every leg. A leg that keeps it by itself can break it where
+two legs meet, and whether it does depends on what the leg strategy does to
+the roles. Until 0.3.0 the scheduler never reconsidered a role: two shuffled
+or two repeated legs of eight participants failed a limit of two in a row
+although schedules exist, with and without backtracking.
+
+### What each contract leaves free
+
+A role may be changed only where the contract of the piece that decided it
+says so. Anything else would return a schedule that is not what was asked
+for.
+
+| Roles of | Decided by | Free? |
+|----------|-----------|-------|
+| A later leg, mirrored or repeated | The leg strategy, as a **rule**: the first-leg event, reversed in the even-numbered legs of a mirrored schedule and kept everywhere else | No. Another role would not be a mirrored or a repeated leg |
+| A later leg, shuffled | The leg strategy, as a **preference**: a draw | Yes: the reverse is a role it could have drawn |
+| The first leg, without backtracking | The role assignment | No. Constraints are hard filters on the roles that were asked for ([role-assignment.md](role-assignment.md)) |
+| The first leg, with backtracking | The search, which proposes; the role assignment, which is asked about the leg | Yes, as far as the role assignment keeps the result |
+
+A strategy states which of the two it is with
+`LegPlanContribution::$rolesArePreferences`. The default is a rule, so a
+strategy written before the flag existed is never reversed.
+
+### Two searches
+
+- **Without backtracking: the roles of the later legs, for a strategy of
+  preferences.** The layout stays what the circle method gives. The events
+  of legs 2 and up are built in order; the role the strategy returns is
+  tried first and the reverse second, and when both are rejected the search
+  goes back to an earlier event of the later legs. It does not reach into
+  the first leg. This is in the default path because it costs nothing until
+  a role is rejected, which without it was a failure, and because a
+  schedule that every constraint accepts as drawn is the schedule it always
+  was. It runs once for every rotated order tried.
+- **With backtracking: the roles of every leg, the first included.** For
+  each first leg the generator finds, the pairings and rounds are held and
+  the roles of all legs are searched together: every event of the first leg
+  may be reversed, a later leg under a rule follows the first-leg event it
+  derives from, and a later leg under a preference is free as above. This
+  is what repeated and mirrored legs need, because the only thing that can
+  repair them is the first leg. The generator then goes on to the next
+  round decomposition, and never searches the roles of a decomposition
+  twice, although it reaches each one once for every choice of roles the
+  constraints allow the first leg.
+
+  One layout is searched out of turn: the circle layout of the field, once,
+  after the first leg the generator finds has failed (or when the generator
+  spends its budget without finding one). A constraint on roles seldom needs
+  other pairings in a round, and the generator, which changes the last
+  round first, comes to the roles of the early rounds of a large field
+  last: for two repeated legs of ten, thirteen, twenty and twenty-four
+  participants under a limit of two in a row it finds nothing within its
+  budget, and the roles of the circle layout are found at once. The first
+  leg the generator finds is still tried first, so a schedule that a
+  backtracking search returned before 0.3.0 is the one it returns now.
+
+Both are `LegRoleSearch`, and both are deterministic: the order of the
+events, of the two roles of an event and of the events gone back to is
+fixed.
+
+### Going back
+
+Going back one event at a time is hopeless in a large field. The event
+before the rejected one is in the same round, shares no participant with
+it, and cannot change the verdict; a round of twelve events is 4,096
+combinations to get through before the search reaches an event that
+matters.
+
+For a constraint set whose verdict on an event can depend only on the
+events of that event's own participants, the search goes straight back to
+the latest event that shares a participant with the rejected one, and
+passes the remaining candidates on to it (graph-based backjumping). That is
+complete: nothing between the two events can change the verdict. The sets
+are those of `NoRepeatPairings`, `MinimumRestPeriodsConstraint`,
+`RoleBalanceConstraint`, `SeedProtectionConstraint` and
+`ConsecutiveRoleConstraint` objects (`ConstraintPurity::readsOwnEventsOnly()`).
+A set that holds anything else (a closure, a metadata rule, a class of the
+caller's) is searched one event at a time, which finds the same roles or
+none and takes longer.
+
+### Bounds
+
+- **Rejected roles: 20,000 for each layout** (`LegRoleSearch::REJECTION_LIMIT`).
+  An event accepted at once costs nothing against it, so a schedule that
+  needs no search is never stopped, whatever its size.
+- **The step budget**, with backtracking: every event a role search puts to
+  the constraints is a step of the same 200,000. When the generator spends
+  the budget before it finds one first leg, the roles of the circle layout
+  are still searched, with 200,000 attempts of their own.
+
+Measured for the later legs of a shuffled schedule, 50 seeds each, 8 to 40
+participants, 2 and 4 legs (PHP 8.4, no OPcache, one core):
+
+| Constraints | Found | Attempts beyond one for each event, at most | Time, at most |
+|-------------|-------|---------------------------------------------|---------------|
+| At most two in a row | Every seed, up to 40 participants | 626 at 24 participants and 4 legs; 2,215 at 40 | 0.12 s at 24 and 4 legs; 1.2 s at 40 |
+| Role counts at most 2 apart | Every seed, up to 40 participants | 1,292 at 24 and 4 legs; 6,031 at 40 | 0.04 s at 24 and 4 legs; 0.22 s at 40 |
+| At most two in a row, in a set that also holds a closure (one event at a time) | Every seed up to 24 participants; 49 of 50 at 30 and 2 legs, 41 of 50 at 30 and 4 legs, 4 of 50 at 40 and 2 legs, none at 40 and 4 legs | 9,737 at 24 and 4 legs | 0.8 s at 24 and 4 legs; 1.2 to 4.4 s where the bound stops it |
+
+The time is mostly the constraint's: `ConsecutiveRoleConstraint` reads and
+sorts a participant's whole history for every question. A step of a role
+search with backtracking also costs more than a pairing attempt of the
+generator, because its context holds every leg and not one: spending the
+whole step budget in role searches took 5.5 seconds for four repeated legs
+of 16 participants under `RoleBalanceConstraint::homeAway(3)`, which no
+roles satisfy there.
+
+Without backtracking a failing schedule pays the bound once for every
+rotated order tried, before the failure analysis that follows a failure.
+Measured for two shuffled legs under a limit of two in a row, in a set
+that also holds a closure which leaves one pairing no round in the second
+leg (so that no roles exist, and every rotated order is searched one event
+at a time up to the bound): 14 seconds for 16 participants, where the same
+failure took 1.8 seconds before the roles were searched; 49 seconds for 24
+participants (17 before), and 103 seconds with four legs. With
+backtracking on, the search that follows adds 3 seconds to the 49. A
+closure alone, with no role constraint to read a history for every
+question, fails in under a second at 24 participants. The cost is a count
+of rejected roles times a number of rotated orders, so it is bounded and
+does not depend on the machine's clock; it is the price of trying every
+rotated order, which is where some of those schedules are found.
+
+Where the first leg has to change (repeated legs, measured with the default
+roles, one run each for 4 to 24 participants): under a limit of two in a
+row a backtracking search found two, three and four repeated legs for every
+size. Under `RoleBalanceConstraint` it found two repeated legs up to 16
+participants (limits of 2 and of 3) and stopped at its budget for 20 and
+24; three repeated legs under a limit of 3 up to 10 participants and not
+from 12. Those schedules exist: `BalancedRoleAssignment` gives a first leg
+that satisfies them without a search. The role search starts from the roles
+it is handed and changes as few as it must, from the last event back, which
+is a poor way to reach a leg whose roles differ in most places.
+
+**Memory.** A role search keeps the context of every event it has placed,
+to go back to: one for each round without backtracking, and one for each
+event with it, each holding the events before it. Memory therefore grows
+with the square of the number of events, where generation without a role
+search keeps one context. Measured as PHP's peak allocation for a schedule
+that was found: four shuffled legs under a limit of two in a row take 16 MB
+for 24 participants, 52 MB for 40 and 120 MB for 56 (6 MB for 40 with
+no constraints); four repeated legs under the same limit with
+backtracking take 32 MB for 24 participants and 84 MB for 32. Nothing
+bounds this but the size of the schedule, and PHP's memory limit ends a
+process that exceeds it with an error no caller can catch: a very large
+field with several legs and a role constraint needs a limit that allows
+for it.
+
+A search that a bound stopped says so in the exception message, and does
+not say that no roles exist. A backtracking search that spent its budget
+says of how many first legs it went through every choice of roles and of
+how many a bound stopped it: three repeated legs of twelve under role
+counts at most 3 apart stop at a bound in both first legs tried, and one
+of the two, the circle layout, has roles that satisfy the limit (the
+balanced ones). "Unsatisfiable" is said only by a
+backtracking search that went through every round decomposition and every
+role without a bound stopping any part of it.
+
+### The role assignment
+
+The search does not overrule a role assignment. Without backtracking the
+first leg has the roles the role assignment decided. With backtracking, the
+role assignment is asked about every first leg the generator finds, as it
+always was, and a first leg whose roles the role search changed is put to
+it again: the schedule is returned only when the role assignment keeps
+that leg as it is, and the failure says so when roles exist that it would
+change. `RoundParityRoleAssignment` keeps every leg; `BalancedRoleAssignment`
+keeps a leg that is balanced. A role assignment that takes the constraints
+into account is a separate change
+([role-assignment.md](role-assignment.md)).
+
+### What is not searched
+
+- The roles of the first leg without backtracking.
+- The pairings and rounds of a later leg: it has those of the first.
+- More than one first leg for a strategy that returns no event for a
+  pairing: nothing says another first leg would get one.
+- Other draws. A shuffled leg is drawn once; the search changes roles, it
+  does not draw again.

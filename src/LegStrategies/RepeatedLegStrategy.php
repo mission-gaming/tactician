@@ -21,6 +21,14 @@ use Override;
  * randomizer shuffles the participant order for the first leg only, so its
  * later legs are not the first leg repeated pairing by pairing.
  *
+ * The roles are a rule: an event of a later leg in the other role would
+ * not be a repeat, so the scheduler never reverses one to satisfy a
+ * constraint. What a constraint on roles can change is the first leg,
+ * which every later leg repeats. Its roles are the role assignment's, and
+ * the scheduler searches them only with
+ * `RoundRobinOptions(backtracking: true)`; without it, roles that break a
+ * constraint when they are repeated fail the schedule.
+ *
  * @api
  */
 readonly class RepeatedLegStrategy implements LegStrategyInterface

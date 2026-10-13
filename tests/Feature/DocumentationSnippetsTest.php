@@ -277,6 +277,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         }
     })->with([
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'role constraints over shuffled and repeated legs' => [
+            'docs/USAGE.md',
+            '$repeatedLeague = $twoInARow->schedule(',
+            ["56 events\nWithout backtracking: no schedule\n56 events\n"],
+            [],
+        ],
         'format versions' => [
             'docs/USAGE.md',
             "echo \$stored['format_version']",
@@ -717,6 +723,37 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 foreach ($seedFirst as $event) {
                     [$first, $second] = $event->getParticipants();
                     assert($first->getSeed() < $second->getSeed());
+                }
+                PHP,
+        ],
+        // The prose says the shuffled legs keep the limit with roles other
+        // than the draw, and that the repeated legs repeat the first
+        'role constraints over shuffled and repeated legs' => [
+            'docs/USAGE.md',
+            '$repeatedLeague = $twoInARow->schedule(',
+            <<<'PHP'
+                $streak = static function (iterable $events): int {
+                    $last = [];
+                    $run = [];
+                    $worst = 0;
+                    foreach ($events as $event) {
+                        foreach ($event->getParticipants() as $role => $participant) {
+                            $id = $participant->getId();
+                            $run[$id] = ($last[$id] ?? null) === $role ? $run[$id] + 1 : 1;
+                            $last[$id] = $role;
+                            $worst = max($worst, $run[$id]);
+                        }
+                    }
+
+                    return $worst;
+                };
+                assert(count($shuffledLeague) === 56 && $streak($shuffledLeague) === 2);
+                assert(count($repeatedLeague) === 56 && $streak($repeatedLeague) === 2);
+                $drawn = (new RoundRobinScheduler())->schedule($league, new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 2026)));
+                assert($streak($drawn) > 2);
+                $events = $repeatedLeague->getEvents();
+                for ($index = 0; $index < 28; ++$index) {
+                    assert($events[$index]->getParticipants() === $events[$index + 28]->getParticipants());
                 }
                 PHP,
         ],
