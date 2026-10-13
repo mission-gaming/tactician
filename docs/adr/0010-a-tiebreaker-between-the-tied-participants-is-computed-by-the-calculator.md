@@ -76,10 +76,22 @@ calculator that has one.
   the table of an elimination outcome two entrants in different tiers who
   have the same ranking value are one tied set for such a tiebreaker,
   although the tiers order them first. The value orders entrants inside a
-  tier only, as every figure does.
-- The same measure cannot be in a chain twice under one name. Re-applying a
-  measure to a subset takes a tiebreaker of the application's with a name
-  of its own; `docs/ROADMAP.md` lists that as a known limitation.
+  tier only, as every figure does, but it is not a value of the tier: an
+  event against an entrant of another tier that has the same ranking value
+  counts in it, and can place one entrant of a tier above another who is
+  level with it on everything inside the tier. A double elimination
+  bracket has such events (two entrants who met and went out in different
+  rounds with the same record). Forming the sets inside a tier needs the
+  calculator to be given the tiers before it asks the tiebreakers, which
+  it is not; `docs/ROADMAP.md` lists this as a known limitation.
+- The same measure cannot be in a chain twice under one name: a value is
+  kept on an entry, and compared, under the name of its tiebreaker, and a
+  tiebreaker of this kind has another value at every place. A calculator
+  whose chain holds one and names any tiebreaker twice is refused when it
+  is built (`InvalidInputException`); a chain without one is not checked,
+  as before. Re-applying a measure to a subset takes a tiebreaker of the
+  application's with a name of its own; `docs/ROADMAP.md` lists that as a
+  known limitation.
 - `tests/Unit/Standings/BetweenTiedParticipantsTest.php` pins the cases a
   calculation over the whole table gets wrong (three participants level on
   the measure among themselves, a set that splits into subsets), and

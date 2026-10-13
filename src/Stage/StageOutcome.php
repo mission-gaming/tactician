@@ -22,7 +22,8 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  *
  * The standings are the table of the stage, rank 1 first. For a league or
  * a Swiss stage that is the table of the recorded results (a Swiss stage
- * counts a bye as a win in it). For an elimination stage it is the bracket
+ * credits a bye in it with what the ranking strategy says a bye is worth,
+ * a win by default). For an elimination stage it is the bracket
  * placement: the entrant who advanced from the last round is rank 1, the
  * one it beat there is rank 2, and the others follow by the round they
  * went out in, later first, with the calculator's order of their records

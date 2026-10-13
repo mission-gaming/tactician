@@ -70,9 +70,10 @@ use Random\Randomizer;
  * results - so driving the engine with a Randomizer while recording no
  * results produces non-repeat pairing from a shuffled field, which is the
  * whole-schedule Swiss preset SwissScheduler wraps. In a field of odd size
- * that pairing is not random throughout: a recorded bye is credited as a
- * win, so the participants who have had a bye are placed above the rest
- * and are paired with each other first.
+ * that pairing is not random throughout: a recorded bye is credited (as a
+ * win, with the default ranking strategy the preset uses), so the
+ * participants who have had a bye are placed above the rest and are
+ * paired with each other first.
  *
  * Without a Randomizer the engine draws nothing: the same state gives the
  * same pairing. With one, each call to pairNextRound() draws from it, so
