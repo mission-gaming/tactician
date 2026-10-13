@@ -112,4 +112,5 @@ Two consequences of "the table of a stage" belong to the same decision:
   engine fingerprint scheme changed with this decision (`tactician:v2:`).
 - An application that wants a different final order (a play-off, a drawing
   of lots) applies it to the entrant list it passes to the next stage, as
-  before.
+  before. (Since [0008](0008-a-decision-orders-level-entries-and-never-a-result.md)
+  it can give that order to the table or to a rank selector as a decision.)

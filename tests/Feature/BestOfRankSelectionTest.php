@@ -865,7 +865,7 @@ describe('a best-of-rank selector as plain data', function (): void {
     it('names the key it does not know and the ones it does', function (): void {
         $refusal = bestOfRankRefusal(fn() => BestOfRankSelector::fromArray(['rank' => 3, 'count' => 2, 'mode' => 'best']));
 
-        expect($refusal->getContext())->toBe(['unknown' => ['mode'], 'known' => ['format_version', 'rank', 'count', 'comparison', 'ties']]);
+        expect($refusal->getContext())->toBe(['unknown' => ['mode'], 'known' => ['format_version', 'rank', 'count', 'comparison', 'ties', 'decisions']]);
     });
 });
 

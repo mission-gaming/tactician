@@ -49,7 +49,8 @@ the last one, which is about the library as a whole.
 - **Group stages and multi-stage tournaments**, composed from serpentine pools
   and progression selectors. A selection by rank keeps the entrants of one
   pool apart in the bracket it feeds, and is refused where results do not
-  decide who holds a selected place. The best few of one rank across the
+  decide who holds a selected place, until the application supplies the
+  order as a decision or tells the selector to go on. The best few of one rank across the
   pools (the two best of those placed third) are selected too, by a
   comparison the caller names where the pools are not of one size. A
   declared chain of stages can be
@@ -93,6 +94,13 @@ the last one, which is about the library as a whole.
   who won it.
   [Results and standings](docs/USAGE.md#results-and-standings),
   [tied sets](docs/USAGE.md#tied-sets)
+- **Ties settled by a decision**: where every figure is level, the application
+  decides the order by its own rule and gives it to the table or to a rank
+  selector as a list of participant IDs, best first, with a label and a
+  reason. The decision orders one whole set of level entries and never
+  overrides a result; the table and the selection mark every place it
+  settled, and a decision that fits no tied set is rejected with a reason.
+  [Settling a tied set by a decision](docs/USAGE.md#settling-a-tied-set-by-a-decision)
 - **Awarded results and adjustments**: a result can be marked as awarded, for
   an event that was not played, and counts for the participant it names; a
   competition chooses whether its nominal score counts and whether it counts

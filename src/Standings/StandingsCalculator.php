@@ -10,6 +10,8 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Exceptions\RejectedDecisionException;
+use MissionGaming\Tactician\Exceptions\RejectedDecisionReason;
 use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Stage\PairKey;
 
@@ -50,6 +52,12 @@ use MissionGaming\Tactician\Stage\PairKey;
  * withByesCredited() apply the last two to a table that exists. None
  * changes how a table is ordered: by the same figures, with the same
  * fallback.
+ *
+ * The order of entries that are still level is the application's to
+ * decide, and is given to the table the calculator returns
+ * (Standings::withDecisions()), after byes are credited and adjustments
+ * applied. The calculator takes no decision itself: which entries are
+ * level is read from the table.
  *
  * @experimental
  */
@@ -317,6 +325,10 @@ readonly class StandingsCalculator
      * then by what their results are worth, and then by the fallback of
      * calculate(), seed and participant ID. Standings::getTiedSets()
      * reports them either way.
+     *
+     * The table carries no decision (Standings::withDecisions()): a
+     * decision orders entries that are level once everything here is
+     * counted, so it is applied to the table this returns, last.
      *
      * A subclass is always calculated the second way, through its own
      * calculate(), withByesCredited() and withAdjustments(): one that
@@ -776,6 +788,11 @@ readonly class StandingsCalculator
      * of its own tier only (Standings::getTiers()). Without a bye to
      * credit the table is returned as it is.
      *
+     * A table that carries decisions (Standings::withDecisions()) keeps
+     * them where the credit leaves every decided set as it was, and is
+     * refused where it does not: credit byes first and apply decisions
+     * last.
+     *
      * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
      *                                     entry in the table is ignored
      * @param int $winsPerBye How many times the value of a bye one bye is worth: 1, or the
@@ -787,6 +804,9 @@ readonly class StandingsCalculator
      *                                       calculator reads byes or is computed between the
      *                                       tied participants (reason `IncompatibleOptions` for
      *                                       both)
+     * @throws RejectedDecisionException When the table carries a decision whose participants the
+     *                                   credit leaves no longer one whole tied set (reason
+     *                                   `Stale`)
      */
     public function withByesCredited(Standings $standings, array $byes, int $winsPerBye = 1): Standings
     {
@@ -816,7 +836,7 @@ readonly class StandingsCalculator
             );
         }
 
-        return $this->inOrder($credited, $standings->getTiers());
+        return $this->inOrder($credited, $standings);
     }
 
     /**
@@ -891,6 +911,16 @@ readonly class StandingsCalculator
      * tied depends on the adjustments: use calculateWith(), which takes
      * them before the tiebreakers are asked.
      *
+     * A decision is applied after the adjustments
+     * (Standings::withDecisions()), because it settles the order of
+     * entries that are level on the adjusted ranking value. A table that
+     * already carries decisions keeps them where the adjustments leave
+     * every decided set as it was: the same entries, still level with each
+     * other and with no other. Where they do not (a decided entry is no
+     * longer level with the rest of its set, or another entry is now level
+     * with them), the table is refused, so that no order is shown as
+     * decided for a set the decision was not made for.
+     *
      * @param array<Adjustment> $adjustments Every adjustment of the participants of the table
      *
      * @throws InvalidInputException When an adjustment names a participant that has no entry
@@ -899,6 +929,9 @@ readonly class StandingsCalculator
      * @throws InvalidConfigurationException When an adjustment changes the table and a tiebreaker
      *                                       of the calculator is computed between the tied
      *                                       participants (reason `IncompatibleOptions`)
+     * @throws RejectedDecisionException When the table carries a decision whose participants the
+     *                                   adjustments leave no longer one whole tied set (reason
+     *                                   `Stale`)
      */
     public function withAdjustments(Standings $standings, array $adjustments): Standings
     {
@@ -929,7 +962,7 @@ readonly class StandingsCalculator
             );
         }
 
-        return $this->inOrder($adjusted, $standings->getTiers());
+        return $this->inOrder($adjusted, $standings);
     }
 
     /**
@@ -1054,11 +1087,20 @@ readonly class StandingsCalculator
      * with some ranking values changed: ordered by tier and then as
      * calculate() orders, with level entries left in the order given.
      *
+     * The decisions of the table the entries are from go with them, and
+     * are held to the new order: a decision whose participants are no
+     * longer one whole tied set is not kept and not dropped, the table is
+     * refused.
+     *
      * @param list<StandingEntry> $entries
-     * @param list<int> $tiers The tiers of the table the entries are from, in its order
+     * @param Standings $from The table the entries are from, for its tiers and its decisions
+     *
+     * @throws RejectedDecisionException When a decision of the table no longer orders one whole
+     *                                   tied set (reason `Stale`)
      */
-    private function inOrder(array $entries, array $tiers): Standings
+    private function inOrder(array $entries, Standings $from): Standings
     {
+        $tiers = $from->getTiers();
         $tiebreakerNames = $this->tiebreakerNames();
         $rows = [];
         foreach ($entries as $index => $entry) {
@@ -1074,7 +1116,18 @@ readonly class StandingsCalculator
 
         // The tiers never fall down a table, and no entry left its tier, so
         // they are the tiers of the re-ordered table as they stand
-        return new Standings(array_map(static fn(array $row): StandingEntry => $row['entry'], $rows), $tiers);
+        $ordered = array_map(static fn(array $row): StandingEntry => $row['entry'], $rows);
+
+        try {
+            return new Standings($ordered, $tiers, $from->getDecisions());
+        } catch (RejectedDecisionException $rejected) {
+            throw new RejectedDecisionException(
+                RejectedDecisionReason::Stale,
+                $rejected->getDecider(),
+                $rejected->getParticipantIds(),
+                previous: $rejected
+            );
+        }
     }
 
     /**

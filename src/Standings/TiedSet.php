@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Standings;
 
 use Countable;
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use Override;
@@ -20,7 +21,10 @@ use Override;
  * says nothing about how they performed. An application that must not act on such
  * an order (who advances, who is relegated, who is seeded where) reads the
  * tied sets from {@see Standings::getTiedSets()} and decides the tie by its
- * own rule: a play-off, a drawing of lots, a shared rank.
+ * own rule: a play-off, a drawing of lots, a shared rank. The order it
+ * decides goes back into the table as a decision
+ * ({@see Standings::withDecisions()}), and the set then says which
+ * ({@see self::getDecision()}).
  *
  * A set of three entries whose first position is 2 spans positions 2, 3 and
  * 4. Positions are the 1-based positions of {@see Standings::getPosition()}.
@@ -35,11 +39,14 @@ final readonly class TiedSet implements Countable
     /**
      * @param array<StandingEntry> $entries The level entries in table order, at least two
      * @param int $firstPosition The 1-based table position of the first entry
+     * @param Decider|null $decision The decision that settled the order of the entries; null
+     *                               for a set that is undecided. It is stored as given and is
+     *                               not checked against the entries
      *
      * @throws InvalidInputException When there are fewer than two entries or the
      *                               first position is below 1
      */
-    public function __construct(array $entries, private int $firstPosition)
+    public function __construct(array $entries, private int $firstPosition, private ?Decider $decision = null)
     {
         if (count($entries) < 2) {
             throw new InvalidInputException('A tied set needs at least 2 entries');
@@ -90,6 +97,21 @@ final readonly class TiedSet implements Countable
     public function getLastPosition(): int
     {
         return $this->firstPosition + count($this->entries) - 1;
+    }
+
+    /**
+     * The decision that settled the order of the entries, or null when the
+     * set is undecided: its order is then the entrant list's, or the
+     * calculator's fallback, and reflects nothing.
+     *
+     * A set with a decision is in the order the application decided
+     * ({@see Standings::withDecisions()}). Its entries are level all the
+     * same, which is why it is still reported as a tied set: no result
+     * orders them, and the decision says so with its label and reason.
+     */
+    public function getDecision(): ?Decider
+    {
+        return $this->decision;
     }
 
     /**

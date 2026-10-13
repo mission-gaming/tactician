@@ -12,12 +12,14 @@ use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Exceptions\RejectedDecisionReason;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Exceptions\TacticianException;
 use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\ViolationKind;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Tests\Support\CiEnvironment;
@@ -1199,6 +1201,69 @@ $demonstrations = [
             ->and($unequal['Best two per event played'])->toBe('Molde, Gavle')
             // Without the last-placed of their pools: Tartu 3 points (score difference 0), Molde 3 (-2), Gavle 1
             ->and($unequal['Best two without the results against the last-placed of the larger pools'])->toBe('Tartu, Molde');
+    },
+
+    // Two qualifiers are level on every figure: the selection is refused until the order the organisers
+    // decided is supplied, and that order, not the list's, seeds the semifinals and is marked as decided
+    '28-ties-settled-by-decision' => function (array $results): void {
+        $tables = exampleArray($results, 'Group tables');
+        $fjord = $tables['Fjord'] ?? null;
+        $sund = $tables['Sund'] ?? null;
+        assert($fjord instanceof Standings && $sund instanceof Standings);
+
+        // The first two of the Fjord group are level on every figure the table compares, and are
+        // listed in the order they were entered; in the Sund group results decide every place
+        [$first, $second] = array_values($fjord->getEntries());
+        expect([$first->getParticipant()->getId(), $second->getParticipant()->getId()])->toBe(['orca', 'puffin'])
+            ->and($first->isLevelWith($second))->toBeTrue()
+            ->and([$first->getRankingValue(), $first->getScoreFor(), $first->getScoreAgainst()])->toBe([7.0, 58.0, 48.0])
+            ->and($fjord->getDecisions())->toBe([])
+            ->and($sund->getTiedSets())->toBe([])
+            ->and($results['Tied sets of the Fjord table'])->toBe([['Places' => '1 to 2', 'Level' => 'Orca, Puffin', 'Decided' => 'no']]);
+
+        // Both qualify, and the selection is refused all the same: their order is undecided
+        expect($results['Without a decision'])->toBe([
+            'Refused as' => InvalidConfigurationReason::TieWithinSelection->value,
+            'Group' => 'Fjord',
+            'Level' => 'orca, puffin',
+            'Places' => '1 to 2',
+        ]);
+
+        // The decision is plain data, and puts Puffin first
+        expect($results['The decision as plain data'])->toBe([
+            'format_version' => 1,
+            'participants' => ['puffin', 'orca'],
+            'label' => 'drawing of lots',
+            'reason' => 'Drawn by the tournament office after the last group event',
+        ]);
+
+        // The qualifiers: group winners first, the decided pair in the decided order and marked,
+        // the pair that results placed unmarked
+        $reason = 'Drawn by the tournament office after the last group event';
+        expect($results['Qualifiers, in the order that seeds the semifinals'])->toBe([
+            ['Club' => 'Puffin', 'Placed by' => 'drawing of lots', 'Reason' => $reason],
+            ['Club' => 'Gull', 'Placed by' => 'results', 'Reason' => ''],
+            ['Club' => 'Orca', 'Placed by' => 'drawing of lots', 'Reason' => $reason],
+            ['Club' => 'Heron', 'Placed by' => 'results', 'Reason' => ''],
+        ]);
+
+        // The decided winner of the group meets the runner-up of the other group
+        $semifinals = exampleResult($results, 'Semifinals', RoundPairing::class);
+        $pairs = array_map(examplePair(...), $semifinals->getEvents());
+        sort($pairs);
+        expect($pairs)->toBe(['gull|orca', 'heron|puffin']);
+
+        // The table as shown has the same order, and says which places the decision settled
+        $shown = exampleArray($results, 'The Fjord table as shown');
+        expect(array_column($shown, 'Club'))->toBe(['Puffin', 'Orca', 'Seal', 'Tern'])
+            ->and(array_column($shown, 'Settled by'))->toBe(['drawing of lots', 'drawing of lots', 'results', 'results'])
+            ->and(array_column($shown, 'Points'))->toBe([7.0, 7.0, 3.0, 0.0]);
+
+        // A decision cannot put an entrant ahead of one it is not level with
+        expect($results['A decision that would override a result'])->toBe([
+            'Rejected as' => RejectedDecisionReason::ParticipantsNotLevel->value,
+            'Not level with Seal' => 'orca',
+        ]);
     },
 ];
 
