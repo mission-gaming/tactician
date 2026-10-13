@@ -15,226 +15,190 @@ heading **Output change (fix)**.
 
 ### Output change (fix)
 
-- **A repack no longer depends on how its events and participants are
-  named, and contiguity comes ahead of the consolidation weight**
-  ([#49](https://github.com/mission-gaming/tactician/issues/49)). Almost
-  every repack outcome changes: positions, which events are unplaced where
-  some are, the violations, and with them `toArray()` and
-  `RepackOutcome::fingerprint()`. No public signature changes, and the
-  hard rules are as they were: no participant is double-booked, a pin
-  never moves, no slot is filled past its capacity, infeasibility comes
-  back as violations, and the same request gives the same outcome.
+The entries of this section before the one on slot times come from one
+decision (#55, and item 17 of
+#121): **wherever an entrant list exists and results do not decide an
+order, the position in that list decides it; a label, a seed attribute or
+an ID never does** (ADR 0004,
+`docs/adr/0004-position-decides-where-results-do-not.md`, which replaces
+ADR 0002). Each entry says who is affected and what to check.
+What a state stored by 0.2.x does under them is under **Changed**, in the
+entry on the engine fingerprint.
 
-  *What was wrong.* The repacker ordered events by `strcmp()` on their
-  ids and every tie-break followed, so the same events on the same grid
-  were packed well under one naming and badly under another. And it chose
-  each event's session by the two weights before it looked at any slot,
-  so it reported gaps where a placement without one existed.
+- **The table of an elimination outcome is the bracket placement.** The
+  standings of `SingleEliminationEngine::getOutcome()` and
+  `DoubleEliminationEngine::getOutcome()` were a table of wins and losses,
+  and rank 1 of it was not the entrant who won the bracket in three cases:
+  in double elimination, where the longer route through the losers bracket
+  collects more wins (770 of the 1,920 simulated brackets the issue
+  counts); after a bye, which is no win; and after a two-legged final
+  settled by a tie decision. Now the bracket orders the
+  table first: the entrant who advanced from the last tie is rank 1, the
+  one it beat there rank 2, and everyone else follows by the round that put
+  them out, the latest first. Entrants who went out in the same round share
+  a tier (`Standings::getTiers()`, new); the standings calculator orders
+  them from their records, and where it leaves them level, their position
+  in the entrant list does. The records (played, wins, draws, losses,
+  ranking value, scores) are unchanged. Who is affected: code that reads
+  the order of an elimination outcome's standings, `getPosition()` on it or
+  a `RankRangeSelector` over it. What to check: a place read from that
+  table. Before and after, eight entrants in double elimination, where p8
+  loses round 1, wins the losers bracket and the first grand final, and
+  loses the reset to p1:
 
-  *What it does now.* The participants are taken in an order made from
-  the request (how many events each has, where it is pinned, whom it
-  plays), and the events by their two participants; an id decides only
-  between events of the same two participants and between participants
-  the request does not tell apart. Before any session is chosen the
-  events are split into rounds (sets that can share a slot) laid on the
-  grid's positions around the pins, and the planner takes them round by
-  round, so that the sessions it fills by the weights are ones that pack.
-  The rounds are also a schedule of their own: they are returned where
-  they place more events than the planned schedule, or as many with fewer
-  gap slots. A schedule that still has a gap is then searched for a
-  placement of as many events with fewer gap slots. Where the result
-  places fewer events than a bound on what any placement can hold, or
-  still has a gap, the events are planned and packed once more in the
-  order of their participants, on the steps the two budgets have left,
-  and that third schedule is returned when it places more events, or as
-  many with fewer gap slots. The last placement step, which moves placed
-  events to make room for an unplaced one, searches further than it did
-  (below). One session's exact search may spend at most a quarter of
-  the steps left, where one that did not end used to take them all from
-  the sessions after it; the table that search starts from is paid for
-  out of the same quarter once a session has eight slots or more.
+  ```text
+  before  1. p8 (5-2)   2. p1 (4-1)
+  after   1. p1 (4-1)   2. p8 (5-2)
+  ```
 
-  *What is and is not promised about ids.* For the same request under
-  other ids, the number of events at every position, the unplaced counts
-  by reason, and every violation but for the names in it are the same;
-  the schedule is the same participant for participant up to a symmetry
-  of the request (where two participants are alike in the request, their
-  ids decide which gets which part of the schedule). The tests hold the
-  repacker to that on random requests with pins, on the small corpus, and
-  on round robins with rounds pinned, among them round robins of 36 and
-  40 with one round played. It does not hold for every request, and
-  there are two known exceptions in which the ids decide and the counts
-  differ. The ordering may do a fixed amount of work, sized for 40
-  participants: in a larger request in which everybody is alike and no
-  two participants can simply be exchanged (a complete round robin of 44
-  or more with one round already played) it stops and falls back to the
-  ids. And two participants that differ, but are equal in everything the
-  ordering compares, are ordered by id: a request built for the purpose
-  (two different graphs of 16 participants with six events each, which
-  the comparison cannot tell apart, side by side) came back with 83 late
-  starts under one naming and 84 under another. None of 10,000 generated
-  requests, each under three other namings, showed either.
+  `MatchOutcomeSelector::winners()` returned the right entrant before and
+  still does. Golden fixture: `double-elimination.txt` (the `standings:`
+  line of the 12-entrant bracket and of the bracket with a reset; no
+  pairing in the file changed).
+- **A re-seeded bracket ranks an entrant who had a bye with the winners of
+  the round, and level survivors by list position.**
+  `EliminationOptions(reseedEachRound: true)` ranked the survivors by a
+  table in which a bye earned nothing, so the entrants at the top of the
+  list, who have the byes, were folded as the bottom of the next round, and
+  it ordered level survivors by seed attribute, label and ID. A bye now
+  counts in that ranking as the tie it stands for, won in every leg, and
+  level survivors are in the order of the entrant list. Who is affected:
+  every re-seeded bracket whose field is not a power of two, and every
+  re-seeded bracket whose entrant list is not in the order of its seed
+  attributes and labels. What to check: the pairings of every round after
+  the first. Before and after, five entrants p1 to p5, where p4 beats p5 in
+  round 1:
 
-  Before and after (0.2.3 against this release, default options):
+  ```text
+  before  semifinals: p4 v p3, p1 v p2
+  after   semifinals: p1 v p4, p2 v p3
+  ```
 
-  | Request | 0.2.3 | Now |
-  |---|---|---|
-  | Events `100` P4 v P3, `101` P4 v P2, `102` P3 v P1, `103` P4 v P1 on sessions of two and four slots, capacity 1 | all four in session 1 (`102`, `103`, `100`, `101`), P3 with a gap | `102`, `103` in session 0 and `100`, `101` in session 1, no gap |
-  | Complete round robin of 10 on three four-slot sessions, capacity 5, ids `1`–`45` | no gap, 4 late starts | clean |
-  | The same with ids `1000`–`1044` | 5 gaps, 8 late starts | clean, the same schedule |
-  | Complete round robin of 24 on six four-slot sessions, ids `1`–`276` | 14 gaps, 6 late starts, budget spent | clean |
-  | Complete round robin of 40 on ten four-slot sessions | 24 gaps, 8 late starts, budget spent | clean |
-  | Complete round robin of 6 on one session of 21 slots, capacity 3 | 4 gaps (8 gap slots) | clean |
-  | 84 season-like requests of 14 to 40 participants (shuffled round robins, sessions of four to six slots, up to 32 pins) | 643 gaps, 908 late starts, 47 without a gap | 77 gaps, 201 late starts, 64 without a gap |
-  | 2,000 small random requests compared with an exhaustive search | 9% with a gap that a placement of as many events avoids; 31% with other counts under other event ids | none; none |
+  Golden fixture: `single-elimination.txt` (the re-seeded 12-entrant
+  bracket: rounds 2 to 4 and the `standings:` line; the fixed-path brackets
+  in the file changed in nothing).
+- **A Swiss round is paired in list order where results do not decide, and
+  the first bye goes to the last position.** `SwissPairingEngine` took the
+  order of level participants from the standings fallback: seed attribute,
+  then label, then ID. An unseeded list entered as Zed, Amy, Bob, Cat was
+  paired Amy with Bob and Cat with Zed. It is now paired Zed with Amy and
+  Bob with Cat, whatever the participants are called, and with a
+  `Randomizer` the shuffle of each score group starts from list order. Who
+  is affected: a Swiss stage, and a `SwissScheduler` schedule, whose
+  participant list is not already in the order of its seed attributes (or,
+  unseeded, of its labels). What to check: the pairings of such a stage
+  from its next round on; put the list in the order you mean. Before and
+  after, the list above, first round:
 
-  Every complete round robin of an even number of participants from 6 to
-  40, on sessions of four slots, now comes back with no violation at all
-  under each of three id schemes.
+  ```text
+  before  Bob v Amy, Zed v Cat
+  after   Amy v Zed, Cat v Bob
+  ```
 
-  *What is not better.* The repacker is a set of bounded searches, and
-  another order of events is better on most requests and worse on some.
-  On 11,860 generated requests (random requests of up to 90 events,
-  over-capacity requests, shuffled round robins of 5 to 40 participants
-  with one or two legs, up to 60 pins, sessions of three to six slots,
-  grids from too small to roomy), compared with 0.2.3 request by request:
+  No golden fixture changed: the fixtures and the examples list their
+  participants in the order of their seeds and labels. A participant who
+  has withdrawn has no position in the list any more: in the table of the
+  stage it stands after the active participants it is level with, and
+  withdrawn participants who are level with each other are in the order of
+  their IDs, whatever order the recorded events name them in.
+- **A Swiss bye counts in the outcome's table as it counts for pairing.**
+  The engine credited a bye as a win when it ordered a round and as nothing
+  in the table of `getOutcome()`, so a participant who sat out a round
+  finished below participants it had been paired above. The outcome's table
+  is now the table the rounds were paired from: the ranking value of an
+  entry includes one win for each bye (`StandingEntry::getByes()`, new,
+  says how many), while played, wins, draws and losses still count results
+  only. Among participants level on that value, one whose points include a
+  bye is no longer placed below the others: the tiebreakers, the scores and
+  then the list position order them. Who is affected: a Swiss stage in a
+  field of odd size. What to check: the final table, and the pairings of a
+  stage in progress. Before and after, a participant with one win and one
+  bye after two rounds on the 3/1/0 scale:
 
-  | | 0.2.3 | Now |
-  |---|---|---|
-  | Events placed, of 263,445 | 214,288 | 214,357 |
-  | Gap slots | 10,024 | 2,504 |
-  | Late starts | 25,847 | 25,712 |
-  | Requests with no gap | 9,322 | 11,040 |
+  ```text
+  before  played 1, 1 win, 3 points
+  after   played 1, 1 win, 1 bye, 6 points
+  ```
 
-  No request places fewer events than 0.2.3 did, and 52 place more.
-  Counting events placed first, then gap slots, then late starts, 3,385
-  requests came back better and 958 worse. Of the worse ones, 812 have
-  as many events placed and as many gap slots and only more late starts,
-  which are not compared when one schedule is chosen over another. The
-  other 146 (1.2%) place as many events with more gap slots, 380 more
-  between them; on 63 of them a budget stopped a search. Round robins of
-  an odd number of participants are not improved as those of an even
-  number are: without pins, 142 of them have 376 gap slots where they
-  had 372, and 27 came back with more gap slots against 34 with fewer.
-  A round of an odd number leaves one participant out, so the rounds
-  laid out as they stand have a gap wherever that falls inside a
-  session, and the schedule has to come from the planner. The reference
-  scenario (`tests/Fixtures/repack-scenario.json`) had 7 late starts and
-  has 10, still with no gap, and its mis-pinned variant went from 2 gaps
-  and 6 late starts to no gap and 10 late starts.
+  A tiebreaker that reads opponents' ranking values (Buchholz,
+  Sonneborn–Berger) still counts an opponent's bye as nothing.
+- **A standings table calculated on its own is the same for every order of
+  its participants.** The last fallback of `StandingsCalculator` was seed,
+  then label in natural order, then ID compared as PHP compares two
+  strings. That comparison reads numeric strings as numbers: `'01'` and
+  `'1'` were not ordered and kept their input order, and for IDs that mix
+  the two kinds it is not transitive (`'2'` is below `'10'`, `'10'` below
+  `'1a'`, `'1a'` below `'2'`), so `['2', '10', '1a']` came out `2, 10, 1a`
+  and `['10', '2', '1a']` came out `1a, 2, 10`. The fallback is now seed,
+  then ID, in an order that is total for every set of strings: an ID
+  written as a whole number without a sign or a leading zero first, in the
+  order of the values, and every other ID after those, byte by byte. The
+  label is not compared. Who is affected: tables with entries that results
+  leave level, where those entries have no seed or share one. What to
+  check: the order inside a tied set (`getTiedSets()` reports them); to
+  keep an order of your own, put the entrants in it and call
+  `withTiedSetsOrderedBy()` (below). Before and after, two unseeded
+  participants level on everything:
 
-  *Events placed come first.* As this change first stood, it placed
-  fewer events than 0.2.3 on 23 of those requests (one fewer on 21 of
-  them), 768 of 770 on a round robin of 40 with ten pins on a grid with
-  exactly as many places as events, and fewer on 13 of 151 larger
-  requests (round robins of 39 and 40 with up to 400 events pinned, of
-  two legs with 100 pinned, and 800 random events, on grids from too
-  small to roomy). Nearly all are requests whose participants have more
-  events than positions, or whose grid has fewer places than events:
-  which events are left out decides whether every place can be filled,
-  and the new order left others out. Three things were added for them.
-  The last placement step searches further: it tries every single
-  exchange before any chain of two, takes two events out for one where
-  both participants of an unplaced event are in the way wherever it
-  goes, puts one more event at a position along an augmenting path
-  among the events there and the unplaced ones, and lets a path move an
-  event that an exchange brought in. The third schedule above starts
-  from another order where the first two leave something to gain. And
-  the limit on the step's own work, which was 500,000 position checks
-  on every request, is now a hundred checks for every event and
-  position, never fewer than 500,000 and never more than 3,000,000: on
-  770 events and 39 positions the fixed limit stopped the step while it
-  was still placing events. With the three, none of the 11,860 requests
-  and none of the 151 places fewer events than 0.2.3 did (the 151 place
-  104,693 events for 104,392, with 9,463 gap slots for 22,166), and the
-  round robin of 40 places all 770. Twenty-nine of those requests are
-  in the tests with the counts 0.2.3 placed
-  (`tests/Fixtures/repack/placed-by-0.2.3.json`), and requests in which
-  a few participants have most of the events are compared with an
-  exhaustive search. It is not a promise for every request: the
-  repacker is still a set of bounded searches from three orders of the
-  events.
+  ```text
+  ids b ("Amy") and a ("Zed")     before  b, a   after  a, b
+  ids 01 and 1, given as 01, 1    before  01, 1  after  1, 01
+  ids p2 and p10                  before  p2, p10 (labels "Player 2", "Player 10")
+                                  after   p10, p2
+  ```
 
-  *Time* (PHP 8.4, one core, `composer bench`, fastest of three):
+  Plain decimal IDs keep their order: `9` is still before `10`.
+- **Constraints find a participant by ID.** `SeedProtectionConstraint` and
+  the two `ConsecutiveRoleConstraint` factories (`homeAway()`,
+  `position()`) looked for the `Participant` object itself in an event, so
+  a participant rebuilt from stored data was not recognised and an event
+  they should reject was let through. They now compare IDs, as everything
+  else does. Who is affected: code that puts events and participants
+  together by hand from more than one object per ID; the schedulers and
+  engines pass the objects they were given and were not affected. What to
+  check: nothing in a generated schedule changes. Before and after, top
+  seeds A and B in a protected round, the event built with a copy of A:
+  accepted before, rejected now.
+- **A per-group selection of three or more pools no longer pairs a pool
+  with itself.** `RankRangeSelector::topPerGroup(2)` listed every rank in
+  pool order (A1, B1, C1, A2, B2, C2), which a bracket folds into C1
+  against C2 with three pools, and into one half for a pool's winner and
+  runner-up with four or eight. Each rank after the first is now listed in
+  the order that keeps the entrants of one pool apart in a bracket folded
+  from the list: as few pairs of one pool as possible that can meet in the
+  first round, then in the second, and so on. For the top two of every
+  pool, a pool's winner and runner-up are in opposite halves for any number
+  of pools. Who is affected: per-group selections of two or more ranks from
+  three or more pools. What to check: the order of the selected entrants,
+  and anything that reads it by index. A selection from one or two pools
+  is unchanged (A1, B1, A2, B2, and so on in pool order for every further
+  rank), and so is a selection of a single rank from any number of pools.
+  Before and after:
 
-  | Benchmark | 0.2.3 | Now |
-  |---|---|---|
-  | 24 participants, even sessions | 162 ms | 5 ms |
-  | 24 participants, uneven sessions with pins | 464 ms | 51 ms |
-  | 40 participants, even sessions | 638 ms | 17 ms |
-  | 40 participants, uneven sessions with pins | 70 ms | 154 ms |
-
-  The last one is slower: 0.2.3 happened to pack that request without a
-  search, and this release spends about 0.1 seconds laying out its
-  rounds around the ten pins. Both return it with no gap. A request
-  that comes back clean costs what its first schedule costs. One that
-  does not is planned a second time and searched further for events to
-  place, and that is where the time goes: the 11,860 requests took 288
-  seconds in all where 0.2.3 took 106, the slowest of them 1.8 seconds
-  (a round robin of 40 with four pins, which took 0.5
-  seconds in 0.2.3). The 151 larger requests took 148 seconds where
-  0.2.3 took 79: a round robin of 40 with pins a median of 0.75 seconds
-  and 3 at most, one of two legs among 40 (1,460 events) a median of 2
-  seconds and 4.8 at most, where 0.2.3 took 0.9 and placed ten events
-  fewer with 18 more gap slots. The work done before any session is
-  chosen, the last placement step and the search for fewer gap slots
-  have limits of their own and do not draw on `stepBudget`, so a small
-  budget no longer makes a repack as short as it did: a round robin of
-  40 with 60 pins took 0.03 seconds at a budget of one step and takes
-  0.6 (and places all 720 events without a gap, where 0.2.3 placed 650
-  at that budget and 718 at the default). Requests that 0.2.3 packed
-  without a search are the ones that are slower by the most: a round
-  robin of 40 with 400 of its events pinned took 0.03 seconds and takes
-  0.5 (with 84 gap slots for 157), 800 events between 800 separate
-  pairs of participants 0.12 and 0.35, and 800 events of one participant
-  against three others, of which 60 can be placed and the step cannot
-  prove it, 0.2 and 1.5. Sessions of many slots were the slowest thing
-  a repack did, and still are, though less so: the table a session's
-  exact search starts from grows with two to the power of its slot
-  count, and it is now paid for in steps, so a session whose share of
-  the budget cannot pay for it is packed greedily. A request of 800
-  events among 200 participants, whose sessions do not pack, took 0.3
-  seconds on sessions of 12 slots and takes 0.9, 3.7 seconds at 16 slots
-  and takes 2.6, and 17 seconds and 890 MB at 18 slots and takes 10
-  seconds and 16 MB (with 767 gap slots for 1,336 at 12 slots, 1,104 for
-  1,703 at 16 and 1,551 for 2,037 at 18). The usage guide has the
-  figures.
-
-  *Who is affected.* Everyone who repacks. *What to check:* an outcome
-  kept from an earlier release, or its fingerprint, no longer matches a
-  new run of the same request, so repack again before comparing; code
-  that expected a particular event at a particular position for a fixed
-  request; and time limits set close to what a repack used to take.
-  The order of the lists an outcome returns has not changed: assignments
-  and unplaced events by event id, violations by kind and then by
-  participant id and session, over-capacity participants by shortfall and
-  then id. Two ties that the ids used to decide follow the repacker's
-  own order now. Where two over-capacity participants share a dropped
-  event and have the same shortfall, the one it names is the first in
-  that order and no longer the one with the lower id. And of an
-  over-capacity participant's events against opponents with the same
-  room to spare, the one left out is the last in that order and no
-  longer the one with the highest id. Code that predicted either from
-  the ids must read the unplaced list instead.
-
-  Golden fixtures regenerated, each because the positions (and so the
-  fingerprints) changed as described: `tests/Fixtures/golden/repack/round-robin.txt`
-  (every case now has no violation), `repack/scenario.txt` (late starts
-  as above; the mis-pinned variant leaves out event `1009` where it left
-  out `1022`), `repack/budget-stops.txt` (a round robin without pins now
-  gives the same clean outcome at every budget, where a budget of one
-  step left events unplaced; every case with pins has fewer violations
-  than it had at every budget, at the default one 9 for 15 with eight
-  participants, 12 for 37 with twelve, 43 for 76 with sixteen, 51 for
-  124 with twenty and 61 for 193 with twenty-four; and the case of
-  eight participants with pins says at a budget of 1,000 steps that a
-  budget stopped a search, where it said none did, because the third
-  schedule is made on what is left), `examples/19-repacking-a-season.txt` (the
-  same counts, one late start named for another participant) and
-  `examples/23-application-adapter-and-repack.txt` (three of five events
-  placed as before; `fx10` is placed and `fx09` left out, where it was
-  the other way round).
-
+  ```text
+  3 pools  before  A1 B1 C1 A2 B2 C2   round 1: A2 v B2, C1 v C2
+           after   A1 B1 C1 C2 B2 A2   round 1: C2 v B2, C1 v A2
+  4 pools  before  A1 B1 C1 D1 A2 B2 C2 D2
+           after   A1 B1 C1 D1 B2 A2 D2 C2
+  ```
+- **`SwissScheduler` generates every round count it accepts.** It accepts
+  up to the number of participants minus one, and failed with an
+  `IncompleteScheduleException` for roughly one seed in ten to one in four
+  at the larger counts (the first draw of 30 of 200 seeds at 6 participants
+  and 4 rounds, of 44 at 12 and 11), because a round is paired without a
+  look at the rounds to come. A draw that reaches a round with no pairing is now drawn again from
+  the same sequence, up to twenty draws, and after that, or with nothing to
+  draw from, the rounds are built by the rotation that lays out a round
+  robin. Without a source of draws there is one draw, and the rotation is
+  what generates the schedule where that draw fails (26 participants from
+  24 rounds on, 34 from 32 and 37 at 36, of the fields up to 44); its first
+  round is the list as given, as in every schedule drawn without a source.
+  Who is affected: calls that threw. A schedule that 0.2.x
+  generated is generated again unchanged, apart from the list-order change
+  above: the first draw is tried first and is the same draw. With
+  constraints a schedule may not exist, and the exception is still thrown,
+  now for the last draw. No golden fixture changed (`swiss.txt` holds
+  3 rounds of 8 and 4 rounds of 9, which never needed a second draw).
 - **Every slot time is computed from the start, not from the slot before
   it.** `TimelineDefinition::getSlotTime()` added the round interval once
   per round, each addition from the round before, so whatever one round was
@@ -455,8 +419,266 @@ heading **Output change (fix)**.
   as one that ends when it starts, which `fromArray()` refuses. A time on a
   whole second is written as before by all three (#121, item 6).
 
+- **A repack no longer depends on how its events and participants are
+  named, and contiguity comes ahead of the consolidation weight**
+  ([#49](https://github.com/mission-gaming/tactician/issues/49)). Almost
+  every repack outcome changes: positions, which events are unplaced where
+  some are, the violations, and with them `toArray()` and
+  `RepackOutcome::fingerprint()`. No public signature changes, and the
+  hard rules are as they were: no participant is double-booked, a pin
+  never moves, no slot is filled past its capacity, infeasibility comes
+  back as violations, and the same request gives the same outcome.
+
+  *What was wrong.* The repacker ordered events by `strcmp()` on their
+  ids and every tie-break followed, so the same events on the same grid
+  were packed well under one naming and badly under another. And it chose
+  each event's session by the two weights before it looked at any slot,
+  so it reported gaps where a placement without one existed.
+
+  *What it does now.* The participants are taken in an order made from
+  the request (how many events each has, where it is pinned, whom it
+  plays), and the events by their two participants; an id decides only
+  between events of the same two participants and between participants
+  the request does not tell apart. Before any session is chosen the
+  events are split into rounds (sets that can share a slot) laid on the
+  grid's positions around the pins, and the planner takes them round by
+  round, so that the sessions it fills by the weights are ones that pack.
+  The rounds are also a schedule of their own: they are returned where
+  they place more events than the planned schedule, or as many with fewer
+  gap slots. A schedule that still has a gap is then searched for a
+  placement of as many events with fewer gap slots. Where the result
+  places fewer events than a bound on what any placement can hold, or
+  still has a gap, the events are planned and packed once more in the
+  order of their participants, on the steps the two budgets have left,
+  and that third schedule is returned when it places more events, or as
+  many with fewer gap slots. The last placement step, which moves placed
+  events to make room for an unplaced one, searches further than it did
+  (below). One session's exact search may spend at most a quarter of
+  the steps left, where one that did not end used to take them all from
+  the sessions after it; the table that search starts from is paid for
+  out of the same quarter once a session has eight slots or more.
+
+  *What is and is not promised about ids.* For the same request under
+  other ids, the number of events at every position, the unplaced counts
+  by reason, and every violation but for the names in it are the same;
+  the schedule is the same participant for participant up to a symmetry
+  of the request (where two participants are alike in the request, their
+  ids decide which gets which part of the schedule). The tests hold the
+  repacker to that on random requests with pins, on the small corpus, and
+  on round robins with rounds pinned, among them round robins of 36 and
+  40 with one round played. It does not hold for every request, and
+  there are two known exceptions in which the ids decide and the counts
+  differ. The ordering may do a fixed amount of work, sized for 40
+  participants: in a larger request in which everybody is alike and no
+  two participants can simply be exchanged (a complete round robin of 44
+  or more with one round already played) it stops and falls back to the
+  ids. And two participants that differ, but are equal in everything the
+  ordering compares, are ordered by id: a request built for the purpose
+  (two different graphs of 16 participants with six events each, which
+  the comparison cannot tell apart, side by side) came back with 83 late
+  starts under one naming and 84 under another. None of 10,000 generated
+  requests, each under three other namings, showed either.
+
+  Before and after (0.2.3 against this release, default options):
+
+  | Request | 0.2.3 | Now |
+  |---|---|---|
+  | Events `100` P4 v P3, `101` P4 v P2, `102` P3 v P1, `103` P4 v P1 on sessions of two and four slots, capacity 1 | all four in session 1 (`102`, `103`, `100`, `101`), P3 with a gap | `102`, `103` in session 0 and `100`, `101` in session 1, no gap |
+  | Complete round robin of 10 on three four-slot sessions, capacity 5, ids `1`–`45` | no gap, 4 late starts | clean |
+  | The same with ids `1000`–`1044` | 5 gaps, 8 late starts | clean, the same schedule |
+  | Complete round robin of 24 on six four-slot sessions, ids `1`–`276` | 14 gaps, 6 late starts, budget spent | clean |
+  | Complete round robin of 40 on ten four-slot sessions | 24 gaps, 8 late starts, budget spent | clean |
+  | Complete round robin of 6 on one session of 21 slots, capacity 3 | 4 gaps (8 gap slots) | clean |
+  | 84 season-like requests of 14 to 40 participants (shuffled round robins, sessions of four to six slots, up to 32 pins) | 643 gaps, 908 late starts, 47 without a gap | 77 gaps, 201 late starts, 64 without a gap |
+  | 2,000 small random requests compared with an exhaustive search | 9% with a gap that a placement of as many events avoids; 31% with other counts under other event ids | none; none |
+
+  Every complete round robin of an even number of participants from 6 to
+  40, on sessions of four slots, now comes back with no violation at all
+  under each of three id schemes.
+
+  *What is not better.* The repacker is a set of bounded searches, and
+  another order of events is better on most requests and worse on some.
+  On 11,860 generated requests (random requests of up to 90 events,
+  over-capacity requests, shuffled round robins of 5 to 40 participants
+  with one or two legs, up to 60 pins, sessions of three to six slots,
+  grids from too small to roomy), compared with 0.2.3 request by request:
+
+  | | 0.2.3 | Now |
+  |---|---|---|
+  | Events placed, of 263,445 | 214,288 | 214,357 |
+  | Gap slots | 10,024 | 2,504 |
+  | Late starts | 25,847 | 25,712 |
+  | Requests with no gap | 9,322 | 11,040 |
+
+  No request places fewer events than 0.2.3 did, and 52 place more.
+  Counting events placed first, then gap slots, then late starts, 3,385
+  requests came back better and 958 worse. Of the worse ones, 812 have
+  as many events placed and as many gap slots and only more late starts,
+  which are not compared when one schedule is chosen over another. The
+  other 146 (1.2%) place as many events with more gap slots, 380 more
+  between them; on 63 of them a budget stopped a search. Round robins of
+  an odd number of participants are not improved as those of an even
+  number are: without pins, 142 of them have 376 gap slots where they
+  had 372, and 27 came back with more gap slots against 34 with fewer.
+  A round of an odd number leaves one participant out, so the rounds
+  laid out as they stand have a gap wherever that falls inside a
+  session, and the schedule has to come from the planner. The reference
+  scenario (`tests/Fixtures/repack-scenario.json`) had 7 late starts and
+  has 10, still with no gap, and its mis-pinned variant went from 2 gaps
+  and 6 late starts to no gap and 10 late starts.
+
+  *Events placed come first.* As this change first stood, it placed
+  fewer events than 0.2.3 on 23 of those requests (one fewer on 21 of
+  them), 768 of 770 on a round robin of 40 with ten pins on a grid with
+  exactly as many places as events, and fewer on 13 of 151 larger
+  requests (round robins of 39 and 40 with up to 400 events pinned, of
+  two legs with 100 pinned, and 800 random events, on grids from too
+  small to roomy). Nearly all are requests whose participants have more
+  events than positions, or whose grid has fewer places than events:
+  which events are left out decides whether every place can be filled,
+  and the new order left others out. Three things were added for them.
+  The last placement step searches further: it tries every single
+  exchange before any chain of two, takes two events out for one where
+  both participants of an unplaced event are in the way wherever it
+  goes, puts one more event at a position along an augmenting path
+  among the events there and the unplaced ones, and lets a path move an
+  event that an exchange brought in. The third schedule above starts
+  from another order where the first two leave something to gain. And
+  the limit on the step's own work, which was 500,000 position checks
+  on every request, is now a hundred checks for every event and
+  position, never fewer than 500,000 and never more than 3,000,000: on
+  770 events and 39 positions the fixed limit stopped the step while it
+  was still placing events. With the three, none of the 11,860 requests
+  and none of the 151 places fewer events than 0.2.3 did (the 151 place
+  104,693 events for 104,392, with 9,463 gap slots for 22,166), and the
+  round robin of 40 places all 770. Twenty-nine of those requests are
+  in the tests with the counts 0.2.3 placed
+  (`tests/Fixtures/repack/placed-by-0.2.3.json`), and requests in which
+  a few participants have most of the events are compared with an
+  exhaustive search. It is not a promise for every request: the
+  repacker is still a set of bounded searches from three orders of the
+  events.
+
+  *Time* (PHP 8.4, one core, `composer bench`, fastest of three):
+
+  | Benchmark | 0.2.3 | Now |
+  |---|---|---|
+  | 24 participants, even sessions | 162 ms | 5 ms |
+  | 24 participants, uneven sessions with pins | 464 ms | 51 ms |
+  | 40 participants, even sessions | 638 ms | 17 ms |
+  | 40 participants, uneven sessions with pins | 70 ms | 154 ms |
+
+  The last one is slower: 0.2.3 happened to pack that request without a
+  search, and this release spends about 0.1 seconds laying out its
+  rounds around the ten pins. Both return it with no gap. A request
+  that comes back clean costs what its first schedule costs. One that
+  does not is planned a second time and searched further for events to
+  place, and that is where the time goes: the 11,860 requests took 288
+  seconds in all where 0.2.3 took 106, the slowest of them 1.8 seconds
+  (a round robin of 40 with four pins, which took 0.5
+  seconds in 0.2.3). The 151 larger requests took 148 seconds where
+  0.2.3 took 79: a round robin of 40 with pins a median of 0.75 seconds
+  and 3 at most, one of two legs among 40 (1,460 events) a median of 2
+  seconds and 4.8 at most, where 0.2.3 took 0.9 and placed ten events
+  fewer with 18 more gap slots. The work done before any session is
+  chosen, the last placement step and the search for fewer gap slots
+  have limits of their own and do not draw on `stepBudget`, so a small
+  budget no longer makes a repack as short as it did: a round robin of
+  40 with 60 pins took 0.03 seconds at a budget of one step and takes
+  0.6 (and places all 720 events without a gap, where 0.2.3 placed 650
+  at that budget and 718 at the default). Requests that 0.2.3 packed
+  without a search are the ones that are slower by the most: a round
+  robin of 40 with 400 of its events pinned took 0.03 seconds and takes
+  0.5 (with 84 gap slots for 157), 800 events between 800 separate
+  pairs of participants 0.12 and 0.35, and 800 events of one participant
+  against three others, of which 60 can be placed and the step cannot
+  prove it, 0.2 and 1.5. Sessions of many slots were the slowest thing
+  a repack did, and still are, though less so: the table a session's
+  exact search starts from grows with two to the power of its slot
+  count, and it is now paid for in steps, so a session whose share of
+  the budget cannot pay for it is packed greedily. A request of 800
+  events among 200 participants, whose sessions do not pack, took 0.3
+  seconds on sessions of 12 slots and takes 0.9, 3.7 seconds at 16 slots
+  and takes 2.6, and 17 seconds and 890 MB at 18 slots and takes 10
+  seconds and 16 MB (with 767 gap slots for 1,336 at 12 slots, 1,104 for
+  1,703 at 16 and 1,551 for 2,037 at 18). The usage guide has the
+  figures.
+
+  *Who is affected.* Everyone who repacks. *What to check:* an outcome
+  kept from an earlier release, or its fingerprint, no longer matches a
+  new run of the same request, so repack again before comparing; code
+  that expected a particular event at a particular position for a fixed
+  request; and time limits set close to what a repack used to take.
+  The order of the lists an outcome returns has not changed: assignments
+  and unplaced events by event id, violations by kind and then by
+  participant id and session, over-capacity participants by shortfall and
+  then id. Two ties that the ids used to decide follow the repacker's
+  own order now. Where two over-capacity participants share a dropped
+  event and have the same shortfall, the one it names is the first in
+  that order and no longer the one with the lower id. And of an
+  over-capacity participant's events against opponents with the same
+  room to spare, the one left out is the last in that order and no
+  longer the one with the highest id. Code that predicted either from
+  the ids must read the unplaced list instead.
+
+  Golden fixtures regenerated, each because the positions (and so the
+  fingerprints) changed as described: `tests/Fixtures/golden/repack/round-robin.txt`
+  (every case now has no violation), `repack/scenario.txt` (late starts
+  as above; the mis-pinned variant leaves out event `1009` where it left
+  out `1022`), `repack/budget-stops.txt` (a round robin without pins now
+  gives the same clean outcome at every budget, where a budget of one
+  step left events unplaced; every case with pins has fewer violations
+  than it had at every budget, at the default one 9 for 15 with eight
+  participants, 12 for 37 with twelve, 43 for 76 with sixteen, 51 for
+  124 with twenty and 61 for 193 with twenty-four; and the case of
+  eight participants with pins says at a budget of 1,000 steps that a
+  budget stopped a search, where it said none did, because the third
+  schedule is made on what is left), `examples/19-repacking-a-season.txt` (the
+  same counts, one late start named for another participant) and
+  `examples/23-application-adapter-and-repack.txt` (three of five events
+  placed as before; `fx10` is placed and `fx09` left out, where it was
+  the other way round).
+
 ### Added
 
+- **An entrant list on a table and on an outcome.**
+  `Standings::withTiedSetsOrderedBy(array $entrants)` returns the table
+  with the entries of every tied set in the order of the list, and moves
+  nothing that results placed. `StageOutcome` takes the entrant list of its
+  stage as a sixth constructor argument (`entrants`, default none) and
+  applies it to its table; `getEntrants()` returns it, and
+  `StageOutcome::combining()` takes one for the combined table as a third
+  argument. The engines pass the participant list of the state. An outcome
+  built by hand without a list keeps the table it is given.
+- **Tiers of a table.** `Standings` takes the tier of each entry as a
+  second constructor argument (default none) and returns them with
+  `getTiers()`; entries of different tiers are never in one tied set. The
+  elimination engines use them for the bracket placement.
+- **Byes in a table.** `StandingsCalculator::withByesCredited(Standings
+  $standings, array $byes, int $winsPerBye = 1)` adds the value of a win
+  for each bye to a table and puts it in order again (inside each tier,
+  for a table that has tiers);
+  `StandingEntry::getByes()` says how many byes an entry's ranking value
+  includes, and `StandingEntry::withByes()` builds such an entry. The
+  constructor of `StandingEntry` has a tenth parameter, `byes`, default 0.
+- **A seed for a pre-drawn Swiss schedule.** `SwissOptions(rounds: 5,
+  seed: 2026)`, and `'seed'` in `SwissOptions::fromArray()`; `toArray()`
+  writes the key when there is a seed. The scheduler builds a
+  `Random\Randomizer` on the `Xoshiro256StarStar` engine from it on every
+  call, so the same participants, rounds and seed give the same schedule on
+  every call, also on one scheduler asked twice, and the engine is part of
+  the output for a seed. A scheduler that holds a `Randomizer` is refused a
+  seed in its options (`IncompatibleOptions`).
+- **`UndecidedSelectionException`**, an `InvalidConfigurationException`,
+  with `getParticipantIds()`, `getFirstPlace()`, `getLastPlace()`,
+  `getPool()`, `getFrom()` and `getTo()`, and four cases of
+  `InvalidConfigurationReason`: `UnplayedStage`, `TieAcrossSelection`,
+  `TieWithinSelection` and `RecordedRoundMismatch` (see **Changed**).
+- **The choice to go on from an undecided table.**
+  `RankRangeSelector::withTiesInsideSelectionAccepted()` and
+  `withTableOrderAccepted()`, and the key `ties` in `fromArray()` and
+  `toArray()` (`'refuse'`, `'accept-inside-selection'`,
+  `'accept-table-order'`; written only when it is not `'refuse'`).
 - **`ShuffledLegStrategy` takes an integer seed, and
   `RoundRobinOptions` reads and writes it as plain data.**
   `new ShuffledLegStrategy(seed: 2026)` draws the roles of the later legs
@@ -493,6 +715,123 @@ heading **Output change (fix)**.
 
 ### Changed
 
+- **Breaking: a rank selection that results do not decide is refused.**
+  `RankRangeSelector::select()` read positions from a table whatever
+  decided them. A pool in which every event was drawn, entered as Zed, Yan,
+  Bob, Amy, sent Amy and Bob through by the alphabet, and a pool with no
+  result at all sent two "qualifiers" on. `select()` now throws an
+  `UndecidedSelectionException` (an `InvalidConfigurationException`) when
+  the table has no recorded result (reason `UnplayedStage`), when level
+  entries hold places on both sides of a boundary of the selected ranks
+  (`TieAcrossSelection`), and when level entries are all inside the
+  selected ranks, where their order would seed the next stage
+  (`TieWithinSelection`). The exception carries the IDs of the level
+  participants, the places they hold between them and the label of the
+  pool. A tie that touches none of the selected ranks is not refused, and a
+  table that results decide is selected from as before. Who is affected:
+  every use of `topPerGroup()`, `perGroup()` and `overall()` on a table
+  that can hold a tie at the selected ranks, which without a tiebreaker and
+  recorded scores is any round-robin pool. What to change: decide the tie
+  (a play-off, a tiebreaker on the calculator, the order of the entrant
+  list you pass on), or say on the selector that the selection goes on:
+  `->withTiesInsideSelectionAccepted()` accepts level entries when all of
+  them are selected, and `->withTableOrderAccepted()` accepts the table as
+  it stands, which is what 0.2.x did, with level entries in the order of
+  the outcome's entrant list in place of the label order. Give a hand-built
+  `StageOutcome` its entrant list (the new sixth argument) for that order
+  to be yours. Before and after, the drawn pool above and
+  `topPerGroup(2)`:
+
+  ```text
+  before  Amy, Bob
+  after   UndecidedSelectionException: places 1 to 4 of pool A (zed, yan, bob, amy)
+          with ->withTableOrderAccepted(): Zed, Yan
+  ```
+
+  The selector cannot see that a pool with some results has events still
+  to play; check that before selecting, as before. The error for a rank a
+  pool does not have (`RankUnavailable`) is unchanged and is raised first.
+- **Breaking: the engine fingerprint scheme is `tactician:v2:`, and a
+  state stamped by 0.2.x is refused until it is stamped again.** The same
+  recorded state can give another next round than it gave under 0.2.x (the
+  Swiss and re-seeding entries above), and a fingerprint stands for how a
+  state is paired, so the scheme changed as its contract provides for a
+  0.x minor. Every fingerprint is the string of 0.2.x with `v2` in place of
+  `v1`; no option was added or renamed. An engine refuses a state that
+  carries a `v1` stamp, on every call, with an
+  `InvalidConfigurationException` (reason `EngineFingerprintMismatch`) that
+  says the stamp was written by an earlier release. Who is affected: an
+  application that stamps its states (`withEngineFingerprint()`) and has
+  stages in progress across the upgrade. A state that was never stamped is
+  accepted as before. What a stored state does, format by format:
+  - *Fixed-path single elimination and double elimination*: every pairing
+    is what it was. The state resolves to the same rounds; only the order
+    of the outcome's table is the new one. Stamp it again.
+  - *Swiss*: the recorded rounds stand, and the next round is paired by the
+    new order (list position between level participants, and the table
+    order among participants whose points include a bye). Stamp it again
+    once that is what you want; to finish a stage exactly as 0.2.x would
+    have paired it, finish it on 0.2.x. Nothing refuses a Swiss state that
+    was never stamped: it is paired by the new order without a word. A
+    round that 0.2.x paired and you have published, and that is not yet
+    recorded, stands only if you record the pairing you kept
+    (`withRoundPlayed()` with that `RoundPairing`): asked again,
+    `pairNextRound()` can answer with other pairs, and results for the
+    published events are then refused as not part of the round
+    (`EventNotInRound`).
+  - *Re-seeded single elimination*: the bracket is replayed from its
+    entrant list on every call. Where 0.3.0 pairs a recorded round as
+    0.2.x did, the recorded rounds stand, and the next round is paired by
+    the new order, which can be another round than 0.2.x would have made
+    of the same results. Where it does not (a field
+    that is not a power of two, or level survivors whose list order is not
+    their seed and label order), the engine refuses the state, stamped or
+    not, with the new reason `RecordedRoundMismatch`, on `pairNextRound()`,
+    `isComplete()` and `getOutcome()`: the recorded results belong to ties
+    the bracket no longer has. Finish such a bracket on 0.2.x, or rebuild
+    the state from the rounds that stand.
+
+  What to change: after the upgrade, `$state =
+  $state->withEngineFingerprint($engine->getFingerprint())` for each stored
+  stamped state you have decided to carry on.
+- **Breaking: a single-elimination state whose recorded round lacks a tie
+  of the bracket is refused** (`RecordedRoundMismatch`). The engine used to
+  answer such a state with a round the state already held under other
+  pairings, which `withRoundPlayed()` then refused as out of sequence. That
+  is the refusal the entry above relies on; it also meets a state whose
+  participant list changed after a round was recorded (a withdrawal, which
+  the bracket engines do not support). A recorded round that holds more
+  than the bracket's ties is still accepted.
+- **Breaking: a re-seeded bracket that has a bye needs a win/draw/loss
+  ranking.** Crediting the bye needs the value of a win, so
+  `SingleEliminationEngine` with `reseedEachRound` and a `RankingStrategy`
+  that is not a `WinDrawLossRanking` throws an
+  `InvalidConfigurationException` (reason `IncompatibleOptions`) for a
+  field that is not a power of two. The field says that the bracket has
+  byes, so every call refuses it, `pairNextRound()` for the first round
+  included: the bracket is not started and then left without a second
+  round. A field that is a power of two, and a bracket on a fixed path, are
+  not affected. What to change: use a `WinDrawLossRanking`, or a fixed
+  path. The Swiss engine refuses later, as it did: it pairs a round that
+  has a bye and refuses to pair the round after it (the message now begins
+  "Crediting a bye requires a win/draw/loss ranking strategy"), and
+  `SwissPairingEngine::getOutcome()` raises it too, where it used to return
+  a table without the bye. A Swiss stage whose only bye is in its last
+  round (one planned round, or a withdrawal before the last) therefore has
+  no outcome on such a scale: build its table with your own calculator
+  from the state's results.
+- **Signatures.** Additive, and source-compatible for callers: the
+  optional parameters named under **Added** (`Standings::__construct()`,
+  `StandingEntry::__construct()`, `StageOutcome::__construct()`,
+  `StageOutcome::combining()`, `SwissOptions::__construct()`).
+  `Standings::__construct()` throws an `InvalidInputException` for tiers
+  that do not fit its entries, and `RankRangeSelector::select()` and
+  `SwissScheduler::schedule()` each declare one more case of a checked
+  exception they already declared. A class that extends
+  `StandingsCalculator` or `Standings` and overrides a constructor is not
+  affected; one that declares a method named `withByesCredited`,
+  `withTiedSetsOrderedBy`, `getTiers` or `getByes` with another signature
+  is.
 - **Breaking: `ShuffledLegStrategy` is refused without a source of its
   draws.** `new ShuffledLegStrategy()` used to make an unseeded
   `Random\Randomizer` for every event, so a schedule with shuffled legs

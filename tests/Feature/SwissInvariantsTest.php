@@ -168,9 +168,16 @@ describe('Swiss invariants', function (): void {
     // not be paired):
     //
     //   n      2-5   6     7   8     9     10    11    12    13    14    15    16
-    //   failed 0     32    0   22    1     33    5     38    6     45    15    41
-    //   rate   0%    16%   0%  11%   0.5%  16.5% 2.5%  19%   3%    22.5% 7.5%  20.5%
+    //   failed 0     32    0   22    2     33    4     38    7     45    10    41
+    //   rate   0%    16%   0%  11%   1%    16.5% 2%    19%   3.5%  22.5% 5%    20.5%
     //   round  -     4     -   6     8     8     10    10    12    12    14    14
+    //
+    // (The counts of the fields of odd size were 1, 5, 6 and 15 until 0.3.0,
+    // which orders a participant whose points include a bye among the
+    // others on the same points by the table, and by list position where
+    // the table leaves them level; before, it stood below every one of
+    // them. Other stages reach the dead end. The fields of even size have
+    // no bye and are as they were.)
     //
     // An even field fails in round n - 2 and an odd one in round n - 1. The
     // test pins the number of failures among the first ten of those stages
@@ -209,8 +216,8 @@ describe('Swiss invariants', function (): void {
 
         expect($violations)->toBe([])
             ->and($failed)->toBe([
-                2 => 0, 3 => 0, 4 => 0, 5 => 0, 6 => 3, 7 => 0, 8 => 1, 9 => 0,
-                10 => 4, 11 => 0, 12 => 0, 13 => 1, 14 => 3, 15 => 0, 16 => 3,
+                2 => 0, 3 => 0, 4 => 0, 5 => 0, 6 => 3, 7 => 0, 8 => 1, 9 => 1,
+                10 => 4, 11 => 0, 12 => 0, 13 => 0, 14 => 3, 15 => 2, 16 => 3,
             ]);
     });
 

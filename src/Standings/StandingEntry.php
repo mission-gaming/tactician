@@ -23,6 +23,7 @@ readonly class StandingEntry
      * @param float $scoreFor The sum of the participant's own recorded scores
      * @param float $scoreAgainst The sum of the recorded scores of its opponents
      * @param array<string, float> $tiebreakers Tiebreaker values keyed by tiebreaker name
+     * @param int $byes Byes whose credit is part of the ranking value (see getByes())
      */
     public function __construct(
         private Participant $participant,
@@ -33,7 +34,8 @@ readonly class StandingEntry
         private float $rankingValue,
         private float $scoreFor = 0.0,
         private float $scoreAgainst = 0.0,
-        private array $tiebreakers = []
+        private array $tiebreakers = [],
+        private int $byes = 0
     ) {}
 
     /**
@@ -81,11 +83,24 @@ readonly class StandingEntry
      * The strategy-computed primary ranking value ordering the table.
      *
      * Under the default WinDrawLossRanking this is the familiar points
-     * total; other strategies may aggregate different quantities.
+     * total; other strategies may aggregate different quantities. In a
+     * table with byes credited it includes the credit (see getByes()).
      */
     public function getRankingValue(): float
     {
         return $this->rankingValue;
+    }
+
+    /**
+     * The number of byes credited in the ranking value: 0 in a table
+     * calculated from results alone. A Swiss stage counts a bye as a win,
+     * so the ranking value of an entry of its table is that of its results
+     * plus one win for each bye, while played, wins, draws and losses count
+     * results only (StandingsCalculator::withByesCredited()).
+     */
+    public function getByes(): int
+    {
+        return $this->byes;
     }
 
     /**
@@ -139,9 +154,10 @@ readonly class StandingEntry
      *
      * Two entries are level when every figure the calculator compares before
      * its final fallback is equal: the ranking value, each tiebreaker value,
-     * the score difference and scores-for. Between level entries only the
-     * fallback (seed, then label, then participant ID) decides the order of
-     * the table. The record (played, wins, draws, losses) and scores-against
+     * the score difference and scores-for. Between level entries no result
+     * decides the order of the table: the position in the entrant list does
+     * in the table of a stage, and the calculator's fallback (seed, then
+     * participant ID) in a table that stands alone. The record (played, wins, draws, losses) and scores-against
      * are not compared, because the table is not ordered by them; add
      * `WinsTiebreaker` to compare wins.
      *
@@ -197,7 +213,28 @@ readonly class StandingEntry
             $this->rankingValue,
             $this->scoreFor,
             $this->scoreAgainst,
-            $tiebreakers
+            $tiebreakers,
+            $this->byes
+        );
+    }
+
+    /**
+     * A copy of this entry with the given number of credited byes and the
+     * ranking value that includes their credit, in place of those it had.
+     */
+    public function withByes(int $byes, float $rankingValue): self
+    {
+        return new self(
+            $this->participant,
+            $this->played,
+            $this->wins,
+            $this->draws,
+            $this->losses,
+            $rankingValue,
+            $this->scoreFor,
+            $this->scoreAgainst,
+            $this->tiebreakers,
+            $byes
         );
     }
 }

@@ -220,8 +220,10 @@ function tiedSetOracle(array $participants, array $games, array $values, array $
 
 /**
  * The table order the documented rule gives: better figures first, then the
- * fallback of the decision record on a total standings order (seed, lower
- * first and unseeded last; label in case-insensitive natural order; id).
+ * fallback of a table that stands alone (seed, lower first and unseeded
+ * last; then the id, which for these ids is byte order). The label is not
+ * part of it: the generated labels repeat and disagree with the ids, so a
+ * table that read one would not be in this order.
  *
  * @param list<Participant> $participants
  * @param array<string, list<float>> $figures
@@ -241,9 +243,7 @@ function tiedSetReferenceOrder(array $participants, array $figures): array
             return $bySeed;
         }
 
-        $byLabel = strnatcasecmp($a->getLabel(), $b->getLabel());
-
-        return $byLabel !== 0 ? $byLabel : $a->getId() <=> $b->getId();
+        return strcmp($a->getId(), $b->getId());
     });
 
     return array_map(static fn(Participant $participant): string => $participant->getId(), $participants);

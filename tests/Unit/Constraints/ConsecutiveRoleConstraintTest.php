@@ -52,6 +52,27 @@ describe('ConsecutiveRoleConstraint', function (): void {
             ->toBeTrue();
     });
 
+    // A participant is who its ID says it is. The events of the history
+    // hold copies of Alice (a schedule read back from storage): she was
+    // first-named in both, so a third event as first-named breaks a limit
+    // of two, and an event as second-named does not.
+    it('finds a participant in an event by ID, not as the same object', function (string $rule): void {
+        $aliceAsStored = Participant::fromArray($this->alice->toArray());
+        $bobAsStored = Participant::fromArray($this->bob->toArray());
+        $constraint = $rule === 'home and away'
+            ? ConsecutiveRoleConstraint::homeAway(2)
+            : ConsecutiveRoleConstraint::position(2);
+        $context = roundRobinContext($this->participants, [
+            new Event([$aliceAsStored, $bobAsStored], new Round(1)),
+            new Event([$aliceAsStored, $bobAsStored], new Round(2)),
+        ]);
+
+        expect($aliceAsStored)->not->toBe($this->alice)
+            ->and($constraint->isSatisfied(new Event([$this->alice, $this->bob], new Round(3)), $context))->toBeFalse()
+            ->and($constraint->isSatisfied(new Event([$aliceAsStored, $bobAsStored], new Round(3)), $context))->toBeFalse()
+            ->and($constraint->isSatisfied(new Event([$this->bob, $this->alice], new Round(3)), $context))->toBeTrue();
+    })->with([['home and away'], ['position']]);
+
     // Extracted roles are compared by identity, so an extractor that
     // yields the same value (even null) for consecutive events counts as
     // a streak - custom extractors must return distinct role values

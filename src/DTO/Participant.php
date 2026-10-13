@@ -23,7 +23,7 @@ readonly class Participant
      * reject a field in which two participants share an ID.
      *
      * @param string $id The identity. Use a non-empty string: fromArray() refuses an empty one
-     * @param string $label Display name; also orders level entries of a standings table
+     * @param string $label Display name; the library orders nothing by it
      * @param int|null $seed Seeding number, lower is better; null for unseeded. Stages seed
      *                       entrants from their position in the list, not from this
      * @param array<string, mixed> $metadata Free-form data; MetadataConstraint reads the key it is given
@@ -93,16 +93,14 @@ readonly class Participant
      *
      * The copy has the same ID, label and metadata, so whatever matches
      * participants by ID (results, standings, the engines) still matches
-     * it. It is a new object: the two constraints that recognise a
-     * participant as the same object (SeedProtectionConstraint, the role
-     * factories of ConsecutiveRoleConstraint) do not.
+     * it, the constraints included.
      *
-     * The seed attribute does not place a participant in a stage: a bracket
-     * and a pool distribution seed from list position, so to reseed for a
-     * new stage, order the list. The attribute is read by
-     * SeedProtectionConstraint and, between participants level on
-     * everything else, by the standings order (which is also the order a
-     * Swiss stage pairs its first round from).
+     * The seed attribute does not place a participant in a stage: a
+     * bracket, a pool distribution and a Swiss stage read list position,
+     * so to reseed for a new stage, order the list. The attribute is read
+     * by SeedProtectionConstraint and, between participants level on
+     * everything else, by a standings table calculated on its own, with no
+     * entrant list (StandingsCalculator).
      */
     public function withSeed(?int $seed): self
     {

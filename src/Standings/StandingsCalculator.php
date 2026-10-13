@@ -6,6 +6,8 @@ namespace MissionGaming\Tactician\Standings;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 
 /**
@@ -15,21 +17,24 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * (higher first), then by each configured tiebreaker in order (higher
  * first), then by score difference and by scores-for (higher first). What
  * is still level after that is ordered by a fallback that reflects no
- * result: seed (lower first, unseeded participants last), then label
- * (natural order, ignoring case), then participant ID.
- * Standings::getTiedSets() names the entries only the fallback separates.
+ * result: seed (lower first, unseeded participants last), then participant
+ * ID. Standings::getTiedSets() names the entries only the fallback
+ * separates.
  *
  * The fallback is there so that no two entries compare equal and the order
- * the participants are given in does not show in the table.
+ * the participants are given in does not show in the table: a table
+ * calculated on its own is the same for every order of its participants
+ * array. A label is never compared. IDs are ordered as a total order over
+ * every string: an ID written as a whole number without a sign or a leading
+ * zero comes first, in the order of the values ('9' before '10'), and every
+ * other ID after those, byte by byte ('10' before '01', 'p10' before 'p2').
  *
- * Known limitation, not a rule to rely on: the ID step does not achieve
- * that for every set of IDs. IDs are compared as PHP's `<=>` compares
- * strings, which reads two numeric strings as numbers. IDs such as '1' and
- * '01' therefore compare equal, and the comparison is not transitive where
- * numeric and other IDs are mixed ('2' is below '10', '10' below '1a' and
- * '1a' below '2'). Participants that have such IDs and are level on
- * everything before the ID, label included, can stand in an order that
- * depends on the order they were given in.
+ * That fallback is for a table that stands alone. Where the participants
+ * are the entrant list of a stage, the position in that list decides
+ * between level entries, and neither the seed attribute nor the ID does:
+ * the engines order their tables that way, and
+ * Standings::withTiedSetsOrderedBy() does it for a table of your own
+ * (docs/adr/0004-position-decides-where-results-do-not.md).
  *
  * @experimental
  */
@@ -196,27 +201,11 @@ readonly class StandingsCalculator
             }
         }
 
+        $tiebreakerNames = $this->tiebreakerNames();
+
         $ordered = array_values($entries);
-        usort($ordered, function (StandingEntry $a, StandingEntry $b): int {
-            $comparison = $b->getRankingValue() <=> $a->getRankingValue();
-            if ($comparison !== 0) {
-                return $comparison;
-            }
-
-            foreach ($this->tiebreakers as $tiebreaker) {
-                $name = $tiebreaker->getName();
-                $comparison = ($b->getTiebreakerValue($name) ?? 0.0) <=> ($a->getTiebreakerValue($name) ?? 0.0);
-                if ($comparison !== 0) {
-                    return $comparison;
-                }
-            }
-
-            $comparison = $b->getScoreDifference() <=> $a->getScoreDifference();
-            if ($comparison !== 0) {
-                return $comparison;
-            }
-
-            $comparison = $b->getScoreFor() <=> $a->getScoreFor();
+        usort($ordered, static function (StandingEntry $a, StandingEntry $b) use ($tiebreakerNames): int {
+            $comparison = EntryOrder::compareFigures($a, $b, $tiebreakerNames);
             if ($comparison !== 0) {
                 return $comparison;
             }
@@ -226,14 +215,100 @@ readonly class StandingsCalculator
                 return $comparison;
             }
 
-            $comparison = strnatcasecmp($a->getParticipant()->getLabel(), $b->getParticipant()->getLabel());
-            if ($comparison !== 0) {
-                return $comparison;
-            }
-
-            return $a->getParticipant()->getId() <=> $b->getParticipant()->getId();
+            return EntryOrder::compareIds($a->getParticipant()->getId(), $b->getParticipant()->getId());
         });
 
         return new Standings($ordered);
+    }
+
+    /**
+     * The table with byes credited: each bye adds the ranking value of the
+     * given number of wins to the entry of the participant who had it, and
+     * the table is put in order again.
+     *
+     * A bye is no result, so calculate() counts it nowhere. A stage in
+     * which sitting out a round is worth what winning it is (a Swiss
+     * stage, and a bracket when it ranks the entrants who are still in it)
+     * credits it here. Only the ranking value changes, and
+     * StandingEntry::getByes() says how many byes are in it: played, wins,
+     * draws, losses, the scores and the tiebreaker values are those of the
+     * results. A tiebreaker that reads the ranking values of opponents
+     * (Buchholz, Sonneborn-Berger) was calculated before the credit and
+     * counts an opponent's bye as nothing.
+     *
+     * The credited table is ordered as calculate() orders one, by ranking
+     * value, tiebreakers, score difference and scores-for. Entries that
+     * are level after that keep the order they have in the table given.
+     * A table with tiers keeps them: an entry is ordered among the entries
+     * of its own tier only (Standings::getTiers()). Without a bye to
+     * credit the table is returned as it is.
+     *
+     * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
+     *                                     entry in the table is ignored
+     * @param int $winsPerBye How many wins one bye is worth (the legs of a two-legged tie)
+     *
+     * @throws InvalidConfigurationException When there is a bye to credit and the ranking strategy
+     *                                       is not a WinDrawLossRanking: what a win is worth is
+     *                                       not known on another scale (reason
+     *                                       `IncompatibleOptions`)
+     */
+    public function withByesCredited(Standings $standings, array $byes, int $winsPerBye = 1): Standings
+    {
+        $credited = [];
+        $any = false;
+        foreach ($standings->getEntries() as $entry) {
+            $count = $byes[$entry->getParticipant()->getId()] ?? 0;
+            if ($count < 1) {
+                $credited[] = $entry;
+                continue;
+            }
+
+            if (!$this->rankingStrategy instanceof WinDrawLossRanking) {
+                throw new InvalidConfigurationException(
+                    'Crediting a bye requires a win/draw/loss ranking strategy; counting a bye as a win is undefined under other ranking scales',
+                    ['ranking_strategy' => $this->rankingStrategy::class],
+                    reason: InvalidConfigurationReason::IncompatibleOptions
+                );
+            }
+
+            $any = true;
+            $credited[] = $entry->withByes(
+                $entry->getByes() + $count,
+                $entry->getRankingValue() + $count * $winsPerBye * $this->rankingStrategy->getWinValue()
+            );
+        }
+
+        if (!$any) {
+            return $standings;
+        }
+
+        $tiebreakerNames = $this->tiebreakerNames();
+        $tiers = $standings->getTiers();
+        $rows = [];
+        foreach ($credited as $index => $entry) {
+            $rows[] = ['tier' => $tiers[$index] ?? 0, 'entry' => $entry];
+        }
+        // usort() is stable: level entries keep the order of the table given
+        usort(
+            $rows,
+            static fn(array $a, array $b): int => $a['tier'] !== $b['tier']
+                ? $a['tier'] <=> $b['tier']
+                : EntryOrder::compareFigures($a['entry'], $b['entry'], $tiebreakerNames)
+        );
+
+        // The tiers never fall down a table, and no entry left its tier, so
+        // they are the tiers of the credited table as they stand
+        return new Standings(array_map(static fn(array $row): StandingEntry => $row['entry'], $rows), $tiers);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function tiebreakerNames(): array
+    {
+        return array_values(array_map(
+            static fn(TiebreakerInterface $tiebreaker): string => $tiebreaker->getName(),
+            $this->tiebreakers
+        ));
     }
 }
