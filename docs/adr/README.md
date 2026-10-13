@@ -16,6 +16,8 @@ there is not repeated here.
 | [0004](0004-position-decides-where-results-do-not.md) | Position decides where results do not |
 | [0005](0005-serialized-forms-carry-a-format-version.md) | Serialized forms carry a format version |
 | [0006](0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md) | Pools of unequal size are compared by a method the caller names |
+| [0007](0007-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says |
+| [0008](0008-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md) | A tiebreaker between the tied participants is computed by the calculator, once for each place in the chain |
 
 ## Adding a record
 
