@@ -2543,8 +2543,10 @@ from the adjusted totals, and the table of the outcome shows each
 
 `withResultReplaced()` replaces the result of one event of the **last
 recorded round**, for a result that was entered wrongly. It corrects the
-record; it does not decide an event (an elimination event that finished
-level is decided by the decider it is recorded with, see
+record; it does not decide an event by giving it a winner it did not have
+(an elimination event that finished level stays a draw and is decided by
+its decider, which this verb adds to the recorded draw where the decision
+came after the round was recorded, see
 [Recording a Level Event](#recording-a-level-event)). The event is found by its round
 number, its participants in either order and its tie leg, so the state may
 have come back from storage. The replacement takes the place of the old
@@ -3639,15 +3641,16 @@ a decider or without.
 key is deprecated and still read; see
 [The `tie_winner` metadata key](#the-tie_winner-metadata-key).
 
-Record the decision with the result, in the `withRoundPlayed()` call that
-records the round. `$state->withResultReplaced(...)` is not how a level
-event is decided: it corrects a record that was entered wrongly (see
-[Correcting a Recorded Result](#correcting-a-recorded-result)). A state
-that is stuck on a level event was recorded incompletely or wrongly, and
-the correction says which. If the event did finish level, the decision is
-what the record lacks: replace the result with the same draw, carrying
-its decider. If the draw was entered by mistake, replace it with the
-result the event had. Do not replace a level event with a win it was not.
+Record the decision with the result where it is known by then, in the
+`withRoundPlayed()` call that records the round. Where it comes later, the
+tie awaits it as another tie awaits a result
+([Rounds That Are Not Finished](#rounds-that-are-not-finished)), and
+`$state->withResultReplaced(...)` is how it is added: replace the result
+with the same draw, carrying its decider. That changes nothing the event
+recorded. What the verb is not for is turning a level event into a win it
+was not: if the draw was entered by mistake, replace it with the result the
+event had ([Correcting a Recorded Result](#correcting-a-recorded-result)),
+and if the event did finish level, leave it a draw and record who advances.
 
 ```php
 $decided = $undecided->withResultReplaced(new Result(

@@ -2020,8 +2020,11 @@ entry on the engine fingerprint.
   value of a bye as one more value of the scale. With a bye worth a win,
   which is every stage paired before, nothing changes.
 - **The message of an undecided tie names the decider.** A level
-  elimination tie with no decision is refused as before, with the reason
-  `UndecidedTie`; its message told the caller to record `'tie_winner'`
+  elimination tie with no decision still has the reason `UndecidedTie`
+  (which calls refuse it has changed in this release: reading the bracket
+  no longer throws for it and only `pairNextRound()` does, see "The same
+  holds for a tie that finished level and has no decider" under the
+  breaking change for a bracket round that is not finished); its message told the caller to record `'tie_winner'`
   metadata, which is deprecated (see **Deprecated**), and now says to
   record the decider: "... the event is level, so record who advances as
   the decider of its result", and for two legs "... the legs are level, so
