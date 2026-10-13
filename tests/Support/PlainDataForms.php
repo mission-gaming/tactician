@@ -252,7 +252,10 @@ final class PlainDataForms
                     $windows = [];
                     for ($i = $random->getInt(1, 3); $i > 0; --$i) {
                         $from = self::instant($random);
-                        $window = ['from' => $from, 'to' => $from->setTimestamp($from->getTimestamp() + 3_600 * $random->getInt(1, 400))];
+                        $window = [
+                            'from' => self::sometimesWithFraction($random, $from),
+                            'to' => $from->setTimestamp($from->getTimestamp() + 3_600 * $random->getInt(1, 400)),
+                        ];
                         if ($random->getInt(0, 1) === 1) {
                             $window['label'] = 'closure ' . $random->getInt(1, 99);
                         }
@@ -289,7 +292,7 @@ final class PlainDataForms
                     // Three slots at most, 90 minutes apart at most: a round ends
                     // well inside the day the shortest round interval gives it
                     return new TimelineDefinition(
-                        self::localEvening($random),
+                        self::sometimesWithFraction($random, self::localEvening($random)),
                         new DateInterval(['P7D', 'P1D', 'P14D', 'PT48H', 'P1M'][$random->getInt(0, 4)]),
                         $slots,
                         $slots > 1 || $random->getInt(0, 1) === 1
@@ -313,7 +316,7 @@ final class PlainDataForms
                 ],
                 'read' => static fn(array $data, array $registry): object => SessionGrid::fromArray(self::stringKeyed($data)),
                 'generate' => static function (Randomizer $random, array $field): object {
-                    $first = self::localEvening($random);
+                    $first = self::sometimesWithFraction($random, self::localEvening($random));
                     $sessions = [];
                     for ($i = 0, $count = $random->getInt(1, 5); $i < $count; ++$i) {
                         $sessions[] = $first->add(new DateInterval('P' . ($i * 7) . 'D'));
@@ -825,6 +828,18 @@ final class PlainDataForms
         return (new DateTimeImmutable('2026-01-01 00:00:00', $zone))
             ->setDate(2026, 1, 1 + $random->getInt(0, 700))
             ->setTime($hour, $minute);
+    }
+
+    /**
+     * The time, one draw in three with a fraction of a second: a timeline
+     * start, a session start and a bound of a blackout window are written
+     * with the fraction they have, and without one when they have none.
+     */
+    private static function sometimesWithFraction(Randomizer $random, DateTimeImmutable $time): DateTimeImmutable
+    {
+        return $random->getInt(0, 2) === 0
+            ? $time->setTime((int) $time->format('G'), (int) $time->format('i'), (int) $time->format('s'), [250_000, 1, 999_999][$random->getInt(0, 2)])
+            : $time;
     }
 
     /**

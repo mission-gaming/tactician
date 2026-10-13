@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Repack\SessionGrid;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Tests\Support\AwkwardIds;
 use MissionGaming\Tactician\Tests\Support\PlainDataForms;
 use MissionGaming\Tactician\Timeline\ScheduledSchedule;
+use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 
@@ -145,6 +147,63 @@ describe('an instance of a serializable type', function (): void {
                 ->and(json_encode($scheduled))->toBe($scheduled->toJson());
         }
     })->with(fn(): array => roundTripFields());
+});
+
+// The array of a configuration form is compared above as text. A timeline
+// and a grid are read for their instants, so those are compared too: what
+// is read back gives every slot the time the written one gives it, to the
+// microsecond, for a start with a fraction of a second as for one without.
+describe('a timeline or a grid read back from its array', function (): void {
+    it('has every slot time of the timeline that was written', function (): void {
+        $form = PlainDataForms::all()['timeline definition'];
+        $random = new Randomizer(new Xoshiro256StarStar(2026));
+        $fractions = 0;
+
+        for ($i = 0; $i < ROUND_TRIP_INSTANCES; ++$i) {
+            $timeline = ($form['generate'] ?? null)?->__invoke($random, []);
+            assert($timeline instanceof TimelineDefinition);
+            $read = TimelineDefinition::fromArray(throughJson($timeline->toArray()));
+            $fractions += $timeline->getStart()->format('u') === '000000' ? 0 : 1;
+
+            for ($round = 1; $round <= 4; ++$round) {
+                for ($slot = 0; $slot < $timeline->getSlotsPerRound(); ++$slot) {
+                    expect($read->getSlotTime($round, $slot)->format('Y-m-d\TH:i:s.uP'))
+                        ->toBe($timeline->getSlotTime($round, $slot)->format('Y-m-d\TH:i:s.uP'), "instance {$i}, round {$round}, slot {$slot}");
+                }
+            }
+        }
+
+        // Both kinds of start were generated
+        expect($fractions)->toBeGreaterThan(0)->toBeLessThan(ROUND_TRIP_INSTANCES);
+    });
+
+    it('has every slot time of the grid that was written', function (): void {
+        $form = PlainDataForms::all()['session grid with instants'];
+        $random = new Randomizer(new Xoshiro256StarStar(2026));
+        $fractions = 0;
+
+        for ($i = 0; $i < ROUND_TRIP_INSTANCES; ++$i) {
+            $grid = ($form['generate'] ?? null)?->__invoke($random, []);
+            assert($grid instanceof SessionGrid);
+            $read = SessionGrid::fromArray(throughJson($grid->toArray()));
+            $fractions += $grid->getSessionStart(0)->format('u') === '000000' ? 0 : 1;
+
+            expect($read->hasInstants())->toBeTrue()
+                ->and($read->getSessionCount())->toBe($grid->getSessionCount());
+            for ($session = 0; $session < $grid->getSessionCount(); ++$session) {
+                expect($read->getSlotCount($session))->toBe($grid->getSlotCount($session));
+                for ($slot = 0; $slot < $grid->getSlotCount($session); ++$slot) {
+                    $time = $grid->getSlotTime($session, $slot);
+
+                    expect($read->getSlotTime($session, $slot)->format('Y-m-d\TH:i:s.uP'))
+                        ->toBe($time->format('Y-m-d\TH:i:s.uP'), "instance {$i}, session {$session}, slot {$slot}")
+                        ->and($read->positionOf($time))->toBe(['session' => $session, 'slot' => $slot]);
+                }
+            }
+        }
+
+        expect($fractions)->toBeGreaterThan(0)->toBeLessThan(ROUND_TRIP_INSTANCES);
+    });
 });
 
 describe('the format version of an array that is written', function (): void {
