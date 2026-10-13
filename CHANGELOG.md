@@ -917,6 +917,12 @@ entry on the engine fingerprint.
   the reason changes from `TimeRuleViolation` to `ParticipantDoubleBooked`,
   because the round is refused before the rules are asked (#121, item 10).
 
+- The `Coverage` job of CI measures with PCOV where it used Xdebug. It
+  reports line coverage only, which PCOV measures, and the suite had grown
+  until the job took 25 to 40 minutes under Xdebug. The `Mutation testing`
+  workflow still uses Xdebug, and `composer test-coverage` works with either
+  driver as before. Nothing a consumer installs changes.
+
 ### Fixed
 
 - **A schedule with shuffled legs can be repeated from its configuration.**
