@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+// Before anything else: a process that runs tests has at least the memory
+// the suite needs, whatever PHP is configured with. It raises a low limit
+// and never lowers one (tests/Support/SuiteMemoryLimit.php says why it is
+// done here and not in phpunit.xml).
+MissionGaming\Tactician\Tests\Support\SuiteMemoryLimit::raise();
+
 /*
 |--------------------------------------------------------------------------
 | Test Case

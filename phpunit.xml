@@ -35,4 +35,17 @@
             <directory suffix=".php">./src</directory>
         </include>
     </source>
+    <!--
+        No memory_limit is set here, on purpose. The suite peaks a few
+        megabytes either side of PHP's default limit of 128M (125 to 127 MB
+        measured), and a run that collects coverage needs about 1.1 GB with
+        either driver (1,077 MB with Xdebug, 1,084 MB with PCOV), nearly all
+        of it where the coverage is reported after the last test. An
+        <ini name="memory_limit"> here
+        would set the value outright, and so lower the limit of a run that
+        has a higher one or none, which is what PHP has on a CI runner: a
+        stated 1G ended the Coverage job after every test had passed.
+        tests/Pest.php raises a limit that is below 4G to 4G and leaves any
+        other alone (tests/Support/SuiteMemoryLimit.php).
+    -->
 </phpunit>

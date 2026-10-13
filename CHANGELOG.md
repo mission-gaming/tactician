@@ -1454,6 +1454,21 @@ entry on the engine fingerprint.
   so. None of these changes shows a defect in the library: each removes the
   bound of a loop that is bounded as written.
 
+- A test run no longer depends on the `memory_limit` PHP is configured
+  with. The suite peaks at about PHP's default of 128M (125 to 127 MB), so
+  under that default a run ended with "Allowed memory size exhausted" in a
+  test that has nothing to do with memory, a different one each time, and
+  passed when run again; `composer test-coverage` needs about 1.1 GB with
+  either driver, nearly all of it where the coverage is reported after the
+  last test, and did not finish under the default at all. A process that
+  runs tests now raises a limit below 4G to 4G (`tests/Pest.php`,
+  `tests/Support/SuiteMemoryLimit.php`). It never lowers one: a higher
+  limit and no limit, which is what PHP has on a CI runner, stay as they
+  are, and so does the limit of the test process of a mutation. The limit
+  is not stated in `phpunit.xml`, because PHPUnit sets such a value
+  outright and would lower the limit of a CI run. Nothing a consumer
+  installs changes.
+
 ## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public
