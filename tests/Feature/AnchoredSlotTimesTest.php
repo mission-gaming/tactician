@@ -230,6 +230,138 @@ describe('Slot times computed from the anchor', function (): void {
         }
     });
 
+    it('gives the kickoffs slot-by-slot addition gave, from every day of two years, where no month end and no skipped hour is met', function (): void {
+        // The claim of the changelog, swept: an interval of days or weeks
+        // at a time of day that exists on every date, an interval of hours
+        // or minutes from any time of day (01:30 is skipped once a year in
+        // some of these zones, and elapsed time does not care), and an
+        // interval of months or years from the 1st to the 28th. 2027 is a
+        // common year and 2028 a leap year. Lord Howe moves its clocks by
+        // half an hour.
+        $dateIntervals = ['P1D', 'P2D', 'P7D', 'P14D'];
+        $timeIntervals = ['PT1H', 'PT90M', 'PT24H', 'PT168H'];
+        $monthIntervals = ['P1M', 'P3M', 'P1Y'];
+        $checked = 0;
+        foreach ([...ANCHORED_ZONES, 'Australia/Lord_Howe', 'America/Sao_Paulo'] as $zoneName) {
+            $zone = new DateTimeZone($zoneName);
+            for ($day = 0; $day < 731; ++$day) {
+                $date = (new DateTimeImmutable('2027-01-01', $zone))->modify("+{$day} days")->format('Y-m-d');
+                $dayOfMonth = (int) substr($date, 8);
+
+                // One interval of each kind from every day, taken in turn
+                // 01:30 and 02:30 are skipped once a year in some of these
+                // zones and occur twice once a year: a date interval from
+                // them is followed until it meets a skipped one
+                $cases = [
+                    [$dateIntervals[$day % 4], '12:00'],
+                    [$dateIntervals[($day + 1) % 4], $day % 2 === 0 ? '01:30' : '02:30'],
+                    [$timeIntervals[$day % 4], '01:30'],
+                ];
+                if ($dayOfMonth <= 28) {
+                    $cases[] = [$monthIntervals[$day % 3], '19:00'];
+                }
+
+                foreach ($cases as [$interval, $timeOfDay]) {
+                    $start = new DateTimeImmutable("{$date} {$timeOfDay}", $zone);
+                    $timeline = new TimelineDefinition($start, new DateInterval($interval));
+
+                    $expected = $start;
+                    for ($round = 2; $round <= 30; ++$round) {
+                        $expected = $expected->add(new DateInterval($interval));
+                        if ($interval[1] !== 'T' && $expected->format('H:i') !== $timeOfDay) {
+                            // The round met a skipped local time: slot-by-slot
+                            // addition is wrong from here on
+                            break;
+                        }
+                        if ($timeline->getSlotTime($round)->getTimestamp() !== $expected->getTimestamp()) {
+                            throw new RuntimeException(
+                                "{$interval} from {$date} {$timeOfDay} in {$zoneName}, round {$round}: "
+                                    . $timeline->getSlotTime($round)->format('Y-m-d H:i') . ' UTC, slot-by-slot addition gives '
+                                    . $expected->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i') . ' UTC'
+                            );
+                        }
+                        ++$checked;
+                    }
+                }
+            }
+        }
+
+        expect($checked)->toBeGreaterThan(600000);
+    });
+
+    it('takes the first of the two when a local time occurs twice, as PHP reads it', function (): void {
+        // London has 01:30 twice on 25 October 2026: at 00:30 UTC, before
+        // the clocks go back, and at 01:30 UTC after
+        $london = new DateTimeZone('Europe/London');
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-10-11 01:30', $london),
+            new DateInterval('P7D')
+        );
+
+        $kickoffs = [];
+        foreach (range(1, 4) as $round) {
+            $kickoffs[] = $timeline->getSlotTime($round)->format('j M H:i');
+        }
+
+        expect($kickoffs)->toBe(['11 Oct 00:30', '18 Oct 00:30', '25 Oct 00:30', '1 Nov 01:30']);
+
+        // The same from a start on winter time, 38 weeks before: PHP's own
+        // one step from there reads 01:30 at the start's offset, the second
+        $fromWinter = new TimelineDefinition(
+            new DateTimeImmutable('2026-02-01 01:30', $london),
+            new DateInterval('P7D')
+        );
+        expect($fromWinter->getSlotTime(39)->format('j M H:i'))->toBe('25 Oct 00:30')
+            ->and($fromWinter->getSlotTime(40)->format('j M H:i'))->toBe('1 Nov 01:30');
+
+        // Lord Howe puts its clocks back by half an hour, at 02:00: 01:45
+        // occurs twice on 4 April 2027, at 14:45 and at 15:15 UTC the day
+        // before. The start, in June, is on standard time
+        $lordHowe = new TimelineDefinition(
+            new DateTimeImmutable('2026-06-04 01:45', new DateTimeZone('Australia/Lord_Howe')),
+            new DateInterval('P1M'),
+        );
+        expect($lordHowe->getSlotTime(11)->format('j M Y H:i'))->toBe('3 Apr 2027 14:45')
+            ->and($lordHowe->getSlotTime(12)->format('j M Y H:i'))->toBe('3 May 2027 15:15');
+
+        // A start that is the second 01:30 is kept as the instant it is
+        $second = (new DateTimeImmutable('2026-10-25 01:30', new DateTimeZone('UTC')))->setTimezone($london);
+        $fromSecond = new TimelineDefinition($second, new DateInterval('P7D'), slotsPerRound: 2, slotInterval: new DateInterval('PT30M'));
+        expect($fromSecond->getSlotTime(1)->format('j M H:i'))->toBe('25 Oct 01:30')
+            ->and($fromSecond->getSlotTime(1, 1)->format('j M H:i'))->toBe('25 Oct 02:00')
+            ->and($fromSecond->getSlotTime(2)->format('j M H:i'))->toBe('1 Nov 01:30');
+    });
+
+    it('reads the months and days of an interval from diff(), and not its count of days', function (): void {
+        // 31 January to 3 March 2026 is "one month and three days" to
+        // diff(), which also records 31 days in all. The timeline takes the
+        // parts: round 2 is a month on (the end of February) plus three
+        // days, round 3 two months on plus six
+        $utc = new DateTimeZone('UTC');
+        $start = new DateTimeImmutable('2026-01-31 19:00', $utc);
+        $interval = $start->diff(new DateTimeImmutable('2026-03-06 19:00', $utc));
+        expect([$interval->m, $interval->d, $interval->days])->toBe([1, 3, 34]);
+
+        $timeline = new TimelineDefinition($start, $interval);
+
+        expect($timeline->getSlotTime(2)->format('Y-m-d H:i'))->toBe('2026-03-03 19:00')
+            ->and($timeline->getSlotTime(3)->format('Y-m-d H:i'))->toBe('2026-04-06 19:00')
+            ->and($timeline->getSlotTime(4)->format('Y-m-d H:i'))->toBe('2026-05-09 19:00');
+    });
+
+    it('still drifts for a month written as a relative string, which has no parts to multiply', function (): void {
+        // The documented exception: createFromDateString('1 month') is
+        // added one step at a time. new DateInterval('P1M') keeps month ends
+        $start = new DateTimeImmutable('2026-01-31 19:00', new DateTimeZone('UTC'));
+        $relative = new TimelineDefinition($start, DateInterval::createFromDateString('1 month'));
+        $duration = new TimelineDefinition($start, new DateInterval('P1M'));
+
+        expect($relative->getSlotTime(2)->format('j M'))->toBe('3 Mar')
+            ->and($relative->getSlotTime(3)->format('j M'))->toBe('3 Apr')
+            ->and($duration->getSlotTime(2)->format('j M'))->toBe('28 Feb')
+            ->and($duration->getSlotTime(3)->format('j M'))->toBe('31 Mar');
+    });
+
     it('refuses a round too far from the start to compute, where PHP would return a date that has wrapped round', function (): void {
         $start = new DateTimeImmutable('2026-01-31 19:00', new DateTimeZone('UTC'));
 

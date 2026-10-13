@@ -33,6 +33,10 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  *   time for an interval built from an ISO 8601 duration, local time for
  *   one that `diff()` returned. A local time the clocks skip is moved on by
  *   the skipped hour, as PHP moves it.
+ * - A local time that occurs twice, where the clocks go back, is the first
+ *   of the two for an interval with no hours, minutes or seconds. For one
+ *   that has them it is the one PHP takes: the one at the anchor's own
+ *   offset from UTC.
  *
  * An interval made by `DateInterval::createFromDateString()` (`next
  * weekday`, `last day of next month`, and `1 month` or `7 days` as well:
@@ -112,7 +116,46 @@ final class IntervalArithmetic
         $scaled->s = $interval->s * $steps;
         $scaled->f = $interval->f * $steps;
 
-        return $anchor->add($scaled);
+        $result = $anchor->add($scaled);
+
+        // With a time part, the reading of a repeated local time is PHP's
+        if ($interval->h !== 0 || $interval->i !== 0 || $interval->s !== 0 || $interval->f !== 0.0 || ($result <=> $anchor) === 0) {
+            return $result;
+        }
+
+        return self::firstOfRepeatedLocalTime($result);
+    }
+
+    /**
+     * The earlier instant of a local time that occurs twice, where the
+     * clocks go back; any other time as it is.
+     *
+     * PHP reads a repeated local time by the offset of the time it added
+     * to, so one step from a start on winter time lands on the second
+     * 01:30 and one step from a start on summer time on the first. Taking
+     * the first always is what adding round by round gave (the round
+     * before was on summer time), and does not depend on the season the
+     * anchor is in.
+     */
+    private static function firstOfRepeatedLocalTime(DateTimeImmutable $time): DateTimeImmutable
+    {
+        // By how much the offset from UTC fell during the day before this
+        // time. Read from two offsets and not from the timezone's list of
+        // transitions, which PHP builds year by year for a far date
+        $timestamp = $time->getTimestamp();
+        $putBack = $time->setTimestamp($timestamp - 86400)->getOffset() - $time->getOffset();
+        if ($putBack <= 0) {
+            return $time;
+        }
+
+        // The same local time, that much earlier, exists when it is still
+        // on the offset the clocks were put back from
+        $back = new DateInterval('PT0S');
+        $back->s = $putBack;
+        $back->invert = 1;
+        $earlier = $time->add($back);
+
+        return $earlier->getOffset() - $time->getOffset() === $putBack ? $earlier : $time;
     }
 
     /**
