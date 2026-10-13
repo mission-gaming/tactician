@@ -105,13 +105,14 @@ describe('EliminationOptions', function (): void {
         ]);
 
         expect($options->toArray())->toBe([
+            'format_version' => 1,
             'legs_per_tie' => 2,
             'reseed_each_round' => true,
             'grand_final_reset' => false,
         ]);
 
         expect(EliminationOptions::fromArray([])->toArray())
-            ->toBe(['legs_per_tie' => 1, 'reseed_each_round' => false, 'grand_final_reset' => true]);
+            ->toBe(['format_version' => 1, 'legs_per_tie' => 1, 'reseed_each_round' => false, 'grand_final_reset' => true]);
     });
 
     it('rejects invalid configuration', function (): void {

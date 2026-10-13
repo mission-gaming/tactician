@@ -24,11 +24,12 @@ interface SchedulerOptions
     /**
      * Build options from plain configuration data.
      *
-     * A value of the wrong type or out of range, and an identifier the
-     * options do not know, fail loudly; omitted keys use the algorithm's
-     * documented defaults. What happens to a key the options do not have is
-     * the implementation's to say: PotDrawOptions refuses one, and
-     * RoundRobinOptions and SwissOptions ignore it.
+     * A value of the wrong type or out of range, an identifier the options
+     * do not know, and a key the options do not have fail loudly; omitted
+     * keys use the algorithm's documented defaults. The library's
+     * implementations refuse an unknown key with the reason
+     * `UnknownOptionKey`, so that a misspelt option is never read as its
+     * default.
      *
      * @param array<string, mixed> $config
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException

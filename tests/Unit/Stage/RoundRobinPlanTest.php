@@ -11,6 +11,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Stage\PairwisePlan;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StagePlan;
+use MissionGaming\Tactician\Tests\Support\UncheckedEvent;
 
 /**
  * @return array<Participant>
@@ -182,7 +183,7 @@ describe('RoundRobinPlan', function (): void {
 
         $violations = $plan->validateIntegrity(new Schedule([
             new Event([$participant1, $outsider], new Round(1)),
-            new Event([$participant2, $participant2], new Round(1)),
+            new UncheckedEvent([$participant2, $participant2], new Round(1)),
         ]));
 
         expect($violations)->toContain('Event 1 contains a participant that is not in the tournament.');
@@ -203,7 +204,7 @@ describe('RoundRobinPlan', function (): void {
         ]);
         $repeated = new Schedule([
             new Event([$keys[0] => $participant1, $keys[1] => $participant2], new Round(1)),
-            new Event([$keys[0] => $participant2, $keys[1] => $participant2], new Round(2)),
+            new UncheckedEvent([$keys[0] => $participant2, $keys[1] => $participant2], new Round(2)),
         ]);
 
         expect($plan->validateIntegrity($complete))->toBe([])

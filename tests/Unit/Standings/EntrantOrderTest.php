@@ -337,6 +337,8 @@ describe('the order of participant IDs', function (): void {
     it('sorts every arrangement of a set of awkward IDs to one list', function (int $seed): void {
         $randomizer = new Randomizer(new Mt19937($seed));
         $set = array_map(fn(int|string $key): string => $this->ids[$key], $randomizer->pickArrayKeys($this->ids, 6));
+        // The empty string is compared above and is no participant's ID
+        $set = array_values(array_filter($set, static fn(string $id): bool => $id !== ''));
 
         $permute = static function (array $items) use (&$permute): array {
             if (count($items) <= 1) {
