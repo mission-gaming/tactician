@@ -1,0 +1,339 @@
+<?php
+
+declare(strict_types=1);
+
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
+use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\Exceptions\SchedulingException;
+use MissionGaming\Tactician\LegStrategies\LegPlanContribution;
+use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
+use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
+use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\Scheduling\LegRoleSearch;
+use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
+use MissionGaming\Tactician\Scheduling\SchedulingContext;
+use MissionGaming\Tactician\Stage\RoundRobinPlan;
+use MissionGaming\Tactician\Tests\Support\RoleCounts;
+
+/**
+ * A leg strategy that keeps the pairing as given and writes down every
+ * question it is asked.
+ */
+final class RecordingLegStrategy implements LegStrategyInterface
+{
+    /** @var list<string> */
+    public array $asked = [];
+
+    /**
+     * @param list<int> $silentRounds Rounds it returns no event for
+     */
+    public function __construct(private readonly array $silentRounds = []) {}
+
+    #[Override]
+    public function planLegs(array $participants, int $legs, ConstraintSet $constraints): LegPlanContribution
+    {
+        return new LegPlanContribution(false, false);
+    }
+
+    #[Override]
+    public function generateEventForLeg(array $participants, int $leg, int $round, SchedulingContext $context): ?Event
+    {
+        $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $participants);
+        $this->asked[] = "leg {$leg}, round {$round}: " . implode(' v ', $ids) . ' after ' . $context->getEventCount();
+
+        return in_array($round, $this->silentRounds, true) ? null : new Event($participants, new Round($round));
+    }
+}
+
+/**
+ * @return list<Participant>
+ */
+function roleSearchField(int $size): array
+{
+    $field = [];
+    for ($number = 1; $number <= $size; ++$number) {
+        $field[] = new Participant("p{$number}", "P{$number}");
+    }
+
+    return $field;
+}
+
+/**
+ * The first leg of the field as the scheduler lays it out without
+ * constraints, and the slots of the legs after it: the same pairings in
+ * the same rounds of the leg, in the roles of the first leg.
+ *
+ * @param list<Participant> $field
+ * @return array{list<Event>, list<array{leg: int, round: int, pairing: array<Participant>}>}
+ * @throws SchedulingException
+ */
+function roleSearchLaterSlots(array $field, int $legs): array
+{
+    $legOne = (new RoundRobinScheduler())->schedule($field)->getEvents();
+    $roundsPerLeg = count($field) % 2 === 0 ? count($field) - 1 : count($field);
+
+    $slots = [];
+    for ($leg = 2; $leg <= $legs; ++$leg) {
+        foreach ($legOne as $event) {
+            $slots[] = [
+                'leg' => $leg,
+                'round' => ($event->getRound()?->getNumber() ?? 0) + ($leg - 1) * $roundsPerLeg,
+                'pairing' => $event->getParticipants(),
+            ];
+        }
+    }
+
+    return [array_values($legOne), $slots];
+}
+
+describe('LegRoleSearch', function (): void {
+    // A limit of two in a row, once as the library's constraint, whose
+    // verdict depends on the events of the two participants alone, and
+    // once as a closure, about which the search can assume nothing.
+    $streakOfTwo = [
+        'the constraint class' => [static fn(): ConstraintSet => ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build()],
+        'a closure' => [static fn(): ConstraintSet => ConstraintSet::create()->custom(
+            static function (Event $event, SchedulingContext $context): bool {
+                foreach ($event->getParticipants() as $role => $participant) {
+                    $run = 1;
+                    foreach (array_reverse($context->getEventsForParticipant($participant)) as $earlier) {
+                        if ($earlier->getParticipants()[$role]->getId() !== $participant->getId()) {
+                            break;
+                        }
+                        ++$run;
+                    }
+                    if ($run > 2) {
+                        return false;
+                    }
+                }
+
+                return true;
+            },
+            'Two in a row'
+        )->build()],
+    ];
+
+    it('finds roles for shuffled legs that the draws alone do not give', function (Closure $constraints): void {
+        $field = roleSearchField(8);
+        $plan = new RoundRobinPlan($field, 3);
+        [$legOne, $slots] = roleSearchLaterSlots($field, 3);
+
+        // What the draws give when nothing is rejected
+        $drawn = (new LegRoleSearch(null, new ShuffledLegStrategy(seed: 4), true, false))
+            ->search(new SchedulingContext($field, $plan, $legOne, 2), $slots, PHP_INT_MAX, PHP_INT_MAX);
+
+        $search = new LegRoleSearch($constraints(), new ShuffledLegStrategy(seed: 4), true, false);
+        $events = $search->search(new SchedulingContext($field, $plan, $legOne, 2), $slots, PHP_INT_MAX, LegRoleSearch::REJECTION_LIMIT);
+
+        expect($drawn)->toHaveCount(56)
+            ->and(RoleCounts::worstStreak([...$legOne, ...$drawn ?? []]))->toBeGreaterThan(2)
+            ->and($events)->toHaveCount(56)
+            ->and(RoleCounts::worstStreak([...$legOne, ...$events ?? []]))->toBe(2)
+            // Roles only: the pairings and their rounds are the slots'
+            ->and(RoleCounts::structure($events ?? []))->toBe(RoleCounts::structure($drawn ?? []))
+            ->and($search->wasStoppedByABound())->toBeFalse()
+            ->and($search->attempts())->toBeGreaterThan(56);
+    })->with($streakOfTwo);
+
+    it('goes straight back to an event of the same participants when the constraints read no others', function (): void {
+        $field = roleSearchField(12);
+        $plan = new RoundRobinPlan($field, 3);
+        [$legOne, $slots] = roleSearchLaterSlots($field, 3);
+        $context = new SchedulingContext($field, $plan, $legOne, 2);
+
+        $attempts = [];
+        foreach ($streakOfTwoSets = [
+            'directed' => ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build(),
+            // The same constraint in a set the search knows nothing about
+            'one at a time' => ConstraintSet::create()
+                ->add(ConsecutiveRoleConstraint::homeAway(2))
+                ->custom(static fn(): bool => true, 'Accepts everything')
+                ->build(),
+        ] as $name => $constraints) {
+            $search = new LegRoleSearch($constraints, new ShuffledLegStrategy(seed: 9), true, false);
+            $events = $search->search($context, $slots, PHP_INT_MAX, PHP_INT_MAX);
+
+            expect($events)->toHaveCount(132, $name)
+                ->and(RoleCounts::worstStreak([...$legOne, ...$events ?? []]))->toBe(2);
+            $attempts[$name] = $search->attempts();
+        }
+
+        expect(count($streakOfTwoSets))->toBe(2)
+            ->and($attempts['directed'])->toBeLessThan($attempts['one at a time']);
+    });
+
+    it('asks a strategy of preferences once for each event, in order, however far it goes back', function (): void {
+        $field = roleSearchField(4);
+        $plan = new RoundRobinPlan($field, 2);
+        [$legOne, $slots] = roleSearchLaterSlots($field, 2);
+        $strategy = new RecordingLegStrategy();
+
+        // The last event of the leg is refused as the strategy gives it
+        // and as its reverse until the first event of the leg is reversed
+        $firstSlot = $slots[0]['pairing'];
+        $constraints = ConstraintSet::create()->custom(
+            static function (Event $event, SchedulingContext $context) use ($firstSlot): bool {
+                if ($context->getEventCount() < 11) {
+                    return true;
+                }
+                $first = $context->getExistingEvents()[6]->getParticipants();
+
+                return $first[0]->getId() === $firstSlot[1]->getId();
+            },
+            'Needs the first event reversed'
+        )->build();
+
+        $search = new LegRoleSearch($constraints, $strategy, true, true);
+        $events = $search->search(new SchedulingContext($field, $plan, $legOne, 2), $slots, PHP_INT_MAX, PHP_INT_MAX);
+
+        expect($events)->toHaveCount(6)
+            ->and(($events ?? [])[0]->getParticipants()[0]->getId())->toBe($firstSlot[1]->getId())
+            // Six questions for six events, each with the events before it
+            ->and($strategy->asked)->toHaveCount(6)
+            ->and(array_map(static fn(string $question): string => explode(' after ', $question)[1] ?? '', $strategy->asked))
+            ->toBe(['6', '7', '8', '9', '10', '11'])
+            ->and($search->attempts())->toBeGreaterThan(12);
+    });
+
+    it('ends at the first rejected event of a strategy whose roles are rules', function (): void {
+        $field = roleSearchField(4);
+        $plan = new RoundRobinPlan($field, 2);
+        [$legOne, $slots] = roleSearchLaterSlots($field, 2);
+        $strategy = new RecordingLegStrategy();
+        $constraints = ConstraintSet::create()
+            ->custom(static fn(Event $event): bool => $event->getRound()?->getNumber() !== 5, 'Round 5 closed')
+            ->build();
+
+        $search = new LegRoleSearch($constraints, $strategy, false, false);
+        $events = $search->search(new SchedulingContext($field, $plan, $legOne, 2), $slots, PHP_INT_MAX, PHP_INT_MAX);
+
+        expect($events)->toBeNull()
+            ->and($search->wasStoppedByABound())->toBeFalse()
+            ->and($search->slotWithoutEvent())->toBeNull()
+            // Two events of round 4 accepted, the first of round 5 refused
+            ->and($search->attempts())->toBe(3)
+            ->and($search->furthestEvents())->toHaveCount(2)
+            ->and($search->furthestRejections())->toHaveCount(1)
+            ->and($search->furthestRejections()[0][0]->getRound()?->getNumber())->toBe(5)
+            ->and($strategy->asked)->toHaveCount(3);
+    });
+
+    it('says that no roles exist only when it has tried them all', function (): void {
+        $field = roleSearchField(4);
+        $plan = new RoundRobinPlan($field, 2);
+        [$legOne, $slots] = roleSearchLaterSlots($field, 2);
+        $closed = ConstraintSet::create()
+            ->custom(static fn(Event $event): bool => $event->getRound()?->getNumber() !== 6, 'Round 6 closed')
+            ->build();
+        $context = new SchedulingContext($field, $plan, $legOne, 2);
+
+        // Four events before round 6, each in two roles: 16 ways to reach
+        // the event that is refused in both of its roles
+        $whole = new LegRoleSearch($closed, new ShuffledLegStrategy(seed: 1), true, false);
+        expect($whole->search($context, $slots, PHP_INT_MAX, PHP_INT_MAX))->toBeNull()
+            ->and($whole->wasStoppedByABound())->toBeFalse()
+            ->and($whole->furthestEvents())->toHaveCount(4)
+            ->and($whole->furthestRejections())->toHaveCount(2)
+            ->and($whole->attempts())->toBe(2 + 4 + 8 + 16 + 32);
+
+        $rejectionBound = new LegRoleSearch($closed, new ShuffledLegStrategy(seed: 1), true, false);
+        expect($rejectionBound->search($context, $slots, PHP_INT_MAX, 10))->toBeNull()
+            ->and($rejectionBound->wasStoppedByABound())->toBeTrue();
+
+        $attemptBound = new LegRoleSearch($closed, new ShuffledLegStrategy(seed: 1), true, false);
+        expect($attemptBound->search($context, $slots, 20, PHP_INT_MAX))->toBeNull()
+            ->and($attemptBound->wasStoppedByABound())->toBeTrue()
+            ->and($attemptBound->attempts())->toBe(20);
+
+        // A bound that is not reached stops nothing
+        $roomy = new LegRoleSearch($closed, new ShuffledLegStrategy(seed: 1), true, false);
+        expect($roomy->search($context, $slots, 62, 32))->toBeNull()
+            ->and($roomy->wasStoppedByABound())->toBeFalse();
+    });
+
+    it('accepts every event at once without constraints, and is not stopped by a rejection limit of none', function (): void {
+        $field = roleSearchField(6);
+        $plan = new RoundRobinPlan($field, 4);
+        [$legOne, $slots] = roleSearchLaterSlots($field, 4);
+
+        $search = new LegRoleSearch(null, new RepeatedLegStrategy(), false, false);
+        $events = $search->search(new SchedulingContext($field, $plan, $legOne, 2), $slots, PHP_INT_MAX, 0);
+
+        expect($events)->toHaveCount(45)
+            ->and($search->attempts())->toBe(45)
+            ->and($search->wasStoppedByABound())->toBeFalse();
+    });
+
+    it('names the slot a strategy returns no event for', function (): void {
+        $field = roleSearchField(4);
+        $plan = new RoundRobinPlan($field, 2);
+        [$legOne, $slots] = roleSearchLaterSlots($field, 2);
+
+        $search = new LegRoleSearch(null, new RecordingLegStrategy([5]), true, false);
+
+        expect($search->search(new SchedulingContext($field, $plan, $legOne, 2), $slots, PHP_INT_MAX, PHP_INT_MAX))->toBeNull()
+            ->and($search->slotWithoutEvent())->toBe($slots[2])
+            ->and($search->furthestEvents())->toHaveCount(2)
+            ->and($search->wasStoppedByABound())->toBeFalse();
+    });
+
+    it('shows a constraint the earlier rounds, and the event\'s own round only when told to', function (bool $ownRound, array $expected): void {
+        $field = roleSearchField(4);
+        $plan = new RoundRobinPlan($field, 3);
+        [$legOne, $slots] = roleSearchLaterSlots($field, 3);
+
+        $seen = [];
+        $constraints = ConstraintSet::create()->custom(
+            static function (Event $event, SchedulingContext $context) use (&$seen): bool {
+                $seen[] = $context->getCurrentLeg() . ':' . $context->getEventCount();
+
+                return true;
+            },
+            'Watches'
+        )->build();
+
+        (new LegRoleSearch($constraints, new RepeatedLegStrategy(), false, $ownRound))
+            ->search(new SchedulingContext($field, $plan, $legOne, 2), $slots, PHP_INT_MAX, PHP_INT_MAX);
+
+        expect($seen)->toBe($expected);
+    })->with([
+        'earlier rounds only' => [false, ['2:6', '2:6', '2:8', '2:8', '2:10', '2:10', '3:12', '3:12', '3:14', '3:14', '3:16', '3:16']],
+        'its own round too' => [true, ['2:6', '2:7', '2:8', '2:9', '2:10', '2:11', '3:12', '3:13', '3:14', '3:15', '3:16', '3:17']],
+    ]);
+
+    // With the first leg among the slots, a later leg that is a rule can
+    // change after all: by the first-leg event it is derived from.
+    it('reverses an event of the first leg when a repeated leg needs it', function (Closure $constraints): void {
+        $field = roleSearchField(8);
+        $plan = new RoundRobinPlan($field, 2);
+        $legOne = array_values((new RoundRobinScheduler())->schedule($field)->getEvents());
+
+        $slots = [];
+        foreach ($legOne as $event) {
+            $slots[] = ['leg' => 1, 'round' => $event->getRound()?->getNumber() ?? 0, 'pairing' => $event->getParticipants(), 'event' => $event];
+        }
+        foreach ($legOne as $source => $event) {
+            $slots[] = ['leg' => 2, 'round' => ($event->getRound()?->getNumber() ?? 0) + 7, 'pairing' => $event->getParticipants(), 'source' => $source];
+        }
+
+        $search = new LegRoleSearch($constraints(), new RepeatedLegStrategy(), false, true);
+        $events = $search->search(new SchedulingContext($field, $plan, [], 1), $slots, PHP_INT_MAX, LegRoleSearch::REJECTION_LIMIT);
+
+        // The leg as laid out, played twice, has three in a row
+        expect(RoleCounts::worstStreak([...$legOne, ...$legOne]))->toBe(3)
+            ->and($events)->toHaveCount(56)
+            ->and(RoleCounts::worstStreak($events ?? []))->toBe(2);
+
+        $first = array_slice($events ?? [], 0, 28);
+        $second = array_slice($events ?? [], 28);
+        expect(RoleCounts::structure($first))->toBe(RoleCounts::structure($legOne))
+            ->and($first)->not->toEqual($legOne);
+        foreach ($second as $index => $event) {
+            expect($event->getParticipants())->toBe($first[$index]->getParticipants())
+                ->and($event->getRound()?->getNumber())->toBe(($first[$index]->getRound()?->getNumber() ?? 0) + 7);
+        }
+    })->with($streakOfTwo);
+});

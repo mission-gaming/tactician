@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Scheduling;
 
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
 use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 use MissionGaming\Tactician\Constraints\NoRepeatPairings;
@@ -73,6 +74,47 @@ final class ConstraintPurity
 
         foreach ($constraints->getConstraints() as $constraint) {
             if (!in_array($constraint::class, self::KNOWN, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether the verdict of the set on an event can depend, among the
+     * events of the context, only on those one of the event's own
+     * participants takes part in. No set at all does: there is nothing to
+     * ask.
+     *
+     * That is the third property of the class comment by itself, and it
+     * is what lets a search of roles go straight back to an event that
+     * shares a participant with the one the constraints rejected
+     * (LegRoleSearch): no other event can change the verdict. It holds
+     * for a known set, and for one that also holds
+     * ConsecutiveRoleConstraint objects. That class reads the events of the
+     * candidate's own participants and nothing else, and hands each of them
+     * to the caller's role extractor with the participant; an extractor
+     * that answers from anything but its two arguments breaks the rule
+     * every constraint is under (docs/USAGE.md, "What a constraint may
+     * rely on"), and the search may then miss roles that exist.
+     *
+     * Unlike isKnown(), a false answer changes no result that was there
+     * before the search was: the search then goes back one event at a
+     * time, which finds the same roles or none within its bound.
+     */
+    public static function readsOwnEventsOnly(?ConstraintSet $constraints): bool
+    {
+        if ($constraints === null) {
+            return true;
+        }
+
+        if ($constraints::class !== ConstraintSet::class) {
+            return false;
+        }
+
+        foreach ($constraints->getConstraints() as $constraint) {
+            if ($constraint::class !== ConsecutiveRoleConstraint::class && !in_array($constraint::class, self::KNOWN, true)) {
                 return false;
             }
         }
