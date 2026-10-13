@@ -303,8 +303,20 @@ describe('the table of an elimination outcome', function (): void {
         expect($brackets)->toBe(1240);
     })->with([['fixed path'], ['re-seeded'], ['two legs'], ['two legs, re-seeded']]);
 
-    // 30 field sizes and 40 seeds: 1,200 brackets for each variant, each
+    // 18 field sizes and 6 seeds: 108 brackets for each variant, each
     // played a second time without the option. A field of two is refused.
+    // The sizes are every one from 3 to 17, which is every pattern of byes
+    // in a bracket of 4, 8 and 16 and the first size of a bracket of 32,
+    // and 24, 31 and 32 of that bracket.
+    //
+    // The sweep was first written over every size from 3 to 32 with 40
+    // seeds, 1,200 brackets for each variant, and passed; it took half a
+    // minute of every run. This one is held to the same four faults put
+    // into the engine one at a time, and fails for each in all four
+    // variants as the wider one did: no third-place tie paired, the tier
+    // of the semifinals left whole, the two entrants of the tie placed the
+    // wrong way round, and the last round taken as complete before the tie
+    // is decided.
     it('gives places 3 and 4 to the two entrants of the third-place tie, and changes no other place', function (string $variant): void {
         [$legs, $reseed] = match ($variant) {
             'fixed path' => [1, false],
@@ -318,11 +330,11 @@ describe('the table of an elimination outcome', function (): void {
         $brackets = 0;
         $decidedAgainstTheRecords = 0;
 
-        for ($size = 3; $size <= 32; ++$size) {
+        foreach ([...range(3, 17), 24, 31, 32] as $size) {
             $field = placementField($size);
             $bracketRounds = (int) ceil(log($size, 2));
 
-            for ($seed = 1; $seed <= 40; ++$seed) {
+            for ($seed = 1; $seed <= 6; ++$seed) {
                 $played = playForPlacement($engine, $field, $seed * 100 + $size, $legs, 1);
                 $context = "{$variant}, n={$size}, seed {$seed}";
 
@@ -383,7 +395,7 @@ describe('the table of an elimination outcome', function (): void {
             }
         }
 
-        expect($brackets)->toBe(1200);
+        expect($brackets)->toBe(108);
         if ($legs === 2) {
             // Two legs give records the tie decision goes against
             expect($decidedAgainstTheRecords)->toBeGreaterThan(0);
