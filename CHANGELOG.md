@@ -175,6 +175,23 @@ heading **Output change (fix)**.
   an event its round where the protection is meant to apply. Before:
   `false` for two top seeds in an event with no round. After: `true`
   (#121, item 4).
+- **Breaking: `MatchOutcomeSelector` refuses a final round that holds an
+  event of more than two participants.** A winner and a loser are a
+  reading of two participants. Given an event of three, the losers mode
+  returned the first participant, or the second when the first had won,
+  and said nothing of the third: with the third as the winner it named the
+  first the loser. The winners mode returned the recorded winner. Both
+  modes now throw an `InvalidConfigurationException` with the reason
+  `IncompatibleOutcome` and the context `mode` and `participants`, in line
+  with [ADR 0003](docs/adr/0003-multi-participant-events-are-a-2-0-goal.md):
+  a component that is pairwise by nature refuses such an event and never
+  answers as if it were pairwise. Nothing in the library generates an
+  event of more than two participants, so no outcome an engine returns is
+  affected. Who is affected: code that builds a `StageOutcome` by hand
+  whose final round holds such an event and passes it to the selector.
+  What to check: read the winner of such an event from its `Result`
+  directly. Before: a participant list. After: the exception
+  (#121, item 13).
 
 ### Fixed
 

@@ -107,9 +107,15 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      * round must be complete, and one that finished level must carry its
      * tie decision (see TieDecision).
      *
+     * The selector is pairwise by nature: a winner and a loser are a
+     * reading of two participants. Every event of the final round must
+     * have exactly two; one with more is refused in both modes, and the
+     * round is not read in part.
+     *
      * @return array<Participant>
      * @throws InvalidConfigurationException When the outcome has no final round, as a pooled
-     *                                       outcome has none (reason `IncompatibleOutcome`); when a
+     *                                       outcome has none, or its final round holds an event of
+     *                                       more than two participants (`IncompatibleOutcome`); when a
      *                                       tie of the round lacks a result, or is level with no
      *                                       tie decision (`UndecidedTie`); when a tie decision or a
      *                                       leg's winner names a participant outside the tie
@@ -126,6 +132,19 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
                 ['mode' => $this->mode],
                 reason: InvalidConfigurationReason::IncompatibleOutcome
             );
+        }
+
+        // A winner and a loser are a reading of two participants. An event
+        // of more is refused, never read as if it were a tie of its first two.
+        foreach ($finalRound->getEvents() as $event) {
+            if (count($event->getParticipants()) !== 2) {
+                throw new InvalidConfigurationException(
+                    'Match outcome selection reads events of two participants; the final round holds an event of '
+                        . count($event->getParticipants()),
+                    ['mode' => $this->mode, 'participants' => $this->participantIds($event)],
+                    reason: InvalidConfigurationReason::IncompatibleOutcome
+                );
+            }
         }
 
         $resultsByEvent = $this->indexResultsByEvent($outcome);

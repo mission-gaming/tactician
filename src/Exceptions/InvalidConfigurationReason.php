@@ -172,7 +172,8 @@ enum InvalidConfigurationReason: string
 
     /**
      * A progression selector was given an outcome of a shape it cannot read:
-     * one with no final round, or one that is not pooled.
+     * one with no final round, one that is not pooled, or one whose final
+     * round holds an event of more than two participants.
      */
     case IncompatibleOutcome = 'incompatible_outcome';
 
