@@ -1084,7 +1084,9 @@ An awarded result is a result in every respect that is not stated otherwise:
 - It is the one result of its event. An awarded result beside a played
   result of the same event is two results of one event, and the calculator
   and the bracket engines refuse it as they refuse any two. To annul a
-  played result and award the event, replace the result
+  played result and award the event, replace the result: in a list of
+  results of your own, put the awarded result in the place of the played
+  one, and in a stage state use `withResultReplaced()`
   ([Correcting a Recorded Result](#correcting-a-recorded-result)).
 - It settles what a result settles. In an elimination bracket the
   participant it names advances, and a round of a stage whose events all

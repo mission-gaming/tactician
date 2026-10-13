@@ -225,6 +225,25 @@ describe('Awarded results in a standings table', function (): void {
 
         (new StandingsCalculator())->calculate($this->league, [...$this->played, $played, $awarded]);
     })->throws(InvalidInputException::class, 'Two results reference the same event');
+
+    // The rule that holds after storage: two Event objects with the same
+    // round and participants are one event, whichever result is awarded
+    it('refuses an awarded result beside a played result of an equal event, in either order', function (bool $awardedFirst): void {
+        $played = new Result(new Event([$this->p3, $this->p4], new Round(3)), $this->p4, ['p3' => 0, 'p4' => 1]);
+        $awarded = new Result(new Event([$this->p4, $this->p3], new Round(3)), $this->p3, award: new Award());
+
+        (new StandingsCalculator())->calculate($this->league, $awardedFirst ? [$awarded, $played] : [$played, $awarded]);
+    })->with([[true], [false]])->throws(InvalidInputException::class, 'Two results reference the same event; each event can have only one result (round 3');
+
+    it('counts an awarded leg beside a played leg of one two-legged tie as two events', function (): void {
+        $played = new Result(new Event([$this->p3, $this->p4], new Round(3), ['tie_leg' => 1]), $this->p4);
+        $awarded = new Result(new Event([$this->p4, $this->p3], new Round(3), ['tie_leg' => 2]), $this->p3, award: new Award());
+
+        $table = (new StandingsCalculator())->calculate([$this->p3, $this->p4], [$played, $awarded]);
+
+        expect([awardedTestEntry($table, $this->p3)->getPlayed(), awardedTestEntry($table, $this->p3)->getAwarded()])->toBe([2, 1])
+            ->and(awardedTestEntry($table, $this->p3)->getRankingValue())->toBe(3.0);
+    });
 });
 
 describe('Awarded results between the tied participants', function (): void {

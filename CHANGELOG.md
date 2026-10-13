@@ -461,6 +461,9 @@ entry on the engine fingerprint.
   the two together, which the table is ordered by
   (`StandingEntry::withAdjustment()` builds such an entry, and the
   constructor has a twelfth parameter, `adjustment`, default 0.0). The
+  amounts for one participant are added exactly and rounded once, so the
+  figure is the same for every order of the list and amounts that cancel
+  leave nothing; a sum that no float holds is refused. The
   amount is on the scale of the ranking strategy, so an adjustment is
   accepted under every strategy; tiebreakers computed from opponents'
   ranking values use what an opponent earned. A stage keeps its
