@@ -205,6 +205,71 @@ describe('what a leg strategy says about its roles', function (): void {
 
         expect($schedule->toJson())->toBe($mirrored->toJson());
     });
+
+    // A constraint of the caller's may read any event. Here the verdict on
+    // one event of the second leg depends on the role of an event that
+    // shares no participant with it: the last pairing of the leg's first
+    // round must be played the other way round than in the first leg
+    // before the pairing after it, of two other participants, is accepted
+    // in either role. A search that went straight back to an event of the
+    // rejected event's own participants would pass over the one event that
+    // matters and report that no roles exist; for a set that holds a
+    // closure the search goes back one event at a time, and finds it.
+    it('finds roles that depend on an event of other participants when the set holds a constraint of the caller', function (): void {
+        $field = roleSearchSchedulerField(6);
+        $options = static fn(): RoundRobinOptions => new RoundRobinOptions(2, new KeepingLegStrategy(true));
+        $kept = (new RoundRobinScheduler())->schedule($field, $options())->getEvents();
+
+        // Rounds 6 and 7 open the second leg, three events each
+        $deciding = $kept[17];
+        $dependent = null;
+        foreach ([$kept[18], $kept[19], $kept[20]] as $candidate) {
+            if (array_intersect(
+                array_map(static fn(Participant $participant): string => $participant->getId(), $candidate->getParticipants()),
+                array_map(static fn(Participant $participant): string => $participant->getId(), $deciding->getParticipants())
+            ) === []) {
+                $dependent = $candidate;
+                break;
+            }
+        }
+
+        expect($deciding->getRound()?->getNumber())->toBe(6)
+            ->and($dependent)->toBeInstanceOf(Event::class)
+            ->and($dependent?->getRound()?->getNumber())->toBe(7);
+
+        [$one, $other] = $deciding->getParticipants();
+        $dependentIds = array_map(static fn(Participant $participant): string => $participant->getId(), $dependent?->getParticipants() ?? []);
+        sort($dependentIds);
+
+        $constraints = ConstraintSet::create()->custom(
+            static function (Event $event, SchedulingContext $context) use ($one, $other, $dependentIds): bool {
+                $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+                sort($ids);
+                if ($ids !== $dependentIds || $event->getRound()?->getNumber() !== 7) {
+                    return true;
+                }
+
+                $meetings = array_values($context->getEventsBetween($one, $other));
+
+                return count($meetings) === 2
+                    && $meetings[0]->getParticipants()[0]->getId() !== $meetings[1]->getParticipants()[0]->getId();
+            },
+            'Depends on another pairing'
+        )->build();
+
+        $schedule = (new RoundRobinScheduler($constraints))->schedule($field, $options())->getEvents();
+
+        // One event changed, and it is not the one the constraint rejected
+        $changed = [];
+        foreach ($schedule as $index => $event) {
+            if ($event->getParticipants() !== $kept[$index]->getParticipants()) {
+                $changed[] = $index;
+            }
+        }
+
+        expect($changed)->toBe([17])
+            ->and($schedule[17]->getParticipants())->toBe([$other, $one]);
+    });
 });
 
 describe('where no constraint rejects a role', function (): void {
