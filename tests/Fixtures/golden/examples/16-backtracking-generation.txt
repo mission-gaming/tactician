@@ -10,7 +10,7 @@
 # Review it, then regenerate with `composer golden-update`.
 
 == Default generation ==
-MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 4 events, expected 6. Constraints may be preventing complete schedule generation. The roles of the first leg were then searched within what MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment keeps, in each of the 4 layouts tried, and no choice of them has a schedule the constraints accept. The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them. Roles that MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment does not keep were not searched either: RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()) searches every choice of roles.
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 4 events, expected 6. Constraints may be preventing complete schedule generation.
 
 == Backtracking generation ==
 meta: algorithm=round-robin participant_count=4 legs=1 rounds_per_leg=3 total_rounds=3 expected_event_count=6 byes=[]

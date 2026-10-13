@@ -10,6 +10,7 @@ use MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\IncompleteScheduleException;
+use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
@@ -196,6 +197,13 @@ describe('A round robin under constraints that could tell how often they are ask
         // 150, so the second ordering is free to pair them and succeeds.
         // Without that analysis the count stays low and all six orderings
         // fail.
+        //
+        // Round parity is named: it is asked exactly as the default of
+        // 0.2.x was. The default of 0.3.0 tries balanced roles as well,
+        // before and after, so it asks such a constraint other questions
+        // and more of them; what it then gets is a schedule here too, and
+        // nothing about how often it asks is promised (docs/USAGE.md, "What
+        // a constraint may rely on").
         $asked = 0;
         $constraints = new ConstraintSet([new CallableConstraint(
             static function (Event $event) use (&$asked): bool {
@@ -208,9 +216,15 @@ describe('A round robin under constraints that could tell how often they are ask
             'Apart for 150 questions'
         )]);
 
-        $schedule = (new RoundRobinScheduler($constraints))->schedule(analysisCostField(6));
+        $schedule = (new RoundRobinScheduler($constraints))->schedule(
+            analysisCostField(6),
+            new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment())
+        );
 
         expect(count($schedule))->toBe(15);
         expect($asked)->toBe(185);
+
+        $asked = 0;
+        expect(count((new RoundRobinScheduler($constraints))->schedule(analysisCostField(6))))->toBe(15);
     });
 });

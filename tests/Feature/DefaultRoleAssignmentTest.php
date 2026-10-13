@@ -20,8 +20,9 @@ use Random\Randomizer;
 // roles, pinned as they are. The role of a participant in an event is its
 // position: first-named or second-named.
 //
-// Two groups. The first holds the default: the balanced role assignment
-// since 0.3.0 (issue #51). The second holds the roles of the round-parity
+// Two groups. The first holds the default: balanced where possible since
+// 0.3.0 (issue #51), which without constraints, as here, is the balanced
+// roles in every schedule. The second holds the roles of the round-parity
 // role assignment, which was the default up to 0.2.x and is what a caller
 // names to keep the roles of those releases; its figures are the ones this
 // file pinned for the default then, unchanged.

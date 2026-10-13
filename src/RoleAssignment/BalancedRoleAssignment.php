@@ -51,7 +51,11 @@ use Override;
  * back out of balance, with the fixed seatings as given, and the scheduler,
  * which holds every leg to `rule()`, does not use it.
  *
- * This is the default of `RoundRobinOptions`.
+ * Named in the options, it is the strict choice: the scheduler returns a
+ * schedule whose legs this assignment keeps, or fails. The default of
+ * `RoundRobinOptions` is `BalancedWherePossibleRoleAssignment`, which gives
+ * the same roles wherever this one gives a schedule and falls back to the
+ * roles the generator proposes where it does not.
  *
  * @experimental
  */

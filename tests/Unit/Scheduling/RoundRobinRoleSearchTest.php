@@ -673,6 +673,11 @@ describe('a first leg whose roles the scheduler searches within the rule of the 
 });
 
 describe('what the scheduler says when it finds no roles for the first leg within a rule', function (): void {
+    // BalancedRoleAssignment is named throughout: it is balanced or refused,
+    // and these are its refusals. The default of the options is balanced
+    // where possible and does not fail here unless round parity fails too,
+    // with the message of round parity
+    // (tests/Feature/BalancedWherePossibleTest.php).
     // Four participants and a rule that names p1 first against all three
     // others: no balanced leg has that, and the search within the balance
     // goes through every choice in each of the four layouts.
@@ -682,7 +687,7 @@ describe('what the scheduler says when it finds no roles for the first leg withi
             'Participant 1 is first-named'
         )->build();
 
-        $failure = roleSearchFailure(new RoundRobinScheduler($pinned), roleSearchSchedulerField(4), new RoundRobinOptions());
+        $failure = roleSearchFailure(new RoundRobinScheduler($pinned), roleSearchSchedulerField(4), new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment()));
 
         expect($failure?->getMessage())->toMatch(
             '/^Failed to generate complete schedule for leg 1\. Generated \d events, expected 6\. Constraints may be preventing complete schedule generation\.'
@@ -715,7 +720,7 @@ describe('what the scheduler says when it finds no roles for the first leg withi
             'Pinned role'
         )->build();
 
-        $failure = roleSearchFailure(new RoundRobinScheduler($pinned), roleSearchSchedulerField(8), new RoundRobinOptions(legs: 2));
+        $failure = roleSearchFailure(new RoundRobinScheduler($pinned), roleSearchSchedulerField(8), new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment()));
 
         expect($failure?->getMessage())->toEndWith(
             ' The roles of the first leg were then searched within what ' . BalancedRoleAssignment::class
@@ -757,7 +762,7 @@ describe('what the scheduler says when it finds no roles for the first leg withi
         $withoutASearch = $asked;
 
         $asked = 0;
-        $failure = roleSearchFailure(new RoundRobinScheduler($lowerNumberFirst()), $field, new RoundRobinOptions());
+        $failure = roleSearchFailure(new RoundRobinScheduler($lowerNumberFirst()), $field, new RoundRobinOptions(roleAssignment: new BalancedRoleAssignment()));
 
         expect($parity)->toBeInstanceOf(IncompleteScheduleException::class)
             // The allowance of 200,000 events, and a margin for what the
@@ -802,7 +807,7 @@ describe('what the scheduler says when it finds no roles for the first leg withi
         $withoutASearch = $asked;
 
         $asked = 0;
-        $failure = roleSearchFailure($scheduler(), $field, new RoundRobinOptions(legs: 2));
+        $failure = roleSearchFailure($scheduler(), $field, new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment()));
 
         expect($parity)->toBeInstanceOf(IncompleteScheduleException::class)
             ->and($asked - $withoutASearch)->toBe($askedForTheSearch)
@@ -841,7 +846,7 @@ describe('what the scheduler says when it finds no roles for the first leg withi
 
         // Two in a row over two mirrored legs: the roles as given break it in
         // every one of the twelve rotated orders, and the search finds others
-        $schedule = (new RoundRobinScheduler($limit(2)))->schedule($field, new RoundRobinOptions(legs: 2));
+        $schedule = (new RoundRobinScheduler($limit(2)))->schedule($field, new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment()));
         $found = $extractions;
 
         expect(RoleCounts::worstStreak($schedule))->toBe(2);
@@ -855,11 +860,12 @@ describe('what the scheduler says when it finds no roles for the first leg withi
             new RoundRobinOptions(legs: 2, roleAssignment: new RoundParityRoleAssignment())
         );
         $analysedEveryOrder = $extractions;
+        $underRoundParity = $failure;
 
-        // One in a row under the default: no roles have it, the search says
+        // One in a row under the balanced role assignment: no roles have it, the search says
         // so, and the failure carries the one analysis
         $extractions = 0;
-        $failure = roleSearchFailure(new RoundRobinScheduler($limit(1)), $field, new RoundRobinOptions(legs: 2));
+        $failure = roleSearchFailure(new RoundRobinScheduler($limit(1)), $field, new RoundRobinOptions(legs: 2, roleAssignment: new BalancedRoleAssignment()));
         $analysedOnce = $extractions;
 
         expect($failure?->getAnalysis())->not->toBeNull()
@@ -868,5 +874,19 @@ describe('what the scheduler says when it finds no roles for the first leg withi
             ->and($failure?->getPrevious() instanceof IncompleteScheduleException ? $failure->getPrevious()->getAnalysis() : false)->toBeNull()
             ->and($analysedOnce)->toBeLessThan(intdiv($analysedEveryOrder, 4))
             ->and($found)->toBeLessThan(intdiv($analysedEveryOrder, 4));
+
+        // The default makes that search and then generates with the roles of
+        // round parity, whose failure it reports: the same message and an
+        // analysis, built once for the last rotated order and not for each,
+        // since the limit is one the library knows to read a participant's
+        // own events only
+        $extractions = 0;
+        $failure = roleSearchFailure(new RoundRobinScheduler($limit(1)), $field, new RoundRobinOptions(legs: 2));
+
+        expect($failure?->getAnalysis())->not->toBeNull()
+            ->and($failure?->getPrevious())->toBeNull()
+            ->and($failure?->getMessage())->toBe($underRoundParity?->getMessage())
+            ->and($failure?->getAnalysis()?->toString())->toBe($underRoundParity?->getAnalysis()?->toString())
+            ->and($extractions)->toBeLessThan(intdiv($analysedEveryOrder, 2));
     });
 });

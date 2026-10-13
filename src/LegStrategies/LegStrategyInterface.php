@@ -29,10 +29,21 @@ interface LegStrategyInterface
     /**
      * Contribute strategy facts to round-robin plan construction.
      *
-     * The scheduler calls it once per `schedule()` call, before any event
-     * is generated. Returning unsatisfiable reasons fails plan construction
-     * with those reasons as diagnostics: an `InvalidConfigurationException`
-     * with the reason `UnsatisfiableLegStrategy`.
+     * The scheduler calls it at the start of every `schedule()` call,
+     * before any event is generated, and builds the plan from that answer.
+     * Returning unsatisfiable reasons fails plan construction with those
+     * reasons as diagnostics: an `InvalidConfigurationException` with the
+     * reason `UnsatisfiableLegStrategy`.
+     *
+     * A strategy that says it needs randomization
+     * (`LegPlanContribution::$requiresRandomization`) is asked again within
+     * the call, with the same arguments, each time the default role
+     * assignment starts the generation over with other roles: once before
+     * the roles the generator proposes are tried, and where those are tried
+     * before the search for balanced roles, once more before that search.
+     * It is the point at which a strategy that draws from a seed starts its
+     * draws again, so that each run draws what a call draws. The plan of
+     * the call stays the one built from the first answer.
      *
      * @param array<Participant> $participants All tournament participants, as given to the scheduler
      * @param int $legs Total number of legs in the tournament (1 or more)

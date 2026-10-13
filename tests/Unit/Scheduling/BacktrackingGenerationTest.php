@@ -230,12 +230,19 @@ describe('Backtracking round-robin generation', function (): void {
             'each of the 2 round decompositions of the first leg it tried, whatever the roles of the first leg',
             'so the configuration is unsatisfiable with this leg strategy.',
         ],
+        // The default is balanced where possible: it fails where round
+        // parity fails, and says what round parity says
+        'the default, which fails as round parity does' => [
+            null,
+            'each of the 2 round decompositions of the first leg it tried, whatever the roles of the first leg',
+            'so the configuration is unsatisfiable with this leg strategy.',
+        ],
         // The roles of the circle layout were searched before the search
         // began, within what the role assignment keeps, so the one first
         // leg the constraints allow is the one it tries; and what it shows
         // is about the roles the role assignment keeps
-        'the balanced role assignment of the default' => [
-            null,
+        'the balanced role assignment, named' => [
+            new BalancedRoleAssignment(),
             'in the one round decomposition of the first leg it tried, whatever roles ' . BalancedRoleAssignment::class . ' keeps for the first leg',
             'so the configuration is unsatisfiable with this leg strategy and this role assignment.',
         ],

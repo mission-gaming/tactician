@@ -463,11 +463,14 @@ describe('a leg strategy that yields no event', function (): void {
         );
     })->with([
         'round parity, whose roles are not searched' => [new RoundParityRoleAssignment(), ''],
-        // The default states a rule, so the roles of the first leg are
-        // searched within it before the failure, and the message goes on
-        // to say what that came to
-        'the balanced role assignment of the default' => [
-            null,
+        // The default is balanced where possible: it fails where round
+        // parity fails, and says what round parity says
+        'the default, which fails as round parity does' => [null, ''],
+        // The balanced role assignment states a rule, so the roles of the
+        // first leg are searched within it before the failure, and the
+        // message goes on to say what that came to
+        'the balanced role assignment, named' => [
+            new BalancedRoleAssignment(),
             ' The roles of the first leg were then searched within what ' . BalancedRoleAssignment::class
                 . ' keeps, in each of the 4 layouts tried, and no choice of them has a schedule the constraints accept.'
                 . ' The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.'

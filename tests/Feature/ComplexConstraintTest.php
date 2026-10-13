@@ -336,7 +336,7 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
             ->and(RoleCounts::worstStreak($unconstrained))->toBeGreaterThan(2);
     })->with([
         'round parity' => [new RoundParityRoleAssignment()],
-        'the balanced role assignment of the default' => [null],
+        'the default, balanced where possible' => [null],
     ]);
 
     // Every seed of the issue's forty, held to the limit and to its seed:
@@ -474,10 +474,12 @@ describe('a pairing with no round open to it in the second of two shuffled legs 
     });
 
     // Under round parity the roles of the first leg are not searched, and
-    // the failure says so. Under the balanced role assignment of the
-    // default they are, within what it keeps, and the failure says what
-    // that search came to: here it cannot show that no roles exist, since a
-    // closure tells it nothing about what it reads, so it stops at a bound.
+    // the failure says so. The default is balanced where possible, fails
+    // where round parity fails, and says what round parity says. Under the
+    // balanced role assignment, named, the roles of the first leg are
+    // searched within what it keeps, and the failure says what that search
+    // came to: here it cannot show that no roles exist, since a closure
+    // tells it nothing about what it reads, so it stops at a bound.
     it('fails loudly without backtracking, naming the constraint and what was not searched', function (
         ?RoleAssignmentInterface $roleAssignment,
         string $aboutTheFirstLeg
@@ -515,8 +517,12 @@ describe('a pairing with no round open to it in the second of two shuffled legs 
             new RoundParityRoleAssignment(),
             'in this layout. The pairings, their rounds and the roles of leg 1 were not searched: ',
         ],
-        'the balanced role assignment of the default' => [
+        'the default, which fails as round parity does' => [
             null,
+            'in this layout. The pairings, their rounds and the roles of leg 1 were not searched: ',
+        ],
+        'the balanced role assignment, named' => [
+            new BalancedRoleAssignment(),
             'in this layout, with the roles leg 1 has in it. The roles of the first leg were then searched within what '
                 . BalancedRoleAssignment::class . ' keeps, and the search stopped at a bound (20000 rejected roles, or 200000 events put to the constraints, over all the layouts).',
         ],

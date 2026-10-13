@@ -8,6 +8,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
+use MissionGaming\Tactician\RoleAssignment\BalancedWherePossibleRoleAssignment;
 use MissionGaming\Tactician\RoleAssignment\RoundParityRoleAssignment;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
@@ -190,9 +191,10 @@ describe('every form as 0.2.3 wrote it', function (): void {
     // round-robin options that name no role assignment were written without
     // the `role_assignment` key and follow the default of the release that
     // reads them, as the usage guide has said since 0.2.2. That default is
-    // the balanced roles now. Options that named a role assignment were
-    // written with the key and keep the one they named.
-    it('reads round-robin options without a role assignment as the balanced default, and a named one as named', function (): void {
+    // the roles that are balanced where possible now. Options that named a
+    // role assignment were written with the key and keep the one they
+    // named: `balanced` is the strict one, as it was.
+    it('reads round-robin options without a role assignment as the default that is balanced where possible, and a named one as named', function (): void {
         $readAs = ['absent' => [], 'round_parity' => [], 'balanced' => []];
 
         foreach (formsWrittenByZeroTwoThree() as $name => $case) {
@@ -211,7 +213,7 @@ describe('every form as 0.2.3 wrote it', function (): void {
 
         expect(count($readAs['absent']))->toBeGreaterThan(0)
             ->and(count($readAs['round_parity']))->toBeGreaterThan(0)
-            ->and(array_values(array_unique($readAs['absent'])))->toBe([BalancedRoleAssignment::class])
+            ->and(array_values(array_unique($readAs['absent'])))->toBe([BalancedWherePossibleRoleAssignment::class])
             ->and(array_values(array_unique($readAs['round_parity'])))->toBe([RoundParityRoleAssignment::class])
             ->and(array_values(array_unique($readAs['balanced'])))->toBe(
                 $readAs['balanced'] === [] ? [] : [BalancedRoleAssignment::class]
