@@ -131,6 +131,12 @@ final readonly class EngineFingerprint
      * so that what is written today for one without options stays as it
      * is.
      *
+     * The two choices of the calculator's awarded result policy are stated
+     * by that rule: each is part of the fingerprint only when it is off,
+     * which is not its default, so every calculator built before the policy
+     * existed has the fingerprint it had. They change the table an awarded
+     * result gives, and so the rounds paired from it.
+     *
      * A subclass of StandingsCalculator may order the table by rules of
      * its own, so it is stated as `custom` and nothing is read from it: it
      * need not use the ranking strategy and the tiebreakers it was built
@@ -145,8 +151,11 @@ final readonly class EngineFingerprint
         }
 
         $ranking = $calculator->getRankingStrategy();
+        $awardedResults = $calculator->getAwardedResultPolicy();
 
         return $this
+            ->with('awarded-scores', $awardedResults->countScores, true)
+            ->with('awarded-between-tied', $awardedResults->countBetweenTiedParticipants, true)
             ->with(
                 'ranking',
                 $ranking instanceof WinDrawLossRanking
