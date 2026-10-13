@@ -137,7 +137,10 @@ final readonly class TimelineAssigner
      */
     public function assignRound(RoundPairing $pairing, TimelineDefinition $timeline): array
     {
-        return $this->assignEvents($pairing->getEvents(), $pairing->getRoundNumber(), $timeline);
+        $scheduledEvents = $this->assignEvents($pairing->getEvents(), $pairing->getRoundNumber(), $timeline);
+        $this->applyRules(new ScheduledSchedule($scheduledEvents));
+
+        return $scheduledEvents;
     }
 
     /**

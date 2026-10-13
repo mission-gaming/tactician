@@ -7,9 +7,13 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Timeline\BlackoutRule;
+use MissionGaming\Tactician\Timeline\MinimumRestRule;
 use MissionGaming\Tactician\Timeline\ScheduledEvent;
 use MissionGaming\Tactician\Timeline\ScheduledSchedule;
 use MissionGaming\Tactician\Timeline\TimelineAssigner;
@@ -131,6 +135,76 @@ describe('TimelineAssigner', function (): void {
         expect($scheduledEvents[1]->getKickoff()->format('H:i'))->toBe('19:00');
         // Decoration, not mutation: the wrapped events are the pairing's own
         expect($scheduledEvents[0]->getEvent())->toBe($pairing->getEvents()[0]);
+    });
+
+    // A rule the assigner was given applies on both paths: a results-driven
+    // stage is assigned round by round, and a kickoff inside a blackout is
+    // as wrong there as in a whole schedule
+    it('applies its rules to a results-driven round pairing', function (): void {
+        $utc = new DateTimeZone('UTC');
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-08-01 18:00', $utc),
+            new DateInterval('P7D'),
+            slotsPerRound: 2,
+            slotInterval: new DateInterval('PT1H')
+        );
+        // Round 2 is 8 August, 18:00 and 19:00; the window holds the second slot
+        $assigner = new TimelineAssigner([new BlackoutRule([[
+            'from' => new DateTimeImmutable('2026-08-08 19:00', $utc),
+            'to' => new DateTimeImmutable('2026-08-08 23:00', $utc),
+            'label' => 'curfew',
+        ]])]);
+        [$a, $b, $c, $d] = timelineField(4);
+        $round = static fn(int $number): RoundPairing => new RoundPairing($number, null, [
+            new Event([$a, $b], new Round($number)),
+            new Event([$c, $d], new Round($number)),
+        ]);
+
+        // Round 1 is outside the window and is assigned
+        expect($assigner->assignRound($round(1), $timeline))->toHaveCount(2);
+
+        $thrown = null;
+        try {
+            $assigner->assignRound($round(2), $timeline);
+        } catch (InvalidConfigurationException $exception) {
+            $thrown = $exception;
+        }
+
+        expect($thrown?->getReason())->toBe(InvalidConfigurationReason::TimeRuleViolation)
+            ->and($thrown?->getContext()['violations'] ?? null)->toHaveCount(1)
+            ->and($thrown?->getMessage())->toContain('curfew');
+
+        // The whole-schedule path reports the same violation for the same round
+        $schedule = new Schedule([...$round(1)->getEvents(), ...$round(2)->getEvents()]);
+        $whole = null;
+        try {
+            $assigner->assign($schedule, $timeline);
+        } catch (InvalidConfigurationException $exception) {
+            $whole = $exception;
+        }
+        expect($whole?->getContext()['violations'] ?? null)->toBe($thrown?->getContext()['violations'] ?? null);
+
+        // An assigner with no rule assigns the round, as before
+        expect((new TimelineAssigner())->assignRound($round(2), $timeline))->toHaveCount(2);
+    });
+
+    it('reports a participant in two events of one round when given a rest rule', function (): void {
+        // A round's rule sees that round only: a pairing that names one
+        // participant twice puts it in two events an hour apart
+        [$a, $b, $c] = timelineField(3);
+        $pairing = new RoundPairing(1, null, [
+            new Event([$a, $b], new Round(1)),
+            new Event([$a, $c], new Round(1)),
+        ]);
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
+            new DateInterval('P7D'),
+            slotsPerRound: 2,
+            slotInterval: new DateInterval('PT1H')
+        );
+
+        expect(fn() => (new TimelineAssigner([new MinimumRestRule(new DateInterval('PT2H'))]))->assignRound($pairing, $timeline))
+            ->toThrow(InvalidConfigurationException::class, 'time-rule violation');
     });
 
     it('leaves gaps for round numbers, not schedule positions', function (): void {
