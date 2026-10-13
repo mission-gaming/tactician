@@ -598,26 +598,14 @@ entry on the engine fingerprint.
   0.2.3 took 79: a round robin of 40 with pins a median of 0.75 seconds
   and 3 at most, one of two legs among 40 (1,460 events) a median of 2
   seconds and 4.8 at most, where 0.2.3 took 0.9 and placed ten events
-  fewer with 18 more gap slots. The work done before any session is
-  chosen, the last placement step and the search for fewer gap slots
-  have limits of their own and do not draw on `stepBudget`, so a small
-  budget no longer makes a repack as short as it did: a round robin of
-  40 with 60 pins took 0.03 seconds at a budget of one step and takes
-  0.6 (and places all 720 events without a gap, where 0.2.3 placed 650
-  at that budget and 718 at the default). The second review measured
-  the 200 round robins with scattered pins named above: 0.56 seconds at
-  the median and 3.1 at most, where 0.2.3 took 0.1 and 1.4; and at a
-  budget of one step 0.28 seconds at the median and 1.4 at most, where
-  0.2.3 took 7 milliseconds and 26. The slowest request it found is two
-  legs among 29 participants (807 events and five pinned, on a grid
-  with 43 more places than events, where 14 events still find no
-  position): 4.1 seconds
-  where 0.2.3 took 0.4 for as many events placed, and 2 seconds at a
-  budget of one step, where 0.2.3 took 0.03 and placed 42 fewer. At a
-  budget of one step nearly all of that time is the laying out of the
-  events before any session is chosen, which no budget shortens.
-  Requests that 0.2.3 packed
-  without a search are the ones that are slower by the most: a round
+  fewer with 18 more gap slots. The 200 round robins with scattered
+  pins named above took 0.58 seconds at the median and 3 at most, where
+  0.2.3 took 0.11 and 1.4, and the slowest request the second review
+  found, two legs among 29 participants (807 events and five pinned, on
+  a grid with 43 more places than events, where 14 events still find no
+  position), 4.1 seconds where 0.2.3 took 0.4 for as many events
+  placed. Requests that 0.2.3 packed without a search are the ones
+  that are slower by the most: a round
   robin of 40 with 400 of its events pinned took 0.03 seconds and takes
   0.5 (with 84 gap slots for 157), 800 events between 800 separate
   pairs of participants 0.12 and 0.35, and 800 events of one participant
@@ -634,11 +622,69 @@ entry on the engine fingerprint.
   1,703 at 16 and 1,551 for 2,037 at 18). The usage guide has the
   figures.
 
+  *What the step budget governs.* The laying out of the
+  events before any session is chosen, the last placement step, the
+  search for fewer gap slots and the search for the events two
+  over-capacity participants share are not bounded by steps alone (a
+  step of theirs is not a fixed amount of work, and the first spends
+  none): each stops at a limit on its own work. At the default
+  `stepBudget` of 200,000 and at every larger one those limits are
+  fixed, so a larger budget changes nothing there. Below the default
+  each is the same share of its limit as the budget is of the default,
+  and the last placement step never has fewer than one position check
+  for every event and position. So a smaller budget shortens every
+  search of a repack, as it did in 0.2.3, where every search was
+  counted in steps. `RepackOutcome::isBudgetExhausted()` is true when a
+  search reached such a smaller limit, as it is when a step was
+  refused, so false still means that a larger budget gives the same
+  outcome. The order of the participants is the one search no budget
+  shortens: it has a fixed limit of its own (at most about a tenth of a
+  second), left whole so that the ids of a request decide no more at a
+  small budget than at a large one. As this change first stood the
+  limits did not follow the budget, and a budget of one step took 0.27
+  seconds at the median and 1.3 at most on the scattered pins and 2
+  seconds on the slowest request. Measured now (PHP 8.4, no OPcache,
+  one core; median / longest in milliseconds, then events placed), on
+  160 seasons of one and two legs among 20 to 40 participants with a
+  fifth or a half of their rounds played and pinned, on the 200 round
+  robins with scattered pins, and on the slowest request:
+
+  | Requests | `stepBudget` | 0.2.3 | Now |
+  |---|---|---|---|
+  | 160 seasons (71,808 events) | 1 | 23 / 167, 64,465 | 31 / 171, 67,884 |
+  | | 2,000 | 33 / 229, 69,549 | 49 / 259, 69,215 |
+  | | 20,000 | 60 / 351, 69,810 | 72 / 719, 69,919 |
+  | | 200,000 (default) | 78 / 895, 69,823 | 117 / 1,762, 70,008 |
+  | 200 with scattered pins (55,573 events) | 1 | 8 / 35, 48,420 | 17 / 57, 53,072 |
+  | | 2,000 | 34 / 99, 54,477 | 31 / 117, 53,721 |
+  | | 20,000 | 74 / 358, 54,938 | 106 / 511, 54,706 |
+  | | 200,000 (default) | 111 / 1,407, 54,946 | 576 / 3,048, 55,265 |
+  | Two legs among 29 (807 events) | 1 | 34, 751 | 96, 793 |
+  | | 2,000 | 111, 793 | 137, 793 |
+  | | 20,000 | 238, 793 | 504, 793 |
+  | | 200,000 (default) | 398, 793 | 4,086, 793 |
+
+  The budget bounds the work and the longest time falls with it; it is
+  not a dial that makes every repack take a tenth as long at a tenth of
+  the budget, because a search that ended well inside its limit at the
+  default is not shortened by a share of that limit. Seasons of 40 over
+  two legs (1,560 events) take 0.12 seconds at a budget of one step and
+  0.38 at a tenth of the default, where they take 0.79 at the default
+  and took 0.07, 0.18 and 0.30 in 0.2.3; over one leg, 0.04, 0.09 and
+  0.17. Where the pins are scattered, a budget between a hundredth and
+  a tenth of the default places fewer events than 0.2.3 placed at that
+  budget (fewer on 135 of the 200 requests at 2,000 steps and more on
+  12), in about the same time; at one step and at the default it places
+  more. The usage guide ("The Step Budget") has the table by size of
+  season and what no budget shortens.
+
   *Who is affected.* Everyone who repacks. *What to check:* an outcome
   kept from an earlier release, or its fingerprint, no longer matches a
   new run of the same request, so repack again before comparing; code
   that expected a particular event at a particular position for a fixed
-  request; and time limits set close to what a repack used to take.
+  request; time limits set close to what a repack used to take; and a
+  `stepBudget` chosen below the default for the time it gave, which now
+  buys other outcomes and other times (the table above).
   The order of the lists an outcome returns has not changed: assignments
   and unplaced events by event id, violations by kind and then by
   participant id and session, over-capacity participants by shortfall and
@@ -663,7 +709,12 @@ entry on the engine fingerprint.
   124 with twenty and 61 for 193 with twenty-four; and the case of
   eight participants with pins says at a budget of 1,000 steps that a
   budget stopped a search, where it said none did, because the third
-  schedule is made on what is left), `examples/19-repacking-a-season.txt` (the
+  schedule is made on what is left; three of its lines at budgets below
+  the default are what they are because the work limits follow the
+  budget: with eight participants and pins, 10 violations at 1,000
+  steps, and at 30,000 steps the default's outcome with a budget having
+  stopped a search; with twelve and pins, 33 violations at 1,000 steps;
+  no line at the default budget depends on it), `examples/19-repacking-a-season.txt` (the
   same counts, one late start named for another participant) and
   `examples/23-application-adapter-and-repack.txt` (three of five events
   placed as before; `fx10` is placed and `fx09` left out, where it was

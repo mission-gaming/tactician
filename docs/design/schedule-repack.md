@@ -90,7 +90,9 @@ exists as a convenience.
     search steps across Phase A improvement, Phase B backtracking nodes,
     and Phase C repair attempts. Bounded by steps, not wall clock, for
     reproducibility. **Amended by decision 36**: the last placement step
-    has a second budget of the same size.
+    has a second budget of the same size. **Amended by decision 49**: a
+    budget below the default also shortens the searches that count their
+    own work.
 11. **Algorithm** follows the brief's three-phase shape:
     - **Phase A** assigns events to sessions (greedy by tightest
       participant first, scored by the two weights, capacity- and
@@ -263,7 +265,8 @@ before (31 and 32); the changelog lists them as output changes.
     that). True: a search was cut short and a larger budget may differ.
     It is not in `toArray()`, because existing wire output may not gain a
     key in a patch release. Decision 36 says how the last placement step
-    keeps this meaning.
+    keeps this meaning, and decision 49 how the work limits that a budget
+    below the default makes smaller do.
 29. **The fingerprint is over named keys of `toArray()`.** The three
     lists are what an outcome is, and `toArray()` is already the pinned
     wire shape, so the values come from there. The keys do not: scheme
@@ -386,7 +389,9 @@ returned; the changelog lists what changed for the others.
     b-matching on those events, each participant's b its shortfall. It is
     found by a depth-first search started from a greedy set, bounded by a
     fixed 100,000 nodes and not by the step budget, so that which events
-    are dropped never depends on the budget. The bound is not always
+    are dropped never depends on the budget (at the default budget and
+    above, since decision 49: a smaller budget leaves the search its
+    share of the nodes). The bound is not always
     enough: a dozen over-capacity participants sharing some forty events
     reach it, and the set found can then be smaller than the largest
     (18 where 20 exist), so the planner drops more events than the
@@ -426,7 +431,10 @@ returned; the changelog lists what changed for the others.
     end, the step's limits of its own (depth, exchanges, ceiling, position
     checks) do not
     depend on the budget, and so a larger budget gives the same outcome;
-    an invariant test checks it on the small corpus. The cost is that a
+    an invariant test checks it on the small corpus. (Since decision 49
+    the limit on position checks does depend on a budget below the
+    default, and a search that such a smaller limit stops is counted as
+    one the budget stopped, which keeps the meaning.) The cost is that a
     repack can spend up to twice `stepBudget`, which the usage guide, the
     `RepackOptions` docblock and the `StepBudget` docblock state. An
     option to switch the step off, or to size its budget, was not added:
@@ -524,7 +532,9 @@ signature changed.
     three namings), which is a request a season one round old makes. The
     refinement itself also stops at the limit: a chain of participants
     takes one pass for every two of them, and without that a chain of
-    3,000 took 1.5 seconds to order where it now takes 0.15. A full canonical
+    3,000 took 1.5 seconds to order where it now takes 0.15. This limit
+    is the one work limit that no step budget makes smaller (decision
+    49). A full canonical
     labelling (individualisation and refinement with a search over every
     choice, pruned by the symmetries found) was rejected: on a request
     where everybody is alike and no two can simply be exchanged, its
@@ -566,7 +576,9 @@ signature changed.
     gap slots in the raw layout over 84 season-like requests, against
     205 with it). The search has no step budget, only its own limit on
     position checks, so the order of the events never depends on the
-    caller's budget. Cutting that limit to under a third for speed was
+    caller's budget (true as written until decision 49, and since then
+    of the default budget and every larger one: a smaller budget leaves
+    the search its share of the limit). Cutting that limit to under a third for speed was
     measured and rejected (191 gaps over the same 84 requests against
     93).
 41. **The rounds are a schedule too, and it is returned when it is
@@ -594,7 +606,8 @@ signature changed.
     small one every placement. It spends from the second budget and
     stops after 200,000 position checks of its own (about a tenth of a
     second; twice as many closed no further gap on the 84 season-like
-    requests). Against an exhaustive search
+    requests; a share of them below the default budget, decision 49).
+    Against an exhaustive search
     (`RepackBruteForce::fewestGapSlots()`), 3,000 random requests of up
     to seven events and eight positions all came back with the fewest
     gap slots any placement of as many events has; half of the limit
@@ -781,7 +794,8 @@ signature changed.
     among 40 (1,460 events on 75 positions) had 11 million each time the
     step ran, and took eight seconds. It is fixed for a request and does
     not depend on the budget, like the limit it replaces, and the round
-    layout has it too. With 50 for every event and position two of the
+    layout has it too (decision 49 changes that below the default
+    budget, and only there). With 50 for every event and position two of the
     eleven were still short; a limit on the work since the last event
     was placed, in place of a larger one, left two short as well. On
     the 151 requests none places fewer events than 0.2.3 now and 34
@@ -835,7 +849,201 @@ signature changed.
     share of this limit in proportion to a budget below the default
     would make `stepBudget` bound the time, and would make the rounds,
     and so the outcome, depend on the budget where the budget flag is
-    false today; it was left as a decision to take, not taken.
+    false today; it was left as a decision to take, and is taken in
+    decision 49.
+49. **A budget below the default shortens every search, and says so.**
+    `RepackOptions::$stepBudget` is the caller's one control over the
+    work of a repack, and decisions 39 to 48 had put most of that work
+    where it did not reach. A step is one node of a search, and a node
+    of the last placement step or of the search for fewer gap slots
+    looks at every position; the round layout spends no step at all.
+    Each of those stops at a limit on its own work, and the limits did
+    not depend on the budget. So a budget of one step shortened the
+    planning and the packing and nothing else: seasons of 40
+    participants over two legs with rounds played took 0.67 seconds at
+    the median and 1.6 at most where 0.2.3 took 0.07 and 0.15, round
+    robins with scattered pins 0.27 and 1.3 where it took 0.008 and
+    0.035, and the slowest request found (two legs among 29, 807
+    events) 2.0 seconds where it took 0.03. Some 97% of what was left
+    was the round layout. What was decided, each point on its own:
+
+    - **The limits are scaled, in proportion, below the default budget
+      only.** A search that counts its own work gets
+      `min(1, stepBudget / 200,000)` of its limit, rounded down
+      (`StepBudget::workLimit()`; 200,000 is the default of the option,
+      which the limits were sized with, held equal to it by a test). At
+      the default and above every limit is what it was, so every
+      outcome at those budgets is what it was, byte for byte: 13,293
+      generated requests (662,766 movable events), repacked at the
+      default by a copy of the source as it stood and by this, and
+      4,533 of them also at twice the default and 2,000 at the largest
+      budget there is, gave the same assignments, unplaced events,
+      violations, fingerprint and flag on every one. A larger budget than the
+      default was not given larger limits: that would have changed
+      outcomes above the default, where the flag was false.
+    - **Which limits.** The last placement step's limit on position
+      checks (decision 48), wherever it runs: twice for the round
+      layout, which gets a budget of its own for the purpose with steps
+      that do not run out and the caller's budget for the share, and
+      once for each planned schedule. The search for fewer gap slots
+      (200,000 position checks, decision 42). And the planner's search
+      for the events two over-capacity participants share (100,000
+      nodes, decision 35), which runs once for each planned schedule and
+      again when the unplaced events are given their reasons, and ran to
+      its whole limit whatever the budget: giving the unplaced events
+      their reasons took 34 of the 136 milliseconds a season of 40 took
+      at one step. The limit of 2,000 exchanges for one exchange search
+      and its depth of two (decision 33) are not scaled: an exchange
+      spends a step and counts position checks, so both of the others
+      already bound it.
+    - **The order of the participants is not scaled.** A share of its
+      work limit (decision 39) would send requests back to their ids
+      that the whole limit orders, and the ids would then decide more at
+      a small budget than at a large one: a third exception to the
+      invariance of decision 39, and one that depends on an option. It
+      was tried: with a share, round robins of 8, 12, 16 and 20 with
+      three rounds played came back as other schedules under other
+      participant ids at a budget below the default. Left whole it costs
+      what it costs at the default, at most about a tenth of a second
+      whatever the request (12 milliseconds on the seasons of 40 measured
+      here), and the invariance holds at every budget as decision 39
+      states it, with its two exceptions and no third: 2,840 requests
+      at budgets of 1, 100, 2,000 and 20,000 steps, each under three
+      other namings (34,080 relabellings), came back the same in
+      everything that can be said without an id.
+    - **A floor: one position check for every event and position.** The
+      last placement step never has fewer, whatever the budget
+      (`LeftoverRecolourer::workLimitAtLeast()`). With a share alone a
+      budget of one step left the round layout two position checks,
+      which is no search, and the layout is what the planner's order
+      comes from: the seasons of 40 over two legs placed 14,336 of
+      16,184 events at one step, fewer than 0.2.3 at one step (14,849).
+      With the floor they place 15,517, and it is not free: 0.12 seconds
+      at the median for 0.08, on the largest requests measured (a season
+      of 40 over one leg takes 0.04 with it). It is about the work of
+      one search that fails, and it grows with the request as the first
+      pass of the layout does, so it belongs with the work no budget
+      shortens. Two and four checks for every event and position placed
+      15,600 and 15,630 for 0.15 and 0.20 seconds, and were not taken.
+      The floor is never more than the whole limit. The order of the
+      events is deterministic at every budget with or without it: it
+      was not needed for that.
+    - **A search that a smaller limit stops is a search the budget
+      stopped.** `isBudgetExhausted()` promises that false means a
+      larger budget gives the same outcome (decision 28). A limit that
+      follows the budget would break that, so each of those searches
+      tells its budget when it stops at its limit with something still
+      to search (`StepBudget::stoppedAtWorkLimit()`), and the budget
+      records it when the limit was one it had made smaller. The round
+      layout's budget is read into the flag with the other two. The
+      shared-events search reports only when it stops short of a set as
+      large as any can be: with such a set no longer search would have
+      replaced it. The last placement step asks whether a participant
+      already plays in every position, which needs no search, before it
+      looks at the limit, so that a limit is not reported for a search
+      that was never going to be made. The flag can still be true where
+      a larger budget would have changed nothing (a search cut short
+      that would have found nothing): that is what true has always
+      meant.
+    - **A stop at a whole limit is still not a budget stop.** At the
+      default budget and above no budget lifts those limits, so the
+      outcome is the one every larger budget gives and the flag is
+      false, as decisions 33, 36 and 48 had it and as the test of the
+      34 events of four participants holds it. The contract was read
+      for whether it asks for more ("the searches have limits of their
+      own that the budget does not lift" was its wording): it does not,
+      and the documents now say which limits a budget below the default
+      makes smaller. Nothing at or above the default was untrue and
+      nothing there changed.
+    - **The final sweep keeps its counts.** Not a limit, and found by
+      measuring what a budget of one step still cost: the sweep that
+      gives every leftover event the first free position counted what
+      every position held afresh for each event, work in proportion to
+      the events left over times the events placed, and a small budget
+      leaves most events to it (34 milliseconds of 136 on the seasons of
+      40). It counts once and keeps the counts up to date; the positions
+      it gives are the same.
+
+    What it costs and gives, measured (PHP 8.4, no OPcache, one core;
+    median and maximum in milliseconds, and events placed), on 160
+    seasons of one and two legs among 20 to 40 participants with a fifth
+    or a half of the rounds played and pinned (16 a row), and on 200
+    round robins of 16 to 40 with an eighth to a half of their events
+    pinned at scattered positions:
+
+    | Request | 1 step | 2,000 (a hundredth) | 20,000 (a tenth) | 200,000 (default) |
+    |---|---|---|---|---|
+    | 20, one leg (1,944 events) | 9 / 30, 1,769 | 9 / 25, 1,824 | 9 / 79, 1,824 | 8 / 501, 1,824 |
+    | 20, two legs (3,944) | 16 / 39, 3,714 | 24 / 56, 3,787 | 36 / 111, 3,824 | 59 / 364, 3,824 |
+    | 24, one leg (2,808) | 13 / 27, 2,562 | 20 / 37, 2,639 | 19 / 70, 2,664 | 21 / 527, 2,664 |
+    | 24, two legs (5,784) | 33 / 48, 5,479 | 43 / 81, 5,609 | 82 / 171, 5,640 | 127 / 393, 5,640 |
+    | 30, one leg (4,464) | 22 / 38, 4,110 | 38 / 54, 4,217 | 42 / 176, 4,284 | 58 / 360, 4,284 |
+    | 30, two legs (9,024) | 56 / 92, 8,608 | 95 / 123, 8,726 | 225 / 500, 8,836 | 286 / 1,043, 8,844 |
+    | 36, one leg (6,504) | 35 / 59, 6,061 | 60 / 91, 6,202 | 61 / 120, 6,288 | 85 / 449, 6,288 |
+    | 36, two legs (13,128) | 106 / 128, 12,569 | 142 / 189, 12,774 | 318 / 683, 12,881 | 686 / 1,460, 12,912 |
+    | 40, one leg (8,024) | 43 / 67, 7,495 | 74 / 107, 7,688 | 91 / 371, 7,783 | 173 / 922, 7,784 |
+    | 40, two legs (16,184) | 125 / 171, 15,517 | 183 / 259, 15,749 | 379 / 719, 15,895 | 792 / 1,762, 15,944 |
+    | Scattered pins (55,573) | 17 / 57, 53,072 | 31 / 117, 53,721 | 106 / 511, 54,706 | 576 / 3,048, 55,265 |
+    | Two legs among 29, 807 events | 96, 793 | 137, 793 | 504, 793 | 4,086, 793 |
+
+    The same requests before this decision: the seasons 70 / 1,605 at
+    one step and 123 / 2,069 at the default, the scattered pins 274 /
+    1,342 and 569 / 3,136, the request of 807 events 1,968 and 4,195.
+    And on 0.2.3: the seasons 23 / 167 at one step (64,465 of 71,808
+    events placed, where this places 67,884), 33 / 229 at 2,000 (69,549;
+    69,215), 60 / 351 at 20,000 (69,810; 69,919) and 78 / 895 at the
+    default (69,823; 70,008); the scattered pins 8 / 35 (48,420), 34 /
+    99 (54,477), 74 / 358 (54,938) and 111 / 1,407 (54,946).
+
+    What the table does and does not show. The budget bounds the work:
+    the most a search may do at a tenth of the default is a tenth of
+    what it may do at the default, and the maximum falls accordingly
+    (3.0 seconds to 0.5 on the scattered pins, 4.1 to 0.5 on the slowest
+    request). It is not a dial that makes every repack take a tenth: a
+    search that ended well inside its limit at the default is not
+    shortened by a tenth of that limit, and a phase has more to do when
+    the one before it was cut short (on the seasons of 40 over two legs
+    the last placement step takes three times as long at a tenth of the
+    budget as at the default, because the layout handed it more events
+    to place), so those seasons take half their default time at a tenth
+    of the budget and not a tenth. What no budget shortens is in the
+    first column: the order of the participants, the passes that are
+    not searches, the floor above, and two plans where the first leaves
+    something to gain. That is 0.04 seconds for a season of 40 over one
+    leg and 0.12 over two (1,560 events), where 0.2.3 took 0.05 and
+    0.07. And the events placed at a budget between a hundredth and a
+    tenth of the default are fewer than 0.2.3 placed at the same budget
+    where the pins are scattered (53,721 for 54,477 at 2,000 steps,
+    fewer on 135 of the 200 requests and more on 12; 54,706 for 54,938
+    at 20,000), in about the same time: 0.2.3's searches are all counted
+    in steps and cost little each, and the layout this release starts
+    from needs most of its limit on those requests. At one step and at
+    the default it places more (53,072 for 48,420, and 55,265 for
+    54,946, the 11 requests of decision 48 that place fewer among them,
+    unchanged). A larger floor buys those events back for time and was
+    not taken; it is a trade to revisit with the question decision 48
+    leaves open, not here.
+
+    The outcome at a budget below the default therefore differs from
+    what it was before this decision, at the same budget, on most
+    requests whose searches do not end at once; the golden fixture of
+    budget stops shows it on three of its lines (the changelog names
+    them). Hard rules are untouched and were audited at every budget:
+    50,797 outcomes of 4,533 requests at budgets from one step to twice
+    the default, with no participant double-booked, no pin assigned, no
+    slot past its capacity, no event lost or duplicated, no exception
+    and no unplaced event with a free position.
+
+    Rejected: a third budget of steps for the layout (a step of its
+    search is not a fixed amount of work, so steps would not have
+    bounded it in proportion, and a repack would have spent three times
+    the budget); scaling the limits above the default as well (changes
+    outcomes where the flag was false); setting the flag at a whole
+    limit (true would then mean nothing at the default, where a larger
+    budget changes nothing); passing the planner's count of events no
+    placement can hold to the layout, which would have saved its search
+    for them at small budgets and changed its work, and so outcomes, at
+    the default.
 
 ## Testing
 
@@ -950,3 +1158,49 @@ the fixture passes either way. The augmenting path fails its unit test
 when it is taken out and no request of the fixture, for the same reason.
 Both are kept: they find at a cost of a few steps what the exchanges
 find late or not at all.
+
+Decision 49 changed what the budget tests have to hold. The property
+"when the flag is false, a larger budget gives the same outcome" is
+checked at fourteen budgets from one step to seven times the default
+(it was checked at eight, and against two larger budgets where it is
+now checked against every larger one), and on six round robins of 8 to
+12 with pins at scattered positions, where the round layout has to
+search and a budget's share of a work limit is what stops it and not
+its steps. With the report of such a stop taken out, that sweep fails
+on five of its six requests and the one over the small corpus on one;
+the twelve random requests of the first test are too small for a share
+of a limit to stop what the steps do not. On 4,533 generated requests
+at nine budgets or more each, 25,439 outcomes have the flag false and
+no larger budget gives another outcome for any of them (426 of 8,141
+on 1,600 of those requests with the report taken out).
+Against the source as it stood before the decision the property holds
+too (its limits did not follow the budget: 29,464 outcomes with the
+flag false on the same requests, none contradicted by a larger
+budget), so the test that fails against it is another one: a
+request of eleven events on which a budget of 100 steps refuses no step
+and shortens the layout's search, where the flag must be true and the
+outcome is not the default's. Before the decision that request came
+back with the default's outcome and the flag false at 100 steps. Each
+search has a unit test of its share and of its report (the last
+placement step, the search for fewer gap slots, the round layout, the
+shared-events search and the planner's use of it), and `StepBudget` of
+the arithmetic, of a share that carries the caller's budget, and of the
+default it takes from the options. The relabelling tests repeat at
+budgets of 1, 100, 2,000 and 20,000 steps; they fail when the order of
+the participants is given a share of its limit.
+
+One test could not be kept. "Spends no budget on the last placement
+step when only the over-capacity drops are left over" showed, by the
+flag at a budget of 60 steps, that the step is told how many events no
+placement can hold and so searches for no exchange. At any budget small
+enough to notice that search (below 154 steps on its request) the round
+layout's own search for the same drops is now cut short, and that is
+what the flag reports. The two halves are tested where they are made:
+the planner's count on that request, and the step's use of a count it
+is given. That the repacker passes the one to the other has no test,
+because nothing an outcome says depends on it at any budget. Nor has
+one other thing: that the search for shared events follows the budget
+when the unplaced events are given their reasons, as it does in the
+planner. It shows in time and, on one of 1,600 requests tried, in a flag
+that is true where the outcome is the default's; no request was found
+on which a test could state what it must return.
