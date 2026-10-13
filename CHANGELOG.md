@@ -88,7 +88,7 @@ heading **Output change (fix)**.
   every field size from 2 to 16, to the same schedule on every run from the
   same plain data, with and without a seeded scheduler.
 
-## [0.2.3] - 2026-10-12
+## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public
 signature changes. A repack whose outcome has no unplaced event and no
