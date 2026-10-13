@@ -465,7 +465,9 @@ describe('a leg strategy that yields no event', function (): void {
             null,
             ' The roles of the first leg were then searched within what ' . BalancedRoleAssignment::class
                 . ' keeps, in each of the 4 layouts tried, and no choice of them has a schedule the constraints accept.'
-                . ' The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.',
+                . ' The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.'
+                . ' Roles that ' . BalancedRoleAssignment::class . ' does not keep were not searched either:'
+                . ' RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()) searches every choice of roles.',
         ],
     ]);
 });

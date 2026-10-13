@@ -684,15 +684,17 @@ class RoundRobinScheduler implements SchedulerInterface
                     )
                     : ($stoppedAtABound
                     ? sprintf(
-                        'The roles of the first leg were then searched within what %s keeps, and the search stopped at a bound (%d rejected roles, or %d events put to the constraints, over all the layouts). Roles that satisfy the constraints may exist beyond it; the pairings and their rounds were not searched, and RoundRobinOptions(backtracking: true) searches them.',
+                        'The roles of the first leg were then searched within what %s keeps, and the search stopped at a bound (%d rejected roles, or %d events put to the constraints, over all the layouts). Roles that satisfy the constraints may exist beyond it; the pairings and their rounds were not searched, and RoundRobinOptions(backtracking: true) searches them. Roles that %s does not keep were not searched either: RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()) searches every choice of roles.',
                         get_debug_type($roleAssignment),
                         LegRoleSearch::REJECTION_LIMIT,
-                        self::ROLE_SEARCH_ATTEMPTS
+                        self::ROLE_SEARCH_ATTEMPTS,
+                        get_debug_type($roleAssignment)
                     )
                     : sprintf(
-                        'The roles of the first leg were then searched within what %s keeps, in %s, and no choice of them has a schedule the constraints accept. The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.',
+                        'The roles of the first leg were then searched within what %s keeps, in %s, and no choice of them has a schedule the constraints accept. The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them. Roles that %s does not keep were not searched either: RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()) searches every choice of roles.',
                         get_debug_type($roleAssignment),
-                        $layouts === 1 ? 'the one layout tried' : "each of the {$layouts} layouts tried"
+                        $layouts === 1 ? 'the one layout tried' : "each of the {$layouts} layouts tried",
+                        get_debug_type($roleAssignment)
                     ))
             ),
             0,
@@ -721,7 +723,11 @@ class RoundRobinScheduler implements SchedulerInterface
      *    single pairings whatever else is played: the usual reason to write
      *    one about roles. A rejection by a constraint the library knows to
      *    read the roles a participant had before (the two role constraints)
-     *    is not a fixed seating, and ends this step.
+     *    is not a fixed seating, and ends this step. The events of every
+     *    pass count against the caller's allowance of events, so a
+     *    constraint that fixes seatings by the hundred in every layout ends
+     *    at the bound too: a pass that the allowance stops ends the search
+     *    of the layout, and says that a bound stopped it.
      * 2. Where seatings were fixed: the roles of the first leg are searched
      *    (LegRoleSearch) from the roles the role assignment gave last, with
      *    the fixed seatings held and every other event free to be reversed,
@@ -731,16 +737,18 @@ class RoundRobinScheduler implements SchedulerInterface
      *    that shows that no roles exist, when it ends without a bound
      *    stopping it.
      *
-     * The two searches are bounded: by the attempts allowed here, and by
-     * the rejected roles left of the caller's allowance.
+     * All three steps are bounded: by the attempts allowed here and the
+     * events left of the caller's allowance, and the two searches by the
+     * rejected roles left of it as well.
      *
      * @param list<list<array{0: Participant|null, 1: Participant|null}>> $proposal The first leg as laid out, with
      *                                                                              the roles proposed for it
      * @param array<Participant> $field The field in the order the layout was made from
      * @param int $attemptLimit Events that may be put to the constraints, replays included
-     * @param array{rejections: int, attempts: int} $allowance The rejected roles, and the events put to the
-     *                                                         constraints, that the two searches may still
-     *                                                         spend; lowered by what they spend
+     * @param array{rejections: int, attempts: int} $allowance The rejected roles that the two searches may
+     *                                                         still spend, and the events that the three
+     *                                                         steps may still put to the constraints;
+     *                                                         lowered by what they spend
      * @return array{
      *     events: list<Event>|null,
      *     steps: int,
@@ -782,10 +790,11 @@ class RoundRobinScheduler implements SchedulerInterface
             $events = $replay->search(
                 $start,
                 $this->slotsOfSearchedSchedule($legOneEvents, $legs, $roundsPerLeg, true),
-                $attemptLimit - $steps,
+                min($attemptLimit - $steps, $allowance['attempts']),
                 LegRoleSearch::REJECTION_LIMIT
             );
             $steps += $replay->attempts();
+            $allowance['attempts'] -= $replay->attempts();
 
             if ($events !== null || $replay->slotWithoutEvent() !== null || $replay->wasStoppedByABound()) {
                 return $this->roleSearchResult($events, $replay, $steps);

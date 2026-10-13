@@ -583,6 +583,8 @@ describe('a first leg whose roles the scheduler searches within the rule of the 
         expect($failure?->getMessage())->toEndWith(
             'The roles of the first leg were then searched within what HostingRoleAssignment keeps, in each of the 6 layouts tried, and no choice of them has a schedule the constraints accept.'
             . ' The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.'
+            . ' Roles that HostingRoleAssignment does not keep were not searched either:'
+            . ' RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()) searches every choice of roles.'
         );
 
         // A limit the host is left out of: the role counts of everybody else
@@ -686,7 +688,9 @@ describe('what the scheduler says when it finds no roles for the first leg withi
             '/^Failed to generate complete schedule for leg 1\. Generated \d events, expected 6\. Constraints may be preventing complete schedule generation\.'
             . ' The roles of the first leg were then searched within what MissionGaming\\\\Tactician\\\\RoleAssignment\\\\BalancedRoleAssignment keeps,'
             . ' in each of the 4 layouts tried, and no choice of them has a schedule the constraints accept\.'
-            . ' The pairings and their rounds were not searched: RoundRobinOptions\(backtracking: true\) searches them\.$/'
+            . ' The pairings and their rounds were not searched: RoundRobinOptions\(backtracking: true\) searches them\.'
+            . ' Roles that MissionGaming\\\\Tactician\\\\RoleAssignment\\\\BalancedRoleAssignment does not keep were not searched either:'
+            . ' RoundRobinOptions\(backtracking: true, roleAssignment: new RoundParityRoleAssignment\(\)\) searches every choice of roles\.$/'
         )
             ->and(array_keys($failure?->getViolationCollector()->getViolationCountsByConstraint() ?? []))->toBe(['Participant 1 is first-named'])
             ->and($failure?->getAnalysis())->not->toBeNull()
@@ -717,9 +721,51 @@ describe('what the scheduler says when it finds no roles for the first leg withi
             ' The roles of the first leg were then searched within what ' . BalancedRoleAssignment::class
             . ' keeps, and the search stopped at a bound (20000 rejected roles, or 200000 events put to the constraints, over all the layouts).'
             . ' Roles that satisfy the constraints may exist beyond it; the pairings and their rounds were not searched, and RoundRobinOptions(backtracking: true) searches them.'
+            . ' Roles that ' . BalancedRoleAssignment::class . ' does not keep were not searched either:'
+            . ' RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()) searches every choice of roles.'
         )
             ->and(str_contains($failure?->getMessage() ?? '', 'no choice of them'))->toBeFalse()
             ->and(array_keys($failure?->getViolationCollector()->getViolationCountsByConstraint() ?? []))->toBe(['Pinned role']);
+    });
+
+    // The pass that fixes the seatings a constraint rejects puts the leg to
+    // the constraints again for every seating it fixes, and those events
+    // count against the allowance of the call like the events of the two
+    // searches. Twenty-six participants and a closure that wants the lower
+    // number first-named in every pairing: no balanced leg has that, since
+    // participant 1 would be first-named in all 25 of its events, and each
+    // of the 25 layouts fixes seatings by the hundred before it shows. With
+    // the pass left out of the count the closure was asked 330,000 times
+    // more than under round parity, which makes no search, and the failure
+    // claimed that every choice had been tried.
+    it('counts the events of the pass that fixes seatings against the allowance of the call', function (): void {
+        $field = roleSearchSchedulerField(26);
+        $asked = 0;
+        $lowerNumberFirst = static function () use (&$asked): ConstraintSet {
+            return ConstraintSet::create()->custom(
+                static function (Event $event) use (&$asked): bool {
+                    ++$asked;
+                    $pair = $event->getParticipants();
+
+                    return (int) substr($pair[0]->getId(), 1) < (int) substr($pair[1]->getId(), 1);
+                },
+                'Lower number first-named'
+            )->build();
+        };
+
+        $parity = roleSearchFailure(new RoundRobinScheduler($lowerNumberFirst()), $field, new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()));
+        $withoutASearch = $asked;
+
+        $asked = 0;
+        $failure = roleSearchFailure(new RoundRobinScheduler($lowerNumberFirst()), $field, new RoundRobinOptions());
+
+        expect($parity)->toBeInstanceOf(IncompleteScheduleException::class)
+            // The allowance of 200,000 events, and a margin for what the
+            // rotations ask differently under the two role assignments
+            ->and($asked - $withoutASearch)->toBeLessThanOrEqual(220_000)
+            ->and($failure?->getMessage())->toContain('the search stopped at a bound (20000 rejected roles, or 200000 events put to the constraints, over all the layouts)')
+            ->and(str_contains($failure?->getMessage() ?? '', 'no choice of them'))->toBeFalse()
+            ->and(array_keys($failure?->getViolationCollector()->getViolationCountsByConstraint() ?? []))->toBe(['Lower number first-named']);
     });
 
     // Two legs of eight in which no pair may meet twice: every second leg

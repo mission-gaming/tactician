@@ -19,7 +19,7 @@ All participants must have unique IDs
 duplicate_participant_ids
 
 == A constraint that rejects everything ==
-MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 0 events, expected 6. Constraints may be preventing complete schedule generation. The roles of the first leg were then searched within what MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment keeps, in each of the 4 layouts tried, and no choice of them has a schedule the constraints accept. The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them.
+MissionGaming\Tactician\Exceptions\IncompleteScheduleException: Failed to generate complete schedule for leg 1. Generated 0 events, expected 6. Constraints may be preventing complete schedule generation. The roles of the first leg were then searched within what MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment keeps, in each of the 4 layouts tried, and no choice of them has a schedule the constraints accept. The pairings and their rounds were not searched: RoundRobinOptions(backtracking: true) searches them. Roles that MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment does not keep were not searched either: RoundRobinOptions(backtracking: true, roleAssignment: new RoundParityRoleAssignment()) searches every choice of roles.
 
 == How far generation got ==
 Expected events: 6
