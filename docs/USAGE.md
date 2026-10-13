@@ -3277,6 +3277,60 @@ key may be left out: `['legs' => null]` is one leg, and a `seed` of `null`
 is no seed. `PotDrawOptions` is the exception: its three keys are integers
 or absent.
 
+### A Stored Stage State Is Checked as It Was Recorded
+
+`StageState::fromArray()` and `fromJson()` do not trust the history they are
+given. The state is recorded again through `withRoundPlayed()`, round by
+round, so whatever that verb refuses of a live state is refused of a stored
+one, with the same `InvalidConfigurationException` and the same reason:
+
+| The stored data | Reason |
+| --- | --- |
+| Rounds not in play order, or one round number twice | `RoundOutOfSequence` |
+| A pairing that holds an event of another round | `EventNotInRound` |
+| A pairing that holds an event with no round | `EventWithoutRoundNumber` |
+| A result for an event its round does not hold | `EventNotInRound` |
+| A result of a round that is not recorded, or one that does not stand with the other results of its round | `EventNotInRound` |
+| A result whose event has no round | `EventWithoutRoundNumber` |
+
+```php
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\StageState;
+
+$engine = new SwissPairingEngine();
+$state = StageState::start([
+    new Participant('celtic', 'Celtic'),
+    new Participant('athletic', 'Athletic Bilbao'),
+    new Participant('livorno', 'AS Livorno'),
+    new Participant('redstar', 'Red Star FC'),
+]);
+foreach ([1, 2] as $round) {
+    $state = $state->withRoundPlayed($engine->pairNextRound($state), []);
+}
+
+$stored = $state->toArray();
+echo count(StageState::fromArray($stored)->getRoundsPlayed()), "\n"; // 2
+
+// The same data with its rounds the other way round
+$stored['rounds'] = array_reverse($stored['rounds']);
+try {
+    StageState::fromArray($stored);
+} catch (InvalidConfigurationException $exception) {
+    echo $exception->getReason()?->value, "\n"; // round_out_of_sequence
+}
+```
+
+What the verbs accept is accepted from storage too: a gap in the round
+numbers, a pairing whose participants are no longer active, and two results
+of one event. The last is a state to repair and not one to read tables from
+(the standings and the bracket engines refuse it), and it has to load to be
+repaired: see [Correcting a Recorded Result](#correcting-a-recorded-result).
+A state that `toArray()` or `toJson()` wrote is always one the verbs
+recorded, so stored states are affected only where something else wrote or
+edited the data.
+
 ## Schedule Validation
 
 Every whole-schedule generator checks the schedule it built against its stage plan before it returns it: the number of events, then the plan's own integrity rules. A schedule that falls short is never returned; the generator throws an `IncompleteScheduleException`.

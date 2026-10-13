@@ -6,6 +6,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
@@ -237,11 +238,11 @@ describe('SingleEliminationEngine', function (): void {
             ->toThrow(InvalidConfigurationException::class, 'same elimination match');
     });
 
-    // Normal recording cannot produce these, but hand-crafted serialized
-    // state can: results must reference round-numbered pairwise events
-    it('rejects malformed results arriving via rehydrated state', function (): void {
-        $engine = new SingleEliminationEngine();
-
+    // Normal recording cannot produce a result of an event with no round,
+    // and hand-crafted serialized state can no longer bring one in: the
+    // state is refused when it is read, with the reason the verbs give,
+    // before an engine sees it
+    it('never meets a result with no round in rehydrated state: the state is refused', function (): void {
         $base = [
             'participants' => [
                 ['id' => 's1', 'label' => 'Seed 1', 'seed' => null, 'metadata' => []],
@@ -251,14 +252,21 @@ describe('SingleEliminationEngine', function (): void {
             'rounds' => [],
         ];
 
-        $roundless = StageState::fromArray([...$base, 'results' => [[
-            'event' => ['participants' => ['s1', 's2'], 'round' => null, 'metadata' => []],
-            'winner' => 's1',
-            'scores' => [],
-            'metadata' => [],
-        ]]]);
-        expect(fn() => $engine->pairNextRound($roundless))
-            ->toThrow(InvalidConfigurationException::class, 'round number');
+        try {
+            StageState::fromArray([...$base, 'results' => [[
+                'event' => ['participants' => ['s1', 's2'], 'round' => null, 'metadata' => []],
+                'winner' => 's1',
+                'scores' => [],
+                'metadata' => [],
+            ]]]);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::EventWithoutRoundNumber)
+                ->and($exception->getContext())->toBe(['result' => 0, 'result_round' => null, 'recorded_rounds' => []]);
+
+            return;
+        }
+
+        $this->fail('The stored state was read.');
     });
 
     it('rejects fewer than two participants', function (): void {
@@ -408,7 +416,17 @@ describe('SingleEliminationEngine', function (): void {
                 ['id' => 's3', 'label' => 'Seed 3', 'seed' => null, 'metadata' => []],
             ],
             'active' => ['s1', 's2', 's3'],
-            'rounds' => [],
+            // The round holds the event, as a round recorded with
+            // withRoundPlayed() would: a stored result has to belong to a
+            // recorded round to be read at all
+            'rounds' => [[
+                'round' => 1,
+                'label' => null,
+                'events' => [
+                    ['participants' => ['s1', 's2', 's3'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => []],
+                ],
+                'byes' => [],
+            ]],
             'results' => [[
                 'event' => ['participants' => ['s1', 's2', 's3'], 'round' => ['number' => 1, 'metadata' => []], 'metadata' => []],
                 'winner' => 's1',

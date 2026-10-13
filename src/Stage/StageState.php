@@ -653,13 +653,25 @@ final readonly class StageState
      *
      * The shape is checked, that the data holds no key but the five
      * toArray() writes, and that every ID resolves in the
-     * `participants` registry. The history is not checked as
-     * withRoundPlayed() checks it (round order, results that belong to
-     * their round), and an ID listed twice in `active` is not refused: the
-     * data is trusted to be what toArray() wrote.
+     * `participants` registry.
+     *
+     * The history is checked as the verbs check it, because it is
+     * recorded again through withRoundPlayed(): rounds in play order with
+     * rising numbers, every event of a pairing carrying the pairing's
+     * round number, and every result standing with the results of its
+     * round and belonging to an event of that round. Stored data that
+     * states a history no sequence of verbs could have recorded is
+     * refused with the reason the verb gives (`RoundOutOfSequence`,
+     * `EventNotInRound`, `EventWithoutRoundNumber`), where it used to load
+     * and be replayed by an engine as if it were sound. What the verbs do
+     * not check is not checked here either: a gap in the round numbers,
+     * the participants of a pairing being active, and an event with more
+     * than one result (the standings and the bracket engines refuse that
+     * one, and withResultReplaced() repairs it).
      *
      * @param array<string, mixed> $data
      * @throws InvalidInputException When the data is malformed
+     * @throws InvalidConfigurationException When the stored history is one the verbs refuse
      */
     public static function fromArray(array $data): self
     {
@@ -735,7 +747,7 @@ final readonly class StageState
             throw new InvalidInputException('Stage state engine fingerprint must be a non-empty string');
         }
 
-        return new self($active, $rounds, $results, $fingerprint);
+        return self::recorded($active, $rounds, $results, $fingerprint);
     }
 
     /**
@@ -759,6 +771,7 @@ final readonly class StageState
      *
      * @throws JsonConversionException When the JSON is malformed
      * @throws InvalidInputException When the decoded data is malformed
+     * @throws InvalidConfigurationException When the stored history is one the verbs refuse
      */
     public static function fromJson(string $json): self
     {
@@ -773,5 +786,67 @@ final readonly class StageState
 
         /** @var array<string, mixed> $data */
         return self::fromArray($data);
+    }
+
+    /**
+     * The state a stored history describes, recorded again through
+     * withRoundPlayed(): whatever that verb refuses of a live state is
+     * refused of a stored one, by the same check and with the same reason.
+     *
+     * The results of a state are in the order they were recorded, and a
+     * result can only be recorded with its round or added to the last
+     * round recorded, so the results of one round stand together and the
+     * rounds follow each other. Each round is recorded with the run of
+     * results that carries its number. A result that is left over is one
+     * no state could have recorded where it stands: its round is not
+     * recorded, or it stands among the results of another round.
+     *
+     * Two results of one event are not refused here. The verbs accept them
+     * (see withAdditionalResults()), so a live state can hold them, and a
+     * stored state that holds them has to load for withResultReplaced() to
+     * repair it. The standings and the bracket engines refuse them.
+     *
+     * @param array<Participant> $active
+     * @param array<RoundPairing> $rounds
+     * @param list<Result> $results
+     *
+     * @throws InvalidConfigurationException When the history is one the verbs refuse
+     */
+    private static function recorded(array $active, array $rounds, array $results, ?string $fingerprint): self
+    {
+        $state = new self($active);
+
+        $next = 0;
+        $count = count($results);
+        foreach ($rounds as $pairing) {
+            $ofRound = [];
+            while ($next < $count && $results[$next]->getEvent()->getRound()?->getNumber() === $pairing->getRoundNumber()) {
+                $ofRound[] = $results[$next];
+                ++$next;
+            }
+
+            $state = $state->withRoundPlayed($pairing, $ofRound);
+        }
+
+        if ($next < $count) {
+            $resultRound = $results[$next]->getEvent()->getRound()?->getNumber();
+
+            throw new InvalidConfigurationException(
+                'Stored result belongs to a round that is not recorded, or does not stand with the results of its round',
+                [
+                    'result' => $next,
+                    'result_round' => $resultRound,
+                    'recorded_rounds' => array_map(
+                        fn(RoundPairing $pairing): int => $pairing->getRoundNumber(),
+                        array_values($rounds)
+                    ),
+                ],
+                reason: $resultRound === null
+                    ? InvalidConfigurationReason::EventWithoutRoundNumber
+                    : InvalidConfigurationReason::EventNotInRound
+            );
+        }
+
+        return new self($state->participants, $state->roundsPlayed, $state->results, $fingerprint);
     }
 }

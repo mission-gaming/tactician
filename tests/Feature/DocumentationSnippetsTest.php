@@ -288,6 +288,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ],
             [],
         ],
+        'a stored stage state with its rounds reversed' => [
+            'docs/USAGE.md',
+            "\$stored['rounds'] = array_reverse(\$stored['rounds']);",
+            ["2\nround_out_of_sequence\n"],
+            [],
+        ],
         'a key a form does not have' => [
             'docs/USAGE.md',
             "'stratgy' => 'repeated'",

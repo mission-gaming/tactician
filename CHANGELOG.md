@@ -93,6 +93,34 @@ heading **Output change (fix)**.
   changes: the repack fixtures and the examples that print violations
   render the records as the outcome writes them, which carry no key of
   their own.
+- **Breaking: `StageState::fromArray()` and `fromJson()` refuse a history
+  the verbs refuse.** The stored data was checked for its shape and its
+  history was trusted: rounds in any order, a pairing filed under another
+  round number than its events carry, a result of a round that is not
+  recorded. An engine then replayed that history as if `withRoundPlayed()`
+  had recorded it. A stored state is now recorded again through
+  `withRoundPlayed()` when it is read, so what the verb refuses of a live
+  state is refused of a stored one, with the same
+  `InvalidConfigurationException` and reason: `RoundOutOfSequence` for
+  rounds out of play order or a round number twice, `EventNotInRound` for
+  an event or a result that does not belong to its round, a result of a
+  round that is not recorded and a result that does not stand with the
+  results of its round, and `EventWithoutRoundNumber` for an event or a
+  result's event with no round. What the verbs accept still loads: a gap in
+  the round numbers, a pairing whose participants are not active, and two
+  results of one event, which has to load so that `withResultReplaced()`
+  can repair it. Who is affected: an application whose stored states were
+  written or edited by something other than `toArray()` or `toJson()` (a
+  migration script, a hand-built array), and code that catches only
+  `InvalidInputException` around `fromArray()`. A state the library wrote
+  is always one the verbs recorded and loads as before, whichever release
+  wrote it. What to change: catch `InvalidConfigurationException` as well
+  (`catch (TacticianException)` covers both), and rebuild a refused state
+  from your own rows with `StageState::start()` and `withRoundPlayed()`.
+  Before: `StageState::fromArray(['rounds' => [$roundTwo, $roundOne], ...])`
+  returned a state. After: it throws, reason `RoundOutOfSequence`. Both
+  methods declare one more `@throws`, which code analysed with checked
+  exceptions sees (#53).
 - **Breaking: every `fromArray()` refuses a key its form does not have.**
   A key that was not known used to be ignored, so a misspelt key was read
   as the key left out: `RoundRobinOptions::fromArray(['legs' => 2,
