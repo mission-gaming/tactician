@@ -208,6 +208,7 @@ describe('Golden output', function (): void {
             'swiss.txt',
             'pot-draw.txt',
             'single-elimination.txt',
+            'single-elimination-third-place.txt',
             'double-elimination.txt',
             'repack/scenario.txt',
             'repack/round-robin.txt',
@@ -238,7 +239,8 @@ describe('Golden output', function (): void {
             'examples/22-pot-draw.txt',
             'examples/23-application-adapter-and-repack.txt',
             'examples/24-recording-bracket-results.txt',
-            'examples/25-best-next-placed-qualifiers.txt',
+            'examples/25-awarded-results-and-adjustments.txt',
+            'examples/26-best-next-placed-qualifiers.txt',
         ]);
     });
 
@@ -472,6 +474,44 @@ describe('Golden baseline', function (): void {
 
         expect($sections['n=8 reseedEachRound, last-named wins'])->not->toBe($sections['n=8, last-named wins'])
             ->and($sections['n=8 reseedEachRound, first-named wins'])->toBe($sections['n=8, first-named wins']);
+    });
+
+    // If the option were not wired through, the third-place file would
+    // hold the brackets of the plain one. Read from the two stored files
+    // alone: every round before the last is the same, and the last round is
+    // the final of the plain bracket, marked, followed by one tie more
+    it('stores third-place brackets that differ from the plain ones in the last round only', function (): void {
+        $plain = goldenSections('single-elimination.txt');
+        $sections = goldenSections('single-elimination-third-place.txt');
+        $compared = 0;
+
+        foreach ($sections as $title => $lines) {
+            $plainTitle = str_replace(' thirdPlace', '', $title);
+            $last = count($lines) - 2;
+            $unmarked = (string) preg_replace('/\{"bracket_tie":"[a-z-]+"\}|,"bracket_tie":"[a-z-]+"/', '', $lines[$last]);
+
+            expect($lines[$last])->toStartWith('R' . ($last + 1) . ' [final]: ')
+                ->and($lines[$last + 1])->toStartWith('standings: ');
+
+            // A field of three has the final alone
+            $ties = str_starts_with($title, 'n=3 ') ? 1 : 2;
+            expect(substr_count($lines[$last], '"bracket_tie":"final"') + substr_count($lines[$last], '"bracket_tie":"third-place"'))
+                ->toBe(count(explode(' ', explode(': ', $lines[$last], 2)[1])), $title)
+                ->and(substr_count($lines[$last], '"bracket_tie":"third-place"') > 0)->toBe($ties === 2, $title);
+
+            if (!isset($plain[$plainTitle])) {
+                continue;
+            }
+
+            expect(array_slice($lines, 0, $last))->toBe(array_slice($plain[$plainTitle], 0, $last), $title)
+                ->and($unmarked)->toStartWith($plain[$plainTitle][$last] . ' ', $title)
+                ->and($lines[$last + 1])->not->toBe($plain[$plainTitle][$last + 1], $title);
+            ++$compared;
+        }
+
+        // Every section of the plain file has its counterpart
+        expect($compared)->toBe(count($plain))
+            ->and(count($sections))->toBe(count($plain) + 2);
     });
 
     it('stores a double-elimination grand final reset', function (): void {

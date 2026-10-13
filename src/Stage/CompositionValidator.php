@@ -41,8 +41,9 @@ final readonly class CompositionValidator
      * rounded up for winners (the bye goes on) and down for losers. A
      * transition built with `afterWholeBracket: true` says that the stage
      * plays a whole bracket, whose last round is the final: the selection
-     * is 1 participant, winner or loser, whatever the size of the field.
-     * A stage needs 2 entrants, so such a transition is always reported:
+     * is 1 participant, winner or loser, whatever the size of the field,
+     * and also where that round holds a third-place tie, which the
+     * selector does not read. A stage needs 2 entrants, so such a transition is always reported:
      * one match-outcome selection cannot fill the stage after a whole
      * bracket. A transition with any other selector (a per-group rank
      * range, a selector of the application's) or with none passes

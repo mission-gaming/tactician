@@ -10,7 +10,6 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
-use MissionGaming\Tactician\Stage\BestOfRankSelector;
 use MissionGaming\Tactician\Stage\FingerprintedEngine;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageState;
@@ -138,13 +137,11 @@ function storedCasesNoLongerRead(): array
 describe('every form as 0.2.3 wrote it', function (): void {
     it('covers every form that is read', function (): void {
         $classes = array_values(array_unique(array_column(formsWrittenByZeroTwoThree(), 'class')));
-        $listed = array_values(array_unique(array_map(static fn(array $form): string => $form['class'], PlainDataForms::all())));
-        // A form that did not exist in 0.2.3 has nothing that release wrote.
-        // The list is pinned, so that a form is left out by name and not by
-        // being forgotten
-        $addedSince = [BestOfRankSelector::class];
-        expect(array_values(array_diff($addedSince, $listed)))->toBe([]);
-        $listed = array_values(array_diff($listed, $addedSince));
+        // 0.2.3 wrote every form that is read today, bar the ones added since
+        $listed = array_values(array_diff(
+            array_unique(array_map(static fn(array $form): string => $form['class'], PlainDataForms::all())),
+            PlainDataForms::addedInZeroThree()
+        ));
         sort($classes);
         sort($listed);
 

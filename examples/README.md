@@ -67,7 +67,8 @@ with an error.
 | [22-pot-draw.php](22-pot-draw.php) | A league phase drawn up front from seeded pots, with balanced roles |
 | [23-application-adapter-and-repack.php](23-application-adapter-and-repack.php) | An application's adapter: its records in, fixture rows out, and a previewed repack applied by fingerprint |
 | [24-recording-bracket-results.php](24-recording-bracket-results.php) | A stamped bracket state between requests: a level event decided, a result corrected, a wrong engine refused |
-| [25-best-next-placed-qualifiers.php](25-best-next-placed-qualifiers.php) | The two best third-placed entrants of three pools, and what pools of unequal size do to the comparison |
+| [25-awarded-results-and-adjustments.php](25-awarded-results-and-adjustments.php) | A series that was never played is awarded and a squad has points removed: what the table counts, and what it shows beside it |
+| [26-best-next-placed-qualifiers.php](26-best-next-placed-qualifiers.php) | The two best third-placed entrants of three pools, and what pools of unequal size do to the comparison |
 
 The sample data uses sports teams and players because that is what most
 schedules are for. The library itself only knows participants.

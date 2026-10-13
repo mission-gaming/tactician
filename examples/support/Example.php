@@ -448,6 +448,14 @@ final class Example
 
         $winner = $result->getWinner();
 
+        // An awarded result was not played: nobody won it or drew it
+        if ($result->isAwarded()) {
+            $label = $result->getAward()?->getLabel();
+
+            return $text . ': awarded ' . ($winner === null ? 'as a draw' : 'to ' . $winner->getLabel())
+                . ($label === null ? '' : ' (' . $label . ')');
+        }
+
         return $text . ': ' . ($winner === null ? 'drawn' : $winner->getLabel() . ' won');
     }
 

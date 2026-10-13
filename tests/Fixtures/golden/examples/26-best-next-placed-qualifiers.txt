@@ -1,4 +1,4 @@
-# The results of examples/25-best-next-placed-qualifiers.php, one section per named result.
+# The results of examples/26-best-next-placed-qualifiers.php, one section per named result.
 # Schedules, pairings and repack outcomes are written as in the other
 # golden files; a played event is `R<round>: a-b => winner`, a standings
 # row lists its counts, ranking value and tiebreaker values, and a value

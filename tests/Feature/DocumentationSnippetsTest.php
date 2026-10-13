@@ -381,6 +381,41 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Positions 1 to 4: Alice, Bob, Carol, Dave\nThe results do not decide who takes the top 2 positions\n0 tied sets\n"],
             [],
         ],
+        'an awarded result, with its nominal score and without' => [
+            'docs/USAGE.md',
+            "award: new Award('no-show', 'Bob did not appear')",
+            ["1W, 3 pts, 2 played of which 1 awarded, score difference 1\n1W, 3 pts, score difference -2\n"],
+            [],
+        ],
+        'an awarded result between the tied participants, counted and not' => [
+            'docs/USAGE.md',
+            '$betweenTheTied = new class implements TiedParticipantsTiebreaker {',
+            ["1W, 1 between the tied, 0 tied sets\n1W, 0 between the tied, 1 tied sets\n"],
+            [],
+        ],
+        'adjustments beside what was earned' => [
+            'docs/USAGE.md',
+            '$adjusted = $calculator->withAdjustments($standings, $adjustments);',
+            [
+                "Carol: 4 earned, 0 adjustment, 4 total\n"
+                . "Alice: 4 earned, -1 adjustment, 3 total\n"
+                . "Bob: 0 earned, 2 adjustment, 2 total\n"
+                . "Dave: 0 earned, 0 adjustment, 0 total\n",
+            ],
+            [],
+        ],
+        'a Swiss round paired from the adjusted totals' => [
+            'docs/USAGE.md',
+            "\$stage = \$stage->withAdjustment(new Adjustment('carol', -4.0, 'ruling'));",
+            ["Alice v Dave\nBob v Carol\n1 adjustment stored\n"],
+            [],
+        ],
+        'an awarded result that sends a participant on in a bracket' => [
+            'docs/USAGE.md',
+            "new Result(\$aliceVsDave, \$dave, award: new Award('no-show')),",
+            ["Dave v Bob\n"],
+            ['Alice v'],
+        ],
         'elimination round labels' => ['docs/USAGE.md', 'echo "{$pairing->getLabel()}\n";', ["quarterfinal\nsemifinal\nfinal\n"], []],
         'a level elimination event that names who advances' => [
             'docs/USAGE.md',
@@ -581,6 +616,19 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             'docs/USAGE.md',
             'MatchOutcomeSelector::winners()->select($byeOutcome)',
             ["Heidi (1-0)\nAlice (1-1)\nWon the bracket: Heidi\n"],
+            [],
+        ],
+        // The last round of a bracket with a third-place tie, and the places it decides
+        'the two ties of the last round of a bracket with a third-place tie' => [
+            'docs/USAGE.md',
+            '$lastRound = $withThirdPlace->pairNextRound($fourState);',
+            ["Round 2, final\nfinal: Alice v Bob\nthird-place: Dave v Carol\n"],
+            [],
+        ],
+        'places 1 to 4 of a bracket with a third-place tie' => [
+            'docs/USAGE.md',
+            '$fourOutcome = $withThirdPlace->getOutcome($fourState);',
+            ["1. Bob (2-0)\n2. Alice (1-1)\n3. Carol (1-1)\n4. Dave (0-2)\nThird: Carol\nWon the bracket: Bob\n"],
             [],
         ],
         'a selection that results do not decide is refused, and says what is undecided' => [
@@ -1455,6 +1503,190 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     }
                 }
                 assert(count($selector::overall(1, 4)->withTiesInsideSelectionAccepted()->select($single)) === 4);
+                PHP,
+        ],
+        // "A third-place tie": what the section says of the marks, the tiers, a partly
+        // recorded last round, the legs, the small fields, double elimination, the order of
+        // the two entrants, the plan, the fingerprint and plain data
+        'a third-place tie, claim by claim' => [
+            'docs/USAGE.md',
+            '$fourOutcome = $withThirdPlace->getOutcome($fourState);',
+            <<<'PHP'
+                $options = \MissionGaming\Tactician\Scheduling\EliminationOptions::class;
+                $reasons = \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::class;
+                $labels = static fn (array $selected): array => array_map(static fn ($p): string => $p->getLabel(), $selected);
+                $pairs = static fn ($round): array => array_map(
+                    static fn ($event): string => implode(' v ', array_map(static fn ($p): string => $p->getLabel(), $event->getParticipants())),
+                    $round->getEvents()
+                );
+                $tieFirstNamedWins = static fn ($round): array => array_map(
+                    static fn ($event) => new Result($event, $event->getParticipants()[$event->getMetadataValue('tie_leg') === 2 ? 1 : 0]),
+                    $round->getEvents()
+                );
+                $refusedFor = static function (callable $call) {
+                    try {
+                        $call();
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $refused) {
+                        return $refused->getReason();
+                    }
+
+                    return null;
+                };
+                $four = [$alice, $bob, $carol, $dave];
+
+                // "Each of the four is alone in its tier ... a rank selection of any of those places is decided"
+                assert($fourOutcome->getStandings()->getTiers() === [0, 1, 2, 3]);
+                assert($fourOutcome->getStandings()->getTiedSets() === []);
+                assert($labels(RankRangeSelector::overall(1, 4)->select($fourOutcome)) === ['Bob', 'Alice', 'Carol', 'Dave']);
+
+                // "winners() is the one participant who won the bracket and losers() the other finalist ...
+                // in whatever order the round was recorded ... afterWholeBracket: true still counts one"
+                assert($labels(MatchOutcomeSelector::winners()->select($fourOutcome)) === ['Bob']);
+                assert($labels(MatchOutcomeSelector::losers()->select($fourOutcome)) === ['Alice']);
+                $recordedLastRound = $fourState->getLastRound();
+                $thirdPlaceFirst = StageState::start($four)
+                    ->withRoundPlayed($fourState->getRoundsPlayed()[0], array_slice($fourState->getResults(), 0, 2))
+                    ->withRoundPlayed(
+                        new \MissionGaming\Tactician\Stage\RoundPairing(2, 'final', array_reverse($recordedLastRound->getEvents()), []),
+                        array_slice($fourState->getResults(), 2)
+                    );
+                assert(BracketTie::of($thirdPlaceFirst->getLastRound()->getEvents()[0]) === BracketTie::ThirdPlace);
+                assert($labels(MatchOutcomeSelector::winners()->select($withThirdPlace->getOutcome($thirdPlaceFirst))) === ['Bob']);
+                assert((new \MissionGaming\Tactician\Stage\CompositionValidator())->validateChain(4, [
+                    new \MissionGaming\Tactician\Stage\StageTransition('next', 2, MatchOutcomeSelector::winners(), afterWholeBracket: true),
+                ]) === ["Stage 'next' expects 2 entrants but its selection yields 1 from the previous stage's 4."]);
+
+                // "a last round recorded with events that do not carry bracket_tie is read as any round
+                // is, one participant for each of its two ties in the recorded order"
+                $withoutMarks = array_map(
+                    static fn ($event) => new \MissionGaming\Tactician\DTO\Event($event->getParticipants(), $event->getRound()),
+                    array_reverse($recordedLastRound->getEvents())
+                );
+                $unmarkedState = StageState::start($four)
+                    ->withRoundPlayed($fourState->getRoundsPlayed()[0], array_slice($fourState->getResults(), 0, 2))
+                    ->withRoundPlayed(
+                        new \MissionGaming\Tactician\Stage\RoundPairing(2, 'final', $withoutMarks, []),
+                        [new Result($withoutMarks[0], $carol), new Result($withoutMarks[1], $bob)]
+                    );
+                assert($labels(MatchOutcomeSelector::winners()->select($withThirdPlace->getOutcome($unmarkedState))) === ['Carol', 'Bob']);
+                assert($labels(RankRangeSelector::overall(1, 4)->select($withThirdPlace->getOutcome($unmarkedState))) === ['Bob', 'Alice', 'Carol', 'Dave']);
+
+                // "the engine writes the backing string ... the mark is stored with the event ... null for
+                // every event of an earlier round and for every event of a bracket without the option"
+                assert(BracketTie::METADATA_KEY === 'bracket_tie');
+                assert(array_map(static fn ($event): array => $event->getMetadata(), $lastRound->getEvents()) === [['bracket_tie' => 'final'], ['bracket_tie' => 'third-place']]);
+                assert(BracketTie::of($semifinalRound->getEvents()[0]) === null);
+                $stored = StageState::fromJson($fourState->toJson())->getLastRound()->getEvents();
+                assert(array_map(BracketTie::of(...), $stored) === [BracketTie::Final, BracketTie::ThirdPlace]);
+                $plainState = StageState::start($four);
+                while (!$engine->isComplete($plainState)) {
+                    $round = $engine->pairNextRound($plainState);
+                    assert(array_filter(array_map(BracketTie::of(...), $round->getEvents())) === []);
+                    $plainState = $plainState->withRoundPlayed($round, $tieFirstNamedWins($round));
+                }
+                // "only their records order them": without the tie places 3 and 4 are one tier
+                assert($engine->getOutcome($plainState)->getStandings()->getTiers() === [0, 1, 2, 2]);
+
+                // "With one of them decided and the other not, the round is partially resolved ...
+                // until the missing result is recorded"
+                $beforeLast = StageState::start($four);
+                $beforeLast = $beforeLast->withRoundPlayed($withThirdPlace->pairNextRound($beforeLast), $tieFirstNamedWins($withThirdPlace->pairNextRound($beforeLast)));
+                $last = $withThirdPlace->pairNextRound($beforeLast);
+                $partial = $beforeLast->withRoundPlayed($last, [new Result($last->getEvents()[0], $alice)]);
+                foreach ([fn () => $withThirdPlace->isComplete($partial), fn () => $withThirdPlace->pairNextRound($partial), fn () => $withThirdPlace->getOutcome($partial)] as $call) {
+                    assert($refusedFor($call) === $reasons::RoundPartiallyResolved);
+                }
+                assert($withThirdPlace->isComplete($partial->withAdditionalResults([new Result($last->getEvents()[1], $dave)])));
+                assert(!$withThirdPlace->isComplete($beforeLast->withRoundPlayed($last, [])));
+
+                // "legsPerTie: 2 gives it two events, each marked 'third-place' beside its tie_leg"
+                $twoLegs = new SingleEliminationEngine(new $options(legsPerTie: 2, thirdPlace: true));
+                $twoLegState = StageState::start($four);
+                $twoLegState = $twoLegState->withRoundPlayed($twoLegs->pairNextRound($twoLegState), $tieFirstNamedWins($twoLegs->pairNextRound($twoLegState)));
+                assert(array_map(static fn ($event): array => $event->getMetadata(), $twoLegs->pairNextRound($twoLegState)->getEvents()) === [
+                    ['tie_leg' => 1, 'bracket_tie' => 'final'],
+                    ['tie_leg' => 2, 'bracket_tie' => 'final'],
+                    ['tie_leg' => 1, 'bracket_tie' => 'third-place'],
+                    ['tie_leg' => 2, 'bracket_tie' => 'third-place'],
+                ]);
+                assert($twoLegs->getPlan($twoLegState)->getExpectedEventCount() === 8);
+
+                // The table of brackets: three entrants, two, and double elimination
+                $tables = [];
+                foreach ([$withThirdPlace, $engine] as $bracket) {
+                    $threeState = StageState::start([$alice, $bob, $carol]);
+                    $rounds = [];
+                    while (!$bracket->isComplete($threeState)) {
+                        $round = $bracket->pairNextRound($threeState);
+                        $rounds[] = $pairs($round);
+                        $marks = array_map(BracketTie::of(...), $round->getEvents());
+                        $threeState = $threeState->withRoundPlayed($round, $tieFirstNamedWins($round));
+                    }
+                    $tables[] = [$rounds, $labels(array_map(static fn ($entry) => $entry->getParticipant(), $bracket->getOutcome($threeState)->getStandings()->getEntries())), $bracket->getOutcome($threeState)->getStandings()->getTiers()];
+                    assert($marks === ($bracket === $withThirdPlace ? [BracketTie::Final] : [null]));
+                }
+                assert($tables[0] === $tables[1]);
+                assert($tables[0] === [[['Bob v Carol'], ['Alice v Bob']], ['Alice', 'Bob', 'Carol'], [0, 1, 2]]);
+
+                $two = StageState::start([$alice, $bob]);
+                foreach ([fn () => $withThirdPlace->isComplete($two), fn () => $withThirdPlace->pairNextRound($two), fn () => $withThirdPlace->getOutcome($two), fn () => $withThirdPlace->getPlan($two)] as $call) {
+                    assert($refusedFor($call) === $reasons::TooFewParticipants);
+                }
+                assert($refusedFor(fn () => new \MissionGaming\Tactician\Scheduling\DoubleEliminationEngine(new $options(thirdPlace: true))) === $reasons::IncompatibleOptions);
+
+                // "On a fixed path ... the tie mirrors the final ... A bracket with reseedEachRound ...
+                // names the two entrants of the third-place tie in the order of the same table"
+                $lastRoundOfEight = static function (SingleEliminationEngine $bracket) use ($participants, $pairs): array {
+                    $eightState = StageState::start($participants);
+                    // The first four of the list win round 1; Alice and Carol win the semifinals
+                    foreach ([['alice', 'bob', 'carol', 'dave'], ['alice', 'carol']] as $winners) {
+                        $round = $bracket->pairNextRound($eightState);
+                        $eightState = $eightState->withRoundPlayed($round, array_map(
+                            static fn ($event) => new Result($event, $event->getParticipants()[in_array($event->getParticipants()[0]->getId(), $winners, true) ? 0 : 1]),
+                            $round->getEvents()
+                        ));
+                    }
+
+                    return $pairs($bracket->pairNextRound($eightState));
+                };
+                assert($lastRoundOfEight($withThirdPlace) === ['Alice v Carol', 'Dave v Bob']);
+                assert($lastRoundOfEight(new SingleEliminationEngine(new $options(reseedEachRound: true, thirdPlace: true))) === ['Alice v Carol', 'Bob v Dave']);
+
+                // "The plan counts the tie ... getTotalRounds() does not change"
+                $plan = $withThirdPlace->getPlan($fourState);
+                $plainPlan = $engine->getPlan($plainState);
+                assert([$plan->getExpectedEventCount(), $plan->hasThirdPlaceTie(), $plan->getTotalRounds()] === [4, true, 2]);
+                assert([$plainPlan->getExpectedEventCount(), $plainPlan->hasThirdPlaceTie(), $plainPlan->getTotalRounds()] === [3, false, 2]);
+
+                // "The option is part of the engine fingerprint when it is on ... with the option off
+                // the fingerprint is the one it was"
+                assert($withThirdPlace->getFingerprint() !== $engine->getFingerprint());
+                assert((new SingleEliminationEngine(new $options(thirdPlace: false)))->getFingerprint() === $engine->getFingerprint());
+                foreach ([[$withThirdPlace, $engine], [$engine, $withThirdPlace]] as [$stamping, $reading]) {
+                    $stamped = StageState::start($four)->withEngineFingerprint($stamping->getFingerprint());
+                    assert($stamping->isComplete($stamped) === false);
+                    assert($refusedFor(fn () => $reading->isComplete($stamped)) === $reasons::EngineFingerprintMismatch);
+                }
+
+                // "A state that carries no stamp and whose last round was recorded without the
+                // third-place tie is refused by an engine with the option"
+                $withoutTheTie = $beforeLast->withRoundPlayed($engine->pairNextRound($beforeLast), []);
+                assert($refusedFor(fn () => $withThirdPlace->pairNextRound($withoutTheTie)) === $reasons::RecordedRoundMismatch);
+                // "and by an engine without the option when the round holds an event marked 'third-place'.
+                // Until then ... either engine pairs its last round; a field of 3 ... is read by both"
+                foreach ([fn () => $engine->isComplete($fourState), fn () => $engine->pairNextRound($fourState), fn () => $engine->getOutcome($fourState)] as $call) {
+                    assert($refusedFor($call) === $reasons::RecordedRoundMismatch);
+                }
+                assert($pairs($engine->pairNextRound($beforeLast)) === ['Alice v Bob']);
+                assert($pairs($withThirdPlace->pairNextRound($beforeLast)) === ['Alice v Bob', 'Dave v Carol']);
+                assert($engine->isComplete($threeState) && $withThirdPlace->isComplete($threeState));
+
+                // "'third_place' => true in plain data", and "toArray() writes it only when the
+                // option is on, and an array without the key is a bracket without the tie"
+                assert($options::fromArray(['third_place' => true])->thirdPlace === true);
+                assert($options::fromArray([])->thirdPlace === false);
+                assert($options::fromArray(['third_place' => true])->toArray()['third_place'] === true);
+                assert(array_keys((new $options())->toArray()) === ['format_version', 'legs_per_tie', 'reseed_each_round', 'grand_final_reset']);
                 PHP,
         ],
         // "a participant who had a bye and won twice in three rounds shows two played, two

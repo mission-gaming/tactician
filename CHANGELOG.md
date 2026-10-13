@@ -420,6 +420,70 @@ entry on the engine fingerprint.
 
 ### Added
 
+- **Awarded results.** A `Result` can say that its event was not played and
+  that the application gave it this outcome: `new Result($event, $winner,
+  $scores, award: new Award('label', 'reason'))`. `DTO\Award` (new) is the
+  mark, with an optional label and an optional reason that the library
+  stores and never reads; `Result::isAwarded()` and `Result::getAward()`
+  read it, and the constructor of `Result` has a fifth parameter, `award`,
+  default none. An awarded result is a result: it counts for the winner it
+  names (as a draw when it names none), is counted in played, wins, draws
+  and losses, is the one result of its event (one beside a played result of
+  the same event is refused as two results of one event), and settles what
+  a result settles, so the participant it names advances from an
+  elimination tie. `StandingEntry::getAwarded()` (new, with a constructor
+  parameter `awarded`, default 0) says how many of an entry's results were
+  awarded. Two things are the caller's choice, on the calculator:
+  `StandingsCalculator` takes an `AwardedResultPolicy` (new) as a third
+  constructor argument and returns it with `getAwardedResultPolicy()`.
+  `countScores` (`count_scores` in `fromArray()`/`toArray()`, default
+  true) says whether the scores of an awarded result, its nominal score,
+  count in scores-for, scores-against and the score difference;
+  `countBetweenTiedParticipants` (`count_between_tied_participants`,
+  default true) says whether a tiebreaker computed between the tied
+  participants only is handed awarded results. Such a tiebreaker declares
+  itself with the new marker interface `TiedParticipantsTiebreaker`; the
+  library ships none yet (#58). A result writes the mark under the key
+  `award`, only when it is awarded, so the array of a played result is
+  unchanged and an array written by an earlier release reads as played. An
+  engine fingerprint states either choice of the policy only when it is
+  off, so every stamp written before is unchanged ("Awarded results" in
+  the usage guide, #100).
+- **Adjustments.** `Standings\Adjustment` (new) is an amount added to, or
+  taken from, one participant's ranking value for a reason that is no
+  event: a participant ID, a signed amount, and an optional label and
+  reason that the library never reads, with `fromArray()`/`toArray()`
+  (`participant`, `amount`, `label`, `reason`).
+  `StandingsCalculator::withAdjustments(Standings $standings, array
+  $adjustments)` applies them to a table and puts it in order again;
+  `StandingEntry::getAdjustment()` is the sum for the entry,
+  `getEarnedRankingValue()` what the results gave, and `getRankingValue()`
+  the two together, which the table is ordered by
+  (`StandingEntry::withAdjustment()` builds such an entry, and the
+  constructor has a twelfth parameter, `adjustment`, default 0.0). The
+  amounts for one participant are added exactly and rounded once, so the
+  figure is the same for every order of the list and amounts that cancel
+  leave nothing; a sum that no float holds is refused. The
+  amount is on the scale of the ranking strategy, so an adjustment is
+  accepted under every strategy; tiebreakers computed from opponents'
+  ranking values use what an opponent earned. A stage keeps its
+  adjustments on its state: `StageState::withAdjustment(Adjustment
+  $adjustment)` and `getAdjustments()`, written under the key
+  `adjustments` only when there is one. Every table an engine builds from
+  the state has them: the next Swiss round is paired from the adjusted
+  totals, a re-seeded bracket folds its survivors by them (record its
+  adjustments before its second round is paired: a later one can change a
+  round already played, and the engine then refuses the state with
+  `RecordedRoundMismatch`), and the table of
+  an outcome shows each beside what was earned, where it orders the
+  entrants a bracket put out in the same round and moves nobody between
+  tiers. `StageOutcome::combining()` keeps the adjustment of each pool
+  entry. An adjustment for a participant the table or the stage does not
+  have is rejected with an `InvalidInputException`. A participant who
+  withdrew and is named by nothing but an adjustment is still one of
+  `StageState::getAllSeenParticipants()`. With no awarded result and no
+  adjustment every table and every pairing is what it was ("Adjustments"
+  in the usage guide, #100).
 - **A schedule keeps its entrants: `Schedule::getEntrants()`.** It returns
   every participant the schedule is of, once, as a list. For a schedule
   that `RoundRobinScheduler`, `SwissScheduler` or `PotDrawScheduler`
@@ -508,6 +572,61 @@ entry on the engine fingerprint.
   (`planned_rounds_played`) and `ParticipantDoubleBooked`
   (`participant_double_booked`). A `match` over the reason needs a
   `default` arm, as the enum has always said.
+- **A third-place tie for single elimination, opt-in (#93).**
+  `EliminationOptions` has a fourth constructor parameter and public
+  property, `thirdPlace` (`bool`, default `false`; `third_place` in
+  `fromArray()`). With it, the last round of a `SingleEliminationEngine`
+  bracket holds two ties: the final, and a tie between the two entrants who
+  went out in the round before it. The round keeps the label `final` and
+  lists the final's events first. Each event of that round says which tie
+  it belongs to through the new enum `Stage\BracketTie` (`Final`,
+  `ThirdPlace`): the engine writes the backing string (`'final'`,
+  `'third-place'`) under `BracketTie::METADATA_KEY` (`'bracket_tie'`) in
+  the event's metadata, where it is stored with the event, and
+  `BracketTie::of(Event $event): ?BracketTie` reads it back;
+  `BracketTie::winnerRank()` is 1 or 3. The third-place tie has the legs of
+  every tie of the bracket and is decided as they are, a level one through
+  its `tie_winner` decision, and the stage is complete when both ties are
+  decided (one of the two decided is `RoundPartiallyResolved`, as in every
+  round). The outcome's table then gives places 1 to 4, each in a tier of
+  its own: the entrant who advanced from the final, the other finalist, the
+  entrant who advanced from the third-place tie, the other one.
+  `MatchOutcomeSelector` reads the final and leaves the third-place tie
+  out, which it knows by the mark: `winners()` is the one participant who
+  won the bracket and `losers()` the other finalist, as after a bracket
+  without the tie and in whatever order the round was recorded, so a
+  `StageTransition` with `afterWholeBracket: true` still counts one, and
+  places 3 and 4 are a rank selection. On a fixed path the entrant who went out of the tie that
+  fed the final's first-named side is first-named; a re-seeded bracket
+  names the two in the order of the table it folds the final from.
+  A field of 3 has one entrant who goes out before the final: no
+  third-place tie is played, and that entrant is third, as without the
+  option. A field of 2 with the option is refused on every call
+  (`TooFewParticipants`), and so is the option by
+  `DoubleEliminationEngine` when it is constructed (`IncompatibleOptions`),
+  whose losers bracket decides third place. `EliminationPlan` takes
+  `thirdPlace` as a fourth constructor argument (default `false`), counts
+  the tie in `getExpectedEventCount()`, and has `hasThirdPlaceTie(): bool`
+  and the constant `THIRD_PLACE_MINIMUM`; `getTotalRounds()` does not
+  change. The option is part of the engine fingerprint when it is on
+  (`;third-place=yes`), so a state stamped with it is refused by an engine
+  without it, and the other way round. A state without a stamp is refused
+  too once its last round is recorded (`RecordedRoundMismatch`): by an
+  engine with the option when the round lacks the tie, and by one without
+  it when the round holds an event marked `'third-place'`.
+  With the option off nothing changes: every pairing, every event (none
+  carries `bracket_tie`), every table and every fingerprint is what it was,
+  and no existing golden fixture changed; the new fixture
+  `single-elimination-third-place.txt` pins the brackets with the option.
+  `EliminationOptions::toArray()` writes `third_place` only when the option
+  is on, so the plain-data form of options without it has the keys it had,
+  and an array stored without the key is read as a bracket without the tie:
+  `third_place` is an optional key of version 1 of the form, like `seed` in
+  Swiss options, and a misspelling of it is refused like any unknown key.
+  Not offered: a number of
+  legs for the last round that differs from the rest of the bracket, and
+  ties for the places below fourth. The usage guide has it under "A
+  third-place tie".
 - **The best of a rank across pools: `BestOfRankSelector`.**
   `BestOfRankSelector::ofRank(rank: 3, count: 2)` returns the two best of
   the entrants placed third in their pools, best first: the selection
@@ -544,7 +663,7 @@ entry on the engine fingerprint.
   holds the key `rank_across_pools`, and has the six keys it had otherwise.
   One case of `InvalidConfigurationReason`, `PoolComparisonRequired`
   (`pool_comparison_required`). New example:
-  `examples/25-best-next-placed-qualifiers.php`.
+  `examples/26-best-next-placed-qualifiers.php`.
 
 ### Changed
 
@@ -578,24 +697,25 @@ entry on the engine fingerprint.
   as the first key of the array: the options classes
   (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`,
   `EliminationOptions`, `RepackOptions`), `WinDrawLossRanking`,
-  `TimelineDefinition`, `SessionGrid`, `BlackoutRule`, `MinimumRestRule`,
-  `RankRangeSelector`, `BestOfRankSelector`, `MatchOutcomeSelector`,
-  `Participant`, `Round`, `Event`, `Result`, `Schedule`, `RoundPairing`,
-  `StageState`,
+  `AwardedResultPolicy`, `TimelineDefinition`, `SessionGrid`,
+  `BlackoutRule`, `MinimumRestRule`, `RankRangeSelector`,
+  `BestOfRankSelector`, `MatchOutcomeSelector`, `Participant`, `Round`,
+  `Event`, `Result`, `Award`, `Schedule`, `RoundPairing`, `StageState`,
+  `Adjustment`,
   `ScheduledEvent`, `ScheduledSchedule`, `RepackOutcome`, `SlotAssignment`,
   `UnplacedEvent` and the five repack violations. Every form is at version
   1 (#53). ADR 0005 (`docs/adr/0005-serialized-forms-carry-a-format-version.md`)
   records the rule:
   - The key is written once to an array, at its top. A form held in
     another (the participants and events of a schedule, the round of an
-    event, the rounds and results of a stage state, the records of a repack
-    outcome) is written without it, so the size of a stored schedule grows
+    event, the rounds, results and adjustments of a stage state, the award
+    of a result, the records of a repack outcome) is written without it, so the size of a stored schedule grows
     by one key and not by one key per event.
   - **Data stored by 0.2.x loads unchanged.** An array without the key is
     read as version 1, which is the form 0.2.x wrote and, beside it, the
     optional keys this release adds (`strategy_seed`, `seed` in Swiss
-    options, `ties` and `comparison` in a rank range selector). Nothing is
-    to be
+    options, `ties` and `comparison` in a rank range selector, `award` in a
+    result, `adjustments` in a stage state). Nothing is to be
     migrated and the key need not be added to stored rows.
     `tests/Fixtures/stored-by-0.2/` holds a schedule and a stage state as
     v0.2.0 wrote them and 124 values of every form that is read as v0.2.3
@@ -628,8 +748,10 @@ entry on the engine fingerprint.
   Rolling back: an array written by 0.3.0 is still read by 0.2.x, which
   cannot check the version and ignores the key, as it ignores every key it
   does not know (`strategy_seed`, `seed` in Swiss options, and `ties` and
-  `comparison` in a rank range selector, and before 0.2.2 `role_assignment` and
-  `engine_fingerprint`, are read as left out). The one exception is
+  `comparison` in a rank range selector, and before 0.2.2 `role_assignment`
+  and `engine_fingerprint`, are read as left out; so are `award` and
+  `adjustments`, which means 0.2.x reads an awarded result as one that was
+  played and a stage state without its adjustments). The one exception is
   `PotDrawOptions::fromArray()` of 0.2.2 and 0.2.3, which refused unknown
   keys already and refuses `format_version` (`Unknown pot draw option`):
   remove the key from stored pot draw options before reading them with
@@ -763,7 +885,8 @@ entry on the engine fingerprint.
     reason `UnknownOptionKey`, whose context lists the keys that are not
     known under `unknown` and the keys of the form under `known`:
     `RoundRobinOptions`, `SwissOptions`, `EliminationOptions`,
-    `RepackOptions`, `WinDrawLossRanking`, `TimelineDefinition`,
+    `RepackOptions`, `WinDrawLossRanking`, `AwardedResultPolicy`,
+    `TimelineDefinition`,
     `SessionGrid`, `BlackoutRule` (the rule and each of its windows),
     `MinimumRestRule`, `RankRangeSelector`, `BestOfRankSelector` and
     `MatchOutcomeSelector`.
@@ -772,8 +895,8 @@ entry on the engine fingerprint.
     reason and context are unchanged.
   - *Data* throws an `InvalidInputException` whose message names the keys
     that are not known and the known ones: `Participant`, `Round`, `Event`,
-    `Result`, `Schedule`, `RoundPairing`, `StageState`, `ScheduledEvent`
-    and `ScheduledSchedule`, on their own or nested in one another.
+    `Result`, `Award`, `Schedule`, `RoundPairing`, `StageState`,
+    `Adjustment`, `ScheduledEvent` and `ScheduledSchedule`, on their own or nested in one another.
 
   Who is affected: an application that passes a `fromArray()` an array with
   keys of its own in it (a database row with its `id` and timestamps, a
@@ -1213,6 +1336,12 @@ entry on the engine fingerprint.
   After: the exception. Where a `MinimumRestRule` reported such a clash,
   the reason changes from `TimeRuleViolation` to `ParticipantDoubleBooked`,
   because the round is refused before the rules are asked (#121, item 10).
+
+- The `Coverage` job of CI measures with PCOV where it used Xdebug. It
+  reports line coverage only, which PCOV measures, and the suite had grown
+  until the job took 25 to 40 minutes under Xdebug. The `Mutation testing`
+  workflow still uses Xdebug, and `composer test-coverage` works with either
+  driver as before. Nothing a consumer installs changes.
 
 ### Fixed
 
