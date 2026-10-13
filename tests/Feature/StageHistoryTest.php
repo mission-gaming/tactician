@@ -1006,7 +1006,8 @@ describe('a withdrawal from a live bracket', function (): void {
 
         // Played to its end, h4 is last: it went out first
         $rng = new Randomizer(new Mt19937(5));
-        while (!$engine->isComplete($state)) {
+        for ($round = 2; !$engine->isComplete($state); ++$round) {
+            expect($round)->toBeLessThan(10);
             $pairing = $engine->pairNextRound($state);
             expect(array_filter($pairing->getEvents(), static fn(Event $event): bool => $event->hasParticipant($h4)))->toBe([]);
             $state = $state->withRoundPlayed($pairing, historyResults($pairing, $rng));
