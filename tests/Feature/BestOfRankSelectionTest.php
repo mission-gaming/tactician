@@ -62,6 +62,8 @@ function bestOfRankMatches(array $pools): array
  * @param array<string, int> $seeds Seed attributes by participant ID; the others have none
  * @param bool $shuffleEntrants False to draw the order of the pools and of the results only, and
  *                              leave every entrant list as it is without a randomizer
+ *
+ * @throws InvalidConfigurationException When the calculator refuses the table (not expected here)
  */
 function bestOfRankOutcome(
     array $matches,
@@ -1171,6 +1173,8 @@ describe('the best of a rank over generated pools', function (): void {
  * applied, and the pools are combined again.
  *
  * @param array<string, float> $amounts The amount of each adjusted participant, by ID
+ *
+ * @throws InvalidConfigurationException When the calculator refuses the table (not expected here)
  */
 function bestOfRankAdjusted(StageOutcome $outcome, array $amounts, StandingsCalculator $calculator = new StandingsCalculator()): StageOutcome
 {
@@ -1201,6 +1205,8 @@ function bestOfRankAdjusted(StageOutcome $outcome, array $amounts, StandingsCalc
  *
  * @param array<string, int> $scores The winner's score in each pool, by label
  * @param array<string, float> $amounts The amount of each adjusted participant, by ID
+ *
+ * @throws InvalidConfigurationException When the calculator refuses the table (not expected here)
  */
 function bestOfRankPoolsWithAnEntrantUnplayed(array $scores, array $amounts): StageOutcome
 {

@@ -9,14 +9,16 @@ use MissionGaming\Tactician\Standings\TiedParticipantsTiebreaker;
 use Override;
 
 /**
- * A tiebreaker computed between the tied participants only, for the tests
- * of awarded results: the number of wins a participant has over the
- * participants whose ranking value in the table equals its own.
+ * A tiebreaker computed between the tied participants only, written against
+ * the interface alone, for the tests of what the standings calculator hands
+ * such a tiebreaker: the number of results it is handed that the participant
+ * won.
  *
- * It knows nothing of awarded results. Whether it is handed them is the
- * choice of the standings calculator (AwardedResultPolicy), which is what
- * the tests that use it are about. The library ships no tiebreaker of this
- * kind yet.
+ * It counts the results itself and reads no entry, so a test that uses it
+ * sees which results the calculator handed over: those between the
+ * participants of a tied set, without the awarded ones when the awarded
+ * result policy says so. It knows nothing of awarded results or of who is
+ * tied. The library's own tiebreaker of this kind is BetweenTiedParticipants.
  */
 final readonly class WinsBetweenTheTied implements TiedParticipantsTiebreaker
 {
@@ -31,25 +33,10 @@ final readonly class WinsBetweenTheTied implements TiedParticipantsTiebreaker
     #[Override]
     public function calculate(Participant $participant, array $results, array $entries): float
     {
-        $own = $entries[$participant->getId()] ?? null;
-        if ($own === null) {
-            return 0.0;
-        }
-
         $wins = 0.0;
         foreach ($results as $result) {
-            if (!$result->isWinFor($participant)) {
-                continue;
-            }
-
-            foreach ($result->getEvent()->getParticipants() as $opponent) {
-                $entry = $entries[$opponent->getId()] ?? null;
-                if ($opponent->getId() !== $participant->getId()
-                    && $entry !== null
-                    && $entry->getRankingValue() === $own->getRankingValue()
-                ) {
-                    ++$wins;
-                }
+            if ($result->isWinFor($participant)) {
+                ++$wins;
             }
         }
 

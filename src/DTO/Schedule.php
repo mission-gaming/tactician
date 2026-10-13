@@ -302,6 +302,69 @@ class Schedule implements Iterator, Countable, JsonSerializable
     }
 
     /**
+     * The byes of every round: the entrants that have no event in it, by
+     * round number in ascending order.
+     *
+     * A bye is read from the schedule itself, not from its metadata: an
+     * entrant (getEntrants()) has a bye in a round when no event of that
+     * round names it. So the answer is the same for a schedule a generator
+     * returned, one read back from storage and one put together by hand,
+     * and it stays right when events are added. Every round that has an
+     * event is a key, with an empty list where every entrant plays; the
+     * entrants of a list are in entrant order. Events without a round
+     * belong to no round and are not read.
+     *
+     * A round-robin schedule of a field of odd size and a Swiss schedule
+     * of one have one bye in every round, which is the participant the
+     * generator records under the `byes` key of the metadata.
+     *
+     * @return array<int, list<Participant>> Keyed by round number, ascending
+     */
+    public function getByesByRound(): array
+    {
+        $byes = [];
+        foreach ($this->getEventsByRound() as $roundNumber => $events) {
+            $playing = [];
+            foreach ($events as $event) {
+                foreach ($event->getParticipants() as $participant) {
+                    $playing[$participant->getId()] = true;
+                }
+            }
+
+            $byes[$roundNumber] = array_values(array_filter(
+                $this->entrants,
+                static fn(Participant $entrant): bool => !isset($playing[$entrant->getId()])
+            ));
+        }
+
+        return $byes;
+    }
+
+    /**
+     * How many byes each entrant has over the rounds of the schedule
+     * (getByesByRound()), keyed by participant ID. An entrant that plays in
+     * every round has no entry.
+     *
+     * This is the shape a standings calculator takes byes in
+     * (Standings\StandingsCalculator::calculateWith()), so an application
+     * that keeps its own table of a schedule can value a bye by the same
+     * rule as a stage engine does.
+     *
+     * @return array<string, int>
+     */
+    public function getByeCounts(): array
+    {
+        $counts = [];
+        foreach ($this->getByesByRound() as $participants) {
+            foreach ($participants as $participant) {
+                $counts[$participant->getId()] = ($counts[$participant->getId()] ?? 0) + 1;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
      * The round with the highest number among the events.
      *
      * Its number is the number of rounds only where rounds are numbered

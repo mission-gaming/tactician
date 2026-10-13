@@ -395,8 +395,62 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         ],
         'an awarded result between the tied participants, counted and not' => [
             'docs/USAGE.md',
-            '$betweenTheTied = new class implements TiedParticipantsTiebreaker {',
+            'tiebreakers: [new BetweenTiedParticipants(new WinsTiebreaker())],',
             ["1W, 1 between the tied, 0 tied sets\n1W, 0 between the tied, 1 tied sets\n"],
+            [],
+        ],
+        'shared ranks beside positions' => [
+            'docs/USAGE.md',
+            '$early->getRanks()',
+            ["1, 2, 3, 3\nrank 3, position 4\n1, 1, 1, 1\n"],
+            [],
+        ],
+        'three level participants ordered by the events between them' => [
+            'docs/USAGE.md',
+            '$betweenTheTiedFirst = new StandingsCalculator(',
+            [
+                "Alice: 6 pts, 3 and 2 between the tied, 3 overall\n"
+                . "Carol: 6 pts, 3 and -1 between the tied, 8 overall\n"
+                . "Bob: 6 pts, 3 and -1 between the tied, 0 overall\n"
+                . "Dave: 0 pts, 0 and 0 between the tied, -11 overall\n",
+            ],
+            [],
+        ],
+        'a tiebreaker chain and a calculator from plain data' => [
+            'docs/USAGE.md',
+            '$chain = TiebreakerChain::fromIdentifiers([',
+            [
+                "3 tiebreakers: between-tied:ranking-value, between-tied:score-difference, score-difference\n"
+                . '["wins",{"tiebreaker":"buchholz","byes":"own-ranking-value"}]' . "\n",
+            ],
+            [],
+        ],
+        'a bye valued as a win, as a draw and as nothing' => [
+            'docs/USAGE.md',
+            "\$byes = ['alice' => 1, 'carol' => 1];",
+            [
+                "2 played, 1 bye, 3 from results, 6 earned\n"
+                . "2 played, 1 bye, 3 from results, 4 earned\n"
+                . "2 played, 1 bye, 3 from results, 3 earned\n",
+            ],
+            [],
+        ],
+        'Buchholz under each bye treatment' => [
+            'docs/USAGE.md',
+            'foreach (ByeTreatment::cases() as $treatment) {',
+            ["uncounted: 6\nzero: 9\nown-ranking-value: 15\n"],
+            [],
+        ],
+        'the byes of a schedule of an odd field' => [
+            'docs/USAGE.md',
+            '$oddField->getByesByRound()',
+            ["Round 1: 1 bye\nRound 2: 1 bye\nRound 3: 1 bye\n" . '{"alice":1,"bob":1,"carol":1}' . "\n"],
+            [],
+        ],
+        'a Swiss stage in which a bye scores nothing' => [
+            'docs/USAGE.md',
+            '$byeScoresNothing = new SwissPairingEngine(',
+            ["3 byes in the table, 0 points for them\n"],
             [],
         ],
         'adjustments beside what was earned' => [
