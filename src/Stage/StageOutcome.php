@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Stage;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 
@@ -93,6 +94,12 @@ final readonly class StageOutcome
      * refuses, with an InvalidInputException, a result that names a
      * participant with no such entry and two results for one event object.
      *
+     * An adjustment a pool's table shows is kept: the combined entry of the
+     * participant carries the adjustment figure of its pool entry, and is
+     * ordered by what it earned plus that figure. Of a participant with an
+     * entry in two pools, the first pool's figure is taken, as its
+     * participant is.
+     *
      * The combined table belongs to no single entrant list unless one is
      * given: without it, entries that are level across the pools are in
      * the calculator's own fallback order (seed, then participant ID).
@@ -113,10 +120,15 @@ final readonly class StageOutcome
         $participantsById = [];
         $results = [];
         $byes = [];
+        $adjustments = [];
 
         foreach ($pools as $poolOutcome) {
             foreach ($poolOutcome->getStandings()->getEntries() as $entry) {
-                $participantsById[$entry->getParticipant()->getId()] ??= $entry->getParticipant();
+                $id = $entry->getParticipant()->getId();
+                if (!isset($participantsById[$id]) && $entry->getAdjustment() !== 0.0) {
+                    $adjustments[] = new Adjustment($id, $entry->getAdjustment());
+                }
+                $participantsById[$id] ??= $entry->getParticipant();
             }
             foreach ($poolOutcome->getResults() as $result) {
                 $results[] = $result;
@@ -127,7 +139,10 @@ final readonly class StageOutcome
         }
 
         return new self(
-            $calculator->calculate(array_values($participantsById), $results),
+            $calculator->withAdjustments(
+                $calculator->calculate(array_values($participantsById), $results),
+                $adjustments
+            ),
             $results,
             $byes,
             null,
@@ -189,7 +204,9 @@ final readonly class StageOutcome
      * playing any round (or is a pooled combination).
      *
      * For a bracket this is the round that decided the title: the final,
-     * or in double elimination the grand final or its reset. It is the
+     * or in double elimination the grand final or its reset. In a single
+     * elimination bracket with a third-place tie the round holds that tie
+     * as well, after the final (see BracketTie). It is the
      * last round recorded on the state, so a round recorded after the
      * final takes its place.
      */

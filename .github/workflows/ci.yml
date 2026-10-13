@@ -122,7 +122,10 @@ jobs:
       with:
         php-version: '8.4'
         extensions: ctype, dom, iconv, libxml, mbstring, simplexml, tokenizer, xmlwriter
-        coverage: xdebug
+        # PCOV, not Xdebug: it measures line coverage only, which is all this
+        # job reports, and the suite runs several times faster under it. The
+        # mutation workflow keeps Xdebug.
+        coverage: pcov
 
     - name: Find the Composer download cache
       id: composer-cache

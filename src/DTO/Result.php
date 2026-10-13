@@ -8,13 +8,27 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
- * The outcome of a played event: who won, or that nobody did, and
- * optionally a score per participant.
+ * The outcome of an event: who won, or that nobody did, and optionally a
+ * score per participant.
  *
  * The winner is what the library counts. Scores are recorded beside it and
  * are never used to work out who won: a result without a winner is a draw
- * whatever its scores say. An event with no Result has not been played;
- * there is no "unplayed" result. Results are immutable.
+ * whatever its scores say. An event with no Result has no outcome yet:
+ * there is no result that says "not played and not decided". Results are
+ * immutable.
+ *
+ * A result is of an event that was played, unless it carries an Award: then
+ * the event was not played and the application gave it this outcome (see
+ * isAwarded()). An awarded result is a result in every other respect. It
+ * counts for the winner it names and against the other participants of the
+ * event, or as a draw when it names none. It is the one result of its
+ * event: an event has a played result or an awarded one, never both. And
+ * where a result settles something (who advances from a knockout tie,
+ * whether an event of a round still awaits its outcome) an awarded result
+ * settles it as a played one does. Two things a standings calculator does
+ * with an awarded result are the caller's choice
+ * (Standings\AwardedResultPolicy): whether its scores count, and whether a
+ * tiebreaker computed between the tied participants only reads it.
  *
  * @api
  */
@@ -24,7 +38,7 @@ readonly class Result
      * The winner and the scores are not checked against each other, and
      * scores need not cover every participant of the event.
      *
-     * @param Event $event The event that was played. Pass the event the scheduler or engine
+     * @param Event $event The event the result is of. Pass the event the scheduler or engine
      *                     produced, or one equal to it: an event is recognised by its round
      *                     number, its participants and its tie leg, and one with no round by
      *                     the object alone
@@ -35,6 +49,10 @@ readonly class Result
      *                                       'tie_winner': the ID of the participant who advances
      *                                       from an elimination tie that finished level (see
      *                                       Stage\TieDecision)
+     * @param Award|null $award The mark of an awarded result: the event was not played. The
+     *                          scores are then the nominal score of the award, where the
+     *                          application gives one. Null for a result of an event that
+     *                          was played
      *
      * @throws InvalidInputException When the winner or a score references a participant not in the event
      */
@@ -42,7 +60,8 @@ readonly class Result
         private Event $event,
         private ?Participant $winner = null,
         private array $scores = [],
-        private array $metadata = []
+        private array $metadata = [],
+        private ?Award $award = null
     ) {
         if ($winner !== null && !$event->hasParticipant($winner)) {
             throw new InvalidInputException('Winner must be a participant in the event');
@@ -117,6 +136,25 @@ readonly class Result
     }
 
     /**
+     * Whether the result was awarded: the event was not played, and the
+     * application gave it this outcome. The library records that and never
+     * decides it.
+     */
+    public function isAwarded(): bool
+    {
+        return $this->award instanceof Award;
+    }
+
+    /**
+     * The mark of an awarded result, with the label and the reason the
+     * application gave it, or null for a result of an event that was played.
+     */
+    public function getAward(): ?Award
+    {
+        return $this->award;
+    }
+
+    /**
      * The metadata as given to the constructor.
      *
      * @return array<string, mixed>
@@ -153,20 +191,33 @@ readonly class Result
      * is `format_version`, the version of this form (1); the event is
      * written without one.
      *
-     * @return array{format_version: int, event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}
+     * The `award` key is present only for an awarded result (see
+     * isAwarded()), so the array of a played result has no key but the
+     * version and the four it has always had. The award is written without
+     * a version of its own.
+     *
+     * @return array{format_version: int, event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>, award?: array{label: string|null, reason: string|null}}
      */
     public function toArray(): array
     {
         $event = $this->event->toArray();
         unset($event[PlainData::VERSION_KEY]);
 
-        return [
+        $data = [
             PlainData::VERSION_KEY => PlainData::VERSION,
             'event' => $event,
             'winner' => $this->winner?->getId(),
             'scores' => $this->scores,
             'metadata' => $this->metadata,
         ];
+
+        if ($this->award instanceof Award) {
+            $award = $this->award->toArray();
+            unset($award[PlainData::VERSION_KEY]);
+            $data['award'] = $award;
+        }
+
+        return $data;
     }
 
     /**
@@ -175,8 +226,11 @@ readonly class Result
      * The event is rebuilt from the data, so the result holds a new Event
      * object that is equal to the original and is not the same object. A
      * missing 'winner' is a draw; missing 'scores' and 'metadata' are empty.
+     * A missing 'award', or one that is null, is a result of an event that
+     * was played, which is every result stored before the key existed; an
+     * array under it, the empty one included, is an awarded result.
      * Any other key is refused, so that a misspelt 'winner' is not silently
-     * read as a draw.
+     * read as a draw, nor a misspelt 'award' as a result that was played.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
@@ -184,12 +238,13 @@ readonly class Result
      * @throws InvalidInputException When the format version is not one this release reads,
      *                               a key is unknown, a field has the wrong type, a score is not an int
      *                               or a float, a participant ID is not in the registry,
-     *                               or the winner or a score names a participant who is
-     *                               not in the event
+     *                               the winner or a score names a participant who is
+     *                               not in the event, or the award is not an array of a
+     *                               label and a reason
      */
     public static function fromArray(array $data, array $participantsById): self
     {
-        PlainData::checkFields($data, ['event', 'winner', 'scores', 'metadata'], 'result data');
+        PlainData::checkFields($data, ['event', 'winner', 'scores', 'metadata', 'award'], 'result data');
 
         $eventData = $data['event'] ?? null;
         if (!is_array($eventData)) {
@@ -231,6 +286,11 @@ readonly class Result
             $metadata[(string) $key] = $value;
         }
 
-        return new self($event, $winner, $scores, $metadata);
+        $rawAward = $data['award'] ?? null;
+        if ($rawAward !== null && !is_array($rawAward)) {
+            throw new InvalidInputException('Result award must be an array or null');
+        }
+
+        return new self($event, $winner, $scores, $metadata, $rawAward === null ? null : Award::fromArray($rawAward));
     }
 }

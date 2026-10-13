@@ -137,7 +137,11 @@ function storedCasesNoLongerRead(): array
 describe('every form as 0.2.3 wrote it', function (): void {
     it('covers every form that is read', function (): void {
         $classes = array_values(array_unique(array_column(formsWrittenByZeroTwoThree(), 'class')));
-        $listed = array_values(array_unique(array_map(static fn(array $form): string => $form['class'], PlainDataForms::all())));
+        // 0.2.3 wrote every form that is read today, bar the ones added since
+        $listed = array_values(array_diff(
+            array_unique(array_map(static fn(array $form): string => $form['class'], PlainDataForms::all())),
+            PlainDataForms::addedInZeroThree()
+        ));
         sort($classes);
         sort($listed);
 
