@@ -7,6 +7,11 @@ use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Scheduling\EliminationOptions;
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
+use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\FingerprintedEngine;
+use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Tests\Support\PlainDataForms;
 
@@ -171,6 +176,56 @@ describe('every form as 0.2.3 wrote it', function (): void {
         }
 
         expect($refused)->toBe(storedCasesNoLongerRead());
+    });
+});
+
+// The format version and the fingerprint scheme are two versions. 0.3.0
+// changed the scheme (`tactician:v2:`) and left the stage state form at
+// version 1, so a state 0.2.3 stamped is read as it always was, stamp
+// included, and it is the engine that refuses the stamp until the
+// application has decided that the stage goes on (ADR 0005, "The
+// fingerprints are not format versions").
+describe('a stage state that 0.2.3 stamped', function (): void {
+    it('loads with its stamp, which the engine of this release refuses until it is stamped again', function (
+        string $name,
+        FingerprintedEngine&StageEngineInterface $engine
+    ): void {
+        $state = readStoredCase(formsWrittenByZeroTwoThree()[$name]);
+        assert($state instanceof StageState);
+
+        $stamp = $state->getEngineFingerprint();
+        expect($stamp)->toStartWith('tactician:v1:')
+            ->and(str_replace('tactician:v1:', 'tactician:v2:', (string) $stamp))->toBe($engine->getFingerprint())
+            ->and($state->toArray()['format_version'])->toBe(1);
+
+        try {
+            $engine->isComplete($state);
+            $this->fail('The stamp of 0.2.3 was accepted.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::EngineFingerprintMismatch)
+                ->and($exception->getMessage())->toContain('the stamp was written by an earlier release of the library');
+        }
+
+        $stampedAgain = $state->withEngineFingerprint($engine->getFingerprint());
+        expect($engine->isComplete($stampedAgain))->toBeBool()
+            ->and($stampedAgain->toArray()['format_version'])->toBe(1);
+    })->with([
+        'Swiss' => ['state swiss stamped', new SwissPairingEngine()],
+        'single elimination over two legs' => [
+            'state single elim stamped two-legged',
+            new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
+        ],
+    ]);
+
+    it('is every stored case with a stamp of the library', function (): void {
+        $stamped = [];
+        foreach (formsWrittenByZeroTwoThree() as $name => $case) {
+            if (str_contains($case['stored'], 'tactician:v')) {
+                $stamped[] = $name;
+            }
+        }
+
+        expect($stamped)->toBe(['state swiss stamped', 'state single elim stamped two-legged']);
     });
 });
 
