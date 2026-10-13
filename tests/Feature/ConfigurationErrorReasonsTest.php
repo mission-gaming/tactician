@@ -267,6 +267,7 @@ describe('the reason of a configuration error', function (): void {
             'UnparseableTime' => 'unparseable_time',
             'TimezoneMismatch' => 'timezone_mismatch',
             'NonAdvancingTime' => 'non_advancing_time',
+            'OverlappingTime' => 'overlapping_time',
             'TimeRuleViolation' => 'time_rule_violation',
             'TimelineCapacityExceeded' => 'timeline_capacity_exceeded',
             'ParticipantDoubleBooked' => 'participant_double_booked',
@@ -593,6 +594,26 @@ describe('the reason of a configuration error', function (): void {
                 )
             ),
             InvalidConfigurationReason::TimeRuleViolation,
+        ],
+        'hourly rounds of two slots an hour apart' => [
+            fn() => new TimelineDefinition(
+                new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
+                new DateInterval('PT1H'),
+                2,
+                new DateInterval('PT1H')
+            ),
+            InvalidConfigurationReason::OverlappingTime,
+        ],
+        'a session that runs up to the start of the next' => [
+            fn() => new SessionGrid(
+                [
+                    new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone('UTC')),
+                    new DateTimeImmutable('2026-08-12 20:25', new DateTimeZone('UTC')),
+                ],
+                new DateInterval('PT25M'),
+                2
+            ),
+            InvalidConfigurationReason::OverlappingTime,
         ],
         'an event with no round number given a kickoff' => [
             fn() => (new TimelineAssigner())->assign(

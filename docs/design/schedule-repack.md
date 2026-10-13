@@ -426,6 +426,34 @@ returned; the changelog lists what changed for the others.
     option to switch the step off, or to size its budget, was not added:
     a patch release adds nothing to the public signature.
 
+## Grid correctness (0.3.0)
+
+37. **Sessions that overlap are a configuration error.** The grid checked
+    only that session starts ascend. Sessions at 20:00 and 20:25 with two
+    slots 25 minutes apart put two positions at 20:25, and the repacker,
+    for which collision is exact (session, slot) identity, placed one
+    participant in both and reported no double booking. A grid is now refused
+    at construction when the last slot of a session is at or after the
+    start of the next (`OverlappingTime`). It throws, where the repacker
+    reports: an unsatisfiable request is an outcome with violations, and
+    a grid that contradicts itself is broken input, like a pin off the
+    grid (decision 5). The check is on the slots a session declares, not
+    on the ones a repack happens to fill, so a grid is valid or not
+    whatever is placed on it. A shape-only grid has no instants and is
+    not checked: its caller owns the times. The slots within a session
+    are checked in the same pass (each after the one before it), because
+    a slot interval that PHP adds as local time, one that `diff()`
+    returned, puts two slots at one instant where the clocks skip an
+    hour. The grid keeps the instants it computed there, so
+    `getSlotTime()` and `positionOf()` read them and compute nothing.
+38. **A slot is computed from its session's start.** `getSlotTime()` added
+    the slot interval once per slot, each addition from the slot before,
+    so a slot that landed in the hour the clocks skip moved every slot
+    after it. It now adds the slots as one step from the session start,
+    with the arithmetic the timeline uses
+    (`Timeline\IntervalArithmetic`, internal). Slot intervals of hours
+    and minutes, which is what a session has, are unchanged.
+
 ## Testing
 
 Per the brief: property tests over seeded random multigraphs (properness,
