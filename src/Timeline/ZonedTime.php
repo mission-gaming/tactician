@@ -86,7 +86,7 @@ final readonly class ZonedTime
         // is reported for its timezone, as it was before the other fault
         // was looked for.
         if ($timezone !== null && $previous === null) {
-            $embedded = $time !== null ? $time->getTimezone()->getName() : DateTimeString::timezoneName($value);
+            $embedded = $time?->getTimezone()->getName() ?? DateTimeString::timezoneName($value);
             if ($embedded !== null && $embedded !== $timezone->getName()) {
                 throw new InvalidConfigurationException(
                     "The {$field} string carries its own timezone; declare the zone only via the 'timezone' field",
