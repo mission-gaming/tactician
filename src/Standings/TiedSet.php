@@ -15,8 +15,9 @@ use Override;
  *
  * The entries of a tied set are level with each other
  * ({@see StandingEntry::isLevelWith()}): the table lists them in the order of
- * its final fallback (seed, then label, then participant ID), which says
- * nothing about how they performed. An application that must not act on such
+ * the entrant list, when it is the table of a stage, and otherwise in the
+ * order of the calculator's final fallback (seed, then participant ID). Either
+ * says nothing about how they performed. An application that must not act on such
  * an order (who advances, who is relegated, who is seeded where) reads the
  * tied sets from {@see Standings::getTiedSets()} and decides the tie by its
  * own rule: a play-off, a drawing of lots, a shared rank.

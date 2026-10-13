@@ -10,8 +10,12 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Stage\BracketFold;
 use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\TieDecision;
+use MissionGaming\Tactician\Standings\StandingEntry;
+use MissionGaming\Tactician\Standings\Standings;
+use MissionGaming\Tactician\Standings\StandingsCalculator;
 
 /**
  * Shared bracket mechanics for the elimination presets: positional fold
@@ -55,7 +59,7 @@ trait EliminationBracketSupport
         $size = $this->bracketSize(count($ordered));
 
         $slots = [];
-        foreach ($this->seedPositions($size) as $position) {
+        foreach (BracketFold::positions($size) as $position) {
             $slots[] = $ordered[$position - 1] ?? null;
         }
 
@@ -64,34 +68,7 @@ trait EliminationBracketSupport
 
     private function bracketSize(int $participantCount): int
     {
-        $size = 2;
-        while ($size < $participantCount) {
-            $size *= 2;
-        }
-
-        return $size;
-    }
-
-    /**
-     * Standard fold seeding positions: consecutive pairs sum to size + 1, so
-     * the top positions can only meet in the latest possible round.
-     *
-     * @return array<int>
-     */
-    private function seedPositions(int $size): array
-    {
-        $positions = [1];
-        while (count($positions) < $size) {
-            $target = count($positions) * 2 + 1;
-            $next = [];
-            foreach ($positions as $position) {
-                $next[] = $position;
-                $next[] = $target - $position;
-            }
-            $positions = $next;
-        }
-
-        return $positions;
+        return BracketFold::size($participantCount);
     }
 
     /**
@@ -254,6 +231,43 @@ trait EliminationBracketSupport
         if (isset($resultIndex[$key]) && $resultIndex[$key]->getWinner() === null) {
             $levelAdvancers[$key] = $advancer;
         }
+    }
+
+    /**
+     * The table of a finished bracket, in placement order.
+     *
+     * The bracket decides the tiers: the entrant who advanced from the
+     * last round is alone in the first, the one it beat there alone in the
+     * second, and the others follow by the round they went out in, later
+     * first. Entrants who went out in the same round share a tier, and the
+     * calculator's order of their records (ranking value, tiebreakers,
+     * score difference, scores-for) is their order inside it. Where that
+     * leaves two of them level, the position in the entrant list decides.
+     * Participants the bracket did not place share a last tier.
+     *
+     * @param array<Participant> $entrants Every participant of the stage, in list order
+     * @param array<Result> $results The results the records are computed from
+     * @param array<int|string, int> $placement The tier of each placed participant by ID, 0 best
+     */
+    private function placementStandings(
+        StandingsCalculator $calculator,
+        array $entrants,
+        array $results,
+        array $placement
+    ): Standings {
+        $table = $calculator->calculate($entrants, $results)->withTiedSetsOrderedBy($entrants);
+
+        $unplaced = $placement === [] ? 0 : max($placement) + 1;
+        $rows = [];
+        foreach (array_values($table->getEntries()) as $index => $entry) {
+            $rows[] = [$placement[$entry->getParticipant()->getId()] ?? $unplaced, $index, $entry];
+        }
+        usort($rows, static fn(array $first, array $second): int => [$first[0], $first[1]] <=> [$second[0], $second[1]]);
+
+        return new Standings(
+            array_map(static fn(array $row): StandingEntry => $row[2], $rows),
+            array_map(static fn(array $row): int => $row[0], $rows)
+        );
     }
 
     private function legKey(int $round, Participant $first, Participant $second, mixed $tieLeg): string
