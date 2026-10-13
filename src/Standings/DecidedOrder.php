@@ -112,15 +112,20 @@ final class DecidedOrder
         }
 
         foreach ($decided as $index => $decision) {
+            // By ID, and every entry of it: a table built by hand can list a
+            // participant twice, and no entry is dropped for that
             $members = [];
             foreach ($groups[$index] as $entry) {
-                $members[$entry->getParticipant()->getId()] = $entry;
+                $members[$entry->getParticipant()->getId()][] = $entry;
             }
 
-            $groups[$index] = array_map(
-                static fn(string $id): StandingEntry => $members[$id],
-                $decision->getParticipantIds()
-            );
+            $inOrder = [];
+            foreach ($decision->getParticipantIds() as $id) {
+                foreach ($members[$id] as $entry) {
+                    $inOrder[] = $entry;
+                }
+            }
+            $groups[$index] = $inOrder;
         }
         ksort($decided);
 
