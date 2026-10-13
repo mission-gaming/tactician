@@ -12,8 +12,8 @@ use MissionGaming\Tactician\DTO\Participant;
  *
  * The record is four counts that add up: played is wins plus draws plus
  * losses. Figures that say something else about the line stand beside the
- * record and are never part of it: the byes credited in the ranking value
- * (getByes()), how many of the results counted were awarded and not played
+ * record and are never part of it: the byes the participant had, whose
+ * value is in the ranking value (getByes()), how many of the results counted were awarded and not played
  * (getAwarded()), and the adjustment to the ranking value that comes from
  * no event (getAdjustment()).
  *
@@ -36,6 +36,10 @@ readonly class StandingEntry
      * @param int $byes Byes whose credit is part of the ranking value (see getByes())
      * @param int $awarded How many of the results counted in played were awarded (see getAwarded())
      * @param float $adjustment The sum of the participant's adjustments (see getAdjustment())
+     * @param float|null $rankingValueOfResults The ranking value of the results alone, where
+     *                                          the ranking value given includes the credit of
+     *                                          byes; null when it includes none (see
+     *                                          getRankingValueOfResults())
      */
     public function __construct(
         private Participant $participant,
@@ -49,7 +53,8 @@ readonly class StandingEntry
         private array $tiebreakers = [],
         private int $byes = 0,
         private int $awarded = 0,
-        private float $adjustment = 0.0
+        private float $adjustment = 0.0,
+        private ?float $rankingValueOfResults = null
     ) {}
 
     /**
@@ -152,11 +157,29 @@ readonly class StandingEntry
     }
 
     /**
-     * The number of byes credited in the ranking value: 0 in a table
-     * calculated from results alone. A Swiss stage counts a bye as a win,
-     * so the ranking value of an entry of its table is that of its results
-     * plus one win for each bye, while played, wins, draws and losses count
-     * results only (StandingsCalculator::withByesCredited()).
+     * The ranking value of the participant's results alone: what the
+     * ranking strategy computed from them, without the credit of a bye and
+     * without an adjustment. In a table that credits no bye it is
+     * getEarnedRankingValue().
+     *
+     * The three values tell a line apart: this one is what the results are
+     * worth, getEarnedRankingValue() is this plus the value of each bye
+     * (getByes() times what the ranking strategy says a bye is worth), and
+     * getRankingValue() is that plus the adjustment.
+     */
+    public function getRankingValueOfResults(): float
+    {
+        return $this->rankingValueOfResults ?? $this->rankingValue;
+    }
+
+    /**
+     * The number of byes the participant had, as the table was given them:
+     * 0 in a table calculated from results alone. A bye is a figure of its
+     * own. It is no result, so played, wins, draws and losses do not count
+     * it; what it is worth is in the ranking value (the ranking strategy
+     * says how much, RankingStrategyWithByeValue), and a bye worth nothing
+     * is still counted here (StandingsCalculator::calculateWith(),
+     * withByesCredited()).
      */
     public function getByes(): int
     {
@@ -276,7 +299,8 @@ readonly class StandingEntry
             $tiebreakers,
             $this->byes,
             $this->awarded,
-            $this->adjustment
+            $this->adjustment,
+            $this->rankingValueOfResults
         );
     }
 
@@ -284,7 +308,8 @@ readonly class StandingEntry
      * A copy of this entry with the given number of credited byes and the
      * earned ranking value that includes their credit, in place of those it
      * had. The adjustment is kept and is not part of the value given: pass
-     * getEarnedRankingValue() plus the credit.
+     * getEarnedRankingValue() plus the credit. The value of the results
+     * (getRankingValueOfResults()) is kept as it was before the credit.
      */
     public function withByes(int $byes, float $rankingValue): self
     {
@@ -300,7 +325,8 @@ readonly class StandingEntry
             $this->tiebreakers,
             $byes,
             $this->awarded,
-            $this->adjustment
+            $this->adjustment,
+            $this->rankingValueOfResults ?? $this->rankingValue
         );
     }
 
@@ -323,7 +349,8 @@ readonly class StandingEntry
             $this->tiebreakers,
             $this->byes,
             $this->awarded,
-            $adjustment
+            $adjustment,
+            $this->rankingValueOfResults
         );
     }
 }

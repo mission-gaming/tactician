@@ -39,11 +39,14 @@ use Random\Randomizer;
  * goes to whichever of the two has been first-named less often (to the
  * lower-placed one when they are level).
  *
- * Byes recorded on the state are credited as wins (the Swiss convention),
- * so a bye recipient is paired among the winners in the following round
- * even though no Result exists for the bye. The credit is part of the one
- * table the engine builds: the order a round is paired from and the table
- * of the outcome are the same table.
+ * Byes recorded on the state are credited, although no Result exists for
+ * a bye: each adds what the ranking strategy of the standings calculator
+ * says a bye is worth (RankingStrategyWithByeValue). For a WinDrawLossRanking
+ * that is the value of a win unless another is given (the value of a draw,
+ * zero, any amount), so by default a bye recipient is paired among the
+ * winners in the following round. The credit is part of the one table the
+ * engine builds: the order a round is paired from and the table of the
+ * outcome are the same table, so the two cannot value a bye differently.
  *
  * That table also has what the application recorded beside the play. An
  * awarded result (DTO\Result::isAwarded()) is a result: it counts for the
@@ -193,8 +196,8 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *                                       planned rounds have all been played (reason
      *                                       `PlannedRoundsPlayed`), the state is stamped with
      *                                       another engine's fingerprint, or a bye is recorded and the standings calculator's
-     *                                       ranking strategy is not a WinDrawLossRanking (the
-     *                                       win a bye is credited as has no value there)
+     *                                       ranking strategy does not say what a bye is worth (it
+     *                                       is no RankingStrategyWithByeValue)
      * @throws NoValidPairingException When no complete pairing exists for the round
      */
     #[Override]
@@ -296,16 +299,16 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * withdrawn ones - their played games remain part of the record.
      *
      * The standings are the table the rounds were paired from, so a bye
-     * counts in them as it counts for pairing: as a win in the ranking
-     * value of the participant who had it. StandingEntry::getByes() says
-     * how many byes an entry's ranking value includes; played, wins, draws
-     * and losses count results only, and the outcome lists the byes beside
-     * the table. Entries that no result separates are in the order of the
+     * counts in them as it counts for pairing: with the value the ranking
+     * strategy gives a bye, in the ranking value of the participant who had
+     * it. StandingEntry::getByes() says how many byes an entry has, also
+     * where a bye is worth nothing; played, wins, draws and losses count
+     * results only, and the outcome lists the byes beside the table. Entries that no result separates are in the order of the
      * participant list (Standings::getTiedSets() reports them).
      *
      * @throws InvalidConfigurationException When the state is stamped with another engine's
      *                                       fingerprint, or a bye is recorded and the ranking
-     *                                       strategy is not a WinDrawLossRanking
+     *                                       strategy does not say what a bye is worth
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
@@ -328,33 +331,29 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * The table of the stage as recorded: the one every round is paired
      * from and the one the outcome carries.
      *
-     * The standings calculator computes it from the results. Each recorded
-     * bye is then credited as a win (the Swiss convention), which is only
-     * meaningful under a win/draw/loss ranking: anything else fails loudly
-     * rather than guessing what a win is worth on an unknown scale. The
-     * adjustments recorded on the state are then applied
-     * (StageState::withAdjustment()): each is an amount of the ranking
-     * value, so it is defined under every ranking strategy. Last,
-     * entries that no result separates are put in the order of the
-     * entrant list (see entrants()). No seed attribute or label decides an
-     * order, and no ID decides one between two active participants.
+     * The standings calculator computes it in one call from the results,
+     * the byes and the adjustments recorded on the state
+     * (StandingsCalculator::calculateWith()). Each recorded bye is credited
+     * with what the calculator's ranking strategy says a bye is worth
+     * (RankingStrategyWithByeValue: the value of a win unless the caller
+     * chose another). A ranking strategy that does not say fails loudly
+     * rather than have the engine guess what sitting out is worth on an
+     * unknown scale. Each adjustment (StageState::withAdjustment()) is an
+     * amount of the ranking value, so it is defined under every ranking
+     * strategy. Last, entries that no result separates are put in the order
+     * of the entrant list (see entrants()). No seed attribute or label
+     * decides an order, and no ID decides one between two active
+     * participants.
      *
-     * @throws InvalidConfigurationException When a bye is recorded and the ranking strategy is not
-     *                                       a WinDrawLossRanking
+     * @throws InvalidConfigurationException When a bye is recorded and the ranking strategy does
+     *                                       not say what a bye is worth
      */
     private function table(StageState $state): Standings
     {
         $entrants = $this->entrants($state);
-        $calculator = $this->standingsCalculator;
 
-        return $calculator
-            ->withAdjustments(
-                $calculator->withByesCredited(
-                    $calculator->calculate($entrants, $state->getResults()),
-                    $state->getByeCounts()
-                ),
-                $state->getAdjustments()
-            )
+        return $this->standingsCalculator
+            ->calculateWith($entrants, $state->getResults(), $state->getByeCounts(), $state->getAdjustments())
             ->withTiedSetsOrderedBy($entrants);
     }
 
@@ -438,8 +437,8 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
 
     /**
      * Order participants for pairing: the order of the table (see
-     * table(): byes credited as wins, so bye recipients pair among the
-     * winners, and level entries in list order) and - when a randomizer is
+     * table(): byes credited with the value the ranking strategy gives
+     * them, and level entries in list order) and - when a randomizer is
      * configured - shuffled within each score group (see
      * groupLevelRankings() for what level means).
      *
@@ -526,8 +525,8 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * Any other RankingStrategy is compared exactly: its values are its
      * own, and two that differ are two different scores however close.
      *
-     * The bound. Let M be the largest magnitude of the win, draw and loss
-     * values, n the most terms any participant's total has (results played
+     * The bound. Let M be the largest magnitude of the win, draw, loss and
+     * bye values, n the most terms any participant's total has (results played
      * plus byes credited), and u = PHP_FLOAT_EPSILON / 2 the unit roundoff.
      *
      * - Adding k floats in sequence is off by at most (k - 1) * u * S,
@@ -555,7 +554,9 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      *
      * The cap. A total that differs from another by a real result is one
      * step away: a result more (a win, draw or loss value that is not
-     * zero) or a result changed (the difference of two of them). The
+     * zero) or a result changed (the difference of two of them). A bye
+     * whose value is not that of a win is a step of its own: a bye more,
+     * or a bye in place of a result. The
      * tolerance never exceeds a quarter of the smallest such step, so on a
      * scale so stretched that the bound above would reach a step (a win
      * worth 1e15 draws), totals a real result apart still fall in
@@ -579,7 +580,8 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         // A table without adjustments has the terms and the magnitude it
         // had before they existed.
         $terms = 0;
-        $magnitude = max(abs($win), abs($draw), abs($loss));
+        $bye = $rankingStrategy->getByeValue();
+        $magnitude = max(abs($win), abs($draw), abs($loss), abs($bye));
         foreach ($entries as $entry) {
             $adjustment = $entry->getAdjustment();
             $terms = max($terms, $entry->getPlayed() + $entry->getByes() + ($adjustment === 0.0 ? 0 : 1));
@@ -588,7 +590,14 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
 
         $tolerance = 2.0 * $terms * $terms * PHP_FLOAT_EPSILON * $magnitude;
 
-        foreach ([$win, $draw, $loss, $win - $draw, $draw - $loss, $win - $loss] as $step) {
+        // With a bye worth a win, the steps of a bye are those of a win
+        // and are in the list already
+        $steps = [$win, $draw, $loss, $win - $draw, $draw - $loss, $win - $loss];
+        if ($bye !== $win) {
+            $steps = [...$steps, $bye, $bye - $win, $bye - $draw, $bye - $loss];
+        }
+
+        foreach ($steps as $step) {
             if ($step !== 0.0) {
                 $tolerance = min($tolerance, abs($step) / 4.0);
             }

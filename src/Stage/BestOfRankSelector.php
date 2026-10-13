@@ -452,6 +452,6 @@ final readonly class BestOfRankSelector implements ProgressionSelector
         // An adjustment comes from no event, so no discarded result takes it
         // away: calculate() knows none, and the ones the table shows for the
         // entrants that are kept are applied again
-        return $calculator->withAdjustments($calculator->calculate($participants, array_values($results)), $adjustments);
+        return $calculator->calculateWith($participants, array_values($results), [], $adjustments);
     }
 }

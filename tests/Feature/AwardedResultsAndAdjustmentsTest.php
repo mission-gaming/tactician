@@ -191,6 +191,42 @@ function awardsCalculator(array $scale, array $tiebreakers, bool $countScores, b
 }
 
 /**
+ * The value of one tiebreaker for one participant, from the plain data.
+ *
+ * @param list<array{a: string, b: string, winner: ?string, scores: ?array{int, int}, awarded: bool}> $games
+ * @param array<string, float> $earned What each participant earned, without an adjustment
+ * @param array<string, string> $levelOn What each participant is level on when the tiebreaker is asked
+ */
+function awardsTiebreakerValue(string $name, string $id, array $games, array $earned, array $levelOn, bool $countBetweenTied): float
+{
+    $value = 0.0;
+    foreach ($games as $game) {
+        if ($game['a'] !== $id && $game['b'] !== $id) {
+            continue;
+        }
+        $opponent = $game['a'] === $id ? $game['b'] : $game['a'];
+        $won = $game['winner'] === $id;
+
+        // An opponent counts for what it earned: no adjustment is in it
+        $value += match ($name) {
+            'buchholz' => $earned[$opponent],
+            'sonneborn-berger' => match (true) {
+                $won => $earned[$opponent],
+                $game['winner'] === null => 0.5 * $earned[$opponent],
+                default => 0.0,
+            },
+            // Between the tied participants: a win over one it is level with
+            WinsBetweenTheTied::NAME => $won
+                && $levelOn[$opponent] === $levelOn[$id]
+                && (!$game['awarded'] || $countBetweenTied) ? 1.0 : 0.0,
+            default => 0.0,
+        };
+    }
+
+    return $value;
+}
+
+/**
  * Every line of the table of a case, in the order of the table, worked out
  * from the plain data alone.
  *
@@ -260,35 +296,29 @@ function awardsOracle(array $case): array
 
     $total = [];
     $tiebreakers = [];
+    // What a participant is level on so far, as text: the total, then the
+    // value of every tiebreaker asked
+    $levelOn = [];
     foreach ($ids as $id) {
         $total[$id] = $earned[$id] + $adjustment[$id];
         $tiebreakers[$id] = [];
+        $levelOn[$id] = serialize($total[$id] + 0.0);
+    }
 
-        foreach ($case['tiebreakers'] as $name) {
-            $value = 0.0;
-            foreach ($case['games'] as $game) {
-                if ($game['a'] !== $id && $game['b'] !== $id) {
-                    continue;
-                }
-                $opponent = $game['a'] === $id ? $game['b'] : $game['a'];
-                $won = $game['winner'] === $id;
+    // The tiebreakers one after the other, because the one between the tied
+    // participants asks who is level on the total and on every tiebreaker
+    // before it
+    foreach ($case['tiebreakers'] as $name) {
+        $values = [];
+        foreach ($ids as $id) {
+            $values[$id] = $name === 'wins'
+                ? (float) $wins[$id]
+                : awardsTiebreakerValue($name, $id, $case['games'], $earned, $levelOn, $case['countBetweenTied']);
+        }
 
-                // An opponent counts for what it earned: no adjustment is in it
-                $value += match ($name) {
-                    'buchholz' => $earned[$opponent],
-                    'sonneborn-berger' => match (true) {
-                        $won => $earned[$opponent],
-                        $game['winner'] === null => 0.5 * $earned[$opponent],
-                        default => 0.0,
-                    },
-                    WinsBetweenTheTied::NAME => $won
-                        && $earned[$opponent] === $earned[$id]
-                        && (!$game['awarded'] || $case['countBetweenTied']) ? 1.0 : 0.0,
-                    default => 0.0,
-                };
-            }
-
-            $tiebreakers[$id][$name] = $name === 'wins' ? (float) $wins[$id] : $value;
+        foreach ($values as $id => $value) {
+            $tiebreakers[$id][$name] = $value;
+            $levelOn[$id] .= '|' . serialize($value + 0.0);
         }
     }
 
@@ -363,13 +393,19 @@ function awardsLines(Standings $standings): array
  *     countScores: bool,
  *     countBetweenTied: bool
  * } $case
+ *
+ * @throws InvalidConfigurationException When the calculator refuses the table (not expected here)
  */
 function awardsTable(array $case): Standings
 {
     $calculator = awardsCalculator($case['scale'], $case['tiebreakers'], $case['countScores'], $case['countBetweenTied']);
 
-    return $calculator->withAdjustments(
-        $calculator->calculate($case['participants'], awardsResults($case['participants'], $case['games'])),
+    // In one call: who is tied, for the tiebreaker between the tied
+    // participants, is read from the totals with the adjustments in them
+    return $calculator->calculateWith(
+        $case['participants'],
+        awardsResults($case['participants'], $case['games']),
+        [],
         awardsAdjustments($case['adjustments'])
     );
 }
@@ -510,8 +546,11 @@ describe('a table with awarded results and adjustments, over generated cases', f
             }
         }
 
-        // The choice is not without effect in the cases generated
-        expect($changed)->toBeGreaterThan(20);
+        // The choice is not without effect in the cases generated. It has
+        // one only where an awarded result is between participants who are
+        // level on the total and on every tiebreaker before this one, which
+        // is a handful of the lines generated
+        expect($changed)->toBeGreaterThan(5);
     });
 
     it('is the table of a calculator without a policy when no result is awarded, whatever the policy', function (): void {

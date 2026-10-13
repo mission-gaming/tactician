@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Stage;
 
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
@@ -114,6 +115,9 @@ final readonly class StageOutcome
      * @param StandingsCalculator $calculator Orders the combined table
      * @param array<Participant> $entrants The entrant list of the whole pooled stage, if the
      *                                     combined table is to follow it where entries are level
+     *
+     * @throws InvalidConfigurationException Not thrown by the library's calculator: the combined
+     *                                       table is given no bye, which is all it refuses
      */
     public static function combining(
         array $pools,
@@ -143,10 +147,7 @@ final readonly class StageOutcome
         }
 
         return new self(
-            $calculator->withAdjustments(
-                $calculator->calculate(array_values($participantsById), $results),
-                $adjustments
-            ),
+            $calculator->calculateWith(array_values($participantsById), $results, [], $adjustments),
             $results,
             $byes,
             null,

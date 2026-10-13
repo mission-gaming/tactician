@@ -10,6 +10,7 @@ use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Stage\PairKey;
 
 /**
@@ -38,13 +39,17 @@ use MissionGaming\Tactician\Stage\PairKey;
  * Standings::withTiedSetsOrderedBy() does it for a table of your own
  * (docs/adr/0004-position-decides-where-results-do-not.md).
  *
- * Two kinds of fact that are no play are counted as the application
+ * Three kinds of fact that are no play are counted as the application
  * records them. An awarded result (DTO\Result::isAwarded()) is a result of
  * the table, with two choices left to the caller (AwardedResultPolicy). An
  * adjustment (Adjustment) is an amount of ranking value for one
- * participant, applied by withAdjustments() and shown as a figure of its
- * own. Neither changes how a table is ordered: by the same figures, with
- * the same fallback.
+ * participant, shown as a figure of its own. A bye is a round a participant
+ * sat out: it is counted as a figure of its own, and credited with what
+ * the ranking strategy says a bye is worth (RankingStrategyWithByeValue).
+ * calculateWith() takes all three with the results; withAdjustments() and
+ * withByesCredited() apply the last two to a table that exists. None
+ * changes how a table is ordered: by the same figures, with the same
+ * fallback.
  *
  * @experimental
  */
@@ -65,6 +70,89 @@ readonly class StandingsCalculator
         private array $tiebreakers = [],
         private AwardedResultPolicy $awardedResults = new AwardedResultPolicy()
     ) {}
+
+    /**
+     * Build a calculator from plain configuration data:
+     *
+     *     StandingsCalculator::fromArray([
+     *         'ranking' => ['win' => 3, 'draw' => 1, 'loss' => 0, 'bye' => 'draw'],
+     *         'tiebreakers' => ['between-tied:ranking-value', 'score-difference', 'wins'],
+     *         'awarded_results' => ['count_scores' => false],
+     *     ]);
+     *
+     * `ranking` is the form of WinDrawLossRanking::fromArray(),
+     * `tiebreakers` the list of TiebreakerChain::fromIdentifiers() and
+     * `awarded_results` the form of AwardedResultPolicy::fromArray(). Each
+     * may be left out, or be null, and is then what a calculator built
+     * without arguments has: 3/1/0, no tiebreaker, awarded results counted
+     * in full. Any other key is refused.
+     *
+     * @param array<array-key, mixed> $config
+     *
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), one of the three values is not
+     *                                       an array (`WrongValueType`), or one of the three
+     *                                       readers refuses its part
+     */
+    public static function fromArray(array $config): self
+    {
+        PlainData::checkOptions($config, ['ranking', 'tiebreakers', 'awarded_results'], 'standings calculator');
+
+        $parts = [];
+        foreach (['ranking', 'tiebreakers', 'awarded_results'] as $key) {
+            $part = $config[$key] ?? [];
+            if (!is_array($part)) {
+                throw new InvalidConfigurationException(
+                    "The '{$key}' of a standings calculator must be an array",
+                    ['key' => $key, 'value' => $part],
+                    reason: InvalidConfigurationReason::WrongValueType
+                );
+            }
+            $parts[$key] = $part;
+        }
+
+        return new self(
+            WinDrawLossRanking::fromArray($parts['ranking']),
+            TiebreakerChain::fromIdentifiers($parts['tiebreakers']),
+            AwardedResultPolicy::fromArray($parts['awarded_results'])
+        );
+    }
+
+    /**
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then `ranking`, `tiebreakers` and
+     * `awarded_results`, always. The three parts are written without a
+     * version key of their own.
+     *
+     * @return array{format_version: int, ranking: array<string, float>, tiebreakers: list<string|array{tiebreaker: string, byes: string}>, awarded_results: array<string, bool>}
+     *
+     * @throws InvalidConfigurationException When the calculator cannot be written as plain data: it
+     *                                       is a subclass, its ranking strategy is not a
+     *                                       WinDrawLossRanking, or a tiebreaker is not one of the
+     *                                       library's (reason `NotSerializable`)
+     */
+    public function toArray(): array
+    {
+        if (static::class !== self::class || !$this->rankingStrategy instanceof WinDrawLossRanking) {
+            throw new InvalidConfigurationException(
+                'Only a StandingsCalculator of the library with a WinDrawLossRanking can be written as plain data',
+                ['calculator' => static::class, 'ranking_strategy' => $this->rankingStrategy::class],
+                reason: InvalidConfigurationReason::NotSerializable
+            );
+        }
+
+        $ranking = $this->rankingStrategy->toArray();
+        $awardedResults = $this->awardedResults->toArray();
+        unset($ranking[PlainData::VERSION_KEY], $awardedResults[PlainData::VERSION_KEY]);
+
+        return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'ranking' => $ranking,
+            'tiebreakers' => TiebreakerChain::identifiersOf($this->tiebreakers),
+            'awarded_results' => $awardedResults,
+        ];
+    }
 
     /**
      * What this calculator does with an awarded result where a competition
@@ -102,7 +190,18 @@ readonly class StandingsCalculator
      * result with no winner is a draw and any other is a loss (in an event
      * of three, both who did not win have a loss); scores-for adds its own
      * recorded scores and scores-against those of every other participant
-     * of the event. A bye is not a result and is counted nowhere.
+     * of the event. A bye is not a result and is counted nowhere here:
+     * calculateWith() takes the byes of a table.
+     *
+     * The tiebreakers are asked in the order they were given. Each is
+     * handed every result and the entries of the results alone, with two
+     * exceptions. A TiebreakerWithByeTreatment is handed entries that carry
+     * the byes of the table, of which this method has none. A
+     * TiedParticipantsTiebreaker is asked once for each set of participants
+     * that are level when its turn comes (the same ranking value and the
+     * same value for every tiebreaker before it), with the results between
+     * the participants of the set and the entries those results give; the
+     * interface has the contract.
      *
      * An awarded result (DTO\Result::isAwarded()) is a result: it is
      * counted in played and as the win, draw or loss it is, it is handed to
@@ -114,8 +213,9 @@ readonly class StandingsCalculator
      * TiedParticipantsTiebreaker is handed the results without the awarded
      * ones; every other tiebreaker is handed all of them.
      *
-     * Adjustments are no part of this calculation: withAdjustments() applies
-     * them to the table.
+     * Adjustments are no part of this calculation: calculateWith() takes
+     * them with the results, and withAdjustments() applies them to a table
+     * that exists.
      *
      * A participant without results has a zeroed record and is placed by it
      * like any other, not last: it stands above a participant whose ranking
@@ -147,45 +247,315 @@ readonly class StandingsCalculator
      */
     public function calculate(array $participants, array $results): Standings
     {
-        $seenEvents = [];
-        $seenMatches = [];
-        foreach ($results as $result) {
-            $event = $result->getEvent();
+        self::refuseRepeatedResults($results);
 
-            // The object does not survive storage: two results of one match
-            // read back from JSON hold two Event objects that are equal.
-            // What does survive is what the event says about itself, so a
-            // result recorded twice is refused in the same words before and
-            // after the state was stored.
-            $eventId = spl_object_id($event);
-            $match = self::matchOf($event);
-            if (isset($seenEvents[$eventId]) || ($match !== null && isset($seenMatches[$match]))) {
-                $round = $event->getRound()?->getNumber();
+        [$participantsById, $entries] = $this->entriesOf($participants, $results);
 
-                // The same words whether the two results hold one object or
-                // two: the hint is for the caller whose two events are in
-                // fact two, which the calculator cannot tell from one.
-                throw new InvalidInputException(
-                    'Two results reference the same event; each event can have only one result'
-                    . ($round === null ? '' : sprintf(
-                        ' (round %d, %s). Events with the same round number, participants and tie leg are one event:'
-                        . ' if these are two (one table over two stages or seasons, or two meetings in one round),'
-                        . " calculate a table for each, continue the round numbers, or give each event a 'tie_leg'",
-                        $round,
-                        implode(' vs ', array_map(
-                            fn(Participant $participant): string => $participant->getId(),
-                            $event->getParticipants()
-                        ))
-                    ))
-                );
-            }
+        return $this->inOrderOfTheChain($participantsById, $results, $entries, $entries, $entries);
+    }
 
-            $seenEvents[$eventId] = true;
-            if ($match !== null) {
-                $seenMatches[$match] = true;
+    /**
+     * Calculate the table of the given participants from the given results,
+     * with the byes they had and the adjustments made to them: the whole
+     * table in one call.
+     *
+     * The table is the one calculate() gives, with two things more. Each
+     * bye is credited: it adds what the ranking strategy says a bye is
+     * worth (RankingStrategyWithByeValue::getByeValue(), times the number
+     * given as $winsPerBye) to the ranking value its participant earned,
+     * and StandingEntry::getByes() counts it. Played, wins, draws and
+     * losses count results only. Each adjustment is applied as
+     * withAdjustments() applies it. So for every entry
+     *
+     *     getEarnedRankingValue() = getRankingValueOfResults() + getByes() x $winsPerBye x the value of a bye
+     *     getRankingValue()       = getEarnedRankingValue() + getAdjustment()
+     *
+     * This is the call for a table that has byes or adjustments, and the
+     * only one for a table whose tiebreakers depend on them: a tiebreaker
+     * that reads byes (TiebreakerWithByeTreatment with a treatment other
+     * than ByeTreatment::Uncounted) is handed the entries with the byes
+     * credited, and a tiebreaker between the tied participants
+     * (TiedParticipantsTiebreaker) is asked about the participants that
+     * are level once byes and adjustments are in the ranking value. The
+     * engines calculate their tables with it, giving the byes and the
+     * adjustments recorded on the stage state, so the order a round is
+     * paired from and the table of the outcome are one table.
+     *
+     * With tiebreakers of neither kind the result is, entry for entry and
+     * in the same order, what
+     * withAdjustments(withByesCredited(calculate(...), ...), ...) gives.
+     * The order is the same with one of those kinds: entries that no
+     * figure separates are ordered by what they earned (higher first),
+     * then by what their results are worth, and then by the fallback of
+     * calculate(), seed and participant ID. Standings::getTiedSets()
+     * reports them either way.
+     *
+     * A subclass is always calculated the second way, through its own
+     * calculate(), withByesCredited() and withAdjustments(): one that
+     * orders a table by rules of its own is asked as it was before this
+     * method existed, and with a tiebreaker of one of the two kinds it is
+     * refused the byes and adjustments those methods refuse.
+     *
+     * @param array<Participant> $participants Everyone the table lists, in any order
+     * @param array<Result> $results The recorded results, in any order
+     * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
+     *                                     entry in the table, and a count below 1, is ignored
+     * @param array<Adjustment> $adjustments Every adjustment of the participants of the table
+     * @param int $winsPerBye How many times the value of a bye one bye is worth: 1, or the
+     *                        legs of a tie where a bye stands for a tie of several legs
+     *
+     * @throws InvalidInputException When a result's event has a participant who is not among
+     *                               the given ones, two results are of one event, an
+     *                               adjustment names a participant that is not among the
+     *                               given ones, or the amounts for one participant add up to
+     *                               more than a float holds
+     * @throws InvalidConfigurationException When there is a bye to credit and the ranking strategy
+     *                                       does not say what a bye is worth (it is no
+     *                                       RankingStrategyWithByeValue; reason
+     *                                       `IncompatibleOptions`)
+     */
+    public function calculateWith(
+        array $participants,
+        array $results,
+        array $byes = [],
+        array $adjustments = [],
+        int $winsPerBye = 1
+    ): Standings {
+        // A subclass is asked through the three methods it may override,
+        // and nothing of this class is read before they are
+        if (static::class !== self::class || !$this->isCalculatedInOneGo(true)) {
+            return $this->withAdjustments(
+                $this->withByesCredited($this->calculate($participants, $results), $byes, $winsPerBye),
+                $adjustments
+            );
+        }
+
+        self::refuseRepeatedResults($results);
+
+        [$participantsById, $baseEntries] = $this->entriesOf($participants, $results);
+
+        // What a tiebreaker that reads byes is handed: the byes and their
+        // credit, and no adjustment
+        $creditedEntries = [];
+        foreach ($baseEntries as $id => $entry) {
+            $count = $byes[$id] ?? 0;
+            $creditedEntries[$id] = $count < 1 ? $entry : $this->creditByes($entry, $count, $winsPerBye);
+        }
+
+        $entries = $creditedEntries;
+        if ($adjustments !== []) {
+            $sums = $this->adjustmentSums(array_keys($entries), $adjustments);
+            foreach ($entries as $id => $entry) {
+                $entries[$id] = $entry->withAdjustment($sums[$id]);
             }
         }
 
+        return $this->inOrderOfTheChain($participantsById, $results, $baseEntries, $creditedEntries, $entries);
+    }
+
+    /**
+     * Whether a tiebreaker of this calculator has a value that depends on
+     * more than the results: on who is level in the finished table
+     * (TiedParticipantsTiebreaker), or, when asked for, on the byes
+     * (TiebreakerWithByeTreatment with a treatment other than Uncounted).
+     * A table with such a tiebreaker cannot have byes or adjustments
+     * applied to it after it was calculated.
+     */
+    private function isCalculatedInOneGo(bool $forByes): bool
+    {
+        foreach ($this->tiebreakers as $tiebreaker) {
+            if ($tiebreaker instanceof TiedParticipantsTiebreaker) {
+                return true;
+            }
+
+            if ($forByes
+                && $tiebreaker instanceof TiebreakerWithByeTreatment
+                && $tiebreaker->getByeTreatment() !== ByeTreatment::Uncounted
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The table of the given entries: the tiebreakers asked in order, and
+     * the order of the class docblock.
+     *
+     * @param array<string, Participant> $participantsById
+     * @param array<Result> $results
+     * @param array<string, StandingEntry> $baseEntries The entries of the results alone
+     * @param array<string, StandingEntry> $creditedEntries Those with the byes credited
+     * @param array<string, StandingEntry> $entries Those with the adjustments applied as well
+     *
+     * @throws InvalidInputException Not thrown here: the results were checked against the
+     *                               participants before
+     */
+    private function inOrderOfTheChain(
+        array $participantsById,
+        array $results,
+        array $baseEntries,
+        array $creditedEntries,
+        array $entries
+    ): Standings {
+        if ($this->tiebreakers !== []) {
+            // What a tiebreaker between the tied participants only is handed
+            // when awarded results do not count in it
+            $playedResults = $this->awardedResults->countBetweenTiedParticipants
+                ? $results
+                : array_values(array_filter($results, static fn(Result $result): bool => !$result->isAwarded()));
+
+            /** @var array<string, list<float>> $figures The ranking value and the tiebreaker values so far */
+            $figures = [];
+            /** @var array<string, array<string, float>> $values */
+            $values = [];
+            foreach ($entries as $id => $entry) {
+                $figures[$id] = [$entry->getRankingValue()];
+                $values[$id] = [];
+            }
+
+            foreach ($this->tiebreakers as $tiebreaker) {
+                $name = $tiebreaker->getName();
+
+                if ($tiebreaker instanceof TiedParticipantsTiebreaker) {
+                    $calculated = $this->betweenTiedParticipants($tiebreaker, $participantsById, $figures, $playedResults);
+                } else {
+                    $handed = $tiebreaker instanceof TiebreakerWithByeTreatment ? $creditedEntries : $baseEntries;
+                    $calculated = [];
+                    foreach ($participantsById as $id => $participant) {
+                        $calculated[$id] = $tiebreaker->calculate($participant, $results, $handed);
+                    }
+                }
+
+                foreach ($calculated as $id => $value) {
+                    $values[$id][$name] = $value;
+                    $figures[$id][] = $value;
+                }
+            }
+
+            foreach ($entries as $id => $entry) {
+                $entries[$id] = $entry->withTiebreakers($values[$id]);
+            }
+        }
+
+        $tiebreakerNames = $this->tiebreakerNames();
+
+        $ordered = array_values($entries);
+        usort($ordered, static function (StandingEntry $a, StandingEntry $b) use ($tiebreakerNames): int {
+            $comparison = EntryOrder::compareFigures($a, $b, $tiebreakerNames);
+            if ($comparison !== 0) {
+                return $comparison;
+            }
+
+            // Level entries are in the order withAdjustments() and
+            // withByesCredited() leave them in: as they stood before the
+            // adjustments, and before that as they stood before the byes.
+            // In a table without either, both steps compare equal values.
+            $comparison = [$b->getEarnedRankingValue(), $b->getRankingValueOfResults()]
+                <=> [$a->getEarnedRankingValue(), $a->getRankingValueOfResults()];
+            if ($comparison !== 0) {
+                return $comparison;
+            }
+
+            $comparison = ($a->getParticipant()->getSeed() ?? PHP_INT_MAX) <=> ($b->getParticipant()->getSeed() ?? PHP_INT_MAX);
+            if ($comparison !== 0) {
+                return $comparison;
+            }
+
+            return EntryOrder::compareIds($a->getParticipant()->getId(), $b->getParticipant()->getId());
+        });
+
+        return new Standings($ordered);
+    }
+
+    /**
+     * The values of a tiebreaker between the tied participants: for every
+     * tied set, the tiebreaker is asked about each of its participants with
+     * the results between the participants of the set and the entries those
+     * results give.
+     *
+     * A tied set is the participants whose figures so far are the same:
+     * the ranking value and the value of every tiebreaker before this one.
+     * The sets are read from the figures alone, so they are the same for
+     * every order of the participants and the results.
+     *
+     * @param array<string, Participant> $participantsById
+     * @param array<string, list<float>> $figures By participant ID
+     * @param array<Result> $results The results the tiebreaker may read
+     *
+     * @return array<string, float> By participant ID
+     *
+     * @throws InvalidInputException Not thrown here: the results were checked against the
+     *                               participants before
+     */
+    private function betweenTiedParticipants(
+        TiedParticipantsTiebreaker $tiebreaker,
+        array $participantsById,
+        array $figures,
+        array $results
+    ): array {
+        $ids = array_map(strval(...), array_keys($participantsById));
+        usort($ids, static fn(string $first, string $second): int => $figures[$first] <=> $figures[$second]);
+
+        /** @var array<string, int> $setOf The number of the tied set of each participant */
+        $setOf = [];
+        /** @var list<list<Participant>> $sets */
+        $sets = [];
+        $previous = null;
+        foreach ($ids as $id) {
+            if ($previous === null || ($figures[$previous] <=> $figures[$id]) !== 0) {
+                $sets[] = [];
+            }
+            $setOf[$id] = count($sets) - 1;
+            $sets[count($sets) - 1][] = $participantsById[$id];
+            $previous = $id;
+        }
+
+        /** @var array<int, list<Result>> $resultsOfSet */
+        $resultsOfSet = [];
+        foreach ($results as $result) {
+            $set = null;
+            foreach ($result->getEvent()->getParticipants() as $participant) {
+                $own = $setOf[$participant->getId()] ?? null;
+                if ($own === null || ($set !== null && $own !== $set)) {
+                    continue 2;
+                }
+                $set = $own;
+            }
+            if ($set !== null) {
+                $resultsOfSet[$set][] = $result;
+            }
+        }
+
+        $values = [];
+        foreach ($sets as $number => $members) {
+            $between = $resultsOfSet[$number] ?? [];
+            [, $entriesOfSet] = $this->entriesOf($members, $between);
+            foreach ($members as $member) {
+                $values[$member->getId()] = $tiebreaker->calculate($member, $between, $entriesOfSet);
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * The entries of the given participants from the given results alone:
+     * the record, the scores and the ranking value the ranking strategy
+     * computes, with no bye, adjustment or tiebreaker value.
+     *
+     * @param array<Participant> $participants
+     * @param array<Result> $results
+     *
+     * @return array{array<string, Participant>, array<string, StandingEntry>} The participants and
+     *                                                                         their entries, by ID
+     *
+     * @throws InvalidInputException When a result's event has a participant who is not among
+     *                               the given ones
+     */
+    private function entriesOf(array $participants, array $results): array
+    {
         /** @var array<string, Participant> $participantsById */
         $participantsById = [];
         /** @var array<string, array<Result>> $resultsByParticipant */
@@ -275,45 +645,56 @@ readonly class StandingsCalculator
             );
         }
 
-        if ($this->tiebreakers !== []) {
-            $baseEntries = $entries;
-            // What a tiebreaker between the tied participants only is handed
-            // when awarded results do not count in it
-            $playedResults = $this->awardedResults->countBetweenTiedParticipants
-                ? $results
-                : array_values(array_filter($results, static fn(Result $result): bool => !$result->isAwarded()));
+        return [$participantsById, $entries];
+    }
 
-            foreach ($entries as $id => $entry) {
-                $values = [];
-                foreach ($this->tiebreakers as $tiebreaker) {
-                    $values[$tiebreaker->getName()] = $tiebreaker->calculate(
-                        $participantsById[$id],
-                        $tiebreaker instanceof TiedParticipantsTiebreaker ? $playedResults : $results,
-                        $baseEntries
-                    );
-                }
-                $entries[$id] = $entry->withTiebreakers($values);
+    /**
+     * Refuse two results of one event (calculate() says which two are one).
+     *
+     * @param array<Result> $results
+     *
+     * @throws InvalidInputException When two results are of one event
+     */
+    private static function refuseRepeatedResults(array $results): void
+    {
+        $seenEvents = [];
+        $seenMatches = [];
+        foreach ($results as $result) {
+            $event = $result->getEvent();
+
+            // The object does not survive storage: two results of one match
+            // read back from JSON hold two Event objects that are equal.
+            // What does survive is what the event says about itself, so a
+            // result recorded twice is refused in the same words before and
+            // after the state was stored.
+            $eventId = spl_object_id($event);
+            $match = self::matchOf($event);
+            if (isset($seenEvents[$eventId]) || ($match !== null && isset($seenMatches[$match]))) {
+                $round = $event->getRound()?->getNumber();
+
+                // The same words whether the two results hold one object or
+                // two: the hint is for the caller whose two events are in
+                // fact two, which the calculator cannot tell from one.
+                throw new InvalidInputException(
+                    'Two results reference the same event; each event can have only one result'
+                    . ($round === null ? '' : sprintf(
+                        ' (round %d, %s). Events with the same round number, participants and tie leg are one event:'
+                        . ' if these are two (one table over two stages or seasons, or two meetings in one round),'
+                        . " calculate a table for each, continue the round numbers, or give each event a 'tie_leg'",
+                        $round,
+                        implode(' vs ', array_map(
+                            fn(Participant $participant): string => $participant->getId(),
+                            $event->getParticipants()
+                        ))
+                    ))
+                );
+            }
+
+            $seenEvents[$eventId] = true;
+            if ($match !== null) {
+                $seenMatches[$match] = true;
             }
         }
-
-        $tiebreakerNames = $this->tiebreakerNames();
-
-        $ordered = array_values($entries);
-        usort($ordered, static function (StandingEntry $a, StandingEntry $b) use ($tiebreakerNames): int {
-            $comparison = EntryOrder::compareFigures($a, $b, $tiebreakerNames);
-            if ($comparison !== 0) {
-                return $comparison;
-            }
-
-            $comparison = ($a->getParticipant()->getSeed() ?? PHP_INT_MAX) <=> ($b->getParticipant()->getSeed() ?? PHP_INT_MAX);
-            if ($comparison !== 0) {
-                return $comparison;
-            }
-
-            return EntryOrder::compareIds($a->getParticipant()->getId(), $b->getParticipant()->getId());
-        });
-
-        return new Standings($ordered);
     }
 
     /**
@@ -339,19 +720,26 @@ readonly class StandingsCalculator
     }
 
     /**
-     * The table with byes credited: each bye adds the ranking value of the
-     * given number of wins to the entry of the participant who had it, and
-     * the table is put in order again.
+     * The table with byes credited: each bye adds what the ranking
+     * strategy says a bye is worth (RankingStrategyWithByeValue), the given
+     * number of times, to the entry of the participant who had it, and the
+     * table is put in order again.
      *
      * A bye is no result, so calculate() counts it nowhere. A stage in
-     * which sitting out a round is worth what winning it is (a Swiss
-     * stage, and a bracket when it ranks the entrants who are still in it)
-     * credits it here. Only the ranking value changes, and
-     * StandingEntry::getByes() says how many byes are in it: played, wins,
-     * draws, losses, the scores and the tiebreaker values are those of the
-     * results. A tiebreaker that reads the ranking values of opponents
-     * (Buchholz, Sonneborn-Berger) was calculated before the credit and
-     * counts an opponent's bye as nothing.
+     * which sitting out a round is worth something (a Swiss stage, and a
+     * bracket when it ranks the entrants who are still in it) credits it.
+     * Only the ranking value changes, and StandingEntry::getByes() says
+     * how many byes the entry has: played, wins, draws, losses, the scores
+     * and the tiebreaker values are those of the results. A bye worth 0.0
+     * is counted and changes no ranking value.
+     *
+     * This applies byes to a table that exists. It keeps every tiebreaker
+     * value as it is, which is right for a tiebreaker that reads no bye
+     * (every one of the library's at its default). A calculator with a
+     * tiebreaker that does read byes, or one computed between the tied
+     * participants, is refused here when there is a bye to credit: use
+     * calculateWith(), which takes the byes before the tiebreakers are
+     * asked.
      *
      * The credited table is ordered as calculate() orders one, by ranking
      * value, tiebreakers, score difference and scores-for. Entries that
@@ -362,12 +750,15 @@ readonly class StandingsCalculator
      *
      * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
      *                                     entry in the table is ignored
-     * @param int $winsPerBye How many wins one bye is worth (the legs of a two-legged tie)
+     * @param int $winsPerBye How many times the value of a bye one bye is worth: 1, or the
+     *                        legs of a tie where a bye stands for a tie of several legs
      *
      * @throws InvalidConfigurationException When there is a bye to credit and the ranking strategy
-     *                                       is not a WinDrawLossRanking: what a win is worth is
-     *                                       not known on another scale (reason
-     *                                       `IncompatibleOptions`)
+     *                                       does not say what a bye is worth (it is no
+     *                                       RankingStrategyWithByeValue), or a tiebreaker of the
+     *                                       calculator reads byes or is computed between the
+     *                                       tied participants (reason `IncompatibleOptions` for
+     *                                       both)
      */
     public function withByesCredited(Standings $standings, array $byes, int $winsPerBye = 1): Standings
     {
@@ -380,28 +771,51 @@ readonly class StandingsCalculator
                 continue;
             }
 
-            if (!$this->rankingStrategy instanceof WinDrawLossRanking) {
-                throw new InvalidConfigurationException(
-                    'Crediting a bye requires a win/draw/loss ranking strategy; counting a bye as a win is undefined under other ranking scales',
-                    ['ranking_strategy' => $this->rankingStrategy::class],
-                    reason: InvalidConfigurationReason::IncompatibleOptions
-                );
-            }
-
             $any = true;
-            // The credit is earned: an adjustment the entry carries stays
-            // apart from it (StandingEntry::withByes() keeps it)
-            $credited[] = $entry->withByes(
-                $entry->getByes() + $count,
-                $entry->getEarnedRankingValue() + $count * $winsPerBye * $this->rankingStrategy->getWinValue()
-            );
+            $credited[] = $this->creditByes($entry, $count, $winsPerBye);
         }
 
         if (!$any) {
             return $standings;
         }
 
+        if ($this->isCalculatedInOneGo(true)) {
+            throw new InvalidConfigurationException(
+                'Byes cannot be credited to a table after it was calculated when a tiebreaker reads byes or is computed'
+                    . ' between the tied participants: its values depend on them. Give the byes to calculateWith()',
+                ['tiebreakers' => $this->tiebreakerNames()],
+                reason: InvalidConfigurationReason::IncompatibleOptions
+            );
+        }
+
         return $this->inOrder($credited, $standings->getTiers());
+    }
+
+    /**
+     * The entry with the given number of byes more, each credited with
+     * what the ranking strategy says a bye is worth.
+     *
+     * @throws InvalidConfigurationException When the ranking strategy does not say what a bye is
+     *                                       worth (reason `IncompatibleOptions`)
+     */
+    private function creditByes(StandingEntry $entry, int $count, int $winsPerBye): StandingEntry
+    {
+        if (!$this->rankingStrategy instanceof RankingStrategyWithByeValue) {
+            throw new InvalidConfigurationException(
+                'Crediting a bye requires a ranking strategy that says what a bye is worth (RankingStrategyWithByeValue);'
+                    . ' nothing else says what sitting a round out counts for on the scale of '
+                    . $this->rankingStrategy::class,
+                ['ranking_strategy' => $this->rankingStrategy::class],
+                reason: InvalidConfigurationReason::IncompatibleOptions
+            );
+        }
+
+        // The credit is earned: an adjustment the entry carries stays
+        // apart from it (StandingEntry::withByes() keeps it)
+        return $entry->withByes(
+            $entry->getByes() + $count,
+            $entry->getEarnedRankingValue() + $count * $winsPerBye * $this->rankingStrategy->getByeValue()
+        );
     }
 
     /**
@@ -442,18 +856,73 @@ readonly class StandingsCalculator
      * Byes can be credited before or after; the two do not disturb each
      * other.
      *
+     * This applies adjustments to a table that exists, and keeps every
+     * tiebreaker value as it is. A calculator with a tiebreaker computed
+     * between the tied participants (TiedParticipantsTiebreaker) is
+     * refused here when an adjustment changes the table, because who is
+     * tied depends on the adjustments: use calculateWith(), which takes
+     * them before the tiebreakers are asked.
+     *
      * @param array<Adjustment> $adjustments Every adjustment of the participants of the table
      *
      * @throws InvalidInputException When an adjustment names a participant that has no entry
      *                               in the table, or the amounts for one participant add up
      *                               to more than a float holds
+     * @throws InvalidConfigurationException When an adjustment changes the table and a tiebreaker
+     *                                       of the calculator is computed between the tied
+     *                                       participants (reason `IncompatibleOptions`)
      */
     public function withAdjustments(Standings $standings, array $adjustments): Standings
     {
-        /** @var array<string, list<float>> $amounts */
-        $amounts = [];
+        $ids = array_map(
+            static fn(StandingEntry $entry): string => $entry->getParticipant()->getId(),
+            array_values($standings->getEntries())
+        );
+        $sums = $this->adjustmentSums($ids, $adjustments);
+
+        $adjusted = [];
+        $any = false;
         foreach ($standings->getEntries() as $entry) {
-            $amounts[$entry->getParticipant()->getId()] = [];
+            $sum = $sums[$entry->getParticipant()->getId()];
+            $any = $any || $sum !== $entry->getAdjustment();
+            $adjusted[] = $entry->withAdjustment($sum);
+        }
+
+        if (!$any) {
+            return $standings;
+        }
+
+        if ($this->isCalculatedInOneGo(false)) {
+            throw new InvalidConfigurationException(
+                'Adjustments cannot be applied to a table after it was calculated when a tiebreaker is computed between'
+                    . ' the tied participants: who is tied depends on them. Give the adjustments to calculateWith()',
+                ['tiebreakers' => $this->tiebreakerNames()],
+                reason: InvalidConfigurationReason::IncompatibleOptions
+            );
+        }
+
+        return $this->inOrder($adjusted, $standings->getTiers());
+    }
+
+    /**
+     * The sum of the adjustments of every participant, 0.0 for one that
+     * has none (see withAdjustments() for how the amounts are added).
+     *
+     * @param array<int|string> $ids The IDs of the participants of the table
+     * @param array<Adjustment> $adjustments
+     *
+     * @return array<int|string, float> By participant ID
+     *
+     * @throws InvalidInputException When an adjustment names a participant that is not among
+     *                               them, or the amounts for one add up to more than a
+     *                               float holds
+     */
+    private function adjustmentSums(array $ids, array $adjustments): array
+    {
+        /** @var array<int|string, list<float>> $amounts */
+        $amounts = [];
+        foreach ($ids as $id) {
+            $amounts[$id] = [];
         }
 
         foreach ($adjustments as $adjustment) {
@@ -466,26 +935,18 @@ readonly class StandingsCalculator
             $amounts[$id][] = $adjustment->getAmount();
         }
 
-        $adjusted = [];
-        $any = false;
-        foreach ($standings->getEntries() as $entry) {
-            $id = $entry->getParticipant()->getId();
-            $sum = self::exactSum($amounts[$id]);
+        $sums = [];
+        foreach ($amounts as $id => $list) {
+            $sum = self::exactSum($list);
             if (!is_finite($sum)) {
                 throw new InvalidInputException(
                     "The adjustments of participant {$id} add up to more than a float holds"
                 );
             }
-
-            $any = $any || $sum !== $entry->getAdjustment();
-            $adjusted[] = $entry->withAdjustment($sum);
+            $sums[$id] = $sum;
         }
 
-        if (!$any) {
-            return $standings;
-        }
-
-        return $this->inOrder($adjusted, $standings->getTiers());
+        return $sums;
     }
 
     /**
