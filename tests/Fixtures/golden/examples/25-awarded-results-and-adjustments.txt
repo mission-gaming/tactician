@@ -1,0 +1,84 @@
+# The results of examples/25-awarded-results-and-adjustments.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Results ==
+- R1: aurora-drift => aurora (2-1)
+- R1: basilisk-cinder => cinder (1-2)
+- R2: basilisk-aurora => aurora (0-2)
+- R3: aurora-cinder => aurora (2-1)
+- R3: drift-basilisk => basilisk (0-2)
+- R2: drift-cinder => cinder (0-2) awarded "no-show"
+
+== Table of the series played ==
+1. aurora played=3 wins=3 draws=0 losses=0 value=9 for=6 against=2
+2. cinder played=2 wins=1 draws=0 losses=1 value=3 for=3 against=3
+3. basilisk played=3 wins=1 draws=0 losses=2 value=3 for=3 against=4
+4. drift played=2 wins=0 draws=0 losses=2 value=0 for=1 against=4
+
+== Table with the awarded series ==
+1. aurora played=3 wins=3 draws=0 losses=0 value=9 for=6 against=2
+2. cinder played=3 wins=2 draws=0 losses=1 value=6 for=5 against=3 awarded=1
+3. basilisk played=3 wins=1 draws=0 losses=2 value=3 for=3 against=4
+4. drift played=3 wins=0 draws=0 losses=3 value=0 for=1 against=6 awarded=1
+
+== Cinder, by what the nominal score does ==
+-
+  Nominal score: counts
+  Played: 3
+  Of which awarded: 1
+  Won: 2
+  Ranking value: 6
+  Score difference: 2
+-
+  Nominal score: does not count
+  Played: 3
+  Of which awarded: 1
+  Won: 2
+  Ranking value: 6
+  Score difference: 0
+
+== Table with the adjustment ==
+1. cinder played=3 wins=2 draws=0 losses=1 value=6 for=5 against=3 awarded=1
+2. aurora played=3 wins=3 draws=0 losses=0 value=5 for=6 against=2 earned=9 adjustment=-4
+3. basilisk played=3 wins=1 draws=0 losses=2 value=3 for=3 against=4
+4. drift played=3 wins=0 draws=0 losses=3 value=0 for=1 against=6 awarded=1
+
+== Earned, adjusted and total ==
+-
+  Participant: Cinder
+  Earned: 6
+  Adjustment: 0
+  Total: 6
+-
+  Participant: Aurora
+  Earned: 9
+  Adjustment: -4
+  Total: 5
+-
+  Participant: Basilisk
+  Earned: 3
+  Adjustment: 0
+  Total: 3
+-
+  Participant: Drift
+  Earned: 0
+  Adjustment: 0
+  Total: 0
+
+== The award as plain data ==
+label: no-show
+reason: Drift did not check in before the deadline
+
+== The adjustment as plain data ==
+participant: aurora
+amount: -4
+label: ruling
+reason: Fielded an unregistered substitute

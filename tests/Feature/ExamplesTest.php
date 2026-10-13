@@ -19,6 +19,7 @@ use MissionGaming\Tactician\Repack\ViolationKind;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\TieDecision;
+use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Tests\Support\CiEnvironment;
 use MissionGaming\Tactician\Tests\Support\ExampleResults;
@@ -1082,6 +1083,72 @@ $demonstrations = [
             ->and($results['The reason for that'])->toBe('undecided_tie')
             ->and($tooLate->getReason())->toBe(InvalidConfigurationReason::RoundSuperseded)
             ->and($results['The reason for that one'])->toBe('round_superseded');
+    },
+
+    // An awarded result counts as a win and is the league's to score; an adjustment is shown beside what was
+    // earned and moves the squad it is for down the table
+    '25-awarded-results-and-adjustments' => function (array $results): void {
+        $recorded = exampleArray($results, 'Results');
+        $asPlayed = exampleResult($results, 'Table of the series played', Standings::class);
+        $withAward = exampleResult($results, 'Table with the awarded series', Standings::class);
+        $adjusted = exampleResult($results, 'Table with the adjustment', Standings::class);
+        $ids = static fn(Standings $standings): array => array_map(
+            static fn($entry): string => $entry->getParticipant()->getId(),
+            $standings->getEntries()
+        );
+        $line = static function (Standings $standings, string $id): StandingEntry {
+            foreach ($standings->getEntries() as $entry) {
+                if ($entry->getParticipant()->getId() === $id) {
+                    return $entry;
+                }
+            }
+
+            throw new LogicException("No entry for {$id}.");
+        };
+
+        // Five series were played and the sixth was awarded, to Cinder, with the league's own label
+        expect($recorded)->toHaveCount(6);
+        $awarded = array_values(array_filter($recorded, static fn($result): bool => $result instanceof Result && $result->isAwarded()));
+        expect($awarded)->toHaveCount(1);
+        $series = $awarded[0];
+        expect($series->getWinner()?->getId())->toBe('cinder')
+            ->and(examplePair($series->getEvent()))->toBe('cinder|drift')
+            ->and($series->getAward()?->getLabel())->toBe('no-show')
+            ->and($results['The award as plain data'])->toBe(['label' => 'no-show', 'reason' => 'Drift did not check in before the deadline']);
+
+        // The awarded series is one more played and one more win for Cinder, and its three points
+        expect([$line($asPlayed, 'cinder')->getPlayed(), $line($asPlayed, 'cinder')->getWins(), $line($asPlayed, 'cinder')->getRankingValue()])
+            ->toBe([2, 1, 3.0])
+            ->and([$line($withAward, 'cinder')->getPlayed(), $line($withAward, 'cinder')->getWins(), $line($withAward, 'cinder')->getRankingValue()])
+            ->toBe([3, 2, 6.0])
+            ->and($line($withAward, 'cinder')->getAwarded())->toBe(1)
+            ->and($line($withAward, 'drift')->getLosses())->toBe(3)
+            ->and($ids($withAward))->toBe(['aurora', 'cinder', 'basilisk', 'drift']);
+
+        // The nominal 2-0 moves the score difference by two where it counts, and not at all where it does not
+        expect($line($asPlayed, 'cinder')->getScoreDifference())->toBe(0.0)
+            ->and($results['Cinder, by what the nominal score does'])->toBe([
+                ['Nominal score' => 'counts', 'Played' => 3, 'Of which awarded' => 1, 'Won' => 2, 'Ranking value' => 6.0, 'Score difference' => 2.0],
+                ['Nominal score' => 'does not count', 'Played' => 3, 'Of which awarded' => 1, 'Won' => 2, 'Ranking value' => 6.0, 'Score difference' => 0.0],
+            ]);
+
+        // Aurora earned nine, has four removed and is ordered by five: below Cinder's six
+        $aurora = $line($adjusted, 'aurora');
+        expect([$aurora->getEarnedRankingValue(), $aurora->getAdjustment(), $aurora->getRankingValue()])->toBe([9.0, -4.0, 5.0])
+            ->and([$aurora->getPlayed(), $aurora->getWins()])->toBe([3, 3])
+            ->and($ids($adjusted))->toBe(['cinder', 'aurora', 'basilisk', 'drift'])
+            ->and($results['Earned, adjusted and total'])->toBe([
+                ['Participant' => 'Cinder', 'Earned' => 6.0, 'Adjustment' => 0.0, 'Total' => 6.0],
+                ['Participant' => 'Aurora', 'Earned' => 9.0, 'Adjustment' => -4.0, 'Total' => 5.0],
+                ['Participant' => 'Basilisk', 'Earned' => 3.0, 'Adjustment' => 0.0, 'Total' => 3.0],
+                ['Participant' => 'Drift', 'Earned' => 0.0, 'Adjustment' => 0.0, 'Total' => 0.0],
+            ])
+            ->and($results['The adjustment as plain data'])->toBe([
+                'participant' => 'aurora',
+                'amount' => -4.0,
+                'label' => 'ruling',
+                'reason' => 'Fielded an unregistered substitute',
+            ]);
     },
 ];
 
