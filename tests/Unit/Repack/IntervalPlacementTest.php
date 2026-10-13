@@ -193,6 +193,53 @@ describe('IntervalPlacement', function (): void {
         expect($spent->stoppedASearch())->toBeFalse();
     });
 
+    it('pays for the cost table of a wide session in steps, and gives up a table the budget cannot pay for', function (): void {
+        // Twelve slots and forty-two participants with loads of three to
+        // nine: a row of the table has up to 4,096 masks, each tried with
+        // up to ten runs. The table was not counted in steps at all, so
+        // every session of a request built one, whatever was left of the
+        // budget
+        $lengths = [];
+        for ($i = 0; $i < 42; ++$i) {
+            $lengths[] = 3 + $i % 7;
+        }
+        $offered = 0;
+        $first = static function (array $starts) use (&$offered): bool {
+            ++$offered;
+
+            return true;
+        };
+
+        $small = new StepBudget(100);
+        expect(IntervalPlacement::enumerate(0, $lengths, 12, $small, $first))->toBeFalse()
+            ->and($offered)->toBe(0)
+            ->and($small->stoppedASearch())->toBeTrue();
+
+        $large = new StepBudget(1_000_000);
+        expect(IntervalPlacement::enumerate(0, $lengths, 12, $large, $first))->toBeTrue()
+            ->and($offered)->toBe(1)
+            ->and($large->stoppedASearch())->toBeFalse()
+            // The forty-two steps of the search itself, and the table before them
+            ->and(1_000_000 - $large->stepsLeft())->toBeGreaterThan(1_000);
+    });
+
+    it('charges nothing for the cost table of a session of seven slots', function (): void {
+        // Rows of at most 128 masks, each tried with at most seven runs:
+        // such a session spends the steps it spent before the table was
+        // counted, which is what the reference still spends
+        $lengths = [];
+        for ($i = 0; $i < 30; ++$i) {
+            $lengths[] = 1 + $i % 7;
+        }
+
+        foreach ([0, 1, 5, 29, 30, 31, 200, 5_000] as $steps) {
+            foreach ([0, 1, 4] as $acceptAfter) {
+                expect(traceEnumeration(IntervalPlacement::enumerate(...), 0, $lengths, 7, $steps, $acceptAfter))
+                    ->toBe(traceEnumeration(ReferenceIntervalPlacement::enumerate(...), 0, $lengths, 7, $steps, $acceptAfter));
+            }
+        }
+    });
+
     it('decides a wide session on a spent budget without the cost table', function (): void {
         // Sixteen slots and fourteen participants of mixed loads: the cost
         // table holds a row of masks for every participant, 13 MB in all

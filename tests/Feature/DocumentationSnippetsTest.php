@@ -683,10 +683,11 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             [
                 "Celtic: 3 needed, 2 available, 1 short\n"
                 . "the grid: 4 needed, 2 available, 2 short\n"
+                . "Athletic Bilbao starts at slot 2 of session 0\n"
                 . "Rayo Vallecano starts at slot 2 of session 0\n"
+                . "e04: no_slot_available (nobody in particular)\n"
                 . "e05: participant_over_capacity (Celtic)\n"
                 . "e06: no_slot_available (nobody in particular)\n"
-                . "e07: no_slot_available (nobody in particular)\n"
                 . "3\n0\n0\n",
             ],
             [],

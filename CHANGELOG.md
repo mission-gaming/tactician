@@ -291,6 +291,7 @@ entry on the engine fingerprint.
   stage scored by itself), and `ScheduleScorer`/`ScheduleOptimizer` totals
   that include this metric for one. A schedule whose first round is 1
   measures as before.
+
 - **Mirrored legs alternate: `MirroredLegStrategy` reverses the roles in the
   even-numbered legs only.** It reversed them in every leg after the first,
   so a pair that met three times was split 1:2 and a pair that met four
@@ -455,6 +456,327 @@ entry on the engine fingerprint.
   `docs/design/backtracking-generation.md` ("Roles across legs") and
   `docs/ROADMAP.md`; the usage guide has the contract of each strategy
   ("Leg Strategies and Role Constraints").
+
+- **A repack no longer depends on how its events and participants are
+  named, and contiguity comes ahead of the consolidation weight**
+  ([#49](https://github.com/mission-gaming/tactician/issues/49)). Almost
+  every repack outcome changes: positions, which events are unplaced where
+  some are, the violations, and with them `toArray()` and
+  `RepackOutcome::fingerprint()`. No public signature changes, and the
+  hard rules are as they were: no participant is double-booked, a pin
+  never moves, no slot is filled past its capacity, infeasibility comes
+  back as violations, and the same request gives the same outcome.
+
+  *What was wrong.* The repacker ordered events by `strcmp()` on their
+  ids and every tie-break followed, so the same events on the same grid
+  were packed well under one naming and badly under another. And it chose
+  each event's session by the two weights before it looked at any slot,
+  so it reported gaps where a placement without one existed.
+
+  *What it does now.* The participants are taken in an order made from
+  the request (how many events each has, where it is pinned, whom it
+  plays), and the events by their two participants; an id decides only
+  between events of the same two participants and between participants
+  the request does not tell apart. Before any session is chosen the
+  events are split into rounds (sets that can share a slot) laid on the
+  grid's positions around the pins, and the planner takes them round by
+  round, so that the sessions it fills by the weights are ones that pack.
+  The rounds are also a schedule of their own: they are returned where
+  they place more events than the planned schedule, or as many with fewer
+  gap slots. A schedule that still has a gap is then searched for a
+  placement of as many events with fewer gap slots. Where the result
+  places fewer events than a bound on what any placement can hold, or
+  still has a gap, the events are planned and packed once more in the
+  order of their participants, on the steps the two budgets have left,
+  and that third schedule is returned when it places more events, or as
+  many with fewer gap slots. The last placement step, which moves placed
+  events to make room for an unplaced one, searches further than it did
+  (below). One session's exact search may spend at most a quarter of
+  the steps left, where one that did not end used to take them all from
+  the sessions after it; the table that search starts from is paid for
+  out of the same quarter once a session has eight slots or more.
+
+  *What is and is not promised about ids.* For the same request under
+  other ids, the number of events at every position, the unplaced counts
+  by reason, and every violation but for the names in it are the same;
+  the schedule is the same participant for participant up to a symmetry
+  of the request (where two participants are alike in the request, their
+  ids decide which gets which part of the schedule). The tests hold the
+  repacker to that on random requests with pins, on the small corpus, and
+  on round robins with rounds pinned, among them round robins of 36 and
+  40 with one round played. It does not hold for every request, and
+  there are two known exceptions in which the ids decide and the counts
+  differ. The ordering may do a fixed amount of work, sized for 40
+  participants: in a larger request in which everybody is alike and no
+  two participants can simply be exchanged (a complete round robin of 44
+  or more with one round already played) it stops and falls back to the
+  ids. And two participants that differ, but are equal in everything the
+  ordering compares, are ordered by id: a request built for the purpose
+  (two different graphs of 16 participants with six events each, which
+  the comparison cannot tell apart, side by side) came back with 83 late
+  starts under one naming and 84 under another. None of 10,000 generated
+  requests, each under three other namings, showed either.
+
+  Before and after (0.2.3 against this release, default options):
+
+  | Request | 0.2.3 | Now |
+  |---|---|---|
+  | Events `100` P4 v P3, `101` P4 v P2, `102` P3 v P1, `103` P4 v P1 on sessions of two and four slots, capacity 1 | all four in session 1 (`102`, `103`, `100`, `101`), P3 with a gap | `102`, `103` in session 0 and `100`, `101` in session 1, no gap |
+  | Complete round robin of 10 on three four-slot sessions, capacity 5, ids `1`–`45` | no gap, 4 late starts | clean |
+  | The same with ids `1000`–`1044` | 5 gaps, 8 late starts | clean, the same schedule |
+  | Complete round robin of 24 on six four-slot sessions, ids `1`–`276` | 14 gaps, 6 late starts, budget spent | clean |
+  | Complete round robin of 40 on ten four-slot sessions | 24 gaps, 8 late starts, budget spent | clean |
+  | Complete round robin of 6 on one session of 21 slots, capacity 3 | 4 gaps (8 gap slots) | clean |
+  | 84 season-like requests of 14 to 40 participants (shuffled round robins, sessions of four to six slots, up to 32 pins) | 643 gaps, 908 late starts, 47 without a gap | 77 gaps, 201 late starts, 64 without a gap |
+  | 2,000 small random requests compared with an exhaustive search | 9% with a gap that a placement of as many events avoids; 31% with other counts under other event ids | none; none |
+
+  Every complete round robin of an even number of participants from 6 to
+  40, on sessions of four slots, now comes back with no violation at all
+  under each of three id schemes.
+
+  *What is not better.* The repacker is a set of bounded searches, and
+  another order of events is better on most requests and worse on some.
+  On 11,860 generated requests (random requests of up to 90 events,
+  over-capacity requests, shuffled round robins of 5 to 40 participants
+  with one or two legs, up to 60 pins, sessions of three to six slots,
+  grids from too small to roomy), compared with 0.2.3 request by request:
+
+  | | 0.2.3 | Now |
+  |---|---|---|
+  | Events placed, of 263,445 | 214,288 | 214,357 |
+  | Gap slots | 10,024 | 2,504 |
+  | Late starts | 25,847 | 25,712 |
+  | Requests with no gap | 9,322 | 11,040 |
+
+  No request places fewer events than 0.2.3 did, and 52 place more.
+  Counting events placed first, then gap slots, then late starts, 3,385
+  requests came back better and 958 worse. Of the worse ones, 812 have
+  as many events placed and as many gap slots and only more late starts,
+  which are not compared when one schedule is chosen over another. The
+  other 146 (1.2%) place as many events with more gap slots, 380 more
+  between them; on 63 of them a budget stopped a search. Round robins of
+  an odd number of participants are not improved as those of an even
+  number are: without pins, 142 of them have 376 gap slots where they
+  had 372, and 27 came back with more gap slots against 34 with fewer.
+  A round of an odd number leaves one participant out, so the rounds
+  laid out as they stand have a gap wherever that falls inside a
+  session, and the schedule has to come from the planner. The reference
+  scenario (`tests/Fixtures/repack-scenario.json`) had 7 late starts and
+  has 10, still with no gap, and its mis-pinned variant went from 2 gaps
+  and 6 late starts to no gap and 10 late starts.
+
+  *Events placed come first.* As this change first stood, it placed
+  fewer events than 0.2.3 on 23 of those requests (one fewer on 21 of
+  them), 768 of 770 on a round robin of 40 with ten pins on a grid with
+  exactly as many places as events, and fewer on 13 of 151 larger
+  requests (round robins of 39 and 40 with up to 400 events pinned, of
+  two legs with 100 pinned, and 800 random events, on grids from too
+  small to roomy). Nearly all are requests whose participants have more
+  events than positions, or whose grid has fewer places than events:
+  which events are left out decides whether every place can be filled,
+  and the new order left others out. Three things were added for them.
+  The last placement step searches further: it tries every single
+  exchange before any chain of two, takes two events out for one where
+  both participants of an unplaced event are in the way wherever it
+  goes, puts one more event at a position along an augmenting path
+  among the events there and the unplaced ones, and lets a path move an
+  event that an exchange brought in. The third schedule above starts
+  from another order where the first two leave something to gain. And
+  the limit on the step's own work, which was 500,000 position checks
+  on every request, is now a hundred checks for every event and
+  position, never fewer than 500,000 and never more than 3,000,000: on
+  770 events and 39 positions the fixed limit stopped the step while it
+  was still placing events. With the three, none of the 11,860 requests
+  and none of the 151 places fewer events than 0.2.3 did (the 151 place
+  104,693 events for 104,392, with 9,463 gap slots for 22,166), and the
+  round robin of 40 places all 770. Twenty-nine of those requests are
+  in the tests with the counts 0.2.3 placed
+  (`tests/Fixtures/repack/placed-by-0.2.3.json`), and requests in which
+  a few participants have most of the events are compared with an
+  exhaustive search. It is not a promise for every request: the
+  repacker is still a set of bounded searches from three orders of the
+  events. A second review looked for requests of another shape that do
+  place fewer, and found them where the pins are scattered: of 200
+  round robins of 16 to 40 participants with an eighth to a half of
+  their events pinned at positions drawn at random, on a grid with a
+  place for every event or one position to spare, 11 place fewer events
+  than 0.2.3 did, by one to three (100 place more; 55,265 events for
+  54,946 in all, with 904 gap slots for 1,557). Of 600 larger requests
+  of mixed kinds (round robins of one and two legs, of an odd number,
+  with extra events for a few participants, complete bipartite and
+  random pairings, on grids from short to roomy) two place fewer and 35
+  more, and of 7,500 small ones of the over-capacity kinds none does
+  and 41 place more. On nine of the eleven the last placement step
+  places as many as 0.2.3 or more when it is given forty times its limit
+  of position checks and fifty times its limit of exchanges, in two to
+  five times the time; on the other two (18 participants each) no limit
+  that was tried does. Where
+  the rounds played are pinned as whole rounds, which is what a season
+  under way looks like, none of 320 requests of 20 to 40 participants
+  places fewer and 144 place more.
+
+  *Time* (PHP 8.4, one core, `composer bench`, fastest of three):
+
+  | Benchmark | 0.2.3 | Now |
+  |---|---|---|
+  | 24 participants, even sessions | 162 ms | 5 ms |
+  | 24 participants, uneven sessions with pins | 464 ms | 51 ms |
+  | 40 participants, even sessions | 638 ms | 17 ms |
+  | 40 participants, uneven sessions with pins | 70 ms | 154 ms |
+
+  The last one is slower: 0.2.3 happened to pack that request without a
+  search, and this release spends about 0.1 seconds laying out its
+  rounds around the ten pins. Both return it with no gap. A request
+  that comes back clean costs what its first schedule costs. One that
+  does not is planned a second time and searched further for events to
+  place, and that is where the time goes: the 11,860 requests took 288
+  seconds in all where 0.2.3 took 106, the slowest of them 1.8 seconds
+  (a round robin of 40 with four pins, which took 0.5
+  seconds in 0.2.3). The 151 larger requests took 148 seconds where
+  0.2.3 took 79: a round robin of 40 with pins a median of 0.75 seconds
+  and 3 at most, one of two legs among 40 (1,460 events) a median of 2
+  seconds and 4.8 at most, where 0.2.3 took 0.9 and placed ten events
+  fewer with 18 more gap slots. The 200 round robins with scattered
+  pins named above took 0.58 seconds at the median and 3 at most, where
+  0.2.3 took 0.11 and 1.4, and the slowest request the second review
+  found, two legs among 29 participants (807 events and five pinned, on
+  a grid with 43 more places than events, where 14 events still find no
+  position), 4.1 seconds where 0.2.3 took 0.4 for as many events
+  placed. Requests that 0.2.3 packed without a search are the ones
+  that are slower by the most: a round
+  robin of 40 with 400 of its events pinned took 0.03 seconds and takes
+  0.5 (with 84 gap slots for 157), 800 events between 800 separate
+  pairs of participants 0.12 and 0.35, and 800 events of one participant
+  against three others, of which 60 can be placed and the step cannot
+  prove it, 0.2 and 1.5. Sessions of many slots were the slowest thing
+  a repack did, and still are, though less so: the table a session's
+  exact search starts from grows with two to the power of its slot
+  count, and it is now paid for in steps, so a session whose share of
+  the budget cannot pay for it is packed greedily. A request of 800
+  events among 200 participants, whose sessions do not pack, took 0.3
+  seconds on sessions of 12 slots and takes 0.9, 3.7 seconds at 16 slots
+  and takes 2.6, and 17 seconds and 890 MB at 18 slots and takes 10
+  seconds and 16 MB (with 767 gap slots for 1,336 at 12 slots, 1,104 for
+  1,703 at 16 and 1,551 for 2,037 at 18). The usage guide has the
+  figures.
+
+  *What the step budget governs.* The laying out of the
+  events before any session is chosen, the last placement step, the
+  search for fewer gap slots and the search for the events two
+  over-capacity participants share are not bounded by steps alone (a
+  step of theirs is not a fixed amount of work, and the first spends
+  none): each stops at a limit on its own work. At the default
+  `stepBudget` of 200,000 and at every larger one those limits are
+  fixed, so a larger budget changes nothing there. Below the default
+  each is the same share of its limit as the budget is of the default,
+  and the last placement step never has fewer than one position check
+  for every event and position. So a smaller budget shortens every
+  search of a repack, as it did in 0.2.3, where every search was
+  counted in steps. `RepackOutcome::isBudgetExhausted()` is true when a
+  search reached such a smaller limit, as it is when a step was
+  refused, so false still means that a larger budget gives the same
+  outcome. The order of the participants is the one search no budget
+  shortens: it has a fixed limit of its own (at most about a tenth of a
+  second), left whole so that the ids of a request decide no more at a
+  small budget than at a large one. As this change first stood the
+  limits did not follow the budget, and a budget of one step took 0.27
+  seconds at the median and 1.3 at most on the scattered pins and 2
+  seconds on the slowest request. Measured now (PHP 8.4, no OPcache,
+  one core; median / longest in milliseconds, then events placed), on
+  160 seasons of one and two legs among 20 to 40 participants with a
+  fifth or a half of their rounds played and pinned, on the 200 round
+  robins with scattered pins, and on the slowest request:
+
+  | Requests | `stepBudget` | 0.2.3 | Now |
+  |---|---|---|---|
+  | 160 seasons (71,808 events) | 1 | 23 / 167, 64,465 | 31 / 171, 67,884 |
+  | | 2,000 | 33 / 229, 69,549 | 49 / 259, 69,215 |
+  | | 20,000 | 60 / 351, 69,810 | 72 / 719, 69,919 |
+  | | 200,000 (default) | 78 / 895, 69,823 | 117 / 1,762, 70,008 |
+  | 200 with scattered pins (55,573 events) | 1 | 8 / 35, 48,420 | 17 / 57, 53,072 |
+  | | 2,000 | 34 / 99, 54,477 | 31 / 117, 53,721 |
+  | | 20,000 | 74 / 358, 54,938 | 106 / 511, 54,706 |
+  | | 200,000 (default) | 111 / 1,407, 54,946 | 576 / 3,048, 55,265 |
+  | Two legs among 29 (807 events) | 1 | 34, 751 | 96, 793 |
+  | | 2,000 | 111, 793 | 137, 793 |
+  | | 20,000 | 238, 793 | 504, 793 |
+  | | 200,000 (default) | 398, 793 | 4,086, 793 |
+
+  The budget bounds the work and the longest time falls with it; it is
+  not a dial that makes every repack take a tenth as long at a tenth of
+  the budget, because a search that ended well inside its limit at the
+  default is not shortened by a share of that limit. Seasons of 40 over
+  two legs (1,560 events) take 0.12 seconds at a budget of one step and
+  0.38 at a tenth of the default, where they take 0.79 at the default
+  and took 0.07, 0.18 and 0.30 in 0.2.3; over one leg, 0.04, 0.09 and
+  0.17. Where the pins are scattered, a budget between a hundredth and
+  a tenth of the default places fewer events than 0.2.3 placed at that
+  budget (fewer on 135 of the 200 requests at 2,000 steps and more on
+  12), in about the same time; at one step and at the default it places
+  more. Two more things hold below the default. A smaller budget is a
+  smaller bound and not less time for every request: one whose search
+  the default ends just inside a limit can take longer at a smaller
+  budget, because the phases after a search that was cut short have
+  more to do (the largest difference found: 36 milliseconds at the
+  default and 160 to 180 at half of it). And where two or more
+  participants have more events than positions, the grid's own
+  `CapacityExceeded` (the one with no participant) can state a smaller
+  demand than at the default or be missing, and an unplaced event can
+  have the reason `ParticipantOverCapacity` where the default gives
+  `NoSlotAvailable`; `isBudgetExhausted()` is true for such an outcome,
+  and the over-capacity participants themselves are reported alike at
+  every budget. In 0.2.3 the capacity violations did not depend on the
+  budget. The usage guide ("The Step Budget") has the table by size of
+  season and what no budget shortens.
+
+  *Who is affected.* Everyone who repacks. *What to check:* an outcome
+  kept from an earlier release, or its fingerprint, no longer matches a
+  new run of the same request, so repack again before comparing; code
+  that expected a particular event at a particular position for a fixed
+  request; the number of events placed where the pins are scattered
+  over the grid and not whole rounds, which is lower by one to three on
+  about one such request in twenty and higher on about half (above);
+  time limits set close to what a repack used to take, because a
+  request that does not come back clean takes longer than it did (the
+  slowest found, 4.1 seconds for 0.4), and a `stepBudget` below the
+  default is the way to bound that, for fewer events placed and more
+  gaps as the table shows; and a `stepBudget` already chosen below the
+  default for the time it gave, which now buys other outcomes and other
+  times (the table above).
+  The order of the lists an outcome returns has not changed: assignments
+  and unplaced events by event id, violations by kind and then by
+  participant id and session, over-capacity participants by shortfall and
+  then id. Two ties that the ids used to decide follow the repacker's
+  own order now. Where two over-capacity participants share a dropped
+  event and have the same shortfall, the one it names is the first in
+  that order and no longer the one with the lower id. And of an
+  over-capacity participant's events against opponents with the same
+  room to spare, the one left out is the last in that order and no
+  longer the one with the highest id. Code that predicted either from
+  the ids must read the unplaced list instead.
+
+  Golden fixtures regenerated, each because the positions (and so the
+  fingerprints) changed as described: `tests/Fixtures/golden/repack/round-robin.txt`
+  (every case now has no violation), `repack/scenario.txt` (late starts
+  as above; the mis-pinned variant leaves out event `1009` where it left
+  out `1022`), `repack/budget-stops.txt` (a round robin without pins now
+  gives the same clean outcome at every budget, where a budget of one
+  step left events unplaced; every case with pins has fewer violations
+  than it had at every budget, at the default one 9 for 15 with eight
+  participants, 12 for 37 with twelve, 43 for 76 with sixteen, 51 for
+  124 with twenty and 61 for 193 with twenty-four; and the case of
+  eight participants with pins says at a budget of 1,000 steps that a
+  budget stopped a search, where it said none did, because the third
+  schedule is made on what is left; three of its lines at budgets below
+  the default are what they are because the work limits follow the
+  budget: with eight participants and pins, 10 violations at 1,000
+  steps, and at 30,000 steps the default's outcome with a budget having
+  stopped a search; with twelve and pins, 33 violations at 1,000 steps;
+  no line at the default budget depends on it), `examples/19-repacking-a-season.txt` (the
+  same counts, one late start named for another participant) and
+  `examples/23-application-adapter-and-repack.txt` (three of five events
+  placed as before; `fx10` is placed and `fx09` left out, where it was
+  the other way round).
 
 ### Added
 

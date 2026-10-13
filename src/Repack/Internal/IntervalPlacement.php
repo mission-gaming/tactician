@@ -39,6 +39,24 @@ final class IntervalPlacement
     public const MAX_SLOTS = 20;
 
     /**
+     * What a row of the enumerator's cost table costs: TABLE_ROW_STEPS
+     * steps of the budget for every full TABLE_ROW_ENTRIES entries it
+     * works out. An entry is one XOR and one comparison, far less than a
+     * node of the search the steps were sized for, and a row of fewer
+     * entries than that costs nothing: every row of a session of up to
+     * seven slots (at most 128 masks, each tried with at most seven
+     * runs), so such a session is searched step for step as it was
+     * before the table was counted. A session of twelve slots with many
+     * participants has a table of millions of entries, and that is work
+     * the budget has to bound like any other: at 64 entries a step, the
+     * rows that cost anything are at most 12.8 million entries in a
+     * whole repack at the default budget of 200,000 steps.
+     */
+    private const int TABLE_ROW_ENTRIES = 1_024;
+
+    private const int TABLE_ROW_STEPS = 16;
+
+    /**
      * The boundary-flip mask of an arbitrary slot set.
      *
      * @param array<int> $slots Ascending
@@ -210,10 +228,17 @@ final class IntervalPlacement
         }
 
         // minCost[i][mask]: cheapest total start depth for runs i.. to end
-        // on parity zero, PHP_INT_MAX when unreachable
+        // on parity zero, PHP_INT_MAX when unreachable. A row can hold up
+        // to 2^slotCount masks, so the table is paid for in steps, row by
+        // row, before the search it serves spends any: a table the budget
+        // cannot pay for is given up, and no placement is tried
         $minCost = array_fill(0, $count + 1, []);
         $minCost[$count] = [0 => 0];
         for ($i = $count - 1; $i >= 0; --$i) {
+            $entries = count($minCost[$i + 1]) * count($runMasks[$i]);
+            if (!$budget->consume(intdiv($entries, self::TABLE_ROW_ENTRIES) * self::TABLE_ROW_STEPS)) {
+                return false;
+            }
             $row = [];
             foreach ($minCost[$i + 1] as $mask => $cost) {
                 foreach ($runMasks[$i] as $start => $runMask) {

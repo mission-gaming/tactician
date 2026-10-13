@@ -134,14 +134,14 @@ Positions on the grid: 2
 == First preview: one kickoff per night ==
 assignments: 3
   fx06 => session 1, slot 0, kickoff 
-  fx08 => session 0, slot 0, kickoff 
-  fx09 => session 1, slot 0, kickoff 
+  fx08 => session 1, slot 0, kickoff 
+  fx10 => session 0, slot 0, kickoff 
 unplaced: 2
   fx05 => reason=participant_over_capacity participant=31
-  fx10 => reason=no_slot_available participant=null
+  fx09 => reason=no_slot_available participant=null
 violations: 4
   event_unplaced event_id=fx05 reason=participant_over_capacity participant=31
-  event_unplaced event_id=fx10 reason=no_slot_available participant=null
+  event_unplaced event_id=fx09 reason=no_slot_available participant=null
   capacity_exceeded participant=31 demand=3 capacity=2 shortfall=1
   capacity_exceeded participant=7 demand=2 capacity=1 shortfall=1
 
@@ -163,7 +163,7 @@ violations: 4
   Reason: participant_over_capacity
   Club over capacity: Harbour Athletic
 -
-  Fixture: fx10
+  Fixture: fx09
   Reason: no_slot_available
   Club over capacity: null
 

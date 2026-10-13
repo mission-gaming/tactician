@@ -19,14 +19,42 @@ use MissionGaming\Tactician\Serialization\PlainData;
  * higher consolidation weight accepts a later finish to give participants
  * fuller sessions, and consolidation deliberately dominates by default.
  *
- * The step budget bounds every search the repacker runs (session-load
- * improvement, per-session packing, repair swaps) in elementary search
- * steps — deterministic and reproducible, unlike wall-clock limits. The
- * last placement step, which runs only when an event is still unplaced,
- * gets a budget of its own of the same size, so a repack spends at most
- * twice the budget. When a budget runs out, the repacker reports what is
- * left rather than pretending, and the outcome says so
- * ({@see RepackOutcome::isBudgetExhausted()}).
+ * The step budget bounds the searches that choose sessions and pack
+ * them (session-load improvement, per-session packing, repair swaps) in
+ * elementary search steps — deterministic and reproducible, unlike
+ * wall-clock limits. The search of one session may spend a quarter of
+ * what is left when it starts, the table it needs first included, which
+ * costs steps only when a session has eight slots or more. The steps after
+ * the packing (the last placement step, which runs only when an event is
+ * still unplaced, and the search for fewer gap slots, which runs only
+ * when a gap is left) get a budget of their own of the same size, so a
+ * repack spends at most twice the budget. Where the schedule that comes
+ * of this places fewer events than could be placed, or has a gap, the
+ * events are planned and packed once more in another order, on what the
+ * two budgets have left and no more. When a budget runs out, the
+ * repacker reports what is left rather than pretending, and the outcome
+ * says so ({@see RepackOutcome::isBudgetExhausted()}).
+ *
+ * The budget governs the work that is not counted in steps as well.
+ * Laying the events out before any session is chosen, the last placement
+ * step, the search for fewer gap slots and the search for the events two
+ * over-capacity participants share each stop at a limit on their own
+ * work. At the default budget and above those limits are fixed, so a
+ * larger budget never changes what they do. Below the default each is
+ * the same share of its limit as the budget is of the default (a tenth
+ * of the default budget, a tenth of each limit), so a smaller budget
+ * shortens every search of a repack in proportion; a search cut short
+ * at such a smaller limit counts as one the budget stopped. What no
+ * budget shortens is the work that is not a search and grows with the
+ * request (reading it, the passes over the events, one look at every
+ * position for every event in the layout and the last placement step,
+ * the audit), ordering the participants, which is bounded by a limit of
+ * its own of about a tenth of a second and is left whole so that the
+ * ids of a request decide no more at a small budget than at a large
+ * one, and the planner's scoring of a session of sixteen slots or more,
+ * which is not counted in steps (it is bounded instead: a session of
+ * more than twenty slots is not planned that way). The usage guide
+ * ("The Step Budget") has the measured times.
  *
  * The weights are bounded so that the objective stays an integer. The
  * repacker scores a move as at most earlyFillWeight x (sessions - 1) +
@@ -57,8 +85,11 @@ final readonly class RepackOptions
      *                                 events into fewer sessions (0 disables)
      * @param int $earlyFillWeight Preference for filling earliest sessions first
      *                             (0 disables)
-     * @param int $stepBudget Elementary search steps shared by every phase, and
-     *                        as many again for the last placement step
+     * @param int $stepBudget Elementary search steps shared by the planning and
+     *                        the packing, and as many again for the steps
+     *                        after the packing; below the default it also
+     *                        shortens, in proportion, the searches that
+     *                        count their own work
      * @param bool $throwOnViolations Throw RepackViolationsException instead of
      *                                returning an outcome carrying violations
      *
