@@ -242,6 +242,23 @@ describe('crediting byes in a table', function (): void {
         throw new LogicException('A bye was credited on a scale with no value for a win.');
     });
 
+    // A tier orders a table before any record does, so a bye credited to
+    // an entry of a lower tier does not lift it over a higher one, and the
+    // credited table still has its tiers.
+    it('keeps the tiers of a table, and credits a bye inside a tier only', function (): void {
+        $entry = fn(string $id, float $value): StandingEntry => new StandingEntry(new Participant($id, $id), 1, 0, 0, 0, $value);
+        $table = new Standings(
+            [$entry('first', 3.0), $entry('second', 0.0), $entry('third', 3.0), $entry('fourth', 0.0)],
+            [0, 1, 2, 2]
+        );
+
+        $credited = (new StandingsCalculator())->withByesCredited($table, ['second' => 1, 'fourth' => 2]);
+
+        expect(entrantOrderIds($credited))->toBe(['first', 'second', 'fourth', 'third'])
+            ->and($credited->getTiers())->toBe([0, 1, 2, 2])
+            ->and($credited->getEntries()[2]->getRankingValue())->toBe(6.0);
+    });
+
     it('keeps the credited byes of an entry that is given tiebreaker values', function (): void {
         $entry = (new StandingEntry($this->a, 1, 1, 0, 0, 3.0))->withByes(2, 9.0)->withTiebreakers(['wins' => 1.0]);
 

@@ -239,7 +239,9 @@ readonly class StandingsCalculator
      * The credited table is ordered as calculate() orders one, by ranking
      * value, tiebreakers, score difference and scores-for. Entries that
      * are level after that keep the order they have in the table given.
-     * Without a bye to credit the table is returned as it is.
+     * A table with tiers keeps them: an entry is ordered among the entries
+     * of its own tier only (Standings::getTiers()). Without a bye to
+     * credit the table is returned as it is.
      *
      * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
      *                                     entry in the table is ignored
@@ -281,13 +283,22 @@ readonly class StandingsCalculator
         }
 
         $tiebreakerNames = $this->tiebreakerNames();
+        $tiers = $standings->getTiers();
+        $rows = [];
+        foreach ($credited as $index => $entry) {
+            $rows[] = ['tier' => $tiers[$index] ?? 0, 'entry' => $entry];
+        }
         // usort() is stable: level entries keep the order of the table given
         usort(
-            $credited,
-            static fn(StandingEntry $a, StandingEntry $b): int => EntryOrder::compareFigures($a, $b, $tiebreakerNames)
+            $rows,
+            static fn(array $a, array $b): int => $a['tier'] !== $b['tier']
+                ? $a['tier'] <=> $b['tier']
+                : EntryOrder::compareFigures($a['entry'], $b['entry'], $tiebreakerNames)
         );
 
-        return new Standings($credited);
+        // The tiers never fall down a table, and no entry left its tier, so
+        // they are the tiers of the credited table as they stand
+        return new Standings(array_map(static fn(array $row): StandingEntry => $row['entry'], $rows), $tiers);
     }
 
     /**

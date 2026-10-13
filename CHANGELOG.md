@@ -313,7 +313,8 @@ entry on the engine fingerprint.
   elimination engines use them for the bracket placement.
 - **Byes in a table.** `StandingsCalculator::withByesCredited(Standings
   $standings, array $byes, int $winsPerBye = 1)` adds the value of a win
-  for each bye to a table and puts it in order again;
+  for each bye to a table and puts it in order again (inside each tier,
+  for a table that has tiers);
   `StandingEntry::getByes()` says how many byes an entry's ranking value
   includes, and `StandingEntry::withByes()` builds such an entry. The
   constructor of `StandingEntry` has a tenth parameter, `byes`, default 0.
