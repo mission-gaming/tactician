@@ -33,7 +33,9 @@ namespace MissionGaming\Tactician\Tests\Support;
  *   limit as tested too, and prints nothing that tells it from one a test
  *   failed on. Those processes write a log of their own
  *   ({@see MutationMemoryLimit}); given that log, the summary says how many
- *   there were and leaves them out of the share a failing test noticed.
+ *   there were and leaves them out of the share a failing test noticed. A
+ *   run that left no log had no memory limit, and the summary says that
+ *   instead: "none ended at the limit" would be untrue of it.
  */
 final readonly class MutationReport
 {
@@ -46,7 +48,8 @@ final readonly class MutationReport
      * @param array{tested: int, untested: int, timeout: int, uncovered: int} $progress
      *     The mutations the run had finished, counted in the one character it prints for each as it goes
      * @param array<string, int>|null $memoryLimited Source file => mutations whose test process ended at its
-     *     memory limit, most first; null when the run was read without the log of those processes
+     *     memory limit, most first; null when the run left no log of those processes, which is a run
+     *     whose test processes had no memory limit
      */
     private function __construct(
         public ?string $score,
@@ -60,7 +63,8 @@ final readonly class MutationReport
     /**
      * @param string $output What the run printed
      * @param string|null $memoryLog What its test processes wrote to {@see MutationMemoryLimit::LOG}; an empty
-     *     string for a run that wrote nothing there, which is a run in which no process ended at the limit
+     *     string for a run in which no process ended at the limit, and null for a run that left no such
+     *     file, which is one that was not started through `composer mutation` and had no limit
      */
     public static function fromOutput(string $output, ?string $memoryLog = null): self
     {
@@ -182,9 +186,7 @@ final readonly class MutationReport
                     $this->progress['uncovered'] > 0 ? ", {$this->progress['uncovered']} uncovered" : ''
                 );
             }
-            if ($this->memoryLimited !== null) {
-                $markdown[] = $this->memorySentence() . "\n";
-            }
+            $markdown[] = $this->memorySentence() . "\n";
 
             return implode("\n", $markdown);
         }
@@ -198,9 +200,7 @@ final readonly class MutationReport
         $markdown[] = 'Mutations: ' . implode(', ', $counts) . ".\n";
         $markdown[] = "A tested mutation is a change to the source that made a test fail. An untested one is a change that no test noticed. The score is reported, not enforced: this job does not fail on it.\n";
 
-        if ($this->memoryLimited !== null) {
-            $markdown[] = $this->memorySentence() . "\n";
-        }
+        $markdown[] = $this->memorySentence() . "\n";
 
         // The second figure, always: without a timeout and without a
         // process that ended at its memory limit it is the score
@@ -258,10 +258,15 @@ final readonly class MutationReport
 
     /**
      * How many mutations ended at the memory limit of their test process,
-     * and in which source files. For a run that was read with its memory log.
+     * and in which source files; or that the run had no such limit.
      */
     private function memorySentence(): string
     {
+        if ($this->memoryLimited === null) {
+            return 'The test processes of this run had no memory limit: it left no memory log, which a run started with `composer mutation` does. '
+                . 'A mutation that makes the code allocate without end is then stopped at the time limit only, if the machine lasts that long, and none is counted here.';
+        }
+
         $count = array_sum($this->memoryLimited ?? []);
         if ($count === 0) {
             return 'No mutation ended at the memory limit of its test process.';
