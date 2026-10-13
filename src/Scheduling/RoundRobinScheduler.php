@@ -541,6 +541,10 @@ class RoundRobinScheduler implements SchedulerInterface
      *    that changes neither: a rotated order that step 1 found to fail
      *    for who meets whom and when, whatever the roles, is not laid out
      *    again, unless it is the last one, whose failure is reported.
+     *    Under a leg strategy that draws nothing is left out: a layout
+     *    takes draws for its later legs, and the layouts after one that
+     *    was passed over would have other draws than they have under
+     *    RoundParityRoleAssignment.
      *
      * Any other constraints (a closure, a metadata rule, a class of the
      * caller's, a subclass, a ConstraintSet subclass). The search goes back
@@ -612,8 +616,12 @@ class RoundRobinScheduler implements SchedulerInterface
             $this->startOver($participants, $options, $contribution);
             // A rotated order in which a constraint that reads no position
             // rejected the first event to be rejected fails with any roles:
-            // the round-parity run has the same layouts, and is spared them
-            $this->rotationsThatFailWhateverTheRoles = $this->rotationsWithoutRoles;
+            // the round-parity run has the same layouts, and is spared them.
+            // Not under a leg strategy that draws: a layout that is not laid
+            // out takes no draws for its later legs, and the layouts after
+            // it would then have other draws than RoundParityRoleAssignment
+            // gives them, named.
+            $this->rotationsThatFailWhateverTheRoles = $contribution->requiresRandomization ? [] : $this->rotationsWithoutRoles;
             // The constraints read the events of a candidate's own participants
             // and nothing else, so a rotated order that is gone on from is not
             // analysed here either, as it is not while the balanced roles are

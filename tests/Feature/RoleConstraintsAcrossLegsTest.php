@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\MinimumRestPeriodsConstraint;
 use MissionGaming\Tactician\Constraints\NoRepeatPairings;
 use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
 use MissionGaming\Tactician\DTO\Event;
@@ -1372,6 +1373,56 @@ describe('the default, balanced where possible', function (): void {
 
         expect($rejected($underTheDefault))->toBe($rejected($underRoundParity))
             ->and($rejected($underTheDefault))->not->toBe([]);
+    })->with([[null], [3]]);
+
+    // The same under a leg strategy that draws from a seed. A pair that
+    // may not meet again within more rounds than a leg has fails the
+    // second leg in every rotated order, whatever the roles, and the roles
+    // the strategy proposes there are its draws: round parity, named, lays
+    // every rotated order out, so the last one comes to the draws that the
+    // orders before it left. The round-parity run of the default has to
+    // come to the same ones, so here it is spared no layout: the events
+    // rejected in the failure are named the same way round, in the same
+    // order, as round parity names them.
+    it('fails as round parity fails under shuffled legs drawn from a seed, down to the roles of the rejected events', function (?int $seed): void {
+        $compared = 0;
+
+        foreach ([3, 4, 5, 6] as $size) {
+            foreach ([1, 2, 3, 4, 5, 6] as $strategySeed) {
+                $field = roleSweepField($size);
+                $failure = static function (?RoleAssignmentInterface $roleAssignment) use ($field, $size, $seed, $strategySeed): IncompleteScheduleException {
+                    try {
+                        (new RoundRobinScheduler(
+                            ConstraintSet::create()->add(new MinimumRestPeriodsConstraint($size + 1))->build(),
+                            $seed === null ? null : new Randomizer(new Mt19937($seed))
+                        ))->schedule($field, new RoundRobinOptions(2, new ShuffledLegStrategy(seed: $strategySeed), false, $roleAssignment));
+                    } catch (IncompleteScheduleException $exception) {
+                        return $exception;
+                    }
+
+                    throw new LogicException('The schedule was generated.');
+                };
+                $rejected = static fn(IncompleteScheduleException $exception): array => array_map(
+                    static fn($violation): string => $violation->roundNumber . ': ' . implode(' v ', array_map(
+                        static fn(Participant $participant): string => $participant->getId(),
+                        $violation->rejectedEvent->getParticipants()
+                    )),
+                    $exception->getViolationCollector()->getViolations()
+                );
+
+                $underTheDefault = $failure(null);
+                $underRoundParity = $failure(new RoundParityRoleAssignment());
+
+                expect($rejected($underTheDefault))->toBe($rejected($underRoundParity), "{$size} participants, strategy seed {$strategySeed}")
+                    ->and($rejected($underTheDefault))->not->toBe([])
+                    ->and($underTheDefault->getMessage())->toBe($underRoundParity->getMessage())
+                    ->and($underTheDefault->getActualEventCount())->toBe($underRoundParity->getActualEventCount())
+                    ->and($underTheDefault->getAnalysis()?->toString())->toBe($underRoundParity->getAnalysis()?->toString());
+                ++$compared;
+            }
+        }
+
+        expect($compared)->toBe(24);
     })->with([[null], [3]]);
 
     // Same input, same schedule: from two schedulers, from one scheduler
