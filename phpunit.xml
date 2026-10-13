@@ -35,4 +35,14 @@
             <directory suffix=".php">./src</directory>
         </include>
     </source>
+    <!--
+        The suite peaks a few megabytes either side of PHP's default limit of
+        128M, so that a run under that default ends in a test that has nothing
+        to do with memory, a different one each time. The limit is stated here
+        so that every run has the same one, with room for a run that collects
+        coverage.
+    -->
+    <php>
+        <ini name="memory_limit" value="1G"/>
+    </php>
 </phpunit>

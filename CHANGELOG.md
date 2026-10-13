@@ -1022,6 +1022,12 @@ entry on the engine fingerprint.
   so. None of these changes shows a defect in the library: each removes the
   bound of a loop that is bounded as written.
 
+- The test suite states its own memory limit (`memory_limit` of 1G in
+  `phpunit.xml`). It peaks at about PHP's default of 128M, so under that
+  default a run ended with "Allowed memory size exhausted" in a test that
+  has nothing to do with memory, a different one each time, and passed when
+  run again. Nothing a consumer installs changes.
+
 ## [0.2.3] - 2026-10-13
 
 Three fixes to `ScheduleRepacker` output that was broken. No public
