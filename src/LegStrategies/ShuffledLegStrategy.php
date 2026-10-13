@@ -47,6 +47,15 @@ use stdClass;
  * Either way a draw depends on the draws before it and on nothing about
  * the participants: not their IDs, and not their seeds.
  *
+ * The restart of a seed happens in planLegs() and nowhere else. A class
+ * that extends this one and overrides planLegs() calls the parent's, and a
+ * strategy that wraps this one passes planLegs() on to it; otherwise the
+ * draws of a seed go on from one schedule() call to the next, and the
+ * second schedule is not the first. A clone of a strategy built from a
+ * seed has draws of its own, which start at the seed: neither the clone
+ * nor the original moves the other on or back. A clone of a strategy that
+ * holds a randomizer holds the same randomizer object.
+ *
  * There is no third way: the strategy never makes an unseeded randomizer
  * of its own. A caller who wants roles that differ from run to run passes
  * `new Randomizer()` and has said so.
@@ -87,6 +96,17 @@ readonly class ShuffledLegStrategy implements LegStrategyInterface
                 requirements: InvalidConfigurationException::ROUND_ROBIN_REQUIREMENTS
             );
         }
+    }
+
+    /**
+     * Gives a clone its own run of draws, starting at the seed. Without
+     * this the clone would share the original's holder, and a plan made
+     * on either would start the other's draws again.
+     */
+    public function __clone()
+    {
+        $this->seededDraws = new stdClass();
+        $this->seededDraws->randomizer = null;
     }
 
     /**

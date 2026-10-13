@@ -114,6 +114,30 @@ describe('ShuffledLegStrategy', function (): void {
         expect(shuffledLegReversals($strategy, 32))->toBe($first);
     });
 
+    // A clone that shared the state of the original would start the
+    // original's draws again whenever a plan was made on the clone
+    it('gives a clone draws of its own, which start at the seed', function (): void {
+        $whole = shuffledLegReversals(new ShuffledLegStrategy(seed: 2026), 64);
+
+        $original = new ShuffledLegStrategy(seed: 2026);
+        $firstHalf = shuffledLegReversals($original, 32);
+
+        $clone = clone $original;
+        $clone->planLegs([], 2, ConstraintSet::create()->build());
+        $fromTheClone = shuffledLegReversals($clone, 64);
+
+        expect($clone->seed)->toBe(2026)
+            ->and($fromTheClone)->toBe($whole)
+            ->and([...$firstHalf, ...shuffledLegReversals($original, 32)])->toBe($whole);
+
+        // And the other way: a plan on the original leaves the clone where it is
+        $clone = clone $original;
+        $firstHalfOfTheClone = shuffledLegReversals($clone, 32);
+        $original->planLegs([], 2, ConstraintSet::create()->build());
+
+        expect([...$firstHalfOfTheClone, ...shuffledLegReversals($clone, 32)])->toBe($whole);
+    });
+
     it('draws nothing for an event of the first leg', function (): void {
         $pair = [new Participant('a', 'Amy'), new Participant('b', 'Bob')];
         $context = roundRobinContext($pair, [], legs: 2);

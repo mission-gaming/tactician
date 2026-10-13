@@ -24,7 +24,10 @@ heading **Output change (fix)**.
   call. The same participants, options and seed therefore give the same
   schedule on every call and in every process; the roles are those of a
   strategy handed `new Randomizer(new Xoshiro256StarStar(2026))` and used
-  once, and the engine is part of the output for a seed. The seed is the
+  once, and the engine is part of the output for a seed. The restart is
+  made in `planLegs()` only, so a class that extends the strategy and
+  overrides that method calls the parent's; a clone of a strategy built
+  from a seed has draws of its own, which start at the seed. The seed is the
   public property `ShuffledLegStrategy::$seed` (null for a strategy that
   holds a randomizer). In plain data it is the key `strategy_seed`:
   `RoundRobinOptions::fromArray(['legs' => 2, 'strategy' => 'shuffled',
