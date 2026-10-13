@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\DTO\Schedule;
+use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Tests\Support\CiEnvironment;
 use MissionGaming\Tactician\Tests\Support\GoldenCases;
@@ -210,11 +212,13 @@ describe('Golden output', function (): void {
             'single-elimination.txt',
             'single-elimination-third-place.txt',
             'double-elimination.txt',
+            'elimination-decided-ties.txt',
             'repack/scenario.txt',
             'repack/round-robin.txt',
             'repack/budget-stops.txt',
             'wire/schedule.json',
             'wire/stage-state.json',
+            'wire/stage-state-decided-tie.json',
             'examples/01-basic-round-robin.txt',
             'examples/02-participants-and-metadata.txt',
             'examples/03-iterating-schedules.txt',
@@ -240,6 +244,8 @@ describe('Golden output', function (): void {
             'examples/23-application-adapter-and-repack.txt',
             'examples/24-recording-bracket-results.txt',
             'examples/25-awarded-results-and-adjustments.txt',
+            'examples/26-best-next-placed-qualifiers.txt',
+            'examples/28-ties-settled-by-decision.txt',
         ]);
     });
 
@@ -261,6 +267,28 @@ describe('Golden output', function (): void {
         $payload = goldenWirePayload(GoldenCases::WIRE_STAGE_STATE);
 
         expect(StageState::fromJson($payload)->toJson())->toBe($payload);
+    });
+
+    it('round-trips the stored StageState payload with a decided tie, and an engine reads who advanced from it', function (): void {
+        $payload = goldenWirePayload(GoldenCases::WIRE_STAGE_STATE_DECIDED_TIE);
+        $state = StageState::fromJson($payload);
+
+        expect($state->toJson())->toBe($payload)
+            // The key of the typed decider, and not the metadata key it replaces
+            ->and($payload)->toContain('"decider":{"participants":["5"],"label":"drawn by lot","reason":"Level after the event"}')
+            ->and($payload)->not->toContain('tie_winner');
+
+        // 4 v 5 finished level at 1-1 and 5 advances: 5 meets the top
+        // entrant, who had a bye
+        $next = (new SingleEliminationEngine())->pairNextRound($state);
+        $pairs = array_map(
+            static fn(Event $event): string => implode('-', array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants())),
+            $next->getEvents()
+        );
+
+        expect($state->getResults()[0]->getScores())->toBe([4 => 1, 5 => 1])
+            ->and($state->getResults()[0]->isDraw())->toBeTrue()
+            ->and($pairs)->toContain('1-5');
     });
 });
 
@@ -511,6 +539,37 @@ describe('Golden baseline', function (): void {
         // Every section of the plain file has its counterpart
         expect($compared)->toBe(count($plain))
             ->and(count($sections))->toBe(count($plain) + 2);
+    });
+
+    // If the decider were not read, or read as something else than who
+    // advances, the decided file would not hold these brackets. Read from
+    // the stored files alone: a bracket of level events settled for the
+    // last-named participant is, pairing for pairing and in its standings,
+    // the bracket the last-named participant wins.
+    it('stores brackets of decided level events that are the brackets of the same advancers recorded as wins', function (): void {
+        $decided = goldenSections('elimination-decided-ties.txt');
+        $single = goldenSections('single-elimination.txt');
+        $thirdPlace = goldenSections('single-elimination-third-place.txt');
+        $double = goldenSections('double-elimination.txt');
+
+        expect($decided['single n=8, every event level, the last-named advances'])->toBe($single['n=8, last-named wins'])
+            ->and($decided['single n=8 reseedEachRound, every event level, the last-named advances'])
+            ->toBe($single['n=8 reseedEachRound, last-named wins'])
+            ->and($decided['single n=8 thirdPlace, every event level, the last-named advances'])
+            ->toBe($thirdPlace['n=8 thirdPlace, last-named wins'])
+            ->and($decided['double n=8, every event level, the last-named advances'])->toBe($double['n=8, last-named wins']);
+
+        // Two legs: the pairings of the bracket the same entrants win on
+        // the legs, and a table of other records, because each leg counts
+        // as it was recorded
+        $onLegs = $single['n=5 legsPerTie=2, the first-named of leg 1 wins both legs'];
+        $aLegEach = $decided['single n=5 legsPerTie=2, a leg each, the first-named of leg 1 advances'];
+        $last = count($onLegs) - 1;
+
+        expect(array_slice($aLegEach, 0, $last))->toBe(array_slice($onLegs, 0, $last))
+            ->and($aLegEach[$last])->toStartWith('standings: ')
+            ->and($aLegEach[$last])->not->toBe($onLegs[$last])
+            ->and(count($decided))->toBe(5);
     });
 
     it('stores a double-elimination grand final reset', function (): void {

@@ -9,6 +9,7 @@ use MissionGaming\Tactician\Exceptions\InvariantViolationException;
 use MissionGaming\Tactician\Exceptions\JsonConversionException;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Exceptions\PinConflictException;
+use MissionGaming\Tactician\Exceptions\RejectedDecisionException;
 use MissionGaming\Tactician\Exceptions\RepackViolationsException;
 use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Exceptions\TacticianException;
@@ -201,6 +202,7 @@ describe('everything src/ throws', function () use ($root, $sourceFiles, $source
             JsonConversionException::class,
             NoValidPairingException::class,
             PinConflictException::class,
+            RejectedDecisionException::class,
             RepackViolationsException::class,
             SchedulingException::class,
             TacticianException::class,

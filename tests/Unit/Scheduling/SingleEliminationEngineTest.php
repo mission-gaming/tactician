@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -11,7 +12,6 @@ use MissionGaming\Tactician\Scheduling\EliminationOptions;
 use MissionGaming\Tactician\Scheduling\SingleEliminationEngine;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageState;
-use MissionGaming\Tactician\Stage\TieDecision;
 
 /**
  * A field in seeding order: position 1 is the top entrant.
@@ -386,12 +386,12 @@ describe('SingleEliminationEngine', function (): void {
             ]);
 
             expect(fn() => $engine->isComplete($undecided))
-                ->toThrow(InvalidConfigurationException::class, 'tie_winner');
+                ->toThrow(InvalidConfigurationException::class, "the decider of one leg's result");
 
-            // The decision is recorded as tie_winner metadata on a leg result
+            // The decision is recorded as the decider of a leg result
             $decided = $state->withRoundPlayed($final, [
                 new Result($leg1, $participants[0]),
-                new Result($leg2, $participants[1], [], [TieDecision::TIE_WINNER_KEY => 's2']),
+                new Result($leg2, $participants[1], [], [], null, new Decider(['s2'])),
             ]);
 
             expect($engine->isComplete($decided))->toBeTrue();

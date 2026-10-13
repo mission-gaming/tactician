@@ -418,6 +418,42 @@ entry on the engine fingerprint.
   written `20:00:00`, and a blackout window inside one second was written
   as one that ends when it starts, which `fromArray()` refuses. A time on a
   whole second is written as before by all three (#121, item 6).
+- **A role constraint no longer fails two or more shuffled legs, or (with
+  backtracking) repeated and mirrored legs, although a schedule exists
+  ([#117](https://github.com/mission-gaming/tactician/issues/117)).** The
+  scheduler fixed the role of every later-leg event once and never
+  reconsidered it, and the backtracking search stopped at the first leg it
+  found. Eight participants, two legs and
+  `ConsecutiveRoleConstraint::homeAway(2)` threw an
+  `IncompleteScheduleException` for every seed of a shuffled strategy and
+  for the repeated strategy, with and without `backtracking`. What a
+  schedule now gets depends on what the leg strategy's contract leaves
+  free:
+  - **Shuffled legs: a draw is a preference.** Where the constraints reject
+    an event as drawn, it is given the other role; where they reject both,
+    the roles of earlier events of the later legs are changed until every
+    event is accepted. This runs without `backtracking`, in every layout
+    tried. Nothing is drawn again, so the same seed gives the same schedule.
+  - **Repeated and mirrored legs: the roles are a rule**, and a later-leg
+    event is never reversed. What can change is the first leg. Without
+    `backtracking` its roles are the role assignment's and such a schedule
+    still fails; with `backtracking: true` the search now crosses the
+    boundary of the first leg: for every first leg it finds it searches the
+    roles of all legs with the pairings and rounds held, and a first leg
+    that no roles complete sends it on to the next one, where it used to
+    fail with "the search does not cross leg boundaries". The roles of the
+    circle layout are searched once as well.
+
+  No output changes for an input that succeeded before: every golden
+  fixture is unchanged, and a schedule whose roles the constraints accept
+  as they were is the schedule it was (for shuffled legs, exactly the
+  draw). Inputs that threw now return a schedule. Who is affected: code
+  that relied on the exception for such a configuration, and code that
+  reads the exception messages below. The bounds of the two searches, what
+  was measured and what still fails within them are in
+  `docs/design/backtracking-generation.md` ("Roles across legs") and
+  `docs/ROADMAP.md`; the usage guide has the contract of each strategy
+  ("Leg Strategies and Role Constraints").
 
 - **A repack no longer depends on how its events and participants are
   named, and contiguity comes ahead of the consolidation weight**
@@ -722,6 +758,158 @@ entry on the engine fingerprint.
 
 ### Added
 
+- **A tie in a table can be settled by a decision the application
+  supplies.** Where every figure is level, the order has to come from
+  outside the results, and until now an application could only apply it to
+  the list it passed to the next stage. A table and the rank selectors now
+  take it as a decision: a `DTO\Decider` holding the IDs of the level
+  participants, best first, with an optional label and reason that the
+  library stores and never reads. It records that the order was decided
+  outside the results and never how (#99, ADR 0008).
+  - `Standings::withDecisions()` (new) returns the table with each named
+    tied set in the order of its decision, in the places the set held. The
+    table carries the decisions as the marks of those places:
+    `getDecisions()`, `getDecisionFor()` and `TiedSet::getDecision()` (all
+    new). The constructors of `Standings` and of `TiedSet` take the
+    decisions as a new last parameter, default none. A decided set is
+    still reported by `getTiedSets()`; its decision tells it from one that
+    is undecided.
+  - **A decision never overrides a result.** It orders one whole tied set
+    and nothing else, so no entry passes one it is not level with and none
+    leaves its tier. Anything else is rejected with a
+    `RejectedDecisionException` (new; it extends `\InvalidArgumentException`
+    and carries the marker interface), whose `getReason()` is a
+    `RejectedDecisionReason` (new): `UnknownParticipant`,
+    `SetAlreadyDecided` (two decisions for one set, or two that overlap),
+    `ParticipantsNotLevel` (a participant who is not tied, or the wrong
+    set) and `PartOfLevelSet`. A decision names every member of its set,
+    also where only the first places matter, so that a table has one order
+    whatever is read from it. Where the decisions given together break
+    more than one rule, the first of them in that order is reported,
+    whatever order the decisions are in.
+  - **Decisions are applied last.** `StandingsCalculator::withAdjustments()`
+    and `withByesCredited()` keep the decisions of a table where the change
+    leaves every decided set as it was and refuse the table where it does
+    not (reason `Stale`), so no order is shown as decided for a set the
+    decision was not made for. `Standings::withTiedSetsOrderedBy()`, and a
+    `StageOutcome` built with an entrant list, leave a decided set in the
+    order of its decision.
+  - `RankRangeSelector::withDecisions()` and
+    `BestOfRankSelector::withDecisions()` (new) apply decisions to the
+    orders a selection reads before it reads a rank: a pool's table, the
+    outcome's own table, and the two orders that no table holds, the
+    holders of one rank across pools and a pooled table compared per event
+    played. A set that a decision settled is not refused; an unplayed
+    table still is. This is the third way on from an
+    `UndecidedSelectionException`, beside the two that accept an undecided
+    order, and the one for a tie between two entrants who both go through
+    and take different slots of the next stage.
+  - `RankRangeSelector::selection()` and `BestOfRankSelector::selection()`
+    (new) return what `select()` returns as a `RankSelection` (new), which
+    says which selected places a decision settled and hands back the
+    decision with its label and reason (`isSettledByDecision()`,
+    `getDecisionsFor()`, `getDecisions()`). `select()` returns the list as
+    before. A best-of-rank selection that leaves out the lowest-placed of
+    a larger pool (`PoolComparison::DiscardLowest`) marks every selected
+    place with a decision that settled who is left out, because every
+    holder is compared without those entrants.
+  - `UndecidedSelectionException::isPerEvent()` (new, with a ninth
+    constructor parameter and the context key `per_event`) says that the
+    participants are level per event played and not as a tied set of the
+    table, so that the three kinds of tie can be told apart: one table, the
+    holders of a rank, the table per event played. The message of that
+    case now says "the standings per event played".
+  - Plain data: a decision is a `Decider` array (`participants`, `label`,
+    `reason`). The two rank selectors write the key `decisions`, a list of
+    such arrays without a format version of their own, only when they were
+    given any, and read it back; it is one more optional key of version 1
+    of their forms (ADR 0005). A stage state holds no decision, and no
+    engine reads one: a Swiss round and a re-seeded bracket round are
+    paired from the entrant list where results are level, as before.
+  - The combined table of `StageOutcome::combining()` is calculated
+    afresh and carries no decision of a pool's table; a tie in it takes a
+    decision of its own. A selection that orders entries itself (the
+    holders of a rank, a table per event played) reads the decisions given
+    to the selector and not those of the outcome's own table.
+  - With no decision supplied, every table, selection and array form is
+    what it was. Example: `examples/28-ties-settled-by-decision.php`.
+- **A typed decider for a knockout tie that finishes level.** A `Result`
+  can carry the decision that settled its tie: `new Result($event, null,
+  $scores, decider: new Decider([$participant->getId()], 'label',
+  'reason'))`. `DTO\Decider` (new) holds the IDs of the participants who
+  advance, as a list, and an optional label and an optional reason that
+  the library stores and never reads: it records that the tie was decided
+  outside its results and for whom, and never how. `Result::getDecider()`
+  reads it, and the constructor of `Result` has a sixth parameter,
+  `decider`, default none. It is the one way to settle a level tie for a
+  single event and for two legs alike, in both elimination engines and in
+  every round of them (the losers bracket, the grand final and its reset,
+  and a third-place tie), and `MatchOutcomeSelector` and
+  `TieDecision::advancer()` read it the same way (#98).
+  - The result keeps the scores of the event as played. The decider holds
+    no score and changes none, and `isDraw()` and `getWinner()` say what
+    they said: scores-for, scores-against and the score difference of
+    every table come from the scores of the events only. The table of an
+    elimination outcome counts a decided level single-leg event as a win
+    for the participant who advanced, as it did when the decision was
+    metadata.
+  - A tie between two sends one participant on, so its decider names
+    exactly one. The list is there because the type assumes no number of
+    sides (ADR 0003); a decider that names two participants of such a tie
+    is refused with the reason `InvalidResult`.
+  - A decider settles a level tie and nothing else. One on a tie that its
+    results already decide (an event with a winner, a two-legged tie the
+    leg wins decide) is refused with `InvalidResult`, and so is a decider
+    on each leg of one tie, whether the two agree or not. `Result` itself
+    refuses a decider that names a participant who is not in its event
+    (`InvalidInputException`), when it is built and when it is read from
+    plain data.
+  - In a two-legged tie the decider is on one leg's result. Either leg is
+    read; the second is where it is recorded when the tie ends.
+  - An awarded result that names no winner leaves its tie level, and may
+    carry the decider that settles it: the award says the event was not
+    played, the decider who goes on.
+  - A level tie without a decider leaves its round unresolved, as before,
+    and the engines now say which tie it is: the `UndecidedTie` exception
+    of `isComplete()`, `pairNextRound()` and `getOutcome()` carries the
+    round beside the two participants in its context (`['round' => 1,
+    'participants' => ['p1', 'p4']]`). Two entrants can meet twice in a
+    bracket, in the grand final and its reset, so the pair alone did not
+    say.
+  - A result writes the decider under the key `decider` (`participants`,
+    `label`, `reason`), only when it has one, so the array of every other
+    result is unchanged, an array written by an earlier release loads
+    unchanged, and a stage state that holds decided ties is replayed from
+    `toArray()` and from JSON. `decider` is one more optional key of
+    version 1 of the result form (ADR 0005). A 0.2.x release that reads
+    such an array does not see the key: it finds the tie undecided, and a
+    state it writes back no longer has the decider. An application that may
+    have to go back to 0.2.x records `tie_winner` metadata beside the
+    decider, naming the same participant (see **Deprecated**, "Both at
+    once"), which a 0.2.x release reads.
+  - Only the elimination engines and `MatchOutcomeSelector` read a
+    decider. A standings calculator, the Swiss engine and a round robin
+    carry it with the result and do not read it.
+  - With no decider recorded, every pairing, table and fingerprint is what
+    it was: no existing golden fixture changed but for the wording of one
+    message (see **Changed**). New fixtures:
+    `elimination-decided-ties.txt` (brackets of level ties settled by a
+    decider, which are pairing for pairing the brackets the same advancers
+    win) and `wire/stage-state-decided-tie.json`.
+
+  What this commits the library to: `DTO\Decider` is `@api`, in a stable
+  namespace, so its constructor, `getParticipantIds()`, `getLabel()`,
+  `getReason()`, its plain-data form, `Result::getDecider()` and the sixth
+  parameter of `Result` are kept under the compatibility policy from the
+  release that ships them. The usage guide has it under "Recording a Level Event".
+- **`LegPlanContribution::$rolesArePreferences`**, the fifth constructor
+  parameter, false by default. A leg strategy says with it whether the role
+  it gives a later-leg event is a rule (the scheduler never reverses the
+  event) or a preference (the scheduler reverses an event the constraints
+  reject, and searches the roles of the later legs when both roles are
+  rejected). `ShuffledLegStrategy` says true; the mirrored and the repeated
+  strategy, and every strategy written before the flag existed, say false
+  and are treated as they were.
 - **Awarded results.** A `Result` can say that its event was not played and
   that the application gave it this outcome: `new Result($event, $winner,
   $scores, award: new Award('label', 'reason'))`. `DTO\Award` (new) is the
@@ -888,7 +1076,7 @@ entry on the engine fingerprint.
   `BracketTie::of(Event $event): ?BracketTie` reads it back;
   `BracketTie::winnerRank()` is 1 or 3. The third-place tie has the legs of
   every tie of the bracket and is decided as they are, a level one through
-  its `tie_winner` decision, and the stage is complete when both ties are
+  its decider, and the stage is complete when both ties are
   decided (one of the two decided is `RoundPartiallyResolved`, as in every
   round). The outcome's table then gives places 1 to 4, each in a tier of
   its own: the entrant who advanced from the final, the other finalist, the
@@ -929,9 +1117,85 @@ entry on the engine fingerprint.
   legs for the last round that differs from the rest of the bracket, and
   ties for the places below fourth. The usage guide has it under "A
   third-place tie".
+- **The best of a rank across pools: `BestOfRankSelector`.**
+  `BestOfRankSelector::ofRank(rank: 3, count: 2)` returns the two best of
+  the entrants placed third in their pools, best first: the selection
+  behind "the top two of each pool and the two best third-placed". Who
+  holds the rank is read from each pool's own table; the holders are
+  compared by the figures the combined table of the outcome has for them
+  (ranking value, each tiebreaker of the calculator given to
+  `StageOutcome::combining()`, score difference, scores-for). It has
+  `fromArray()`/`toArray()` (`rank`, `count`, and `comparison` and `ties`
+  when chosen, after `format_version`; an unknown key is refused), states
+  its count as its
+  selection size for `CompositionValidator`, and refuses an undecided
+  selection as `RankRangeSelector` does, with the same two choices to go
+  on (`withTiesInsideSelectionAccepted()`, `withTableOrderAccepted()`). The
+  list is best first and is not placed for a bracket (#94).
+- **`PoolComparison`, the method pools of unequal size are compared by**,
+  an enum with three cases: `RawTotals` (`raw-totals`), `PerEvent`
+  (`per-event`: every figure divided by the events the entrant has played)
+  and `DiscardLowest` (`discard-lowest`: the entrants placed below the size
+  of the smallest pool are left out of each larger pool with their results,
+  and the table is calculated again). `BestOfRankSelector::comparedBy()`
+  takes any of them and `RankRangeSelector::comparedBy()` the first two,
+  for an overall selection; in plain data it is the key `comparison`,
+  written only when a method was chosen. No method is applied by default:
+  see **Changed** for what that means for `overall()`. An adjustment is
+  compared under every method, as part of the ranking value a table is
+  ordered by: `PerEvent` divides that total by the events played (an
+  entrant that has played none is compared by its adjustment as it
+  stands), and `DiscardLowest` applies the adjustments of the entrants it
+  keeps to the table it calculates again. An awarded result is a result
+  under every method.
+- **What the selection across pools adds to existing types.**
+  `StageOutcome` takes the calculator its table was calculated with as a
+  seventh constructor argument (`calculator`, default none) and returns it
+  with `getCalculator()`; `StageOutcome::combining()` passes on the one it
+  is given, and `DiscardLowest` needs it.
+  `UndecidedSelectionException` has an eighth constructor parameter,
+  `rankAcrossPools` (default null), and `getRankAcrossPools()`: the rank
+  whose holders were compared, when the tie is among them; its context then
+  holds the key `rank_across_pools`, and has the six keys it had otherwise.
+  One case of `InvalidConfigurationReason`, `PoolComparisonRequired`
+  (`pool_comparison_required`). New example:
+  `examples/26-best-next-placed-qualifiers.php`.
 
 ### Changed
 
+- **The message of an undecided tie names the decider.** A level
+  elimination tie with no decision is refused as before, with the reason
+  `UndecidedTie`; its message told the caller to record `'tie_winner'`
+  metadata, which is deprecated (see **Deprecated**), and now says to
+  record the decider: "... the event is level, so record who advances as
+  the decider of its result", and for two legs "... the legs are level, so
+  record who advances as the decider of one leg's result". Code that
+  branches on the reason is unaffected; code that matched the message text
+  on `tie_winner` is not, and should branch on the reason. Golden fixture:
+  `examples/24-recording-bracket-results.txt` (that one line; the example
+  now records a decider and prints the results it printed).
+- **Breaking: an overall rank selection across pools of unequal size is
+  refused until a comparison method is chosen.**
+  `RankRangeSelector::overall()` reads the combined table of a pooled
+  outcome, which compares raw totals: across pools of 4 and 3 entrants, 9
+  points from 3 events ranked level with 9 from 2, silently. `select()` now
+  throws an `InvalidConfigurationException` with the reason
+  `PoolComparisonRequired` for an outcome whose pools do not have the same
+  number of entries, with the pool sizes in the context (`pool_sizes`),
+  whatever the tie policy of the selector. Who is affected: every use of
+  `overall()` on a pooled outcome with pools of unequal size. Migration:
+  `RankRangeSelector::overall(1, 8)->comparedBy(PoolComparison::RawTotals)`
+  (`'comparison' => 'raw-totals'` in plain data) selects exactly what the
+  selector selected before; `PoolComparison::PerEvent` compares per event
+  played instead. Before: `RankRangeSelector::overall(1, 8)->select($outcome)`
+  returned eight entrants for pools of 4, 4 and 3. After: it throws, and
+  with `->comparedBy(PoolComparison::RawTotals)` it returns the same eight.
+  Unchanged: an outcome without pools, pools of one size, and every
+  per-group selection (#94). ADR 0006
+  (`docs/adr/0006-pools-of-unequal-size-are-compared-by-a-method-the-caller-names.md`)
+  records the decision, what counts as unequal (the number of entries of
+  the pools' tables, not the events played) and what a comparison per
+  event does and does not do with tiebreaker values.
 - **Breaking: every array a `toArray()` returns starts with
   `format_version`, and a version the library does not know is refused.**
   No serialized form said which release's rules it was written under, so
@@ -942,8 +1206,9 @@ entry on the engine fingerprint.
   `EliminationOptions`, `RepackOptions`), `WinDrawLossRanking`,
   `AwardedResultPolicy`, `TimelineDefinition`, `SessionGrid`,
   `BlackoutRule`, `MinimumRestRule`, `RankRangeSelector`,
-  `MatchOutcomeSelector`, `Participant`, `Round`, `Event`, `Result`,
-  `Award`, `Schedule`, `RoundPairing`, `StageState`, `Adjustment`,
+  `BestOfRankSelector`, `MatchOutcomeSelector`, `Participant`, `Round`,
+  `Event`, `Result`, `Award`, `Schedule`, `RoundPairing`, `StageState`,
+  `Adjustment`,
   `ScheduledEvent`, `ScheduledSchedule`, `RepackOutcome`, `SlotAssignment`,
   `UnplacedEvent` and the five repack violations. Every form is at version
   1 (#53). ADR 0005 (`docs/adr/0005-serialized-forms-carry-a-format-version.md`)
@@ -956,8 +1221,8 @@ entry on the engine fingerprint.
   - **Data stored by 0.2.x loads unchanged.** An array without the key is
     read as version 1, which is the form 0.2.x wrote and, beside it, the
     optional keys this release adds (`strategy_seed`, `seed` in Swiss
-    options, `ties` in a rank range selector, `award` in a result,
-    `adjustments` in a stage state). Nothing is to be
+    options, `ties` and `comparison` in a rank range selector, `award` in a
+    result, `adjustments` in a stage state). Nothing is to be
     migrated and the key need not be added to stored rows.
     `tests/Fixtures/stored-by-0.2/` holds a schedule and a stage state as
     v0.2.0 wrote them and 124 values of every form that is read as v0.2.3
@@ -989,9 +1254,9 @@ entry on the engine fingerprint.
 
   Rolling back: an array written by 0.3.0 is still read by 0.2.x, which
   cannot check the version and ignores the key, as it ignores every key it
-  does not know (`strategy_seed`, `seed` in Swiss options and `ties` in a
-  rank range selector, and before 0.2.2 `role_assignment` and
-  `engine_fingerprint`, are read as left out; so are `award` and
+  does not know (`strategy_seed`, `seed` in Swiss options, and `ties` and
+  `comparison` in a rank range selector, and before 0.2.2 `role_assignment`
+  and `engine_fingerprint`, are read as left out; so are `award` and
   `adjustments`, which means 0.2.x reads an awarded result as one that was
   played and a stage state without its adjustments). The one exception is
   `PotDrawOptions::fromArray()` of 0.2.2 and 0.2.3, which refused unknown
@@ -1130,7 +1395,8 @@ entry on the engine fingerprint.
     `RepackOptions`, `WinDrawLossRanking`, `AwardedResultPolicy`,
     `TimelineDefinition`,
     `SessionGrid`, `BlackoutRule` (the rule and each of its windows),
-    `MinimumRestRule`, `RankRangeSelector` and `MatchOutcomeSelector`.
+    `MinimumRestRule`, `RankRangeSelector`, `BestOfRankSelector` and
+    `MatchOutcomeSelector`.
     `PotDrawOptions` already did; its message is now `Unknown key in pot
     draw options: '<key>'` where it was `Unknown pot draw option`, and its
     reason and context are unchanged.
@@ -1313,6 +1579,93 @@ entry on the engine fingerprint.
   What to change: build the strategy from a seed when the options are to be
   stored. For a strategy built from a seed the array has one more key,
   `strategy_seed`; for the two other strategies it is unchanged.
+- **Breaking: the messages of a round-robin failure in a later leg.** They
+  now say what was searched and whether a bound stopped the search, and
+  only an exhausted backtracking search says "unsatisfiable". Who is
+  affected: code that matches the message text. What to change: match the
+  exception class, and read `getViolationCollector()` and `getAnalysis()`.
+  - With `backtracking: true`, "Backtracking found a first leg, but
+    constraints reject its leg N derivation and the search does not cross
+    leg boundaries" is gone. In its place: "Backtracking search exhausted
+    the search space: the constraints reject the later legs that <strategy>
+    derives from each of the N round decompositions of the first leg it
+    tried, whatever the roles of the first leg, so the configuration is
+    unsatisfiable with this leg strategy"; the same finding with
+    "exhausted its step budget" when the budget ran out first and the
+    search had been through every choice of roles of each first leg it
+    tried, and otherwise "exhausted its step budget … It tried M round
+    decompositions of the first leg: for N the constraints reject the later
+    legs …; for N the search for roles stopped at a bound (20000 rejected
+    roles, or the step budget)", which claims the first only of the first
+    legs it was shown for; "…for N of
+    the M it tried the search for roles stopped at its bound of 20000
+    rejected roles" when a role search was stopped; "…without finding a
+    complete schedule that <role assignment> keeps" when roles exist that
+    the role assignment would change; and "…<strategy> returned no event
+    for A vs B in round R of leg N" for a strategy that returns none.
+  - Without it, for a strategy whose roles are preferences (shuffled
+    legs), "Failed to generate complete schedule for leg 2. Generated N
+    events, expected M…" becomes "Failed to generate complete schedule for
+    leg 2: the constraints reject every choice of roles for the events of
+    leg 2 in this layout…", or "…the search for roles the constraints
+    accept stopped at its bound of 20000 rejected roles…". Both end by
+    naming the option that searches what they did not:
+    "RoundRobinOptions(backtracking: true) searches them".
+  - Where one of these messages names the leg strategy or the role
+    assignment, an anonymous class is named after what it implements
+    (`…\LegStrategyInterface@anonymous`), without the file it is declared
+    in.
+  - Without it, for a strategy whose roles are rules (mirrored and
+    repeated legs, and a strategy of your own that says nothing), the
+    message of a later leg that ends short is what it was, with one
+    sentence added when a `ConsecutiveRoleConstraint` or a
+    `RoleBalanceConstraint` rejected one of its events: "A constraint on
+    roles (<name>) rejected an event of leg N in the roles <strategy> gives
+    it, which follow from the roles of leg 1 by a rule. The roles of leg 1
+    were not searched: RoundRobinOptions(backtracking: true) searches
+    them." Nothing is added when the rejection came from any other
+    constraint: a closure or a class of your own does not say whether it
+    reads roles.
+  - `getActualEventCount()` of such a failure is the number of events in
+    place when the search was furthest on, and the violation collector
+    holds the event it could get no further than, once for each role the
+    constraints rejected.
+- **A failing backtracking search over several legs takes longer.** It
+  used to stop at the first leg it found; it now goes through first legs
+  and roles until its step budget is spent (seconds, where it was
+  milliseconds: up to 6 seconds measured for 16 to 24 participants and
+  three or four legs that no roles satisfy). A configuration that
+  succeeded takes what it took.
+- **A failing schedule of shuffled legs can take longer without
+  backtracking too.** Where it used to fail at the first event the
+  constraints rejected, the roles of the later legs are now searched, in
+  every rotated participant order the scheduler tries (up to 25), each up
+  to the bound of 20,000 rejected roles. That costs most with a constraint
+  set that holds a closure, a metadata rule or a class of your own, which
+  is searched one event at a time: 24 participants and two shuffled legs
+  under a limit of two in a row, beside a closure that closes the second
+  leg to one pairing, failed in 17 seconds before and fail in 49 now (103
+  with four legs); 16 participants in 1.8 seconds before and 14 now.
+  Every such search is bounded by a count and not by time, and the failure
+  names the bound when one stopped it.
+- **A role search uses memory in proportion to the square of the number
+  of events.** It keeps the context of every round it has placed (of every
+  event, with backtracking) to go back to. Who is affected: a schedule of
+  shuffled legs with a constraint set, and a backtracking search over
+  several legs, in a large field. Four shuffled legs under a limit of two
+  in a row take 16 MB for 24 participants, 52 MB for 40 and 120 MB for 56,
+  where 40 participants without constraints take 6 MB; four repeated
+  legs with backtracking take 84 MB for 32 participants. What to check:
+  PHP's `memory_limit` for a field of that size
+  (`docs/design/backtracking-generation.md`, "Bounds").
+- **Constraints and leg strategies are asked more often in a search.** A
+  backtracking search over several legs puts the events of each first leg
+  it finds to the constraints again when it searches the roles, and asks a
+  mirrored, repeated or custom rule strategy again for a later-leg event
+  whenever the search has gone back past it. A strategy of preferences is
+  asked once for each event of a layout, as before. Who is affected: a
+  constraint or a strategy that counts its calls, which the usage guide
+  already excludes for constraints ("What a constraint may rely on").
 - **A timeline whose rounds overlap is rejected.** Nothing checked that the
   slots of a round come before the next round's first slot, so the same
   resource and the same participants could be given two events at one
@@ -1584,8 +1937,52 @@ entry on the engine fingerprint.
   workflow still uses Xdebug, and `composer test-coverage` works with either
   driver as before. Nothing a consumer installs changes.
 
-### Fixed
+### Deprecated
 
+- **The `'tie_winner'` metadata of a result, and
+  `TieDecision::TIE_WINNER_KEY`, which names it.** Who advances from a
+  level elimination tie is recorded as the decider of the result (see
+  **Added**). The metadata key is still read, and decides what it decided
+  before, wherever a level tie has no decider; it is no longer read from
+  `1.0.0`, when the constant is removed and a level tie that carries only
+  the key is undecided.
+  - **What to change.** Where a result is built with `['tie_winner' =>
+    $id]` in its metadata, pass `decider: new Decider([$id])` in its place.
+    Stored results keep loading and keep deciding until `1.0.0`; to move
+    them over, give each result of a level tie that carries the key a
+    `decider` of `['participants' => [$id]]` and remove the key. A
+    two-legged tie is level when its legs are (no leg won, or a leg each),
+    so its two results are read together. The usage guide has the new
+    code and both migrations of stored data, single events and two-legged
+    ties, as executed snippets ("The `tie_winner` metadata key").
+  - **How it is raised.** A metadata key cannot carry an attribute, so the
+    library raises the notice itself: a call that takes an advancer from
+    the key emits one `E_USER_DEPRECATED` notice, whatever the number of
+    ties the key decided in that call, and on every PHP version, PHP 8.3
+    included. Those calls are `isComplete()`, `pairNextRound()` and
+    `getOutcome()` of the two elimination engines,
+    `MatchOutcomeSelector::select()` and `TieDecision::advancer()`. An
+    application that turns every notice into an exception will see them
+    fail until it records deciders. The constant carries the `@deprecated`
+    tag and the `#[\Deprecated]` attribute, as the deprecated methods do,
+    so a use of it is reported by an IDE and PHPStan, and emits a notice of
+    its own from PHP 8.4.
+  - **Where nothing is raised.** A key that is not read: on a result of a
+    tie that its results decide, where it never was read; on a result that
+    is only stored, loaded or counted in a table; and on a tie that carries
+    a decider.
+  - **Where the two differ.** The key on a tie that its results decide was
+    not read and went unnoticed; a decider there is refused
+    (`InvalidResult`). The key could hold any value and was refused only
+    when the engine read one that named nobody in the tie; a decider must
+    name a participant of the event when the result is built.
+  - **Both at once.** A tie that carries a decider is settled by the
+    decider. A `tie_winner` beside it that names the same participant
+    raises nothing, so an application can write both while it changes over;
+    one that names another participant is refused with `InvalidResult`,
+    because the library does not choose between two answers.
+
+### Fixed
 - **A schedule with shuffled legs can be repeated from its configuration.**
   `RoundRobinOptions::fromArray(['strategy' => 'shuffled'])` could not seed
   the strategy it built, so a scheduler with a seeded `Randomizer` gave a

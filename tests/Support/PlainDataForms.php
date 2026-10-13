@@ -9,6 +9,7 @@ use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
 use MissionGaming\Tactician\DTO\Award;
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -35,7 +36,9 @@ use MissionGaming\Tactician\Scheduling\PotDrawOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\SwissOptions;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
+use MissionGaming\Tactician\Stage\BestOfRankSelector;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
+use MissionGaming\Tactician\Stage\PoolComparison;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
@@ -105,6 +108,9 @@ final class PlainDataForms
             ['id' => 'c', 'label' => 'Carol', 'seed' => null, 'metadata' => []],
         ];
         $award = ['label' => 'no-show', 'reason' => 'Bob did not arrive'];
+        $decider = ['participants' => ['b'], 'label' => 'drawn by lot', 'reason' => 'The event finished level'];
+        // The order of a set of level entries, as a rank selector takes it
+        $decision = ['participants' => ['c', 'a', 'b'], 'label' => 'drawn by lot', 'reason' => 'Level on every figure'];
         $adjustment = ['participant' => 'b', 'amount' => -3.0, 'label' => 'deduction', 'reason' => 'a late entry'];
         $window = ['from' => '2026-11-09 00:00', 'to' => '2026-11-17 00:00', 'timezone' => 'Europe/London', 'label' => 'break'];
 
@@ -218,26 +224,67 @@ final class PlainDataForms
             'rank range selector' => [
                 'class' => RankRangeSelector::class,
                 'kind' => self::CONFIGURATION,
-                'keys' => ['mode', 'from', 'to', 'ties'],
-                'sample' => ['mode' => 'per-group', 'from' => 2, 'to' => 3, 'ties' => 'accept-inside-selection'],
+                'keys' => ['mode', 'from', 'to', 'ties', 'comparison', 'decisions'],
+                // An overall selection: a per-group one takes no comparison
+                'sample' => [
+                    'mode' => 'overall',
+                    'from' => 2,
+                    'to' => 3,
+                    'ties' => 'accept-inside-selection',
+                    'comparison' => 'per-event',
+                    'decisions' => [$decision],
+                ],
                 'read' => static fn(array $data, array $registry): object => RankRangeSelector::fromArray(self::stringKeyed($data)),
                 'generate' => static function (Randomizer $random, array $field): object {
                     $from = $random->getInt(1, 8);
                     $to = $from + $random->getInt(0, 8);
 
-                    $selector = match ($random->getInt(0, 2)) {
+                    // An overall selection with no comparison method writes
+                    // no `comparison` key; one that was given either of the
+                    // two it takes writes it
+                    $selector = match ($random->getInt(0, 4)) {
                         0 => RankRangeSelector::overall($from, $to),
-                        1 => RankRangeSelector::perGroup($from, $to),
+                        1 => RankRangeSelector::overall($from, $to)->comparedBy(PoolComparison::RawTotals),
+                        2 => RankRangeSelector::overall($from, $to)->comparedBy(PoolComparison::PerEvent),
+                        3 => RankRangeSelector::perGroup($from, $to),
                         default => RankRangeSelector::topPerGroup($to),
                     };
 
                     // A selector that refuses an undecided order writes no
                     // `ties` key; the other two write theirs
-                    return match ($random->getInt(0, 2)) {
+                    $selector = match ($random->getInt(0, 2)) {
                         0 => $selector,
                         1 => $selector->withTiesInsideSelectionAccepted(),
                         default => $selector->withTableOrderAccepted(),
                     };
+
+                    // One in two was given decisions, which writes the key
+                    // `decisions`; the rest write no such key
+                    return $selector->withDecisions(self::decisions($random, array_values($field)));
+                },
+            ],
+            'best-of-rank selector' => [
+                'class' => BestOfRankSelector::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['rank', 'count', 'comparison', 'ties', 'decisions'],
+                'sample' => ['rank' => 3, 'count' => 2, 'comparison' => 'discard-lowest', 'ties' => 'accept-table-order', 'decisions' => [$decision]],
+                'read' => static fn(array $data, array $registry): object => BestOfRankSelector::fromArray(self::stringKeyed($data)),
+                'generate' => static function (Randomizer $random, array $field): object {
+                    $selector = BestOfRankSelector::ofRank($random->getInt(1, 8), $random->getInt(1, 8));
+
+                    // No method chosen writes no `comparison` key
+                    $compared = $random->getInt(0, 3);
+                    if ($compared > 0) {
+                        $selector = $selector->comparedBy(PoolComparison::cases()[$compared - 1]);
+                    }
+
+                    $selector = match ($random->getInt(0, 2)) {
+                        0 => $selector,
+                        1 => $selector->withTiesInsideSelectionAccepted(),
+                        default => $selector->withTableOrderAccepted(),
+                    };
+
+                    return $selector->withDecisions(self::decisions($random, array_values($field)));
                 },
             ],
             'minimum rest rule' => [
@@ -395,13 +442,14 @@ final class PlainDataForms
             'result' => [
                 'class' => Result::class,
                 'kind' => self::DATA,
-                'keys' => ['event', 'winner', 'scores', 'metadata', 'award'],
+                'keys' => ['event', 'winner', 'scores', 'metadata', 'award', 'decider'],
                 'sample' => [
                     'event' => $event,
                     'winner' => 'a',
                     'scores' => ['a' => 2, 'b' => 1],
                     'metadata' => ['note' => 'x'],
                     'award' => $award,
+                    'decider' => $decider,
                 ],
                 'read' => static fn(array $data, array $registry): object => Result::fromArray(self::stringKeyed($data), $registry),
                 'generate' => static fn(Randomizer $random, array $field): object => self::result($random, self::event($random, $field)),
@@ -413,6 +461,14 @@ final class PlainDataForms
                 'sample' => $award,
                 'read' => static fn(array $data, array $registry): object => Award::fromArray($data),
                 'generate' => static fn(Randomizer $random, array $field): object => self::award($random),
+            ],
+            'decider' => [
+                'class' => Decider::class,
+                'kind' => self::DATA,
+                'keys' => ['participants', 'label', 'reason'],
+                'sample' => $decider,
+                'read' => static fn(array $data, array $registry): object => Decider::fromArray($data),
+                'generate' => static fn(Randomizer $random, array $field): object => self::decider($random, array_values($field)),
             ],
             'adjustment' => [
                 'class' => Adjustment::class,
@@ -515,7 +571,7 @@ final class PlainDataForms
      */
     public static function addedInZeroThree(): array
     {
-        return [Award::class, Adjustment::class, AwardedResultPolicy::class];
+        return [Award::class, Decider::class, Adjustment::class, AwardedResultPolicy::class, BestOfRankSelector::class];
     }
 
     /**
@@ -754,6 +810,46 @@ final class PlainDataForms
     }
 
     /**
+     * A decider for one or more of the participants given, in a drawn
+     * order, with a label, a reason, both or neither. Most name one
+     * participant, as the decider of a tie between two does; one in four
+     * names every participant given, which the type allows.
+     *
+     * @param list<Participant> $participants
+     */
+    private static function decider(Randomizer $random, array $participants): Decider
+    {
+        $order = $random->shuffleArray($participants);
+        $named = $random->getInt(0, 3) === 0 ? $order : [$order[0]];
+
+        return new Decider(
+            array_map(static fn(Participant $participant): string => $participant->getId(), $named),
+            [null, '', 'drawn by lot', 'é 日本'][$random->getInt(0, 3)],
+            [null, 'The event finished level', ''][$random->getInt(0, 2)]
+        );
+    }
+
+    /**
+     * The decisions a rank selector is given: none for one selector in two,
+     * and otherwise one to three, each as decider() draws one. A selector
+     * holds what it is given and checks it against a table only when it
+     * selects, so the decisions need fit no table here.
+     *
+     * @param list<Participant> $participants
+     *
+     * @return list<Decider>
+     */
+    private static function decisions(Randomizer $random, array $participants): array
+    {
+        $decisions = [];
+        for ($i = $random->getInt(0, 1) * $random->getInt(1, 3); $i > 0; --$i) {
+            $decisions[] = self::decider($random, $participants);
+        }
+
+        return $decisions;
+    }
+
+    /**
      * An adjustment for one of the field: a whole amount, a fraction, a
      * zero, an amount JSON writes with an exponent, of either sign.
      *
@@ -773,7 +869,8 @@ final class PlainDataForms
 
     /**
      * A result of the event: a win for either side or a draw, with scores
-     * or without, one in four of them awarded.
+     * or without, one in four of them awarded and one in four of them with
+     * a decider for participants of the event.
      */
     private static function result(Randomizer $random, Event $event): Result
     {
@@ -788,7 +885,8 @@ final class PlainDataForms
                 default => [$second->getId() => $random->getInt(0, 20) / 4 + 0.125],
             },
             self::metadata($random),
-            $random->getInt(0, 3) === 0 ? self::award($random) : null
+            $random->getInt(0, 3) === 0 ? self::award($random) : null,
+            $random->getInt(0, 3) === 0 ? self::decider($random, [$first, $second]) : null
         );
     }
 

@@ -41,14 +41,19 @@ the last one, which is about the library as a whole.
   labels, one- or two-legged ties; re-seeding each round and an optional
   third-place tie for single elimination, and an optional grand-final reset
   for double elimination. An event or a tie that finishes level is decided
-  by naming who advances.
+  by a typed decider on its result, which names who advances and changes no
+  score.
   [Elimination brackets](docs/USAGE.md#elimination-brackets),
   [a third-place tie](docs/USAGE.md#a-third-place-tie),
   [recording a level event](docs/USAGE.md#recording-a-level-event)
 - **Group stages and multi-stage tournaments**, composed from serpentine pools
   and progression selectors. A selection by rank keeps the entrants of one
   pool apart in the bracket it feeds, and is refused where results do not
-  decide who holds a selected place. A declared chain of stages can be
+  decide who holds a selected place, until the application supplies the
+  order as a decision or tells the selector to go on. The best few of one rank across the
+  pools (the two best of those placed third) are selected too, by a
+  comparison the caller names where the pools are not of one size. A
+  declared chain of stages can be
   checked for matching entrant counts before any event exists. [Pools, progression, and multi-stage tournaments](docs/USAGE.md#pools-progression-and-multi-stage-tournaments)
 - **Position decides**: every stage takes its entrants from the order of the
   list it is given, and where results leave two of them level, that order
@@ -85,6 +90,13 @@ the last one, which is about the library as a whole.
   who won it.
   [Results and standings](docs/USAGE.md#results-and-standings),
   [tied sets](docs/USAGE.md#tied-sets)
+- **Ties settled by a decision**: where every figure is level, the application
+  decides the order by its own rule and gives it to the table or to a rank
+  selector as a list of participant IDs, best first, with a label and a
+  reason. The decision orders one whole set of level entries and never
+  overrides a result; the table and the selection mark every place it
+  settled, and a decision that fits no tied set is rejected with a reason.
+  [Settling a tied set by a decision](docs/USAGE.md#settling-a-tied-set-by-a-decision)
 - **Awarded results and adjustments**: a result can be marked as awarded, for
   an event that was not played, and counts for the participant it names; a
   competition chooses whether its nominal score counts and whether it counts
@@ -239,7 +251,7 @@ $table = $outcome->getStandings();
 Single and double elimination (`SingleEliminationEngine`,
 `DoubleEliminationEngine`) drive through the same loop, and group stages
 compose from pools and progression selectors (`PoolDistributor`,
-`RankRangeSelector`, `MatchOutcomeSelector`) — see the
+`RankRangeSelector`, `BestOfRankSelector`, `MatchOutcomeSelector`) — see the
 [usage guide](docs/USAGE.md). Stage state and schedules serialize to JSON
 (`StageState::toJson()`, `$schedule->toJson()`), so platforms persist
 between rounds instead of re-deriving.

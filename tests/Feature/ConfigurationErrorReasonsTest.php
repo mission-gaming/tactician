@@ -254,6 +254,7 @@ describe('the reason of a configuration error', function (): void {
             'UnplayedStage' => 'unplayed_stage',
             'TieAcrossSelection' => 'tie_across_selection',
             'TieWithinSelection' => 'tie_within_selection',
+            'PoolComparisonRequired' => 'pool_comparison_required',
             'RoundOutOfSequence' => 'round_out_of_sequence',
             'EventNotInRound' => 'event_not_in_round',
             'NoRoundRecorded' => 'no_round_recorded',

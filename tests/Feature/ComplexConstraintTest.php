@@ -37,9 +37,10 @@ use Random\Randomizer;
 // pairing has an event in every leg, in one of that leg's rounds; a pairing
 // with no round open to it in some leg has no schedule.
 //
-// One case turned out not to be infeasible. It is kept at the end with the
-// schedule that shows it, and with the behaviour that is wanted marked as
-// not yet there.
+// One case turned out not to be infeasible: a role limit over two shuffled
+// legs. It is kept after these with the schedule that shows it, and the
+// scheduler now finds one (issue #117); the same limit over two repeated
+// legs, and a set that really has no schedule, follow it.
 
 /**
  * @param list<array{string, int|null, array<string, mixed>}> $rows ID suffix, seed and metadata of each participant
@@ -297,10 +298,11 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
             ->and(RoleCounts::leg($witness, 1, 7))->toEqual(RoleCounts::leg($shuffled, 1, 7));
     });
 
-    // What is wanted. The shuffled strategy draws each role of the second
-    // leg once and does not draw again when the constraints reject it, so
-    // generation fails although roles that satisfy the constraints exist
-    // (the test above). A greedy false negative: reported as issue #117.
+    // The reproduction of issue #117. The role a shuffled leg draws for an
+    // event is a preference: where the constraints reject it, the scheduler
+    // takes the other role, and searches the roles of the later legs when
+    // they reject both. The pairings, their rounds and the first leg are
+    // those of the same field without constraints.
     it('schedules the two legs with roles the constraints accept', function (): void {
         $schedule = (new RoundRobinScheduler($this->constraints))->schedule(
             $this->field,
@@ -309,40 +311,179 @@ describe('a limit of two same-role events in a row over two shuffled legs of eig
 
         expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([])
             ->and(RoleCounts::worstStreak($schedule))->toBeLessThanOrEqual(2);
-    })->todo();
 
-    // What happens until then: the failure is loud and typed, and no
-    // incomplete schedule is returned. Seeded, so that the test does not
-    // depend on a draw. (None of 200 seeds drew a schedule when this was
-    // written; five are run here, because each failure builds its full
-    // diagnostic report.)
-    it('fails loudly meanwhile, and never returns part of a schedule', function (): void {
-        for ($seed = 1; $seed <= 5; ++$seed) {
-            $schedule = null;
-            $failure = null;
+        $unconstrained = (new RoundRobinScheduler())->schedule(
+            $this->field,
+            new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937(1))))
+        );
 
-            try {
-                $schedule = (new RoundRobinScheduler($this->constraints))->schedule(
-                    $this->field,
-                    new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(new Randomizer(new Mt19937($seed))))
-                );
-            } catch (IncompleteScheduleException $exception) {
-                $failure = $exception;
-            }
+        expect(RoleCounts::structure($schedule))->toBe(RoleCounts::structure($unconstrained))
+            ->and(RoleCounts::leg($schedule, 1, 7))->toEqual(RoleCounts::leg($unconstrained, 1, 7))
+            // The draws alone break the limit, so roles were changed for it
+            ->and(RoleCounts::worstStreak($unconstrained))->toBeGreaterThan(2);
+    });
 
-            // A schedule, should a seed ever draw one, must be complete and
-            // within the limit; a failure must say how far it got
-            if ($schedule instanceof Schedule) {
-                expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([], "seed {$seed}")
-                    ->and(RoleCounts::worstStreak($schedule))->toBeLessThanOrEqual(2);
+    // Every seed of the issue's forty, held to the limit and to its seed:
+    // the same seed gives the same schedule from a new strategy.
+    it('schedules them for every seed, and the same schedule for the same seed', function (): void {
+        $limit = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build();
+        $schedules = [];
 
-                continue;
-            }
+        for ($seed = 1; $seed <= 40; ++$seed) {
+            $options = static fn(): RoundRobinOptions => new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: $seed));
+            $schedule = (new RoundRobinScheduler($limit))->schedule($this->field, $options());
 
-            expect($failure)->toBeInstanceOf(IncompleteScheduleException::class)
-                ->and($failure?->getExpectedEventCount())->toBe(56)
-                ->and($failure?->getActualEventCount())->toBeGreaterThanOrEqual(28)->toBeLessThan(56)
-                ->and($failure?->getViolationCollector()->hasViolations())->toBeTrue();
+            expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([], "seed {$seed}")
+                ->and(RoleCounts::worstStreak($schedule))->toBeLessThanOrEqual(2)
+                ->and((new RoundRobinScheduler($limit))->schedule($this->field, $options())->toJson())->toBe($schedule->toJson());
+
+            $schedules[$schedule->toJson()] = true;
         }
+
+        // The seed still decides the roles: the search does not flatten
+        // every draw into one schedule
+        expect(count($schedules))->toBeGreaterThan(30);
+    });
+});
+
+// The same limit over two repeated legs of eight. A repeated leg has the
+// roles of the first, so nothing in the second leg is free: what can change
+// is the first leg, and its roles are the role assignment's unless the
+// caller turns the backtracking search on.
+describe('a limit of two same-role events in a row over two repeated legs of eight', function (): void {
+    beforeEach(function (): void {
+        $this->field = array_values(complexConstraintField(array_map(
+            static fn(string $suffix): array => [$suffix, null, []],
+            ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+        )));
+        $this->constraints = ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build();
+    });
+
+    // The count: the first leg of the default roles keeps the limit by
+    // itself, and played twice it does not. The participant order does not
+    // matter to that, so no rotation helps.
+    it('fails without backtracking, because the roles of the first leg are not searched', function (): void {
+        $single = (new RoundRobinScheduler($this->constraints))->schedule($this->field);
+        $twice = (new RoundRobinScheduler())
+            ->schedule($this->field, new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy()));
+
+        expect(RoleCounts::worstStreak($single))->toBe(2)
+            ->and(RoleCounts::leg($twice, 1, 7))->toEqual($single->getEvents())
+            ->and(RoleCounts::worstStreak($twice))->toBe(3);
+
+        $failure = null;
+        try {
+            (new RoundRobinScheduler($this->constraints))
+                ->schedule($this->field, new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy()));
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        expect($failure)->toBeInstanceOf(IncompleteScheduleException::class)
+            ->and($failure?->getMessage())->toContain('leg 2')
+            ->and($failure?->getActualEventCount())->toBeGreaterThanOrEqual(28)->toBeLessThan(56)
+            ->and($failure?->getViolationCollector()->hasViolations())->toBeTrue();
+    });
+
+    it('schedules the two legs with backtracking, the second with the roles of the first', function (): void {
+        $schedule = (new RoundRobinScheduler($this->constraints))->schedule(
+            $this->field,
+            new RoundRobinOptions(legs: 2, strategy: new RepeatedLegStrategy(), backtracking: true)
+        );
+
+        expect(RoundRobinAudit::faults($schedule, $this->field, 2))->toBe([])
+            ->and(RoleCounts::worstStreak($schedule))->toBeLessThanOrEqual(2);
+
+        // Repeated: the second leg is the first again, event for event
+        $second = array_map(
+            static fn(Event $event): array => [
+                ($event->getRound()?->getNumber() ?? 0) - 7,
+                $event->getParticipants()[0]->getId(),
+                $event->getParticipants()[1]->getId(),
+            ],
+            RoleCounts::leg($schedule, 2, 7)
+        );
+        $first = array_map(
+            static fn(Event $event): array => [
+                $event->getRound()?->getNumber() ?? 0,
+                $event->getParticipants()[0]->getId(),
+                $event->getParticipants()[1]->getId(),
+            ],
+            RoleCounts::leg($schedule, 1, 7)
+        );
+
+        expect($second)->toBe($first);
+    });
+});
+
+// A set that no roles satisfy still fails, and says what was searched.
+describe('a pairing with no round open to it in the second of two shuffled legs of eight', function (): void {
+    beforeEach(function (): void {
+        $this->field = array_values(complexConstraintField(array_map(
+            static fn(string $suffix): array => [$suffix, null, []],
+            ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+        )));
+        // Rounds 8 to 14 are the second leg, and Team A meets Team B once
+        // in it whatever the schedule: with every one of those rounds
+        // closed to the pairing in either role, no schedule exists
+        $this->closed = static function (Event $event): bool {
+            $ids = array_map(static fn(Participant $participant): string => $participant->getId(), $event->getParticipants());
+            sort($ids);
+
+            return !($ids === ['team-a', 'team-b'] && ($event->getRound()?->getNumber() ?? 0) >= 8);
+        };
+        $this->constraints = ConstraintSet::create()
+            ->add(ConsecutiveRoleConstraint::homeAway(2))
+            ->custom($this->closed, 'Closed rounds')
+            ->build();
+    });
+
+    it('fails loudly without backtracking, naming the constraint and what was not searched', function (): void {
+        $failure = null;
+        try {
+            (new RoundRobinScheduler($this->constraints))
+                ->schedule($this->field, new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 1)));
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        expect($failure)->toBeInstanceOf(IncompleteScheduleException::class)
+            ->and($failure?->getMessage())->toContain('the constraints reject every choice of roles for the events of leg 2')
+            ->toContain('the roles of leg 1 were not searched')
+            ->and($failure?->getExpectedEventCount())->toBe(56)
+            ->and($failure?->getActualEventCount())->toBeGreaterThanOrEqual(28)->toBeLessThan(56)
+            ->and($failure?->getAnalysis())->not->toBeNull();
+
+        // Both roles of the pairing were put to the constraints, and the
+        // one that rejected them is recorded for each
+        $rejected = array_map(
+            static fn($violation): string => $violation->getConstraintName() . ': '
+                . implode(' v ', array_map(static fn(Participant $participant): string => $participant->getId(), $violation->affectedParticipants)),
+            $failure?->getViolationCollector()->getViolations() ?? []
+        );
+        sort($rejected);
+
+        expect($rejected)->toBe(['Closed rounds: team-a v team-b', 'Closed rounds: team-b v team-a']);
+    });
+
+    it('fails loudly with backtracking, and never returns part of a schedule', function (): void {
+        $failure = null;
+        try {
+            (new RoundRobinScheduler($this->constraints))->schedule(
+                $this->field,
+                new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 1), backtracking: true)
+            );
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        // Eight participants have more first legs than the budget reaches,
+        // so the search cannot call the set unsatisfiable, and does not
+        expect($failure)->toBeInstanceOf(IncompleteScheduleException::class)
+            ->and($failure?->getMessage())->toContain('exhausted its step budget')
+            ->toContain('may be unsatisfiable')
+            ->and(str_contains($failure?->getMessage() ?? '', 'so the configuration is unsatisfiable'))->toBeFalse()
+            ->and($failure?->getActualEventCount())->toBeGreaterThanOrEqual(28)->toBeLessThan(56)
+            ->and($failure?->getPrevious())->toBeInstanceOf(IncompleteScheduleException::class);
     });
 });

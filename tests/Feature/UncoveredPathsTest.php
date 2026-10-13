@@ -353,11 +353,15 @@ describe('a leg strategy that yields no event', function (): void {
             . ' The leg strategy returned no event for 3 of the pairings of the leg.',
         ],
         // The search stops at the first pairing that has no event: the
-        // first event of the leg it found, which pairs the first two of the field
+        // first event of the leg it found, which pairs the first two of
+        // the field, in the first round of the second leg. It tries no
+        // other first leg, because nothing says the strategy would return
+        // an event for one. The strategy is an anonymous class, and is
+        // named without the file it is declared in
         'backtracking allowed' => [
             true,
-            'Backtracking found a first leg, but the leg strategy returned no event for a vs b in leg 2,'
-            . ' and the search does not cross leg boundaries. Change the leg strategy.',
+            'Backtracking found a first leg, but MissionGaming\Tactician\LegStrategies\LegStrategyInterface@anonymous'
+            . ' returned no event for a vs b in round 4 of leg 2.',
         ],
     ]);
 

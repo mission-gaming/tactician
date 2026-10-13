@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Decider;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
@@ -16,8 +17,8 @@ use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
-use MissionGaming\Tactician\Stage\TieDecision;
 use MissionGaming\Tactician\Tests\Support\AwkwardIds;
+use MissionGaming\Tactician\Tests\Support\TieWinnerDeprecation;
 use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\AssertionFailedError;
 use Random\Engine\Mt19937;
@@ -327,31 +328,46 @@ it('resolves double elimination the same way whatever the ids are', function (
 // engine, whose marks on the events are compared with them.
 
 /**
- * Play a single elimination bracket to the end, tie by tie. Who advances
- * from each tie is drawn from a seeded randomizer, and so is how: a
- * single-leg tie is won, or finishes level and names who advances; the
- * legs of a two-legged tie are each won by either side or drawn, and a
- * tie they leave level names who advances on its last leg.
+ * Play a bracket to the end, tie by tie. Who advances from each tie is
+ * drawn from a seeded randomizer, and so is how: a single-leg tie is won,
+ * or finishes level and names who advances; the legs of a two-legged tie
+ * are each won by either side or drawn, and a tie they leave level names
+ * who advances on its last leg.
+ *
+ * A level tie names who advances as the decider of the result, or, with
+ * `$decision` set to 'tie_winner', as the deprecated metadata of that
+ * name: the same draws are made either way, so the two brackets of one
+ * seed are the same bracket recorded in two ways. A caller that asks for
+ * the metadata takes the deprecations the engine raises (see
+ * TieWinnerDeprecation).
  *
  * Every round is checked as it is paired: no entrant is in two ties, a tie
  * has as many events as it has legs, and all of them carry the same mark.
  * The state goes through JSON after every round.
  *
  * @param array<Participant> $field
- * @return array{state: StageState, ties: list<array{round: int, first: string, second: string, advancer: string, mark: BracketTie|null}>}
- *                                                                                                                                 The ties in the order they were paired
+ * @param 'decider'|'tie_winner' $decision How a level tie records who advances
+ * @return array{state: StageState, ties: list<array{round: int, first: string, second: string, advancer: string, mark: BracketTie|null}>, level: int}
+ *                                                                                                                                             The ties in the order they were paired,
+ *                                                                                                                                             and how many of them finished level
  * @throws InvalidConfigurationException When the engine rejects the recorded state
  * @throws JsonConversionException When the state does not survive JSON
  */
-function playBracketTieByTie(SingleEliminationEngine $engine, array $field, int $seed, int $legsPerTie): array
-{
+function playBracketTieByTie(
+    SingleEliminationEngine|DoubleEliminationEngine $engine,
+    array $field,
+    int $seed,
+    int $legsPerTie,
+    string $decision = 'decider'
+): array {
     $randomizer = new Randomizer(new Mt19937($seed));
     $state = StageState::start($field)->withEngineFingerprint($engine->getFingerprint());
     $ties = [];
+    $levelTies = 0;
     $rounds = 0;
 
     while (!$engine->isComplete($state)) {
-        expect(++$rounds)->toBeLessThanOrEqual(count($field), 'The bracket does not come to an end.');
+        expect(++$rounds)->toBeLessThanOrEqual(4 * count($field), 'The bracket does not come to an end.');
         expect($engine->getOutcome($state))->toBeNull();
 
         $pairing = $engine->pairNextRound($state);
@@ -394,12 +410,16 @@ function playBracketTieByTie(SingleEliminationEngine $engine, array $field, int 
                 default => $second,
             };
 
+            $levelTies += $level ? 1 : 0;
             foreach ($legs as $index => $leg) {
+                $decides = $level && $index === count($legs) - 1;
                 $results[] = new Result(
                     $leg,
                     $legWinners[$index],
                     [],
-                    $level && $index === count($legs) - 1 ? [TieDecision::TIE_WINNER_KEY => $advancer->getId()] : []
+                    $decides && $decision === 'tie_winner' ? [TieWinnerDeprecation::KEY => $advancer->getId()] : [],
+                    null,
+                    $decides && $decision === 'decider' ? new Decider([$advancer->getId()]) : null
                 );
             }
 
@@ -421,7 +441,7 @@ function playBracketTieByTie(SingleEliminationEngine $engine, array $field, int 
         $state = StageState::fromJson($state->withRoundPlayed($pairing, $results)->toJson());
     }
 
-    return ['state' => $state, 'ties' => $ties];
+    return ['state' => $state, 'ties' => $ties, 'level' => $levelTies];
 }
 
 /**
@@ -679,7 +699,7 @@ it('resolves a bracket with a third-place tie the same way whatever the ids are'
 })->with(AwkwardIds::dataset());
 
 // Level-event sweeps. A single-leg event may finish level; the application
-// then records who advances as 'tie_winner' metadata on the event's result.
+// then records who advances as the decider of the event's result.
 // Whatever share of a bracket's events finish level, the bracket must hold
 // the structure it holds when every event has a winner, and the participant
 // each level result names must be the one who goes on.
@@ -731,7 +751,7 @@ function playBracketWithLevelEvents(
             $isLevel = $randomizer->getInt(0, 2) > 0 || $everyEventLevel;
 
             $results[] = $isLevel && !$recordAsWins
-                ? new Result($event, null, [], [TieDecision::TIE_WINNER_KEY => $advancer->getId()])
+                ? new Result($event, null, [], [], null, new Decider([$advancer->getId()]))
                 : new Result($event, $advancer);
             $played[] = [$pairing->getRoundNumber(), $first->getId(), $second->getId(), $advancer->getId()];
             $level[] = $isLevel;
@@ -796,7 +816,7 @@ it('holds the bracket structure when single-leg events finish level and name who
     // still a draw that names who advanced, also after JSON.
     foreach (array_values($outcome->getResults()) as $index => $result) {
         expect($result->isDraw())->toBe($level[$index]);
-        expect($result->getMetadataValue(TieDecision::TIE_WINNER_KEY))->toBe($level[$index] ? $played[$index][3] : null);
+        expect($result->getDecider()?->getParticipantIds())->toBe($level[$index] ? [$played[$index][3]] : null);
     }
 
     // The participant each event names advances: they are paired (or sit
@@ -885,3 +905,147 @@ it('holds the bracket structure when single-leg events finish level and name who
     ->with([[2], [3], [4], [5], [6], [7], [8], [9], [12], [16], [17], [32]])
     ->with([['every event'], ['a random subset']])
     ->with([[42], [1337], [20260]]);
+
+// Decider sweeps. The decider of a result and the deprecated 'tie_winner'
+// metadata are two ways to record one fact: who advances from a tie that
+// its results left level. Whatever the bracket, the same draws recorded
+// either way must give the same ties in the same order, the same table and
+// the same selections; and the metadata must say that it is deprecated once
+// for each call of the engine that reads it, however many ties it decided.
+
+/**
+ * @throws InvalidConfigurationException Never: every variant is a valid configuration
+ * @throws UnexpectedValueException When the variant is not one of the eight
+ */
+function deciderSweepEngine(string $variant): SingleEliminationEngine|DoubleEliminationEngine
+{
+    return match ($variant) {
+        'single' => new SingleEliminationEngine(),
+        'single, re-seeded' => new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true)),
+        'single, two legs' => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
+        'single, third place' => new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)),
+        'single, two legs, re-seeded, third place' => new SingleEliminationEngine(
+            new EliminationOptions(legsPerTie: 2, reseedEachRound: true, thirdPlace: true)
+        ),
+        'double' => new DoubleEliminationEngine(),
+        'double, two legs' => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
+        'double, no reset' => new DoubleEliminationEngine(new EliminationOptions(grandFinalReset: false)),
+        default => throw new UnexpectedValueException($variant),
+    };
+}
+
+/**
+ * The table of an outcome as rows of what it orders and shows by: the
+ * participant, the tier, the record, the ranking value and the scores.
+ *
+ * @return list<array{string, int|null, int, int, int, float, float, float}>
+ */
+function deciderSweepTable(StageOutcome $outcome): array
+{
+    $tiers = $outcome->getStandings()->getTiers();
+    $rows = [];
+    foreach (array_values($outcome->getStandings()->getEntries()) as $index => $entry) {
+        $rows[] = [
+            $entry->getParticipant()->getId(),
+            $tiers[$index] ?? null,
+            $entry->getWins(),
+            $entry->getDraws(),
+            $entry->getLosses(),
+            $entry->getRankingValue(),
+            $entry->getScoreFor(),
+            $entry->getScoreAgainst(),
+        ];
+    }
+
+    return $rows;
+}
+
+// 6 field sizes and 2 seeds: 12 brackets for each variant, each played twice.
+it('settles a bracket through the decider as it settles it through the deprecated tie_winner metadata', function (
+    string $variant
+): void {
+    $engine = deciderSweepEngine($variant);
+    $legs = str_contains($variant, 'two legs') ? 2 : 1;
+    $levelTiesOfTheSweep = 0;
+    $ids = fn(array $participants): array => array_map(fn(Participant $participant): string => $participant->getId(), $participants);
+
+    $check = function (int $fieldSize, int $seed) use ($engine, $legs, $ids, &$levelTiesOfTheSweep): void {
+        $field = invariantField($fieldSize);
+
+        // Through the decider: nothing is deprecated, so a notice here
+        // would fail the test
+        $byDecider = playBracketTieByTie($engine, $field, $seed, $legs);
+        $state = $byDecider['state'];
+        $outcome = $engine->getOutcome($state);
+        assert($outcome !== null);
+        $levelTiesOfTheSweep += $byDecider['level'];
+
+        // Through the metadata: the same draws, the same bracket
+        $byMetadata = null;
+        $raisedWhilePlaying = TieWinnerDeprecation::countIn(function () use ($engine, $field, $seed, $legs, &$byMetadata): void {
+            $byMetadata = playBracketTieByTie($engine, $field, $seed, $legs, 'tie_winner');
+        });
+        assert($byMetadata !== null);
+        $legacyState = $byMetadata['state'];
+
+        expect($byMetadata['ties'])->toBe($byDecider['ties'])
+            ->and($byMetadata['level'])->toBe($byDecider['level'])
+            ->and($raisedWhilePlaying > 0)->toBe($byDecider['level'] > 0)
+            ->and(array_map(fn($pairing): array => $pairing->toArray(), $legacyState->getRoundsPlayed()))
+            ->toBe(array_map(fn($pairing): array => $pairing->toArray(), $state->getRoundsPlayed()));
+
+        // The results are the same results, and differ in how the decision
+        // is carried and in nothing else: no score, no winner
+        $decided = 0;
+        foreach ($state->getResults() as $index => $result) {
+            $legacy = $legacyState->getResults()[$index];
+            $named = $result->getDecider()?->getParticipantIds();
+            $decided += $named === null ? 0 : 1;
+
+            expect($legacy->getDecider())->toBeNull()
+                ->and($result->getMetadata())->toBe([])
+                ->and($legacy->getMetadata())->toBe($named === null ? [] : [TieWinnerDeprecation::KEY => $named[0]])
+                ->and($legacy->getWinner()?->getId())->toBe($result->getWinner()?->getId())
+                ->and($legacy->getScores())->toBe($result->getScores())
+                ->and($legacy->getEvent()->toArray())->toBe($result->getEvent()->toArray());
+        }
+        expect($decided)->toBe($byDecider['level']);
+
+        // Each call of the engine that reads the metadata says so once,
+        // however many ties the metadata decided in the bracket
+        $expected = $byDecider['level'] > 0 ? 1 : 0;
+        $legacyOutcome = null;
+        expect(TieWinnerDeprecation::countIn(function () use ($engine, $legacyState, &$legacyOutcome): void {
+            $legacyOutcome = $engine->getOutcome($legacyState);
+        }))->toBe($expected)
+            ->and(TieWinnerDeprecation::countIn(fn(): bool => $engine->isComplete($legacyState)))->toBe($expected);
+        assert($legacyOutcome instanceof StageOutcome);
+
+        // The same table, tier by tier, and the same selections
+        expect(deciderSweepTable($legacyOutcome))->toBe(deciderSweepTable($outcome))
+            ->and(count($legacyOutcome->getStandings()->getTiedSets()))->toBe(count($outcome->getStandings()->getTiedSets()));
+
+        foreach ([MatchOutcomeSelector::winners(), MatchOutcomeSelector::losers()] as $selector) {
+            $selected = null;
+            $raised = TieWinnerDeprecation::countIn(function () use ($selector, $legacyOutcome, &$selected): void {
+                $selected = $selector->select($legacyOutcome);
+            });
+
+            expect($ids($selected ?? []))->toBe($ids($selector->select($outcome)))
+                ->and($raised)->toBeLessThanOrEqual(1);
+        }
+    };
+
+    expect(sweepThirdPlaceCases($variant, [3, 4, 5, 6, 8, 9], [42, 1337], $check))->toBe(12)
+        // The sweep is not of brackets that never needed a decision
+        ->and($levelTiesOfTheSweep)->toBeGreaterThan(5);
+})->with([
+    ['single'],
+    ['single, re-seeded'],
+    ['single, two legs'],
+    ['single, third place'],
+    ['single, two legs, re-seeded, third place'],
+    ['double'],
+    ['double, two legs'],
+    ['double, no reset'],
+]);

@@ -277,6 +277,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         }
     })->with([
         'participant accessors' => ['docs/USAGE.md', '$detailedPlayer->getId()', ["player3\nTeam Alpha\n2\nEurope\n"], []],
+        'role constraints over shuffled and repeated legs' => [
+            'docs/USAGE.md',
+            '$repeatedLeague = $twoInARow->schedule(',
+            ["56 events\nWithout backtracking: no schedule\n56 events\n"],
+            [],
+        ],
         'format versions' => [
             'docs/USAGE.md',
             "echo \$stored['format_version']",
@@ -419,14 +425,62 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         'elimination round labels' => ['docs/USAGE.md', 'echo "{$pairing->getLabel()}\n";', ["quarterfinal\nsemifinal\nfinal\n"], []],
         'a level elimination event that names who advances' => [
             'docs/USAGE.md',
-            '[TieDecision::TIE_WINNER_KEY => $dave->getId()]',
+            'decider: new Decider([$dave->getId()], \'tie-break\', \'Level after the event\')',
             ["Dave v Bob\n"],
             [],
         ],
+        // The result still reads 1-1: the decider changes no score
         'who advanced, read from a level result' => [
             'docs/USAGE.md',
             'TieDecision::advancer([$recorded]',
-            ["drawn, Dave advances\n"],
+            ["drawn, Dave advances\n1-1, decided for dave by tie-break\n"],
+            [],
+        ],
+        'a decider through the JSON of a stage state' => [
+            'docs/USAGE.md',
+            '[$level, $won] = $restored->toArray()[\'results\'];',
+            [
+                '{"participants":["dave"],"label":"tie-break","reason":"Level after the event"}' . "\n"
+                . '{"alice":1,"dave":1}' . "\nno decider\nDave v Bob\n",
+            ],
+            [],
+        ],
+        'a decider on a tie that its results decide refused' => [
+            'docs/USAGE.md',
+            '// Alice won 2-1: there is nothing left to decide',
+            ["invalid_result\n"],
+            ['Paired'],
+        ],
+        'an awarded result that names no winner, settled by its decider' => [
+            'docs/USAGE.md',
+            "award: new Award('double no-show')",
+            ["Dave v Bob\n"],
+            [],
+        ],
+        'a two-legged tie settled by the decider on its second leg' => [
+            'docs/USAGE.md',
+            'decider: new Decider([$heidi->getId()], \'tie-break\')',
+            ["Rank 1: Heidi\nWon the tie: Heidi\n0 tied sets\nScores: 2 for, 2 against\n"],
+            [],
+        ],
+        'the decider in place of the deprecated metadata key' => [
+            'docs/USAGE.md',
+            '$level = new Result($event, null, $scores, decider: new Decider([\'athletic\']));',
+            ["Athletic Bilbao\n"],
+            [],
+        ],
+        'stored results moved from the deprecated metadata key to the decider' => [
+            'docs/USAGE.md',
+            '$migrated = StageState::fromArray($stored);',
+            ['{"participants":["athletic"],"label":null,"reason":null}' . "\nAthletic Bilbao\n"],
+            [],
+        ],
+        // No result keeps the key: not the level tie, which takes the
+        // decider, and not the tie its legs decide, where the key was a stray
+        'stored two-legged ties moved from the deprecated metadata key to the decider' => [
+            'docs/USAGE.md',
+            '$migratedLegs = StageState::fromArray($storedLegs);',
+            ["[] null\n[] [\"redstar\"]\n[] null\n[] null\nRed Star FC v Athletic Bilbao\n"],
             [],
         ],
         // The block is there to show the refusal
@@ -435,7 +489,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             '$engine->pairNextRound($undecided);',
             [
                 'undecided_tie: Invalid scheduler configuration: Elimination events cannot end in a draw (Alice vs Dave)'
-                . ": the event is level, so record who advances as 'tie_winner' metadata on its result\n",
+                . ": the event is level, so record who advances as the decider of its result\n"
+                . '{"round":1,"participants":["alice","dave"]}' . "\n",
             ],
             ['Paired'],
         ],
@@ -644,10 +699,59 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Zed, Yan\n"],
             [],
         ],
+        'a selection settled by a decision is the decided order, with its marks' => [
+            'docs/USAGE.md',
+            '->withDecisions([$decision])->selection($undecided);',
+            ["Bob (drawn)\nZed (drawn)\n"],
+            [],
+        ],
+        'the pool of four drawn 0-0, and the table in the decided order with its marks' => [
+            'docs/USAGE.md',
+            '$decided = $level->withDecisions([$decision]);',
+            [
+                "4 entries level in places 1 to 4\n"
+                . "1. p3 (drawn: Drawn by the committee)\n"
+                . "2. p1 (drawn: Drawn by the committee)\n"
+                . "3. p4 (drawn: Drawn by the committee)\n"
+                . "4. p2 (drawn: Drawn by the committee)\n",
+            ],
+            [],
+        ],
+        // The block is there to show the refusals
+        'a decision for part of a set and one for a participant the table does not have' => [
+            'docs/USAGE.md',
+            "foreach ([['p3', 'p1'], ['p3', 'p1', 'p4', 'p9']] as \$ids)",
+            ["part_of_level_set: p2, p4\nunknown_participant: p9\n"],
+            [],
+        ],
+        'a decision made stale by an adjustment, and the order to apply the two in' => [
+            'docs/USAGE.md',
+            "->withDecisions([new Decider(['p3', 'p4', 'p2'], 'drawn')]);",
+            ["stale\np3, p4, p2, p1\n"],
+            [],
+        ],
         'a table of a list in list order' => [
             'docs/USAGE.md',
             '->withTiedSetsOrderedBy($entrants);',
             ["Dave, Carol, Bob, Alice\n"],
+            [],
+        ],
+        'the two best of the entrants placed third' => [
+            'docs/USAGE.md',
+            'BestOfRankSelector::ofRank(rank: 3, count: 2)->select($stage);',
+            ["Gus, Hal\n"],
+            [],
+        ],
+        'pools of unequal size refused with their sizes until a method is chosen' => [
+            'docs/USAGE.md',
+            'BestOfRankSelector::ofRank(3, 2)->select($unequal);',
+            ["pool_comparison_required: {\"A\":3,\"B\":4,\"C\":4}\n"],
+            [],
+        ],
+        'the best two of pools of unequal size under each comparison method' => [
+            'docs/USAGE.md',
+            '$best = fn (PoolComparison $comparison): string',
+            ["Hal, Ian\nHal, Ian\nGus, Hal\n"],
             [],
         ],
         'a week in days keeps the time of day, a week in hours does not' => [
@@ -718,6 +822,37 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 foreach ($seedFirst as $event) {
                     [$first, $second] = $event->getParticipants();
                     assert($first->getSeed() < $second->getSeed());
+                }
+                PHP,
+        ],
+        // The prose says the shuffled legs keep the limit with roles other
+        // than the draw, and that the repeated legs repeat the first
+        'role constraints over shuffled and repeated legs' => [
+            'docs/USAGE.md',
+            '$repeatedLeague = $twoInARow->schedule(',
+            <<<'PHP'
+                $streak = static function (iterable $events): int {
+                    $last = [];
+                    $run = [];
+                    $worst = 0;
+                    foreach ($events as $event) {
+                        foreach ($event->getParticipants() as $role => $participant) {
+                            $id = $participant->getId();
+                            $run[$id] = ($last[$id] ?? null) === $role ? $run[$id] + 1 : 1;
+                            $last[$id] = $role;
+                            $worst = max($worst, $run[$id]);
+                        }
+                    }
+
+                    return $worst;
+                };
+                assert(count($shuffledLeague) === 56 && $streak($shuffledLeague) === 2);
+                assert(count($repeatedLeague) === 56 && $streak($repeatedLeague) === 2);
+                $drawn = (new RoundRobinScheduler())->schedule($league, new RoundRobinOptions(legs: 2, strategy: new ShuffledLegStrategy(seed: 2026)));
+                assert($streak($drawn) > 2);
+                $events = $repeatedLeague->getEvents();
+                for ($index = 0; $index < 28; ++$index) {
+                    assert($events[$index]->getParticipants() === $events[$index + 28]->getParticipants());
                 }
                 PHP,
         ],
@@ -877,6 +1012,67 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 PHP,
         ],
         'composition chain telescopes' => ['docs/USAGE.md', '->validateChain(16, [', 'assert($violations === []);'],
+        // "Third in their pools: Gus (3 points, score difference -1), Hal (3, -2), Ian (3, -3)", the
+        // comments on the pool of three, and the prose after it: the yield, the plain-data form, what
+        // overall() does with the same pools, and the pair a plain concatenation puts in round 1
+        'the records the best of a rank are chosen from, and what the section says of the selector' => [
+            'docs/USAGE.md',
+            '$best = fn (PoolComparison $comparison): string',
+            <<<'PHP'
+                $third = static function (StageOutcome $stage, string $pool): array {
+                    $entry = array_values($stage->getPool($pool)->getStandings()->getEntries())[2];
+
+                    return [$entry->getParticipant()->getLabel(), $entry->getRankingValue(), $entry->getPlayed(), $entry->getScoreDifference()];
+                };
+                assert($third($stage, 'A') === ['Gus', 3.0, 3, -1.0]);
+                assert($third($stage, 'B') === ['Hal', 3.0, 3, -2.0]);
+                assert($third($stage, 'C') === ['Ian', 3.0, 3, -3.0]);
+                assert($third($unequal, 'A') === ['Gus', 0.0, 2, -2.0]);
+
+                $selector = BestOfRankSelector::ofRank(3, 2)->comparedBy(PoolComparison::DiscardLowest);
+                assert($selector->getSelectionSize() === 2);
+                assert(BestOfRankSelector::ofRank(3, 2)->toArray() === ['format_version' => 1, 'rank' => 3, 'count' => 2]);
+                assert($selector->withTableOrderAccepted()->toArray() === ['format_version' => 1, 'rank' => 3, 'count' => 2, 'comparison' => 'discard-lowest', 'ties' => 'accept-table-order']);
+                try {
+                    BestOfRankSelector::fromArray(['rank' => 3, 'count' => 2, 'method' => 'per-event']);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason()?->value === 'unknown_option_key');
+                }
+
+                // overall() takes the same setting
+                $reasons = [];
+                foreach ([
+                    fn () => RankRangeSelector::overall(1, 4)->select($unequal),
+                    fn () => RankRangeSelector::overall(1, 4)->comparedBy(PoolComparison::DiscardLowest),
+                    fn () => RankRangeSelector::topPerGroup(2)->comparedBy(PoolComparison::RawTotals),
+                ] as $refused) {
+                    try {
+                        $refused();
+                        $reasons[] = null;
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        $reasons[] = $e->getReason()?->value;
+                    }
+                }
+                assert($reasons === ['pool_comparison_required', 'incompatible_options', 'incompatible_options']);
+                // The winners of the pools are level on 9 points from 3 events, or 6 from 2 in pool A
+                $labels = fn (array $list): array => array_map(fn ($p) => $p->getLabel(), $list);
+                assert($labels(RankRangeSelector::overall(1, 2)->comparedBy(PoolComparison::RawTotals)->select($unequal)) === ['Cy', 'Ben']);
+
+                // Appended to the top two, the best thirds are not placed. Here the order happens to keep
+                // the pools apart (Ada of pool A meets Hal of pool B, Ben of pool B meets Gus of pool A)...
+                $firstRound = fn (array $entrants): array => array_map(
+                    fn ($event) => $labels($event->getParticipants()),
+                    (new SingleEliminationEngine())->pairNextRound(StageState::start($entrants))->getEvents()
+                );
+                $placed = $firstRound([...RankRangeSelector::topPerGroup(2)->select($stage), ...$bestThirds]);
+                assert(in_array(['Ada', 'Hal'], $placed, true) && in_array(['Ben', 'Gus'], $placed, true));
+                // ...and with Hal and Ian selected it does not: Ben meets Hal, of his own pool
+                $byRawTotals = BestOfRankSelector::ofRank(3, 2)->comparedBy(PoolComparison::RawTotals)->select($unequal);
+                assert($labels($byRawTotals) === ['Hal', 'Ian']);
+                assert(in_array(['Ben', 'Hal'], $firstRound([...RankRangeSelector::topPerGroup(2)->select($unequal), ...$byRawTotals]), true));
+                PHP,
+        ],
         // "what it writes reads back to the same slot times ... refused by toArray() with the reason NotSerializable"
         'a timeline definition written as plain data' => [
             'docs/USAGE.md',
