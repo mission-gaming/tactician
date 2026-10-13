@@ -190,6 +190,46 @@ describe('BlackoutRule', function (): void {
         expect($violations)->toHaveCount(1);
         expect($violations[0])->toContain('Alice vs Bob vs Carol');
     });
+
+    // The default label counts the windows; it added 1 to the array key,
+    // which is a number only in a list.
+    it('labels an unlabelled window by its position, whatever the array keys are', function (array $keys, array $labels): void {
+        $windows = [];
+        foreach ($keys as $offset => $key) {
+            $windows[$key] = [
+                'from' => utc(sprintf('2026-11-%02d 00:00', 2 * $offset + 1)),
+                'to' => utc(sprintf('2026-11-%02d 00:00', 2 * $offset + 2)),
+            ];
+        }
+
+        expect(array_column((new BlackoutRule($windows))->toArray()['windows'], 'label'))->toBe($labels);
+    })->with([
+        'a list' => [[0, 1], ['blackout 1', 'blackout 2']],
+        'string keys' => [['break', 'closure'], ['blackout 1', 'blackout 2']],
+        'sparse integer keys' => [[3, 7], ['blackout 1', 'blackout 2']],
+        'a numeric and a string key' => [[5, 'closure'], ['blackout 1', 'blackout 2']],
+    ]);
+
+    it('keeps a label that is given beside one that is not, under string keys', function (): void {
+        $rule = new BlackoutRule([
+            'break' => ['from' => utc('2026-11-01 00:00'), 'to' => utc('2026-11-02 00:00'), 'label' => 'international break'],
+            'closure' => ['from' => utc('2026-11-03 00:00'), 'to' => utc('2026-11-04 00:00')],
+        ]);
+
+        expect(array_column($rule->toArray()['windows'], 'label'))->toBe(['international break', 'blackout 2']);
+    });
+
+    it('names the key of a window that does not end after it starts', function (): void {
+        try {
+            new BlackoutRule(['closure' => ['from' => utc('2026-11-02 00:00'), 'to' => utc('2026-11-01 00:00')]]);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getContext()['window'])->toBe('closure');
+
+            return;
+        }
+
+        $this->fail('A window that ends before it starts was accepted.');
+    });
 });
 
 describe('TimelineAssigner with rules', function (): void {

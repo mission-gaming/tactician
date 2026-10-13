@@ -144,6 +144,14 @@ heading **Output change (fix)**.
   property tests now hold every leg strategy, at one to three legs and
   every field size from 2 to 16, to the same schedule on every run from the
   same plain data, with and without a seeded scheduler.
+- **`new BlackoutRule([...])` labels an unlabelled window by its position,
+  not by its array key.** The default label added 1 to the key, so a window
+  under a string key raised a raw `TypeError`, and windows under keys 3 and
+  7 were labelled `blackout 4` and `blackout 8`. The label is now
+  `blackout N` with N the position of the window in the array, counted from
+  1, whatever the keys are. A list is labelled as before, and
+  `BlackoutRule::fromArray()`, which always built a list, is unchanged
+  (#121, items 2 and 16).
 
 ## [0.2.3] - 2026-10-13
 

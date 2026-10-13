@@ -28,9 +28,12 @@ final readonly class BlackoutRule implements TimelineRule
 
     /**
      * The bounds may be in any timezone; they are compared as instants.
-     * Pass a list (keys 0, 1, ...): a window without a label is labelled
-     * `blackout N`, N being its key plus one. Windows may overlap; a kickoff inside two of them
-     * is reported once for each.
+     * The windows are taken in the order of the array and its keys are not
+     * read: a window without a label is labelled `blackout N`, N being its
+     * position in that order, counted from 1 (the second window is
+     * `blackout 2` whether its key is 1, 7 or a string). The one place a key
+     * appears is the context of the exception below, as `window`. Windows
+     * may overlap; a kickoff inside two of them is reported once for each.
      *
      * @param array<array{from: DateTimeImmutable, to: DateTimeImmutable, label?: string}> $windows
      *
@@ -64,7 +67,7 @@ final readonly class BlackoutRule implements TimelineRule
             $normalized[] = [
                 'from' => $window['from']->setTimezone(new DateTimeZone('UTC')),
                 'to' => $window['to']->setTimezone(new DateTimeZone('UTC')),
-                'label' => $window['label'] ?? 'blackout ' . ($index + 1),
+                'label' => $window['label'] ?? 'blackout ' . (count($normalized) + 1),
             ];
         }
 
