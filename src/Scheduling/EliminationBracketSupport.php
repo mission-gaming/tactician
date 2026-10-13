@@ -13,6 +13,7 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\BracketFold;
 use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\TieDecision;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
@@ -75,17 +76,24 @@ trait EliminationBracketSupport
      * Emit the events for one tie: a single event, or two mirrored legs
      * annotated with 'tie_leg' metadata so leg results stay distinguishable.
      *
+     * @param array<string, mixed> $metadata What every event of the tie carries beside its leg;
+     *                                       none by default
      * @return array<Event>
      */
-    private function buildTieEvents(Participant $first, Participant $second, Round $round, int $legsPerTie): array
-    {
+    private function buildTieEvents(
+        Participant $first,
+        Participant $second,
+        Round $round,
+        int $legsPerTie,
+        array $metadata = []
+    ): array {
         if ($legsPerTie === 1) {
-            return [new Event([$first, $second], $round)];
+            return [new Event([$first, $second], $round, $metadata)];
         }
 
         return [
-            new Event([$first, $second], $round, ['tie_leg' => 1]),
-            new Event([$second, $first], $round, ['tie_leg' => 2]),
+            new Event([$first, $second], $round, ['tie_leg' => 1] + $metadata),
+            new Event([$second, $first], $round, ['tie_leg' => 2] + $metadata),
         ];
     }
 
@@ -201,7 +209,7 @@ trait EliminationBracketSupport
 
             $decided[] = $advancer === null
                 ? $result
-                : new Result($event, $advancer, $result->getScores(), $result->getMetadata());
+                : new Result($event, $advancer, $result->getScores(), $result->getMetadata(), $result->getAward());
         }
 
         return $decided;
@@ -245,17 +253,26 @@ trait EliminationBracketSupport
      * leaves two of them level, the position in the entrant list decides.
      * Participants the bracket did not place share a last tier.
      *
+     * The adjustments of the stage are in the ranking values, and each
+     * entry shows its own as a figure. Like every record, an adjustment
+     * orders entrants inside a tier and moves nobody from one tier to
+     * another: who advanced is decided by the ties.
+     *
      * @param array<Participant> $entrants Every participant of the stage, in list order
      * @param array<Result> $results The results the records are computed from
      * @param array<int|string, int> $placement The tier of each placed participant by ID, 0 best
+     * @param array<Adjustment> $adjustments The adjustments recorded on the stage state
      */
     private function placementStandings(
         StandingsCalculator $calculator,
         array $entrants,
         array $results,
-        array $placement
+        array $placement,
+        array $adjustments = []
     ): Standings {
-        $table = $calculator->calculate($entrants, $results)->withTiedSetsOrderedBy($entrants);
+        $table = $calculator
+            ->withAdjustments($calculator->calculate($entrants, $results), $adjustments)
+            ->withTiedSetsOrderedBy($entrants);
 
         $unplaced = $placement === [] ? 0 : max($placement) + 1;
         $rows = [];
