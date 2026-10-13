@@ -19,6 +19,9 @@ use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
+use MissionGaming\Tactician\Standings\EntryOrder;
+use MissionGaming\Tactician\Standings\StandingEntry;
+use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use Override;
@@ -36,10 +39,17 @@ use Random\Randomizer;
  * goes to whichever of the two has been first-named less often (to the
  * lower-placed one when they are level).
  *
- * Byes recorded on the state are credited as wins when computing the
- * pairing order (the Swiss convention), so a bye recipient is paired among
- * the winners in the following round even though no Result exists for the
- * bye.
+ * Byes recorded on the state are credited as wins (the Swiss convention),
+ * so a bye recipient is paired among the winners in the following round
+ * even though no Result exists for the bye. The credit is part of the one
+ * table the engine builds: the order a round is paired from and the table
+ * of the outcome are the same table.
+ *
+ * Where no result separates two participants, their position in the
+ * participant list of the state decides: the active participants in the
+ * order the stage was started with. The first round pairs position 1 with
+ * 2 and 3 with 4, and its bye goes to the last position. No seed
+ * attribute, label or ID is read.
  *
  * Withdrawals are supported via StageState::withoutParticipant(): the
  * participant leaves the active list, and their recorded pairings and
@@ -184,7 +194,6 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         $this->validateParticipants($participants);
 
         $roundNumber = $state->getNextRoundNumber();
-        $results = $state->getResults();
 
         // Include withdrawn participants referenced by results so their games
         // still count toward standings, then keep only active participants
@@ -194,15 +203,11 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             $activeIds[$participant->getId()] = true;
         }
 
-        $standings = $this->standingsCalculator->calculate(
-            $state->getAllSeenParticipants(),
-            $results
-        );
         $activeEntries = array_values(array_filter(
-            $standings->getEntries(),
+            $this->table($state)->getEntries(),
             fn($entry) => isset($activeIds[$entry->getParticipant()->getId()])
         ));
-        $orderedParticipants = $this->orderForPairing($activeEntries, $state->getByeIds());
+        $orderedParticipants = $this->orderForPairing($activeEntries, $state->getAllSeenParticipants());
 
         // Repeat avoidance and home balancing read the recorded pairings,
         // not the results, so rounds recorded without results still count.
@@ -271,10 +276,17 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * Standings cover every participant the stage has seen, including
      * withdrawn ones - their played games remain part of the record.
      *
-     * Byes are not credited here: the standings count recorded results
-     * only, and the outcome lists the byes beside them.
+     * The standings are the table the rounds were paired from, so a bye
+     * counts in them as it counts for pairing: as a win in the ranking
+     * value of the participant who had it. StandingEntry::getByes() says
+     * how many byes an entry's ranking value includes; played, wins, draws
+     * and losses count results only, and the outcome lists the byes beside
+     * the table. Entries that no result separates are in the order of the
+     * participant list (Standings::getTiedSets() reports them).
      *
-     * @throws InvalidConfigurationException When the state is stamped with another engine's fingerprint
+     * @throws InvalidConfigurationException When the state is stamped with another engine's
+     *                                       fingerprint, or a bye is recorded and the ranking
+     *                                       strategy is not a WinDrawLossRanking
      */
     #[Override]
     public function getOutcome(StageState $state): ?StageOutcome
@@ -283,17 +295,41 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
             return null;
         }
 
-        $standings = $this->standingsCalculator->calculate(
-            $state->getAllSeenParticipants(),
-            $state->getResults()
-        );
-
         return new StageOutcome(
-            $standings,
+            $this->table($state),
             $state->getResults(),
             $state->getByeCounts(),
-            $state->getLastRound()
+            $state->getLastRound(),
+            [],
+            $state->getAllSeenParticipants()
         );
+    }
+
+    /**
+     * The table of the stage as recorded: the one every round is paired
+     * from and the one the outcome carries.
+     *
+     * The standings calculator computes it from the results. Each recorded
+     * bye is then credited as a win (the Swiss convention), which is only
+     * meaningful under a win/draw/loss ranking: anything else fails loudly
+     * rather than guessing what a win is worth on an unknown scale. Last,
+     * entries that no result separates are put in the order of the
+     * participant list: the active participants as listed, then those who
+     * have withdrawn. No seed attribute, label or ID decides an order.
+     *
+     * @throws InvalidConfigurationException When a bye is recorded and the ranking strategy is not
+     *                                       a WinDrawLossRanking
+     */
+    private function table(StageState $state): Standings
+    {
+        $entrants = $state->getAllSeenParticipants();
+
+        return $this->standingsCalculator
+            ->withByesCredited(
+                $this->standingsCalculator->calculate($entrants, $state->getResults()),
+                $state->getByeCounts()
+            )
+            ->withTiedSetsOrderedBy($entrants);
     }
 
     /**
@@ -351,61 +387,71 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
     }
 
     /**
-     * Order participants for pairing: standings order, with previous byes
-     * credited as wins (the Swiss convention) so bye recipients pair among
-     * the winners, and - when a randomizer is configured - shuffled within
-     * each score group (see groupLevelRankings() for what level means).
+     * Order participants for pairing: the order of the table (see
+     * table(): byes credited as wins, so bye recipients pair among the
+     * winners, and level entries in list order) and - when a randomizer is
+     * configured - shuffled within each score group (see
+     * groupLevelRankings() for what level means).
      *
-     * Crediting a bye "as a win" is only meaningful under a win/draw/loss
-     * ranking, so byes require the standings calculator to use a
-     * WinDrawLossRanking; anything else fails loudly rather than guessing
-     * what a win is worth under an unknown ranking scale.
-     *
-     * @param array<\MissionGaming\Tactician\Standings\StandingEntry> $entries Standings entries, best first
-     * @param array<string> $previousByeIds
+     * @param array<StandingEntry> $entries The entries of the active participants, in table order
+     * @param array<Participant> $entrants The participant list, for the order of level entries
      * @return array<Participant>
-     * @throws InvalidConfigurationException When byes were awarded but the ranking strategy is not a WinDrawLossRanking
      */
-    private function orderForPairing(array $entries, array $previousByeIds): array
+    private function orderForPairing(array $entries, array $entrants): array
     {
-        $byeCounts = array_count_values($previousByeIds);
-
-        $winValue = 0.0;
-        if ($byeCounts !== []) {
-            $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
-            if (!$rankingStrategy instanceof WinDrawLossRanking) {
-                throw new InvalidConfigurationException(
-                    'Swiss bye crediting requires a win/draw/loss ranking strategy; the Swiss convention of counting a bye as a win is undefined under other ranking scales',
-                    ['ranking_strategy' => $rankingStrategy::class],
-                    reason: InvalidConfigurationReason::IncompatibleOptions
-                );
-            }
-
-            $winValue = $rankingStrategy->getWinValue();
+        $entries = array_values($entries);
+        $positions = [];
+        foreach (array_values($entrants) as $position => $entrant) {
+            $positions[$entrant->getId()] = $position;
         }
 
         $indexed = [];
         foreach ($entries as $index => $entry) {
-            $byeCount = $byeCounts[$entry->getParticipant()->getId()] ?? 0;
             $indexed[] = [
                 'participant' => $entry->getParticipant(),
-                'ranking_value' => $entry->getRankingValue() + $byeCount * $winValue,
+                'ranking_value' => $entry->getRankingValue(),
                 'index' => $index,
             ];
         }
 
+        // The library's calculator gives the table in this order already;
+        // a subclass may order its table by rules of its own.
         usort(
             $indexed,
             fn(array $first, array $second): int => ($second['ranking_value'] <=> $first['ranking_value'])
                 ?: ($first['index'] <=> $second['index'])
         );
 
-        $tolerance = $this->levelTolerance($entries, $byeCounts);
+        $tolerance = $this->levelTolerance($entries);
 
         $ordered = [];
         foreach ($this->groupLevelRankings($indexed, $tolerance) as $group) {
             // Within a group the table decides, not the last bits of a sum.
             usort($group, fn(array $first, array $second): int => $first['index'] <=> $second['index']);
+
+            // The table is ordered by the ranking value first, to the last
+            // bit. Where a group holds values that differ only there, the
+            // table's order inside it follows those bits, so the group is
+            // put in the order the table has without them: the figures
+            // after the ranking value, then the position in the list.
+            $inexact = false;
+            foreach ($group as $member) {
+                $inexact = $inexact || $member['ranking_value'] !== $group[0]['ranking_value'];
+            }
+            if ($inexact) {
+                usort($group, function (array $first, array $second) use ($entries, $positions): int {
+                    $one = $entries[$first['index']];
+                    $other = $entries[$second['index']];
+
+                    $byFigures = EntryOrder::compareFigures($one, $other, array_keys($one->getTiebreakers()), false);
+                    if ($byFigures !== 0) {
+                        return $byFigures;
+                    }
+
+                    return [$positions[$one->getParticipant()->getId()] ?? PHP_INT_MAX, $first['index']]
+                        <=> [$positions[$other->getParticipant()->getId()] ?? PHP_INT_MAX, $second['index']];
+                });
+            }
 
             if ($this->randomizer !== null) {
                 $group = $this->randomizer->shuffleArray($group);
@@ -459,10 +505,9 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * worth 1e15 draws), totals a real result apart still fall in
      * different groups, exactly as an exact comparison has them.
      *
-     * @param array<\MissionGaming\Tactician\Standings\StandingEntry> $entries
-     * @param array<int|string, int> $byeCounts Byes so far, keyed by participant ID
+     * @param array<StandingEntry> $entries Entries with their byes credited
      */
-    private function levelTolerance(array $entries, array $byeCounts): float
+    private function levelTolerance(array $entries): float
     {
         $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
         if (!$rankingStrategy instanceof WinDrawLossRanking) {
@@ -471,7 +516,7 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
 
         $terms = 0;
         foreach ($entries as $entry) {
-            $terms = max($terms, $entry->getPlayed() + ($byeCounts[$entry->getParticipant()->getId()] ?? 0));
+            $terms = max($terms, $entry->getPlayed() + $entry->getByes());
         }
 
         $win = $rankingStrategy->getWinValue();
