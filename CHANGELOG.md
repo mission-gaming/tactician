@@ -13,6 +13,111 @@ heading **Output change (fix)**.
 
 ## [Unreleased]
 
+### Output change (fix)
+
+- **A repack no longer depends on how its events and participants are
+  named, and contiguity comes ahead of the consolidation weight**
+  ([#49](https://github.com/mission-gaming/tactician/issues/49)). Almost
+  every repack outcome changes: positions, which events are unplaced where
+  some are, the violations, and with them `toArray()` and
+  `RepackOutcome::fingerprint()`. No public signature changes, and the
+  hard rules are as they were: no participant is double-booked, a pin
+  never moves, no slot is filled past its capacity, infeasibility comes
+  back as violations, and the same request gives the same outcome.
+
+  *What was wrong.* The repacker ordered events by `strcmp()` on their
+  ids and every tie-break followed, so the same events on the same grid
+  were packed well under one naming and badly under another. And it chose
+  each event's session by the two weights before it looked at any slot,
+  so it reported gaps where a placement without one existed.
+
+  *What it does now.* The participants are taken in an order made from
+  the request (how many events each has, where it is pinned, whom it
+  plays), and the events by their two participants; an id decides only
+  between events of the same two participants and between participants
+  the request does not tell apart. Before any session is chosen the
+  events are split into rounds (sets that can share a slot) laid on the
+  grid's positions around the pins, and the planner takes them round by
+  round, so that the sessions it fills by the weights are ones that pack.
+  The rounds are also a schedule of their own: they are returned where
+  they place more events than the planned schedule, or as many with fewer
+  gap slots. A schedule that still has a gap is then searched for a
+  placement of as many events with fewer gap slots. One session's exact
+  search may spend at most a quarter of the steps left, where one that
+  did not end used to take them all from the sessions after it.
+
+  *What is and is not promised about ids.* For the same request under
+  other ids, the number of events at every position, the unplaced counts
+  by reason, and every violation but for the names in it are the same;
+  the schedule is the same participant for participant up to a symmetry
+  of the request (where two participants are alike in the request, their
+  ids decide which gets which part of the schedule). The tests hold the
+  repacker to that on random requests with pins, on the small corpus, and
+  on round robins with rounds pinned. It is not proved for every request:
+  two participants that differ, but are equal in everything the ordering
+  compares, are ordered by id.
+
+  Before and after (0.2.3 against this release, default options):
+
+  | Request | 0.2.3 | Now |
+  |---|---|---|
+  | Events `100` P4 v P3, `101` P4 v P2, `102` P3 v P1, `103` P4 v P1 on sessions of two and four slots, capacity 1 | all four in session 1 (`102`, `103`, `100`, `101`), P3 with a gap | `102`, `103` in session 0 and `100`, `101` in session 1, no gap |
+  | Complete round robin of 10 on three four-slot sessions, capacity 5, ids `1`–`45` | no gap, 4 late starts | clean |
+  | The same with ids `1000`–`1044` | 5 gaps, 8 late starts | clean, the same schedule |
+  | Complete round robin of 24 on six four-slot sessions, ids `1`–`276` | 14 gaps, 6 late starts, budget spent | clean |
+  | Complete round robin of 40 on ten four-slot sessions | 24 gaps, 8 late starts, budget spent | clean |
+  | Complete round robin of 6 on one session of 21 slots, capacity 3 | 4 gaps (8 gap slots) | clean |
+  | 84 season-like requests of 14 to 40 participants (shuffled round robins, sessions of four to six slots, up to 32 pins) | 643 gaps, 908 late starts, 47 without a gap | 93 gaps, 281 late starts, 63 without a gap |
+  | 2,000 small random requests compared with an exhaustive search | 9% with a gap that a placement of as many events avoids; 31% with other counts under other event ids | none; none |
+
+  Every complete round robin of an even number of participants from 6 to
+  40, on sessions of four slots, now comes back with no violation at all
+  under each of three id schemes. Not everything is better everywhere:
+  the reference scenario (`tests/Fixtures/repack-scenario.json`) had 7
+  late starts and has 10, still with no gap, and its mis-pinned variant
+  went from 2 gaps and 6 late starts to no gap and 10 late starts.
+
+  *Time* (PHP 8.4, one core, `composer bench`, fastest of three):
+
+  | Benchmark | 0.2.3 | Now |
+  |---|---|---|
+  | 24 participants, even sessions | 166 ms | 5 ms |
+  | 24 participants, uneven sessions with pins | 469 ms | 52 ms |
+  | 40 participants, even sessions | 649 ms | 17 ms |
+  | 40 participants, uneven sessions with pins | 71 ms | 157 ms |
+
+  The last one is slower: 0.2.3 happened to pack that request without a
+  search, and this release spends about 0.1 seconds laying out its
+  rounds around the ten pins. Both return it with no gap. The work done
+  before any session is chosen, and the search for fewer gap slots, have
+  fixed limits of their own and do not draw on `stepBudget`, so a small
+  budget no longer makes a repack as short as it did (the usage guide
+  has the figures).
+
+  *Who is affected.* Everyone who repacks. *What to check:* an outcome
+  kept from an earlier release, or its fingerprint, no longer matches a
+  new run of the same request, so repack again before comparing; code
+  that expected a particular event at a particular position for a fixed
+  request; and time limits set close to what a repack used to take.
+  The order of the lists an outcome returns has not changed: assignments
+  and unplaced events by event id, violations by kind and then by
+  participant id and session, over-capacity participants by shortfall and
+  then id. Where two over-capacity participants share a dropped event and
+  have the same shortfall, the one it names is now the first in the
+  repacker's own order and no longer the one with the lower id.
+
+  Golden fixtures regenerated, each because the positions (and so the
+  fingerprints) changed as described: `tests/Fixtures/golden/repack/round-robin.txt`
+  (every case now has no violation), `repack/scenario.txt` (late starts
+  as above; the mis-pinned variant leaves out event `1009` where it left
+  out `1022`), `repack/budget-stops.txt` (a round robin without pins now
+  gives the same clean outcome at every budget, where a budget of one
+  step left events unplaced), `examples/19-repacking-a-season.txt` (the
+  same counts, one late start named for another participant) and
+  `examples/23-application-adapter-and-repack.txt` (three of five events
+  placed as before; `fx10` is placed and `fx09` left out, where it was
+  the other way round).
+
 ### Added
 
 - **`ShuffledLegStrategy` takes an integer seed, and
