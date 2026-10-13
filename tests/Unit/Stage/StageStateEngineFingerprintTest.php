@@ -19,6 +19,7 @@ use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StagePlan;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\AwardedResultPolicy;
 use MissionGaming\Tactician\Standings\BuchholzTiebreaker;
 use MissionGaming\Tactician\Standings\RankingStrategy;
 use MissionGaming\Tactician\Standings\SonnebornBergerTiebreaker;
@@ -350,6 +351,31 @@ describe('engine fingerprints', function (): void {
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fingerprintCustomRanking(), [new BuchholzTiebreaker()])),
             'tactician:v2:swiss;ranking=custom;tiebreakers=buchholz',
         ],
+        'Swiss with the awarded result policy stated at its defaults' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
+                awardedResults: new AwardedResultPolicy(countScores: true, countBetweenTiedParticipants: true)
+            )),
+            'tactician:v2:swiss',
+        ],
+        'Swiss where the scores of an awarded result do not count' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
+                awardedResults: new AwardedResultPolicy(countScores: false)
+            )),
+            'tactician:v2:swiss;awarded-scores=no',
+        ],
+        'Swiss where an awarded result does not count between the tied participants' => [
+            fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
+                awardedResults: new AwardedResultPolicy(countBetweenTiedParticipants: false)
+            )),
+            'tactician:v2:swiss;awarded-between-tied=no',
+        ],
+        're-seeded single elimination with both choices of the awarded result policy off' => [
+            fn() => new SingleEliminationEngine(
+                new EliminationOptions(reseedEachRound: true),
+                new StandingsCalculator(awardedResults: new AwardedResultPolicy(false, false))
+            ),
+            'tactician:v2:single-elimination;awarded-between-tied=no;awarded-scores=no;reseed-each-round=yes',
+        ],
         'single elimination' => [fn() => new SingleEliminationEngine(), 'tactician:v2:single-elimination'],
         'two-legged single elimination' => [
             fn() => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
@@ -448,6 +474,10 @@ describe('engine fingerprints', function (): void {
         ])->and($constructor(StandingsCalculator::class))->toBe([
             'rankingStrategy',      // in: ranking, default 3/1/0
             'tiebreakers',          // in: tiebreakers, default none
+            'awardedResults',       // in, see AwardedResultPolicy below
+        ])->and($constructor(AwardedResultPolicy::class))->toBe([
+            'countScores',                  // in: awarded-scores, default yes
+            'countBetweenTiedParticipants', // in: awarded-between-tied, default yes
         ])->and($constructor(WinDrawLossRanking::class))->toBe([
             'winValue',             // in, default 3
             'drawValue',            // in, default 1
@@ -471,7 +501,12 @@ describe('engine fingerprints', function (): void {
         expect([$options->legsPerTie, $options->reseedEachRound, $options->grandFinalReset, $options->thirdPlace])
             ->toBe([1, false, true, false])
             ->and($ranking->toArray())->toBe(['format_version' => 1, 'win' => 3.0, 'draw' => 1.0, 'loss' => 0.0])
-            ->and((new StandingsCalculator())->getTiebreakers())->toBe([]);
+            ->and((new StandingsCalculator())->getTiebreakers())->toBe([])
+            ->and((new StandingsCalculator())->getAwardedResultPolicy()->toArray())->toBe([
+                'format_version' => 1,
+                'count_scores' => true,
+                'count_between_tied_participants' => true,
+            ]);
     });
 
     it('names the format only when every option is at its default', function (

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Award;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -283,6 +284,25 @@ describe('Example renderer', function (): void {
             ->toContain("#  Participant  Played  Won  Drawn  Lost  Ranking value  buchholz\n1  Alpha        1       1    0      0     3              1.5\n")
             ->toContain("== Failure ==\nInvalidArgumentException: Not like that\n")
             ->toContain("== Who ==\nAlpha (seed 1)\n");
+    });
+
+    it('says of an awarded result that it was awarded, to whom, and under which label', function (): void {
+        $first = new Participant('a', 'Alpha');
+        $second = new Participant('b', 'Beta');
+        $event = new Event([$first, $second], new Round(1));
+
+        $text = Example::renderText('T', 'S', [
+            'Awarded' => [
+                new Result($event, $second, ['a' => 0, 'b' => 3], award: new Award('no-show', 'Not read by the renderer')),
+                new Result($event, $first, award: new Award()),
+                new Result($event, award: new Award('ruling')),
+            ],
+        ]);
+
+        expect($text)->toContain(
+            "== Awarded ==\n- Alpha v Beta 0-3: awarded to Beta (no-show)\n- Alpha v Beta: awarded to Alpha\n- Alpha v Beta: awarded as a draw (ruling)\n"
+        );
+        expect($text)->not->toContain('won');
     });
 
     it('shows a measured value with its unit and says it was measured', function (): void {

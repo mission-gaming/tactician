@@ -227,7 +227,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 $this->standingsCalculator,
                 $entrants,
                 $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers']),
-                $resolution['placement']
+                $resolution['placement'],
+                $state->getAdjustments()
             ),
             $state->getResults(),
             $state->getByeCounts(),

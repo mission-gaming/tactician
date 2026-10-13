@@ -10,6 +10,13 @@ use MissionGaming\Tactician\DTO\Participant;
  * A single participant's line in the standings table: its record, its
  * primary ranking value, its scores and its tiebreaker values.
  *
+ * The record is four counts that add up: played is wins plus draws plus
+ * losses. Figures that say something else about the line stand beside the
+ * record and are never part of it: the byes credited in the ranking value
+ * (getByes()), how many of the results counted were awarded and not played
+ * (getAwarded()), and the adjustment to the ranking value that comes from
+ * no event (getAdjustment()).
+ *
  * @experimental
  */
 readonly class StandingEntry
@@ -19,11 +26,16 @@ readonly class StandingEntry
      * other.
      *
      * @param int $played Results recorded for events the participant is in
-     * @param float $rankingValue The primary ranking value; higher is better
+     * @param float $rankingValue The ranking value the participant earned, from its results and
+     *                            its credited byes; higher is better. An adjustment is given
+     *                            apart, as the last argument, and getRankingValue() is the two
+     *                            together
      * @param float $scoreFor The sum of the participant's own recorded scores
      * @param float $scoreAgainst The sum of the recorded scores of its opponents
      * @param array<string, float> $tiebreakers Tiebreaker values keyed by tiebreaker name
      * @param int $byes Byes whose credit is part of the ranking value (see getByes())
+     * @param int $awarded How many of the results counted in played were awarded (see getAwarded())
+     * @param float $adjustment The sum of the participant's adjustments (see getAdjustment())
      */
     public function __construct(
         private Participant $participant,
@@ -35,7 +47,9 @@ readonly class StandingEntry
         private float $scoreFor = 0.0,
         private float $scoreAgainst = 0.0,
         private array $tiebreakers = [],
-        private int $byes = 0
+        private int $byes = 0,
+        private int $awarded = 0,
+        private float $adjustment = 0.0
     ) {}
 
     /**
@@ -48,11 +62,25 @@ readonly class StandingEntry
 
     /**
      * The number of results recorded for events the participant is in. Byes
-     * and events without a result are not counted.
+     * and events without a result are not counted. An awarded result is a
+     * result and is counted, here and as the win, draw or loss it is, so
+     * that the record adds up; getAwarded() says how many of them there
+     * are, and played minus that is the number of events that took place.
      */
     public function getPlayed(): int
     {
         return $this->played;
+    }
+
+    /**
+     * How many of the results counted in getPlayed() were awarded and not
+     * played (DTO\Result::isAwarded()): 0 in a table without awarded
+     * results. The figure stands beside the record and is not compared when
+     * the table is ordered.
+     */
+    public function getAwarded(): int
+    {
+        return $this->awarded;
     }
 
     /**
@@ -85,10 +113,42 @@ readonly class StandingEntry
      * Under the default WinDrawLossRanking this is the familiar points
      * total; other strategies may aggregate different quantities. In a
      * table with byes credited it includes the credit (see getByes()).
+     *
+     * It is the total the table is ordered by: what the participant earned
+     * (getEarnedRankingValue()) plus its adjustment (getAdjustment()). An
+     * entry without an adjustment has the earned value here, unchanged.
      */
     public function getRankingValue(): float
     {
+        return $this->adjustment === 0.0 ? $this->rankingValue : $this->rankingValue + $this->adjustment;
+    }
+
+    /**
+     * The ranking value the participant earned: what the ranking strategy
+     * computed from its results, plus the credit of its byes in a table
+     * that credits them. No adjustment is in it.
+     */
+    public function getEarnedRankingValue(): float
+    {
         return $this->rankingValue;
+    }
+
+    /**
+     * The sum of the participant's adjustments: ranking value added (above
+     * zero) or taken away (below zero) for reasons that are no event
+     * (Adjustment). 0.0 in a table without adjustments and for a
+     * participant that has none.
+     *
+     * The figure is shown on its own and is never folded into the earned
+     * value: getEarnedRankingValue(), this figure and getRankingValue() are
+     * what was earned, what was adjusted and the total the table is ordered
+     * by. No other figure of the entry changes with an adjustment: the
+     * record, the scores and the tiebreaker values are those of the
+     * results.
+     */
+    public function getAdjustment(): float
+    {
+        return $this->adjustment;
     }
 
     /**
@@ -214,13 +274,17 @@ readonly class StandingEntry
             $this->scoreFor,
             $this->scoreAgainst,
             $tiebreakers,
-            $this->byes
+            $this->byes,
+            $this->awarded,
+            $this->adjustment
         );
     }
 
     /**
      * A copy of this entry with the given number of credited byes and the
-     * ranking value that includes their credit, in place of those it had.
+     * earned ranking value that includes their credit, in place of those it
+     * had. The adjustment is kept and is not part of the value given: pass
+     * getEarnedRankingValue() plus the credit.
      */
     public function withByes(int $byes, float $rankingValue): self
     {
@@ -234,7 +298,32 @@ readonly class StandingEntry
             $this->scoreFor,
             $this->scoreAgainst,
             $this->tiebreakers,
-            $byes
+            $byes,
+            $this->awarded,
+            $this->adjustment
+        );
+    }
+
+    /**
+     * A copy of this entry with the given adjustment in place of the one it
+     * had: getAdjustment() is the amount given, the earned ranking value
+     * stays, and getRankingValue() is the two together.
+     */
+    public function withAdjustment(float $adjustment): self
+    {
+        return new self(
+            $this->participant,
+            $this->played,
+            $this->wins,
+            $this->draws,
+            $this->losses,
+            $this->rankingValue,
+            $this->scoreFor,
+            $this->scoreAgainst,
+            $this->tiebreakers,
+            $this->byes,
+            $this->awarded,
+            $adjustment
         );
     }
 }

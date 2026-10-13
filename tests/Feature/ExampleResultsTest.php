@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Award;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -225,6 +226,25 @@ describe('Fixture form of a result', function (): void {
             '1. a played=2 wins=1 draws=1 losses=0 value=4 for=3 against=1 buchholz=1.5',
             '2. b played=2 wins=0 draws=1 losses=1 value=1 for=1 against=3',
         ])->and(ExampleResults::lines(new Standings([])))->toBe(['(no entries)']);
+    });
+
+    it('says that a result was awarded and what a table shows beside the record, and only then', function (): void {
+        $alpha = new Participant('a', 'Alpha');
+        $beta = new Participant('b', 'Beta');
+        $event = new Event([$alpha, $beta], new Round(2));
+
+        $table = new Standings([
+            new StandingEntry($alpha, 2, 2, 0, 0, 6.0, 3.0, 0.0, [], 0, 1, -1.5),
+            new StandingEntry($beta, 2, 0, 0, 2, 0.0, 0.0, 3.0, [], 0, 1),
+        ]);
+
+        expect(ExampleResults::lines(new Result($event, $alpha, ['a' => 3, 'b' => 0], [], new Award('no-show', 'Not written'))))
+            ->toBe(['R2: a-b => a (3-0) awarded "no-show"'])
+            ->and(ExampleResults::lines(new Result($event, award: new Award())))->toBe(['R2: a-b => draw awarded'])
+            ->and(ExampleResults::lines($table))->toBe([
+                '1. a played=2 wins=2 draws=0 losses=0 value=4.5 for=3 against=0 awarded=1 earned=6 adjustment=-1.5',
+                '2. b played=2 wins=0 draws=0 losses=2 value=0 for=0 against=3 awarded=1',
+            ]);
     });
 
     it('nests arrays by indentation and keeps a one-line value on the line of its name', function (): void {

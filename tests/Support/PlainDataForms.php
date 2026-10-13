@@ -8,6 +8,7 @@ use Closure;
 use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
+use MissionGaming\Tactician\DTO\Award;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
@@ -38,6 +39,8 @@ use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\StageState;
+use MissionGaming\Tactician\Standings\Adjustment;
+use MissionGaming\Tactician\Standings\AwardedResultPolicy;
 use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use MissionGaming\Tactician\Timeline\BlackoutRule;
 use MissionGaming\Tactician\Timeline\MinimumRestRule;
@@ -101,6 +104,8 @@ final class PlainDataForms
             ['id' => 'b', 'label' => 'Bob', 'seed' => 2, 'metadata' => []],
             ['id' => 'c', 'label' => 'Carol', 'seed' => null, 'metadata' => []],
         ];
+        $award = ['label' => 'no-show', 'reason' => 'Bob did not arrive'];
+        $adjustment = ['participant' => 'b', 'amount' => -3.0, 'label' => 'deduction', 'reason' => 'a late entry'];
         $window = ['from' => '2026-11-09 00:00', 'to' => '2026-11-17 00:00', 'timezone' => 'Europe/London', 'label' => 'break'];
 
         return [
@@ -390,10 +395,43 @@ final class PlainDataForms
             'result' => [
                 'class' => Result::class,
                 'kind' => self::DATA,
-                'keys' => ['event', 'winner', 'scores', 'metadata'],
-                'sample' => ['event' => $event, 'winner' => 'a', 'scores' => ['a' => 2, 'b' => 1], 'metadata' => ['note' => 'x']],
+                'keys' => ['event', 'winner', 'scores', 'metadata', 'award'],
+                'sample' => [
+                    'event' => $event,
+                    'winner' => 'a',
+                    'scores' => ['a' => 2, 'b' => 1],
+                    'metadata' => ['note' => 'x'],
+                    'award' => $award,
+                ],
                 'read' => static fn(array $data, array $registry): object => Result::fromArray(self::stringKeyed($data), $registry),
                 'generate' => static fn(Randomizer $random, array $field): object => self::result($random, self::event($random, $field)),
+            ],
+            'award' => [
+                'class' => Award::class,
+                'kind' => self::DATA,
+                'keys' => ['label', 'reason'],
+                'sample' => $award,
+                'read' => static fn(array $data, array $registry): object => Award::fromArray($data),
+                'generate' => static fn(Randomizer $random, array $field): object => self::award($random),
+            ],
+            'adjustment' => [
+                'class' => Adjustment::class,
+                'kind' => self::DATA,
+                'keys' => ['participant', 'amount', 'label', 'reason'],
+                'sample' => $adjustment,
+                'read' => static fn(array $data, array $registry): object => Adjustment::fromArray($data),
+                'generate' => self::adjustment(...),
+            ],
+            'awarded result policy' => [
+                'class' => AwardedResultPolicy::class,
+                'kind' => self::CONFIGURATION,
+                'keys' => ['count_scores', 'count_between_tied_participants'],
+                'sample' => ['count_scores' => false, 'count_between_tied_participants' => false],
+                'read' => static fn(array $data, array $registry): object => AwardedResultPolicy::fromArray($data),
+                'generate' => static fn(Randomizer $random, array $field): object => new AwardedResultPolicy(
+                    $random->getInt(0, 1) === 1,
+                    $random->getInt(0, 1) === 1
+                ),
             ],
             'round pairing' => [
                 'class' => RoundPairing::class,
@@ -428,13 +466,14 @@ final class PlainDataForms
             'stage state' => [
                 'class' => StageState::class,
                 'kind' => self::DATA,
-                'keys' => ['participants', 'active', 'rounds', 'results', 'engine_fingerprint'],
+                'keys' => ['participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments'],
                 'sample' => [
                     'participants' => $participants,
                     'active' => ['a', 'b', 'c'],
                     'rounds' => [['round' => 1, 'label' => null, 'events' => [$event], 'byes' => ['c']]],
                     'results' => [['event' => $event, 'winner' => 'a', 'scores' => [], 'metadata' => []]],
                     'engine_fingerprint' => 'an engine of our own',
+                    'adjustments' => [$adjustment],
                 ],
                 'read' => static fn(array $data, array $registry): object => StageState::fromArray(self::stringKeyed($data)),
                 'generate' => self::stageState(...),
@@ -466,6 +505,17 @@ final class PlainDataForms
                 },
             ],
         ];
+    }
+
+    /**
+     * The classes of the forms 0.3.0 added. No release before it wrote one,
+     * so the values stored by 0.2.x hold none of them.
+     *
+     * @return list<class-string>
+     */
+    public static function addedInZeroThree(): array
+    {
+        return [Award::class, Adjustment::class, AwardedResultPolicy::class];
     }
 
     /**
@@ -692,8 +742,38 @@ final class PlainDataForms
     }
 
     /**
+     * The mark of an awarded result, with a label, a reason, both or
+     * neither.
+     */
+    private static function award(Randomizer $random): Award
+    {
+        return new Award(
+            [null, '', 'no-show', 'é 日本'][$random->getInt(0, 3)],
+            [null, 'The event was not played', ''][$random->getInt(0, 2)]
+        );
+    }
+
+    /**
+     * An adjustment for one of the field: a whole amount, a fraction, a
+     * zero, an amount JSON writes with an exponent, of either sign.
+     *
+     * @param array<Participant> $field
+     */
+    private static function adjustment(Randomizer $random, array $field): Adjustment
+    {
+        $field = array_values($field);
+
+        return new Adjustment(
+            $field[$random->getInt(0, count($field) - 1)]->getId(),
+            [-3.0, 1.0, 0.0, 0.1, -0.125, 1.0e-9, -2.5e15, 0.30000000000000004][$random->getInt(0, 7)],
+            [null, 'deduction', ''][$random->getInt(0, 2)],
+            [null, 'a late entry'][$random->getInt(0, 1)]
+        );
+    }
+
+    /**
      * A result of the event: a win for either side or a draw, with scores
-     * or without.
+     * or without, one in four of them awarded.
      */
     private static function result(Randomizer $random, Event $event): Result
     {
@@ -707,7 +787,8 @@ final class PlainDataForms
                 1 => [$first->getId() => $random->getInt(0, 9), $second->getId() => $random->getInt(0, 9)],
                 default => [$second->getId() => $random->getInt(0, 20) / 4 + 0.125],
             },
-            self::metadata($random)
+            self::metadata($random),
+            $random->getInt(0, 3) === 0 ? self::award($random) : null
         );
     }
 
@@ -779,6 +860,18 @@ final class PlainDataForms
             }
             if ($random->getInt(0, 5) === 0) {
                 $state = $state->withoutParticipant($field[$random->getInt(0, count($field) - 1)]);
+            }
+        }
+
+        // Half of them with adjustments, recorded for anyone of the field
+        // the state has seen: one who is active, and one who withdrew
+        if ($random->getInt(0, 1) === 1) {
+            $seen = array_map(static fn(Participant $participant): string => $participant->getId(), $state->getAllSeenParticipants());
+            for ($i = $random->getInt(1, 3); $i > 0 && $seen !== []; --$i) {
+                $adjustment = self::adjustment($random, $field);
+                if (in_array($adjustment->getParticipantId(), $seen, true)) {
+                    $state = $state->withAdjustment($adjustment);
+                }
             }
         }
 
