@@ -76,6 +76,40 @@ the order a schedule built from those events has anyway; an array from 0.3.0
 read by 0.2.x gives the same events. Neither reader misreads the other's
 array, which is the test the next paragraph but one states.
 
+A second form means something else in 0.3.0 than it did, and is still
+version 1. Round-robin options that name no role assignment are written
+without the `role_assignment` key, by 0.2.2, 0.2.3 and 0.3.0 alike, and the
+usage guide of 0.2.2 and 0.2.3 said what the absent key means: no role
+assignment was named, and the options follow the default of the release that
+reads them. 0.3.0 changes that default from round-parity roles to balanced
+ones. So an array without the key gives round-parity roles when 0.2.x reads
+it and balanced roles when 0.3.0 does, which is what its writer was told it
+would do: neither reader misreads the other's array, and the form does not
+take a version for it. (0.2.0 and 0.2.1 had neither the key nor a role
+assignment to name; their options are read the same way.)
+
+The price is that nothing is refused: an application that stored such options
+under 0.2.x and generates a schedule from them again gets the same pairings
+in the same rounds with other roles, and no error tells it. Options that
+named a role assignment, the old default included, were written with the key
+and are read as they were written. Stored options that must keep the roles
+of 0.2.x take `'role_assignment' => 'round_parity'` before the upgrade; the
+changelog of 0.3.0 says so.
+
+The alternative was version 2 of the form, with version 1 read as round
+parity. It was not taken, because an array without the version key is
+version 1: every options array written by hand, in a configuration file or
+in code, would then mean round-parity roles for good, and
+`RoundRobinOptions::fromArray(['legs' => 2])` would not be
+`new RoundRobinOptions(legs: 2)`. The default of 0.3.0 would have been the
+default for options built in code only.
+
+That is a statement about the step from 0.2.x to 0.3.0, the release that
+fixes what version 1 is. From 0.3.0 on, an absent `role_assignment` in
+version 1 means balanced roles, and a release that changes the default again
+changes the form ("Changing a form" below names the case) and takes version
+2 for it.
+
 **A version the reader does not know is refused.** A value above the newest
 version the release reads means the array was written by a later release.
 It is refused, with the version found and the newest one read, and never
