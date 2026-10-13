@@ -31,6 +31,7 @@ function runForMutationMemoryLimit(array $command, array $environment): array
         $inherited['PEST_MUTATION_FILE'],
         $inherited[MutationMemoryLimit::ENV_LIMIT],
         $inherited[MutationMemoryLimit::ENV_LOG],
+        $inherited[MutationMemoryLimit::ENV_RUN],
         // A test process this one starts is not a worker of this run
         $inherited['PARATEST'],
         $inherited['TEST_TOKEN'],
@@ -56,8 +57,10 @@ function runForMutationMemoryLimit(array $command, array $environment): array
 /**
  * Runs a PHP process that loads the autoloader, as every process of a
  * development checkout does, prints its memory limit and then does what
- * `$then` names: "allocate" (without end), "throw", "fatal" (an error that
- * is not about memory) or "pass".
+ * `$then` names: "allocate" (without end), "spawn" (start a process that
+ * allocates without end, as a test can and as a parallel run starts its
+ * workers, wait for it, and then allocate without end too), "throw", "fatal"
+ * (an error that is not about memory) or "pass".
  *
  * @param array<string, string> $environment
  * @param list<string> $arguments Further arguments of the process
@@ -68,10 +71,14 @@ function runForMutationMemoryLimit(array $command, array $environment): array
  */
 function loadAutoloaderUnderMutationMemoryLimit(string $then, array $environment, array $arguments = []): array
 {
-    $script = <<<'PHP'
+    $script = <<<'SCRIPT'
         require 'vendor/autoload.php';
         echo 'limit=', ini_get('memory_limit'), "\n";
-        if ($argv[1] === 'allocate') {
+        if ($argv[1] === 'spawn') {
+            $worker = 'require "vendor/autoload.php"; for ($held = [];;) { $held[] = str_repeat("x", 4096); }';
+            (new Symfony\Component\Process\Process([PHP_BINARY, '-d', 'memory_limit=256M', '-r', $worker]))->run();
+        }
+        if ($argv[1] === 'allocate' || $argv[1] === 'spawn') {
             for ($held = [];;) {
                 $held[] = str_repeat('x', 4096);
             }
@@ -82,7 +89,7 @@ function loadAutoloaderUnderMutationMemoryLimit(string $then, array $environment
         if ($argv[1] === 'fatal') {
             no_such_function();
         }
-        PHP;
+        SCRIPT;
 
     return runForMutationMemoryLimit(['-r', $script, '--', $then, ...$arguments], $environment);
 }
@@ -125,19 +132,24 @@ describe('the memory limit of a mutation run', function (): void {
             ->and($output)->toContain('limit=48M')
             ->toContain('Allowed memory size of 50331648 bytes exhausted');
 
-        // The source file from the root of the repository, and the name of
-        // the mutated copy; the directory of the log did not exist
+        // The source file from the root of the repository, the name of the
+        // mutated copy, and a name the process made up for this test run;
+        // the directory of the log did not exist
         expect(is_file($this->log))->toBeTrue()
-            ->and(file_get_contents($this->log))->toBe("src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\n");
+            ->and(file_get_contents($this->log))->toMatch('/^src\/Repack\/Internal\/SessionPacker\.php\tb3d2a3ad669392b9\t\d+\.\d+\n$/');
     });
 
     // The whole of it, in the process the runner starts: Pest, with the
-    // configuration and the arguments of `composer mutation`, running a test
-    // that allocates without end. Pest ends the process in a shutdown
-    // function of its own when it sees a fatal error, and no shutdown
-    // function registered after that one runs: the line is written only
-    // because the autoloader registers ours first. Installed from a PHPUnit
-    // bootstrap, the limit held and nothing was logged.
+    // configuration of `composer mutation`, running a test that allocates
+    // without end. The runner starts that process without `--parallel`,
+    // whatever the run itself was given, and with the variables of a
+    // worker, so the tests of a mutation run in one process; the second
+    // case is a run with workers all the same, where it is a worker that
+    // ends at the limit. Pest ends the process in a shutdown function of
+    // its own when it sees a fatal error, and no shutdown function
+    // registered after that one runs: the line is written only because the
+    // autoloader registers ours first. Installed from a PHPUnit bootstrap,
+    // the limit held and nothing was logged.
     it('logs the mutation from a Pest process, which ends itself on a fatal error', function (bool $parallel): void {
         [$status, $output] = runForMutationMemoryLimit(
             [
@@ -147,7 +159,7 @@ describe('the memory limit of a mutation run', function (): void {
                 '--bail',
                 'tests/Fixtures/mutation/AllocatesWithoutEnd.php',
             ],
-            $this->mutant
+            $parallel ? $this->mutant : [...$this->mutant, 'PARATEST' => '1', 'TEST_TOKEN' => '1', 'UNIQUE_TEST_TOKEN' => '1_mutation']
         );
 
         expect($status)->not->toBe(0, $output)
@@ -155,8 +167,8 @@ describe('the memory limit of a mutation run', function (): void {
         expect(is_file($this->log))->toBeTrue($output)
             ->and(MutationMemoryLimit::read((string) file_get_contents($this->log)))->toBe(['src/Repack/Internal/SessionPacker.php' => 1]);
     })->with([
-        'in one process' => [false],
-        'with workers, as the mutation run starts it' => [true],
+        'in one process, as the mutation run starts it' => [false],
+        'with workers' => [true],
     ]);
 
     it('limits the test process of a mutation to one gigabyte unless the environment names another limit', function (): void {
@@ -195,8 +207,43 @@ describe('the memory limit of a mutation run', function (): void {
             'PEST_MUTATION_FILE' => '/elsewhere/0f0f0f0f0f0f0f0f',
         ]);
 
-        expect(file_get_contents($this->log))
+        expect(preg_replace('/\t[^\t\n]+\n/', "\n", (string) file_get_contents($this->log)))
             ->toBe("src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\nsrc/Scheduling/PotDrawScheduler.php\t0f0f0f0f0f0f0f0f\n");
+    });
+
+    // The name of the mutated copy is a hash of the mutated source, and two
+    // mutators can write the same source. The runner counts those as two
+    // mutations and tests each in a run of its own, so a log that told
+    // mutations apart by the copy would count one where the runner counted
+    // two tested, and the share that a failing test noticed would be one
+    // too high
+    it('counts two mutations that have the same mutated copy as two', function (): void {
+        loadAutoloaderUnderMutationMemoryLimit('allocate', $this->mutant);
+        loadAutoloaderUnderMutationMemoryLimit('allocate', $this->mutant);
+
+        $log = (string) file_get_contents($this->log);
+
+        expect(substr_count($log, "\tb3d2a3ad669392b9\t"))->toBe(2)
+            ->and(MutationMemoryLimit::read($log))->toBe(['src/Repack/Internal/SessionPacker.php' => 2]);
+    });
+
+    // The other way round. The runner starts one process for a mutation,
+    // but a test can start a process of its own, and both can end at the
+    // limit. The second inherits the name of the run from the first, also
+    // through Symfony's Process, which passes on only a part of the
+    // environment
+    it('counts a mutation once when several processes of its test run ended at the limit', function (): void {
+        [$status, $output] = loadAutoloaderUnderMutationMemoryLimit('spawn', $this->mutant);
+
+        $log = (string) file_get_contents($this->log);
+        $lines = explode("\n", trim($log));
+
+        expect($status)->not->toBe(0)
+            ->and($output)->toContain('Allowed memory size of 50331648 bytes exhausted')
+            // The process that was started, and then the one that started it
+            ->and($lines)->toHaveCount(2)
+            ->and($lines[0])->toBe($lines[1])
+            ->and(MutationMemoryLimit::read($log))->toBe(['src/Repack/Internal/SessionPacker.php' => 1]);
     });
 
     // The process that starts the run, which is given `--mutate`: it holds
@@ -244,7 +291,9 @@ describe('the memory limit of a mutation run', function (): void {
     });
 
     it('reads a log as mutations by source file, each once, most first and then by name', function (): void {
-        $log = "src/B.php\tb1\nsrc/A.php\ta1\nsrc/C.php\tc1\nsrc/C.php\tc2\nsrc/C.php\tc1\n\nnot a line of the log\n\tx\nsrc/D.php\t\n";
+        $log = "src/B.php\tb1\t1.1\nsrc/A.php\ta1\t2.2\nsrc/C.php\tc1\t3.3\nsrc/C.php\tc2\t4.4\nsrc/C.php\tc1\t3.3\n"
+            // Not lines of the log: no run, no copy, no source, something else
+            . "\nnot a line of the log\n\tx\t5.5\nsrc/D.php\t\t6.6\nsrc/D.php\td1\nsrc/D.php\td1\t\n";
 
         expect(MutationMemoryLimit::read($log))->toBe(['src/C.php' => 2, 'src/A.php' => 1, 'src/B.php' => 1])
             ->and(MutationMemoryLimit::read(''))->toBe([]);

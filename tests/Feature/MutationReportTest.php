@@ -231,10 +231,10 @@ describe('the mutation report', function (): void {
     it('says how many mutations ended at the memory limit, and does not count them as noticed by a failing test', function (): void {
         // Two mutations of one file and one of another; the first ran in two
         // processes, which both ended at the limit
-        $memoryLog = "src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\n"
-            . "src/Scheduling/PotDrawScheduler.php\t0f0f0f0f0f0f0f0f\n"
-            . "src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\n"
-            . "src/Repack/Internal/SessionPacker.php\t1111111111111111\n";
+        $memoryLog = "src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\t101.1\n"
+            . "src/Scheduling/PotDrawScheduler.php\t0f0f0f0f0f0f0f0f\t102.2\n"
+            . "src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\t101.1\n"
+            . "src/Repack/Internal/SessionPacker.php\t1111111111111111\t103.3\n";
 
         $report = MutationReport::fromOutput(mutationRunOutput(), $memoryLog);
         $markdown = $report->toMarkdown();
@@ -248,7 +248,7 @@ describe('the mutation report', function (): void {
             // Of the 4 the runner calls tested, a test failed on 1
             ->toContain('A failing test noticed 1 of 7 mutations, which is 14.29%.');
 
-        expect(MutationReport::fromOutput(mutationRunOutput(), "src/A.php\tabc\n")->toMarkdown())
+        expect(MutationReport::fromOutput(mutationRunOutput(), "src/A.php\tabc\t101.1\n")->toMarkdown())
             ->toContain('1 mutation ended at the memory limit of the test process: `src/A.php` (1).')
             ->toContain('A failing test noticed 3 of 7 mutations, which is 42.86%.');
     });
@@ -274,7 +274,7 @@ describe('the mutation report', function (): void {
     it('says how many mutations of a stopped run ended at the memory limit', function (): void {
         $stopped = "  120 Mutations for 3 Files created\n\n  ..x.t";
 
-        $markdown = MutationReport::fromOutput($stopped, "src/A.php\tabc\nsrc/A.php\tdef\n")->toMarkdown();
+        $markdown = MutationReport::fromOutput($stopped, "src/A.php\tabc\t101.1\nsrc/A.php\tdef\t102.2\n")->toMarkdown();
 
         expect($markdown)
             ->toContain('It was stopped after 5 of 120 mutations: 3 tested, 1 untested, 1 timeout.')
@@ -287,7 +287,7 @@ describe('the mutation report', function (): void {
 
     it('never gives a share below zero when the memory log names more mutations than the run calls tested', function (): void {
         // A log left by another run: wrong, and not a reason to print nonsense
-        $markdown = MutationReport::fromOutput("  Mutations: 3 untested, 1 tested\n  Score:     25.00%\n", "src/A.php\ta\nsrc/A.php\tb\n")->toMarkdown();
+        $markdown = MutationReport::fromOutput("  Mutations: 3 untested, 1 tested\n  Score:     25.00%\n", "src/A.php\ta\t101.1\nsrc/A.php\tb\t102.2\n")->toMarkdown();
 
         expect($markdown)->toContain('A failing test noticed 0 of 4 mutations, which is 0.00%.');
     });
@@ -355,7 +355,7 @@ describe('the mutation summary script', function (): void {
         Assert::assertIsString($log);
         Assert::assertIsString($memoryLog);
         file_put_contents($log, mutationRunOutput());
-        file_put_contents($memoryLog, "src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\n");
+        file_put_contents($memoryLog, "src/Repack/Internal/SessionPacker.php\tb3d2a3ad669392b9\t101.1\n");
 
         try {
             [$status, $output, $errors] = $run($log, '', '', $memoryLog);
