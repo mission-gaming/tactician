@@ -910,6 +910,12 @@ function stageStateMistakes(): array
             'All participants must have unique IDs',
             ['participant_count' => 3, 'unique_ids' => 2],
         ],
+        'a first round numbered 0' => [
+            fn() => $start()->withRoundPlayed(new RoundPairing(0, null, []), []),
+            InvalidConfigurationReason::ValueOutOfRange,
+            'Round numbers are 1-based: a round cannot be recorded with a number below 1',
+            ['pairing_round' => 0],
+        ],
         'a round recorded a second time' => [
             fn() => $start()->withRoundPlayed($roundOne, [])->withRoundPlayed($roundOne, []),
             InvalidConfigurationReason::RoundOutOfSequence,

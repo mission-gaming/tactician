@@ -218,6 +218,16 @@ heading **Output change (fix)**.
   reports against the entrants the next stage declares. A transition that
   does not pass it is counted as before, so no chain that validated
   changes its answer (#121, item 8).
+- **`StageState` refuses an ID listed twice as active, and a round
+  numbered below 1.** `StageState::fromArray()` (and `fromJson()`) accepted
+  stored data whose `active` list named one ID twice, which `start()`
+  refuses and from which an engine would pair a participant against
+  itself; it now throws an `InvalidInputException`, as it does for an ID
+  listed twice in `participants`. `withRoundPlayed()` accepted a pairing
+  numbered 0 or below as the first round, although round numbers are
+  1-based; it now throws an `InvalidConfigurationException` with the reason
+  `ValueOutOfRange`. Data that `toArray()` wrote, and every pairing an
+  engine returns, is accepted as before (#121, item 11).
 
 ## [0.2.3] - 2026-10-13
 
