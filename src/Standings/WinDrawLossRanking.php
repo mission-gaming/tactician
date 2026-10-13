@@ -7,6 +7,7 @@ namespace MissionGaming\Tactician\Standings;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -53,15 +54,21 @@ final readonly class WinDrawLossRanking implements RankingStrategy
 
     /**
      * Build from plain configuration data: ['win' => 3, 'draw' => 1, 'loss' => 0].
-     * Omitted keys, and keys set to null, use the 3/1/0 defaults. Other keys
-     * are ignored.
+     * Omitted keys, and keys set to null, use the 3/1/0 defaults. Any
+     * other key is refused, so that a misspelt value is not silently read
+     * as its default.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value is neither an int nor a float (a
-     *                                       numeric string is refused)
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), or
+     *                                       a value is neither an int nor a float (a numeric
+     *                                       string is refused)
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, ['win', 'draw', 'loss'], 'win-draw-loss ranking');
+
         $values = [];
         foreach (['win' => 3.0, 'draw' => 1.0, 'loss' => 0.0] as $key => $default) {
             $value = $config[$key] ?? $default;
@@ -79,13 +86,15 @@ final readonly class WinDrawLossRanking implements RankingStrategy
     }
 
     /**
-     * The plain-data form fromArray() accepts.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then the three values.
      *
-     * @return array{win: float, draw: float, loss: float}
+     * @return array{format_version: int, win: float, draw: float, loss: float}
      */
     public function toArray(): array
     {
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'win' => $this->winValue,
             'draw' => $this->drawValue,
             'loss' => $this->lossValue,

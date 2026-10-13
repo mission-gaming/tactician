@@ -10,6 +10,7 @@ use DateTimeZone;
 use Exception;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * The declarative slot model a stage's rounds map onto.
@@ -219,14 +220,25 @@ final readonly class TimelineDefinition
      *
      * `round_interval` is required; `slots_per_round` (default 1),
      * `slot_interval` and `resources` are optional. The intervals are ISO
-     * 8601 duration strings, read by parseInterval().
+     * 8601 duration strings, read by parseInterval(). A key that is none of
+     * these is refused, so that a misspelt `slots_per_round` is not
+     * silently read as 1.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value is missing or malformed, or the start
-     *                                       does not state an instant by itself
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), a
+     *                                       value is missing or malformed, or the start does
+     *                                       not state an instant by itself
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions(
+            $config,
+            ['start', 'timezone', 'round_interval', 'slots_per_round', 'slot_interval', 'resources'],
+            'a timeline definition'
+        );
+
         $start = ZonedTime::parse($config['start'] ?? null, $config['timezone'] ?? null, 'start');
 
         $slotsPerRound = $config['slots_per_round'] ?? 1;
@@ -271,7 +283,9 @@ final readonly class TimelineDefinition
      * same interval: a definition that is written reads back to the same
      * slot times.
      *
-     * @return array{start: string, timezone: string, round_interval: string, slots_per_round: int, slot_interval?: string, resources?: array<string>}
+     * The first key is `format_version`, the version of this form (1).
+     *
+     * @return array{format_version: int, start: string, timezone: string, round_interval: string, slots_per_round: int, slot_interval?: string, resources?: array<string>}
      *
      * @throws InvalidConfigurationException When an interval has no ISO 8601 duration that reads
      *                                       back as the same interval (reason `NotSerializable`);
@@ -294,7 +308,7 @@ final readonly class TimelineDefinition
             $data['resources'] = $this->resources;
         }
 
-        return $data;
+        return [PlainData::VERSION_KEY => PlainData::VERSION, ...$data];
     }
 
     /**

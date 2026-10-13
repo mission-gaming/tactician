@@ -1,0 +1,158 @@
+# 0005. Serialized forms carry a format version
+
+## Context
+
+The library writes plain data in many forms: a schedule, a stage state, a
+scheduled schedule, a repack outcome, their parts (participant, round, event,
+result, round pairing, scheduled event, the records of an outcome), and
+configuration (the options classes, a ranking, a timeline, a session grid,
+the timeline rules, the progression selectors). Applications store these
+arrays, often as JSON in a database column, and read them back with a later
+release than the one that wrote them.
+
+Through 0.2.x no form said which release's rules it was written under. A
+reader had the array and nothing else. As long as a form never changes that
+is harmless; the first time a key is added, renamed or given another meaning,
+the reader can no longer tell an old array from a new one, and it reads one
+of them wrongly without knowing. The same is true the other way round: an
+older release handed an array from a newer one reads what it recognises and
+drops the rest.
+
+Two strings in the library already look like versions and are not this one:
+the `v2` inside an engine fingerprint (`tactician:v2:swiss...`,
+`Stage\EngineFingerprint`; 0.2.x wrote `v1`) and the `v1` in front of a
+repack outcome fingerprint (`RepackOutcome::FINGERPRINT_SCHEME`). Each is
+the version of the scheme its own string is built by.
+
+## Decision
+
+**One key, in one place.** Every array a `toArray()` of the library returns
+has `format_version` as its first key. The value is an integer, the version
+of that form. `toJson()` and `jsonSerialize()` write the same array.
+
+**One version to an array.** A form held inside another is written without
+the key: the participants and events of a schedule, the round of an event,
+the rounds and results of a stage state, the records of a repack outcome.
+The array that is stored states one version, at its top, and what it holds
+is read under that version. A part serialized by itself, with its own
+`toArray()`, is the top of its own array and carries the key. A reader
+accepts the key on a nested form too, provided it is a version it reads, so
+an array put together by hand from separately serialized parts loads.
+
+**A missing version is version 1.** Version 1 of every form is the form
+0.3.0 writes: what 0.2.x wrote, which had no version key, and beside it
+the optional keys 0.3.0 added before the key existed (`strategy_seed` in
+round-robin options, `seed` in Swiss options, `ties` in a rank range
+selector and `third_place` in elimination options). Each of those may be
+left out and is then read
+as 0.2.x behaved, so an array without the version key is read as version 1,
+under the rules of version 1, and data stored by 0.2.x keeps loading.
+`tests/Fixtures/stored-by-0.2/` holds every form as the 0.2.x tags wrote it,
+and a test reads it on every run. From 0.3.0 on a key is not added to a
+form without the form taking its next version (see "Changing a form").
+
+**An earlier release reads a later array as it always did.** 0.2.x does
+not know the key and cannot check it. Its readers ignored keys they did not
+know, so an array written by 0.3.0 loads in 0.2.x with the version, and
+whatever else 0.2.x has no key for, left unread: an application that rolls
+back from 0.3.0 keeps reading its rows. One reader is the exception:
+`PotDrawOptions::fromArray()` of 0.2.2 and 0.2.3 refused unknown keys
+already, and refuses `format_version` with them; drop the key from stored
+pot draw options before reading them with those releases. From 0.3.0 on
+every reader refuses a key and a version it does not know, so the question
+does not come up again in this form: a later array is either the same form
+or is refused.
+
+One form says more in 0.3.0 than it did, and is still version 1. The
+`participants` of a schedule are its entrants in their order, where 0.2.x
+listed the participants in the order they first appear in the events. The
+key, its type and what a reader does with it are the same: each participant
+of the schedule once, referenced by ID from the events. An array from 0.2.x
+read by 0.3.0 gives the entrants in the only order the array holds, which is
+the order a schedule built from those events has anyway; an array from 0.3.0
+read by 0.2.x gives the same events. Neither reader misreads the other's
+array, which is the test the next paragraph but one states.
+
+**A version the reader does not know is refused.** A value above the newest
+version the release reads means the array was written by a later release.
+It is refused, with the version found and the newest one read, and never
+read on the hope that the forms are close enough. So is a value below 1 and
+a value that is not an integer, `null` included: the key is the library's
+own and it never writes it as null. Configuration reports this as an
+`InvalidConfigurationException` with the reason `UnsupportedFormatVersion`,
+data as an `InvalidInputException`, each form using the exception it uses
+for every other fault of its array.
+
+**Versions belong to forms, not to releases.** Each form counts its own
+versions from 1. A release that changes the schedule form makes it version
+2 and leaves every other form where it was. The number says nothing about
+the library version and is not compared with it.
+
+**Changing a form.** A form changes when an array it wrote before would be
+refused or read differently by the code that reads the new one, or the
+other way round: a key added, removed or renamed, a value given another
+type or another meaning, a default changed for a key that may be left out.
+Such a change:
+
+1. takes the next version number for that form, and `toArray()` writes it;
+2. keeps `fromArray()` reading every earlier version, each under its own
+   rules (`Serialization\PlainData` returns the version of the array it
+   checked, for the reader to branch on);
+3. is made in a minor release, never in a patch, with a changelog entry
+   that names the form, the two versions and what differs;
+4. shows as a diff that is reviewed with the change: of the wire fixtures
+   in `tests/Fixtures/golden/wire/` for a schedule and a stage state, the
+   two forms that have one, and of the arrays the tests of the form expect
+   for every other form.
+
+An earlier version stops being read only in a major release, and the
+changelog of that release says so.
+
+**The fingerprints are not format versions.** `format_version` says how an
+array is to be read. An engine fingerprint says which engine, under which
+configuration, may read a stage state; it is one string value of the stage
+state form, and the `v2` inside it versions how that string is composed. An
+outcome fingerprint is a hash whose scheme names the keys it covers, and
+`format_version` is not one of them. Either scheme can move on without any
+form changing, and a form can change without either scheme moving. 0.3.0
+shows the first: it moved the engine fingerprint scheme from `v1` to `v2`
+([ADR 0004](0004-position-decides-where-results-do-not.md)), and the stage
+state form is version 1 as it was. A stage state of format version 1 holds
+a stamp of either scheme: the form stores the string and does not interpret
+it, so a state stamped by 0.2.x loads, and it is the engine that refuses
+the stamp.
+
+## Consequences
+
+- Data written by 0.2.x loads in 0.3.0 and later as version 1. What 0.3.0
+  refuses that 0.2.x accepted is not a matter of the version: it is input
+  that was never valid and was read without a check, and the changelog of
+  0.3.0 lists each case.
+- Every stored array is one key longer. Nested forms are not, so the cost
+  does not grow with the number of events.
+- A nested form has no version of its own to be read by. Its reader, called
+  for a part that carries no key, reads version 1. So a form that is held
+  in others (an event in a schedule, a result, a round pairing, a stage
+  state, a scheduled event) cannot change by itself: the forms that hold it
+  take their next version with it, and their readers tell the reader of the
+  part which version to read. A part cut out of a stored array and handed to
+  its own `fromArray()` is read as version 1 whatever array it came from,
+  which is right only while the part's form is at version 1. That is the
+  price of one key to an array, and it is to be paid in the release that
+  first changes a nested form.
+- An array written by a later release fails loudly on an older one where
+  its form has changed, and loads where it has not.
+- A reader that meets `format_version` under a key it does not otherwise
+  know about does not refuse it as an unknown key: it is a key of every
+  form.
+- Code that compares a `toArray()` result with a literal array, or stores
+  it under a schema of its own, sees the new key.
+- `tests/Feature/PlainDataFormsTest.php` holds every form to the rule: the
+  key is first, a nested form carries none, an array without it reads as
+  the same value as one with version 1, and every other value is refused.
+  The catalogue it reads (`tests/Support/PlainDataForms.php`) is compared
+  with the `fromArray()` and `toArray()` methods `src/` declares, so a new
+  form fails the suite until it is listed.
+- The usage guide states the rule for a reader of stored data
+  ([Format Versions](../USAGE.md#format-versions)); this record is where it
+  is decided.

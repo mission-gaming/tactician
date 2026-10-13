@@ -10,6 +10,7 @@ use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
+use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Timeline\IntervalArithmetic;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use MissionGaming\Tactician\Timeline\ZonedTime;
@@ -86,6 +87,20 @@ final readonly class SessionGrid
      * read a null there as "not given" and applied the default of 1.
      */
     public const string UNBOUNDED = 'unbounded';
+
+    /**
+     * The keys fromArray() reads, of an instant-based grid and of a
+     * shape-only one together.
+     */
+    private const array KEYS = [
+        'sessions',
+        'timezone',
+        'slot_interval',
+        'session_count',
+        'slots_per_session',
+        'slots_per_session_overrides',
+        'capacity_per_slot',
+    ];
 
     /** @var array<int, DateTimeImmutable> Re-indexed 0..N-1; empty on a shape-only grid */
     private array $sessionStarts;
@@ -383,13 +398,21 @@ final readonly class SessionGrid
      * `capacity_per_slot` is a positive integer or the string
      * {@see self::UNBOUNDED}; left out, or null, it is 1.
      *
+     * A key that is none of those named above is refused, so that a
+     * misspelt `slots_per_session` is not silently read as 1.
+     *
      * @param array<string, mixed> $config
      *
-     * @throws InvalidConfigurationException When a value is missing or malformed, or a session
-     *                                       start does not state an instant by itself
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), a
+     *                                       value is missing or malformed, or a session start
+     *                                       does not state an instant by itself
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, self::KEYS, 'a session grid');
+
         if (!array_key_exists('sessions', $config) && array_key_exists('session_count', $config)) {
             $sessionCount = $config['session_count'];
             if (!is_int($sessionCount)) {
@@ -496,7 +519,8 @@ final readonly class SessionGrid
      * `timezone` and `slot_interval`. An unbounded capacity is the string
      * {@see self::UNBOUNDED}. `slots_per_session_overrides` lists the
      * sessions whose slot count is not the default, and is left out when
-     * there is none.
+     * there is none. The first key of both forms is `format_version`, the
+     * version of the form (1).
      *
      * The slot interval is written by TimelineDefinition::writeInterval(),
      * which refuses one that would not read back as the same interval (any
@@ -505,7 +529,7 @@ final readonly class SessionGrid
      * The grid itself works with such an interval; it has no plain-data
      * form.
      *
-     * @return array{sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}|array{session_count: int, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}
+     * @return array{format_version: int, sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}|array{format_version: int, session_count: int, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}
      *
      * @throws InvalidConfigurationException When the slot interval has no ISO 8601 duration that
      *                                       reads back as the same interval (`NotSerializable`)
@@ -521,6 +545,7 @@ final readonly class SessionGrid
 
         if ($this->slotInterval instanceof DateInterval) {
             $data = [
+                PlainData::VERSION_KEY => PlainData::VERSION,
                 'sessions' => array_map(
                     ZonedTime::write(...),
                     $this->sessionStarts
@@ -532,6 +557,7 @@ final readonly class SessionGrid
             ];
         } else {
             $data = [
+                PlainData::VERSION_KEY => PlainData::VERSION,
                 'session_count' => count($this->slotCounts),
                 'slots_per_session' => $this->slotsPerSession,
                 'capacity_per_slot' => $this->capacityPerSlot ?? self::UNBOUNDED,

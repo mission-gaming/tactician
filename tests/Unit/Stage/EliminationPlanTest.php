@@ -158,20 +158,22 @@ describe('EliminationOptions', function (): void {
         ]);
 
         expect($options->toArray())->toBe([
+            'format_version' => 1,
             'legs_per_tie' => 2,
             'reseed_each_round' => true,
             'grand_final_reset' => false,
         ]);
 
         expect(EliminationOptions::fromArray([])->toArray())
-            ->toBe(['legs_per_tie' => 1, 'reseed_each_round' => false, 'grand_final_reset' => true]);
+            ->toBe(['format_version' => 1, 'legs_per_tie' => 1, 'reseed_each_round' => false, 'grand_final_reset' => true]);
     });
 
-    // The form of options without the tie is the form it was before the
-    // option existed: the key is written only when the option is on
+    // The form of options without the tie has the keys it had before the
+    // option existed: the key is written only when the option is on, as
+    // `seed` is in Swiss options (an optional key of version 1, ADR 0005)
     it('writes no third-place key for options without the tie', function (): void {
         expect((new EliminationOptions(thirdPlace: false))->toArray())
-            ->toBe(['legs_per_tie' => 1, 'reseed_each_round' => false, 'grand_final_reset' => true])
+            ->toBe(['format_version' => 1, 'legs_per_tie' => 1, 'reseed_each_round' => false, 'grand_final_reset' => true])
             ->and(EliminationOptions::fromArray(['third_place' => false])->toArray())->not->toHaveKey('third_place');
     });
 
@@ -194,6 +196,7 @@ describe('EliminationOptions', function (): void {
 
         expect($options->thirdPlace)->toBeTrue()
             ->and($options->toArray())->toBe([
+                'format_version' => 1,
                 'legs_per_tie' => 1,
                 'reseed_each_round' => false,
                 'grand_final_reset' => true,

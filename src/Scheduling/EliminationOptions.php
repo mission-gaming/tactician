@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Scheduling;
 
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * Options for the elimination bracket presets.
@@ -60,14 +61,24 @@ final readonly class EliminationOptions
      * Every key is optional and takes the constructor's default when it is
      * left out: data stored before an option existed is read with that
      * option at its default, so an array without `third_place` is a bracket
-     * without a third-place tie. A key this class does not have is ignored.
+     * without a third-place tie. A key this class does not have is refused,
+     * so that a misspelt option is not silently read as its default.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When a value has the wrong type, or legs_per_tie is
-     *                                       not 1 or 2
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), a
+     *                                       value has the wrong type, or legs_per_tie is not 1
+     *                                       or 2
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions(
+            $config,
+            ['legs_per_tie', 'reseed_each_round', 'grand_final_reset', 'third_place'],
+            'elimination options'
+        );
+
         $legsPerTie = $config['legs_per_tie'] ?? 1;
         if (!is_int($legsPerTie)) {
             throw new InvalidConfigurationException(
@@ -100,18 +111,21 @@ final readonly class EliminationOptions
     }
 
     /**
-     * The plain-data form fromArray() accepts: the first three keys,
-     * always, and `third_place` when the option is on.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then the first three options, always, and
+     * `third_place` when the option is on.
      *
      * The key is left out when the option is off, so the form of options
-     * without a third-place tie is the form it was before the option
-     * existed, key for key.
+     * without a third-place tie has the keys it had before the option
+     * existed. It is one of the optional keys of version 1 of this form,
+     * as `seed` is in Swiss options.
      *
-     * @return array{legs_per_tie: int, reseed_each_round: bool, grand_final_reset: bool, third_place?: true}
+     * @return array{format_version: int, legs_per_tie: int, reseed_each_round: bool, grand_final_reset: bool, third_place?: true}
      */
     public function toArray(): array
     {
         $data = [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'legs_per_tie' => $this->legsPerTie,
             'reseed_each_round' => $this->reseedEachRound,
             'grand_final_reset' => $this->grandFinalReset,

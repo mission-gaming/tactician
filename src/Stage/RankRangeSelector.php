@@ -8,6 +8,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\UndecidedSelectionException;
+use MissionGaming\Tactician\Serialization\PlainData;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
 use Override;
@@ -172,17 +173,21 @@ final readonly class RankRangeSelector implements ProgressionSelector
      * ['mode' => 'per-group', 'from' => 1, 'to' => 2], the form toArray()
      * gives. The mode is 'overall' or 'per-group'; `from` defaults to 1
      * and `to` is required. `ties` is 'refuse' (the default),
-     * 'accept-inside-selection' or 'accept-table-order'. Other keys are
-     * ignored.
+     * 'accept-inside-selection' or 'accept-table-order'. Any other key is
+     * refused, so that a misspelt `from` is not silently read as 1.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the mode is missing or unknown or `ties` is
-     *                                       unknown (reason `UnknownIdentifier`), a bound is not
-     *                                       an integer (`WrongValueType`), or the range is not
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), the mode is missing or unknown
+     *                                       or `ties` is unknown (`UnknownIdentifier`), a bound is
+     *                                       not an integer (`WrongValueType`), or the range is not
      *                                       1 <= from <= to (`ValueOutOfRange`)
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, ['mode', 'from', 'to', 'ties'], 'a rank range selector');
+
         $mode = $config['mode'] ?? null;
         if (!in_array($mode, [self::MODE_OVERALL, self::MODE_PER_GROUP], true)) {
             throw new InvalidConfigurationException(
@@ -215,18 +220,23 @@ final readonly class RankRangeSelector implements ProgressionSelector
     }
 
     /**
-     * The plain-data form fromArray() accepts: the mode ('overall' or
-     * 'per-group') and the two 1-based, inclusive bounds. topPerGroup(n)
-     * is written as per-group 1..n. The key `ties` is written only for a
-     * selector that accepts an undecided order ('accept-inside-selection'
-     * or 'accept-table-order'); a selector that refuses has the three keys
-     * it has always had.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then the mode ('overall' or 'per-group')
+     * and the two 1-based, inclusive bounds. topPerGroup(n) is written as
+     * per-group 1..n. The key `ties` is written only for a selector that
+     * accepts an undecided order ('accept-inside-selection' or
+     * 'accept-table-order'); a selector that refuses has no such key.
      *
-     * @return array{mode: string, from: int, to: int, ties?: string}
+     * @return array{format_version: int, mode: string, from: int, to: int, ties?: string}
      */
     public function toArray(): array
     {
-        $data = ['mode' => $this->mode, 'from' => $this->from, 'to' => $this->to];
+        $data = [
+            PlainData::VERSION_KEY => PlainData::VERSION,
+            'mode' => $this->mode,
+            'from' => $this->from,
+            'to' => $this->to,
+        ];
         if ($this->ties !== self::TIES_REFUSED) {
             $data['ties'] = $this->ties;
         }

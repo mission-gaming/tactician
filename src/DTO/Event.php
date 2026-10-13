@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\DTO;
 
 use MissionGaming\Tactician\Exceptions\InvalidInputException;
+use MissionGaming\Tactician\Serialization\PlainData;
 
 /**
  * One meeting of two or more participants, with the round it belongs to and
@@ -20,11 +21,13 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
 readonly class Event
 {
     /**
-     * The participants are kept as given: the same order, the same keys, and
-     * no check that they differ from each other. Pass a list (keys 0, 1, ...):
-     * the library reads roles by index.
+     * The participants are kept as given: the same order and the same keys.
+     * They must differ from each other: a participant is not paired with
+     * itself, and two objects with one ID are one participant. Pass a list
+     * (keys 0, 1, ...): the library reads roles by index.
      *
-     * @param array<Participant> $participants At least 2, first-named participant first
+     * @param array<Participant> $participants At least 2, each with an ID of its own,
+     *                                         first-named participant first
      * @param Round|null $round The round the event is played in; null for an event not yet in a round
      * @param array<string, mixed> $metadata Free-form data. The library reads one key, 'tie_leg',
      *                                       which the elimination engines set on the two events
@@ -33,7 +36,8 @@ readonly class Event
      *                                       round of a bracket with a third-place tie, which
      *                                       only Stage\BracketTie::of() reads
      *
-     * @throws InvalidInputException When fewer than 2 participants are provided
+     * @throws InvalidInputException When fewer than 2 participants are provided, or one
+     *                               participant ID is listed twice
      */
     public function __construct(
         private array $participants,
@@ -42,6 +46,17 @@ readonly class Event
     ) {
         if (count($participants) < 2) {
             throw new InvalidInputException('An event must have at least 2 participants');
+        }
+
+        $listed = [];
+        foreach ($participants as $participant) {
+            $id = $participant->getId();
+            if (isset($listed[$id])) {
+                throw new InvalidInputException(
+                    "An event cannot list participant {$id} twice: a participant is not paired with itself"
+                );
+            }
+            $listed[$id] = true;
         }
     }
 
@@ -122,18 +137,27 @@ readonly class Event
      * Convert this event to a serializable array.
      *
      * Participants are referenced by ID; pair with the participant list from
-     * Schedule::toArray() to rehydrate.
+     * Schedule::toArray() to rehydrate. The first key is `format_version`,
+     * the version of this form (1); the round is written without one, and
+     * so is the event itself where another form holds it.
      *
-     * @return array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}
+     * @return array{format_version: int, participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}
      */
     public function toArray(): array
     {
+        $round = null;
+        if ($this->round instanceof Round) {
+            $round = $this->round->toArray();
+            unset($round[PlainData::VERSION_KEY]);
+        }
+
         return [
+            PlainData::VERSION_KEY => PlainData::VERSION,
             'participants' => array_map(
                 fn(Participant $participant) => $participant->getId(),
                 $this->participants
             ),
-            'round' => $this->round?->toArray(),
+            'round' => $round,
             'metadata' => $this->metadata,
         ];
     }
@@ -143,18 +167,22 @@ readonly class Event
      *
      * The participants are taken from the registry in the order the data
      * lists their IDs, so roles survive. A missing 'round' gives an event
-     * without a round and a missing 'metadata' gives none; other keys are
-     * ignored.
+     * without a round and a missing 'metadata' gives none. Any other key is
+     * refused: data of your own belongs in the metadata.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Every participant the data may reference, keyed by ID
      *
-     * @throws InvalidInputException When a field has the wrong type, a participant ID is
-     *                               not in the registry, fewer than 2 participants are
-     *                               listed, or the round number is not a positive integer
+     * @throws InvalidInputException When the format version is not one this release reads,
+     *                               a key is unknown, a field has the wrong type, a
+     *                               participant ID is not in the registry, fewer than 2
+     *                               participants are listed, or the round number is not a
+     *                               positive integer
      */
     public static function fromArray(array $data, array $participantsById): self
     {
+        PlainData::checkFields($data, ['participants', 'round', 'metadata'], 'event data');
+
         $participantIds = $data['participants'] ?? null;
         if (!is_array($participantIds)) {
             throw new InvalidInputException('Event data requires a participants array');

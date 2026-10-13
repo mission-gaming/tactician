@@ -8,6 +8,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
+use MissionGaming\Tactician\Serialization\PlainData;
 use Override;
 
 /**
@@ -60,15 +61,19 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
 
     /**
      * Build from plain configuration data: ['mode' => 'winners'] or
-     * ['mode' => 'losers'], the form toArray() gives. Other keys are
-     * ignored.
+     * ['mode' => 'losers'], the form toArray() gives. Any other key is
+     * refused.
      *
      * @param array<string, mixed> $config
-     * @throws InvalidConfigurationException When the mode is missing or unknown (reason
-     *                                       `UnknownIdentifier`)
+     * @throws InvalidConfigurationException When the format version is not one this release reads
+     *                                       (reason `UnsupportedFormatVersion`), a key is unknown
+     *                                       (`UnknownOptionKey`), or
+     *                                       the mode is missing or unknown (`UnknownIdentifier`)
      */
     public static function fromArray(array $config): self
     {
+        PlainData::checkOptions($config, ['mode'], 'a match outcome selector');
+
         $mode = $config['mode'] ?? null;
         if (!in_array($mode, [self::MODE_WINNERS, self::MODE_LOSERS], true)) {
             throw new InvalidConfigurationException(
@@ -82,14 +87,14 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     }
 
     /**
-     * The plain-data form fromArray() accepts: the mode, 'winners' or
-     * 'losers'.
+     * The plain-data form fromArray() accepts: `format_version`, the
+     * version of this form (1), then the mode, 'winners' or 'losers'.
      *
-     * @return array{mode: string}
+     * @return array{format_version: int, mode: string}
      */
     public function toArray(): array
     {
-        return ['mode' => $this->mode];
+        return [PlainData::VERSION_KEY => PlainData::VERSION, 'mode' => $this->mode];
     }
 
     /**
