@@ -93,7 +93,7 @@ and an accepted order is the order of the entrant list, as
 - The combined table credits no bye. A bye credited in a pool's own table
   decides who holds the rank there and is not among the figures the holders
   are compared by. That holds whatever the ranking strategy says a bye is
-  worth ([0007](0007-a-bye-is-worth-what-the-ranking-strategy-says.md)):
+  worth ([0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md)):
   the entries of the combined table have no bye, so a tiebreaker that
   reads byes finds none there. Crediting them would need `PerEvent` to say
   whether a bye is an event played, which is not decided.

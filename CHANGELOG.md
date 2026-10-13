@@ -476,8 +476,8 @@ entry on the engine fingerprint.
   An engine fingerprint states the value (`bye-value`) only when it is not
   the value of a win, so every stamp written before is unchanged. With the
   defaults no table, pairing or fingerprint changes; no golden fixture
-  changed ("Byes in a table" in `docs/USAGE.md`, ADR 0007,
-  `docs/adr/0007-a-bye-is-worth-what-the-ranking-strategy-says.md`; #58).
+  changed ("Byes in a table" in `docs/USAGE.md`, ADR 0009,
+  `docs/adr/0009-a-bye-is-worth-what-the-ranking-strategy-says.md`; #58).
 - **A table with its byes and its adjustments in one call:
   `StandingsCalculator::calculateWith(array $participants, array $results,
   array $byes = [], array $adjustments = [], int $winsPerBye = 1)`.** The
@@ -523,8 +523,8 @@ entry on the engine fingerprint.
   place. The calculator forms the tied sets, so the values are the same
   for every order of the participants and the results, and a tiebreaker is
   asked once for each place in the chain: a subset its values leave level
-  goes on to the next tiebreaker (ADR 0008,
-  `docs/adr/0008-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md`).
+  goes on to the next tiebreaker (ADR 0010,
+  `docs/adr/0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md`).
   `TiedParticipantsTiebreaker`, the marker interface added with awarded
   results in this release, now has that contract: a tiebreaker of your own
   that implements it is handed the results and the entries of one tied set,

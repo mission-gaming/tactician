@@ -1,4 +1,4 @@
-# 0008. A tiebreaker between the tied participants is computed by the calculator, once for each place in the chain
+# 0010. A tiebreaker between the tied participants is computed by the calculator, once for each place in the chain
 
 Status: accepted
 
@@ -53,7 +53,7 @@ gives it a further place in the chain.
 **The table is calculated in one call when it has such a tiebreaker.** Who
 is tied depends on the byes and the adjustments, so
 `StandingsCalculator::calculateWith()` takes them with the results
-([0007](0007-a-bye-is-worth-what-the-ranking-strategy-says.md)), and
+([0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md)), and
 `withByesCredited()` and `withAdjustments()` refuse to change a table of a
 calculator that has one.
 

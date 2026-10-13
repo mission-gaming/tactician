@@ -1,4 +1,4 @@
-# 0007. A bye is worth what the ranking strategy says
+# 0009. A bye is worth what the ranking strategy says
 
 Status: accepted
 
@@ -92,7 +92,7 @@ written before is unchanged.
   was calculated. `withByesCredited()` and `withAdjustments()` keep the
   tiebreaker values of the table they are given; with a tiebreaker whose
   value depends on the byes (a treatment other than `Uncounted`) or on who
-  is level ([0008](0008-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md))
+  is level ([0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md))
   they refuse, and `calculateWith()` is the call.
 - A subclass of `StandingsCalculator` is calculated through its own
   `calculate()`, `withByesCredited()` and `withAdjustments()`, as it was
