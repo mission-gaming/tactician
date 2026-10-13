@@ -260,15 +260,15 @@ describe('a rank selection that results do not decide', function (): void {
         $inside = $refusing->withTiesInsideSelectionAccepted();
         $asItStands = RankRangeSelector::overall(1, 4)->withTableOrderAccepted();
 
-        expect($refusing->toArray())->toBe(['mode' => 'per-group', 'from' => 1, 'to' => 2])
-            ->and($inside->toArray())->toBe(['mode' => 'per-group', 'from' => 1, 'to' => 2, 'ties' => 'accept-inside-selection'])
-            ->and($asItStands->toArray())->toBe(['mode' => 'overall', 'from' => 1, 'to' => 4, 'ties' => 'accept-table-order'])
+        expect($refusing->toArray())->toBe(['format_version' => 1, 'mode' => 'per-group', 'from' => 1, 'to' => 2])
+            ->and($inside->toArray())->toBe(['format_version' => 1, 'mode' => 'per-group', 'from' => 1, 'to' => 2, 'ties' => 'accept-inside-selection'])
+            ->and($asItStands->toArray())->toBe(['format_version' => 1, 'mode' => 'overall', 'from' => 1, 'to' => 4, 'ties' => 'accept-table-order'])
             ->and(RankRangeSelector::fromArray($inside->toArray())->toArray())->toBe($inside->toArray())
             ->and(RankRangeSelector::fromArray($asItStands->toArray())->toArray())->toBe($asItStands->toArray())
             ->and(RankRangeSelector::fromArray(['mode' => 'overall', 'to' => 2, 'ties' => 'refuse'])->toArray())
-            ->toBe(['mode' => 'overall', 'from' => 1, 'to' => 2])
+            ->toBe(['format_version' => 1, 'mode' => 'overall', 'from' => 1, 'to' => 2])
             // The selector it was called on is not changed
-            ->and($refusing->toArray())->toBe(['mode' => 'per-group', 'from' => 1, 'to' => 2]);
+            ->and($refusing->toArray())->toBe(['format_version' => 1, 'mode' => 'per-group', 'from' => 1, 'to' => 2]);
 
         // Data stored before the choice existed refuses, as a new selector does
         $outcome = StageOutcome::combining(['A' => selectionPool($this->pool, $this->allDrawn)]);
@@ -302,9 +302,12 @@ function crossPoolOutcome(int $pools, int $ranks): StageOutcome
             $members[] = $member = new Participant("{$label}{$rank}", "Pool {$label} rank {$rank}");
             $entries[] = new StandingEntry($member, $ranks, $ranks - $rank, 0, $rank, 3.0 * ($ranks - $rank + 1));
         }
+        // One result, so that the pool is not an unplayed one. A pool of
+        // one entrant has no event to have a result of, and is not asked
+        // for one: a table of one entry is decided
         $outcomes[$label] = new StageOutcome(
             new Standings($entries),
-            [new Result(new Event([$members[0], $members[count($members) - 1]]), $members[0])]
+            $ranks > 1 ? [new Result(new Event([$members[0], $members[$ranks - 1]]), $members[0])] : []
         );
     }
 

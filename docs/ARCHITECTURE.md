@@ -11,7 +11,7 @@ limited, in the [roadmap](ROADMAP.md).
 - **Participant**: Immutable participant representation with ID, label, seed, and metadata
 - **Event**: Immutable match/event representation with participants, round, and metadata
 - **Round**: Immutable round representation with number and metadata
-- **Schedule**: Iterator/Countable collection of events with metadata support and JSON serialization
+- **Schedule**: Iterator/Countable collection of events with metadata support and JSON serialization. It keeps its entrants (`getEntrants()`): the list a generator was given, in that order, which is the seeding where position decides, or the participants in the order they first appear when a schedule is built from events alone. The list is the `participants` of the serialized form, so the order survives a round trip
 - **Result**: Immutable outcome of a played event (winner or draw, optional per-participant scores)
 
 `Participant`, `Event`, `Round` and `Result` are `readonly` classes.
@@ -26,6 +26,15 @@ the participants by ID, because a result refers to them); `Schedule`
 additionally implements `JsonSerializable` with `toJson()`/`fromJson()`
 round-tripping.
 
+Every plain-data form in the library, these and the configuration and
+stage forms below, is read and written under two rules that one internal
+class holds (`Serialization\PlainData`). An array a `toArray()` returns
+starts with `format_version`, written once at the top and not on the forms
+nested in it; a `fromArray()` reads an array without the key as version 1,
+the form 0.2.x wrote, and refuses a version it does not know
+([ADR 0005](adr/0005-serialized-forms-carry-a-format-version.md)). And a
+`fromArray()` refuses a key its form does not have.
+
 ### Stage Model
 The **stage** is Tactician's unit of work — participants and typed options
 in, a schedule (or round-by-round pairings) out, and a uniform outcome when
@@ -35,7 +44,7 @@ play completes. The `src/Stage/` family:
 - **RoundRobinPlan**: Knows everything up front — bye-aware rounds per leg (n-1 even, n odd), event counts, meeting multiplicities, and the leg strategy's contribution facts. Validation, diagnostics and constraints read the shape from it. The generators read the leg count, the events per leg and the rounds per leg from it and lay the rounds out themselves (see [How a round robin is generated](#how-a-round-robin-is-generated)); nothing in the library reads the contribution facts it carries (`rolesMirrorAcrossLegs()`, `requiresRandomization()`, `getWarnings()`), which are there for a caller.
 - **SwissPlan**: Knows rounds and per-round event counts; legs are null, and an open-ended (engine-driven) stage may have null totals
 - **PotDrawPlan**: Knows everything about the shape up front (pots × opponents per pot rounds, half the field in events per round) and which pot every entrant is in, from list position. It refuses the numbers that cannot form a pot draw, each with its own reason. Not a `PairwisePlan`: which pairs meet depends on the seed. Its `validateIntegrity()` checks the format, not only the counts: every entrant once per round, the exact number of opponents from every pot, no rematch, role balance, and exactly two participants per event.
-- **StageState**: The serializable (`toArray()`/`fromArray()`/JSON) state of a results-driven stage between rounds — active participants, recorded pairings, and results. Records the *pairings* played, not just results, so repeat avoidance survives result-free rounds; withdrawals are a first-class verb (`withoutParticipant()`), a result of the last recorded round is corrected with `withResultReplaced()`, and an optional engine fingerprint (`withEngineFingerprint()`, serialized only when set) lets an engine refuse a state another engine or configuration paired, with an error that says where the two differ.
+- **StageState**: The serializable (`toArray()`/`fromArray()`/JSON) state of a results-driven stage between rounds — active participants, recorded pairings, and results. Records the *pairings* played, not just results, so repeat avoidance survives result-free rounds; a stored state is recorded again through `withRoundPlayed()` when it is read, so `fromArray()` refuses a history the verbs refuse, with the same reason; withdrawals are a first-class verb (`withoutParticipant()`), a result of the last recorded round is corrected with `withResultReplaced()`, and an optional engine fingerprint (`withEngineFingerprint()`, serialized only when set) lets an engine refuse a state another engine or configuration paired, with an error that says where the two differ.
 - **PairKey** (`@internal`): The one place that turns participant IDs into an order-independent lookup key, for every pairing map in plans, engines, diagnostics and metrics. The order is total (PHP's string comparison, with a byte-order tiebreak for IDs it calls equal, such as `'01'` and `'1'`) and the encoding escapes `|` and `\` inside an ID, so no two pairings share a key. Keys are never stored or serialized.
 - **RoundPairing**: One value object for every format's round — round number, optional label ('semifinal', 'losers round 2'; null for Swiss), events, and byes
 - **StageEngineInterface**: The one results-driven contract — `getPlan()`, `pairNextRound()`, `isComplete()`, `getOutcome()` — behind one driver loop for every format
@@ -52,10 +61,10 @@ play completes. The `src/Stage/` family:
 
 ### Scheduling System
 - **SchedulerInterface**: Contract for whole-schedule generators — participants and typed options in, a validated schedule out; `getPlan()` exposes the stage plan for a configuration, failing with diagnostics before any event exists
-- **SchedulerOptions**: Typed per-algorithm options, one type per scheduler — no overloaded scalars. Config-constructible (`fromArray()`/`toArray()`) with stable identifiers.
+- **SchedulerOptions**: Typed per-algorithm options, one type per scheduler — no overloaded scalars. Config-constructible (`fromArray()`/`toArray()`) with stable identifiers; `fromArray()` refuses a key the options do not have, as every `fromArray()` in the library does (`Serialization\PlainData`, internal, is the one check).
 - **RoundRobinOptions / SwissOptions**: Legs, leg strategy, backtracking and role assignment for round robin; rounds and the optional seed of the draw for Swiss (retiring the old "legs means rounds here" overload)
 - **RoleAssignmentInterface** (`src/RoleAssignment/`): Which participant of each round-robin pairing is first-named. The generator hands over one leg with the roles it proposes and takes it back with seatings reversed; the scheduler refuses an answer that changes anything else. `RoundParityRoleAssignment` (the default) returns the proposal. `BalancedRoleAssignment` ends every leg with each participant's two role counts at most 1 apart (field of even size) or equal (field of odd size): a closed rule for a circle layout, a chain-reversing repair for any other. See `docs/design/role-assignment.md`.
-- **PotDrawOptions**: Pots, opponents per pot and the seed of the draw. The seed is an option and not a `Randomizer`, so a draw is repeatable from plain data; `fromArray()` refuses unknown keys.
+- **PotDrawOptions**: Pots, opponents per pot and the seed of the draw. The seed is an option and not a `Randomizer`, so a draw is repeatable from plain data.
 - **BacktrackingRoundRobinGenerator** (`@internal`): Opt-in search over the round decompositions the circle method cannot reach (`RoundRobinOptions(backtracking: true)`): per-round perfect matchings built seat by seat under the constraints, both orientations tried, dead ends backtracking across rounds. Deterministic, step-bounded, loud about budget-exhausted vs proven-unsatisfiable.
 - **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, roles proposed by round parity and decided by the configured role assignment, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first; [How a round robin is generated](#how-a-round-robin-is-generated) says what it reads from it.
 - **SwissScheduler**: Whole-schedule Swiss preset — drives SwissPairingEngine through the stage driver loop recording no results, so in a field of even size every participant stays level and a round is a non-repeat pairing of the field: in a random order with a source of draws (the seed of its options, or a `Randomizer` it holds, and not both), and without one in list order. In a field of odd size a bye counts as a win in the pairing order, so the participants who have had one are ordered ahead of the rest and are paired first. It refuses more rounds than participants minus one, and without constraints it generates every round count it accepts: a draw that reaches a round with no pairing is drawn again from the same sequence (up to twenty draws), and after that, or with nothing to draw from, the rounds are built by the rotation that lays out a round robin

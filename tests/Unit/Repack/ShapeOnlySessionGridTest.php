@@ -138,6 +138,7 @@ describe('A shape-only SessionGrid', function (): void {
         $grid = SessionGrid::shapeOnly(2, 3, [1 => 4], 5);
 
         expect($grid->toArray())->toBe([
+            'format_version' => 1,
             'session_count' => 2,
             'slots_per_session' => 3,
             'capacity_per_slot' => 5,
@@ -300,6 +301,7 @@ describe('SessionGrid capacity', function (): void {
 
     it('writes an instant-based grid of finite capacity exactly as before', function (): void {
         expect(instantGrid(7)->toArray())->toBe([
+            'format_version' => 1,
             'sessions' => ['2026-08-12 20:00:00', '2026-08-19 20:00:00'],
             'timezone' => 'Europe/London',
             'slot_interval' => 'PT30M',
