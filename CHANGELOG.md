@@ -439,13 +439,20 @@ entry on the engine fingerprint.
   ranking.** Crediting the bye needs the value of a win, so
   `SingleEliminationEngine` with `reseedEachRound` and a `RankingStrategy`
   that is not a `WinDrawLossRanking` throws an
-  `InvalidConfigurationException` (reason `IncompatibleOptions`) when it
-  ranks survivors of a field that is not a power of two, as the Swiss
-  engine does for a bye. A field that is a power of two, and a bracket on a
-  fixed path, are not affected. The Swiss engine's message for the same
-  case now begins "Crediting a bye requires a win/draw/loss ranking
-  strategy", and `SwissPairingEngine::getOutcome()` raises it too, where it
-  used to return a table without the bye.
+  `InvalidConfigurationException` (reason `IncompatibleOptions`) for a
+  field that is not a power of two. The field says that the bracket has
+  byes, so every call refuses it, `pairNextRound()` for the first round
+  included: the bracket is not started and then left without a second
+  round. A field that is a power of two, and a bracket on a fixed path, are
+  not affected. What to change: use a `WinDrawLossRanking`, or a fixed
+  path. The Swiss engine refuses later, as it did: it pairs a round that
+  has a bye and refuses to pair the round after it (the message now begins
+  "Crediting a bye requires a win/draw/loss ranking strategy"), and
+  `SwissPairingEngine::getOutcome()` raises it too, where it used to return
+  a table without the bye. A Swiss stage whose only bye is in its last
+  round (one planned round, or a withdrawal before the last) therefore has
+  no outcome on such a scale: build its table with your own calculator
+  from the state's results.
 - **Signatures.** Additive, and source-compatible for callers: the
   optional parameters named under **Added** (`Standings::__construct()`,
   `StandingEntry::__construct()`, `StageOutcome::__construct()`,

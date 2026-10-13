@@ -517,7 +517,10 @@ describe('re-seeding an elimination bracket', function (): void {
         }
     });
 
-    it('refuses a bye it cannot credit on a scale that has no value for a win', function (): void {
+    // The bracket knows from its entrant list that it has byes, so it
+    // refuses before the first round is paired, and not after it has been
+    // played, when the bracket could no longer be finished.
+    it('refuses a bye it cannot credit on a scale that has no value for a win, before any round is paired', function (int $size): void {
         $engine = new SingleEliminationEngine(
             new EliminationOptions(reseedEachRound: true),
             new StandingsCalculator(new class implements MissionGaming\Tactician\Standings\RankingStrategy {
@@ -528,20 +531,42 @@ describe('re-seeding an elimination bracket', function (): void {
                 }
             })
         );
-        $state = StageState::start(positionField(3, 1));
-        $first = $engine->pairNextRound($state);
-        $state = $state->withRoundPlayed($first, [new Result($first->getEvents()[0], $first->getEvents()[0]->getParticipants()[0])]);
+        $state = StageState::start(positionField($size, 1));
 
-        try {
-            $engine->pairNextRound($state);
-        } catch (InvalidConfigurationException $exception) {
-            expect($exception->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions);
+        $calls = [
+            'pairNextRound' => fn(): mixed => $engine->pairNextRound($state),
+            'isComplete' => fn(): mixed => $engine->isComplete($state),
+            'getOutcome' => fn(): mixed => $engine->getOutcome($state),
+        ];
+        foreach ($calls as $call => $ask) {
+            try {
+                $ask();
+            } catch (InvalidConfigurationException $exception) {
+                expect($exception->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions)
+                    ->and($exception->getMessage())->toContain('win/draw/loss');
 
-            return;
+                continue;
+            }
+
+            throw new LogicException("{$call}() went on with a bye that cannot be credited.");
         }
+    })->with([[3], [5], [6], [7], [12]]);
 
-        throw new LogicException('A bye was credited on a scale with no value for a win.');
-    });
+    it('pairs a field that has no bye on any scale, re-seeded or not', function (int $size): void {
+        $calculator = new StandingsCalculator(new class implements MissionGaming\Tactician\Standings\RankingStrategy {
+            #[Override]
+            public function rank(Participant $participant, array $results): float
+            {
+                return (float) count($results);
+            }
+        });
+
+        // A power of two has no bye to credit; a fixed path ranks nobody
+        expect((new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true), $calculator))
+            ->pairNextRound(StageState::start(positionField($size, 1)))->getEvents())->toHaveCount($size / 2)
+            ->and((new SingleEliminationEngine(new EliminationOptions(), $calculator))
+                ->pairNextRound(StageState::start(positionField($size + 1, 1)))->getRoundNumber())->toBe(1);
+    })->with([[2], [4], [8]]);
 
     // A state stored by 0.2.x. Five entrants, re-seeded: 0.2.x ranked the
     // three who had a bye below the winner of round 1 and paired the second

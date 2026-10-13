@@ -1709,9 +1709,11 @@ every bracket.
   round ranks with the winners of that round, not below them. Survivors
   who are level are in the order of the entrant list, so in a field of
   five the entrants in positions 1 and 2 are in opposite semifinals.
-  Crediting a bye needs a value for a win: a re-seeded bracket that has a
-  bye is refused under a ranking strategy that is not a
-  `WinDrawLossRanking` (`IncompatibleOptions`).
+  Crediting a bye needs a value for a win: a re-seeded bracket whose field
+  is not a power of two, which therefore has byes, is refused under a
+  ranking strategy that is not a `WinDrawLossRanking`
+  (`IncompatibleOptions`), from the first call on, before a round is
+  paired.
 - `legsPerTie: 2` plays every tie over two mirrored legs (annotated with
   `tie_leg` metadata). Whoever wins more legs advances; when the legs are
   level, the aggregate is **yours** to resolve — away goals, extra time,

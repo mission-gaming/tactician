@@ -17,6 +17,7 @@ use MissionGaming\Tactician\Stage\StageEngineInterface;
 use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\WinDrawLossRanking;
 use Override;
 
 /**
@@ -251,6 +252,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
 
         $participants = array_values($state->getParticipants());
         $this->validateParticipants($participants);
+        $this->requireByesToBeCreditable(count($participants));
 
         $resultIndex = $this->indexResults($state->getResults());
         $totalRounds = (int) log($this->bracketSize(count($participants)), 2);
@@ -337,6 +339,40 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         }
 
         return ['pending' => null, 'levelAdvancers' => $levelAdvancers, 'placement' => $placement];
+    }
+
+    /**
+     * Refuse a re-seeded bracket that will have a bye it cannot credit.
+     *
+     * A field that is not a power of two has byes in its first round, and
+     * the ranking before the second round credits each as a tie won, which
+     * needs the value of a win (StandingsCalculator::withByesCredited()).
+     * The entrant list says all of that before a round is paired, so the
+     * bracket is refused then, on every call, and not after its first
+     * round has been played.
+     *
+     * @throws InvalidConfigurationException When the bracket is re-seeded, the field is not a
+     *                                       power of two and the ranking strategy is not a
+     *                                       WinDrawLossRanking
+     */
+    private function requireByesToBeCreditable(int $participantCount): void
+    {
+        if (!$this->options->reseedEachRound || $participantCount === $this->bracketSize($participantCount)) {
+            return;
+        }
+
+        $rankingStrategy = $this->standingsCalculator->getRankingStrategy();
+        if ($rankingStrategy instanceof WinDrawLossRanking) {
+            return;
+        }
+
+        throw new InvalidConfigurationException(
+            "A re-seeded bracket of {$participantCount} entrants has byes, and crediting a bye requires a win/draw/loss"
+                . ' ranking strategy: counting a bye as a tie won is undefined under other ranking scales.'
+                . ' Use a WinDrawLossRanking, a field that is a power of two, or a bracket on a fixed path',
+            ['ranking_strategy' => $rankingStrategy::class, 'participant_count' => $participantCount],
+            reason: InvalidConfigurationReason::IncompatibleOptions
+        );
     }
 
     /**
