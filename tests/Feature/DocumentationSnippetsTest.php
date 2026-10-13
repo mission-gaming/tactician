@@ -475,6 +475,14 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ['{"participants":["athletic"],"label":null,"reason":null}' . "\nAthletic Bilbao\n"],
             [],
         ],
+        // No result keeps the key: not the level tie, which takes the
+        // decider, and not the tie its legs decide, where the key was a stray
+        'stored two-legged ties moved from the deprecated metadata key to the decider' => [
+            'docs/USAGE.md',
+            '$migratedLegs = StageState::fromArray($storedLegs);',
+            ["[] null\n[] [\"redstar\"]\n[] null\n[] null\nRed Star FC v Athletic Bilbao\n"],
+            [],
+        ],
         // The block is there to show the refusal
         'a level elimination event that names nobody refused' => [
             'docs/USAGE.md',

@@ -504,8 +504,12 @@ entry on the engine fingerprint.
     result is unchanged, an array written by an earlier release loads
     unchanged, and a stage state that holds decided ties is replayed from
     `toArray()` and from JSON. `decider` is one more optional key of
-    version 1 of the result form (ADR 0005). An earlier release that reads
-    such an array does not see the key and finds the tie undecided.
+    version 1 of the result form (ADR 0005). A 0.2.x release that reads
+    such an array does not see the key: it finds the tie undecided, and a
+    state it writes back no longer has the decider. An application that may
+    have to go back to 0.2.x records `tie_winner` metadata beside the
+    decider, naming the same participant (see **Deprecated**, "Both at
+    once"), which a 0.2.x release reads.
   - Only the elimination engines and `MatchOutcomeSelector` read a
     decider. A standings calculator, the Swiss engine and a round robin
     carry it with the result and do not read it.
@@ -695,7 +699,7 @@ entry on the engine fingerprint.
   `BracketTie::of(Event $event): ?BracketTie` reads it back;
   `BracketTie::winnerRank()` is 1 or 3. The third-place tie has the legs of
   every tie of the bracket and is decided as they are, a level one through
-  its `tie_winner` decision, and the stage is complete when both ties are
+  its decider, and the stage is complete when both ties are
   decided (one of the two decided is `RoundPartiallyResolved`, as in every
   round). The outcome's table then gives places 1 to 4, each in a tier of
   its own: the entrant who advanced from the final, the other finalist, the
@@ -1502,8 +1506,11 @@ entry on the engine fingerprint.
     $id]` in its metadata, pass `decider: new Decider([$id])` in its place.
     Stored results keep loading and keep deciding until `1.0.0`; to move
     them over, give each result of a level tie that carries the key a
-    `decider` of `['participants' => [$id]]` and remove the key. The usage
-    guide has both as executed snippets ("The `tie_winner` metadata key").
+    `decider` of `['participants' => [$id]]` and remove the key. A
+    two-legged tie is level when its legs are (no leg won, or a leg each),
+    so its two results are read together. The usage guide has the new
+    code and both migrations of stored data, single events and two-legged
+    ties, as executed snippets ("The `tie_winner` metadata key").
   - **How it is raised.** A metadata key cannot carry an attribute, so the
     library raises the notice itself: a call that takes an advancer from
     the key emits one `E_USER_DEPRECATED` notice, whatever the number of

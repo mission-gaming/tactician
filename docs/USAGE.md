@@ -5466,10 +5466,6 @@ only:
 - `invalidSchedule($reason)`: the sentence `"Invalid schedule: {$reason}"`,
   the context `['reason' => $reason]`, the reason `InvalidSchedule`.
 
----
-
-This guide covers the essential patterns for using Tactician effectively. For more advanced use cases or when contributing to the library, see the [Architecture documentation](ARCHITECTURE.md) and [Contributing guidelines](CONTRIBUTING.md).
-
 ### The `tie_winner` metadata key
 
 Before the typed [decider](#recording-a-level-event), who advances from a
@@ -5546,6 +5542,88 @@ echo json_encode($migrated->toArray()['results'][0]['decider']), "\n";
 echo $bracket->getOutcome($migrated)?->getStandings()->getEntries()[0]->getParticipant()->getLabel(), "\n"; // Athletic Bilbao
 ```
 
+A two-legged tie is level when its legs are, and a leg of it may have no
+winner in a tie that the other leg decides, so its results are read
+together: the results of one round between the same two participants are
+one tie. The tie takes a decider when no leg was won or each side won one,
+on its last leg, from the first leg that carries the key (the one that was
+read). The key is removed from every result of a tie that has all its
+results, the ties the legs decide included, where it was never read. With
+`$legsPerTie` at 1 the same loop moves single events over.
+
+```php
+use MissionGaming\Tactician\Scheduling\EliminationOptions;
+
+[, , $livorno, $redstar] = $field;
+
+// Two-legged semifinals as an earlier release stored them. Celtic and Red
+// Star won a leg each, and the key on the second leg sends Red Star on.
+// Athletic won both legs, so the key on its second leg was never read
+$twoLegged = new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2));
+$semifinals = $twoLegged->pairNextRound(StageState::start($field));
+[$firstLeg, $secondLeg, $otherFirstLeg, $otherSecondLeg] = $semifinals->getEvents();
+$storedLegs = StageState::start($field)
+    ->withRoundPlayed($semifinals, [
+        new Result($firstLeg, $celtic, ['celtic' => 2, 'redstar' => 1]),
+        new Result($secondLeg, $redstar, ['celtic' => 0, 'redstar' => 1], ['tie_winner' => 'redstar']),
+        new Result($otherFirstLeg, $athletic),
+        new Result($otherSecondLeg, $athletic, [], ['tie_winner' => 'livorno']),
+    ])
+    ->toArray();
+
+$legsPerTie = 2;
+
+// The results of one tie: one round and the same two participants
+$ties = [];
+foreach ($storedLegs['results'] as $index => $result) {
+    $pair = $result['event']['participants'];
+    sort($pair);
+    $ties[$result['event']['round']['number'] . ' ' . implode(' ', $pair)][] = $index;
+}
+
+foreach ($ties as $indexes) {
+    if (count($indexes) < $legsPerTie) {
+        continue; // A leg has no result yet: leave the key, which is read when it has one
+    }
+
+    // In leg order, whatever order the results were recorded in
+    usort($indexes, fn (int $a, int $b): int => ($storedLegs['results'][$a]['event']['metadata']['tie_leg'] ?? 1)
+        <=> ($storedLegs['results'][$b]['event']['metadata']['tie_leg'] ?? 1));
+
+    $legWins = [];
+    $advances = null;
+    foreach ($indexes as $index) {
+        $result = $storedLegs['results'][$index];
+        if ($result['winner'] !== null) {
+            $legWins[$result['winner']] = ($legWins[$result['winner']] ?? 0) + 1;
+        }
+
+        // The first leg that carries the key is the one that was read
+        $advances ??= $result['metadata']['tie_winner'] ?? null;
+        unset($storedLegs['results'][$index]['metadata']['tie_winner']);
+    }
+
+    // Level: no leg won, or a leg each. Otherwise the legs decide
+    $level = $legWins === [] || array_values($legWins) === [1, 1];
+    if ($level && is_string($advances)) {
+        $storedLegs['results'][end($indexes)]['decider'] = ['participants' => [$advances]];
+    }
+}
+
+$migratedLegs = StageState::fromArray($storedLegs);
+foreach ($migratedLegs->getResults() as $result) {
+    echo json_encode($result->getMetadata()), ' ', json_encode($result->getDecider()?->getParticipantIds()), "\n";
+}
+// [] null
+// [] ["redstar"]
+// [] null
+// [] null
+
+[$finalFirstLeg] = $twoLegged->pairNextRound($migratedLegs)->getEvents();
+echo implode(' v ', array_map(fn (Participant $p) => $p->getLabel(), $finalFirstLeg->getParticipants())), "\n";
+// Red Star FC v Athletic Bilbao
+```
+
 Two things differ between the key and the decider, and both matter when
 you move data over:
 
@@ -5563,3 +5641,7 @@ While you change over you can write both. Where a tie carries a decider
 the decider is what is read, and a key beside it that names the same
 participant raises nothing. One that names another participant is refused
 (`InvalidResult`): the library does not choose between two answers.
+
+---
+
+This guide covers the essential patterns for using Tactician effectively. For more advanced use cases or when contributing to the library, see the [Architecture documentation](ARCHITECTURE.md) and [Contributing guidelines](CONTRIBUTING.md).
