@@ -121,6 +121,27 @@ describe('a stored stage state', function (): void {
             'Rounds must be recorded in play order with increasing round numbers',
             ['last_round' => 2, 'pairing_round' => 2],
         ],
+        // Refused by the verb before it looks at the events of the pairing
+        'a first round numbered 0' => [
+            function (array $stored): array {
+                $stored['rounds'][0]['round'] = 0;
+
+                return $stored;
+            },
+            InvalidConfigurationReason::ValueOutOfRange,
+            'Round numbers are 1-based: a round cannot be recorded with a number below 1',
+            ['pairing_round' => 0],
+        ],
+        'a first round numbered below 0' => [
+            function (array $stored): array {
+                $stored['rounds'][0]['round'] = -3;
+
+                return $stored;
+            },
+            InvalidConfigurationReason::ValueOutOfRange,
+            'Round numbers are 1-based: a round cannot be recorded with a number below 1',
+            ['pairing_round' => -3],
+        ],
         'a pairing renumbered under its events' => [
             function (array $stored): array {
                 $stored['rounds'][1]['round'] = 7;
