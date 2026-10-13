@@ -47,10 +47,7 @@
     "autoload-dev": {
         "psr-4": {
             "MissionGaming\\Tactician\\Tests\\": "tests/"
-        },
-        "files": [
-            "tests/mutation-memory.php"
-        ]
+        }
     },
     "config": {
         "allow-plugins": {
@@ -91,7 +88,7 @@
         "mutation": [
             "Composer\\Config::disableProcessTimeout",
             "@putenv XDEBUG_MODE=coverage",
-            "pest --configuration=phpunit.mutation.xml --mutate --everything --covered-only --path=src/Scheduling,src/Repack/Internal --parallel"
+            "@php tests/bin/run-mutation.php"
         ],
         "norm": "composer normalize --dry-run",
         "norm-fix": "composer normalize",

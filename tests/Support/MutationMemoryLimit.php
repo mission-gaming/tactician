@@ -23,13 +23,25 @@ namespace MissionGaming\Tactician\Tests\Support;
  * it ends, and the summary ({@see MutationReport}) counts the mutations
  * those lines name and says so.
  *
- * `tests/mutation-memory.php` installs it. Composer loads that file with the
- * autoloader (`autoload-dev.files` in `composer.json`), and it has to be
- * there and not in a PHPUnit bootstrap or `tests/Pest.php`: the line is
+ * `tests/mutation-memory.php` installs it, and PHP itself runs that file
+ * before the script of the process (`auto_prepend_file`). It has to run that
+ * early, and not from a PHPUnit bootstrap or `tests/Pest.php`: the line is
  * written by a shutdown function, PHP runs shutdown functions in the order
  * they were registered, and Pest registers one of its own as soon as it
  * starts, which ends the process on a fatal error and so keeps every later
- * one from running. The autoloader is the one thing Pest loads before that.
+ * one from running. PHP's own error log cannot stand in for the line either:
+ * PHPUnit points `error_log` at a temporary file of its own for as long as a
+ * test runs, which is when a mutation runs out of memory.
+ *
+ * `composer mutation` is what makes PHP run the file. Its script,
+ * `tests/bin/run-mutation.php`, writes a one-line configuration file that
+ * names it ({@see self::scanDirectories()}) and starts the run with the
+ * directory of that file added to `PHP_INI_SCAN_DIR`, which every process of
+ * the run inherits. Nothing else loads the file: not Composer's autoloader,
+ * so not an ordinary test run, a static analysis or a project that installs
+ * the package. A mutation run that is started in another way
+ * (`vendor/bin/pest --mutate`) has no limit and writes no log, and the
+ * summary of such a run says so.
  */
 final class MutationMemoryLimit
 {
@@ -58,6 +70,13 @@ final class MutationMemoryLimit
      */
     public const string ENV_RUN = 'TACTICIAN_MUTATION_RUN';
 
+    /**
+     * Where `composer mutation` writes the configuration file that makes
+     * PHP run `tests/mutation-memory.php`, relative to the root of the
+     * repository.
+     */
+    public const string INI_DIRECTORY = 'build/mutation-ini';
+
     /** How PHP's message for an allocation over the limit begins. */
     private const string EXHAUSTED = 'Allowed memory size of ';
 
@@ -70,11 +89,12 @@ final class MutationMemoryLimit
      *   variables: the source file that is mutated, and the file that holds
      *   the mutated source, whose name is a hash of that source.
      * - The process that starts a mutation run, which is the one given
-     *   `--mutate`: removes the log of an earlier run, so that the log holds
-     *   one run. Its own memory is not limited: it holds the coverage of
-     *   the whole first run of the tests.
-     * - Any other process (an ordinary test run, a static analysis, the
-     *   summary script): nothing.
+     *   `--mutate`: starts the log afresh, as an empty file, so that the log
+     *   holds one run and its being there says that the run had the limit.
+     *   Its own memory is not limited: it holds the coverage of the whole
+     *   first run of the tests.
+     * - Any other process of the run (a worker of the first run of the
+     *   tests): nothing.
      *
      * @param string $root The root of the repository
      * @param list<string> $arguments The arguments of the process
@@ -88,8 +108,11 @@ final class MutationMemoryLimit
         $mutated = getenv('PEST_MUTATION_TESTING');
 
         if ($mutated === false) {
-            if (in_array('--mutate', $arguments, true) && is_file($log)) {
-                unlink($log);
+            if (in_array('--mutate', $arguments, true)) {
+                if (!is_dir(dirname($log))) {
+                    mkdir(dirname($log), 0o777, true);
+                }
+                file_put_contents($log, '');
             }
 
             return;
@@ -134,6 +157,56 @@ final class MutationMemoryLimit
             }
             file_put_contents($log, "{$source}\t{$mutant}\t{$run}\n", FILE_APPEND | LOCK_EX);
         });
+    }
+
+    /**
+     * Writes the configuration file that makes PHP run
+     * `tests/mutation-memory.php` before the script of a process, and
+     * returns the value of `PHP_INI_SCAN_DIR` under which PHP reads it: what
+     * the caller had there, and the directory of the file after it.
+     *
+     * The variable is a list of directories, and an empty entry stands for
+     * the directory PHP was built with. A caller that has not set it gets
+     * that directory and this one; a caller that set it keeps every entry;
+     * a caller that set it to nothing, which turns the built-in directory
+     * off, gets this one alone.
+     *
+     * @param string $root The root of the repository
+     * @param string $directory Where to write the file; made if it is not there
+     * @param string|false $callers The caller's `PHP_INI_SCAN_DIR`, false when it has none
+     *
+     * @return string|null Null when the file cannot be written or named (a quote in the path, or the
+     *     separator of the list): the run then goes on without the limit
+     */
+    public static function scanDirectories(string $root, string $directory, string|false $callers): ?string
+    {
+        $prepended = $root . '/tests/mutation-memory.php';
+
+        if (str_contains($prepended, '"') || str_contains($directory, PATH_SEPARATOR)) {
+            return null;
+        }
+
+        // Asked first, so that what cannot be done is not tried: a warning
+        // here would be the first thing a run prints
+        $existing = $directory;
+        while (!file_exists($existing) && dirname($existing) !== $existing) {
+            $existing = dirname($existing);
+        }
+        if (!is_dir($existing) || !is_writable($existing)) {
+            return null;
+        }
+        if (!is_dir($directory)) {
+            mkdir($directory, 0o777, true);
+        }
+        if (file_put_contents($directory . '/mutation-memory.ini', "auto_prepend_file=\"{$prepended}\"\n") === false) {
+            return null;
+        }
+
+        return match ($callers) {
+            false => PATH_SEPARATOR . $directory,
+            '' => $directory,
+            default => $callers . PATH_SEPARATOR . $directory,
+        };
     }
 
     /**

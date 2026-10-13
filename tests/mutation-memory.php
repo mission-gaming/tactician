@@ -3,19 +3,26 @@
 declare(strict_types=1);
 
 /**
- * Loaded by Composer's autoloader in a development checkout
- * (`autoload-dev.files`), which is before anything else in every PHP process
- * that uses the library's `vendor/autoload.php`.
+ * Run by PHP before the script of every process of `composer mutation`
+ * (`auto_prepend_file`, which `tests/bin/run-mutation.php` sets for the run),
+ * and by nothing else.
  *
- * It matters to `composer mutation` only: the test process of a mutation
- * gets a memory limit and logs that it ended there. In every other process
- * it does nothing. {@see MissionGaming\Tactician\Tests\Support\MutationMemoryLimit}
+ * The test process of a mutation gets a memory limit and logs that it ended
+ * there. {@see MissionGaming\Tactician\Tests\Support\MutationMemoryLimit}
  * says what it does and why it has to be loaded this early.
+ *
+ * The autoloader is not loaded yet, and this file does not load it: the
+ * class is one file with no dependency. Everything is inside a function,
+ * because a prepended file shares its variables with the script.
  */
 
 use MissionGaming\Tactician\Tests\Support\MutationMemoryLimit;
 
-/** @var list<string> $arguments */
-$arguments = array_values(array_filter((array) ($_SERVER['argv'] ?? []), is_string(...)));
+require_once __DIR__ . '/Support/MutationMemoryLimit.php';
 
-MutationMemoryLimit::install(dirname(__DIR__), $arguments);
+(static function (): void {
+    /** @var list<string> $arguments */
+    $arguments = array_values(array_filter((array) ($_SERVER['argv'] ?? []), is_string(...)));
+
+    MutationMemoryLimit::install(dirname(__DIR__), $arguments);
+})();

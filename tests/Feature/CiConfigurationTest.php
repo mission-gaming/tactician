@@ -546,10 +546,12 @@ it('mutates every file of the two directories in exactly one shard', function ()
         ->and($inSeveral)->toBe([], 'More than one shard of mutation.yml mutates: ' . implode(', ', $inSeveral));
 
     // Together the shards are what the script mutates when it is given no
-    // path: the two directories, which the script names itself
+    // path: the two directories, which the script names itself (in the
+    // file it executes, tests/bin/run-mutation.php)
     $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
     /** @var array{scripts: array<string, string|list<string>>} $composer */
-    expect(implode(' ', (array) $composer['scripts']['mutation']))->toContain('--path=src/Scheduling,src/Repack/Internal ');
+    expect((array) $composer['scripts']['mutation'])->toContain('@php tests/bin/run-mutation.php')
+        ->and((string) file_get_contents($root . '/tests/bin/run-mutation.php'))->toContain("'--path=src/Scheduling,src/Repack/Internal',");
 });
 
 it('reports a mutation score for every shard once a week, in jobs that enforce no minimum and end inside their limit', function () use ($root): void {
@@ -617,10 +619,20 @@ it('reports a mutation score for every shard once a week, in jobs that enforce n
     // limit is the one a test process sets for itself
     // (tests/Feature/MutationMemoryLimitTest.php), and the workflow names
     // no other: a higher one, times the four processes of a runner, is how
-    // a runner runs out of memory
+    // a runner runs out of memory.
+    //
+    // The limit comes with `composer mutation` and with nothing else: the
+    // script of that command is what makes PHP run the file that sets it.
+    // So the one step that runs the suite goes through the command, never
+    // through Pest itself, and nothing in the workflow sets the variable
+    // the script sets
     expect($workflow)->not->toContain(MutationMemoryLimit::ENV_LIMIT)
         ->and($workflow)->not->toContain('memory_limit')
-        ->and($workflow)->not->toContain('ini-values');
+        ->and($workflow)->not->toContain('ini-values')
+        ->and($workflow)->not->toContain('PHP_INI_SCAN_DIR');
+    expect($jobs['mutation'])
+        ->toContain("        composer mutation -- --path=\${{ matrix.path }} 2>&1 | tee build/mutation.log\n")
+        ->and($workflow)->not->toMatch('/^[^#\n]*\bpest\b/m');
 
     // The script: the two directories, the lines a test executes, in
     // parallel, with no minimum score, and outside the gate.
@@ -631,14 +643,24 @@ it('reports a mutation score for every shard once a week, in jobs that enforce n
     // `--processes` reaches the test process of every mutation, which then
     // fails to start: every change is counted as noticed and the score is
     // 100%.
+    //
+    // The options are in tests/bin/run-mutation.php, which the script
+    // executes: it starts Pest with them, after it has arranged for the
+    // memory limit of the test processes.
     /** @var array{scripts: array<string, string|list<string>>} $composer */
     expect($composer['scripts']['mutation'])->toBe([
         'Composer\\Config::disableProcessTimeout',
         '@putenv XDEBUG_MODE=coverage',
-        'pest --configuration=phpunit.mutation.xml --mutate --everything --covered-only --path=src/Scheduling,src/Repack/Internal --parallel',
+        '@php tests/bin/run-mutation.php',
     ]);
-    expect(substr_count(implode(' ', (array) $composer['scripts']['mutation']), '--path='))->toBe(1);
-    expect(implode(' ', (array) $composer['scripts']['mutation']))->not->toContain('--processes');
+    $runner = (string) file_get_contents($root . '/tests/bin/run-mutation.php');
+    expect($runner)
+        ->toContain("        \$root . '/vendor/bin/pest',\n")
+        ->toContain("        '--configuration=phpunit.mutation.xml', '--mutate', '--everything', '--covered-only', '--path=src/Scheduling,src/Repack/Internal', '--parallel',\n")
+        // What the caller gives after `--`, last: a path there replaces the two
+        ->toContain("        ...array_slice(\$argv, 1),\n");
+    expect(substr_count($runner, '--path='))->toBe(2, 'The options, and the example in the comment at the top')
+        ->and($runner)->not->toContain('--processes');
     expect(is_file($root . '/phpunit.mutation.xml'))->toBeTrue();
     expect($composer['scripts']['ci'])->not->toContain('@mutation');
     foreach ($composer['scripts'] as $name => $script) {
