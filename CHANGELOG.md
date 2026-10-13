@@ -555,7 +555,7 @@ entry on the engine fingerprint.
   `docs/adr/0009-a-bye-is-worth-what-the-ranking-strategy-says.md`; #58).
 - **A table with its byes and its adjustments in one call:
   `StandingsCalculator::calculateWith(array $participants, array $results,
-  array $byes = [], array $adjustments = [], int $winsPerBye = 1)`.** The
+  array $byes = [], array $adjustments = [], int $creditsPerBye = 1)`.** The
   byes are counts by participant ID, as `StageState::getByeCounts()`,
   `StageOutcome::getByes()` and the new `Schedule::getByeCounts()` return
   them. Every bye is counted on the entry (`StandingEntry::getByes()`, also
@@ -815,13 +815,18 @@ entry on the engine fingerprint.
   `getTiers()`; entries of different tiers are never in one tied set. The
   elimination engines use them for the bracket placement.
 - **Byes in a table.** `StandingsCalculator::withByesCredited(Standings
-  $standings, array $byes, int $winsPerBye = 1)` adds the value of a bye
+  $standings, array $byes, int $creditsPerBye = 1)` adds the value of a bye
   (the value of a win, unless the ranking is given another: see the entry
   on the value of a bye) for each bye to a table and puts it in order
   again (inside each tier, for a table that has tiers);
   `StandingEntry::getByes()` says how many byes an entry has,
   and `StandingEntry::withByes()` builds such an entry. The
   constructor of `StandingEntry` has a tenth parameter, `byes`, default 0.
+  `creditsPerBye` is how many times each bye is credited: 1, or the legs
+  of a tie where a bye stands for a tie of several legs. On the
+  development branch the parameter was first named `winsPerBye`, from when
+  a bye was always worth a win; no release shipped that name, so it is
+  renamed without a deprecation, here and on `calculateWith()`.
 - **A seed for a pre-drawn Swiss schedule.** `SwissOptions(rounds: 5,
   seed: 2026)`, and `'seed'` in `SwissOptions::fromArray()`; `toArray()`
   writes the key when there is a seed. The scheduler builds a

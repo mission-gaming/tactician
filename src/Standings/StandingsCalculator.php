@@ -298,12 +298,12 @@ readonly class StandingsCalculator
      * The table is the one calculate() gives, with two things more. Each
      * bye is credited: it adds what the ranking strategy says a bye is
      * worth (RankingStrategyWithByeValue::getByeValue(), times the number
-     * given as $winsPerBye) to the ranking value its participant earned,
+     * given as $creditsPerBye) to the ranking value its participant earned,
      * and StandingEntry::getByes() counts it. Played, wins, draws and
      * losses count results only. Each adjustment is applied as
      * withAdjustments() applies it. So for every entry
      *
-     *     getEarnedRankingValue() = getRankingValueOfResults() + getByes() x $winsPerBye x the value of a bye
+     *     getEarnedRankingValue() = getRankingValueOfResults() + getByes() x $creditsPerBye x the value of a bye
      *     getRankingValue()       = getEarnedRankingValue() + getAdjustment()
      *
      * This is the call for a table that has byes or adjustments, and the
@@ -341,8 +341,8 @@ readonly class StandingsCalculator
      * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
      *                                     entry in the table, and a count below 1, is ignored
      * @param array<Adjustment> $adjustments Every adjustment of the participants of the table
-     * @param int $winsPerBye How many times the value of a bye one bye is worth: 1, or the
-     *                        legs of a tie where a bye stands for a tie of several legs
+     * @param int $creditsPerBye How many times each bye is credited with the value of a bye: 1, or
+     *                           the legs of a tie where a bye stands for a tie of several legs
      *
      * @throws InvalidInputException When a result's event has a participant who is not among
      *                               the given ones, two results are of one event, an
@@ -359,13 +359,13 @@ readonly class StandingsCalculator
         array $results,
         array $byes = [],
         array $adjustments = [],
-        int $winsPerBye = 1
+        int $creditsPerBye = 1
     ): Standings {
         // A subclass is asked through the three methods it may override,
         // and nothing of this class is read before they are
         if (static::class !== self::class || !$this->isCalculatedInOneGo(true)) {
             return $this->withAdjustments(
-                $this->withByesCredited($this->calculate($participants, $results), $byes, $winsPerBye),
+                $this->withByesCredited($this->calculate($participants, $results), $byes, $creditsPerBye),
                 $adjustments
             );
         }
@@ -379,7 +379,7 @@ readonly class StandingsCalculator
         $creditedEntries = [];
         foreach ($baseEntries as $id => $entry) {
             $count = $byes[$id] ?? 0;
-            $creditedEntries[$id] = $count < 1 ? $entry : $this->creditByes($entry, $count, $winsPerBye);
+            $creditedEntries[$id] = $count < 1 ? $entry : $this->creditByes($entry, $count, $creditsPerBye);
         }
 
         $entries = $creditedEntries;
@@ -795,8 +795,8 @@ readonly class StandingsCalculator
      *
      * @param array<int|string, int> $byes Bye counts keyed by participant ID; an ID with no
      *                                     entry in the table is ignored
-     * @param int $winsPerBye How many times the value of a bye one bye is worth: 1, or the
-     *                        legs of a tie where a bye stands for a tie of several legs
+     * @param int $creditsPerBye How many times each bye is credited with the value of a bye: 1, or
+     *                           the legs of a tie where a bye stands for a tie of several legs
      *
      * @throws InvalidConfigurationException When there is a bye to credit and the ranking strategy
      *                                       does not say what a bye is worth (it is no
@@ -808,7 +808,7 @@ readonly class StandingsCalculator
      *                                   credit leaves no longer one whole tied set (reason
      *                                   `Stale`)
      */
-    public function withByesCredited(Standings $standings, array $byes, int $winsPerBye = 1): Standings
+    public function withByesCredited(Standings $standings, array $byes, int $creditsPerBye = 1): Standings
     {
         $credited = [];
         $any = false;
@@ -820,7 +820,7 @@ readonly class StandingsCalculator
             }
 
             $any = true;
-            $credited[] = $this->creditByes($entry, $count, $winsPerBye);
+            $credited[] = $this->creditByes($entry, $count, $creditsPerBye);
         }
 
         if (!$any) {
@@ -846,7 +846,7 @@ readonly class StandingsCalculator
      * @throws InvalidConfigurationException When the ranking strategy does not say what a bye is
      *                                       worth (reason `IncompatibleOptions`)
      */
-    private function creditByes(StandingEntry $entry, int $count, int $winsPerBye): StandingEntry
+    private function creditByes(StandingEntry $entry, int $count, int $creditsPerBye): StandingEntry
     {
         if (!$this->rankingStrategy instanceof RankingStrategyWithByeValue) {
             throw new InvalidConfigurationException(
@@ -862,7 +862,7 @@ readonly class StandingsCalculator
         // apart from it (StandingEntry::withByes() keeps it)
         return $entry->withByes(
             $entry->getByes() + $count,
-            $entry->getEarnedRankingValue() + $count * $winsPerBye * $this->rankingStrategy->getByeValue()
+            $entry->getEarnedRankingValue() + $count * $creditsPerBye * $this->rankingStrategy->getByeValue()
         );
     }
 

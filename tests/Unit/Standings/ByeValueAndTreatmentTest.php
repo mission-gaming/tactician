@@ -138,7 +138,7 @@ describe('a table calculated with its byes', function (): void {
 
     it('shows what the results are worth, what was earned and the total apart', function (): void {
         $entry = (new StandingsCalculator())
-            ->calculateWith($this->field, $this->results, $this->byes, [new Adjustment('p', -2.0)], winsPerBye: 2)
+            ->calculateWith($this->field, $this->results, $this->byes, [new Adjustment('p', -2.0)], creditsPerBye: 2)
             ->getEntryFor($this->p);
 
         // 3 for the win, 2 x 3 for the bye of a tie of two legs, 2 taken away
