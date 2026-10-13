@@ -3983,16 +3983,37 @@ no tie of the bracket: it is read by nothing, as an event the application
 added always was. (`fromHistory()` refuses the second kind before an engine
 sees it.)
 
-The derivation is there to be shown. It is worked out from the state as it
-stands now, and two things a state holds carry no round: an adjustment
-counts in it whenever it was made, and an entrant who has withdrawn is read
-as having been in the stage for every round that names it. A round paired
-before an adjustment can therefore be reported as manual when it was not:
-in a re-seeded bracket, and in a Swiss stage, where every round after the
-first is paired from the table. Read `isManual()` of a stage that holds
-adjustments as "differs from what the engine would pair today", and keep
-a mark of your own beside a round an organiser drew where the difference
-matters.
+The derivation is there to be shown, and nothing is paired from it. It is
+the round the engine pairs from what was known when the recorded round was
+paired: the rounds before it and their results, the adjustments made before
+it, and the entrants who had not withdrawn by then. A round the engine
+paired itself is therefore not reported as manual, whatever was recorded
+after it. What `isManual()` promises, and what it does not:
+
+- **It compares pairings and nothing else.** Two rounds differ when some
+  two participants meet in one and not in the other, or another participant
+  sits the round out. A round an organiser drew that happens to be the
+  engine's round is not manual; keep a mark of your own where the fact that
+  somebody drew it matters.
+- **It needs the times.** The verbs record after which round each
+  adjustment and each withdrawal happened; a history states them. An
+  adjustment with no round leaves the table of the time unknown, and the
+  engine then gives no derivation and reports no round as manual
+  (`getDerivation()` is null): every round of a Swiss stage, and every
+  round after the first of a re-seeded bracket. A withdrawal with no round
+  is read as described under
+  [When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened),
+  and a tie that is missing from the round because one of its entrants has
+  withdrawn is then not counted as a difference.
+- **It needs the engine that paired.** The derivation is this engine's,
+  with its options and its standings rules. A round paired by an engine
+  with other options, or by an earlier release with another pairing order,
+  is manual to this one.
+- **It has nothing to say where the engine draws.** A Swiss engine that
+  holds a `Randomizer` has no derivation, and neither has an engine whose
+  search finds no pairing for the round.
+- **A round is read as recorded either way.** The flag changes nothing the
+  engine does next.
 
 ### Withdrawals from a Bracket
 

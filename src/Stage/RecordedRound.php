@@ -88,10 +88,31 @@ final readonly class RecordedRound
      * another participant sits the round out.
      *
      * Roles, the order of the events, labels and metadata are not
-     * compared. A tie that is not played because an entrant of it has
-     * withdrawn makes no difference either, whether the round holds its
-     * events or not. False when the engine has no derivation to compare
-     * with.
+     * compared. A bracket compares the ties only, and a tie that is not in
+     * the round because an entrant of it had withdrawn when the round was
+     * paired makes no difference.
+     *
+     * What the flag does not say:
+     *
+     * - That nobody drew the round by hand. A round an organiser drew that
+     *   is the round the engine pairs is not manual. An application that
+     *   needs to know who paired a round keeps a mark of its own.
+     * - Anything, where the engine has no derivation to compare with
+     *   (getDerivation() is null): the flag is then false, whoever paired
+     *   the round.
+     * - That another engine would agree. The derivation is this engine's,
+     *   with its options: a round paired by an engine with other options,
+     *   or by an earlier release with another pairing order, is manual to
+     *   this one.
+     *
+     * What it does say, for a state whose adjustments and withdrawals
+     * carry their rounds (every state built by the verbs): a round this
+     * engine paired is not reported as manual, whatever was recorded after
+     * it. Where a withdrawal carries no round, a tie that is missing from
+     * the round because one of its entrants has withdrawn since is not
+     * counted as a difference, so a round drawn by hand can go unreported.
+     *
+     * The round is read as recorded either way.
      */
     public function isManual(): bool
     {
