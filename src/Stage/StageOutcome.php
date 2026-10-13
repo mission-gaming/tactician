@@ -104,6 +104,13 @@ final readonly class StageOutcome
      * entry in two pools, the first pool's figure is taken, as its
      * participant is.
      *
+     * A decision a pool's table carries (Standings::withDecisions()) stays
+     * with that table, where a per-group or a best-of-rank selection reads
+     * it. The combined table carries none: its tied sets are not the
+     * pools' (entrants of other pools can be level with a decided set),
+     * so a tie in it is settled by a decision of its own, given to the
+     * selector that reads it or to the table of an outcome built by hand.
+     *
      * The combined table belongs to no single entrant list unless one is
      * given: without it, entries that are level across the pools are in
      * the calculator's own fallback order (seed, then participant ID).

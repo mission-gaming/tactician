@@ -1,0 +1,93 @@
+# The results of examples/28-ties-settled-by-decision.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Group tables ==
+Fjord:
+  1. orca played=3 wins=2 draws=1 losses=0 value=7 for=58 against=48
+  2. puffin played=3 wins=2 draws=1 losses=0 value=7 for=58 against=48
+  3. seal played=3 wins=1 draws=0 losses=2 value=3 for=47 against=56
+  4. tern played=3 wins=0 draws=0 losses=3 value=0 for=46 against=57
+Sund:
+  1. gull played=3 wins=3 draws=0 losses=0 value=9 for=67 against=50
+  2. heron played=3 wins=2 draws=0 losses=1 value=6 for=61 against=60
+  3. ibis played=3 wins=1 draws=0 losses=2 value=3 for=51 against=58
+  4. kite played=3 wins=0 draws=0 losses=3 value=0 for=49 against=60
+
+== Tied sets of the Fjord table ==
+-
+  Places: 1 to 2
+  Level: Orca, Puffin
+  Decided: no
+
+== Without a decision ==
+Refused as: tie_within_selection
+Group: Fjord
+Level: orca, puffin
+Places: 1 to 2
+
+== The decision as plain data ==
+format_version: 1
+participants:
+  - puffin
+  - orca
+label: drawing of lots
+reason: Drawn by the tournament office after the last group event
+
+== Qualifiers, in the order that seeds the semifinals ==
+-
+  Club: Puffin
+  Placed by: drawing of lots
+  Reason: Drawn by the tournament office after the last group event
+-
+  Club: Gull
+  Placed by: results
+  Reason:
+-
+  Club: Orca
+  Placed by: drawing of lots
+  Reason: Drawn by the tournament office after the last group event
+-
+  Club: Heron
+  Placed by: results
+  Reason:
+
+== Semifinals ==
+R1 [semifinal]: puffin-heron gull-orca
+
+== The Fjord table as shown ==
+-
+  Place: 1
+  Club: Puffin
+  Points: 7
+  Score difference: 10
+  Settled by: drawing of lots
+-
+  Place: 2
+  Club: Orca
+  Points: 7
+  Score difference: 10
+  Settled by: drawing of lots
+-
+  Place: 3
+  Club: Seal
+  Points: 3
+  Score difference: -9
+  Settled by: results
+-
+  Place: 4
+  Club: Tern
+  Points: 0
+  Score difference: -11
+  Settled by: results
+
+== A decision that would override a result ==
+Rejected as: participants_not_level
+Not level with Seal: orca

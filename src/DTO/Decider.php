@@ -24,6 +24,13 @@ use MissionGaming\Tactician\Serialization\PlainData;
  * on, so the elimination engines require exactly one there (see
  * Stage\TieDecision), and nothing here says so.
  *
+ * Given to a standings table or to a rank selector
+ * (Standings\Standings::withDecisions(), and withDecisions() of
+ * Stage\RankRangeSelector and Stage\BestOfRankSelector) it settles the
+ * order of entries that results leave level, and its participants are
+ * every one of those entries, best first. There a decision for one
+ * participant orders nothing and is rejected, although the type allows it.
+ *
  * A decider holds no score and changes none. The result it is on keeps the
  * scores of the event as it was played, and whatever the application keeps
  * about its own tie-break belongs in the result's metadata, where no score
@@ -76,7 +83,9 @@ final readonly class Decider
 
     /**
      * The IDs of the participants the decision is for, in the order given.
-     * On a result these are the participants who advance from the tie.
+     * On a result these are the participants who advance from the tie; in
+     * a decision for a table or a rank selection, the level entries, best
+     * first.
      *
      * @return list<string>
      */
