@@ -202,7 +202,7 @@ describe('SlotAssignment built by hand with a kickoff that is not in UTC', funct
         $assignment = new SlotAssignment('e1', 0, 0, new DateTimeImmutable($local, new DateTimeZone($zone)));
 
         expect($assignment->toArray()['kickoff'])->toBe($written)
-            ->and(new DateTimeImmutable($written) == $assignment->getKickoff())->toBeTrue();
+            ->and((new DateTimeImmutable($written))->getTimestamp())->toBe($assignment->getKickoff()->getTimestamp());
     })->with([
         'a zone ahead of UTC' => ['2026-08-12 20:15:00', 'Europe/London', '2026-08-12T19:15:00Z'],
         'a zone behind UTC, across midnight' => ['2026-08-12 20:15:00', 'America/New_York', '2026-08-13T00:15:00Z'],

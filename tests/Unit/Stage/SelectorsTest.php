@@ -242,7 +242,7 @@ describe('MatchOutcomeSelector', function (): void {
     ): void {
         $three = [$this->alice, $this->bob, $this->carol];
         $event = new Event($three, new Round(1));
-        $winner = array_values(array_filter($three, fn(Participant $p): bool => $p->getId() === $winnerId))[0];
+        $winner = $winnerId === 'p3' ? $this->carol : $this->alice;
         $outcome = new StageOutcome(
             (new StandingsCalculator())->calculate($three, []),
             [new Result($event, $winner)],

@@ -578,10 +578,16 @@ class RoundRobinScheduler implements SchedulerInterface
     /**
      * Generate events for a specific leg with full tournament context.
      *
+     * It records as it goes: the byes of the leg's rounds, the constraint
+     * rejections, and the number of pairings the leg strategy returned no
+     * event for.
+     *
      * @param array<Participant> $participants
      * @return array<Event>
      * @throws IncompleteScheduleException
      * @throws InvalidConfigurationException When the role assignment changes more than roles
+     *
+     * @phpstan-impure
      */
     private function generateLegWithFullContext(
         array $participants,
