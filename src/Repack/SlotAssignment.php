@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MissionGaming\Tactician\Repack;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Serialization\PlainData;
 
@@ -25,8 +26,10 @@ final readonly class SlotAssignment
      * @param string $eventId The movable event's caller-supplied id
      * @param int $session 0-based session index on the grid
      * @param int $slot 0-based slot index within the session
-     * @param DateTimeImmutable|null $kickoff The position's kickoff time, in UTC; null
-     *                                        when the grid is shape-only
+     * @param DateTimeImmutable|null $kickoff The position's kickoff time; null when the
+     *                                        grid is shape-only. The repacker gives it in
+     *                                        UTC. Any timezone is accepted and the instant
+     *                                        is what counts
      */
     public function __construct(
         private string $eventId,
@@ -70,7 +73,9 @@ final readonly class SlotAssignment
     }
 
     /**
-     * The position's kickoff time, in UTC.
+     * The position's kickoff time, as the object the assignment was built
+     * with: in UTC from the repacker, and in whatever timezone it was given
+     * for an assignment built by hand. toArray() writes either in UTC.
      *
      * @throws UnavailableValueException When the assignment was made on a
      *                                   shape-only grid and so has no kickoff.
@@ -92,10 +97,10 @@ final readonly class SlotAssignment
 
     /**
      * Serialize to plain data; the kickoff as an ISO 8601 UTC string to the
-     * second (`2026-08-12T19:15:00Z`), or null when there is none. Known
-     * limitation: the kickoff is written as it is held and is not
-     * converted, so the string is UTC only when the kickoff given was, as
-     * the repacker's always is.
+     * second (`2026-08-12T19:15:00Z`), or null when there is none. A
+     * kickoff given in another timezone is converted, so the string states
+     * the same instant: 20:15 in London in August is written
+     * `...T19:15:00Z`.
      * The first key is `format_version`, the version of this form (1);
      * a repack outcome writes its records without it.
      *
@@ -108,7 +113,7 @@ final readonly class SlotAssignment
             'event_id' => $this->eventId,
             'session' => $this->session,
             'slot' => $this->slot,
-            'kickoff' => $this->kickoff?->format('Y-m-d\TH:i:s\Z'),
+            'kickoff' => $this->kickoff?->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z'),
         ];
     }
 }

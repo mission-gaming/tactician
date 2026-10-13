@@ -134,10 +134,14 @@ final class PlainDataForms
             'Swiss options' => [
                 'class' => SwissOptions::class,
                 'kind' => self::CONFIGURATION,
-                'keys' => ['rounds'],
-                'sample' => ['rounds' => 5],
+                'keys' => ['rounds', 'seed'],
+                'sample' => ['rounds' => 5, 'seed' => 2026],
                 'read' => static fn(array $data, array $registry): object => SwissOptions::fromArray(self::stringKeyed($data)),
-                'generate' => static fn(Randomizer $random, array $field): object => new SwissOptions($random->getInt(1, 11)),
+                // Half of them with a seed, which is any integer, 0 included
+                'generate' => static fn(Randomizer $random, array $field): object => new SwissOptions(
+                    $random->getInt(1, 11),
+                    $random->getInt(0, 1) === 1 ? [0, -7, PHP_INT_MAX, PHP_INT_MIN, $random->getInt(1, 9_999)][$random->getInt(0, 4)] : null
+                ),
             ],
             'pot draw options' => [
                 'class' => PotDrawOptions::class,
@@ -206,17 +210,25 @@ final class PlainDataForms
             'rank range selector' => [
                 'class' => RankRangeSelector::class,
                 'kind' => self::CONFIGURATION,
-                'keys' => ['mode', 'from', 'to'],
-                'sample' => ['mode' => 'per-group', 'from' => 2, 'to' => 3],
+                'keys' => ['mode', 'from', 'to', 'ties'],
+                'sample' => ['mode' => 'per-group', 'from' => 2, 'to' => 3, 'ties' => 'accept-inside-selection'],
                 'read' => static fn(array $data, array $registry): object => RankRangeSelector::fromArray(self::stringKeyed($data)),
                 'generate' => static function (Randomizer $random, array $field): object {
                     $from = $random->getInt(1, 8);
                     $to = $from + $random->getInt(0, 8);
 
-                    return match ($random->getInt(0, 2)) {
+                    $selector = match ($random->getInt(0, 2)) {
                         0 => RankRangeSelector::overall($from, $to),
                         1 => RankRangeSelector::perGroup($from, $to),
                         default => RankRangeSelector::topPerGroup($to),
+                    };
+
+                    // A selector that refuses an undecided order writes no
+                    // `ties` key; the other two write theirs
+                    return match ($random->getInt(0, 2)) {
+                        0 => $selector,
+                        1 => $selector->withTiesInsideSelectionAccepted(),
+                        default => $selector->withTableOrderAccepted(),
                     };
                 },
             ],

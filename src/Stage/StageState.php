@@ -83,8 +83,8 @@ final readonly class StageState
      *
      * Recording no results is legal — the pairing's events still count as
      * played, which is what whole-schedule generation without outcomes
-     * relies on. Rounds are recorded in play order: each pairing's round
-     * number must exceed the last recorded one, and every event and result
+     * relies on. Rounds are recorded in play order: a round number is 1 or
+     * above and must exceed the last recorded one, and every event and result
      * in the pairing must carry that round number, so the history can
      * never contradict itself.
      *
@@ -94,14 +94,23 @@ final readonly class StageState
      * The results are appended to getResults() in the order given.
      *
      * @param array<Result> $results
-     * @throws InvalidConfigurationException When the pairing does not follow the recorded rounds
-     *                                       (reason `RoundOutOfSequence`), or an event or result
+     * @throws InvalidConfigurationException When the pairing's round number is below 1
+     *                                       (`ValueOutOfRange`), the pairing does not follow the
+     *                                       recorded rounds (`RoundOutOfSequence`), or an event or result
      *                                       belongs to a different round or is not in the pairing
      *                                       (`EventNotInRound`; `EventWithoutRoundNumber` when the
      *                                       event carries no round number at all)
      */
     public function withRoundPlayed(RoundPairing $pairing, array $results): self
     {
+        if ($pairing->getRoundNumber() < 1) {
+            throw new InvalidConfigurationException(
+                'Round numbers are 1-based: a round cannot be recorded with a number below 1',
+                ['pairing_round' => $pairing->getRoundNumber()],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
+
         $lastRound = $this->getLastRound();
         if ($lastRound !== null && $pairing->getRoundNumber() <= $lastRound->getRoundNumber()) {
             throw new InvalidConfigurationException(
@@ -571,10 +580,11 @@ final readonly class StageState
      * The first key is `format_version`, the version of this form (1). It
      * says how the array is to be read and is written once, here: the
      * participants, rounds and results inside carry none. It is another
-     * thing than the `v1` inside an engine fingerprint, which is the
+     * thing than the `v2` inside an engine fingerprint, which is the
      * version of the scheme the stamp is written in; the stamp is one
      * string value of this form, and either version can change without
-     * the other.
+     * the other, as the scheme did in 0.3.0 while this form stayed at
+     * version 1.
      *
      * @return array{format_version: int, participants: array<int, array{id: string, label: string, seed: int|null, metadata: array<string, mixed>}>, active: array<string>, rounds: array<int, array{round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}>, results: array<int, array{event: array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}, winner: string|null, scores: array<int|string, int|float>, metadata: array<string, mixed>}>, engine_fingerprint?: string}
      */
@@ -652,22 +662,24 @@ final readonly class StageState
      * release does not know is refused.
      *
      * The shape is checked, that the data holds no key but the five
-     * toArray() writes, and that every ID resolves in the
-     * `participants` registry.
+     * toArray() writes, that every ID resolves in the `participants`
+     * registry, and that no ID is listed twice in `participants` or in
+     * `active`.
      *
      * The history is checked as the verbs check it, because it is
      * recorded again through withRoundPlayed(): rounds in play order with
-     * rising numbers, every event of a pairing carrying the pairing's
-     * round number, and every result standing with the results of its
-     * round and belonging to an event of that round. Stored data that
-     * states a history no sequence of verbs could have recorded is
-     * refused with the reason the verb gives (`RoundOutOfSequence`,
-     * `EventNotInRound`, `EventWithoutRoundNumber`), where it used to load
-     * and be replayed by an engine as if it were sound. What the verbs do
-     * not check is not checked here either: a gap in the round numbers,
-     * the participants of a pairing being active, and an event with more
-     * than one result (the standings and the bracket engines refuse that
-     * one, and withResultReplaced() repairs it).
+     * rising numbers from 1, every event of a pairing carrying the
+     * pairing's round number, and every result standing with the results
+     * of its round and belonging to an event of that round. Stored data
+     * that states a history no sequence of verbs could have recorded is
+     * refused with the reason the verb gives (`ValueOutOfRange` for a
+     * round below 1, `RoundOutOfSequence`, `EventNotInRound`,
+     * `EventWithoutRoundNumber`), where it used to load and be replayed by
+     * an engine as if it were sound. What the verbs do not check is not
+     * checked here either: a gap in the round numbers, the participants of
+     * a pairing being active, and an event with more than one result (the
+     * standings and the bracket engines refuse that one, and
+     * withResultReplaced() repairs it).
      *
      * @param array<string, mixed> $data
      * @throws InvalidInputException When the data is malformed
@@ -713,8 +725,14 @@ final readonly class StageState
                     'Stage state references unknown active participant ' . var_export($activeId, true)
                 );
             }
-            $active[] = $registry[$activeId];
+            if (isset($active[$activeId])) {
+                throw new InvalidInputException(
+                    'Stage state lists active participant ' . var_export($activeId, true) . ' twice'
+                );
+            }
+            $active[$activeId] = $registry[$activeId];
         }
+        $active = array_values($active);
 
         $roundsData = $data['rounds'] ?? [];
         if (!is_array($roundsData)) {

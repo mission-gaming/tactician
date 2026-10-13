@@ -21,11 +21,9 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * The top seeds are the context's participants with the lowest seed
  * numbers; participants without a seed are never among them, and of two
  * with the same seed the one earlier in the context's list comes first.
- * Known limitation: they are recognised in an event as the same objects,
- * not by ID. The schedulers pass the same objects, so generation is not
- * affected, but an event built from copies of the participants (rebuilt
- * with `Participant::fromArray()`, for example) holds no top seed and is
- * always accepted.
+ * They are recognised in an event by their IDs, so an event built from
+ * copies of the participants (rebuilt with `Participant::fromArray()`, for
+ * example) holds the top seeds the originals are.
  *
  * @experimental
  */
@@ -56,9 +54,11 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
      * False when the event falls in a protected round and holds two or more
      * of the top seeds.
      *
-     * A plan without a total number of rounds accepts every event. Known
-     * limitation: an event without a round counts as round 0, which is
-     * inside every window, a period of 0.0 included.
+     * A plan without a total number of rounds accepts every event, and an
+     * event without a round is always accepted: it is in no round, so it is
+     * in no protected one. The schedulers and the engines give every event a
+     * round, so this concerns an event built by hand. A period of 0.0
+     * protects no round.
      */
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
@@ -69,7 +69,10 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
         }
 
         $participants = $event->getParticipants();
-        $currentRound = $event->getRound()?->getNumber() ?? 0;
+        $currentRound = $event->getRound()?->getNumber();
+        if ($currentRound === null) {
+            return true; // In no round, so in no protected round
+        }
 
         $protectedRound = (int) ($totalRounds * $this->protectionPeriod);
 
@@ -77,8 +80,14 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
             return true; // Protection period ended
         }
 
-        $topSeeds = $this->getTopSeeds($context->getParticipants());
-        $eventTopSeeds = array_filter($participants, fn($p) => in_array($p, $topSeeds, true));
+        $topSeedIds = array_map(
+            static fn(Participant $participant): string => $participant->getId(),
+            $this->getTopSeeds($context->getParticipants())
+        );
+        $eventTopSeeds = array_filter(
+            $participants,
+            static fn(Participant $participant): bool => in_array($participant->getId(), $topSeedIds, true)
+        );
 
         return count($eventTopSeeds) <= 1; // Max 1 top seed per event during protection
     }

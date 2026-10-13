@@ -76,15 +76,13 @@ are two participants. Use the entity's primary key, cast to a string:
 - Writing a schedule or a stage state as JSON needs every ID to be valid
   UTF-8.
 
-**One object for each participant.** Build each participant once for a
-call and pass the same objects everywhere in it, as the excerpt does with
-its map by club ID. `ConsecutiveRoleConstraint` and
-`SeedProtectionConstraint` recognise a participant by the object and not
-by its ID, so a second `Participant` built from the same row is not the
-one they are looking for.
+**A participant is its ID.** Everything matches participants by ID, the
+constraints included, so a second `Participant` built from the same row
+is the same participant. Building each one once for a call, as the
+excerpt does with its map by club ID, saves the work and nothing else.
 
 **The order.** Put the list in the order your application means, the
-strongest entrant first. What reads that order depends on the format:
+strongest entrant first. Every format works from that order:
 
 | Format | What decides the order the format works from |
 |---|---|
@@ -92,20 +90,19 @@ strongest entrant first. What reads that order depends on the format:
 | Pot draw (`PotDrawScheduler`) | List position: the first block of the list is pot 1. |
 | Elimination (`SingleEliminationEngine`, `DoubleEliminationEngine`) | List position: the first entrant is the top of the bracket, and byes go to the first positions. |
 | Pools (`PoolDistributor::serpentine()`) | List position. |
-| Swiss (`SwissPairingEngine`) | The standings. Before a result exists every entrant is level, and the table then orders them by the `seed` attribute, then by label, then by ID. List position is not read. |
+| Swiss (`SwissPairingEngine`) | The standings, and list position between entrants that no result separates. Before a result exists every entrant is level: the first round pairs position 1 with 2 and 3 with 4, and its bye goes to the last position. |
 
-So for the first four a seed attribute changes nothing where the format
-places an entrant, and the adapter above passes none. For a Swiss stage, give every participant a seed
-equal to its position in your list (1 for the first). Without seeds the
-first round is paired in label order, and the first bye goes to the
-entrant whose label sorts last. With a `Randomizer` the Swiss engine
-shuffles entrants that are level, so the first round is drawn at random.
+So a seed attribute changes nothing where a format places or orders an
+entrant, and the adapter above passes none. With a `Randomizer` the Swiss
+engine shuffles entrants that are level, so the first round is drawn at
+random.
 
 The same holds wherever a table decides and results leave entrants
-level (a bracket that re-seeds its survivors after each round, a
-selection by rank): the standings order them by seed, then label, then
-ID. Besides the standings, only `SeedProtectionConstraint` reads the
-seed.
+level (a bracket that re-seeds its survivors after each round, the table
+of a stage's outcome, a selection by rank): their position in the list
+orders them, and no label, seed or ID does. Only
+`SeedProtectionConstraint` reads the seed, and a standings table you
+calculate on its own, with no entrant list.
 
 ### The call
 
@@ -315,14 +312,18 @@ There are two ways, and both give the engine the same thing.
     bracket is replayed from the list on every call. Passed only the
     entrants still in it, the engine sees a smaller bracket and offers
     its first round again; passed the same entrants in another order, it
-    looks for results of ties that were never played and reports the
-    round as still in play (`RoundPartiallyResolved`).
-  - **Their seeds and labels as they were.** Wherever a table leaves
-    entrants level, seed and label order them, so a club renamed in
-    mid-stage can change the next Swiss round of a rebuilt state. The
-    stored JSON does not have that problem, and for the same reason it
-    does not show the new name: it keeps each participant as it was
-    when the stage opened.
+    looks for ties that were never played. The single-elimination engine
+    then refuses the state (`RecordedRoundMismatch`); the
+    double-elimination engine reports the round as still in play
+    (`RoundPartiallyResolved`). A Swiss stage reads the same order
+    wherever its table leaves participants level.
+  - **Their IDs, and nothing else about them, for the pairing order.**
+    No stage reads a label or a seed attribute to order entrants, so a
+    club renamed in mid-stage changes no pairing of a rebuilt state.
+    (A constraint the engine was given reads what it reads: seed
+    protection the seed attribute, a metadata constraint its key.) The
+    stored JSON keeps each participant as it was when the stage opened,
+    so it does not show the new name.
   - **For every round**, its number and label, the two participants of
     every event in their order, the event's metadata (a two-legged tie
     carries its leg number there as `tie_leg`, and the engine reads it)
@@ -529,18 +530,20 @@ $levelResult = $state->getResults()[0];
 $advanced = TieDecision::advancer([$levelResult], $ana, $dia, 1);
 ```
 
-Read the winner of a bracket from the results of its final round, as
-above, and not from rank 1 of the standings. The table orders entrants
-by their record over the whole stage. In a double-elimination bracket
-the entrant who lost the grand final can have as many wins as the one
-who won it. When nothing else separates the two, the table orders them
-by seed, label and ID.
+The standings of a bracket's outcome are its placement: rank 1 is the
+entrant who won the final round, read above from its results, rank 2 the
+one it beat, and the others follow by the round that put them out. The
+entrants who went out in one round share a tier of the table, in which
+their records order them and, where those are level, their position in
+the list.
 
 The entrants of the next stage are an ordered list that you pass on, and
-[the order matters](#participants-in). Where you take them from a table
-by position, ask `Standings::getTiedSets()` first: it reports the
-positions that no result separates, where the order is only the
-fallback. Deciding such a tie is the application's rule.
+[the order matters](#participants-in). A `RankRangeSelector` refuses to
+take them from a table by position where no result decides who holds
+that position (`UndecidedSelectionException`, which names the level
+entrants and their places); `Standings::getTiedSets()` reports the same
+positions. Deciding such a tie is the application's rule, and going on
+without one is a choice made on the selector.
 
 ## Repacking an existing schedule
 

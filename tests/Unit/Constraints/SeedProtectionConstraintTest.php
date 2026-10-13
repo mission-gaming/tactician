@@ -26,6 +26,31 @@ describe('SeedProtectionConstraint', function (): void {
         expect($constraint->isSatisfied(new Event([$participants[0], $participants[1]], new Round(4)), $context))->toBeTrue();
     });
 
+    // A participant is who its ID says it is. An event built from copies
+    // of the participants (a schedule read back from storage) holds the top
+    // seeds the originals are.
+    it('recognises the top seeds by their IDs, not as the same objects', function (): void {
+        $participants = [
+            new Participant('seed1', 'Seed 1', 1),
+            new Participant('seed2', 'Seed 2', 2),
+            new Participant('seed3', 'Seed 3', 3),
+            new Participant('seed4', 'Seed 4', 4),
+        ];
+        $copies = array_map(
+            fn(Participant $participant): Participant => Participant::fromArray($participant->toArray()),
+            $participants
+        );
+
+        $constraint = new SeedProtectionConstraint(2, 0.5);
+        $context = roundRobinContext($participants, [], legs: 2);
+
+        expect($copies[0])->not->toBe($participants[0])
+            ->and($constraint->isSatisfied(new Event([$copies[0], $copies[1]], new Round(2)), $context))->toBeFalse()
+            ->and($constraint->isSatisfied(new Event([$participants[0], $copies[1]], new Round(2)), $context))->toBeFalse()
+            // One top seed against a participant who is not one is accepted
+            ->and($constraint->isSatisfied(new Event([$copies[0], $copies[2]], new Round(2)), $context))->toBeTrue();
+    });
+
     it('uses the plan bye-aware rounds per leg for odd fields', function (): void {
         $participants = [];
         for ($i = 1; $i <= 5; ++$i) {
@@ -69,6 +94,37 @@ describe('SeedProtectionConstraint', function (): void {
         $context = swissContext($participants, [], rounds: null);
 
         expect($constraint->isSatisfied(new Event([$participants[0], $participants[1]], new Round(1)), $context))->toBeTrue();
+    });
+
+    // An event with no round is in no round, so it is in no protected one.
+    // It was counted as round 0, which is inside every window.
+    it('accepts an event with no round, whatever the period', function (float $period): void {
+        $participants = [
+            new Participant('seed1', 'Seed 1', 1),
+            new Participant('seed2', 'Seed 2', 2),
+            new Participant('seed3', 'Seed 3', 3),
+            new Participant('seed4', 'Seed 4', 4),
+        ];
+        $context = roundRobinContext($participants, [], legs: 2);
+
+        expect((new SeedProtectionConstraint(2, $period))->isSatisfied(new Event([$participants[0], $participants[1]]), $context))
+            ->toBeTrue();
+    })->with([0.0, 0.5, 1.0]);
+
+    it('protects no round with a period of 0.0, and every round with 1.0', function (): void {
+        $participants = [
+            new Participant('seed1', 'Seed 1', 1),
+            new Participant('seed2', 'Seed 2', 2),
+            new Participant('seed3', 'Seed 3', 3),
+            new Participant('seed4', 'Seed 4', 4),
+        ];
+        // 4 participants over 2 legs: rounds 1 to 6
+        $context = roundRobinContext($participants, [], legs: 2);
+        $topTwo = fn(int $round): Event => new Event([$participants[0], $participants[1]], new Round($round));
+
+        expect((new SeedProtectionConstraint(2, 0.0))->isSatisfied($topTwo(1), $context))->toBeTrue()
+            ->and((new SeedProtectionConstraint(2, 1.0))->isSatisfied($topTwo(1), $context))->toBeFalse()
+            ->and((new SeedProtectionConstraint(2, 1.0))->isSatisfied($topTwo(6), $context))->toBeFalse();
     });
 
     // The name is a lookup key: the violation collector and the diagnostics

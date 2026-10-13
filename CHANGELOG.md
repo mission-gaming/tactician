@@ -15,6 +15,190 @@ heading **Output change (fix)**.
 
 ### Output change (fix)
 
+The entries of this section before the one on slot times come from one
+decision (#55, and item 17 of
+#121): **wherever an entrant list exists and results do not decide an
+order, the position in that list decides it; a label, a seed attribute or
+an ID never does** (ADR 0004,
+`docs/adr/0004-position-decides-where-results-do-not.md`, which replaces
+ADR 0002). Each entry says who is affected and what to check.
+What a state stored by 0.2.x does under them is under **Changed**, in the
+entry on the engine fingerprint.
+
+- **The table of an elimination outcome is the bracket placement.** The
+  standings of `SingleEliminationEngine::getOutcome()` and
+  `DoubleEliminationEngine::getOutcome()` were a table of wins and losses,
+  and rank 1 of it was not the entrant who won the bracket in three cases:
+  in double elimination, where the longer route through the losers bracket
+  collects more wins (770 of the 1,920 simulated brackets the issue
+  counts); after a bye, which is no win; and after a two-legged final
+  settled by a tie decision. Now the bracket orders the
+  table first: the entrant who advanced from the last tie is rank 1, the
+  one it beat there rank 2, and everyone else follows by the round that put
+  them out, the latest first. Entrants who went out in the same round share
+  a tier (`Standings::getTiers()`, new); the standings calculator orders
+  them from their records, and where it leaves them level, their position
+  in the entrant list does. The records (played, wins, draws, losses,
+  ranking value, scores) are unchanged. Who is affected: code that reads
+  the order of an elimination outcome's standings, `getPosition()` on it or
+  a `RankRangeSelector` over it. What to check: a place read from that
+  table. Before and after, eight entrants in double elimination, where p8
+  loses round 1, wins the losers bracket and the first grand final, and
+  loses the reset to p1:
+
+  ```text
+  before  1. p8 (5-2)   2. p1 (4-1)
+  after   1. p1 (4-1)   2. p8 (5-2)
+  ```
+
+  `MatchOutcomeSelector::winners()` returned the right entrant before and
+  still does. Golden fixture: `double-elimination.txt` (the `standings:`
+  line of the 12-entrant bracket and of the bracket with a reset; no
+  pairing in the file changed).
+- **A re-seeded bracket ranks an entrant who had a bye with the winners of
+  the round, and level survivors by list position.**
+  `EliminationOptions(reseedEachRound: true)` ranked the survivors by a
+  table in which a bye earned nothing, so the entrants at the top of the
+  list, who have the byes, were folded as the bottom of the next round, and
+  it ordered level survivors by seed attribute, label and ID. A bye now
+  counts in that ranking as the tie it stands for, won in every leg, and
+  level survivors are in the order of the entrant list. Who is affected:
+  every re-seeded bracket whose field is not a power of two, and every
+  re-seeded bracket whose entrant list is not in the order of its seed
+  attributes and labels. What to check: the pairings of every round after
+  the first. Before and after, five entrants p1 to p5, where p4 beats p5 in
+  round 1:
+
+  ```text
+  before  semifinals: p4 v p3, p1 v p2
+  after   semifinals: p1 v p4, p2 v p3
+  ```
+
+  Golden fixture: `single-elimination.txt` (the re-seeded 12-entrant
+  bracket: rounds 2 to 4 and the `standings:` line; the fixed-path brackets
+  in the file changed in nothing).
+- **A Swiss round is paired in list order where results do not decide, and
+  the first bye goes to the last position.** `SwissPairingEngine` took the
+  order of level participants from the standings fallback: seed attribute,
+  then label, then ID. An unseeded list entered as Zed, Amy, Bob, Cat was
+  paired Amy with Bob and Cat with Zed. It is now paired Zed with Amy and
+  Bob with Cat, whatever the participants are called, and with a
+  `Randomizer` the shuffle of each score group starts from list order. Who
+  is affected: a Swiss stage, and a `SwissScheduler` schedule, whose
+  participant list is not already in the order of its seed attributes (or,
+  unseeded, of its labels). What to check: the pairings of such a stage
+  from its next round on; put the list in the order you mean. Before and
+  after, the list above, first round:
+
+  ```text
+  before  Bob v Amy, Zed v Cat
+  after   Amy v Zed, Cat v Bob
+  ```
+
+  No golden fixture changed: the fixtures and the examples list their
+  participants in the order of their seeds and labels. A participant who
+  has withdrawn has no position in the list any more: in the table of the
+  stage it stands after the active participants it is level with, and
+  withdrawn participants who are level with each other are in the order of
+  their IDs, whatever order the recorded events name them in.
+- **A Swiss bye counts in the outcome's table as it counts for pairing.**
+  The engine credited a bye as a win when it ordered a round and as nothing
+  in the table of `getOutcome()`, so a participant who sat out a round
+  finished below participants it had been paired above. The outcome's table
+  is now the table the rounds were paired from: the ranking value of an
+  entry includes one win for each bye (`StandingEntry::getByes()`, new,
+  says how many), while played, wins, draws and losses still count results
+  only. Among participants level on that value, one whose points include a
+  bye is no longer placed below the others: the tiebreakers, the scores and
+  then the list position order them. Who is affected: a Swiss stage in a
+  field of odd size. What to check: the final table, and the pairings of a
+  stage in progress. Before and after, a participant with one win and one
+  bye after two rounds on the 3/1/0 scale:
+
+  ```text
+  before  played 1, 1 win, 3 points
+  after   played 1, 1 win, 1 bye, 6 points
+  ```
+
+  A tiebreaker that reads opponents' ranking values (Buchholz,
+  Sonneborn–Berger) still counts an opponent's bye as nothing.
+- **A standings table calculated on its own is the same for every order of
+  its participants.** The last fallback of `StandingsCalculator` was seed,
+  then label in natural order, then ID compared as PHP compares two
+  strings. That comparison reads numeric strings as numbers: `'01'` and
+  `'1'` were not ordered and kept their input order, and for IDs that mix
+  the two kinds it is not transitive (`'2'` is below `'10'`, `'10'` below
+  `'1a'`, `'1a'` below `'2'`), so `['2', '10', '1a']` came out `2, 10, 1a`
+  and `['10', '2', '1a']` came out `1a, 2, 10`. The fallback is now seed,
+  then ID, in an order that is total for every set of strings: an ID
+  written as a whole number without a sign or a leading zero first, in the
+  order of the values, and every other ID after those, byte by byte. The
+  label is not compared. Who is affected: tables with entries that results
+  leave level, where those entries have no seed or share one. What to
+  check: the order inside a tied set (`getTiedSets()` reports them); to
+  keep an order of your own, put the entrants in it and call
+  `withTiedSetsOrderedBy()` (below). Before and after, two unseeded
+  participants level on everything:
+
+  ```text
+  ids b ("Amy") and a ("Zed")     before  b, a   after  a, b
+  ids 01 and 1, given as 01, 1    before  01, 1  after  1, 01
+  ids p2 and p10                  before  p2, p10 (labels "Player 2", "Player 10")
+                                  after   p10, p2
+  ```
+
+  Plain decimal IDs keep their order: `9` is still before `10`.
+- **Constraints find a participant by ID.** `SeedProtectionConstraint` and
+  the two `ConsecutiveRoleConstraint` factories (`homeAway()`,
+  `position()`) looked for the `Participant` object itself in an event, so
+  a participant rebuilt from stored data was not recognised and an event
+  they should reject was let through. They now compare IDs, as everything
+  else does. Who is affected: code that puts events and participants
+  together by hand from more than one object per ID; the schedulers and
+  engines pass the objects they were given and were not affected. What to
+  check: nothing in a generated schedule changes. Before and after, top
+  seeds A and B in a protected round, the event built with a copy of A:
+  accepted before, rejected now.
+- **A per-group selection of three or more pools no longer pairs a pool
+  with itself.** `RankRangeSelector::topPerGroup(2)` listed every rank in
+  pool order (A1, B1, C1, A2, B2, C2), which a bracket folds into C1
+  against C2 with three pools, and into one half for a pool's winner and
+  runner-up with four or eight. Each rank after the first is now listed in
+  the order that keeps the entrants of one pool apart in a bracket folded
+  from the list: as few pairs of one pool as possible that can meet in the
+  first round, then in the second, and so on. For the top two of every
+  pool, a pool's winner and runner-up are in opposite halves for any number
+  of pools. Who is affected: per-group selections of two or more ranks from
+  three or more pools. What to check: the order of the selected entrants,
+  and anything that reads it by index. A selection from one or two pools
+  is unchanged (A1, B1, A2, B2, and so on in pool order for every further
+  rank), and so is a selection of a single rank from any number of pools.
+  Before and after:
+
+  ```text
+  3 pools  before  A1 B1 C1 A2 B2 C2   round 1: A2 v B2, C1 v C2
+           after   A1 B1 C1 C2 B2 A2   round 1: C2 v B2, C1 v A2
+  4 pools  before  A1 B1 C1 D1 A2 B2 C2 D2
+           after   A1 B1 C1 D1 B2 A2 D2 C2
+  ```
+- **`SwissScheduler` generates every round count it accepts.** It accepts
+  up to the number of participants minus one, and failed with an
+  `IncompleteScheduleException` for roughly one seed in ten to one in four
+  at the larger counts (the first draw of 30 of 200 seeds at 6 participants
+  and 4 rounds, of 44 at 12 and 11), because a round is paired without a
+  look at the rounds to come. A draw that reaches a round with no pairing is now drawn again from
+  the same sequence, up to twenty draws, and after that, or with nothing to
+  draw from, the rounds are built by the rotation that lays out a round
+  robin. Without a source of draws there is one draw, and the rotation is
+  what generates the schedule where that draw fails (26 participants from
+  24 rounds on, 34 from 32 and 37 at 36, of the fields up to 44); its first
+  round is the list as given, as in every schedule drawn without a source.
+  Who is affected: calls that threw. A schedule that 0.2.x
+  generated is generated again unchanged, apart from the list-order change
+  above: the first draw is tried first and is the same draw. With
+  constraints a schedule may not exist, and the exception is still thrown,
+  now for the last draw. No golden fixture changed (`swiss.txt` holds
+  3 rounds of 8 and 4 rounds of 9, which never needed a second draw).
 - **Every slot time is computed from the start, not from the slot before
   it.** `TimelineDefinition::getSlotTime()` added the round interval once
   per round, each addition from the round before, so whatever one round was
@@ -201,6 +385,38 @@ heading **Output change (fix)**.
   tables under "Role-Based Constraints" and "Legs after the first" in the
   usage guide, the architecture document, the roadmap's limitations and the
   role assignment design note.
+- **`SlotAssignment::toArray()` writes a kickoff that is not in UTC as the
+  instant it is.** The kickoff was formatted as it was held and a `Z` was
+  put after it, so an assignment built by hand with 20:15 in London was
+  written `...T20:15:00Z`, an hour away from the instant it holds, and
+  `RepackOutcome::fingerprint()` covered that string. The kickoff is now
+  converted to UTC before it is written (`...T19:15:00Z` in August), and
+  two outcomes that hold one instant in two timezones have one
+  fingerprint. `getKickoff()` still returns the object it was given. The
+  repacker always builds its assignments in UTC, so nothing it returns,
+  and no fingerprint of an outcome it returned, changes; only an
+  assignment constructed by hand with a kickoff in another timezone is
+  written differently (#121, item 9).
+- **`TimelineDefinition::toArray()` writes the fraction of a second of a
+  start that has one, and `formatInterval()` shows the sign, the fraction
+  and the relative date string of an interval.** A start of
+  `19:00:00.25` was written `19:00:00`, so the definition read back a
+  quarter of a second earlier; it is written `2026-08-01 19:00:00.250000`,
+  which `fromArray()` reads. A start on a whole second is written as
+  before. `TimelineDefinition::formatInterval()`, which errors use to
+  describe an interval, wrote an inverted `P7D` as `P7D`, an interval of a
+  second and a half as `PT1S`, and one made from `next weekday` as `PT0S`.
+  It now writes `-P7D`, `PT1.5S` and `next weekday`: forms that
+  `parseInterval()` refuses, where the old ones read back as another
+  interval. An interval built from an ISO 8601 duration is written as
+  before. The name of a `MinimumRestRule` and its violation messages use
+  the same method and change with it for such a rest; its `toArray()`
+  refuses such a rest (see Changed). `SessionGrid::toArray()` and
+  `BlackoutRule::toArray()` write the fraction of a second of a session
+  start and of a window bound the same way: a start of `20:00:00.25` was
+  written `20:00:00`, and a blackout window inside one second was written
+  as one that ends when it starts, which `fromArray()` refuses. A time on a
+  whole second is written as before by all three (#121, item 6).
 
 ### Added
 
@@ -221,6 +437,44 @@ heading **Output change (fix)**.
   (`unsupported_format_version`), for plain-data configuration that states
   a format version the release does not read; see the entry on
   `format_version` under Changed.
+- **An entrant list on a table and on an outcome.**
+  `Standings::withTiedSetsOrderedBy(array $entrants)` returns the table
+  with the entries of every tied set in the order of the list, and moves
+  nothing that results placed. `StageOutcome` takes the entrant list of its
+  stage as a sixth constructor argument (`entrants`, default none) and
+  applies it to its table; `getEntrants()` returns it, and
+  `StageOutcome::combining()` takes one for the combined table as a third
+  argument. The engines pass the participant list of the state. An outcome
+  built by hand without a list keeps the table it is given.
+- **Tiers of a table.** `Standings` takes the tier of each entry as a
+  second constructor argument (default none) and returns them with
+  `getTiers()`; entries of different tiers are never in one tied set. The
+  elimination engines use them for the bracket placement.
+- **Byes in a table.** `StandingsCalculator::withByesCredited(Standings
+  $standings, array $byes, int $winsPerBye = 1)` adds the value of a win
+  for each bye to a table and puts it in order again (inside each tier,
+  for a table that has tiers);
+  `StandingEntry::getByes()` says how many byes an entry's ranking value
+  includes, and `StandingEntry::withByes()` builds such an entry. The
+  constructor of `StandingEntry` has a tenth parameter, `byes`, default 0.
+- **A seed for a pre-drawn Swiss schedule.** `SwissOptions(rounds: 5,
+  seed: 2026)`, and `'seed'` in `SwissOptions::fromArray()`; `toArray()`
+  writes the key when there is a seed. The scheduler builds a
+  `Random\Randomizer` on the `Xoshiro256StarStar` engine from it on every
+  call, so the same participants, rounds and seed give the same schedule on
+  every call, also on one scheduler asked twice, and the engine is part of
+  the output for a seed. A scheduler that holds a `Randomizer` is refused a
+  seed in its options (`IncompatibleOptions`).
+- **`UndecidedSelectionException`**, an `InvalidConfigurationException`,
+  with `getParticipantIds()`, `getFirstPlace()`, `getLastPlace()`,
+  `getPool()`, `getFrom()` and `getTo()`, and four cases of
+  `InvalidConfigurationReason`: `UnplayedStage`, `TieAcrossSelection`,
+  `TieWithinSelection` and `RecordedRoundMismatch` (see **Changed**).
+- **The choice to go on from an undecided table.**
+  `RankRangeSelector::withTiesInsideSelectionAccepted()` and
+  `withTableOrderAccepted()`, and the key `ties` in `fromArray()` and
+  `toArray()` (`'refuse'`, `'accept-inside-selection'`,
+  `'accept-table-order'`; written only when it is not `'refuse'`).
 - **`ShuffledLegStrategy` takes an integer seed, and
   `RoundRobinOptions` reads and writes it as plain data.**
   `new ShuffledLegStrategy(seed: 2026)` draws the roles of the later legs
@@ -245,6 +499,15 @@ heading **Output change (fix)**.
 - **`InvalidConfigurationReason::OverlappingTime`** (`overlapping_time`), the
   reason of the two overlap rejections under Changed. A `match` over every
   case of the enum needs an arm for it.
+- **What the fixes of #121 add to the public surface.** Each is described
+  with its fix under Changed or Fixed below:
+  `TimelineDefinition::writeInterval(DateInterval $interval, string $key):
+  string`; the optional fourth constructor parameter and public property
+  `StageTransition::$afterWholeBracket` (`bool`, default `false`); and two
+  cases of `InvalidConfigurationReason`, `PlannedRoundsPlayed`
+  (`planned_rounds_played`) and `ParticipantDoubleBooked`
+  (`participant_double_booked`). A `match` over the reason needs a
+  `default` arm, as the enum has always said.
 
 ### Changed
 
@@ -261,7 +524,7 @@ heading **Output change (fix)**.
   `Event`, `Result`, `Schedule`, `RoundPairing`, `StageState`,
   `ScheduledEvent`, `ScheduledSchedule`, `RepackOutcome`, `SlotAssignment`,
   `UnplacedEvent` and the five repack violations. Every form is at version
-  1 (#53). ADR 0004 (`docs/adr/0004-serialized-forms-carry-a-format-version.md`)
+  1 (#53). ADR 0005 (`docs/adr/0005-serialized-forms-carry-a-format-version.md`)
   records the rule:
   - The key is written once to an array, at its top. A form held in
     another (the participants and events of a schedule, the round of an
@@ -269,7 +532,9 @@ heading **Output change (fix)**.
     outcome) is written without it, so the size of a stored schedule grows
     by one key and not by one key per event.
   - **Data stored by 0.2.x loads unchanged.** An array without the key is
-    read as version 1, which is the form 0.2.x wrote. Nothing is to be
+    read as version 1, which is the form 0.2.x wrote and, beside it, the
+    optional keys this release adds (`strategy_seed`, `seed` in Swiss
+    options, `ties` in a rank range selector). Nothing is to be
     migrated and the key need not be added to stored rows.
     `tests/Fixtures/stored-by-0.2/` holds a schedule and a stage state as
     v0.2.0 wrote them and 124 values of every form that is read as v0.2.3
@@ -285,9 +550,11 @@ heading **Output change (fix)**.
   - Forms are versioned one by one. A later release that changes a form
     gives it the next number, says so here, and keeps reading the earlier
     versions; a patch release never changes a form.
-  - It is not the `v1` of an engine fingerprint or of an outcome
-    fingerprint, which version those schemes. `RepackOutcome::fingerprint()`
-    does not cover the key, so no fingerprint changes.
+  - It is not the `v2` of an engine fingerprint or the `v1` of an outcome
+    fingerprint, which version those schemes. The stage state form is
+    version 1 whichever scheme its stamp is of, and
+    `RepackOutcome::fingerprint()` does not cover the key, so the key
+    changes no fingerprint.
 
   Who is affected: code that compares a `toArray()` result or a `toJson()`
   string with a literal, that validates it against a schema of its own, or
@@ -299,7 +566,8 @@ heading **Output change (fix)**.
 
   Rolling back: an array written by 0.3.0 is still read by 0.2.x, which
   cannot check the version and ignores the key, as it ignores every key it
-  does not know (`strategy_seed`, and before 0.2.2 `role_assignment` and
+  does not know (`strategy_seed`, `seed` in Swiss options and `ties` in a
+  rank range selector, and before 0.2.2 `role_assignment` and
   `engine_fingerprint`, are read as left out). The one exception is
   `PotDrawOptions::fromArray()` of 0.2.2 and 0.2.3, which refused unknown
   keys already and refuses `format_version` (`Unknown pot draw option`):
@@ -323,8 +591,10 @@ heading **Output change (fix)**.
   had recorded it. A stored state is now recorded again through
   `withRoundPlayed()` when it is read, so what the verb refuses of a live
   state is refused of a stored one, with the same
-  `InvalidConfigurationException` and reason: `RoundOutOfSequence` for
-  rounds out of play order or a round number twice, `EventNotInRound` for
+  `InvalidConfigurationException` and reason: `ValueOutOfRange` for a
+  round number below 1 (the verb's own check is new, under Fixed),
+  `RoundOutOfSequence` for rounds out of play order or a round number
+  twice, `EventNotInRound` for
   an event or a result that does not belong to its round, a result of a
   round that is not recorded and a result that does not stand with the
   results of its round, and `EventWithoutRoundNumber` for an event or a
@@ -459,6 +729,123 @@ heading **Output change (fix)**.
   beside `sessions` in a session grid is still accepted and not read. Code
   analysed with checked exceptions sees no new exception type: each method
   already declared the one it now throws for this.
+- **Breaking: a rank selection that results do not decide is refused.**
+  `RankRangeSelector::select()` read positions from a table whatever
+  decided them. A pool in which every event was drawn, entered as Zed, Yan,
+  Bob, Amy, sent Amy and Bob through by the alphabet, and a pool with no
+  result at all sent two "qualifiers" on. `select()` now throws an
+  `UndecidedSelectionException` (an `InvalidConfigurationException`) when
+  the table has no recorded result (reason `UnplayedStage`), when level
+  entries hold places on both sides of a boundary of the selected ranks
+  (`TieAcrossSelection`), and when level entries are all inside the
+  selected ranks, where their order would seed the next stage
+  (`TieWithinSelection`). The exception carries the IDs of the level
+  participants, the places they hold between them and the label of the
+  pool. A tie that touches none of the selected ranks is not refused, and a
+  table that results decide is selected from as before. Who is affected:
+  every use of `topPerGroup()`, `perGroup()` and `overall()` on a table
+  that can hold a tie at the selected ranks, which without a tiebreaker and
+  recorded scores is any round-robin pool. What to change: decide the tie
+  (a play-off, a tiebreaker on the calculator, the order of the entrant
+  list you pass on), or say on the selector that the selection goes on:
+  `->withTiesInsideSelectionAccepted()` accepts level entries when all of
+  them are selected, and `->withTableOrderAccepted()` accepts the table as
+  it stands, which is what 0.2.x did, with level entries in the order of
+  the outcome's entrant list in place of the label order. Give a hand-built
+  `StageOutcome` its entrant list (the new sixth argument) for that order
+  to be yours. Before and after, the drawn pool above and
+  `topPerGroup(2)`:
+
+  ```text
+  before  Amy, Bob
+  after   UndecidedSelectionException: places 1 to 4 of pool A (zed, yan, bob, amy)
+          with ->withTableOrderAccepted(): Zed, Yan
+  ```
+
+  The selector cannot see that a pool with some results has events still
+  to play; check that before selecting, as before. The error for a rank a
+  pool does not have (`RankUnavailable`) is unchanged and is raised first.
+- **Breaking: the engine fingerprint scheme is `tactician:v2:`, and a
+  state stamped by 0.2.x is refused until it is stamped again.** The same
+  recorded state can give another next round than it gave under 0.2.x (the
+  Swiss and re-seeding entries above), and a fingerprint stands for how a
+  state is paired, so the scheme changed as its contract provides for a
+  0.x minor. Every fingerprint is the string of 0.2.x with `v2` in place of
+  `v1`; no option was added or renamed. An engine refuses a state that
+  carries a `v1` stamp, on every call, with an
+  `InvalidConfigurationException` (reason `EngineFingerprintMismatch`) that
+  says the stamp was written by an earlier release. Who is affected: an
+  application that stamps its states (`withEngineFingerprint()`) and has
+  stages in progress across the upgrade. A state that was never stamped is
+  accepted as before. What a stored state does, format by format:
+  - *Fixed-path single elimination and double elimination*: every pairing
+    is what it was. The state resolves to the same rounds; only the order
+    of the outcome's table is the new one. Stamp it again.
+  - *Swiss*: the recorded rounds stand, and the next round is paired by the
+    new order (list position between level participants, and the table
+    order among participants whose points include a bye). Stamp it again
+    once that is what you want; to finish a stage exactly as 0.2.x would
+    have paired it, finish it on 0.2.x. Nothing refuses a Swiss state that
+    was never stamped: it is paired by the new order without a word. A
+    round that 0.2.x paired and you have published, and that is not yet
+    recorded, stands only if you record the pairing you kept
+    (`withRoundPlayed()` with that `RoundPairing`): asked again,
+    `pairNextRound()` can answer with other pairs, and results for the
+    published events are then refused as not part of the round
+    (`EventNotInRound`).
+  - *Re-seeded single elimination*: the bracket is replayed from its
+    entrant list on every call. Where 0.3.0 pairs a recorded round as
+    0.2.x did, the recorded rounds stand, and the next round is paired by
+    the new order, which can be another round than 0.2.x would have made
+    of the same results. Where it does not (a field
+    that is not a power of two, or level survivors whose list order is not
+    their seed and label order), the engine refuses the state, stamped or
+    not, with the new reason `RecordedRoundMismatch`, on `pairNextRound()`,
+    `isComplete()` and `getOutcome()`: the recorded results belong to ties
+    the bracket no longer has. Finish such a bracket on 0.2.x, or rebuild
+    the state from the rounds that stand.
+
+  What to change: after the upgrade, `$state =
+  $state->withEngineFingerprint($engine->getFingerprint())` for each stored
+  stamped state you have decided to carry on.
+- **Breaking: a single-elimination state whose recorded round lacks a tie
+  of the bracket is refused** (`RecordedRoundMismatch`). The engine used to
+  answer such a state with a round the state already held under other
+  pairings, which `withRoundPlayed()` then refused as out of sequence. That
+  is the refusal the entry above relies on; it also meets a state whose
+  participant list changed after a round was recorded (a withdrawal, which
+  the bracket engines do not support). A recorded round that holds more
+  than the bracket's ties is still accepted.
+- **Breaking: a re-seeded bracket that has a bye needs a win/draw/loss
+  ranking.** Crediting the bye needs the value of a win, so
+  `SingleEliminationEngine` with `reseedEachRound` and a `RankingStrategy`
+  that is not a `WinDrawLossRanking` throws an
+  `InvalidConfigurationException` (reason `IncompatibleOptions`) for a
+  field that is not a power of two. The field says that the bracket has
+  byes, so every call refuses it, `pairNextRound()` for the first round
+  included: the bracket is not started and then left without a second
+  round. A field that is a power of two, and a bracket on a fixed path, are
+  not affected. What to change: use a `WinDrawLossRanking`, or a fixed
+  path. The Swiss engine refuses later, as it did: it pairs a round that
+  has a bye and refuses to pair the round after it (the message now begins
+  "Crediting a bye requires a win/draw/loss ranking strategy"), and
+  `SwissPairingEngine::getOutcome()` raises it too, where it used to return
+  a table without the bye. A Swiss stage whose only bye is in its last
+  round (one planned round, or a withdrawal before the last) therefore has
+  no outcome on such a scale: build its table with your own calculator
+  from the state's results.
+- **Signatures.** Additive, and source-compatible for callers: the
+  optional parameters named under **Added** (`Standings::__construct()`,
+  `StandingEntry::__construct()`, `StageOutcome::__construct()`,
+  `StageOutcome::combining()`, `SwissOptions::__construct()`).
+  `Standings::__construct()` throws an `InvalidInputException` for tiers
+  that do not fit its entries, and `RankRangeSelector::select()` and
+  `SwissScheduler::schedule()` each declare one more case of a checked
+  exception they already declared. A class that extends
+  `StandingsCalculator` or `Standings` and overrides a constructor is not
+  affected; one that declares a method named `withByesCredited`,
+  `withTiedSetsOrderedBy`, `getTiers` or `getByes` with another signature
+  is.
 - **Breaking: `ShuffledLegStrategy` is refused without a source of its
   draws.** `new ShuffledLegStrategy()` used to make an unseeded
   `Random\Randomizer` for every event, so a schedule with shuffled legs
@@ -612,6 +999,158 @@ heading **Output change (fix)**.
 
   The scheduled workflow's `Unlocked dependencies` jobs, which install the
   newest versions and had been failing on these findings, pass again.
+- **Breaking: `SwissPairingEngine::pairNextRound()` refuses a round beyond
+  the planned rounds.** With `plannedRounds: 1` and round 1 recorded,
+  `isComplete()` was true and `pairNextRound()` still returned a second
+  round; the bracket engines refuse in the same position. It now throws an
+  `InvalidConfigurationException` with the new reason `PlannedRoundsPlayed`
+  (`planned_rounds_played`) and the context `planned_rounds` and
+  `next_round`. An engine built without `plannedRounds` pairs as before,
+  for as long as a pairing exists. Who is affected: code that calls
+  `pairNextRound()` without asking `isComplete()` first, or that plays more
+  rounds than the number it gave the engine. What to check: every loop that
+  pairs a Swiss stage. Before: a pairing of round `plannedRounds + 1`.
+  After: the exception. To play a longer stage, build the engine with the
+  new number of rounds; the planned rounds are not part of the engine's
+  fingerprint, so the recorded state is still accepted (#121, item 1).
+- **Breaking: `Standings::getPosition()` counts the order of the table and
+  no longer reads the array keys.** A `Standings` built by hand from an
+  array with the keys 5 and 9 reported the positions 6 and 10, and one with
+  string keys raised a raw `TypeError`, while `getTiedSets()` and iteration
+  counted the same entries as 1 and 2. The position is now the entry's
+  place in the order of the array, from 1. A table from
+  `StandingsCalculator`, and any table built from a list, gives the
+  positions it gave before. Who is affected: code that constructs
+  `Standings` itself from an array that is not a list (the result of
+  `array_filter()` without `array_values()`, say) and reads `getPosition()`.
+  What to check: whether anything relied on the key. Before:
+  `new Standings([5 => $a, 9 => $b])->getPosition($b)` was 10. After: 2
+  (#121, item 3).
+- **Breaking: `SeedProtectionConstraint` accepts an event that has no
+  round.** Such an event was counted as round 0, which is inside every
+  protection window, so an event of two top seeds was rejected even with a
+  period of 0.0, which protects no round. An event with no round is in no
+  round and therefore in no protected one: `isSatisfied()` now returns
+  true for it, as it does where the plan has no total number of rounds.
+  Every event the schedulers and the engines build carries a round, so no
+  generated schedule changes. Who is affected: code that calls
+  `isSatisfied()`, or `ConstraintSet::isSatisfied()` with this constraint
+  in the set, on an event built without a `Round`. What to check: give such
+  an event its round where the protection is meant to apply. Before:
+  `false` for two top seeds in an event with no round. After: `true`
+  (#121, item 4).
+- **Breaking: `MatchOutcomeSelector` refuses a final round that holds an
+  event of more than two participants.** A winner and a loser are a
+  reading of two participants. Given an event of three, the losers mode
+  returned the first participant, or the second when the first had won,
+  and said nothing of the third: with the third as the winner it named the
+  first the loser. The winners mode returned the recorded winner. Both
+  modes now throw an `InvalidConfigurationException` with the reason
+  `IncompatibleOutcome` and the context `mode` and `participants`, in line
+  with ADR 0003 (`docs/adr/0003-multi-participant-events-are-a-2-0-goal.md`):
+  a component that is pairwise by nature refuses such an event and never
+  answers as if it were pairwise. Nothing in the library generates an
+  event of more than two participants, so no outcome an engine returns is
+  affected. Who is affected: code that builds a `StageOutcome` by hand
+  whose final round holds such an event and passes it to the selector.
+  What to check: read the winner of such an event from its `Result`
+  directly. Before: a participant list. After: the exception
+  (#121, item 13).
+- **Breaking: `TimelineDefinition::toArray()` and `SessionGrid::toArray()`
+  refuse an interval that would not read back as the same interval.** An
+  ISO 8601 duration, as PHP reads one, holds years, months, days, hours,
+  minutes and whole seconds. A `DateInterval` can hold more, and that part
+  was dropped without a word: an interval made by
+  `DateInterval::createFromDateString('next weekday')` was written `PT0S`,
+  which does not even load again, and `last day of next month` was written
+  `P1M`. Both methods now write an interval through the new
+  `TimelineDefinition::writeInterval(DateInterval $interval, string $key):
+  string`, which throws an `InvalidConfigurationException` with the reason
+  `NotSerializable` for:
+
+  - *an interval made by `createFromDateString()`, whatever the string.*
+    One made from more than amounts of time (`next weekday`) has no
+    duration. One made from amounts of time alone has a duration, and it is
+    another interval. PHP does not show the parts of an interval made from a
+    string, so a timeline and a grid add it one step at a time, each step
+    from the one before, and its hours, minutes and seconds as local time; a
+    duration read back is added as all its steps at once from the start, and
+    its hours as elapsed time (see "Every slot time is computed from the
+    start" under Output change). `createFromDateString('1 month')` from 31
+    January gives 3 March and 3 April, and the `P1M` it was written as gives
+    28 February and 31 March; `createFromDateString('25 minutes')` from the
+    first 01:50 of the night the clocks go back in London gives 02:15 GMT,
+    and `PT25M` gives 01:15 GMT;
+  - *an interval from `diff()` that has hours, minutes or seconds*, because
+    PHP adds those as local time too. An interval from `diff()` of whole
+    days, months and years is written as before: those are calendar steps
+    in both forms;
+  - *an inverted interval, one with a negative part, and one with a
+    fraction of a second*, none of which a duration PHP reads can hold.
+
+  Every interval built from an ISO 8601 duration is written as before. The
+  refusal is made when the object is serialised and not when it is built: a
+  timeline or a grid with such an interval works, and gives the slot times
+  it gave before; it has no plain-data form. In a timezone that never
+  changes its clocks (`UTC`, a fixed offset) the hours of the two forms
+  agree, and the interval is refused all the same: the rule does not
+  depend on the timezone. Who is affected: code that builds a
+  `TimelineDefinition` or a `SessionGrid` with
+  `DateInterval::createFromDateString()` (`'25 minutes'`, `'1 week'`), or
+  with what `diff()` returned for two times of day, and calls `toArray()`
+  on it; nothing else that reads such a timeline or grid changes, and
+  `RepackOutcome::fingerprint()` does not cover the grid. What to change:
+  build the interval from a duration, `new DateInterval('PT25M')` or
+  `new DateInterval('P7D')`. The duration is not the same interval in the
+  cases listed under "Every slot time is computed from the start" (a month
+  end, a time of day the clocks skip or repeat), so compare the slot times
+  where one applies; to keep the times of the relative interval, keep
+  building it and store the string it is made from in your own
+  configuration. Before: a duration string that could mean another
+  interval. After: the exception. Both `toArray()` methods declare it, so
+  code analysed with checked exceptions sees one more `@throws`
+  (#121, item 15).
+- **Breaking: `MinimumRestRule::toArray()` refuses a rest that
+  `fromArray()` could not read.** The rest is written as
+  `TimelineDefinition::formatInterval()` shows it, and that method now
+  shows a fraction of a second, a sign and a relative date string (see
+  Output change); none of the three is a duration `fromArray()` reads, so
+  the rule would have been written as data that fails when it is loaded.
+  `toArray()` now throws an `InvalidConfigurationException` with the reason
+  `NotSerializable` for such a rest. A rest of amounts of time made by
+  `createFromDateString()` (`48 hours`) or by `diff()` is written as
+  before, unlike the interval of a timeline: the rule adds its rest once
+  and in UTC, where it equals its duration. Who is affected: code that
+  builds the rule with `createFromDateString('next weekday')` or the like,
+  with a fraction of a second or with a negative part, and stores it.
+  Before: `PT0S`, or a duration without the fraction or the sign, which
+  loaded as another rest or not at all. After: the exception
+  (#121, items 6 and 15).
+- **Breaking: `TimelineAssigner` refuses a round that puts one participant
+  in two events at the same instant.** A slot with two or more resources
+  holds several events, and nothing stopped two of them from holding the
+  same participant: `assign()` and `assignRound()` returned a timeline in
+  which one participant plays on two pitches at once, unless a
+  `MinimumRestRule` happened to be configured. Both now throw an
+  `InvalidConfigurationException` with the new reason
+  `ParticipantDoubleBooked` (`participant_double_booked`); the context has
+  the round under `round` and, under `double_bookings`, every participant
+  concerned with the kickoff and the two events. The assigner refuses, as
+  it does for a violated rule, and does not report: its filling is
+  deterministic, so it cannot move one of the two events, and no policy
+  accepts a participant in two places at once. Participants are matched by
+  ID. Two events of one participant in different slots of a round are
+  assigned as before; whether the time between them is enough stays a
+  rule's to say. No schedule a generator returns has a participant twice in
+  a round, so no generated schedule is affected. Who is affected: code that
+  assigns a schedule or a pairing built by hand, or by a format of its own,
+  in which a participant has two events in one round, on a timeline with
+  resources. What to check: the order of the round's events, which decides
+  the slot each lands in, or give the round more slots than resources.
+  Before: two scheduled events of one participant with the same kickoff.
+  After: the exception. Where a `MinimumRestRule` reported such a clash,
+  the reason changes from `TimeRuleViolation` to `ParticipantDoubleBooked`,
+  because the round is refused before the rules are asked (#121, item 10).
 
 ### Fixed
 
@@ -622,6 +1161,77 @@ heading **Output change (fix)**.
   property tests now hold every leg strategy, at one to three legs and
   every field size from 2 to 16, to the same schedule on every run from the
   same plain data, with and without a seeded scheduler.
+- **`new BlackoutRule([...])` labels an unlabelled window by its position,
+  not by its array key.** The default label added 1 to the key, so a window
+  under a string key raised a raw `TypeError`, and windows under keys 3 and
+  7 were labelled `blackout 4` and `blackout 8`. The label is now
+  `blackout N` with N the position of the window in the array, counted from
+  1, whatever the keys are. A list is labelled as before, and
+  `BlackoutRule::fromArray()`, which always built a list, is unchanged
+  (#121, items 2 and 16).
+- **`TieDecision::advancer()` refuses a single-leg result whose winner is
+  not in the tie.** With one leg it returned the winner the result
+  recorded, whoever that was; with two legs the same input was refused. It
+  now throws the `InvalidConfigurationException` of the two-legged case
+  (reason `InvalidResult`, context `winner` and `participants`). The winner
+  is matched by ID, and a winner who is one of the two is returned as
+  before, so no bracket the engines resolved changes (#121, item 5).
+- **`MetadataConstraint` casts its validator's answer to bool.** A
+  validator that returned anything but a bool (the 1 of a `preg_match()`,
+  a count, null) raised a raw `TypeError` when the constraint was asked,
+  where `CallableConstraint` casts its predicate's answer. Both now cast:
+  0, null, an empty string and an empty array reject the event. A
+  validator that returns a bool is read as before (#121, item 7).
+- **`CompositionValidator::validateChain()` can be told that a stage plays
+  a whole bracket.** It counted every `MatchOutcomeSelector` as the
+  hand-off after one knockout round, half the previous stage's entrants,
+  and nothing could tell it otherwise: after a whole bracket of 16 the
+  selector returns the 1 winner of the final and the validator computed 8.
+  The validator runs nothing, so the shape of the stage is declared:
+  `StageTransition` has a fourth, optional constructor parameter and public
+  property, `bool $afterWholeBracket = false`. With it true, a
+  match-outcome selection is counted as 1 participant, which the validator
+  reports against the entrants the next stage declares. A transition that
+  does not pass it is counted as before, so no chain that validated
+  changes its answer (#121, item 8).
+- **`StageState` refuses an ID listed twice as active, and a round
+  numbered below 1.** `StageState::fromArray()` (and `fromJson()`) accepted
+  stored data whose `active` list named one ID twice, which `start()`
+  refuses and from which an engine would pair a participant against
+  itself; it now throws an `InvalidInputException`, as it does for an ID
+  listed twice in `participants`. `withRoundPlayed()` accepted a pairing
+  numbered 0 or below as the first round, although round numbers are
+  1-based; it now throws an `InvalidConfigurationException` with the reason
+  `ValueOutOfRange`. Data that `toArray()` wrote, and every pairing an
+  engine returns, is accepted as before (#121, item 11).
+- **`RoundRobinPlan` and `MatchOutcomeSelector` read the participants of
+  an event in their order, whatever the array keys are.** An `Event` keeps
+  the participant array it is given, keys included. With string keys or
+  sparse integer keys, `RoundRobinPlan::validateIntegrity()` and
+  `findUnplayedPairings()` raised a raw `Error` (a call on null), and
+  `MatchOutcomeSelector::select()` a raw `TypeError` or an unknown named
+  argument. All three now take the first and the second participant in the
+  order the event holds them. An event built from a list is read as before
+  (#121, item 12).
+- **An incomplete round robin no longer blames constraints for a leg its
+  strategy left short, and its report no longer lists round 0.** When a
+  leg strategy returned no event for a pairing, the message of the
+  `IncompleteScheduleException` ended "Constraints may be preventing
+  complete schedule generation", also from a scheduler with no constraints
+  at all. It now says how many pairings of the leg the strategy returned no
+  event for, and how many more constraints rejected; under backtracking it
+  names the pairing. A leg that only constraints left short keeps its
+  message. In `getDiagnosticReport()`, a rejection recorded without a round
+  was listed under "Affected rounds" as round 0; it is left out there, as
+  `ConstraintViolationCollector::getAffectedRounds()` leaves it out. The
+  suggestions at the end of the report told a scheduler with no constraints
+  to "Try relaxing constraint requirements" and to "Use fewer or less
+  restrictive constraints". When no rejection was recorded they now say
+  so, give the advice about constraints as a condition ("if the scheduler
+  has constraints"), and, for a stage with legs, say to check that a leg
+  strategy of the caller's returns an event for every pairing. A report
+  with a recorded rejection has the suggestions it had. The texts are for
+  people and are not a contract (#121, item 14).
 
 - **A shard of the `Mutation testing` workflow is no longer ended by a
   runner shutdown before it reports.** Tooling only: nothing a consumer

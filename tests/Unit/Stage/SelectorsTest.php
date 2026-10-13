@@ -7,6 +7,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Stage\MatchOutcomeSelector;
 use MissionGaming\Tactician\Stage\RankRangeSelector;
 use MissionGaming\Tactician\Stage\RoundPairing;
@@ -208,5 +209,77 @@ describe('MatchOutcomeSelector', function (): void {
         expect(MatchOutcomeSelector::fromArray(['mode' => 'losers'])->toArray())->toBe(['format_version' => 1, 'mode' => 'losers']);
         expect(fn() => MatchOutcomeSelector::fromArray(['mode' => 'survivors']))
             ->toThrow(InvalidConfigurationException::class, 'mode');
+    });
+
+    // An event keeps the participant array it is given, keys included. The
+    // selector read the two sides by the keys 0 and 1 and spread the IDs
+    // into a call, so other keys were a raw PHP warning or error.
+    it('reads the two sides of an event by their order, whatever the array keys are', function (array $keys): void {
+        $event1 = new Event([$keys[0] => $this->alice, $keys[1] => $this->bob], new Round(1));
+        $event2 = new Event([$keys[0] => $this->carol, $keys[1] => $this->dave], new Round(1));
+        $results = [new Result($event1, $this->alice), new Result($event2, $this->dave)];
+        $outcome = new StageOutcome(
+            (new StandingsCalculator())->calculate([$this->alice, $this->bob, $this->carol, $this->dave], []),
+            $results,
+            [],
+            new RoundPairing(1, 'semifinal', [$event1, $event2])
+        );
+
+        expect(array_map(fn(Participant $p) => $p->getId(), MatchOutcomeSelector::winners()->select($outcome)))->toBe(['p1', 'p4'])
+            ->and(array_map(fn(Participant $p) => $p->getId(), MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p2', 'p3']);
+    })->with([
+        'a list' => [[0, 1]],
+        'string keys' => [['home', 'away']],
+        'sparse integer keys' => [[3, 7]],
+    ]);
+
+    // A winner and a loser are a reading of two participants. Of three, the
+    // losers mode returned the first or the second and said nothing: with
+    // Carol the winner it named Alice the loser and left Bob out.
+    it('refuses a final round that holds an event of more than two participants', function (
+        MatchOutcomeSelector $selector,
+        string $winnerId
+    ): void {
+        $three = [$this->alice, $this->bob, $this->carol];
+        $event = new Event($three, new Round(1));
+        $winner = $winnerId === 'p3' ? $this->carol : $this->alice;
+        $outcome = new StageOutcome(
+            (new StandingsCalculator())->calculate($three, []),
+            [new Result($event, $winner)],
+            [],
+            new RoundPairing(1, 'final', [$event])
+        );
+
+        try {
+            $selector->select($outcome);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::IncompatibleOutcome)
+                ->and($exception->getConfigurationIssue())
+                ->toBe('Match outcome selection reads events of two participants; the final round holds an event of 3')
+                ->and($exception->getContext())->toBe(['mode' => $selector->toArray()['mode'], 'participants' => ['p1', 'p2', 'p3']]);
+
+            return;
+        }
+
+        $this->fail('An event of three participants was read as a tie of two.');
+    })->with([
+        'losers, won by the third' => [MatchOutcomeSelector::losers(), 'p3'],
+        'losers, won by the first' => [MatchOutcomeSelector::losers(), 'p1'],
+        'winners, won by the third' => [MatchOutcomeSelector::winners(), 'p3'],
+        'winners, won by the first' => [MatchOutcomeSelector::winners(), 'p1'],
+    ]);
+
+    it('refuses the whole round when one of its events has more than two participants', function (): void {
+        $pair = new Event([$this->dave, $this->eve], new Round(1));
+        $three = new Event([$this->alice, $this->bob, $this->carol], new Round(1));
+        $outcome = new StageOutcome(
+            (new StandingsCalculator())->calculate([$this->alice, $this->bob, $this->carol, $this->dave, $this->eve], []),
+            [new Result($pair, $this->dave), new Result($three, $this->alice)],
+            [],
+            new RoundPairing(1, 'final', [$pair, $three])
+        );
+
+        expect(fn() => MatchOutcomeSelector::winners()->select($outcome))
+            ->toThrow(InvalidConfigurationException::class, 'the final round holds an event of 3');
     });
 });

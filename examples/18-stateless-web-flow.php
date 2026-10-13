@@ -27,10 +27,9 @@ $requests = [];
 
 // --- Request 1: the organizer opens the stage -------------------------
 // A Swiss round is paired in table order. Before any result exists the
-// whole field is level, and the table then orders it by seed, then label,
-// then id - not by position in this list. These entrants carry no seed
-// and are listed in label order, so the first round pairs them as listed.
-// Give every participant a seed when the opening order must be your own.
+// whole field is level, and the position in this list then decides: the
+// first round pairs the entrants as listed, first with second and third
+// with fourth. No seed attribute and no label is read.
 $entrants = [
     new Participant('ana', 'Ana'),
     new Participant('bea', 'Bea'),

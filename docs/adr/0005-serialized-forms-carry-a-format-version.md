@@ -1,4 +1,4 @@
-# 0004. Serialized forms carry a format version
+# 0005. Serialized forms carry a format version
 
 ## Context
 
@@ -19,10 +19,10 @@ older release handed an array from a newer one reads what it recognises and
 drops the rest.
 
 Two strings in the library already look like versions and are not this one:
-the `v1` inside an engine fingerprint (`tactician:v1:swiss...`,
-`Stage\EngineFingerprint`) and the `v1` in front of a repack outcome
-fingerprint (`RepackOutcome::FINGERPRINT_SCHEME`). Each is the version of
-the scheme its own string is built by.
+the `v2` inside an engine fingerprint (`tactician:v2:swiss...`,
+`Stage\EngineFingerprint`; 0.2.x wrote `v1`) and the `v1` in front of a
+repack outcome fingerprint (`RepackOutcome::FINGERPRINT_SCHEME`). Each is
+the version of the scheme its own string is built by.
 
 ## Decision
 
@@ -42,7 +42,8 @@ an array put together by hand from separately serialized parts loads.
 **A missing version is version 1.** Version 1 of every form is the form
 0.3.0 writes: what 0.2.x wrote, which had no version key, and beside it
 the optional keys 0.3.0 added before the key existed (`strategy_seed` in
-round-robin options is one). Each of those may be left out and is then read
+round-robin options, `seed` in Swiss options and `ties` in a rank range
+selector). Each of those may be left out and is then read
 as 0.2.x behaved, so an array without the version key is read as version 1,
 under the rules of version 1, and data stored by 0.2.x keeps loading.
 `tests/Fixtures/stored-by-0.2/` holds every form as the 0.2.x tags wrote it,
@@ -109,12 +110,16 @@ changelog of that release says so.
 **The fingerprints are not format versions.** `format_version` says how an
 array is to be read. An engine fingerprint says which engine, under which
 configuration, may read a stage state; it is one string value of the stage
-state form, and the `v1` inside it versions how that string is composed. An
+state form, and the `v2` inside it versions how that string is composed. An
 outcome fingerprint is a hash whose scheme names the keys it covers, and
-`format_version` is not one of them. Either scheme can move to `v2` without
-any form changing, and a form can change without either scheme moving. A
-stage state of format version 1 may hold a stamp of a later fingerprint
-scheme: the form stores the string and does not interpret it.
+`format_version` is not one of them. Either scheme can move on without any
+form changing, and a form can change without either scheme moving. 0.3.0
+shows the first: it moved the engine fingerprint scheme from `v1` to `v2`
+([ADR 0004](0004-position-decides-where-results-do-not.md)), and the stage
+state form is version 1 as it was. A stage state of format version 1 holds
+a stamp of either scheme: the form stores the string and does not interpret
+it, so a state stamped by 0.2.x loads, and it is the engine that refuses
+the stamp.
 
 ## Consequences
 

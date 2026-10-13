@@ -148,6 +148,12 @@ enum InvalidConfigurationReason: string
     case BracketComplete = 'bracket_complete';
 
     /**
+     * A further round was asked of a Swiss stage that has played every one
+     * of its planned rounds.
+     */
+    case PlannedRoundsPlayed = 'planned_rounds_played';
+
+    /**
      * The next round was asked for while some ties of the current round
      * have no complete result.
      */
@@ -177,12 +183,33 @@ enum InvalidConfigurationReason: string
 
     /**
      * A progression selector was given an outcome of a shape it cannot read:
-     * one with no final round, or one that is not pooled.
+     * one with no final round, one that is not pooled, or one whose final
+     * round holds an event of more than two participants.
      */
     case IncompatibleOutcome = 'incompatible_outcome';
 
     /** A progression selector asked for a rank the standings do not have. */
     case RankUnavailable = 'rank_unavailable';
+
+    /**
+     * A rank selection was asked of a table with no recorded result: no
+     * place in it is decided.
+     */
+    case UnplayedStage = 'unplayed_stage';
+
+    /**
+     * A rank selection cuts through entries that no result separates: some
+     * of a tied set are inside the selected ranks and some outside, so the
+     * results do not say who is selected.
+     */
+    case TieAcrossSelection = 'tie_across_selection';
+
+    /**
+     * Entries that no result separates are all inside the selected ranks:
+     * who is selected is decided, and the order they are selected in is
+     * not.
+     */
+    case TieWithinSelection = 'tie_within_selection';
 
     // Recording a results-driven stage
 
@@ -223,6 +250,13 @@ enum InvalidConfigurationReason: string
      * same engine under another configuration, than the one reading it.
      */
     case EngineFingerprintMismatch = 'engine_fingerprint_mismatch';
+
+    /**
+     * A round recorded on a stage state is not the round the engine has at
+     * that number: it pairs other participants, because it was paired under
+     * other rules or the participant list changed afterwards.
+     */
+    case RecordedRoundMismatch = 'recorded_round_mismatch';
 
     // Repack requests
 
@@ -294,6 +328,12 @@ enum InvalidConfigurationReason: string
 
     /** A round has more events than the timeline has places for. */
     case TimelineCapacityExceeded = 'timeline_capacity_exceeded';
+
+    /**
+     * One participant is in two events of a round that the timeline places
+     * at the same instant, on two resources of one slot.
+     */
+    case ParticipantDoubleBooked = 'participant_double_booked';
 
     // The generic factories on SchedulingException
 

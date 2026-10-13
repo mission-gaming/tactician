@@ -79,6 +79,13 @@ class RoundRobinScheduler implements SchedulerInterface
     private bool $failureWillBeDiscarded = false;
 
     /**
+     * How many pairings of the leg being generated the leg strategy
+     * returned no event for. Counted so that a leg left short by its
+     * strategy is not reported as one left short by constraints.
+     */
+    private int $pairingsWithoutEvent = 0;
+
+    /**
      * @param ConstraintSet|null $constraints Asked about every event before it is added, with a
      *                                        context of the events generated so far; null for
      *                                        no constraints, which cannot fail on a pairing
@@ -437,19 +444,32 @@ class RoundRobinScheduler implements SchedulerInterface
                     $context
                 );
 
+                // Said before the constraints are asked: a strategy that
+                // gives no event is not a constraint that rejects one.
+                $strategyGaveNoEvent = $event === null;
+
                 if ($event !== null && !$this->shouldAddEventWithFullConstraints($event, $context)) {
                     $this->recordConstraintViolation($event, $context);
                     $event = null;
                 }
 
                 if ($event === null) {
+                    $pair = array_values($legOneEvent->getParticipants());
+
                     throw new IncompleteScheduleException(
                         $plan->getExpectedEventCount(),
                         count($allEvents) + count($legEvents),
                         $this->violationCollector,
                         $plan,
                         $participants,
-                        "Backtracking found a first leg, but constraints reject its leg {$leg} derivation and the search does not cross leg boundaries. Relax the constraints on later legs or change the leg strategy.",
+                        $strategyGaveNoEvent
+                            ? sprintf(
+                                'Backtracking found a first leg, but the leg strategy returned no event for %s vs %s in leg %d, and the search does not cross leg boundaries. Change the leg strategy.',
+                                $pair[0]->getId(),
+                                $pair[1]->getId(),
+                                $leg
+                            )
+                            : "Backtracking found a first leg, but constraints reject its leg {$leg} derivation and the search does not cross leg boundaries. Relax the constraints on later legs or change the leg strategy.",
                         0,
                         $greedyFailure,
                         $this->analyzeFailure($participants, $plan, [...$allEvents, ...$legEvents])
@@ -522,17 +542,28 @@ class RoundRobinScheduler implements SchedulerInterface
         $expectedEventsPerLeg = $plan->getEventsPerLeg();
 
         for ($leg = 1; $leg <= $legs; ++$leg) {
+            $this->pairingsWithoutEvent = 0;
             $legEvents = $this->generateLegWithFullContext($participants, $leg, $strategy, $plan, $context, $roleAssignment);
 
             // Check if we generated the expected number of events for this leg
             if (count($legEvents) < $expectedEventsPerLeg) {
+                // A leg is short for one of two reasons, and the message
+                // names the one that applies: the leg strategy returned no
+                // event for a pairing, or a constraint rejected the event.
+                $rejected = $expectedEventsPerLeg - count($legEvents) - $this->pairingsWithoutEvent;
+                $cause = match (true) {
+                    $this->pairingsWithoutEvent === 0 => 'Constraints may be preventing complete schedule generation.',
+                    $rejected > 0 => "The leg strategy returned no event for {$this->pairingsWithoutEvent} of the pairings of the leg, and constraints rejected {$rejected} more.",
+                    default => "The leg strategy returned no event for {$this->pairingsWithoutEvent} of the pairings of the leg.",
+                };
+
                 throw new IncompleteScheduleException(
                     $plan->getExpectedEventCount(),
                     count($allEvents) + count($legEvents),
                     $this->violationCollector,
                     $plan,
                     $participants,
-                    "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. Constraints may be preventing complete schedule generation.",
+                    "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. {$cause}",
                     0,
                     null,
                     $this->analyzeFailure($participants, $plan, [...$allEvents, ...$legEvents])
@@ -549,10 +580,16 @@ class RoundRobinScheduler implements SchedulerInterface
     /**
      * Generate events for a specific leg with full tournament context.
      *
+     * It records as it goes: the byes of the leg's rounds, the constraint
+     * rejections, and the number of pairings the leg strategy returned no
+     * event for.
+     *
      * @param array<Participant> $participants
      * @return array<Event>
      * @throws IncompleteScheduleException
      * @throws InvalidConfigurationException When the role assignment changes more than roles
+     *
+     * @phpstan-impure
      */
     private function generateLegWithFullContext(
         array $participants,
@@ -613,6 +650,10 @@ class RoundRobinScheduler implements SchedulerInterface
                 }
 
                 $event = $strategy->generateEventForLeg([$participant1, $participant2], $leg, $globalRound, $context);
+
+                if ($event === null) {
+                    ++$this->pairingsWithoutEvent;
+                }
 
                 if ($event !== null) {
                     // Check constraints with full tournament context (all previous events)

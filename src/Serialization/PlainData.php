@@ -20,7 +20,7 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * before the key existed wrote, so data stored by them loads. A version the
  * reader does not know is refused: it was written by a later release, and
  * reading it by the rules of this one could only be a guess.
- * ADR 0004 (`docs/adr/0004-serialized-forms-carry-a-format-version.md`)
+ * ADR 0005 (`docs/adr/0005-serialized-forms-carry-a-format-version.md`)
  * has the whole rule, and what changing a form takes.
  *
  * The keys. A key that is not known is a mistake the reader cannot see

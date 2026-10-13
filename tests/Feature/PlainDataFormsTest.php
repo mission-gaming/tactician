@@ -18,7 +18,7 @@ use MissionGaming\Tactician\Tests\Support\PlainDataForms;
 //
 // An array says which version of its form it is written in, under
 // `format_version`; without the key it is version 1, and a version the
-// release does not know is refused (ADR 0004).
+// release does not know is refused (ADR 0005).
 
 /**
  * What reading an array ends in: the value, or the exception.

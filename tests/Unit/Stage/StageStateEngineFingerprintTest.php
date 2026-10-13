@@ -275,8 +275,12 @@ describe('engine fingerprints', function (): void {
     // Written out, as literals: a stored state carries these strings, so a
     // change to one of them is a change of scheme, allowed only in a minor
     // release with a migration note, and with a new version in the string
-    // (EngineFingerprint::VERSION) in place of `v1`; within 0.2.x these
-    // literals must not change. A changed string refuses every state
+    // (EngineFingerprint::VERSION) in place of `v2`; within 0.3.x these
+    // literals must not change. (0.3.0 made that change once, from `v1`:
+    // its Swiss and re-seeded rounds order level participants by list
+    // position, so the same recorded state is paired differently, and the
+    // rows below are the rows of 0.2.x with the new version and no other
+    // difference.) A changed string refuses every state
     // stamped before it, in every application that stored one. Within a
     // scheme a row is added when an engine gains an option (the option
     // used), and no row is edited or removed. If this test fails, the fix
@@ -289,116 +293,116 @@ describe('engine fingerprints', function (): void {
     ): void {
         expect($engine->getFingerprint())->toBe($fingerprint);
     })->with([
-        'Swiss' => [fn() => new SwissPairingEngine(), 'tactician:v1:swiss'],
+        'Swiss' => [fn() => new SwissPairingEngine(), 'tactician:v2:swiss'],
         'Swiss on the 3/1/0 scale, stated' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(WinDrawLossRanking::threeOneZero())),
-            'tactician:v1:swiss',
+            'tactician:v2:swiss',
         ],
         'Swiss on the chess scale' => [
             fn() => fingerprintSwissOnTheChessScale(3),
-            'tactician:v1:swiss;ranking=win-draw-loss,1,0.5,0',
+            'tactician:v2:swiss;ranking=win-draw-loss,1,0.5,0',
         ],
         'Swiss on a scale of fractions and a negative loss' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(0.3, 0.1, -1.5))),
-            'tactician:v1:swiss;ranking=win-draw-loss,0.3,0.1,-1.5',
+            'tactician:v2:swiss;ranking=win-draw-loss,0.3,0.1,-1.5',
         ],
         'Swiss with a ranking strategy of the application' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fingerprintCustomRanking())),
-            'tactician:v1:swiss;ranking=custom',
+            'tactician:v2:swiss;ranking=custom',
         ],
         'Swiss with tiebreakers' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
                 tiebreakers: [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker()]
             )),
-            'tactician:v1:swiss;tiebreakers=buchholz,sonneborn-berger',
+            'tactician:v2:swiss;tiebreakers=buchholz,sonneborn-berger',
         ],
         'Swiss with a tiebreaker whose name holds separators' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(
                 tiebreakers: [fingerprintTiebreakerNamed('head to head;x=1,y')]
             )),
-            'tactician:v1:swiss;tiebreakers=head%20to%20head%3Bx%3D1%2Cy',
+            'tactician:v2:swiss;tiebreakers=head%20to%20head%3Bx%3D1%2Cy',
         ],
         'Swiss with a calculator of the application' => [
             fn() => new SwissPairingEngine(standingsCalculator: new readonly class extends StandingsCalculator {}),
-            'tactician:v1:swiss;standings=custom',
+            'tactician:v2:swiss;standings=custom',
         ],
         'Swiss with a calculator of the application, built with rules' => [
             fn() => new SwissPairingEngine(standingsCalculator: new readonly class (WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()]) extends StandingsCalculator {}),
-            'tactician:v1:swiss;standings=custom',
+            'tactician:v2:swiss;standings=custom',
         ],
         'a subclass of the Swiss engine' => [
             fn() => new readonly class extends SwissPairingEngine {},
-            'tactician:v1:swiss;subclass=yes',
+            'tactician:v2:swiss;subclass=yes',
         ],
         'Swiss with the wins tiebreaker' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(tiebreakers: [new WinsTiebreaker()])),
-            'tactician:v1:swiss;tiebreakers=wins',
+            'tactician:v2:swiss;tiebreakers=wins',
         ],
         'Swiss with every option that is part of it' => [
             fn() => new readonly class (standingsCalculator: new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker(), new SonnebornBergerTiebreaker(), new WinsTiebreaker()])) extends SwissPairingEngine {},
-            'tactician:v1:swiss;ranking=win-draw-loss,1,0.5,0;subclass=yes;tiebreakers=buchholz,sonneborn-berger,wins',
+            'tactician:v2:swiss;ranking=win-draw-loss,1,0.5,0;subclass=yes;tiebreakers=buchholz,sonneborn-berger,wins',
         ],
         'Swiss on a scale of tens' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(100.0, 10.0, 0.0))),
-            'tactician:v1:swiss;ranking=win-draw-loss,100,10,0',
+            'tactician:v2:swiss;ranking=win-draw-loss,100,10,0',
         ],
         'Swiss with a ranking strategy of the application and a tiebreaker' => [
             fn() => new SwissPairingEngine(standingsCalculator: new StandingsCalculator(fingerprintCustomRanking(), [new BuchholzTiebreaker()])),
-            'tactician:v1:swiss;ranking=custom;tiebreakers=buchholz',
+            'tactician:v2:swiss;ranking=custom;tiebreakers=buchholz',
         ],
-        'single elimination' => [fn() => new SingleEliminationEngine(), 'tactician:v1:single-elimination'],
+        'single elimination' => [fn() => new SingleEliminationEngine(), 'tactician:v2:single-elimination'],
         'two-legged single elimination' => [
             fn() => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
-            'tactician:v1:single-elimination;legs-per-tie=2',
+            'tactician:v2:single-elimination;legs-per-tie=2',
         ],
         're-seeded single elimination' => [
             fn() => new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true)),
-            'tactician:v1:single-elimination;reseed-each-round=yes',
+            'tactician:v2:single-elimination;reseed-each-round=yes',
         ],
         'two-legged, re-seeded single elimination' => [
             fn() => new SingleEliminationEngine(new EliminationOptions(legsPerTie: 2, reseedEachRound: true)),
-            'tactician:v1:single-elimination;legs-per-tie=2;reseed-each-round=yes',
+            'tactician:v2:single-elimination;legs-per-tie=2;reseed-each-round=yes',
         ],
         're-seeded single elimination on the chess scale' => [
             fn() => new SingleEliminationEngine(
                 new EliminationOptions(reseedEachRound: true),
                 new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()])
             ),
-            'tactician:v1:single-elimination;ranking=win-draw-loss,1,0.5,0;reseed-each-round=yes;tiebreakers=buchholz',
+            'tactician:v2:single-elimination;ranking=win-draw-loss,1,0.5,0;reseed-each-round=yes;tiebreakers=buchholz',
         ],
         're-seeded single elimination with a calculator of the application' => [
             fn() => new SingleEliminationEngine(
                 new EliminationOptions(reseedEachRound: true),
                 new readonly class extends StandingsCalculator {}
             ),
-            'tactician:v1:single-elimination;reseed-each-round=yes;standings=custom',
+            'tactician:v2:single-elimination;reseed-each-round=yes;standings=custom',
         ],
         'single elimination on a fixed path, whatever its calculator' => [
             fn() => new SingleEliminationEngine(
                 new EliminationOptions(grandFinalReset: false),
                 new StandingsCalculator(fingerprintCustomRanking(), [new BuchholzTiebreaker()])
             ),
-            'tactician:v1:single-elimination',
+            'tactician:v2:single-elimination',
         ],
-        'double elimination' => [fn() => new DoubleEliminationEngine(), 'tactician:v1:double-elimination'],
+        'double elimination' => [fn() => new DoubleEliminationEngine(), 'tactician:v2:double-elimination'],
         'two-legged double elimination' => [
             fn() => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2)),
-            'tactician:v1:double-elimination;legs-per-tie=2',
+            'tactician:v2:double-elimination;legs-per-tie=2',
         ],
         'one-legged double elimination without a reset' => [
             fn() => new DoubleEliminationEngine(new EliminationOptions(grandFinalReset: false)),
-            'tactician:v1:double-elimination;grand-final-reset=no',
+            'tactician:v2:double-elimination;grand-final-reset=no',
         ],
         'double elimination without a reset' => [
             fn() => new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2, grandFinalReset: false)),
-            'tactician:v1:double-elimination;grand-final-reset=no;legs-per-tie=2',
+            'tactician:v2:double-elimination;grand-final-reset=no;legs-per-tie=2',
         ],
         'double elimination, whatever its calculator' => [
             fn() => new DoubleEliminationEngine(
                 new EliminationOptions(),
                 new StandingsCalculator(WinDrawLossRanking::oneHalfZero(), [new BuchholzTiebreaker()])
             ),
-            'tactician:v1:double-elimination',
+            'tactician:v2:double-elimination',
         ],
     ]);
 
@@ -459,7 +463,7 @@ describe('engine fingerprints', function (): void {
         FingerprintedEngine $engine,
         string $format
     ): void {
-        expect($engine->getFingerprint())->toBe('tactician:v1:' . $format);
+        expect($engine->getFingerprint())->toBe('tactician:v2:' . $format);
     })->with([
         'Swiss' => [fn() => new SwissPairingEngine(), 'swiss'],
         'single elimination' => [fn() => new SingleEliminationEngine(), 'single-elimination'],
@@ -783,6 +787,32 @@ describe('engine fingerprints', function (): void {
         expect($swiss->pairNextRound($restored)->getRoundNumber())->toBe(3);
     });
 
+    // 0.3.0 pairs a Swiss round and a re-seeded bracket round from another
+    // order than 0.2.x did, so a state stamped by 0.2.x is refused by every
+    // engine until it is stamped again: the application decides whether a
+    // stage in progress goes on under the new rules.
+    it('refuses a state stamped by 0.2.x, and reads it once it is stamped again', function (
+        FingerprintedEngine&StageEngineInterface $engine
+    ): void {
+        $stampOfTheEarlierRelease = str_replace('tactician:v2:', 'tactician:v1:', $engine->getFingerprint());
+        $state = StageState::start($this->participants)->withEngineFingerprint($stampOfTheEarlierRelease);
+
+        foreach ([
+            fn() => $engine->pairNextRound($state),
+            fn() => $engine->isComplete($state),
+            fn() => $engine->getOutcome($state),
+            fn() => $engine->getPlan($state),
+        ] as $call) {
+            expect($call)->toThrow(
+                InvalidConfigurationException::class,
+                'the stamp was written by an earlier release of the library'
+            );
+        }
+
+        $restamped = $state->withEngineFingerprint($engine->getFingerprint());
+        expect($engine->pairNextRound($restamped)->getRoundNumber())->toBe(1);
+    })->with(fingerprintedEngines());
+
     it('reports the stamp before anything else is wrong with the state', function (
         FingerprintedEngine&StageEngineInterface $reader
     ): void {
@@ -929,7 +959,7 @@ describe('engine fingerprints', function (): void {
             $pairing->getEvents()
         ));
 
-        expect($engine->getFingerprint())->toBe('tactician:v1:single-elimination;reseed-each-round=yes;standings=custom')
+        expect($engine->getFingerprint())->toBe('tactician:v2:single-elimination;reseed-each-round=yes;standings=custom')
             ->and($engine->pairNextRound($state)->getRoundNumber())->toBe(2)
             ->and($engine->pairNextRound($state->withEngineFingerprint($engine->getFingerprint()))->getRoundNumber())->toBe(2);
     });
@@ -951,7 +981,7 @@ describe('engine fingerprints', function (): void {
         $build = fn(): string => (new SwissPairingEngine(
             standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(1 / 3, 0.1 + 0.2, -0.0))
         ))->getFingerprint();
-        $expected = 'tactician:v1:swiss;ranking=win-draw-loss,0.3333333333333333,0.30000000000000004,0';
+        $expected = 'tactician:v2:swiss;ranking=win-draw-loss,0.3333333333333333,0.30000000000000004,0';
 
         expect($build())->toBe($expected);
 
@@ -973,10 +1003,10 @@ describe('engine fingerprints', function (): void {
         ))->getFingerprint();
 
         expect($build(0.1 + 0.2))->not->toBe($build(0.3))
-            ->and($build(0.3))->toBe('tactician:v1:swiss;ranking=win-draw-loss,1,0.3,0')
+            ->and($build(0.3))->toBe('tactician:v2:swiss;ranking=win-draw-loss,1,0.3,0')
             ->and($build(1.0e15))->not->toBe($build(1.0e15 + 1.0))
             ->and($build(INF))->not->toBe($build(-INF))
-            ->and($build(NAN))->toBe('tactician:v1:swiss;ranking=win-draw-loss,1,nan,0');
+            ->and($build(NAN))->toBe('tactician:v2:swiss;ranking=win-draw-loss,1,nan,0');
     });
 });
 
@@ -985,21 +1015,21 @@ describe('the fingerprint builder', function (): void {
         $one = EngineFingerprint::of('ladder')->with('rungs', 3, 1)->with('challenges', true, false);
         $other = EngineFingerprint::of('ladder')->with('challenges', true, false)->with('rungs', 3, 1);
 
-        expect($one->toString())->toBe('tactician:v1:ladder;challenges=yes;rungs=3')
+        expect($one->toString())->toBe('tactician:v2:ladder;challenges=yes;rungs=3')
             ->and($other->toString())->toBe($one->toString());
     });
 
     it('takes the last statement of an option', function (): void {
         $fingerprint = EngineFingerprint::of('ladder')->with('rungs', 3, 1);
 
-        expect($fingerprint->with('rungs', 4, 1)->toString())->toBe('tactician:v1:ladder;rungs=4')
-            ->and($fingerprint->with('rungs', 1, 1)->toString())->toBe('tactician:v1:ladder')
-            ->and($fingerprint->toString())->toBe('tactician:v1:ladder;rungs=3');
+        expect($fingerprint->with('rungs', 4, 1)->toString())->toBe('tactician:v2:ladder;rungs=4')
+            ->and($fingerprint->with('rungs', 1, 1)->toString())->toBe('tactician:v2:ladder')
+            ->and($fingerprint->toString())->toBe('tactician:v2:ladder;rungs=3');
     });
 
     it('writes each kind of value so that no two values are one string', function (mixed $value, string $written): void {
         expect(EngineFingerprint::of('ladder')->with('option', $value, 'the default')->toString())
-            ->toBe('tactician:v1:ladder;option=' . $written);
+            ->toBe('tactician:v2:ladder;option=' . $written);
     })->with([
         'true' => [true, 'yes'],
         'false' => [false, 'no'],
@@ -1039,10 +1069,10 @@ describe('the fingerprint builder', function (): void {
     it('reads back what it wrote', function (string $fingerprint): void {
         expect(EngineFingerprint::parse($fingerprint)?->toString())->toBe($fingerprint);
     })->with([
-        'tactician:v1:swiss',
-        'tactician:v1:double-elimination;grand-final-reset=no;legs-per-tie=2',
-        'tactician:v1:swiss;tiebreakers=head%20to%20head%3Bx%3D1%2Cy',
-        'tactician:v1:ladder;option=',
+        'tactician:v2:swiss',
+        'tactician:v2:double-elimination;grand-final-reset=no;legs-per-tie=2',
+        'tactician:v2:swiss;tiebreakers=head%20to%20head%3Bx%3D1%2Cy',
+        'tactician:v2:ladder;option=',
     ]);
 
     it('reads no string it did not write', function (string $fingerprint): void {
@@ -1050,15 +1080,16 @@ describe('the fingerprint builder', function (): void {
     })->with([
         'a stamp of the application' => ['my-swiss'],
         'the format alone' => ['swiss'],
-        'another version of the encoding' => ['tactician:v2:swiss'],
-        'the prefix alone' => ['tactician:v1:'],
-        'an option without a value' => ['tactician:v1:swiss;ranking'],
-        'an option without a name' => ['tactician:v1:swiss;=custom'],
+        'another version of the encoding' => ['tactician:v3:swiss'],
+        'the scheme of 0.2.x' => ['tactician:v1:swiss'],
+        'the prefix alone' => ['tactician:v2:'],
+        'an option without a value' => ['tactician:v2:swiss;ranking'],
+        'an option without a name' => ['tactician:v2:swiss;=custom'],
         'another case' => ['Tactician:v1:swiss'],
         // Spelled otherwise than toString() spells it, so put together by hand.
-        'options out of order' => ['tactician:v1:swiss;subclass=yes;ranking=custom'],
-        'an option twice' => ['tactician:v1:swiss;ranking=custom;ranking=custom'],
-        'a separator at the end' => ['tactician:v1:swiss;'],
+        'options out of order' => ['tactician:v2:swiss;subclass=yes;ranking=custom'],
+        'an option twice' => ['tactician:v2:swiss;ranking=custom;ranking=custom'],
+        'a separator at the end' => ['tactician:v2:swiss;'],
     ]);
 
     it('writes every float so that it reads back as the same float, with no character of the structure', function (): void {
@@ -1077,7 +1108,7 @@ describe('the fingerprint builder', function (): void {
 
             $text = substr(
                 EngineFingerprint::of('ladder')->with('option', $float, 'the default')->toString(),
-                strlen('tactician:v1:ladder;option=')
+                strlen('tactician:v2:ladder;option=')
             );
 
             expect($text)->toMatch('/^-?(0|[1-9]\d*)(\.\d*[1-9])?(e[+-][1-9]\d*)?$/')
@@ -1093,15 +1124,15 @@ describe('the fingerprint builder', function (): void {
     it('says where two fingerprints differ', function (string $recorded, string $engine, array $differences): void {
         expect(EngineFingerprint::differences($recorded, $engine))->toBe($differences);
     })->with([
-        'the same fingerprint' => ['tactician:v1:swiss', 'tactician:v1:swiss', []],
+        'the same fingerprint' => ['tactician:v2:swiss', 'tactician:v2:swiss', []],
         'two formats, whatever their options' => [
-            'tactician:v1:swiss;ranking=custom',
-            'tactician:v1:single-elimination;legs-per-tie=2',
+            'tactician:v2:swiss;ranking=custom',
+            'tactician:v2:single-elimination;legs-per-tie=2',
             ['format: recorded swiss, this engine single-elimination'],
         ],
         'options on either side, in name order' => [
-            'tactician:v1:ladder;b=1;c=2',
-            'tactician:v1:ladder;a=yes;c=3',
+            'tactician:v2:ladder;b=1;c=2',
+            'tactician:v2:ladder;a=yes;c=3',
             [
                 'a: recorded the default, this engine yes',
                 'b: recorded 1, this engine the default',
@@ -1110,27 +1141,38 @@ describe('the fingerprint builder', function (): void {
         ],
         'a stamp of the application read by an engine of the library' => [
             'my-swiss',
-            'tactician:v1:swiss',
+            'tactician:v2:swiss',
             ["the stamp was not written by one of the library's engines"],
         ],
         'a stamp in an encoding this version does not know' => [
+            'tactician:v3:swiss',
             'tactician:v2:swiss',
-            'tactician:v1:swiss',
             ["the stamp begins with the library's prefix and is not one this version of the library writes"],
+        ],
+        // The stamp 0.2.x wrote for the same configuration: not read option
+        // by option, which would find no difference and accept a state
+        // that was paired under the rules of 0.2.x.
+        'a stamp of the scheme of 0.2.x' => [
+            'tactician:v1:swiss',
+            'tactician:v2:swiss',
+            [
+                'the stamp was written by an earlier release of the library, whose engines paired by other rules;'
+                . ' see the changelog of the release that changed the scheme',
+            ],
         ],
         // Read option by option, these two would differ in nothing.
         'a stamp with the prefix that no engine wrote' => [
-            'tactician:v1:swiss;subclass=yes;ranking=custom',
-            'tactician:v1:swiss;ranking=custom;subclass=yes',
+            'tactician:v2:swiss;subclass=yes;ranking=custom',
+            'tactician:v2:swiss;ranking=custom;subclass=yes',
             ["the stamp begins with the library's prefix and is not one this version of the library writes"],
         ],
         'the same option twice' => [
-            'tactician:v1:swiss;ranking=custom;ranking=custom',
-            'tactician:v1:swiss;ranking=custom',
+            'tactician:v2:swiss;ranking=custom;ranking=custom',
+            'tactician:v2:swiss;ranking=custom',
             ["the stamp begins with the library's prefix and is not one this version of the library writes"],
         ],
         'a stamp of the library read by an engine of the application' => [
-            'tactician:v1:swiss',
+            'tactician:v2:swiss',
             'my-swiss',
             ["the state is stamped by one of the library's engines and this engine is not one"],
         ],

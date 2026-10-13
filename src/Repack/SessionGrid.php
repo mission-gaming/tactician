@@ -512,7 +512,9 @@ final readonly class SessionGrid
      *
      * An instant-based grid with a finite capacity serializes exactly as
      * it always has: its session starts as local times in the declared
-     * timezone, to the second, with the timezone's name beside them. A
+     * timezone, with the timezone's name beside them (a fraction of a
+     * second is written after the seconds where a start has one, and not
+     * otherwise). A
      * shape-only grid has `session_count` and none of `sessions`,
      * `timezone` and `slot_interval`. An unbounded capacity is the string
      * {@see self::UNBOUNDED}. `slots_per_session_overrides` lists the
@@ -520,7 +522,17 @@ final readonly class SessionGrid
      * there is none. The first key of both forms is `format_version`, the
      * version of the form (1).
      *
+     * The slot interval is written by TimelineDefinition::writeInterval(),
+     * which refuses one that would not read back as the same interval (any
+     * interval made by `DateInterval::createFromDateString()`, from
+     * `25 minutes` for example: build it as `new DateInterval('PT25M')`).
+     * The grid itself works with such an interval; it has no plain-data
+     * form.
+     *
      * @return array{format_version: int, sessions: array<string>, timezone: string, slot_interval: string, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}|array{format_version: int, session_count: int, slots_per_session: int, slots_per_session_overrides?: array<int, int>, capacity_per_slot: int|string}
+     *
+     * @throws InvalidConfigurationException When the slot interval has no ISO 8601 duration that
+     *                                       reads back as the same interval (`NotSerializable`)
      */
     public function toArray(): array
     {
@@ -535,11 +547,11 @@ final readonly class SessionGrid
             $data = [
                 PlainData::VERSION_KEY => PlainData::VERSION,
                 'sessions' => array_map(
-                    static fn(DateTimeImmutable $start): string => $start->format('Y-m-d H:i:s'),
+                    ZonedTime::write(...),
                     $this->sessionStarts
                 ),
                 'timezone' => $this->sessionStarts[0]->getTimezone()->getName(),
-                'slot_interval' => TimelineDefinition::formatInterval($this->slotInterval),
+                'slot_interval' => TimelineDefinition::writeInterval($this->slotInterval, 'slot_interval'),
                 'slots_per_session' => $this->slotsPerSession,
                 'capacity_per_slot' => $this->capacityPerSlot ?? self::UNBOUNDED,
             ];

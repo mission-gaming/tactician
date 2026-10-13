@@ -112,9 +112,15 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      * round must be complete, and one that finished level must carry its
      * tie decision (see TieDecision).
      *
+     * The selector is pairwise by nature: a winner and a loser are a
+     * reading of two participants. Every event of the final round must
+     * have exactly two; one with more is refused in both modes, and the
+     * round is not read in part.
+     *
      * @return array<Participant>
      * @throws InvalidConfigurationException When the outcome has no final round, as a pooled
-     *                                       outcome has none (reason `IncompatibleOutcome`); when a
+     *                                       outcome has none, or its final round holds an event of
+     *                                       more than two participants (`IncompatibleOutcome`); when a
      *                                       tie of the round lacks a result, or is level with no
      *                                       tie decision (`UndecidedTie`); when a tie decision or a
      *                                       leg's winner names a participant outside the tie
@@ -133,11 +139,25 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
             );
         }
 
+        // A winner and a loser are a reading of two participants. An event
+        // of more is refused, never read as if it were a tie of its first two.
+        foreach ($finalRound->getEvents() as $event) {
+            if (count($event->getParticipants()) !== 2) {
+                throw new InvalidConfigurationException(
+                    'Match outcome selection reads events of two participants; the final round holds an event of '
+                        . count($event->getParticipants()),
+                    ['mode' => $this->mode, 'participants' => $this->participantIds($event)],
+                    reason: InvalidConfigurationReason::IncompatibleOutcome
+                );
+            }
+        }
+
         $resultsByEvent = $this->indexResultsByEvent($outcome);
 
         $selected = [];
         foreach ($this->groupEventsByTie($finalRound->getEvents()) as $tieEvents) {
-            [$first, $second] = $tieEvents[0]->getParticipants();
+            // An event keeps the keys it was given; the sides are its order
+            [$first, $second] = array_values($tieEvents[0]->getParticipants());
 
             $legResults = [];
             foreach ($tieEvents as $event) {
@@ -199,8 +219,7 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
     {
         $ties = [];
         foreach ($events as $event) {
-            $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
-            $ties[PairKey::of(...$ids)][] = $event;
+            $ties[PairKey::of(...$this->participantIds($event))][] = $event;
         }
 
         return array_values($ties);
@@ -232,14 +251,25 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
             // collide with other rounds
             throw new InvalidConfigurationException(
                 'Match outcome selection requires events with round numbers',
-                ['participants' => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants())],
+                ['participants' => $this->participantIds($event)],
                 reason: InvalidConfigurationReason::EventWithoutRoundNumber
             );
         }
 
-        $ids = array_map(fn(Participant $p) => $p->getId(), $event->getParticipants());
         $leg = $event->getMetadataValue('tie_leg');
 
-        return $round . ':' . PairKey::of(...$ids) . ':' . (is_int($leg) ? $leg : 1);
+        return $round . ':' . PairKey::of(...$this->participantIds($event)) . ':' . (is_int($leg) ? $leg : 1);
+    }
+
+    /**
+     * The IDs of the event's participants in the order it holds them, as a
+     * list: an event keeps the array keys it was given, and a string key
+     * would be spread into a call as a named argument.
+     *
+     * @return list<string>
+     */
+    private function participantIds(Event $event): array
+    {
+        return array_values(array_map(fn(Participant $p) => $p->getId(), $event->getParticipants()));
     }
 }

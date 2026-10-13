@@ -29,15 +29,15 @@ use MissionGaming\Tactician\Standings\WinDrawLossRanking;
  * default, once released, is not changed within a scheme: changing it
  * would change what every stored stamp without the option means.
  *
- * The string is `tactician:v1:` followed by the format and one
+ * The string is `tactician:v2:` followed by the format and one
  * `;name=value` per stated option, ordered by name so that the order of
  * the with() calls means nothing. `tactician:` separates the library's
  * fingerprints from the strings an application gives its own engines.
- * `v1` is the version of this scheme, so that a stamp of a later scheme
+ * `v2` is the version of this scheme, so that a stamp of another scheme
  * can be told from one written by this one. A patch release does not
  * change the scheme; a 0.x minor release may, with a migration note in
  * the changelog (see FingerprintedEngine). A change of scheme changes
- * VERSION with it: a string that kept `v1` and meant something else
+ * VERSION with it: a string that kept `v2` and meant something else
  * would be read, option by option, as a stamp of this scheme, and a
  * changed default would be accepted without a word.
  * A string value is percent-encoded, so no value can be read as a
@@ -56,7 +56,23 @@ final readonly class EngineFingerprint
 {
     private const string PREFIX = 'tactician:';
 
-    private const string VERSION = 'v1';
+    private const string VERSION = 'v2';
+
+    /**
+     * The versions of earlier schemes, so that a stamp of one of them can
+     * be named as that in the error an engine raises.
+     *
+     * `v1` is the scheme of 0.2.x. 0.3.0 replaced it because the same
+     * recorded state is paired differently from 0.3.0 on: a Swiss round
+     * and a re-seeded bracket round order level participants by their
+     * position in the participant list, where 0.2.x ordered them by the
+     * seed attribute, the label and the ID, and a re-seeded bracket
+     * credits a bye. A `v1` stamp says the state was paired under the
+     * earlier rules, so it is not read as a stamp of this scheme.
+     *
+     * @var list<string>
+     */
+    private const array EARLIER_VERSIONS = ['v1'];
 
     /**
      * @param array<string, string> $options Encoded values of the options that are not at their default, by name
@@ -222,6 +238,8 @@ final readonly class EngineFingerprint
             return [match (true) {
                 $stamp !== null => 'the state is stamped by one of the library\'s engines and this engine is not one',
                 $own === null => 'the stamp is not this engine\'s',
+                self::isOfEarlierScheme($recorded) => 'the stamp was written by an earlier release of the library, whose engines'
+                    . ' paired by other rules; see the changelog of the release that changed the scheme',
                 str_starts_with($recorded, self::PREFIX) => 'the stamp begins with the library\'s prefix and is not one this version of the library writes',
                 default => 'the stamp was not written by one of the library\'s engines',
             }];
@@ -250,6 +268,17 @@ final readonly class EngineFingerprint
         // Never empty here: parse() reads only what toString() writes, so
         // two strings that differ differ in their format or in an option.
         return $differences;
+    }
+
+    private static function isOfEarlierScheme(string $fingerprint): bool
+    {
+        foreach (self::EARLIER_VERSIONS as $version) {
+            if (str_starts_with($fingerprint, self::PREFIX . $version . ':')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

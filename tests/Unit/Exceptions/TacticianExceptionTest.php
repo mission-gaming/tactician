@@ -378,10 +378,12 @@ describe('TacticianException', function (): void {
                 } catch (InvalidConfigurationException $refused) {
                     // A stage state whose pieces are each well formed and
                     // whose history no verb would have recorded: a round
-                    // number changed under its events, a result moved to a
-                    // round that is not recorded. It is refused with the
-                    // reason the verb gives.
+                    // number changed under its events, a round numbered
+                    // below 1, a result moved to a round that is not
+                    // recorded. It is refused with the reason the verb
+                    // gives.
                     expect($refused->getReason())->toBeIn([
+                        InvalidConfigurationReason::ValueOutOfRange,
                         InvalidConfigurationReason::RoundOutOfSequence,
                         InvalidConfigurationReason::EventNotInRound,
                         InvalidConfigurationReason::EventWithoutRoundNumber,

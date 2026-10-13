@@ -90,11 +90,18 @@ Settled decisions beyond the sketch:
   from the anchor, so it does not guard a start that is itself near the
   end of PHP's range, and an interval made from a relative string is not
   under it: that one is still added once per step.
-- **No check of who plays.** The sketch below lists "a participant assigned
-  overlapping slots" among the things that fail loudly. The assigner does
-  not check it: it validates capacity and round numbers. A
-  `MinimumRestRule` of any positive rest is what rejects a participant in
-  two events at one time, and it is opt-in.
+- **One check of who plays: nobody is in two events at one instant.** The
+  sketch below lists "a participant assigned overlapping slots" among the
+  things that fail loudly. The assigner at first validated capacity and
+  round numbers only, and a `MinimumRestRule` of any positive rest, which
+  is opt-in, was what rejected a participant in two events at one time.
+  Without it a slot with two resources could hold the same participant
+  twice. The assigner now refuses such a round itself, whatever rules it
+  carries (`ParticipantDoubleBooked`). It refuses and does not report,
+  like a violated rule: the filling is deterministic, so it cannot move
+  one of the two events, and a timeline with a participant in two places
+  at once is not one any policy accepts. The check is per round and per
+  instant; rest between kickoffs at different times stays a rule's.
 - **Round numbers are absolute offsets**: round N lands at
   start + (N−1) round intervals whether or not earlier rounds exist in
   the schedule, so cross-leg-continuous numbering and partial schedules

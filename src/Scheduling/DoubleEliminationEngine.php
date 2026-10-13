@@ -44,16 +44,15 @@ use Override;
  * drops or eliminates the other participant. Re-seeding is a
  * single-elimination preset parameter and is rejected here.
  *
- * There is deliberately no champion accessor. The champion is the
- * participant who advances from the last round played (the grand final,
- * or its reset): MatchOutcomeSelector::winners() over the outcome's final
- * round. Rank 1 of the outcome's standings is not that derivation: the
- * standings are a win/draw/loss table over every result of both brackets,
- * in the order of the standings calculator, and the longer route through
- * the losers bracket can collect more wins. With 8 entrants and default
- * options, a participant who loses in round 1, wins the losers bracket and
- * the first grand final, and loses the reset has 5 wins and is first in
- * the table; the champion has 4 and is second.
+ * There is deliberately no champion accessor. The participant who
+ * advances from the last round played (the grand final, or its reset) is
+ * rank 1 of the outcome's standings, which are in bracket placement order
+ * (see getOutcome()), and is what MatchOutcomeSelector::winners() returns
+ * for the outcome's final round. The records in that table do not decide
+ * the placement: with 8 entrants and default options, a participant who
+ * loses in round 1, wins the losers bracket and the first grand final, and
+ * loses the reset has 5 wins and is rank 2; the participant who beat it
+ * in the reset has 4 and is rank 1.
  *
  * @experimental
  */
@@ -62,7 +61,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     use EliminationBracketSupport;
 
     /**
-     * @param StandingsCalculator $standingsCalculator Orders the outcome's standings; it pairs nothing
+     * @param StandingsCalculator $standingsCalculator Computes the records of the outcome's standings
+     *                                                 and orders the entrants who went out at the
+     *                                                 same stage; it pairs nothing
      *
      * @throws InvalidConfigurationException When reseedEachRound is requested
      */
@@ -180,12 +181,20 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
     /**
      * The uniform completion product; null while the bracket is unfinished.
      *
-     * The standings are a win/draw/loss table over every result of both
-     * brackets, in the order of the standings calculator. They are not a
-     * placement and rank 1 is not the champion (see the class docblock):
-     * use MatchOutcomeSelector::winners() over the outcome's final round.
-     * A single-leg event that finished level and was decided by its tie
-     * decision counts in the table as a win for the participant who
+     * The standings are in bracket placement order: the entrant who
+     * advanced from the last tie played (the grand final, or its reset) is
+     * rank 1 and the other finalist rank 2, then the entrant who went out
+     * in the losers final, and so on back through the rounds of the losers
+     * bracket to its first. Entrants put out by the same round of the
+     * losers bracket share a tier (Standings::getTiers()): the standings
+     * calculator orders them from their records, and where that leaves
+     * them level, their position in the participant list does
+     * (Standings::getTiedSets() reports those). No record moves an entrant
+     * from one tier to another.
+     *
+     * The records are win/draw/loss records over every result of both
+     * brackets. A single-leg event that finished level and was decided by
+     * its tie decision counts in them as a win for the participant who
      * advanced; the legs of a two-legged tie are counted as recorded. The
      * outcome's results are the results as recorded.
      *
@@ -199,23 +208,30 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             return null;
         }
 
-        $standings = $this->standingsCalculator->calculate(
-            $state->getAllSeenParticipants(),
-            $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers'])
-        );
+        $entrants = $state->getAllSeenParticipants();
 
         return new StageOutcome(
-            $standings,
+            $this->placementStandings(
+                $this->standingsCalculator,
+                $entrants,
+                $this->resultsForStandings($state->getResults(), $resolution['levelAdvancers']),
+                $resolution['placement']
+            ),
             $state->getResults(),
             $state->getByeCounts(),
-            $state->getLastRound()
+            $state->getLastRound(),
+            [],
+            $entrants
         );
     }
 
     /**
      * Walk the fixed stage sequence, advancing through fully resolved stages.
      *
-     * @return array{pending: RoundPairing|null, levelAdvancers: array<string, Participant>}
+     * @return array{pending: RoundPairing|null, levelAdvancers: array<string, Participant>, placement: array<int|string, int>}
+     *                                                                                                                         The placement is the tier of every
+     *                                                                                                                         entrant of a finished bracket, 0 for
+     *                                                                                                                         the one who advanced from the last tie
      *
      * @throws InvalidConfigurationException
      */
@@ -232,10 +248,31 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $roundNumber = 0;
         $levelAdvancers = [];
 
+        // Who went out, and after how many of the stages that put an
+        // entrant out: a loss in the winners bracket only drops an entrant,
+        // so those stages are not counted.
+        $wentOutAt = [];
+        $exits = 0;
+        $noteExits = static function (array $losers) use (&$wentOutAt, &$exits): void {
+            ++$exits;
+            foreach ($losers as $loser) {
+                if ($loser instanceof Participant) {
+                    $wentOutAt[$loser->getId()] = $exits;
+                }
+            }
+        };
+        // Nothing reads the level advancers of a bracket that is not
+        // finished: they are for the table of the outcome.
+        $unfinished = static fn(RoundPairing $pending): array => [
+            'pending' => $pending,
+            'levelAdvancers' => [],
+            'placement' => [],
+        ];
+
         // Winners round 1
         $stage = $this->resolveStage($slots, $this->winnersStageName(1, $winnersRounds), $roundNumber, $resultIndex, $levelAdvancers);
         if ($stage['pending'] !== null) {
-            return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
+            return $unfinished($stage['pending']);
         }
         $winnersSlots = $stage['winners'];
 
@@ -252,8 +289,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 $levelAdvancers
             );
             if ($stage['pending'] !== null) {
-                return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
+                return $unfinished($stage['pending']);
             }
+            $noteExits($stage['losers']);
             $losersSurvivors = $stage['winners'];
             $losersChampion = null;
 
@@ -266,7 +304,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                     $levelAdvancers
                 );
                 if ($stage['pending'] !== null) {
-                    return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
+                    return $unfinished($stage['pending']);
                 }
                 $winnersSlots = $stage['winners'];
                 $droppers = $stage['losers'];
@@ -291,8 +329,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                     $levelAdvancers
                 );
                 if ($stage['pending'] !== null) {
-                    return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
+                    return $unfinished($stage['pending']);
                 }
+                $noteExits($stage['losers']);
 
                 if ($winnersRound < $winnersRounds) {
                     // Minor round: major winners pair up
@@ -305,8 +344,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                         $levelAdvancers
                     );
                     if ($stage['pending'] !== null) {
-                        return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
+                        return $unfinished($stage['pending']);
                     }
+                    $noteExits($stage['losers']);
                     $losersSurvivors = $stage['winners'];
                 } else {
                     $losersChampion = $stage['winners'][0];
@@ -331,7 +371,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $levelAdvancers
         );
         if ($stage['pending'] !== null) {
-            return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
+            return $unfinished($stage['pending']);
         }
         $grandFinalWinner = $stage['winners'][0];
 
@@ -341,21 +381,37 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             throw new InvariantViolationException('Grand final resolved without a winner');
         }
 
-        if (!$this->options->grandFinalReset || $grandFinalWinner->getId() === $winnersChampion->getId()) {
-            return ['pending' => null, 'levelAdvancers' => $levelAdvancers];
+        if ($this->options->grandFinalReset && $grandFinalWinner->getId() !== $winnersChampion->getId()) {
+            // The losers champion won: both finalists now have one loss,
+            // so a reset match decides the title.
+            $stage = $this->resolveStage(
+                [$winnersChampion, $losersChampion],
+                'grand final reset',
+                $roundNumber,
+                $resultIndex,
+                $levelAdvancers
+            );
+            if ($stage['pending'] !== null) {
+                return $unfinished($stage['pending']);
+            }
         }
 
-        // The losers champion won: both finalists now have one loss, so a
-        // reset match decides the title.
-        $stage = $this->resolveStage(
-            [$winnersChampion, $losersChampion],
-            'grand final reset',
-            $roundNumber,
-            $resultIndex,
-            $levelAdvancers
-        );
+        // The last tie played (the grand final, or its reset) puts its
+        // loser out and leaves the entrant who advanced from it first.
+        // Everyone else is placed by the stage that put them out, the
+        // latest first.
+        $noteExits($stage['losers']);
+        $placement = [];
+        foreach ($wentOutAt as $id => $exit) {
+            $placement[$id] = $exits - $exit + 1;
+        }
+        foreach ($stage['winners'] as $titleHolder) {
+            if ($titleHolder !== null) {
+                $placement[$titleHolder->getId()] = 0;
+            }
+        }
 
-        return ['pending' => $stage['pending'], 'levelAdvancers' => $levelAdvancers];
+        return ['pending' => null, 'levelAdvancers' => $levelAdvancers, 'placement' => $placement];
     }
 
     /**

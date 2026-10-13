@@ -563,25 +563,42 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Tournament scheduled successfully!\nTotal matches: 30\nTotal rounds: 10\n"],
             ['Could not schedule'],
         ],
-        // Rank 1 of an elimination outcome's table is not always the winner of the bracket.
-        // The three rows below record a known defect (issue #55), not intended behaviour:
-        // when the table is fixed their output changes, and that is the fix, not a regression
-        'the best record of a double-elimination bracket is not its winner' => [
+        // Rank 1 of an elimination outcome's table is the winner of the bracket, in the
+        // three cases in which the records alone say something else
+        'the winner of a double-elimination bracket is rank 1, above a better record' => [
             'docs/USAGE.md',
             'MatchOutcomeSelector::winners()->select($doubleOutcome)',
-            ["Rank 1: Heidi (5-2)\nRank 2: Alice (4-1)\nWon the bracket: Alice\n"],
+            ["Rank 1: Alice (4-1)\nRank 2: Heidi (5-2)\nWon the bracket: Alice\n"],
             [],
         ],
-        'a two-legged final decided by tie_winner leaves the finalists level' => [
+        'the finalist a tie decision sent on from a two-legged final is rank 1' => [
             'docs/USAGE.md',
             'MatchOutcomeSelector::winners()->select($finalOutcome)',
-            ["Rank 1: Alice\nWon the tie: Heidi\n1 tied set\n"],
+            ["Rank 1: Heidi\nWon the tie: Heidi\n0 tied sets\n"],
             [],
         ],
-        'a bye is no win in the table of a bracket' => [
+        'the winner of a bracket is rank 1 although a bye is no win in its record' => [
             'docs/USAGE.md',
             'MatchOutcomeSelector::winners()->select($byeOutcome)',
-            ["Alice (1-1)\nHeidi (1-0)\nWon the bracket: Heidi\n"],
+            ["Heidi (1-0)\nAlice (1-1)\nWon the bracket: Heidi\n"],
+            [],
+        ],
+        'a selection that results do not decide is refused, and says what is undecided' => [
+            'docs/USAGE.md',
+            'RankRangeSelector::topPerGroup(2)->select($undecided);',
+            ["tie_across_selection: pool A, places 1 to 4: zed, yan, bob, amy\n"],
+            [],
+        ],
+        'an accepted selection is the table in list order' => [
+            'docs/USAGE.md',
+            'withTableOrderAccepted()->select($undecided);',
+            ["Zed, Yan\n"],
+            [],
+        ],
+        'a table of a list in list order' => [
+            'docs/USAGE.md',
+            '->withTiedSetsOrderedBy($entrants);',
+            ["Dave, Carol, Bob, Alice\n"],
             [],
         ],
         'a week in days keeps the time of day, a week in hours does not' => [
@@ -777,7 +794,108 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($semifinals === [['Alice', 'Carol'], ['Bob', 'Dave']]);
                 PHP,
         ],
+        // The table "A per-group selection is ordered for a bracket": what topPerGroup(2)
+        // returns for 2, 3 and 4 pools, and the first round a bracket makes of it
+        'the order of a per-group selection, and the bracket it is ordered for' => [
+            'docs/USAGE.md',
+            '$pools = PoolDistributor::serpentine(',
+            <<<'PHP'
+                $topTwo = static function (int $poolCount): array {
+                    $outcomes = [];
+                    foreach (range(0, $poolCount - 1) as $pool) {
+                        $label = chr(65 + $pool);
+                        $first = new Participant("{$label}1", "{$label}1");
+                        $second = new Participant("{$label}2", "{$label}2");
+                        $result = new \MissionGaming\Tactician\DTO\Result(new \MissionGaming\Tactician\DTO\Event([$first, $second]), $first);
+                        $outcomes[$label] = new StageOutcome((new StandingsCalculator())->calculate([$first, $second], [$result]), [$result]);
+                    }
+
+                    return RankRangeSelector::topPerGroup(2)->select(StageOutcome::combining($outcomes));
+                };
+                $ids = static fn (array $list): array => array_map(static fn ($p): string => $p->getId(), $list);
+                $firstRound = static fn (array $entrants): array => array_map(
+                    static fn ($event): string => implode(' v ', $ids($event->getParticipants())),
+                    (new SingleEliminationEngine())->pairNextRound(StageState::start($entrants))->getEvents()
+                );
+
+                assert($ids($topTwo(2)) === ['A1', 'B1', 'A2', 'B2']);
+                assert($firstRound($topTwo(2)) === ['A1 v B2', 'B1 v A2']);
+                assert($ids($topTwo(3)) === ['A1', 'B1', 'C1', 'C2', 'B2', 'A2']);
+                assert($firstRound($topTwo(3)) === ['C2 v B2', 'C1 v A2']);
+                assert($ids((new SingleEliminationEngine())->pairNextRound(StageState::start($topTwo(3)))->getByes()) === ['A1', 'B1']);
+                assert($ids($topTwo(4)) === ['A1', 'B1', 'C1', 'D1', 'B2', 'A2', 'D2', 'C2']);
+                assert($firstRound($topTwo(4)) === ['A1 v C2', 'D1 v B2', 'B1 v D2', 'C1 v A2']);
+                PHP,
+        ],
         'composition chain telescopes' => ['docs/USAGE.md', '->validateChain(16, [', 'assert($violations === []);'],
+        // "what it writes reads back to the same slot times ... refused by toArray() with the reason NotSerializable"
+        'a timeline definition written as plain data' => [
+            'docs/USAGE.md',
+            "'slots_per_round' => 3,",
+            <<<'PHP'
+                $readBack = \MissionGaming\Tactician\Timeline\TimelineDefinition::fromArray($timeline->toArray());
+                assert($readBack->getSlotTime(4, 2) == $timeline->getSlotTime(4, 2));
+                $zone = new \DateTimeZone('Europe/London');
+                $unwritable = [
+                    \DateInterval::createFromDateString('next weekday'),
+                    \DateInterval::createFromDateString('last day of next month'),
+                    \DateInterval::createFromDateString('25 minutes'),
+                    // "amounts of time alone (`1 week`, `1 month`) included"
+                    \DateInterval::createFromDateString('1 week'),
+                    \DateInterval::createFromDateString('1 month'),
+                    (new \DateTimeImmutable('2026-01-01 00:00', $zone))->diff(new \DateTimeImmutable('2026-01-01 02:00', $zone)),
+                ];
+                $fraction = new \DateInterval('PT1S');
+                $fraction->f = 0.5;
+                $unwritable[] = $fraction;
+                foreach ($unwritable as $interval) {
+                    // It works, and it has no plain-data form
+                    $definition = new \MissionGaming\Tactician\Timeline\TimelineDefinition(
+                        new \DateTimeImmutable('2026-08-03 18:00:00', $zone),
+                        $interval
+                    );
+                    assert($definition->getSlotTime(2) > $definition->getSlotTime(1));
+                    try {
+                        $definition->toArray();
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::NotSerializable);
+                    }
+                }
+                $grid = new \MissionGaming\Tactician\Repack\SessionGrid(
+                    [new \DateTimeImmutable('2026-08-12 20:00:00', $zone)],
+                    \DateInterval::createFromDateString('25 minutes'),
+                    4
+                );
+                try {
+                    $grid->toArray();
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::NotSerializable);
+                }
+                // "A start with a fraction of a second is written with it"
+                $withFraction = new \MissionGaming\Tactician\Timeline\TimelineDefinition(
+                    new \DateTimeImmutable('2026-08-01 18:00:00.250000', $zone),
+                    new \DateInterval('P7D')
+                );
+                assert($withFraction->toArray()['start'] === '2026-08-01 18:00:00.250000');
+                // "An interval of whole days, months and years that `diff()` returned is written"
+                $fromDiff = new \MissionGaming\Tactician\Timeline\TimelineDefinition(
+                    new \DateTimeImmutable('2026-08-01 18:00:00', $zone),
+                    (new \DateTimeImmutable('2026-01-01 00:00', $zone))->diff(new \DateTimeImmutable('2026-01-08 00:00', $zone))
+                );
+                assert($fromDiff->toArray()['round_interval'] === 'P7D');
+                // "A `MinimumRestRule` ... writes a rest of amounts of time from either source"
+                $rest = new \MissionGaming\Tactician\Timeline\MinimumRestRule(\DateInterval::createFromDateString('48 hours'));
+                assert($rest->toArray() === ['format_version' => 1, 'rest' => 'PT48H']);
+                try {
+                    (new \MissionGaming\Tactician\Timeline\MinimumRestRule(\DateInterval::createFromDateString('next weekday')))->toArray();
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::NotSerializable);
+                }
+                PHP,
+        ],
         'timeline kickoffs' => [
             'docs/USAGE.md',
             '$scheduled = (new TimelineAssigner())->assign($schedule, $timeline);',
@@ -1044,10 +1162,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert(array_map('count', $outcome->getStandings()->getTiedSets()) === [2, 4]);
                 PHP,
         ],
-        // The label and seed assertions record a known defect (issue #55: Swiss pairing
-        // order follows the seed attribute and the label, not list position).
-        // "otherwise in the order of the table, the same on every call ... by seed,
-        // then label, then ID, and not by position in the list", and the bound on rounds
+        // "otherwise in the order of the list, the same on every call (the first round
+        // pairs position 1 with 2 and 3 with 4)", the seed that repeats a draw, the two
+        // sources of draws that are refused together, and the bound on rounds
         'a Swiss schedule without a randomizer, and its most rounds' => [
             'docs/USAGE.md',
             '$schedule = (new SwissScheduler(null, new Randomizer()))',
@@ -1059,12 +1176,29 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     static fn ($event): array => array_map(static fn ($p): string => $p->getId(), $event->getParticipants()),
                     (new SwissScheduler())->schedule($field, new SwissOptions(rounds: 1))->getEvents()
                 );
-                // The same four ids in the same list order: labels and seeds decide who is paired
+                // The same four ids in the same list order: no label and no seed decides who is paired
                 $byLabel = [new Participant('p1', 'D'), new Participant('p2', 'C'), new Participant('p3', 'B'), new Participant('p4', 'A')];
                 $bySeed = [new Participant('p1', 'A', 4), new Participant('p2', 'B', 3), new Participant('p3', 'C', 2), new Participant('p4', 'D', 1)];
                 $inOrder = [new Participant('p1', 'A'), new Participant('p2', 'B'), new Participant('p3', 'C'), new Participant('p4', 'D')];
-                assert($firstRound($byLabel) === $firstRound($bySeed));
-                assert($firstRound($byLabel) !== $firstRound($inOrder));
+                assert($firstRound($inOrder) === [['p2', 'p1'], ['p4', 'p3']]);
+                assert($firstRound($byLabel) === $firstRound($inOrder));
+                assert($firstRound($bySeed) === $firstRound($inOrder));
+
+                // The seeded draw of the block repeats, on one scheduler and from plain data
+                $seeded = new SwissScheduler();
+                assert($seeded->schedule($participants, new SwissOptions(rounds: 3, seed: 2026))->toJson() === $drawn->toJson());
+                assert($seeded->schedule($participants, SwissOptions::fromArray(['rounds' => 3, 'seed' => 2026]))->toJson() === $drawn->toJson());
+                assert($seeded->schedule($participants, new SwissOptions(rounds: 3, seed: 2027))->toJson() !== $drawn->toJson());
+                try {
+                    (new SwissScheduler(null, new Randomizer()))->schedule($participants, new SwissOptions(rounds: 3, seed: 2026));
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::IncompatibleOptions);
+                }
+                // Every accepted round count is generated: the most rounds, for forty seeds
+                foreach (range(1, 40) as $seed) {
+                    assert(count($seeded->schedule($participants, new SwissOptions(rounds: 7, seed: $seed))) === 28);
+                }
                 try {
                     $plain->schedule($participants, new SwissOptions(rounds: 8));
                     assert(false);
@@ -1123,10 +1257,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($visited === 120 * 120);
                 PHP,
         ],
-        // Records a known defect (issue #55: constraint sites compare participants by
-        // object identity); the two assertions on the rebuilt participant flip when it is fixed.
-        // "they do not recognise it and let through an event they would reject"
-        'two constraints look for the participant object' => [
+        // "Everything in the library matches participants by ID, the constraints included"
+        'the constraints find a participant by ID' => [
             'docs/USAGE.md',
             'count($entrySchedule)',
             <<<'PHP'
@@ -1143,17 +1275,16 @@ describe('Documented values', function () use ($extracted, $autoload): void {
 
                 $streak = \MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint::homeAway(1);
                 assert(!$streak->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$first, $third], new \MissionGaming\Tactician\DTO\Round(2)), $context));
-                assert($streak->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$rebuilt, $third], new \MissionGaming\Tactician\DTO\Round(2)), $context));
+                assert(!$streak->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$rebuilt, $third], new \MissionGaming\Tactician\DTO\Round(2)), $context));
 
                 $protection = new \MissionGaming\Tactician\Constraints\SeedProtectionConstraint(2, 1.0);
                 assert(!$protection->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$first, $second], new \MissionGaming\Tactician\DTO\Round(1)), $context));
-                assert($protection->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$rebuilt, $second], new \MissionGaming\Tactician\DTO\Round(1)), $context));
+                assert(!$protection->isSatisfied(new \MissionGaming\Tactician\DTO\Event([$rebuilt, $second], new \MissionGaming\Tactician\DTO\Round(1)), $context));
                 PHP,
         ],
-        // "two IDs that are equal as numbers ... keep the order they were given in".
-        // Records a known defect (issue #55: a standalone table gives the same order
-        // for every permutation of its participants)
-        'the standings fallback does not order two ids that are equal as numbers' => [
+        // "every set of IDs has one order, whatever order the participants were given
+        // in ... `'9'` sorts before `'10'` ... `'1'` is before `'01'`, and `'p10'` before `'p2'`"
+        'the standings fallback orders every set of ids one way' => [
             'docs/USAGE.md',
             'count($entrySchedule)',
             <<<'PHP'
@@ -1163,14 +1294,21 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 );
                 $leadingZero = new Participant('01', 'Entry');
                 $plain = new Participant('1', 'Entry');
-                assert($order([$leadingZero, $plain]) === ['01', '1']);
+                assert($order([$leadingZero, $plain]) === ['1', '01']);
                 assert($order([$plain, $leadingZero]) === ['1', '01']);
                 assert($order([new Participant('10', 'Entry'), new Participant('9', 'Entry')]) === ['9', '10']);
+                assert($order([new Participant('p2', 'Entry'), new Participant('p10', 'Entry')]) === ['p10', 'p2']);
+                // Ids that a plain comparison of two strings puts in a circle: 2 < 10 < 1a < 2
+                $mixed = [new Participant('2', 'Entry'), new Participant('10', 'Entry'), new Participant('1a', 'Entry')];
+                assert($order($mixed) === ['2', '10', '1a']);
+                assert($order(array_reverse($mixed)) === ['2', '10', '1a']);
+                assert($order([$mixed[1], $mixed[0], $mixed[2]]) === ['2', '10', '1a']);
+                // A label decides nothing
+                assert($order([new Participant('b', 'Amy'), new Participant('a', 'Zed')]) === ['a', 'b']);
                 PHP,
         ],
-        // "in a field of five, the entrants in positions 1 and 2 meet in the semifinal".
-        // Records a known defect (issue #55: re-seeding ranks bye recipients last)
-        'a re-seeded bracket ranks an entrant who had a bye below the winners of the round' => [
+        // "in a field of five the entrants in positions 1 and 2 are in opposite semifinals"
+        'a re-seeded bracket ranks an entrant who had a bye with the winners of the round' => [
             'docs/USAGE.md',
             '$titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];',
             <<<'PHP'
@@ -1193,8 +1331,81 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                         },
                         $reseeded->pairNextRound($fiveState)->getEvents()
                     );
-                    assert(in_array(['alice', 'bob'], $meetings, true));
+                    // Alice meets whoever came through round 1, Bob meets Carol
+                    assert(!in_array(['alice', 'bob'], $meetings, true));
+                    assert(in_array(['bob', 'carol'], $meetings, true));
+                    assert(in_array(['alice', $winnerIndex === 0 ? 'dave' : 'erin'], $meetings, true));
                 }
+                PHP,
+        ],
+        // "the places are 1, 2, 3, 4, then two, two, four, four" (sixteen entrants in double
+        // elimination), and what a rank selection over the table of a bracket takes and refuses
+        'the tiers of a bracket, and a rank selection over them' => [
+            'docs/USAGE.md',
+            '$titleHolder = MatchOutcomeSelector::winners()->select($outcome)[0];',
+            <<<'PHP'
+                $firstNamedWins = static function ($bracket, array $field) {
+                    $bracketState = StageState::start($field);
+                    while (!$bracket->isComplete($bracketState)) {
+                        $round = $bracket->pairNextRound($bracketState);
+                        $bracketState = $bracketState->withRoundPlayed($round, array_map(
+                            static fn ($event) => new Result($event, $event->getParticipants()[0]),
+                            $round->getEvents()
+                        ));
+                    }
+
+                    return $bracket->getOutcome($bracketState);
+                };
+
+                $sixteen = array_map(static fn (int $number) => new Participant("e{$number}", "Entrant {$number}"), range(1, 16));
+                $double = $firstNamedWins(new \MissionGaming\Tactician\Scheduling\DoubleEliminationEngine(), $sixteen);
+                assert(array_values(array_count_values($double->getStandings()->getTiers())) === [1, 1, 1, 1, 2, 2, 4, 4]);
+
+                // Eight entrants, one leg, no scores: the two who went out in the semifinals are level
+                $single = $firstNamedWins(new SingleEliminationEngine(), array_slice($sixteen, 0, 8));
+                assert($single->getStandings()->getTiers() === [0, 1, 2, 2, 3, 3, 3, 3]);
+                $selector = \MissionGaming\Tactician\Stage\RankRangeSelector::class;
+                assert(count($selector::overall(1, 2)->select($single)) === 2);
+                foreach ([[3, 3, 'tie_across_selection'], [1, 4, 'tie_within_selection']] as [$from, $to, $reason]) {
+                    try {
+                        $selector::overall($from, $to)->select($single);
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\UndecidedSelectionException $refused) {
+                        assert($refused->getReason()->value === $reason);
+                        assert([$refused->getFirstPlace(), $refused->getLastPlace()] === [3, 4]);
+                    }
+                }
+                assert(count($selector::overall(1, 4)->withTiesInsideSelectionAccepted()->select($single)) === 4);
+                PHP,
+        ],
+        // "a participant who had a bye and won twice in three rounds shows two played, two
+        // wins and nine points"
+        'a bye in the table of a Swiss stage' => [
+            'docs/USAGE.md',
+            '$leader = $outcome->getStandings()->getEntries()[0];',
+            <<<'PHP'
+                $five = array_slice($participants, 0, 5);
+                $threeRounds = new SwissPairingEngine(plannedRounds: 3);
+                $fiveState = StageState::start($five);
+                // Erin, in the last position, has the bye of the first round and wins the two events she plays
+                while (!$threeRounds->isComplete($fiveState)) {
+                    $round = $threeRounds->pairNextRound($fiveState);
+                    $fiveState = $fiveState->withRoundPlayed($round, array_map(
+                        static function ($event) {
+                            [$first, $second] = $event->getParticipants();
+
+                            return new Result($event, $second->getId() === 'erin' ? $second : $first);
+                        },
+                        $round->getEvents()
+                    ));
+                }
+                assert(array_values($fiveState->getByeIds())[0] === 'erin');
+
+                $erin = $threeRounds->getOutcome($fiveState)->getStandings()->getEntryFor($five[4]);
+                assert($erin->getByes() === 1);
+                assert($erin->getPlayed() === 2);
+                assert($erin->getWins() === 2);
+                assert($erin->getRankingValue() === 9.0);
                 PHP,
         ],
         // "a kickoff that falls in the hour the clocks skip ... is moved an hour later by
@@ -1313,9 +1524,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 PHP,
         ],
-        // "without a rule it accepts a schedule that has one participant in two events at
-        // the same time ... add a MinimumRestRule"
-        'the assigner checks who plays only when it has a rest rule' => [
+        // "It refuses a round that puts one participant in two events at the same time ...
+        // with or without a rule"
+        'the assigner refuses one participant in two events at the same time' => [
             'docs/USAGE.md',
             "foreach (['P7D', 'PT168H'] as \$roundInterval)",
             <<<'PHP'
@@ -1329,14 +1540,27 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     roundInterval: new DateInterval('P7D'),
                     resources: ['Pitch 1', 'Pitch 2'],
                 );
-                [$firstEvent, $secondEvent] = (new TimelineAssigner())->assign($clash, $evening)->getScheduledEvents();
-                assert($firstEvent->getKickoff() == $secondEvent->getKickoff());
-                try {
-                    (new TimelineAssigner([new \MissionGaming\Tactician\Timeline\MinimumRestRule(new DateInterval('PT1S'))]))->assign($clash, $evening);
-                    assert(false);
-                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
-                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::TimeRuleViolation);
+                $assigners = [
+                    new TimelineAssigner(),
+                    new TimelineAssigner([new \MissionGaming\Tactician\Timeline\MinimumRestRule(new DateInterval('PT1S'))]),
+                ];
+                foreach ($assigners as $assigner) {
+                    try {
+                        $assigner->assign($clash, $evening);
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ParticipantDoubleBooked);
+                    }
                 }
+                // "Two events of one participant in different slots of a round are assigned"
+                $twoSlots = new TimelineDefinition(
+                    start: new DateTimeImmutable('2026-10-17 19:00', $londonTime),
+                    roundInterval: new DateInterval('P7D'),
+                    slotsPerRound: 2,
+                    slotInterval: new DateInterval('PT2H'),
+                );
+                [$firstEvent, $secondEvent] = (new TimelineAssigner())->assign($clash, $twoSlots)->getScheduledEvents();
+                assert($firstEvent->getKickoff() < $secondEvent->getKickoff());
                 PHP,
         ],
         // "the participants who have had a bye are ordered ahead of the others, with or
@@ -1395,6 +1619,10 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     ));
                 }
                 assert(count(MatchOutcomeSelector::winners()->select($knockout->getOutcome($knockoutState))) === 1);
+                // "say it on the transition that leaves a whole bracket ... counted as a selection of 1"
+                assert($validator->validateChain(16, [
+                    new StageTransition('next', 8, MatchOutcomeSelector::winners(), afterWholeBracket: true),
+                ]) === ["Stage 'next' expects 8 entrants but its selection yields 1 from the previous stage's 16."]);
                 PHP,
         ],
         'skill tiers never skip a tier' => [

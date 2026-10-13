@@ -214,11 +214,12 @@ describe('what decides an order is not a tie', function (): void {
     it('does not report entries the fallback did not have to order, whatever their seeds, labels and ids', function (): void {
         // The same level pair under four different fallbacks: the tie is
         // reported each time, and only the order inside the set follows the
-        // fallback (seed, then label, then id).
+        // fallback of a table that stands alone (seed, then id). A label
+        // decides nothing.
         $cases = [
             'seed' => [new Participant('a', 'Amy', 2), new Participant('b', 'Bob', 1), ['b', 'a']],
             'seeded before unseeded' => [new Participant('a', 'Amy'), new Participant('b', 'Bob', 9), ['b', 'a']],
-            'label' => [new Participant('a', 'Zoe'), new Participant('b', 'Bob'), ['b', 'a']],
+            'a label that disagrees with the id' => [new Participant('a', 'Zoe'), new Participant('b', 'Bob'), ['a', 'b']],
             'id' => [new Participant('b', 'Same'), new Participant('a', 'Same'), ['a', 'b']],
         ];
 
@@ -522,4 +523,39 @@ describe('TiedSet', function (): void {
         expect(fn() => new TiedSet($entries(2), $position))
             ->toThrow(InvalidInputException::class, 'The first position of a tied set must be 1 or higher');
     })->with([0, -1]);
+});
+
+describe('the position of an entry in a table built by hand', function (): void {
+    // A position is the place in the order of the table. It was read from
+    // the array key, which getTiedSets() and iteration never did.
+    it('is its place in the order, whatever the array keys are', function (array $keys): void {
+        $first = new Participant('a', 'Alice');
+        $second = new Participant('b', 'Bob');
+        $standings = new Standings([
+            $keys[0] => new StandingEntry($first, 1, 1, 0, 0, 3.0),
+            $keys[1] => new StandingEntry($second, 1, 0, 0, 1, 0.0),
+        ]);
+
+        expect($standings->getPosition($first))->toBe(1)
+            ->and($standings->getPosition($second))->toBe(2)
+            ->and($standings->getPosition(new Participant('c', 'Carol')))->toBeNull()
+            ->and(array_keys(iterator_to_array($standings)))->toBe([0, 1]);
+    })->with([
+        'a list' => [[0, 1]],
+        'sparse integer keys' => [[5, 9]],
+        'keys in descending order' => [[1, 0]],
+        'string keys' => [['winner', 'runner-up']],
+    ]);
+
+    it('agrees with the positions of a tied set', function (): void {
+        $entries = [];
+        foreach (['a', 'b', 'c'] as $offset => $id) {
+            $entries[10 * ($offset + 1)] = new StandingEntry(new Participant($id, strtoupper($id)), 0, 0, 0, 0, 0.0);
+        }
+        $standings = new Standings($entries);
+        $tiedSet = $standings->getTiedSets()[0];
+
+        expect($standings->getPosition($tiedSet->getParticipants()[0]))->toBe($tiedSet->getFirstPosition())
+            ->and($standings->getPosition($tiedSet->getParticipants()[2]))->toBe($tiedSet->getLastPosition());
+    });
 });

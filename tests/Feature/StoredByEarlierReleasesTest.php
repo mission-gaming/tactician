@@ -12,7 +12,7 @@ use MissionGaming\Tactician\Tests\Support\PlainDataForms;
 
 // Applications hold rows that 0.2.x wrote. Those rows have no format version
 // anywhere, and they must keep loading: an array without the key is version
-// 1, the form 0.2.x wrote (ADR 0004).
+// 1, the form 0.2.x wrote (ADR 0005).
 //
 // The two files in tests/Fixtures/stored-by-0.2/ are the wire fixtures as
 // they were at the v0.2.0 baseline, byte for byte. They are not golden

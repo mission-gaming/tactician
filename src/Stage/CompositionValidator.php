@@ -33,13 +33,17 @@ final readonly class CompositionValidator
      *
      * How many a selector yields is known ahead of time in two cases
      * only. A selector that states its size (an overall rank range) is
-     * taken at its word. A match-outcome selector is counted as if the
-     * stage before it were one knockout round of all its entrants: half
-     * of them, rounded up for winners (the bye goes on) and down for
-     * losers. That fits a chain of single-round stages, which is what
-     * this validates. It does not fit a stage that plays a whole bracket,
-     * whose final round holds two participants whatever the size of the
-     * field. A transition with any other selector (a per-group rank
+     * taken at its word. A match-outcome selector is counted from the
+     * shape of the stage before it, which the transition declares because
+     * the validator runs nothing and cannot see it. By default that stage
+     * is one knockout round of all its entrants: half of them go on,
+     * rounded up for winners (the bye goes on) and down for losers. A
+     * transition built with `afterWholeBracket: true` says that the stage
+     * plays a whole bracket, whose last round is the final: the selection
+     * is 1 participant, winner or loser, whatever the size of the field.
+     * A stage needs 2 entrants, so such a transition is always reported:
+     * one match-outcome selection cannot fill the stage after a whole
+     * bracket. A transition with any other selector (a per-group rank
      * range, a selector of the application's) or with none passes
      * unchecked, apart from its declared entrant count.
      *
@@ -62,7 +66,7 @@ final readonly class CompositionValidator
                 $violations[] = "Stage '{$transition->label}' needs at least 2 entrants, {$transition->expectedEntrants} declared.";
             }
 
-            $yield = $this->selectorYield($transition->selector, $entrants);
+            $yield = $this->selectorYield($transition->selector, $entrants, $transition->afterWholeBracket);
             if ($yield !== null && $yield !== $transition->expectedEntrants) {
                 $violations[] = sprintf(
                     "Stage '%s' expects %d entrants but its selection yields %d from the previous stage's %d.",
@@ -86,9 +90,11 @@ final readonly class CompositionValidator
      * Fixed-cardinality selectors declare their own size. Match-outcome
      * selections over a knockout round derive from the source size: a
      * round of n entrants plays floor(n/2) events (byes advance the rest),
-     * so winners + byes yield ceil(n/2) and losers yield floor(n/2).
+     * so winners + byes yield ceil(n/2) and losers yield floor(n/2). Over a
+     * whole bracket the round the selector reads is the final, which has one
+     * winner and one loser whatever the size of the field.
      */
-    private function selectorYield(?ProgressionSelector $selector, int $sourceEntrants): ?int
+    private function selectorYield(?ProgressionSelector $selector, int $sourceEntrants, bool $afterWholeBracket): ?int
     {
         if ($selector === null) {
             return null;
@@ -100,6 +106,10 @@ final readonly class CompositionValidator
         }
 
         if ($selector instanceof MatchOutcomeSelector) {
+            if ($afterWholeBracket) {
+                return 1;
+            }
+
             return $selector->toArray()['mode'] === 'winners'
                 ? intdiv($sourceEntrants + 1, 2)
                 : intdiv($sourceEntrants, 2);

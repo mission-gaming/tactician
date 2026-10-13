@@ -219,10 +219,12 @@ describe('Swiss score groups', function (): void {
     it('orders a credited bye level with the win it stands for', function (): void {
         // 0.6 for a win, 0.1 for a draw. y won and drew twice: 0.6 + 0.1 +
         // 0.1 is 0.7999999999999999. x drew twice and had a bye, credited
-        // as a win: 0.2 + 0.6 is 0.8. They are level, so the table decides,
-        // and the table has y first: a bye is not a result.
-        $x = new Participant('x', 'X', 1);
-        $y = new Participant('y', 'Y', 2);
+        // as a win: 0.2 + 0.6 is 0.8. They are level, and no result
+        // separates them (no score was recorded), so their position in the
+        // participant list decides: x is listed before y. The seed
+        // attributes say the opposite and are not read.
+        $x = new Participant('x', 'X', 2);
+        $y = new Participant('y', 'Y', 1);
         $q = new Participant('q', 'Q', 3);
         $r = new Participant('r', 'R', 4);
         $s = new Participant('s', 'S', 5);
@@ -232,9 +234,9 @@ describe('Swiss score groups', function (): void {
         $state = withScoredRound($state, 2, [[$x, $r, null], [$s, $y, null]], [$q]);
         $state = withScoredRound($state, 3, [[$q, $x, null], [$r, $y, null]], [$s]);
 
-        // s withdraws, leaving y, x, q and r. x and y have each been named
+        // s withdraws, leaving x, y, q and r. x and y have each been named
         // first once, so the role goes by placing: the lower-placed
-        // participant is named first.
+        // participant, y, is named first.
         $pairing = (new SwissPairingEngine(
             standingsCalculator: new StandingsCalculator(new WinDrawLossRanking(0.6, 0.1))
         ))->pairNextRound($state->withoutParticipant($s));
@@ -243,7 +245,7 @@ describe('Swiss score groups', function (): void {
             fn(Event $event): array => array_map(fn(Participant $p) => $p->getId(), $event->getParticipants()),
             $pairing->getEvents()
         );
-        expect($ids)->toBe([['x', 'y'], ['r', 'q']]);
+        expect($ids)->toBe([['y', 'x'], ['r', 'q']]);
     });
 
     // The guards below hold before and after the tolerance: it must not
