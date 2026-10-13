@@ -28,9 +28,12 @@ final readonly class BlackoutRule implements TimelineRule
 
     /**
      * The bounds may be in any timezone; they are compared as instants.
-     * Pass a list (keys 0, 1, ...): a window without a label is labelled
-     * `blackout N`, N being its key plus one. Windows may overlap; a kickoff inside two of them
-     * is reported once for each.
+     * The windows are taken in the order of the array and its keys are not
+     * read: a window without a label is labelled `blackout N`, N being its
+     * position in that order, counted from 1 (the second window is
+     * `blackout 2` whether its key is 1, 7 or a string). The one place a key
+     * appears is the context of the exception below, as `window`. Windows
+     * may overlap; a kickoff inside two of them is reported once for each.
      *
      * @param array<array{from: DateTimeImmutable, to: DateTimeImmutable, label?: string}> $windows
      *
@@ -64,7 +67,7 @@ final readonly class BlackoutRule implements TimelineRule
             $normalized[] = [
                 'from' => $window['from']->setTimezone(new DateTimeZone('UTC')),
                 'to' => $window['to']->setTimezone(new DateTimeZone('UTC')),
-                'label' => $window['label'] ?? 'blackout ' . ($index + 1),
+                'label' => $window['label'] ?? 'blackout ' . (count($normalized) + 1),
             ];
         }
 
@@ -137,12 +140,12 @@ final readonly class BlackoutRule implements TimelineRule
 
     /**
      * Serialize back to plain configuration data that fromArray() reads,
-     * windows in their given order. Every bound is written in UTC, to the
-     * second, with `timezone` set to `UTC`: the instants are kept, the
-     * timezone they were declared in is not. Every window has a label, the
-     * default one where none was given. A fraction of a second is not
-     * written, so a window that starts and ends within one second does not
-     * read back.
+     * windows in their given order. Every bound is written in UTC
+     * (`2026-11-09 00:00:00`) with `timezone` set to `UTC`: the instants
+     * are kept, the timezone they were declared in is not. A fraction of a
+     * second is written after the seconds when the bound has one
+     * (`2026-11-09 00:00:00.250000`). Every window has a label, the default
+     * one where none was given.
      *
      * @return array{windows: array<int, array{from: string, to: string, timezone: string, label: string}>}
      */
@@ -150,8 +153,8 @@ final readonly class BlackoutRule implements TimelineRule
     {
         return [
             'windows' => array_map(fn(array $window) => [
-                'from' => $window['from']->format('Y-m-d H:i:s'),
-                'to' => $window['to']->format('Y-m-d H:i:s'),
+                'from' => ZonedTime::write($window['from']),
+                'to' => ZonedTime::write($window['to']),
                 'timezone' => 'UTC',
                 'label' => $window['label'],
             ], $this->windows),

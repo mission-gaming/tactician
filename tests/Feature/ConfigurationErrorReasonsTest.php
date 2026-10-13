@@ -242,6 +242,7 @@ describe('the reason of a configuration error', function (): void {
             'OddPotWithOddOpponents' => 'odd_pot_with_odd_opponents',
             'ConfigurationNotYetSupported' => 'configuration_not_yet_supported',
             'BracketComplete' => 'bracket_complete',
+            'PlannedRoundsPlayed' => 'planned_rounds_played',
             'RoundPartiallyResolved' => 'round_partially_resolved',
             'EventWithoutRoundNumber' => 'event_without_round_number',
             'InvalidResult' => 'invalid_result',
@@ -266,8 +267,10 @@ describe('the reason of a configuration error', function (): void {
             'UnparseableTime' => 'unparseable_time',
             'TimezoneMismatch' => 'timezone_mismatch',
             'NonAdvancingTime' => 'non_advancing_time',
+            'OverlappingTime' => 'overlapping_time',
             'TimeRuleViolation' => 'time_rule_violation',
             'TimelineCapacityExceeded' => 'timeline_capacity_exceeded',
+            'ParticipantDoubleBooked' => 'participant_double_booked',
             'ConstraintViolation' => 'constraint_violation',
             'InvalidSchedule' => 'invalid_schedule',
         ]);
@@ -592,6 +595,26 @@ describe('the reason of a configuration error', function (): void {
             ),
             InvalidConfigurationReason::TimeRuleViolation,
         ],
+        'hourly rounds of two slots an hour apart' => [
+            fn() => new TimelineDefinition(
+                new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
+                new DateInterval('PT1H'),
+                2,
+                new DateInterval('PT1H')
+            ),
+            InvalidConfigurationReason::OverlappingTime,
+        ],
+        'a session that runs up to the start of the next' => [
+            fn() => new SessionGrid(
+                [
+                    new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone('UTC')),
+                    new DateTimeImmutable('2026-08-12 20:25', new DateTimeZone('UTC')),
+                ],
+                new DateInterval('PT25M'),
+                2
+            ),
+            InvalidConfigurationReason::OverlappingTime,
+        ],
         'an event with no round number given a kickoff' => [
             fn() => (new TimelineAssigner())->assign(
                 new Schedule([new Event([new Participant('a', 'A'), new Participant('b', 'B')])]),
@@ -908,6 +931,12 @@ function stageStateMistakes(): array
             InvalidConfigurationReason::DuplicateParticipantIds,
             'All participants must have unique IDs',
             ['participant_count' => 3, 'unique_ids' => 2],
+        ],
+        'a first round numbered 0' => [
+            fn() => $start()->withRoundPlayed(new RoundPairing(0, null, []), []),
+            InvalidConfigurationReason::ValueOutOfRange,
+            'Round numbers are 1-based: a round cannot be recorded with a number below 1',
+            ['pairing_round' => 0],
         ],
         'a round recorded a second time' => [
             fn() => $start()->withRoundPlayed($roundOne, [])->withRoundPlayed($roundOne, []),

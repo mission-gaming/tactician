@@ -51,7 +51,7 @@ exists as a convenience.
 4. **Event ids are strings** (like `Participant` ids). The fixture's
    integer ids are cast by the test/caller. Internal ordering is `strcmp`,
    used only for determinism, never exposed as meaning. **Replaced by
-   decision 37**: the internal order is made from the request, and
+   decision 39**: the internal order is made from the request, and
    `strcmp` orders only what an outcome returns.
 5. **Pins consume capacity and colours but are not re-emitted**:
    `RepackOutcome::getAssignments()` contains movable events only. Corrupt
@@ -139,7 +139,7 @@ exists as a convenience.
     orchestrator maps every event and participant id to a dense integer
     index at the boundary (index order = sorted-id order, so index
     tie-breaks are id tie-breaks) and the internal phases are purely
-    integer-keyed. **Amended by decision 37**: the indexes are still
+    integer-keyed. **Amended by decision 39**: the indexes are still
     dense integers, in an order that is no longer the id order.
 16. **Intervals, not prefixes.** The brief's Phase B sketch (participant
     with load d occupies slots 0..d−1) turned out too strict on the real
@@ -430,6 +430,34 @@ returned; the changelog lists what changed for the others.
     option to switch the step off, or to size its budget, was not added:
     a patch release adds nothing to the public signature.
 
+## Grid correctness (0.3.0)
+
+37. **Sessions that overlap are a configuration error.** The grid checked
+    only that session starts ascend. Sessions at 20:00 and 20:25 with two
+    slots 25 minutes apart put two positions at 20:25, and the repacker,
+    for which collision is exact (session, slot) identity, placed one
+    participant in both and reported no double booking. A grid is now refused
+    at construction when the last slot of a session is at or after the
+    start of the next (`OverlappingTime`). It throws, where the repacker
+    reports: an unsatisfiable request is an outcome with violations, and
+    a grid that contradicts itself is broken input, like a pin off the
+    grid (decision 5). The check is on the slots a session declares, not
+    on the ones a repack happens to fill, so a grid is valid or not
+    whatever is placed on it. A shape-only grid has no instants and is
+    not checked: its caller owns the times. The slots within a session
+    are checked in the same pass (each after the one before it), because
+    a slot interval that PHP adds as local time, one that `diff()`
+    returned, puts two slots at one instant where the clocks skip an
+    hour. The grid keeps the instants it computed there, so
+    `getSlotTime()` and `positionOf()` read them and compute nothing.
+38. **A slot is computed from its session's start.** `getSlotTime()` added
+    the slot interval once per slot, each addition from the slot before,
+    so a slot that landed in the hour the clocks skip moved every slot
+    after it. It now adds the slots as one step from the session start,
+    with the arithmetic the timeline uses
+    (`Timeline\IntervalArithmetic`, internal). Slot intervals of hours
+    and minutes, which is what a session has, are unchanged.
+
 ## Order and contiguity (0.3.0)
 
 Decisions made when two things were changed in a minor release (issue
@@ -439,7 +467,7 @@ two weights before any slot was looked at, so a gap was reported where a
 placement without one existed. Almost every outcome changes. No public
 signature changed.
 
-37. **The internal order is made from the request, not from the ids.**
+39. **The internal order is made from the request, not from the ids.**
     `StructuralOrder` orders the participants by their number of movable
     events (more first), then by the positions they are pinned at, then
     by the same facts about their opponents as far as that tells them
@@ -511,7 +539,7 @@ signature changed.
     the lower id; and of an over-capacity participant's events against
     opponents of the same slack (decision 8) the one dropped is the last
     in the repacker's order of events, not the one with the highest id.
-38. **The events are split into rounds before any session is chosen.**
+40. **The events are split into rounds before any session is chosen.**
     A round is a set of events that can share a slot. `RoundColouring`
     lays the rounds on the grid's positions in grid order, around the
     pins: it is a proper edge colouring onto positions, with the pinned
@@ -539,7 +567,7 @@ signature changed.
     caller's budget. Cutting that limit to under a third for speed was
     measured and rejected (191 gaps over the same 84 requests against
     93).
-39. **The rounds are a schedule too, and it is returned when it is
+41. **The rounds are a schedule too, and it is returned when it is
     better.** The planned schedule is compared with the rounds as they
     were laid out: the rounds are returned when they leave fewer events
     unplaced, or as many with fewer gap slots. That is where "contiguity
@@ -551,7 +579,7 @@ signature changed.
     the rounds to the packer as a starting point for its fallback was
     tried and dropped: the planner moves enough events between sessions
     that the starting point no longer fits.
-40. **A schedule that still has a gap is searched for a better one.**
+42. **A schedule that still has a gap is searched for a better one.**
     `GapSearch` is a depth-first search over placements, each event
     tried where it is, then everywhere else, then (while no more events
     are left out than were) nowhere, cut where the gap slots a
@@ -573,7 +601,7 @@ signature changed.
     built: it cannot change which event is left out, and it stops at a
     schedule one exchange cannot improve, which on small requests is
     not the best one.
-41. **One session's exact search has a share of the budget.** A session
+43. **One session's exact search has a share of the budget.** A session
     with no gap-free packing can keep its search going to the last step,
     and every session after it was then packed greedily. The search of
     a session now gets a quarter of the steps left when it starts.
@@ -587,7 +615,7 @@ signature changed.
     and 10 seconds at 16 slots where it took 3.7 (with 767 and 1,104
     gap slots for 1,336 and 1,703). A complete round robin on sessions
     that wide packs without a search and takes milliseconds.
-42. **What did not get better.** Late starts are not an aim of any of
+44. **What did not get better.** Late starts are not an aim of any of
     this, and the reference scenario has 10 where it had 7 (no gap
     either way). Requests with many pins and sessions of unequal length
     still end with gaps and a spent budget more often than not at 30 to

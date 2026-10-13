@@ -2007,7 +2007,12 @@ winners are half of them, rounded up for a bye, and losers half, rounded
 down. That is the arithmetic of a chain whose stages are single knockout
 rounds, as declared above. It is not what the selector returns from the
 outcome of a whole bracket played by one of the elimination engines, which
-is the one winner (or loser) of the final.
+is the one winner (or loser) of the final. The validator cannot see which
+of the two a stage is, so say it on the transition that leaves a whole
+bracket: `new StageTransition('next', 8, MatchOutcomeSelector::winners(),
+afterWholeBracket: true)` is counted as a selection of 1. A stage needs 2
+entrants, so that transition is always reported, which is the point: the
+winner of a bracket alone cannot fill the next stage.
 
 Consumer-derived selections participate by declaring expected entrant
 counts (a transition without a selector); concurrent routes (winners
@@ -2062,17 +2067,56 @@ The rules of the mechanism:
 - **Timezone-explicit in, UTC out.** The definition's start carries the
   stage's timezone, intervals are added in that zone, and assigned
   kickoffs are emitted in UTC. Display-timezone policy stays app-side.
-- **Days keep the time of day; hours are elapsed time.** An interval is
-  added as PHP adds a `DateInterval`. One written in days, weeks, months or
-  years keeps the wall-clock time across a daylight-saving change: `P7D`
-  from a 19:00 start is 19:00 every week. One written in hours, minutes or
-  seconds is elapsed time: `PT168H` is 19:00 until the clocks change and an
-  hour off from then on, and `PT24H` likewise. Write a round interval of
-  whole days as `P1D` or `P7D` (see the example below this list). One
-  case keeps neither: a kickoff that falls in the hour the clocks skip
-  (01:30 in London on the night they go forward) is moved an hour later
-  by PHP, and because each round is the round before plus the interval,
-  every later round keeps the moved time.
+- **Every slot is computed from the start.** Round N is the start plus
+  N−1 round intervals, taken as one step; a later slot of the round is the
+  round's first slot plus one slot interval for each slot before it, taken
+  as one step. No slot is computed from the slot before it, so nothing
+  that happens to one round carries into the rounds after it.
+- **Days keep the time of day; hours are elapsed time.** An interval
+  written in days, weeks, months or years keeps the wall-clock time across
+  a daylight-saving change: `P7D` from a 19:00 start is 19:00 every week.
+  One written in hours, minutes or seconds is elapsed time: `PT168H` is
+  19:00 until the clocks change and an hour off from then on, and `PT24H`
+  likewise. Write a round interval of whole days as `P1D` or `P7D` (see
+  the example below this list). One case keeps neither: a kickoff that
+  falls in the hour the clocks skip (01:30 in London on the night they go
+  forward) is moved an hour later by PHP, for that round alone: the round
+  a week later is at 01:30 again. A local time that occurs twice (01:30 on
+  the night the clocks go back) is the first of the two, whatever season
+  the start is in. That is so for an interval of days or longer; one that
+  also has hours, minutes or seconds (`P1DT12H`) takes the one PHP takes,
+  which is the first where the timezone database marks the start as
+  daylight-saving time and the second where it does not.
+- **Months keep the day, or the month end.** An interval written in months
+  or years keeps the start's day of the month, and a month that is too
+  short for that day gives its last day: `P1M` from 31 January is 28
+  February (29 in a leap year), 31 March, 30 April; from 30 January it is
+  the end of February and the 30th of every other month. Where an interval
+  has months and days (`P1M7D`), round N is the start plus N−1 times the
+  months, and then N−1 times the days.
+- **These rules are for an ISO 8601 duration.** That is what
+  `new DateInterval('P1M')` and `round_interval` in plain data give. Two
+  other kinds of `DateInterval` differ, as PHP treats them differently. One
+  made by `DateInterval::createFromDateString()` does not show its parts,
+  so it has no multiple and is added one step at a time, each step from the
+  one before: `createFromDateString('1 month')` from 31 January is still 3
+  March, 3 April, 3 May. Write `new DateInterval('P1M')` for month ends.
+  One returned by `diff()` has its hours, minutes and seconds added as
+  local time, not as elapsed time.
+- **A round ends before the next one starts.** The slots of a round are at
+  rising times, and the last of them must be before the first slot of the
+  next round. Hourly rounds of two slots an hour apart are refused
+  (`OverlappingTime`): the second slot of one round and the first slot of
+  the next would be the same kickoff on the same resources. The definition
+  checks its first two rounds when it is built; the assigner checks every
+  round it assigns, because a short month or a clock change can make a
+  later round shorter than the first. The assigner checks the slots the
+  timeline declares for the round, whether or not the round fills them,
+  and against the round after it whether or not the schedule has one.
+- **A round too far away is refused.** A round whose time is more than
+  some 270 billion years from the start, which is past what PHP's
+  timestamps hold, fails with the reason `ValueOutOfRange`; PHP would
+  return a date that has wrapped round.
 - **Deterministic filling.** A round's events fill its slots in schedule
   order against slot time order — the same schedule and timeline always
   produce the same kickoffs.
@@ -2115,11 +2159,20 @@ P7D: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 19:00
 PT168H: 17 Oct 19:00, 24 Oct 19:00, 31 Oct 18:00
 ```
 
-The assigner places events on slots and checks that a round fits. It does
-not look at who is in an event: without a rule it accepts a schedule that
-has one participant in two events at the same time. The generators do not
-produce one within a round; if rounds or stages can overlap in time, add a
-`MinimumRestRule` (see [Time-Aware Rules](#time-aware-rules)).
+The assigner places events on slots and checks that a round fits and that
+it ends before the next round starts. It also refuses a round that puts
+one participant in two events at the same time, which a slot with two or
+more resources would otherwise allow, with or without a rule
+(`InvalidConfigurationException`, reason `ParticipantDoubleBooked`; the
+context lists every participant concerned under `double_bookings`). It
+fills in schedule order and cannot move an event, so the remedy is in the
+schedule: the generators do not produce such a round. Two events of one
+participant in different slots of a round are assigned; whether the time
+between them is enough is a rule's to say. The check is made round by
+round, and the rounds of one timeline cannot overlap; if two stages can
+overlap in time, add a `MinimumRestRule` (see
+[Time-Aware Rules](#time-aware-rules)) and validate the two timelines
+together.
 
 **Resources** host concurrent events within a slot — venue, pitch,
 court, board, station; the name is generic because the concept is.
@@ -2151,6 +2204,12 @@ $pairing = $engine->pairNextRound($state);
 $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
 ```
 
+`assignRound()` makes the checks `assign()` makes, on the one round: the
+round fits, it ends before the next round starts, and it satisfies the
+rules the assigner was built with (see
+[Time-Aware Rules](#time-aware-rules)). A rule is shown this round's
+events and no others, since the assigner keeps nothing between calls.
+
 Definitions are plain-data constructible for config-driven platforms,
 with ISO 8601 durations:
 
@@ -2163,6 +2222,35 @@ $timeline = TimelineDefinition::fromArray([
     'slot_interval' => 'PT1H',
 ]);
 ```
+
+`toArray()` writes a definition back to that form, and what it writes reads
+back to the same slot times. An ISO 8601 duration, as PHP reads one, holds
+years, months, days, hours, minutes and whole seconds. A `DateInterval` can
+hold more, and a definition or a session grid built with such an interval
+works, and is refused by `toArray()` with the reason `NotSerializable`: it
+is never written as a duration that means something else. The intervals
+refused are:
+
+- one made by `DateInterval::createFromDateString()`, whatever the string.
+  `next weekday` and `last day of next month` have no duration. Amounts of
+  time alone (`1 week`, `1 month`, `25 minutes`) have one, and it gives
+  other slot times: such an interval is added one step at a time and its
+  hours as local time, as described above, and the duration is not (`1
+  month` from 31 January is 3 March where `P1M` is 28 February);
+- one from `diff()` that has hours, minutes or seconds, because PHP adds
+  those as local time and the hours of a duration are elapsed time. An
+  interval of whole days, months and years that `diff()` returned is
+  written;
+- one with a fraction of a second, an inverted one, and one with a negative
+  part.
+
+Build the interval as `new DateInterval('PT25M')` where the configuration
+has to be stored. A start with a fraction of a second is written with it
+(`2026-08-01 18:00:00.250000`), and so are a session start of a grid and
+a bound of a blackout window. A `MinimumRestRule` adds its rest once and
+in UTC, so its `toArray()` writes a rest of amounts of time from either
+source (`48 hours` is `PT48H`) and refuses only what has no duration: a
+relative string that is more than amounts, a fraction of a second, a sign.
 
 **A datetime in plain data states its date in full**: the year, the month
 and the day, as in `2026-08-01 18:00` or `2026-08-01T18:00:00`. The time of
@@ -2260,9 +2348,15 @@ $assigner = new TimelineAssigner([
 $scheduled = $assigner->assign($schedule, $timeline);
 ```
 
+`assignRound()` applies the same rules to the round it is given, and fails
+the same way. It judges that round alone: a blackout window is checked in
+full, and a minimum rest only between the events of the round, because the
+events of earlier rounds are not there to compare with.
+
 Rules also validate standalone — `$rule->validate($scheduled)` returns
 violation strings — so an application driving a results-driven stage
-round by round can check the timeline it accumulates. Both built-in
+round by round can check the timeline it accumulates, which is how rest
+between rounds is checked there. Both built-in
 rules are plain-data constructible with `fromArray()`/`toArray()`, and
 custom rules implement the two-method `TimelineRule` interface.
 
@@ -2294,6 +2388,22 @@ $grid = SessionGrid::fromArray([
     'capacity_per_slot' => 3,            // concurrent events per slot
 ]);
 ```
+
+**Sessions do not overlap.** Session starts are strictly ascending, and
+the last slot of a session must be before the start of the next one. A
+grid with sessions at 20:00 and 20:25 and two slots 25 minutes apart is
+refused when it is built (`InvalidConfigurationException`, reason
+`OverlappingTime`): the second slot of the first session and the first
+slot of the second would be the same instant, and a participant could be
+placed in both with no double booking reported. The check reads each session's
+own slot count, overrides applied, and nothing follows the last session,
+so that one can run as deep as it needs to. The slots of one session must
+be at rising instants as well, which they are for a slot interval written
+as an ISO 8601 duration (unless its slots are days apart across a calendar
+day the timezone skipped, as `Pacific/Apia` skipped 30 December 2011). A
+shape-only grid has no instants and is not
+checked. Every slot time is computed from its session's start, never from
+the slot before it.
 
 Events carry an opaque caller-supplied id — the library never invents
 one, never parses it, and orders results by nothing else. The same pair
@@ -2522,9 +2632,8 @@ var_dump($grid->hasInstants());                              // bool(true)
 ```
 
 The instants are compared, so the timezone the argument is written in
-does not matter. Where one session runs on past the start of the next,
-two positions can share an instant, and the first in grid order is
-returned.
+does not matter. No two positions share an instant: a grid in which two
+would is refused when it is built.
 
 ### Unbounded Capacity
 
@@ -2979,8 +3088,8 @@ hand, in a test for example.
 | `getSession()` | The 0-based session |
 | `getSlot()` | The 0-based slot within the session |
 | `hasKickoff()` | False when the grid is shape-only |
-| `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, and writes it out with a `Z` without converting it: pass UTC); throws an `UnavailableValueException` when there is none |
-| `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null |
+| `getKickoff()` | The position's time, in UTC on an assignment the repacker made (an assignment built by hand keeps the time it was given, in the timezone it was given in); throws an `UnavailableValueException` when there is none |
+| `toArray()` | `event_id`, `session`, `slot`, and `kickoff` as `2026-08-12T19:30:00Z` or null. The kickoff is converted to UTC, whatever timezone it is held in |
 
 #### `UnplacedEvent`
 
@@ -3096,7 +3205,7 @@ schedules can still differ on. Every metric follows one convention:
 | `RoleBalanceMetric` | How unevenly appearances split between the first role (home, white, server...) and the second |
 | `RoleStreakMetric` | Longest run of consecutive same-role appearances beyond strict alternation |
 | `RestSpreadMetric` | How irregularly the gaps between each participant's playing rounds vary |
-| `PairingSpacingMetric` | How far each pair's repeat meetings deviate from an even spread across the schedule |
+| `PairingSpacingMetric` | How far each pair's repeat meetings deviate from an even spread across the rounds the schedule spans, from its lowest round number to its highest |
 
 `ScheduleScorer` composes metrics with weights — which metrics matter is
 your policy, the scorer is the arithmetic — and reports per-metric
@@ -3623,6 +3732,7 @@ identifier for logs and stored data):
 | `OddPotWithOddOpponents` | `odd_pot_with_odd_opponents` | A pot of odd size cannot hold an odd number of events per member inside itself |
 | `ConfigurationNotYetSupported` | `configuration_not_yet_supported` | The configuration is feasible and the library has no construction for it yet |
 | `BracketComplete` | `bracket_complete` | A further round was asked of a finished bracket |
+| `PlannedRoundsPlayed` | `planned_rounds_played` | A further round was asked of a Swiss stage that has played all its planned rounds |
 | `RoundPartiallyResolved` | `round_partially_resolved` | An elimination engine was asked (`pairNextRound()`, `isComplete()` or `getOutcome()`) while some ties of the current round have a complete result and others do not. A round with no result at all is offered again |
 | `EventWithoutRoundNumber` | `event_without_round_number` | An event has no round number where one is required |
 | `InvalidResult` | `invalid_result` | A result cannot belong to the stage it was recorded in |
@@ -3647,8 +3757,10 @@ identifier for logs and stored data):
 | `UnparseableTime` | `unparseable_time` | A datetime, its timezone or an ISO 8601 duration cannot be parsed, or the datetime is relative to the current time, has no date or no year, or does not mean what it writes |
 | `TimezoneMismatch` | `timezone_mismatch` | A time carries a timezone that contradicts the declared one |
 | `NonAdvancingTime` | `non_advancing_time` | An interval, a window or a sequence of starts does not move time forward |
+| `OverlappingTime` | `overlapping_time` | The slots of one round of a timeline, or of one session of a grid, run up to or past the first slot of the next, or two slots of one round or session are not at rising times |
 | `TimeRuleViolation` | `time_rule_violation` | The assigned timeline breaks a time rule |
 | `TimelineCapacityExceeded` | `timeline_capacity_exceeded` | A round has more events than the timeline has places for |
+| `ParticipantDoubleBooked` | `participant_double_booked` | One participant is in two events of a round that the timeline places at the same instant |
 | `ConstraintViolation` | `constraint_violation` | Built by `SchedulingException::constraintViolation()`, which is [deprecated](#deprecations) |
 | `InvalidSchedule` | `invalid_schedule` | Built by `SchedulingException::invalidSchedule()`, which is [deprecated](#deprecations) |
 

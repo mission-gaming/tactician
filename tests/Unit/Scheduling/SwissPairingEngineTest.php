@@ -9,6 +9,7 @@ use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\DTO\Round;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
 use MissionGaming\Tactician\Scheduling\SwissPairingEngine;
@@ -532,5 +533,35 @@ describe('SwissPairingEngine', function (): void {
 
         expect(fn() => (new SwissPairingEngine())->pairNextRound($state))
             ->toThrow(NoValidPairingException::class);
+    });
+
+    // The bracket engines refuse a round after the last one. A Swiss stage
+    // with planned rounds ends too, and paired a round beyond them.
+    it('refuses to pair a round beyond the planned rounds', function (): void {
+        $engine = new SwissPairingEngine(plannedRounds: 1);
+        $state = StageState::start($this->participants);
+        $state = $state->withRoundPlayed($engine->pairNextRound($state), []);
+
+        expect($engine->isComplete($state))->toBeTrue();
+
+        try {
+            $engine->pairNextRound($state);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::PlannedRoundsPlayed)
+                ->and($exception->getContext())->toBe(['planned_rounds' => 1, 'next_round' => 2]);
+
+            return;
+        }
+
+        $this->fail('A second round was paired for a stage of one planned round.');
+    });
+
+    it('pairs the last planned round, and any round of an open-ended stage', function (): void {
+        $planned = new SwissPairingEngine(plannedRounds: 2);
+        $state = StageState::start($this->participants);
+        $state = $state->withRoundPlayed($planned->pairNextRound($state), []);
+
+        expect($planned->pairNextRound($state)->getRoundNumber())->toBe(2)
+            ->and((new SwissPairingEngine())->pairNextRound($state)->getRoundNumber())->toBe(2);
     });
 });

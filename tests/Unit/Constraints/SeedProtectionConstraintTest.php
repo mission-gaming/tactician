@@ -71,6 +71,37 @@ describe('SeedProtectionConstraint', function (): void {
         expect($constraint->isSatisfied(new Event([$participants[0], $participants[1]], new Round(1)), $context))->toBeTrue();
     });
 
+    // An event with no round is in no round, so it is in no protected one.
+    // It was counted as round 0, which is inside every window.
+    it('accepts an event with no round, whatever the period', function (float $period): void {
+        $participants = [
+            new Participant('seed1', 'Seed 1', 1),
+            new Participant('seed2', 'Seed 2', 2),
+            new Participant('seed3', 'Seed 3', 3),
+            new Participant('seed4', 'Seed 4', 4),
+        ];
+        $context = roundRobinContext($participants, [], legs: 2);
+
+        expect((new SeedProtectionConstraint(2, $period))->isSatisfied(new Event([$participants[0], $participants[1]]), $context))
+            ->toBeTrue();
+    })->with([0.0, 0.5, 1.0]);
+
+    it('protects no round with a period of 0.0, and every round with 1.0', function (): void {
+        $participants = [
+            new Participant('seed1', 'Seed 1', 1),
+            new Participant('seed2', 'Seed 2', 2),
+            new Participant('seed3', 'Seed 3', 3),
+            new Participant('seed4', 'Seed 4', 4),
+        ];
+        // 4 participants over 2 legs: rounds 1 to 6
+        $context = roundRobinContext($participants, [], legs: 2);
+        $topTwo = fn(int $round): Event => new Event([$participants[0], $participants[1]], new Round($round));
+
+        expect((new SeedProtectionConstraint(2, 0.0))->isSatisfied($topTwo(1), $context))->toBeTrue()
+            ->and((new SeedProtectionConstraint(2, 1.0))->isSatisfied($topTwo(1), $context))->toBeFalse()
+            ->and((new SeedProtectionConstraint(2, 1.0))->isSatisfied($topTwo(6), $context))->toBeFalse();
+    });
+
     // The name is a lookup key: the violation collector and the diagnostics
     // group by it. The period is a fraction of the rounds and the name states
     // it as a percentage rounded to at most two decimal places, by the rule

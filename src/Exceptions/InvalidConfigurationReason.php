@@ -137,6 +137,12 @@ enum InvalidConfigurationReason: string
     case BracketComplete = 'bracket_complete';
 
     /**
+     * A further round was asked of a Swiss stage that has played every one
+     * of its planned rounds.
+     */
+    case PlannedRoundsPlayed = 'planned_rounds_played';
+
+    /**
      * The next round was asked for while some ties of the current round
      * have no complete result.
      */
@@ -166,7 +172,8 @@ enum InvalidConfigurationReason: string
 
     /**
      * A progression selector was given an outcome of a shape it cannot read:
-     * one with no final round, or one that is not pooled.
+     * one with no final round, one that is not pooled, or one whose final
+     * round holds an event of more than two participants.
      */
     case IncompatibleOutcome = 'incompatible_outcome';
 
@@ -270,11 +277,25 @@ enum InvalidConfigurationReason: string
      */
     case NonAdvancingTime = 'non_advancing_time';
 
+    /**
+     * Two positions that are meant to follow one another are at the same
+     * time or the wrong way round: the slots of one round of a timeline, or
+     * of one session of a grid, run up to or past the first slot of the
+     * next, or two slots of one round or session are not at rising times.
+     */
+    case OverlappingTime = 'overlapping_time';
+
     /** The assigned timeline breaks one or more of the time rules given. */
     case TimeRuleViolation = 'time_rule_violation';
 
     /** A round has more events than the timeline has places for. */
     case TimelineCapacityExceeded = 'timeline_capacity_exceeded';
+
+    /**
+     * One participant is in two events of a round that the timeline places
+     * at the same instant, on two resources of one slot.
+     */
+    case ParticipantDoubleBooked = 'participant_double_booked';
 
     // The generic factories on SchedulingException
 

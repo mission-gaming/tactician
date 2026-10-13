@@ -23,8 +23,9 @@ readonly class MetadataConstraint implements ConstraintInterface
      *                         SchedulingContext $context): bool`. `$values` holds the value of the
      *                         key for each participant of the candidate event, in the event's
      *                         order, with null for a participant that has no such key or holds
-     *                         null under it. It must return a bool: any other type is a
-     *                         `\TypeError` when the constraint is asked
+     *                         null under it. Its answer is cast to bool, as the answer of a
+     *                         `CallableConstraint` predicate is: 0, null, an empty string and
+     *                         an empty array reject the event
      * @param string $name The name the constraint is reported under
      *
      * @throws InvalidInputException When the validator is not callable
@@ -41,7 +42,7 @@ readonly class MetadataConstraint implements ConstraintInterface
 
     /**
      * The validator's answer for the metadata values of the event's
-     * participants. What the validator throws is not caught.
+     * participants, cast to bool. What the validator throws is not caught.
      */
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
@@ -55,7 +56,7 @@ readonly class MetadataConstraint implements ConstraintInterface
         $validator = $this->validator;
         assert(is_callable($validator));
 
-        return $validator($metadataValues, $participants, $event, $context);
+        return (bool) $validator($metadataValues, $participants, $event, $context);
     }
 
     /**

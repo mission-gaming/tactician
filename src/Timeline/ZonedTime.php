@@ -113,4 +113,16 @@ final readonly class ZonedTime
 
         return $time;
     }
+
+    /**
+     * Write a time as parse() reads it: local time in the timezone the
+     * object is in, to the second (`2026-08-01 19:00:00`), with the
+     * fraction of a second after it when there is one
+     * (`2026-08-01 19:00:00.250000`). The timezone is not written; the
+     * caller writes its name beside the time.
+     */
+    public static function write(DateTimeImmutable $time): string
+    {
+        return $time->format($time->format('u') === '000000' ? 'Y-m-d H:i:s' : 'Y-m-d H:i:s.u');
+    }
 }

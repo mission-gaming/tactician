@@ -37,10 +37,10 @@ final readonly class TieDecision
      * Resolve the advancer from a tie's leg results.
      *
      * The caller passes the results of this tie's events and no others:
-     * they are not matched against the two participants. A single-leg
-     * tie returns the winner its first result records, whoever that is;
-     * only a two-legged tie checks that each leg's winner is one of the
-     * two.
+     * the events are not matched against the two participants. The winner
+     * a result records is: it must be one of the two, by ID, in a
+     * single-leg tie as in a two-legged one. A single-leg tie returns the
+     * winner its first result records, as the object the result holds.
      *
      * @param array<Result> $legResults The recorded results of the tie's legs, any order
      * @param Participant $first One side of the tie
@@ -51,8 +51,8 @@ final readonly class TieDecision
      * @throws InvalidConfigurationException When a completed tie is level and carries no
      *                                       tie_winner decision (reason `UndecidedTie`), when that
      *                                       decision names a participant outside the tie, or when
-     *                                       a leg of a two-legged tie has a winner outside the tie
-     *                                       (both `InvalidResult`)
+     *                                       a result has a winner outside the tie, whatever the
+     *                                       number of legs (both `InvalidResult`)
      */
     public static function advancer(
         array $legResults,
@@ -67,6 +67,14 @@ final readonly class TieDecision
         if ($legsPerTie === 1) {
             $winner = $legResults[0]->getWinner();
             if ($winner !== null) {
+                if ($winner->getId() !== $first->getId() && $winner->getId() !== $second->getId()) {
+                    throw new InvalidConfigurationException(
+                        'Leg result names a winner who is not in the tie',
+                        ['winner' => $winner->getId(), 'participants' => [$first->getId(), $second->getId()]],
+                        reason: InvalidConfigurationReason::InvalidResult
+                    );
+                }
+
                 return $winner;
             }
 

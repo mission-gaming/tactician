@@ -321,7 +321,170 @@ describe('a leg strategy that yields no event', function (): void {
             ->and($failure?->getAnalysis())->toBeNull()
             ->and($failure?->getViolationCollector()->hasViolations())->toBeFalse();
     });
+
+    // The message said "Constraints may be preventing complete schedule
+    // generation" whatever had left the leg short, also with no constraint
+    // in the scheduler at all.
+    it('says that the leg strategy gave no event, and does not blame constraints', function (bool $backtracking, string $message): void {
+        $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
+
+        $failure = null;
+        try {
+            (new RoundRobinScheduler())->schedule(
+                $participants,
+                new RoundRobinOptions(legs: 2, strategy: uncoveredPathsSilentLegStrategy(['a']), backtracking: $backtracking)
+            );
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        expect($failure?->getMessage())->toBe($message)
+            ->and(strtolower((string) $failure?->getMessage()))->not->toContain('constraint');
+    })->with([
+        // Participant a is in three of the six pairings of a leg
+        'greedy generation' => [
+            false,
+            'Failed to generate complete schedule for leg 2. Generated 3 events, expected 6.'
+            . ' The leg strategy returned no event for 3 of the pairings of the leg.',
+        ],
+        // The search stops at the first pairing that has no event: the
+        // first event of the leg it found, which pairs the first two of the field
+        'backtracking allowed' => [
+            true,
+            'Backtracking found a first leg, but the leg strategy returned no event for a vs b in leg 2,'
+            . ' and the search does not cross leg boundaries. Change the leg strategy.',
+        ],
+    ]);
+
+    // The suggestions of the report said "Try relaxing constraint
+    // requirements" and "Use fewer or less restrictive constraints" to a
+    // scheduler that has none. The exception does not know what the
+    // scheduler has, only that no rejection was recorded, so it says that
+    // and names the other cause.
+    it('does not tell a scheduler with no constraints to relax them', function (bool $backtracking): void {
+        $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
+
+        $failure = null;
+        try {
+            (new RoundRobinScheduler())->schedule(
+                $participants,
+                new RoundRobinOptions(legs: 2, strategy: uncoveredPathsSilentLegStrategy(['a']), backtracking: $backtracking)
+            );
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        $report = (string) $failure?->getDiagnosticReport();
+        $suggestions = substr($report, (int) strpos($report, '=== SUGGESTIONS ==='));
+
+        expect($suggestions)->toBe(implode("\n", [
+            '=== SUGGESTIONS ===',
+            '• No constraint rejection was recorded: if the scheduler has constraints, try relaxing them and review their combinations for conflicts',
+            '• If the scheduler has a leg strategy of its own, check that it returns an event for every pairing in every leg',
+            '• Test with a simpler configuration first',
+        ]));
+    })->with(['greedy generation' => [false], 'backtracking allowed' => [true]]);
+
+    it('keeps the suggestions about constraints when a rejection was recorded', function (): void {
+        $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
+        $constraints = ConstraintSet::create()->custom(
+            fn(Event $event, SchedulingContext $context): bool => ($event->getRound()?->getNumber() ?? 0) < 4,
+            'One leg only'
+        )->build();
+
+        $failure = null;
+        try {
+            (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: 2));
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        $report = (string) $failure?->getDiagnosticReport();
+
+        expect($report)->toContain('• Review CallableConstraint settings for compatibility')
+            ->and($report)->toContain('• Use fewer or less restrictive constraints')
+            ->and($report)->not->toContain('No constraint rejection was recorded');
+    });
+
+    it('names both causes when the strategy gives no event for some pairings and a constraint rejects others', function (): void {
+        $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
+        // Rejects b against c from round 4 on, which is the second leg
+        $constraints = ConstraintSet::create()->custom(
+            fn(Event $event, SchedulingContext $context): bool => ($event->getRound()?->getNumber() ?? 0) < 4
+                || !($event->hasParticipant($participants[1]) && $event->hasParticipant($participants[2])),
+            'No b against c in the second leg'
+        )->build();
+
+        $failure = null;
+        try {
+            (new RoundRobinScheduler($constraints))->schedule(
+                $participants,
+                new RoundRobinOptions(legs: 2, strategy: uncoveredPathsSilentLegStrategy(['a']))
+            );
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        expect($failure?->getMessage())->toBe(
+            'Failed to generate complete schedule for leg 2. Generated 2 events, expected 6.'
+            . ' The leg strategy returned no event for 3 of the pairings of the leg, and constraints rejected 1 more.'
+        );
+    });
+
+    it('keeps the message of a leg that only constraints left short', function (): void {
+        $participants = [new Participant('a', 'A'), new Participant('b', 'B'), new Participant('c', 'C'), new Participant('d', 'D')];
+        $constraints = ConstraintSet::create()->custom(
+            fn(Event $event, SchedulingContext $context): bool => ($event->getRound()?->getNumber() ?? 0) < 4,
+            'One leg only'
+        )->build();
+
+        $failure = null;
+        try {
+            (new RoundRobinScheduler($constraints))->schedule($participants, new RoundRobinOptions(legs: 2));
+        } catch (IncompleteScheduleException $exception) {
+            $failure = $exception;
+        }
+
+        expect($failure?->getMessage())->toBe(
+            'Failed to generate complete schedule for leg 2. Generated 0 events, expected 6.'
+            . ' Constraints may be preventing complete schedule generation.'
+        );
+    });
 });
+
+/**
+ * A leg strategy that mirrors the first leg, and returns no event for a
+ * pairing that holds one of the given participant IDs.
+ *
+ * @param list<string> $silentFor
+ */
+function uncoveredPathsSilentLegStrategy(array $silentFor): LegStrategyInterface
+{
+    return new readonly class ($silentFor) implements LegStrategyInterface {
+        /**
+         * @param list<string> $silentFor
+         */
+        public function __construct(private array $silentFor) {}
+
+        #[Override]
+        public function planLegs(array $participants, int $legs, ConstraintSet $constraints): LegPlanContribution
+        {
+            return new LegPlanContribution(rolesMirrorAcrossLegs: false, requiresRandomization: false);
+        }
+
+        #[Override]
+        public function generateEventForLeg(array $participants, int $leg, int $round, SchedulingContext $context): ?Event
+        {
+            foreach ($participants as $participant) {
+                if (in_array($participant->getId(), $this->silentFor, true)) {
+                    return null;
+                }
+            }
+
+            return new Event(array_reverse($participants), new Round($round));
+        }
+    };
+}
 
 describe('diagnostics for a plan that reports no rounds per leg', function (): void {
     // A PairwisePlan is an interface a caller may implement. One that

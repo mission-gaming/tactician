@@ -56,9 +56,11 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
      * False when the event falls in a protected round and holds two or more
      * of the top seeds.
      *
-     * A plan without a total number of rounds accepts every event. Known
-     * limitation: an event without a round counts as round 0, which is
-     * inside every window, a period of 0.0 included.
+     * A plan without a total number of rounds accepts every event, and an
+     * event without a round is always accepted: it is in no round, so it is
+     * in no protected one. The schedulers and the engines give every event a
+     * round, so this concerns an event built by hand. A period of 0.0
+     * protects no round.
      */
     #[\Override]
     public function isSatisfied(Event $event, SchedulingContext $context): bool
@@ -69,7 +71,10 @@ readonly class SeedProtectionConstraint implements ConstraintInterface
         }
 
         $participants = $event->getParticipants();
-        $currentRound = $event->getRound()?->getNumber() ?? 0;
+        $currentRound = $event->getRound()?->getNumber();
+        if ($currentRound === null) {
+            return true; // In no round, so in no protected round
+        }
 
         $protectedRound = (int) ($totalRounds * $this->protectionPeriod);
 
