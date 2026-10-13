@@ -19,6 +19,16 @@ use Override;
  * - participant null — the grid as a whole is smaller than the event
  *   list.
  *
+ * The violations with a participant are counted from the request alone
+ * and are the same at every step budget. The one for the grid counts the
+ * events left after those dropped for over-capacity participants, and how
+ * few of those have to be dropped is searched for. At the default budget
+ * and above that search is the same; a budget below the default leaves it
+ * a share of its work, more events can then be dropped for participants
+ * than their shortfalls need, and the grid's violation is stated with a
+ * smaller demand or not at all. RepackOutcome::isBudgetExhausted() is
+ * true for such an outcome.
+ *
  * @api
  */
 final readonly class CapacityExceeded implements RepackViolation

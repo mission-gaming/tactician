@@ -873,6 +873,72 @@ describe('Repack step budget flag', function (): void {
             ->and($enough->isBudgetExhausted())->toBeFalse();
     });
 
+    it('reports the over-capacity participants alike at every budget, and says a budget stopped a search where the capacity of the grid is not what the default reports', function (): void {
+        // Eleven events among five participants on one session of two
+        // slots, two events to a slot: four places. Participant 3 has six
+        // events for its two positions, 2 and 4 five each and 1 four, so
+        // they are short by four, three, three and two: twelve in all. An
+        // event between two of them counts for both, and six such events
+        // cover the twelve exactly (three of 3 v 4, and m10, m11 and m04),
+        // so six events is the fewest that have to be left out for them.
+        // That leaves five events for four places, which is what the
+        // default budget reports for the grid.
+        //
+        // The four participants are counted from the request, so every
+        // budget reports them alike. The six events are found by a search,
+        // which a budget below the default leaves a share of its nodes:
+        // with a smaller set more events are left out for the participants
+        // and the grid's own violation has a smaller demand or is missing
+        // (it was missing at every budget here up to 100 steps when this
+        // was written). The outcome may say less about the grid then; it
+        // must say that a budget stopped a search
+        $p = [];
+        for ($i = 1; $i <= 5; ++$i) {
+            $p[$i] = new Participant("p{$i}", "P{$i}");
+        }
+        $movable = [];
+        foreach ([1 => [3, 1], [2, 5], [3, 4], [1, 2], [3, 4], [2, 4], [1, 4], [3, 4], [3, 5], [3, 2], [2, 1]] as $k => [$a, $b]) {
+            $movable[] = new MovableEvent(sprintf('m%02d', $k), $p[$a], $p[$b]);
+        }
+        $repacker = new ScheduleRepacker();
+        $run = static fn(?int $budget): RepackOutcome => $repacker->repack(new RepackRequest(
+            $movable,
+            [],
+            SessionGrid::shapeOnly(1, 2, [], 2),
+            $budget === null ? new RepackOptions() : new RepackOptions(stepBudget: $budget)
+        ));
+        $capacity = static fn(RepackOutcome $outcome): array => array_map(
+            static fn(CapacityExceeded $violation): array => [
+                $violation->getParticipant()?->getId(),
+                $violation->getDemand(),
+                $violation->getCapacity(),
+            ],
+            $outcome->getCapacityExceededViolations()
+        );
+        $ofParticipants = [['p3', 6, 2], ['p2', 5, 2], ['p4', 5, 2], ['p1', 4, 2]];
+
+        $default = $run(null);
+        expect($capacity($default))->toBe([...$ofParticipants, [null, 5, 4]])
+            ->and($default->isBudgetExhausted())->toBeFalse();
+
+        foreach ([1, 3, 10, 30, 100, 300, 1_000, 10_000, 100_000] as $budget) {
+            $outcome = $run($budget);
+            $reported = $capacity($outcome);
+
+            expect(array_slice($reported, 0, 4))->toBe($ofParticipants, "budget {$budget}");
+            foreach (array_slice($reported, 4) as [$participant, $demand, $places]) {
+                // The grid's own, never with more than is true of it
+                expect($participant)->toBeNull()
+                    ->and($places)->toBe(4)
+                    ->and($demand)->toBeLessThanOrEqual(5);
+            }
+            if ($reported !== $capacity($default)) {
+                expect($outcome->isBudgetExhausted())->toBeTrue("budget {$budget}");
+            }
+            assertProperness($outcome, $movable, []);
+        }
+    });
+
     it('is false below the default budget only when a larger budget changes nothing, where the round layout has to search', function (int $n, int $pins): void {
         // A complete round robin with some of its events pinned at
         // scattered positions, on a grid with one position to spare: the
