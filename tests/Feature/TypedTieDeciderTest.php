@@ -369,11 +369,16 @@ describe('a two-legged tie that finishes level', function (): void {
         $legacy = TieWinnerDeprecation::once(fn(): ?StageOutcome => $engine->getOutcome($byMetadata));
         assert($outcome instanceof StageOutcome && $legacy instanceof StageOutcome);
 
+        // The selector reads the tie as the engine settled it for the
+        // outcome, which is where the key was read: it raises nothing here,
+        // and does where it reads the results itself
+        $byHand = new StageOutcome($legacy->getStandings(), $legacy->getResults(), $legacy->getByes(), $legacy->getFinalRound());
+
         expect(TieWinnerDeprecation::once(fn(): bool => $engine->isComplete($byMetadata)))->toBeTrue()
             ->and($table($legacy))->toBe($table($outcome))
             ->and($legacy->getStandings()->getTiers())->toBe($outcome->getStandings()->getTiers())
-            ->and(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::winners()->select($legacy))[0]->getId())
-            ->toBe(MatchOutcomeSelector::winners()->select($outcome)[0]->getId())
+            ->and(MatchOutcomeSelector::winners()->select($legacy)[0]->getId())->toBe($advances)
+            ->and(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::winners()->select($byHand))[0]->getId())->toBe($advances)
             ->and(MatchOutcomeSelector::winners()->select($outcome)[0]->getId())->toBe($advances);
     })->with(['p1', 'p2']);
 

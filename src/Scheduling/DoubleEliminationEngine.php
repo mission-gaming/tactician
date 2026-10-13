@@ -347,7 +347,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             $state->getByeCounts(),
             $state->getLastRound(),
             [],
-            $entrants
+            $entrants,
+            null,
+            $this->settledTiesOf($reading)
         );
     }
 
@@ -617,6 +619,10 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                 $out[] = $loser;
             }
         }
+
+        // The stage read last is the one that decided a finished bracket:
+        // the grand final, or its reset
+        $reading->decidingTies = $read['units'];
 
         return ['stopped' => false, 'winners' => $winners, 'losers' => $losers, 'out' => $out];
     }

@@ -29,7 +29,8 @@ use MissionGaming\Tactician\Standings\StandingsCalculator;
  * went out in, later first, with the calculator's order of their records
  * between those who went out together (see Standings on tiers).
  * MatchOutcomeSelector reads who advanced from the last round, or did not,
- * from the results themselves.
+ * from the ties as the engine settled them (getSettledTies()), and from
+ * the results themselves where the outcome carries none.
  *
  * An outcome can carry the entrant list of its stage. Where results do not
  * decide between two entries of the table, the position in that list does:
@@ -50,6 +51,9 @@ final readonly class StageOutcome
 
     /** @var list<Participant> */
     private array $entrants;
+
+    /** @var list<SettledTie>|null */
+    private ?array $settledTies;
 
     /**
      * The outcome holds what it is given, with one derivation: when an
@@ -72,6 +76,10 @@ final readonly class StageOutcome
      * @param StandingsCalculator|null $calculator The calculator the standings were calculated
      *                                             with, for a selector that has to calculate a
      *                                             table again (see getCalculator())
+     * @param array<SettledTie>|null $settledTies The ties of the round that decided the stage, as
+     *                                            its engine settled them, in bracket order; null
+     *                                            when nothing settled them but the results (see
+     *                                            getSettledTies())
      */
     public function __construct(
         Standings $standings,
@@ -80,8 +88,10 @@ final readonly class StageOutcome
         private ?RoundPairing $finalRound = null,
         private array $pools = [],
         array $entrants = [],
-        private ?StandingsCalculator $calculator = null
+        private ?StandingsCalculator $calculator = null,
+        ?array $settledTies = null
     ) {
+        $this->settledTies = $settledTies === null ? null : array_values($settledTies);
         $this->entrants = array_values($entrants);
         $this->standings = $this->entrants === [] ? $standings : $standings->withTiedSetsOrderedBy($this->entrants);
     }
@@ -238,11 +248,38 @@ final readonly class StageOutcome
      * elimination bracket with a third-place tie the round holds that tie
      * as well, after the final (see BracketTie). It is the
      * last round recorded on the state, so a round recorded after the
-     * final takes its place.
+     * final takes its place, and where the final was never paired, because
+     * a finalist had withdrawn, it is the round before the final. Who went
+     * on from the round that decided the stage is said by getSettledTies().
      */
     public function getFinalRound(): ?RoundPairing
     {
         return $this->finalRound;
+    }
+
+    /**
+     * The ties of the round that decided the stage, as its engine settled
+     * them, in bracket order, or null when the outcome carries none.
+     *
+     * The two elimination engines give them: the final of a single
+     * elimination bracket (the third-place tie places two entrants, sends
+     * neither on and is not among them), and of a double elimination
+     * bracket the grand final, or its reset where one was due. It is one
+     * tie, and it says who went on from it also where no result does: a
+     * final a finalist withdrew from is uncontested, the other finalist
+     * went on, and the bracket may hold no round for it at all, in which
+     * case getFinalRound() is the round before. A final both finalists had
+     * withdrawn from sends nobody on.
+     *
+     * MatchOutcomeSelector reads these where the outcome has them, and the
+     * results of getFinalRound() where it has not: an outcome of a Swiss
+     * stage, a pooled one, and one built by hand without them.
+     *
+     * @return list<SettledTie>|null
+     */
+    public function getSettledTies(): ?array
+    {
+        return $this->settledTies;
     }
 
     /**

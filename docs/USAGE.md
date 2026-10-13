@@ -3420,9 +3420,14 @@ bracket and `losers()` the other finalist, as after a bracket without the
 tie and in whatever order the round was recorded, and a
 `StageTransition` with `afterWholeBracket: true` still counts one. The
 places the tie decides are a rank selection (`overall(3, 3)`,
-`overall(1, 4)`). The selector knows the tie by its mark alone: a last
-round recorded with events that do not carry `bracket_tie` is read as any
-round is, one participant for each of its two ties in the recorded order.
+`overall(1, 4)`). The engine knows its two ties by their participants, and
+its outcome says which of them is the final
+(`StageOutcome::getSettledTies()`), so the selection is the final's also
+where the last round was recorded with events that do not carry
+`bracket_tie`. For an outcome that carries no settled ties, as one built by
+hand does, the selector reads the results and knows the tie by its mark
+alone: such a round without the marks is read as any round is, one
+participant for each of its two ties in the recorded order.
 
 What the option does in each bracket:
 

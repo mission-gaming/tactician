@@ -14,6 +14,7 @@ use MissionGaming\Tactician\Stage\BracketFold;
 use MissionGaming\Tactician\Stage\BracketTie;
 use MissionGaming\Tactician\Stage\PairKey;
 use MissionGaming\Tactician\Stage\RoundPairing;
+use MissionGaming\Tactician\Stage\SettledTie;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\TieResolution;
 use MissionGaming\Tactician\Standings\Adjustment;
@@ -324,6 +325,24 @@ trait EliminationBracketSupport
             array_map(static fn(array $row): StandingEntry => $row[2], $rows),
             array_map(static fn(array $row): int => $row[0], $rows)
         );
+    }
+
+    /**
+     * The ties that decided a finished bracket, for its outcome: each unit
+     * of the last round that holds an entrant.
+     *
+     * @return list<SettledTie>
+     */
+    private function settledTiesOf(BracketReading $reading): array
+    {
+        $ties = [];
+        foreach ($reading->decidingTies as $unit) {
+            if ($unit['winner'] instanceof Participant || $unit['losers'] !== []) {
+                $ties[] = new SettledTie($unit['winner'], $unit['losers']);
+            }
+        }
+
+        return $ties;
     }
 
     /**

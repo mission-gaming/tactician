@@ -85,7 +85,10 @@ use Override;
  * There is deliberately no champion accessor. The participant who
  * advances from the final is rank 1 of the outcome's standings, which are
  * in bracket placement order (see getOutcome()), and is what
- * MatchOutcomeSelector::winners() returns for the outcome's final round.
+ * MatchOutcomeSelector::winners() returns for the outcome: the outcome
+ * carries the final as this engine settled it
+ * (StageOutcome::getSettledTies()), also where a finalist withdrew and
+ * the final has no result or was never paired.
  *
  * @experimental
  */
@@ -406,7 +409,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             $state->getByeCounts(),
             $state->getLastRound(),
             [],
-            $entrants
+            $entrants,
+            null,
+            $this->settledTiesOf($reading)
         );
     }
 
@@ -542,6 +547,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 break;
             }
 
+            $reading->decidingTies = $read['units'];
             $slots = array_map(static fn(array $unit): ?Participant => $unit['winner'], $read['units']);
         }
 

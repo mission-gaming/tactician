@@ -1876,8 +1876,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     new \MissionGaming\Tactician\Stage\StageTransition('next', 2, MatchOutcomeSelector::winners(), afterWholeBracket: true),
                 ]) === ["Stage 'next' expects 2 entrants but its selection yields 1 from the previous stage's 4."]);
 
-                // "a last round recorded with events that do not carry bracket_tie is read as any round
-                // is, one participant for each of its two ties in the recorded order"
+                // "the selection is the final's also where the last round was recorded with events that do
+                // not carry bracket_tie. For an outcome that carries no settled ties ... one participant for
+                // each of its two ties in the recorded order"
                 $withoutMarks = array_map(
                     static fn ($event) => new \MissionGaming\Tactician\DTO\Event($event->getParticipants(), $event->getRound()),
                     array_reverse($recordedLastRound->getEvents())
@@ -1888,7 +1889,14 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                         new \MissionGaming\Tactician\Stage\RoundPairing(2, 'final', $withoutMarks, []),
                         [new Result($withoutMarks[0], $carol), new Result($withoutMarks[1], $bob)]
                     );
-                assert($labels(MatchOutcomeSelector::winners()->select($withThirdPlace->getOutcome($unmarkedState))) === ['Carol', 'Bob']);
+                $unmarkedOutcome = $withThirdPlace->getOutcome($unmarkedState);
+                assert($labels(MatchOutcomeSelector::winners()->select($unmarkedOutcome)) === ['Bob']);
+                assert($labels(MatchOutcomeSelector::winners()->select(new \MissionGaming\Tactician\Stage\StageOutcome(
+                    $unmarkedOutcome->getStandings(),
+                    $unmarkedOutcome->getResults(),
+                    $unmarkedOutcome->getByes(),
+                    $unmarkedOutcome->getFinalRound()
+                ))) === ['Carol', 'Bob']);
                 assert($labels(RankRangeSelector::overall(1, 4)->select($withThirdPlace->getOutcome($unmarkedState))) === ['Bob', 'Alice', 'Carol', 'Dave']);
 
                 // "the engine writes the backing string ... the mark is stored with the event ... null for

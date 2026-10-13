@@ -92,6 +92,14 @@ final class BracketReading
     public array $placement = [];
 
     /**
+     * The ties of the last round the walk read to its end, in bracket
+     * order: of a finished bracket, the ties that decided it.
+     *
+     * @var list<array{winner: Participant|null, losers: list<Participant>}>
+     */
+    public array $decidingTies = [];
+
+    /**
      * @param array<int, RoundPairing> $recorded The recorded rounds by round number
      * @param array<string, Result> $resultIndex The recorded results by round, pairing and leg
      * @param array<int|string, true> $withdrawn The IDs of the participants who have withdrawn:

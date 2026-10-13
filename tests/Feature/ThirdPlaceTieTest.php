@@ -294,10 +294,14 @@ describe('the third-place tie of a single elimination bracket', function (): voi
             ->and(MatchOutcomeSelector::losers()->select($outcome))->toHaveCount(1);
     });
 
-    // The selector knows the third-place tie by its mark and by nothing
-    // else. A round recorded with events that do not carry it is read as
-    // any round is: one participant for each tie, in the recorded order.
-    it('selects from both ties of a last round whose events were recorded without their marks', function (): void {
+    // The engine knows the two ties of its last round by their participants,
+    // and its outcome says which of them is the final. The selector reads
+    // that, so the selection is the final's also where the events were
+    // recorded without their marks. Reading the results by itself, for an
+    // outcome that carries no settled ties, it knows the third-place tie by
+    // its mark and by nothing else, and reads such a round as any round:
+    // one participant for each tie, in the recorded order.
+    it('selects from the final alone where the engine settled it, also in a last round recorded without its marks', function (): void {
         $state = thirdPlaceState($this->engine, thirdPlaceField(4), [['p1', 'p2']]);
         $last = $this->engine->pairNextRound($state);
 
@@ -312,10 +316,14 @@ describe('the third-place tie of a single elimination bracket', function (): voi
         $outcome = $this->engine->getOutcome($state);
         assert($outcome !== null);
 
+        $byHand = new StageOutcome($outcome->getStandings(), $outcome->getResults(), $outcome->getByes(), $outcome->getFinalRound());
+
         // The engine knows the ties by their participants, so the table is the same
         expect(thirdPlaceTable($outcome))->toBe(['p1', 'p2', 'p4', 'p3'])
-            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe(['p1', 'p4'])
-            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p2', 'p3']);
+            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe(['p1'])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($outcome)))->toBe(['p2'])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::winners()->select($byHand)))->toBe(['p1', 'p4'])
+            ->and(thirdPlaceIds(MatchOutcomeSelector::losers()->select($byHand)))->toBe(['p2', 'p3']);
     });
 
     it('counts the result of the third-place tie in the records of its two entrants', function (): void {
