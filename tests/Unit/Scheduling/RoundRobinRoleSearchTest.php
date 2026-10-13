@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
 use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Round;
@@ -14,11 +15,13 @@ use MissionGaming\Tactician\LegStrategies\LegStrategyInterface;
 use MissionGaming\Tactician\LegStrategies\MirroredLegStrategy;
 use MissionGaming\Tactician\LegStrategies\RepeatedLegStrategy;
 use MissionGaming\Tactician\LegStrategies\ShuffledLegStrategy;
+use MissionGaming\Tactician\RoleAssignment\BalancedRoleAssignment;
 use MissionGaming\Tactician\RoleAssignment\RoleAssignmentInterface;
 use MissionGaming\Tactician\Scheduling\LegRoleSearch;
 use MissionGaming\Tactician\Scheduling\RoundRobinOptions;
 use MissionGaming\Tactician\Scheduling\RoundRobinScheduler;
 use MissionGaming\Tactician\Scheduling\SchedulingContext;
+use MissionGaming\Tactician\Tests\Support\RoleCounts;
 use Random\Engine\Mt19937;
 use Random\Randomizer;
 
@@ -170,6 +173,29 @@ describe('what a leg strategy says about its roles', function (): void {
             );
     });
 
+    // The roles of a repeated or mirrored leg follow from the first leg,
+    // and the first leg is searched with backtracking only. A caller who
+    // hits that boundary is told which option crosses it, when the
+    // rejection came from a constraint the library knows to read roles.
+    // The test above holds the message where it did not: a closure says
+    // nothing about what it reads, so nothing is advised.
+    it('names the option that searches the first leg when a role constraint rejects a leg that follows a rule', function (LegStrategyInterface $strategy): void {
+        $field = roleSearchSchedulerField(8);
+        $scheduler = new RoundRobinScheduler(ConstraintSet::create()->add(ConsecutiveRoleConstraint::homeAway(2))->build());
+
+        $failure = roleSearchFailure($scheduler, $field, new RoundRobinOptions(2, $strategy));
+
+        expect($failure)->toBeInstanceOf(IncompleteScheduleException::class)
+            ->and($failure?->getMessage())->toStartWith('Failed to generate complete schedule for leg 2. Generated ')
+            ->toEndWith(sprintf(
+                ' Constraints may be preventing complete schedule generation. A constraint on roles (Home/Away consecutive limit (2)) rejected an event of leg 2 in the roles %s gives it, which follow from the roles of leg 1 by a rule. The roles of leg 1 were not searched: RoundRobinOptions(backtracking: true) searches them.',
+                $strategy::class
+            ));
+    })->with([
+        'repeated legs' => [new RepeatedLegStrategy()],
+        'a strategy of the caller that states a rule' => [new KeepingLegStrategy(false)],
+    ]);
+
     it('reverses the events the constraints reject when the strategy states a preference', function () use ($otherWayRound): void {
         $field = roleSearchSchedulerField(4);
         $schedule = (new RoundRobinScheduler($otherWayRound()))->schedule($field, new RoundRobinOptions(2, new KeepingLegStrategy(true)));
@@ -238,7 +264,7 @@ describe('what the scheduler says when it finds no roles', function (): void {
 
         expect(2 ** 14)->toBeLessThan(LegRoleSearch::REJECTION_LIMIT)
             ->and($failure?->getMessage())->toBe(
-                'Failed to generate complete schedule for legs 2 to 15: the constraints reject every choice of roles for the events of legs 2 to 15 in this layout. The pairings, their rounds and the roles of leg 1 were not searched.'
+                'Failed to generate complete schedule for legs 2 to 15: the constraints reject every choice of roles for the events of legs 2 to 15 in this layout. The pairings, their rounds and the roles of leg 1 were not searched: RoundRobinOptions(backtracking: true) searches them.'
             )
             ->and($failure?->getActualEventCount())->toBe(14)
             ->and($failure?->getViolationCollector()->getViolationCount())->toBe(2);
@@ -254,7 +280,7 @@ describe('what the scheduler says when it finds no roles', function (): void {
 
         expect(2 ** 15)->toBeGreaterThan(LegRoleSearch::REJECTION_LIMIT)
             ->and($failure?->getMessage())->toBe(
-                'Failed to generate complete schedule for legs 2 to 16: the search for roles the constraints accept stopped at its bound of 20000 rejected roles. Roles that satisfy the constraints may exist beyond it; the pairings, their rounds and the roles of leg 1 were not searched.'
+                'Failed to generate complete schedule for legs 2 to 16: the search for roles the constraints accept stopped at its bound of 20000 rejected roles. Roles that satisfy the constraints may exist beyond it; the pairings, their rounds and the roles of leg 1 were not searched, and RoundRobinOptions(backtracking: true) searches them.'
             )
             ->and($failure?->getActualEventCount())->toBe(15);
     });
@@ -270,6 +296,37 @@ describe('what the scheduler says when it finds no roles', function (): void {
             'Backtracking search tried every round decomposition of the first leg without finding a complete schedule, but for 1 of the 1 it tried the search for roles stopped at its bound of 20000 rejected roles. Roles that satisfy the constraints may exist beyond that bound.'
         )
             ->and($failure?->getPrevious())->toBeInstanceOf(IncompleteScheduleException::class);
+    });
+
+    // Three repeated legs of twelve with role counts at most 3 apart. The
+    // roles exist in the layout of the circle method: the balanced role
+    // assignment gives them, without a search. The backtracking search
+    // starts from the round-parity roles, runs into its bounds in both
+    // first legs it tries (the one the generator found and the circle
+    // layout) and spends its budget. What it then says must not be more
+    // than it showed: of neither first leg did it show that the constraints
+    // reject the later legs whatever the roles, and for one of them that is
+    // false.
+    it('does not say the constraints reject every role of a first leg whose role search a bound stopped', function (): void {
+        $field = roleSearchSchedulerField(12);
+        $constraints = ConstraintSet::create()->add(RoleBalanceConstraint::homeAway(3))->build();
+
+        $circle = (new RoundRobinScheduler())->schedule($field, new RoundRobinOptions(3, new RepeatedLegStrategy()));
+        $balanced = (new RoundRobinScheduler($constraints))
+            ->schedule($field, new RoundRobinOptions(3, new RepeatedLegStrategy(), false, new BalancedRoleAssignment()));
+
+        expect(RoleCounts::structure($balanced))->toBe(RoleCounts::structure($circle))
+            ->and(RoleCounts::worstRunningImbalance($balanced))->toBeLessThanOrEqual(3);
+
+        $failure = roleSearchFailure(
+            new RoundRobinScheduler($constraints),
+            $field,
+            new RoundRobinOptions(3, new RepeatedLegStrategy(), backtracking: true)
+        );
+
+        expect($failure?->getMessage())->toBe(
+            'Backtracking search exhausted its step budget (200000 pairing attempts) without finding a complete schedule. It tried 2 round decompositions of the first leg, and for none of them did it get through every choice of roles: for 2 the search for roles stopped at a bound (20000 rejected roles, or the step budget). The configuration may be unsatisfiable, or roles beyond a bound or a first leg beyond the budget may have later legs the constraints accept.'
+        );
     });
 
     it('names the pairing a strategy of preferences returns no event for', function (bool $backtracking, string $message): void {

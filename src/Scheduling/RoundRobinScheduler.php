@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace MissionGaming\Tactician\Scheduling;
 
+use MissionGaming\Tactician\Constraints\ConsecutiveRoleConstraint;
 use MissionGaming\Tactician\Constraints\ConstraintSet;
+use MissionGaming\Tactician\Constraints\RoleBalanceConstraint;
 use MissionGaming\Tactician\Diagnostics\DiagnosticReport;
 use MissionGaming\Tactician\Diagnostics\SchedulingDiagnostics;
 use MissionGaming\Tactician\DTO\Event;
@@ -457,6 +459,7 @@ class RoundRobinScheduler implements SchedulerInterface
         $legs = $plan->getLegs();
         $roleSearch = new LegRoleSearch($this->constraints, $strategy, $rolesArePreferences, true);
         $roleSearchesStopped = 0;
+        $roleSearchesOutOfSteps = 0;
         $roleSearchesRefused = 0;
         /** @var list<Event> $furthestGenerated */
         $furthestGenerated = [];
@@ -477,6 +480,7 @@ class RoundRobinScheduler implements SchedulerInterface
             $legs,
             $roleSearch,
             &$roleSearchesStopped,
+            &$roleSearchesOutOfSteps,
             &$roleSearchesRefused,
             &$furthestGenerated,
             &$furthestRejections
@@ -538,6 +542,9 @@ class RoundRobinScheduler implements SchedulerInterface
             $outOfSteps = $roleSearch->wasStoppedByABound() && $steps >= $stepsLeft;
             if ($roleSearch->wasStoppedByABound() && !$outOfSteps) {
                 ++$roleSearchesStopped;
+            }
+            if ($outOfSteps) {
+                ++$roleSearchesOutOfSteps;
             }
 
             return ['events' => null, 'steps' => $steps, 'stopped' => $outOfSteps];
@@ -651,7 +658,7 @@ class RoundRobinScheduler implements SchedulerInterface
                 $this->violationCollector,
                 $plan,
                 $participants,
-                $this->describeBacktrackingFailure($generator, $strategy, $roleAssignment, $roleSearchesStopped, $roleSearchesRefused, $generatorFoundNoLeg ? 0 : count($layoutsTried)),
+                $this->describeBacktrackingFailure($generator, $strategy, $roleAssignment, $roleSearchesStopped, $roleSearchesOutOfSteps, $roleSearchesRefused, $generatorFoundNoLeg ? 0 : count($layoutsTried)),
                 0,
                 $greedyFailure,
                 $this->analyzeFailure($participants, $plan, $furthestGenerated)
@@ -777,13 +784,21 @@ class RoundRobinScheduler implements SchedulerInterface
     /**
      * The message of a backtracking search that returned no schedule. It
      * says "unsatisfiable" only when the whole search space was tried and
-     * no bound stopped any part of the search.
+     * no bound stopped any part of the search, and that the constraints
+     * reject the later legs of a first leg whatever its roles only of a
+     * first leg whose roles it went through.
+     *
+     * @param int $roleSearchesStopped First legs whose role search stopped at its limit of rejected roles
+     * @param int $roleSearchesOutOfSteps First legs whose role search stopped because the step budget was spent
+     * @param int $roleSearchesRefused First legs for which roles were found that the role assignment would change
+     * @param int $layoutsTried First legs whose roles were searched; 0 when the generator found none
      */
     private function describeBacktrackingFailure(
         BacktrackingRoundRobinGenerator $generator,
         LegStrategyInterface $strategy,
         RoleAssignmentInterface $roleAssignment,
         int $roleSearchesStopped,
+        int $roleSearchesOutOfSteps,
         int $roleSearchesRefused,
         int $layoutsTried
     ): string {
@@ -798,6 +813,33 @@ class RoundRobinScheduler implements SchedulerInterface
         $found = $layoutsTried === 1
             ? 'the one round decomposition of the first leg it tried, whatever the roles of the first leg'
             : "each of the {$layoutsTried} round decompositions of the first leg it tried, whatever the roles of the first leg";
+
+        $stoppedAtABound = $roleSearchesStopped + $roleSearchesOutOfSteps;
+        $shown = $layoutsTried - $stoppedAtABound - $roleSearchesRefused;
+
+        if ($generator->wasBudgetExhausted() && $shown < $layoutsTried) {
+            // The search went through every choice of roles for $shown of
+            // the first legs only. Of the others it says what stopped it,
+            // and not that no roles exist.
+            $outcomes = [];
+            if ($shown > 0) {
+                $outcomes[] = sprintf('for %d the constraints reject the later legs that %s derives, whatever the roles of the first leg', $shown, $strategy::class);
+            }
+            if ($stoppedAtABound > 0) {
+                $outcomes[] = sprintf('for %d the search for roles stopped at a bound (%d rejected roles, or the step budget)', $stoppedAtABound, LegRoleSearch::REJECTION_LIMIT);
+            }
+            if ($roleSearchesRefused > 0) {
+                $outcomes[] = sprintf('for %d roles exist that satisfy the constraints in every leg, and %s would change them', $roleSearchesRefused, $roleAssignment::class);
+            }
+
+            return sprintf(
+                'Backtracking search exhausted its step budget (%d pairing attempts) without finding a complete schedule. It tried %s of the first leg%s: %s. The configuration may be unsatisfiable, or roles beyond a bound or a first leg beyond the budget may have later legs the constraints accept.',
+                BacktrackingRoundRobinGenerator::STEP_BUDGET,
+                $layoutsTried === 1 ? '1 round decomposition' : "{$layoutsTried} round decompositions",
+                $shown === 0 ? ', and for none of them did it get through every choice of roles' : '',
+                implode('; ', $outcomes)
+            );
+        }
 
         if ($generator->wasBudgetExhausted()) {
             return sprintf(
@@ -905,7 +947,8 @@ class RoundRobinScheduler implements SchedulerInterface
                     $this->violationCollector,
                     $plan,
                     $participants,
-                    "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. Constraints may be preventing complete schedule generation.",
+                    "Failed to generate complete schedule for leg {$leg}. Generated " . count($legEvents) . " events, expected {$expectedEventsPerLeg}. Constraints may be preventing complete schedule generation."
+                        . ($leg > 1 ? $this->adviceOnRolesOfARule($strategy, $leg) : ''),
                     0,
                     null,
                     $this->analyzeFailure($participants, $plan, [...$allEvents, ...$legEvents])
@@ -917,6 +960,38 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         return $allEvents;
+    }
+
+    /**
+     * What to say, after the failure of a later leg whose roles are a rule
+     * of the leg strategy, to a caller whose constraint on roles rejected
+     * one of its events: the roles follow from the first leg, and the
+     * option that searches those is `backtracking`. Empty when no
+     * constraint this library knows to read roles rejected an event: a
+     * closure or a class of the caller's says nothing about what it reads,
+     * and other roles do not help a constraint that reads none.
+     *
+     * Read from the rejections already recorded for the attempt, which are
+     * those of its later legs (a first leg that loses an event fails
+     * before them), so no constraint is asked anything for it.
+     */
+    private function adviceOnRolesOfARule(LegStrategyInterface $strategy, int $leg): string
+    {
+        foreach ($this->violationCollector->getViolations() as $violation) {
+            $constraint = $violation->constraint;
+            if (!$constraint instanceof ConsecutiveRoleConstraint && !$constraint instanceof RoleBalanceConstraint) {
+                continue;
+            }
+
+            return sprintf(
+                ' A constraint on roles (%s) rejected an event of leg %d in the roles %s gives it, which follow from the roles of leg 1 by a rule. The roles of leg 1 were not searched: RoundRobinOptions(backtracking: true) searches them.',
+                $constraint->getName(),
+                $leg,
+                $strategy::class
+            );
+        }
+
+        return '';
     }
 
     /**
@@ -1021,14 +1096,14 @@ class RoundRobinScheduler implements SchedulerInterface
 
         if ($search->wasStoppedByABound()) {
             return sprintf(
-                'Failed to generate complete schedule for %s: the search for roles the constraints accept stopped at its bound of %d rejected roles. Roles that satisfy the constraints may exist beyond it; the pairings, their rounds and the roles of leg 1 were not searched.',
+                'Failed to generate complete schedule for %s: the search for roles the constraints accept stopped at its bound of %d rejected roles. Roles that satisfy the constraints may exist beyond it; the pairings, their rounds and the roles of leg 1 were not searched, and RoundRobinOptions(backtracking: true) searches them.',
                 $range,
                 LegRoleSearch::REJECTION_LIMIT
             );
         }
 
         return sprintf(
-            'Failed to generate complete schedule for %s: the constraints reject every choice of roles for the events of %s in this layout. The pairings, their rounds and the roles of leg 1 were not searched.',
+            'Failed to generate complete schedule for %s: the constraints reject every choice of roles for the events of %s in this layout. The pairings, their rounds and the roles of leg 1 were not searched: RoundRobinOptions(backtracking: true) searches them.',
             $range,
             $range
         );
