@@ -54,7 +54,8 @@ play completes. The `src/Stage/` family:
 - **RoundRobinOptions / SwissOptions**: Legs, leg strategy, backtracking and role assignment for round robin; rounds for Swiss (retiring the old "legs means rounds here" overload)
 - **RoleAssignmentInterface** (`src/RoleAssignment/`): Which participant of each round-robin pairing is first-named. The generator hands over one leg with the roles it proposes and takes it back with seatings reversed; the scheduler refuses an answer that changes anything else. `RoundParityRoleAssignment` (the default) returns the proposal. `BalancedRoleAssignment` ends every leg with each participant's two role counts at most 1 apart (field of even size) or equal (field of odd size): a closed rule for a circle layout, a chain-reversing repair for any other. See `docs/design/role-assignment.md`.
 - **PotDrawOptions**: Pots, opponents per pot and the seed of the draw. The seed is an option and not a `Randomizer`, so a draw is repeatable from plain data; `fromArray()` refuses unknown keys.
-- **BacktrackingRoundRobinGenerator** (`@internal`): Opt-in search over the round decompositions the circle method cannot reach (`RoundRobinOptions(backtracking: true)`): per-round perfect matchings built seat by seat under the constraints, both orientations tried, dead ends backtracking across rounds. Deterministic, step-bounded, loud about budget-exhausted vs proven-unsatisfiable.
+- **BacktrackingRoundRobinGenerator** (`@internal`): Opt-in search over the round decompositions the circle method cannot reach (`RoundRobinOptions(backtracking: true)`): per-round perfect matchings built seat by seat under the constraints, both orientations tried, dead ends backtracking across rounds. Deterministic, step-bounded, loud about budget-exhausted vs proven-unsatisfiable. Every first leg it reaches is handed to the scheduler to complete, and one that cannot be completed is a dead end.
+- **LegRoleSearch** (`@internal`): Searches roles with the pairings and rounds held: the roles of the later legs of a leg strategy that states them as preferences, in every layout, and with backtracking the roles of the first leg too, which mirrored and repeated legs derive from. Tries the role given first and the reverse second, goes straight back to an event of the same participants where the constraints read no others (`ConstraintPurity::readsOwnEventsOnly()`) and one event at a time otherwise, and is bounded by a count of rejected roles; a search a bound stopped says so.
 - **RoundRobinScheduler**: Circle method algorithm with integrated multi-leg generation, roles proposed by round parity and decided by the configured role assignment, first-class bye tracking, and bounded retry over rotated participant orderings when constraints reject a schedule. Builds its `RoundRobinPlan` first; [How a round robin is generated](#how-a-round-robin-is-generated) says what it reads from it.
 - **SwissScheduler**: Whole-schedule Swiss preset — drives SwissPairingEngine through the stage driver loop recording no results, so in a field of even size every participant stays level and a round is a non-repeat pairing of the field: in a random order with a `Randomizer`, and without one in the order of a table with no results, which is the standings fallback (seed, label, ID) and not list position. In a field of odd size a bye counts as a win in the pairing order, so the participants who have had one are ordered ahead of the rest and are paired first. It refuses more rounds than participants minus one
 - **PotDrawScheduler**: Whole-schedule pot draw — a pot-constrained partial round robin, drawn up front and unrelated to Swiss pairing. Built by direct construction, with no search: within-pot rounds from a 1-factorisation of the pot, cross-pot rounds from cyclic shifts between two pots, scheduled by a 1-factorisation of the pots themselves; pots of odd size (two opponents per pot) pair up as partners that share four rounds. What is built is who meets whom in which round, and it is then the start of a random walk of two moves, each of which keeps every rule of the format or changes nothing: the round exchange (two rounds trade the alternating cycle through one entrant, which moves events between rounds and changes none) and the opponent exchange (two members of one pot, in one round against opponents of one pot, exchange opponents when that makes no rematch). The walk has a length fixed by the configuration, so nothing is searched or retried. Roles are given last, by one rule: every entrant puts its events in twos (against one pot as far as they go) and is first in one event of a two; the twos join the events into trails, and a coin for each trail decides its roles. The class docblock holds the argument for why every round is a perfect matching, the proof that each move keeps the rules, the fields a move cannot change, the measurements behind the length of the walk, and why the roles are balanced. It takes no constraints and no `Randomizer`: each call seeds its own from the options, so it keeps no state between calls. Pairwise by nature.
@@ -237,16 +238,22 @@ not in list order; the survivors of a re-seeded elimination round; and a
 5. **Constraints.** Each event is put to the constraint set against a
    context holding the events accepted so far. A rejected event is dropped
    and recorded as a violation; generation of the leg goes on, and a leg
-   that ends short is a failure.
+   that ends short is a failure. One thing is tried in place of a rejected
+   event: where the leg strategy states its roles as preferences (the
+   shuffled legs), `LegRoleSearch` gives the event the other role, and
+   searches the roles of the later legs when both are rejected, within a
+   bound of rejected roles.
 6. **Retry.** With a constraint set, a failed attempt is repeated with the
    participant list rotated by one, up to min(participants, 25) attempts in
    all. Without one there is a single attempt. Only the last attempt's
    violations and failure analysis are reported.
 7. **Backtracking**, if `RoundRobinOptions(backtracking: true)` and every
    rotation failed: `BacktrackingRoundRobinGenerator` searches the round
-   decompositions of the first leg, the role assignment is asked about the
-   leg it found, and the later legs are derived from that leg through the
-   leg strategy. See [backtracking-generation.md](design/backtracking-generation.md).
+   decompositions of the first leg, the role assignment is asked about each
+   leg it finds, and the later legs are derived from that leg through the
+   leg strategy. `LegRoleSearch` searches the roles of all legs of each
+   first leg, and a first leg that no roles complete sends the generator on
+   to the next. See [backtracking-generation.md](design/backtracking-generation.md).
 8. **Validation.** The finished schedule is checked against the plan (see
    [Validation & Diagnostics](#validation--diagnostics)) and returned with
    the plan's shape and the byes in its metadata.
