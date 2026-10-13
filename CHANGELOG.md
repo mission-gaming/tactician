@@ -468,7 +468,10 @@ entry on the engine fingerprint.
   $adjustment)` and `getAdjustments()`, written under the key
   `adjustments` only when there is one. Every table an engine builds from
   the state has them: the next Swiss round is paired from the adjusted
-  totals, a re-seeded bracket folds its survivors by them, and the table of
+  totals, a re-seeded bracket folds its survivors by them (record its
+  adjustments before its second round is paired: a later one can change a
+  round already played, and the engine then refuses the state with
+  `RecordedRoundMismatch`), and the table of
   an outcome shows each beside what was earned, where it orders the
   entrants a bracket put out in the same round and moves nobody between
   tiers. `StageOutcome::combining()` keeps the adjustment of each pool

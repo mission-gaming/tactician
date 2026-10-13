@@ -393,9 +393,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * were never played. A state is in that condition when its rounds were
      * paired under other rules than this engine's (another option, or the
      * re-seeding order of an earlier release) or when its participant list
-     * changed after a round was recorded. An adjustment recorded after a
-     * re-seeded round was paired can do it too, by changing the ranking that
-     * round is folded from (see rankByStandings()).
+     * changed after a round was recorded. An adjustment recorded after the
+     * second round of a re-seeded bracket was paired can do it too, by
+     * changing the ranking a round already played is folded from (see
+     * rankByStandings()).
      *
      * @param list<array<Participant|null>> $playable The ties the bracket has in the round
      *
@@ -433,8 +434,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                         . ' re-seeding order of an earlier release), or its participant list changed after the round'
                         . ' was recorded. Rebuild the state from the rounds that stand.'
                         . ($this->options->reseedEachRound && $state->getAdjustments() !== []
-                            ? ' The state carries adjustments, and a re-seeded bracket ranks its survivors with every'
-                                . ' adjustment recorded: one recorded after a round was paired can change that round.'
+                            ? ' The state carries adjustments, and a re-seeded bracket ranks the survivors of every round'
+                                . ' with every adjustment recorded: one recorded after the second round was paired can change'
+                                . ' a round already played. Keep such an adjustment out of the state and apply it to the table'
+                                . ' of the outcome with StandingsCalculator::withAdjustments().'
                             : ''),
                     ['round' => $round, 'recorded' => array_keys($recordedPairs), 'expected' => array_keys($expected)],
                     reason: InvalidConfigurationReason::RecordedRoundMismatch
@@ -487,11 +490,20 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *
      * Every adjustment recorded on the state is in the ranking, whenever
      * it was recorded: an adjustment belongs to no round, so there is no
-     * "earlier" to hold it to. Recording one after a round was paired
-     * changes how that round is replayed, and the engine then refuses the
-     * state because the recorded round is no longer the round it has
-     * (`RecordedRoundMismatch`). In a re-seeded bracket, record an
-     * adjustment before the round it is to count for is paired.
+     * "earlier" to hold it to. That is where this ranking falls short of
+     * the rule it follows for results (rank from what was known when the
+     * round was paired, ADR 0001). The first round is folded from the
+     * list and ranks nobody, so an adjustment recorded before the second
+     * round is paired is in every ranking there will be, and is safe. One
+     * recorded later is in the ranking of every round already paired as
+     * well: where it changes the order of the survivors of such a round,
+     * the round is replayed with other ties than were played, and the
+     * engine refuses the state because the recorded round is no longer
+     * the round it has (`RecordedRoundMismatch`). That holds for an
+     * adjustment meant for the next round too. In a re-seeded bracket,
+     * record adjustments before the second round is paired; keep a later
+     * one out of the state and apply it to the table of the outcome
+     * (StandingsCalculator::withAdjustments()).
      *
      * @param array<Participant> $survivors
      * @param array<string, Participant> $levelAdvancers

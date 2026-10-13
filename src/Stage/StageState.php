@@ -372,8 +372,15 @@ final readonly class StageState
      * same round, and the table of the outcome. The entry of the
      * participant shows the sum of its adjustments as a figure of its own
      * (StandingEntry::getAdjustment()) and is ordered by what it earned
-     * plus that sum. So an adjustment recorded between two rounds changes
-     * the rounds paired after it and none of those recorded before.
+     * plus that sum. So an adjustment recorded between two rounds of a
+     * Swiss stage changes the rounds paired after it and none of those
+     * recorded before: a Swiss round is paired once and is a fact once
+     * recorded. An elimination bracket that re-seeds each round is the
+     * exception. It ranks the survivors of every round again on every
+     * call, with every adjustment the state holds, so one recorded after
+     * its second round was paired can change a round already played, and
+     * the engine then refuses the state (`RecordedRoundMismatch`). Record
+     * the adjustments of such a bracket before its second round is paired.
      *
      * Adjustments are kept in the order recorded and are never merged: two
      * for one participant are two entries of getAdjustments(), and the

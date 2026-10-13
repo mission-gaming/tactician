@@ -1298,13 +1298,23 @@ take one back, record the opposite amount, which keeps the record of both.
 A participant who withdraws keeps its adjustments. In the table of an
 elimination outcome an adjustment orders the entrants who went out in the
 same round and moves nobody from one tier to another: who advanced is
-decided by the ties. An adjustment belongs to no round, which matters in one
-place: a re-seeded bracket (`reseedEachRound`) ranks its survivors with
-every adjustment recorded, so record an adjustment before the round it is
-to count for is paired. One recorded after a round was paired can change
-how that round is replayed, and the engine then refuses the state
-(`RecordedRoundMismatch`) instead of reading results against ties that
-were never played.
+decided by the ties.
+
+An adjustment belongs to no round: the state keeps what was adjusted and
+not when. That matters in one place. A re-seeded bracket (`reseedEachRound`)
+works every round out again on every call and ranks the survivors of each
+with every adjustment the state holds. Its first round is folded from the
+list, so an adjustment recorded **before the second round is paired** is in
+every ranking there will be, and is safe. One recorded later, also one meant
+for the round about to be paired, is in the ranking of the rounds already
+played too: where it changes the order of their survivors, those rounds are
+no longer the rounds that were played, and the engine refuses the state
+(`RecordedRoundMismatch`) instead of reading results against ties that never
+took place. In a re-seeded bracket, record adjustments before the second
+round is paired; keep a later one out of the state and apply it to the table
+of the outcome with `withAdjustments()`. A Swiss stage and a bracket on a
+fixed path have no such limit: an adjustment can be recorded at any point of
+them.
 
 A combined pool table (`StageOutcome::combining()`) keeps the adjustment
 each pool entry shows.

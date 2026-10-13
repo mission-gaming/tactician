@@ -1003,6 +1003,9 @@ describe('an elimination bracket with awarded results and adjustments', function
             ->and(awardsPairs($engine->pairNextRound($adjusted)))->toBe([['e1', 'e2'], ['e3', 'e4']]);
     });
 
+    // The adjustment below is recorded before round 3 is paired and is meant
+    // for it. It is refused all the same: it is also in the ranking round 2
+    // is replayed from, and round 2 was played.
     it('refuses, and says why, a re-seeded state whose adjustment was recorded after the round it changes', function (): void {
         $entrants = awardsEntrants(8);
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
@@ -1024,6 +1027,40 @@ describe('an elimination bracket with awarded results and adjustments', function
             expect($exception->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
                 ->and($exception->getMessage())->toContain('The state carries adjustments');
         }
+    });
+
+    it('reads a re-seeded bracket to its end when every adjustment was recorded before the second round is paired', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
+        $reordered = 0;
+
+        for ($size = 4; $size <= 9; ++$size) {
+            foreach ([1, 2, 3, 4] as $seed) {
+                $rng = new Randomizer(new Mt19937($size * 10 + $seed));
+                $entrants = awardsEntrants($size);
+
+                $plain = StageState::start($entrants);
+                $first = $engine->pairNextRound($plain);
+                $plain = $plain->withRoundPlayed($first, array_map(awardsWonByTheBetterPlaced(...), $first->getEvents()));
+
+                // Before round 1 and after it, and nothing once round 2 is paired
+                $adjusted = StageState::start($entrants)
+                    ->withAdjustment(new Adjustment($entrants[$rng->getInt(0, $size - 1)]->getId(), -1.0))
+                    ->withRoundPlayed($first, array_map(awardsWonByTheBetterPlaced(...), $first->getEvents()))
+                    ->withAdjustment(new Adjustment($entrants[$rng->getInt(0, $size - 1)]->getId(), $rng->getInt(-6, 6) / 2.0))
+                    ->withAdjustment(new Adjustment($entrants[$rng->getInt(0, $size - 1)]->getId(), $rng->getInt(-6, 6) / 2.0));
+                $reordered += awardsPairs($engine->pairNextRound($adjusted)) === awardsPairs($engine->pairNextRound($plain)) ? 0 : 1;
+
+                $finished = awardsPlayBracket($engine, $adjusted, $seed, true);
+                $outcome = $engine->getOutcome(StageState::fromJson($finished->toJson()));
+
+                expect($engine->isComplete($finished))->toBeTrue("{$size} entrants, seed {$seed}")
+                    ->and($outcome)->toBeInstanceOf(StageOutcome::class)
+                    ->and($finished->getAdjustments())->toHaveCount(3);
+            }
+        }
+
+        // The adjustments did change rounds: these are not brackets they left alone
+        expect($reordered)->toBeGreaterThan(5);
     });
 
     it('sends the same entrants on, to the same places, whether results are awarded or played', function (string $variant): void {
