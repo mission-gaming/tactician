@@ -42,7 +42,9 @@ cross a tier: it never overrides a result. A decision that is anything else
 is rejected whole with a `RejectedDecisionException`, whose
 `RejectedDecisionReason` says which rule it broke: a participant with no
 entry, a set decided twice, participants that are not level, or part of a
-set.
+set. The rules are held to every decision given, one rule at a time in that
+order, so the reason reported does not depend on the order the decisions
+are given in.
 
 **The whole set, also where only part of it matters.** With four entrants
 level and two to go through, a decision that ordered only the two would be
@@ -73,6 +75,19 @@ the same rules, and is given to the selector. `UndecidedSelectionException`
 says which of the three orders a tie is in (`getPool()`,
 `getRankAcrossPools()`, `isPerEvent()`); in each, a decision for exactly
 the participants it names, given to the selector that refused, settles it.
+Which order a decision is for follows from the participants it names, and
+cannot be read two ways: a selection reads a pool's table for participants
+of one pool and the holders of a rank for participants of several, and no
+set of level holders is within one pool. A selection that orders entries
+itself reads the decisions it was given and not those of the outcome's own
+table, whose tied sets are not its groups.
+
+**A mark says that a place rests on a decision.** A selected participant is
+marked with the decision that ordered the set it was read from. Where a
+best-of-rank selection leaves out the lowest-placed of a larger pool and a
+decision settled who that is, every holder is compared on figures
+calculated without them, so every selected place is marked with that
+decision as well.
 
 **A decision is applied last, and a stale one is refused.** A decision is
 about the entries that are level once adjustments and bye credits are
@@ -133,6 +148,7 @@ table as it stands.
   and carries no decision of the pools' tables: their tied sets are not its
   tied sets.
 - `tests/Feature/TableDecisionsTest.php` holds a table, a per-group
-  selection and every reason for a rejection to an oracle that works on
-  plain rows, over generated tables with tiers and several tied sets, and
-  the selections across pools to stated cases.
+  selection, the holders of a rank across pools, a table per event played
+  and every reason for a rejection to an oracle that works on plain rows,
+  over generated tables with tiers and several tied sets. A decision on the
+  place below which a larger pool is left out is a stated case.

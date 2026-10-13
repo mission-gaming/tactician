@@ -1243,8 +1243,9 @@ which decision, and `getParticipantIds()` which participants are at fault:
 | names participants that are not level with each other, or one that is level with nobody | `ParticipantsNotLevel` | the IDs that are not level with the first it names |
 | names only some of the entries of a tied set | `PartOfLevelSet` | the entries it leaves out |
 
-Where a decision breaks more than one rule, the first in the table is
-reported.
+Where the decisions given together break more than one rule, the first in
+the table is reported, whichever decision breaks it and whatever order they
+are given in.
 
 ```php
 use MissionGaming\Tactician\Exceptions\RejectedDecisionException;
@@ -3150,7 +3151,11 @@ a table:
   decided: a decision settles a tie, not a stage that was not played.
 - A table the outcome was built with may carry decisions already
   (`Standings::withDecisions()`); the selector reads them as if they were
-  given to it.
+  given to it. The combined table of `StageOutcome::combining()` carries
+  none: it is calculated afresh, and a decision of a pool's table stays
+  with that table, where a per-group selection reads it. A tie in the
+  combined table is settled by a decision of its own, given to the
+  selector.
 - In plain data the decisions are the key `decisions`, a list of deciders
   in their array form, written only when there are any. An application
   that keeps its selectors as configuration and its decisions as records
@@ -3405,7 +3410,13 @@ holders of a rank, or the table per event played), a decision that orders
 exactly the participants it names, given to the selector that refused,
 settles it. `selection()` marks a holder with the decision that settled who
 holds the rank in its pool, with the one that settled its place among the
-holders, or with both, in that order.
+holders, or with both, in that order. Under `DiscardLowest`, a decision for
+level entries on both sides of the place below which a larger pool is left
+out says whose results are dropped, and every holder is compared without
+them: every selected place is marked with that decision, between the other
+two. The decisions of the outcome's own table are not read by this
+selection, which takes figures from that table and no order; nor by an
+overall selection per event played, which orders the entries itself.
 
 **`RankRangeSelector::overall()` takes the same setting.** It reads the
 combined table, which ranks entrants of every pool together, so across

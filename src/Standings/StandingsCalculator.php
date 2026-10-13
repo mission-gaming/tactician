@@ -48,6 +48,12 @@ use MissionGaming\Tactician\Stage\PairKey;
  * own. Neither changes how a table is ordered: by the same figures, with
  * the same fallback.
  *
+ * The order of entries that are still level is the application's to
+ * decide, and is given to the table the calculator returns
+ * (Standings::withDecisions()), after byes are credited and adjustments
+ * applied. The calculator takes no decision itself: which entries are
+ * level is read from the table.
+ *
  * @experimental
  */
 readonly class StandingsCalculator

@@ -251,7 +251,11 @@ final readonly class RankRangeSelector implements ProgressionSelector
      * selection reads is rejected by select(), and nothing is selected.
      *
      * A table the outcome was built with can carry decisions of its own
-     * (Standings::withDecisions()); they count as given here.
+     * (Standings::withDecisions()); they count as given here. The one
+     * selection that does not read them is the overall one per event
+     * played of a pooled outcome: it puts the entries in an order of its
+     * own, in which a tied set of the table need not be level, so it takes
+     * the decisions given to the selector and no other.
      *
      * @param array<Decider> $decisions One for each set of level entries to settle, in any order
      *

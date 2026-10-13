@@ -482,7 +482,9 @@ entry on the engine fingerprint.
     `ParticipantsNotLevel` (a participant who is not tied, or the wrong
     set) and `PartOfLevelSet`. A decision names every member of its set,
     also where only the first places matter, so that a table has one order
-    whatever is read from it.
+    whatever is read from it. Where the decisions given together break
+    more than one rule, the first of them in that order is reported,
+    whatever order the decisions are in.
   - **Decisions are applied last.** `StandingsCalculator::withAdjustments()`
     and `withByesCredited()` keep the decisions of a table where the change
     leaves every decided set as it was and refuse the table where it does
@@ -505,7 +507,10 @@ entry on the engine fingerprint.
     says which selected places a decision settled and hands back the
     decision with its label and reason (`isSettledByDecision()`,
     `getDecisionsFor()`, `getDecisions()`). `select()` returns the list as
-    before.
+    before. A best-of-rank selection that leaves out the lowest-placed of
+    a larger pool (`PoolComparison::DiscardLowest`) marks every selected
+    place with a decision that settled who is left out, because every
+    holder is compared without those entrants.
   - `UndecidedSelectionException::isPerEvent()` (new, with a ninth
     constructor parameter and the context key `per_event`) says that the
     participants are level per event played and not as a tied set of the
@@ -519,6 +524,11 @@ entry on the engine fingerprint.
     of their forms (ADR 0005). A stage state holds no decision, and no
     engine reads one: a Swiss round and a re-seeded bracket round are
     paired from the entrant list where results are level, as before.
+  - The combined table of `StageOutcome::combining()` is calculated
+    afresh and carries no decision of a pool's table; a tie in it takes a
+    decision of its own. A selection that orders entries itself (the
+    holders of a rank, a table per event played) reads the decisions given
+    to the selector and not those of the outcome's own table.
   - With no decision supplied, every table, selection and array form is
     what it was. Example: `examples/28-ties-settled-by-decision.php`.
 - **A typed decider for a knockout tie that finishes level.** A `Result`
