@@ -1202,7 +1202,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 // "whatever season the start is in": 1 February is on winter time
                 $fromWinter = new TimelineDefinition(new DateTimeImmutable('2026-02-01 01:30', $londonTime), new DateInterval('P7D'));
                 assert($fromWinter->getSlotTime(39)->format('j M H:i') === '25 Oct 00:30');
-                // An interval with a time part: "the one at the start's own offset from UTC"
+                // An interval with a time part: "the first where the timezone database marks the
+                // start as daylight-saving time and the second where it does not"
                 $mixed = static fn (string $start): string => (new TimelineDefinition(new DateTimeImmutable($start, $londonTime), new DateInterval('P1DT12H')))
                     ->getSlotTime(3)->format('j M H:i');
                 assert($mixed('2026-10-23 01:30') === '26 Oct 00:30');
@@ -1237,8 +1238,9 @@ describe('Documented values', function () use ($extracted, $autoload): void {
         ],
         // "A grid with sessions at 20:00 and 20:25 and two slots 25 minutes apart is
         // refused when it is built (`InvalidConfigurationException`, reason
-        // `OverlappingTime`)", and "nothing follows the last session, so that one can run
-        // as deep as it needs to"
+        // `OverlappingTime`)", "nothing follows the last session, so that one can run
+        // as deep as it needs to", and "unless its slots are days apart across a calendar
+        // day the timezone skipped, as `Pacific/Apia` skipped 30 December 2011"
         'a grid whose sessions overlap is refused' => [
             'docs/USAGE.md',
             "'slots_per_session_overrides' => [1 => 4],  // final session runs deeper",
@@ -1252,6 +1254,14 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 }
                 $deepLast = SessionGrid::fromArray(['slots_per_session' => 1, 'slots_per_session_overrides' => [1 => 40]] + $overlapping);
                 assert($deepLast->getPositionCount() === 41);
+                $skippedDay = ['sessions' => ['2011-12-28 10:00'], 'timezone' => 'Pacific/Apia', 'slot_interval' => 'P1D'];
+                assert(SessionGrid::fromArray($skippedDay + ['slots_per_session' => 3])->getPositionCount() === 3);
+                try {
+                    SessionGrid::fromArray($skippedDay + ['slots_per_session' => 4]);
+                    assert(false);
+                } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                    assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::OverlappingTime);
+                }
                 PHP,
         ],
         // "without a rule it accepts a schedule that has one participant in two events at

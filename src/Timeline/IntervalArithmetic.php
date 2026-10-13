@@ -35,8 +35,9 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  *   the skipped hour, as PHP moves it.
  * - A local time that occurs twice, where the clocks go back, is the first
  *   of the two for an interval with no hours, minutes or seconds. For one
- *   that has them it is the one PHP takes: the one at the anchor's own
- *   offset from UTC.
+ *   that has them it is the one PHP takes: the first where the timezone
+ *   database marks the anchor as daylight-saving time, the second where it
+ *   does not.
  *
  * An interval made by `DateInterval::createFromDateString()` (`next
  * weekday`, `last day of next month`, and `1 month` or `7 days` as well:
@@ -130,12 +131,16 @@ final class IntervalArithmetic
      * The earlier instant of a local time that occurs twice, where the
      * clocks go back; any other time as it is.
      *
-     * PHP reads a repeated local time by the offset of the time it added
-     * to, so one step from a start on winter time lands on the second
-     * 01:30 and one step from a start on summer time on the first. Taking
-     * the first always is what adding round by round gave (the round
-     * before was on summer time), and does not depend on the season the
-     * anchor is in.
+     * PHP reads a repeated local time by the time it added to: the first
+     * where the timezone database marks that time as daylight-saving time,
+     * the second where it does not. So one step from a start on winter
+     * time lands on the second 01:30 and one step from a start on summer
+     * time on the first, and in a timezone whose winter time is the one
+     * marked (Europe/Dublin, Africa/Casablanca) it is the other way round.
+     * Taking the first always depends neither on the season the anchor is
+     * in nor on how the timezone is recorded. It is what adding round by
+     * round gave wherever the round before was on summer time and marked
+     * so, which is most timelines and not all of them.
      */
     private static function firstOfRepeatedLocalTime(DateTimeImmutable $time): DateTimeImmutable
     {

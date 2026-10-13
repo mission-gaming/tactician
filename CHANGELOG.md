@@ -49,21 +49,39 @@ heading **Output change (fix)**.
     interval of days, weeks, months or years, a round at a local time the
     clocks repeat (01:30 on the night they go back) is the earlier of the
     two instants, whatever season the start is in. Adding round by round
-    gave the one at the offset of the round before, which was the first as
-    well, except where the round before was already on winter time. That
-    takes a yearly interval: `P1Y` from 6 November 2023 at 01:30 in
-    `America/New_York` gave the second 01:30 (06:30 UTC) on 6 November
-    2044 and now gives the first (05:30 UTC). An interval that also has
-    hours, minutes or seconds takes the one PHP takes, the one at the
-    start's own offset from UTC.
+    gave the one PHP takes, which goes by the round before: the first
+    where the timezone database marks that round as daylight-saving time,
+    the second where it does not. In most timezones the round before is on
+    summer time and marked so, and the first was taken as it is now. Two
+    cases took the second and now take the first:
+
+    - *The round before is on winter time*, which takes an interval long
+      enough to step over the whole summer: `P8M` from 25 February 2026 at
+      01:30 in `Europe/London` gave the second 01:30 (01:30 UTC) on 25
+      October and now gives the first (00:30 UTC), and `P1Y` from 6
+      November 2023 at 01:30 in `America/New_York` gave 06:30 UTC on 6
+      November 2044 and now gives 05:30 UTC. An interval of days or weeks
+      that long (`P34W`) is the same.
+    - *The timezone database marks winter time, not summer time, as the
+      daylight-saving one*, as it does today for `Europe/Dublin`,
+      `Africa/Casablanca` and `Africa/El_Aaiun`. There an interval of any
+      length took the second: a weekly 01:30 in `Europe/Dublin` from 18
+      October 2026 was at 01:30 UTC on 25 October and is now at 00:30 UTC,
+      as it is in `Europe/London`.
+
+    An interval that also has hours, minutes or seconds takes the one PHP
+    takes: the first where the timezone database marks the start as
+    daylight-saving time, the second where it does not.
 
   Who is affected: a timeline whose round interval has months or years and
   whose start is on the 29th, 30th or 31st; a timeline or a grid with an
   interval of days, weeks or months whose local time of day falls in the
   hour a clock change skips; a timeline whose one interval mixes months
   with days, or days with hours in a timezone with clock changes; and a
-  timeline with an interval of years whose local time of day falls in the
-  hour a clock change repeats. What to
+  timeline or a grid with an interval of days or longer whose local time
+  of day falls in the hour a clock change repeats, where the interval
+  steps over the whole summer or the timezone is one of the three named
+  above. What to
   check: kickoffs stored from such a timeline no longer equal what
   `getSlotTime()` and `TimelineAssigner` return, so assign again before
   comparing. For such a grid (slots a day or more apart, one of them in a
@@ -195,8 +213,11 @@ heading **Output change (fix)**.
 - **Two slots of one round, or of one session, at the same time are
   rejected.** The slots of a round and of a session must be at rising
   times, and a round of one slot must be before the next round. An interval
-  written as an ISO 8601 duration always gives that, so this does not
-  affect `new DateInterval('PT1H')` or plain data. It affects an interval
+  written as an ISO 8601 duration gives that, so this does not affect
+  `new DateInterval('PT1H')` or plain data (the one exception is an
+  interval of days across a calendar day a timezone skipped, as
+  `Pacific/Apia` skipped 30 December 2011: the slot of the skipped day and
+  the slot of the day after are one instant). It affects an interval
   that `DateTimeImmutable::diff()` returned, whose hours PHP adds as local
   time: with slots one such hour apart from 00:30 in `Europe/London` on 29
   March 2026, the slots are 00:30, 02:30 (there is no 01:30) and 02:30.

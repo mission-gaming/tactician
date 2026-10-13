@@ -36,8 +36,9 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * the night they go forward) is moved on by the skipped hour, for the round
  * that lands on it and for no other. A local time that occurs twice (01:30
  * on the night they go back) is the first of the two; where the interval
- * also has a time part, it is the one at the start's own offset from UTC,
- * which is how PHP reads it.
+ * also has a time part, it is the one PHP takes, which is the first where
+ * the timezone database marks the start as daylight-saving time and the
+ * second where it does not.
  *
  * An interval's time part (hours, minutes, seconds: `PT168H`, `PT24H`) is
  * elapsed time: a weekly kickoff written as `PT168H` is 168 hours later,
@@ -95,9 +96,10 @@ final readonly class TimelineDefinition
      *                                       slots without a slot interval, an interval that
      *                                       does not move the start forward, a first round
      *                                       with two slots at one time or whose last slot is
-     *                                       at or after the second round's first, or a
-     *                                       resource that is not a non-empty string or is
-     *                                       named twice
+     *                                       at or after the second round's first, an interval
+     *                                       or a first round too far from the start to be
+     *                                       computed, or a resource that is not a non-empty
+     *                                       string or is named twice
      */
     public function __construct(
         private DateTimeImmutable $start,

@@ -2065,7 +2065,8 @@ The rules of the mechanism:
   the night the clocks go back) is the first of the two, whatever season
   the start is in. That is so for an interval of days or longer; one that
   also has hours, minutes or seconds (`P1DT12H`) takes the one PHP takes,
-  which is the one at the start's own offset from UTC.
+  which is the first where the timezone database marks the start as
+  daylight-saving time and the second where it does not.
 - **Months keep the day, or the month end.** An interval written in months
   or years keeps the start's day of the month, and a month that is too
   short for that day gives its last day: `P1M` from 31 January is 28
@@ -2343,7 +2344,9 @@ placed in both with no double booking reported. The check reads each session's
 own slot count, overrides applied, and nothing follows the last session,
 so that one can run as deep as it needs to. The slots of one session must
 be at rising instants as well, which they are for a slot interval written
-as an ISO 8601 duration. A shape-only grid has no instants and is not
+as an ISO 8601 duration (unless its slots are days apart across a calendar
+day the timezone skipped, as `Pacific/Apia` skipped 30 December 2011). A
+shape-only grid has no instants and is not
 checked. Every slot time is computed from its session's start, never from
 the slot before it.
 

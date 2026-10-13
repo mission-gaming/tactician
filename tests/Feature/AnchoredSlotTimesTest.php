@@ -332,6 +332,58 @@ describe('Slot times computed from the anchor', function (): void {
             ->and($fromSecond->getSlotTime(2)->format('j M H:i'))->toBe('1 Nov 01:30');
     });
 
+    it('takes the first of the two where the timezone database calls summer time the standard one', function (): void {
+        // Ireland and Morocco are recorded with their summer offset as the
+        // standard one, and PHP reads a repeated local time by that record:
+        // its own addition takes the second 01:30 in Dublin from the week
+        // before, where it takes the first in London. The rule here does
+        // not read the record, so the two cities, whose clocks agree all
+        // year, get the same kickoffs
+        $kickoffs = static function (string $zone, string $start, string $interval): array {
+            $timeline = new TimelineDefinition(new DateTimeImmutable($start, new DateTimeZone($zone)), new DateInterval($interval));
+
+            return [$timeline->getSlotTime(2)->format('j M Y H:i'), $timeline->getSlotTime(3)->format('j M Y H:i')];
+        };
+
+        expect($kickoffs('Europe/Dublin', '2026-10-18 01:30', 'P7D'))->toBe(['25 Oct 2026 00:30', '1 Nov 2026 01:30'])
+            ->and($kickoffs('Europe/Dublin', '2026-10-24 01:30', 'P1D'))->toBe(['25 Oct 2026 00:30', '26 Oct 2026 01:30'])
+            ->and($kickoffs('Europe/London', '2026-10-18 01:30', 'P7D'))->toBe(['25 Oct 2026 00:30', '1 Nov 2026 01:30']);
+
+        // Morocco puts its clocks back for Ramadan: 02:30 occurs twice on
+        // 15 February 2026, at 01:30 and at 02:30 UTC
+        expect($kickoffs('Africa/Casablanca', '2026-02-08 02:30', 'P7D'))->toBe(['15 Feb 2026 01:30', '22 Feb 2026 02:30']);
+    });
+
+    it('takes the first of the two for an interval long enough to step over the whole summer', function (): void {
+        // Eight months from 25 February is 25 October. The round before is
+        // on winter time, so adding round by round took the second 01:30,
+        // and an interval of years is not the only one that long
+        $london = new DateTimeZone('Europe/London');
+        foreach (['P8M' => '2026-02-25 01:30', 'P34W' => '2026-03-01 01:30', 'P238D' => '2026-03-01 01:30', 'P1Y' => '2025-10-25 01:30'] as $interval => $start) {
+            $timeline = new TimelineDefinition(new DateTimeImmutable($start, $london), new DateInterval($interval));
+
+            expect($timeline->getSlotTime(2)->format('j M Y H:i'))->toBe('25 Oct 2026 00:30', $interval);
+        }
+    });
+
+    it('puts two rounds a day apart at one time where a timezone skipped the day between them', function (): void {
+        // Samoa had no 30 December 2011: it moved across the date line at
+        // the end of the 29th. A local time on the 30th is moved on by the
+        // skipped day, as one in a skipped hour is moved on by the hour, so
+        // the round of the 30th and the round of the 31st are one instant.
+        // This is the one way an interval written as a duration gives two
+        // slots at one time
+        $apia = new DateTimeZone('Pacific/Apia');
+        $timeline = new TimelineDefinition(new DateTimeImmutable('2011-12-28 10:00', $apia), new DateInterval('P1D'));
+
+        $local = [];
+        foreach (range(1, 5) as $round) {
+            $local[] = $timeline->getSlotTime($round)->setTimezone($apia)->format('j M H:i');
+        }
+
+        expect($local)->toBe(['28 Dec 10:00', '29 Dec 10:00', '31 Dec 10:00', '31 Dec 10:00', '1 Jan 10:00']);
+    });
+
     it('reads the months and days of an interval from diff(), and not its count of days', function (): void {
         // 31 January to 3 March 2026 is "one month and three days" to
         // diff(), which also records 31 days in all. The timeline takes the

@@ -44,13 +44,21 @@ Settled decisions beyond the sketch:
   hour off after the change. The note first recorded this as "wall-clock
   interval arithmetic" without the distinction.
 - **A repeated local time is the first of the two** (0.3.0): PHP reads a
-  local time that occurs twice by the offset of the time it adds to, so
-  one step from a start on winter time lands on the second 01:30 of the
-  night the clocks go back, and one step from a start on summer time on
-  the first. Round-by-round addition gave the first, the round before
-  being on summer time. For an interval with no time part,
-  `IntervalArithmetic` takes the first always, so that the kickoff does
-  not depend on the season the stage starts in. An interval with a time
+  local time that occurs twice by the time it adds to: the first where
+  the timezone database marks that time as daylight-saving time, the
+  second where it does not. So one step from a start on winter time lands
+  on the second 01:30 of the night the clocks go back, and one step from
+  a start on summer time on the first. Round-by-round addition gave the
+  first in most cases, the round before being on summer time, but not in
+  all: an interval long enough to step over the summer has the round
+  before on winter time, and for `Europe/Dublin`, `Africa/Casablanca` and
+  `Africa/El_Aaiun` the database marks winter time as the daylight-saving
+  one, so that a weekly 01:30 in Dublin took the second where the same
+  kickoff in London took the first. For an interval with no time part,
+  `IntervalArithmetic` takes the first always, so that the kickoff
+  depends neither on the season the stage starts in nor on how a timezone
+  is recorded; the changelog lists the two cases as output changes. An
+  interval with a time
   part is left to PHP: its date part and its time part cannot be told
   apart after the addition, and for an interval from `diff()` they cannot
   be added separately without changing what PHP gives.
@@ -65,7 +73,9 @@ Settled decisions beyond the sketch:
   too, and a round of one slot is checked against the next like any
   other: an interval PHP adds as local time (one that `diff()` returned)
   puts two steps at one instant where the clocks skip an hour, now that
-  each step is taken from the start. The check is of the slots a round
+  each step is taken from the start (an interval of days written as a
+  duration does the same across a calendar day a timezone skipped, as
+  `Pacific/Apia` skipped 30 December 2011). The check is of the slots a round
   declares, not of the ones it fills, so that a timeline is valid or not
   whatever is placed on it.
 - **A round has a furthest time** (0.3.0): the steps are multiplied out,
