@@ -148,4 +148,41 @@ describe('PairingSpacingMetric', function (): void {
         // Meetings at 1, 2, 6: ideal gap 2; gaps [1, 4] -> deviations [1, 2] -> mean 1.5
         expect((new PairingSpacingMetric())->measure($schedule))->toBe(1.5);
     });
+
+    // Round numbers are continuous across legs and stages, so a schedule
+    // need not start at round 1. The schedule's length is the rounds it
+    // spans, not its highest round number.
+    it('measures a schedule the same whatever number its first round carries', function (): void {
+        $fromRoundOne = (new RoundRobinScheduler())->schedule(
+            qualityField(4),
+            new RoundRobinOptions(legs: 2)
+        );
+        [$a, $b, $c] = qualityField(3);
+        $metric = new PairingSpacingMetric();
+
+        foreach ([0, 1, 10, 37, 1000] as $offset) {
+            // The mirrored two-leg round robin is evenly spaced: rounds
+            // 11 to 16 are as even as rounds 1 to 6
+            $renumbered = new Schedule(array_map(
+                static fn(Event $event): Event => new Event(
+                    $event->getParticipants(),
+                    new Round(($event->getRound()?->getNumber() ?? 0) + $offset)
+                ),
+                $fromRoundOne->getEvents()
+            ));
+            expect($metric->measure($renumbered))->toBe(0.0);
+
+            // A and B meet in rounds 1, 2 and 6, A and C in rounds 3 and 4.
+            // Six rounds: ideal gaps 2 and 3; gaps [1, 4] and [1];
+            // deviations 1 + 2 + 2 = 5 over 3 gaps
+            $bunched = new Schedule([
+                new Event([$a, $b], new Round(1 + $offset)),
+                new Event([$a, $b], new Round(2 + $offset)),
+                new Event([$a, $c], new Round(3 + $offset)),
+                new Event([$a, $c], new Round(4 + $offset)),
+                new Event([$a, $b], new Round(6 + $offset)),
+            ]);
+            expect($metric->measure($bunched))->toEqualWithDelta(5 / 3, 1e-12);
+        }
+    });
 });
