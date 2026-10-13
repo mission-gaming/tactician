@@ -923,7 +923,9 @@ refused as it was before it was stored. Two things follow:
   stages that each count their rounds from 1) refuses the first pair that
   met in the same round of both. Calculate a table for each and combine
   them, or give the events round numbers that continue from one to the
-  next.
+  next. Two meetings of one pair in one round are told apart by a
+  `tie_leg` each. The message of the exception names the round and the
+  participants, and these ways out.
 
 ### Tied sets
 

@@ -68,8 +68,37 @@ describe('two results of one event', function (): void {
 
         expect(fn(): Standings => (new StandingsCalculator())->calculate($this->field, [$recorded, $again]))->toThrow(
             InvalidInputException::class,
-            'Two results reference the same event; each event can have only one result (round 1, a vs b)'
+            'Two results reference the same event; each event can have only one result (round 1, a vs b).'
+            . ' Events with the same round number, participants and tie leg are one event: if these are two'
+            . ' (one table over two stages or seasons, or two meetings in one round), calculate a table for each,'
+            . " continue the round numbers, or give each event a 'tie_leg'"
         );
+    });
+
+    // An event has no identifier, so a table over two schedules that number
+    // their rounds alike is refused at the first pair that met in the same
+    // round of both. The exception has to say what to do about it, and each
+    // of the three ways it names has to work.
+    it('are refused across two schedules numbered alike, with a message that says how to go on', function (): void {
+        $seasonOne = [new Result(new Event([$this->alice, $this->bob], new Round(1)), $this->alice)];
+        $seasonTwo = [new Result(new Event([$this->bob, $this->alice], new Round(1)), $this->bob)];
+        $calculator = new StandingsCalculator();
+
+        expect(fn(): Standings => $calculator->calculate($this->field, [...$seasonOne, ...$seasonTwo]))->toThrow(
+            InvalidInputException::class,
+            "calculate a table for each, continue the round numbers, or give each event a 'tie_leg'"
+        );
+
+        $continued = [new Result(new Event([$this->bob, $this->alice], new Round(2)), $this->bob)];
+        $legs = [
+            new Result(new Event([$this->alice, $this->bob], new Round(1), ['tie_leg' => 1]), $this->alice),
+            new Result(new Event([$this->bob, $this->alice], new Round(1), ['tie_leg' => 2]), $this->bob),
+        ];
+
+        expect(tableOf($calculator->calculate([$this->alice, $this->bob], $seasonOne)))->toBe(['a 1 1-0-0', 'b 1 0-0-1'])
+            ->and(tableOf($calculator->calculate([$this->alice, $this->bob], $seasonTwo)))->toBe(['b 1 1-0-0', 'a 1 0-0-1'])
+            ->and(tableOf($calculator->calculate([$this->alice, $this->bob], [...$seasonOne, ...$continued])))->toBe(['a 2 1-0-1', 'b 2 1-0-1'])
+            ->and(tableOf($calculator->calculate([$this->alice, $this->bob], $legs)))->toBe(['a 2 1-0-1', 'b 2 1-0-1']);
     });
 
     it('are refused whichever way round the participants are named', function (): void {

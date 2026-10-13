@@ -92,7 +92,10 @@ readonly class StandingsCalculator
      * another meeting of the same participants, so two such events are
      * two events played. Events of one round between the same participants
      * that are in fact two events need a `tie_leg` each to be counted
-     * apart.
+     * apart, and results of two schedules or stages that number their
+     * rounds alike (two seasons, two stages that each count from 1) are
+     * to be given one table each, or round numbers that continue; the
+     * message of the exception says so.
      *
      * @param array<Participant> $participants Everyone the table lists, in any order. Of two
      *                                         participants with the same ID the later is kept
@@ -118,12 +121,21 @@ readonly class StandingsCalculator
             if (isset($seenEvents[$eventId]) || ($match !== null && isset($seenMatches[$match]))) {
                 $round = $event->getRound()?->getNumber();
 
+                // The same words whether the two results hold one object or
+                // two: the hint is for the caller whose two events are in
+                // fact two, which the calculator cannot tell from one.
                 throw new InvalidInputException(
                     'Two results reference the same event; each event can have only one result'
-                    . ($round === null ? '' : sprintf(' (round %d, %s)', $round, implode(' vs ', array_map(
-                        fn(Participant $participant): string => $participant->getId(),
-                        $event->getParticipants()
-                    ))))
+                    . ($round === null ? '' : sprintf(
+                        ' (round %d, %s). Events with the same round number, participants and tie leg are one event:'
+                        . ' if these are two (one table over two stages or seasons, or two meetings in one round),'
+                        . " calculate a table for each, continue the round numbers, or give each event a 'tie_leg'",
+                        $round,
+                        implode(' vs ', array_map(
+                            fn(Participant $participant): string => $participant->getId(),
+                            $event->getParticipants()
+                        ))
+                    ))
                 );
             }
 

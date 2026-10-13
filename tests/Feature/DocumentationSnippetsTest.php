@@ -1015,7 +1015,8 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                     ]);
                     assert(false);
                 } catch (\MissionGaming\Tactician\Exceptions\InvalidInputException $refused) {
-                    assert(str_ends_with($refused->getMessage(), '(round 1, ' . $bob->getId() . ' vs ' . $alice->getId() . ')'));
+                    assert(str_contains($refused->getMessage(), '(round 1, ' . $bob->getId() . ' vs ' . $alice->getId() . '). Events with the same round number'));
+                    assert(str_ends_with($refused->getMessage(), "or give each event a 'tie_leg'"));
                 }
                 $legs = $calculator->calculate([$alice, $bob], [
                     new Result(new Event([$alice, $bob], new \MissionGaming\Tactician\DTO\Round(1), ['tie_leg' => 1]), $alice),

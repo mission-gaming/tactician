@@ -346,9 +346,10 @@ heading **Output change (fix)**.
   same participants in either order and the same tie leg (the `tie_leg`
   metadata; an event without it is leg 1), which is how `StageState` and
   the bracket engines already recognise an event. Both are refused with
-  the `InvalidInputException` the calculator already threw; its message
-  now ends with the round and the participants where the event has a
-  round. The Swiss engine, which pairs from the table, refuses such a
+  the `InvalidInputException` the calculator already threw; where the
+  event has a round, its message now goes on with the round and the
+  participants and with what to do when the two results are in fact of two
+  events. The Swiss engine, which pairs from the table, refuses such a
   state before and after storage alike, and `withResultReplaced()` repairs
   it, also in a state that came back from JSON. An event with no round has
   nothing but the object to tell it from another meeting of the same
