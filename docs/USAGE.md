@@ -1044,8 +1044,12 @@ and marks it. So:
   completed with the default of 0.2.x fails for the sake of balance.
 
 The mark is the metadata key `role_fallback` (`RoleFallback::METADATA_KEY`),
-whose value is the reason. It is absent from every schedule with balanced
-roles, and from every schedule generated under a role assignment you named.
+whose value is the reason. It is absent from every schedule the search for
+balanced roles returned, and from every schedule generated under a role
+assignment you named. (It says that the scheduler fell back, not what the
+roles turned out to be: with `backtracking: true` the roles of a fall-back
+are those a backtracking search chose, which can happen to be balanced, and
+the schedule is marked all the same.)
 It is part of the schedule's plain data, so it survives `toArray()` and
 `fromArray()`; `RoleFallback::of()` reads it:
 

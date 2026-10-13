@@ -24,6 +24,12 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * `RoundParityRoleAssignment` gives for the same participants, options,
  * constraints and randomizer.
  *
+ * The mark says that the scheduler fell back, not what the roles turned
+ * out to be. With `RoundRobinOptions(backtracking: true)` the roles of a
+ * fall-back are those a backtracking search chose, and they can happen to
+ * be balanced: such a schedule carries the mark all the same, because it is
+ * not the one the search for balanced roles would have returned.
+ *
  * The cases say what became of the search for balanced roles, and with it
  * what naming `BalancedRoleAssignment` would do for the same input. More
  * cases may be added in a later release, so a `match` over a case needs a
