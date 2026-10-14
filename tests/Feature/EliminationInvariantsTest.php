@@ -1443,7 +1443,10 @@ it('reads a bracket the same whether a round or the withdrawals during it are re
                 $pairing = $engine->pairNextRound($whenPaired);
                 expect(knownThenShape($engine->pairNextRound($whenPlayed)))->toBe(knownThenShape($pairing), $where);
 
-                // Up to two of those still in the stage leave while the round is played
+                // Up to two of those still in the stage leave while the round is played.
+                // Not while the first is: a state that holds no round takes the entrant
+                // out of its list, and the two orders are then two histories (the limit
+                // the usage guide states; StageTimesTest has what keeps the entrant)
                 $leaving = [];
                 if ($whenPaired->getRoundsPlayed() !== []) {
                     $active = array_values($whenPaired->getParticipants());
