@@ -313,7 +313,7 @@ describe('The limits on the counts of a timeline and of a session grid', functio
         Assert::assertSame(0, $result['exitCode']);
 
         expect($result['verdicts'])->toBe($expected)
-            ->and(count($expected))->toBe(48);
+            ->and(count($expected))->toBe(49);
     });
 });
 

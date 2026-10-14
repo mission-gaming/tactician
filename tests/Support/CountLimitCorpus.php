@@ -182,6 +182,15 @@ final class CountLimitCorpus
             ['grid: 1,000 sessions of 101 slots', $range, static fn() => $shape(['session_count' => 1000, 'slots_per_session' => 101])],
             ['grid: 1,000 sessions of 100 slots', 'loaded', static fn() => $shape(['session_count' => 1000, 'slots_per_session' => 100])],
             ['grid: 99,999 sessions of 99,999 slots, each count under the limit', $range, static fn() => $shape(['session_count' => 99_999, 'slots_per_session' => 99_999])],
+            // The sum refused before an instant is computed: a hundred million of them otherwise
+            ['grid: 1,000 sessions with instants of 100,000 slots each, each count under the limit', $range, static function () use ($start): SessionGrid {
+                $starts = [];
+                for ($session = 0; $session < 1000; ++$session) {
+                    $starts[] = $start->setTimestamp($start->getTimestamp() + $session * 2 * 86_400);
+                }
+
+                return new SessionGrid($starts, new DateInterval('PT1S'), 100_000);
+            }],
             ['grid: shapeOnly() given the largest integer for the sessions', $range, static fn() => SessionGrid::shapeOnly($huge)],
             ['grid: shapeOnly() given the largest integer for the slots', $range, static fn() => SessionGrid::shapeOnly(1, $huge)],
             ['grid: the constructor given the largest integer and a relative slot interval', $range, static fn() => new SessionGrid([$start], $relative('1 second'), $huge)],
