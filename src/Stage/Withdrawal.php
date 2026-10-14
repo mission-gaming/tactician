@@ -20,11 +20,16 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * The round is the number of the last round that was recorded when the
  * participant withdrew: 2 for a participant who left after round 2 was
  * recorded, whether round 2 was still being played or was finished. It was
- * in the stage when round 2 was paired and not when round 3 was. A bracket
- * engine reads that: a tie the participant was in is given to its opponent,
- * and where both entrants of a tie have withdrawn, the one who withdrew
- * first gave it to the other, who went on. Of two withdrawals after the
- * same round, the one listed first happened first.
+ * in the stage when round 2 was paired, and not when round 3 was unless
+ * round 3 names it: a round that is recorded only once it has been played
+ * was paired before a withdrawal during it, which is then recorded with
+ * the round before. So a round that names a participant, in an event or as
+ * a bye, is read as paired while the participant was in the stage, whatever
+ * round its withdrawal states. A bracket engine reads all of that: a tie
+ * the participant was in is given to its opponent, and where both entrants
+ * of a tie have withdrawn, the one who withdrew first gave it to the other,
+ * who went on. Of two withdrawals after the same round, the one listed
+ * first happened first.
  *
  * A withdrawal before the first round is recorded is not one of these: the
  * participant is removed from the entrant list and the stage is drawn

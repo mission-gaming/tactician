@@ -101,7 +101,19 @@ state as they are and derives only the round that does not exist yet.
    knows its rounds; a history states it (`Adjustment::madeAfterRound()`, a
    `Withdrawal` among the withdrawals). An engine then reads a recorded
    round N from the adjustments made after a round before N and from the
-   entrants who had not withdrawn after a round before N:
+   entrants who had not withdrawn after a round before N.
+
+   **To a state a round is paired when it is recorded**, and an
+   application may record a round only once it has been played (pair,
+   play, record). What happens while that round is played is then recorded
+   with the round before it. For a withdrawal the rounds put that right
+   themselves: a round that names an entrant, in an event or as a bye, was
+   paired while the entrant was in the stage, and so was every round
+   before it, and that is read before the round the withdrawal states, or
+   does not state. For an adjustment nothing in a round does: it is read as
+   known when the round was paired, and the remedy is the application's,
+   which records a round when it is paired where adjustments are made
+   while a round is played. With that:
    - a re-seeded bracket ranks the survivors of a recorded round from
      those adjustments, and the round that is paired next from all of them;
    - the derivation shown beside a recorded round, and with it
@@ -145,7 +157,8 @@ state as they are and derives only the round that does not exist yet.
      the state is refused (`RecordedRoundMismatch`, with the round, the
      adjusted participants and the withdrawn ones), on every call;
    - a withdrawal without a round is read from the rounds: the entrant was
-     in the stage for every round that names it. Where both entrants of a
+     in the stage for every round that names it and for those before, and
+     for no round after the last that does. Where both entrants of a
      tie have withdrawn that way, the one a later recorded round names went
      on, and where a later round names neither, or both, neither is read as
      having gone on: they share the tier of the round, and a bracket that
@@ -190,10 +203,12 @@ state as they are and derives only the round that does not exist yet.
   as having gone on anyway, so that refusal would catch nothing that is
   misread. The case that is misread is the other one: the entrant has
   withdrawn since, and a round that does not list it looks the same as a
-  round it had left before. Nothing in the round tells the two apart; the
-  round of the withdrawal does, and with it the round is read correctly
-  whether its byes are listed or not. So the fix is the withdrawal's round,
-  and the limit of a history without it is stated with the others.
+  round it had left before. Nothing in the round tells the two apart. A
+  later round that names the entrant does, and is read; where there is
+  none, the round of the withdrawal does, and with it the round is read
+  correctly whether its byes are listed or not. So the fix is the
+  withdrawal's round, and the limit of a history without it is stated with
+  the others.
 - `MatchOutcomeSelector::select()` no longer raises the deprecation of
   `tie_winner` for the outcome of an engine: it reads the tie as settled,
   and the engine raised the notice when it built the outcome.
@@ -208,15 +223,18 @@ state as they are and derives only the round that does not exist yet.
   another tie of that round) is still read by nothing.
 - A round with no tie left to play, because of withdrawals, takes no round
   number unless it is recorded. Whether a recorded round is such a round is
-  told by the withdrawals' rounds: it is that round when one of its ties
-  could be played when it was paired. Where a withdrawal has no round, it
-  is told by whom the recorded round names: it is that round when it names
-  both entrants of one of the ties the bracket has there, as the tie itself
-  or, in a round drawn by hand, each against somebody else. The round after
-  it cannot name both, because one of the two had withdrawn before it was
-  paired. A round drawn by hand that names at most one entrant of every
-  such tie is then read as the round after it, which pairs the same
-  entrants.
+  told by who was in the bracket when it was paired: it is that round when
+  one of the ties the bracket has there could be played then. An entrant
+  the recorded round or a later one names was in the bracket, whatever its
+  withdrawal states; one that no round from there on names was not, where
+  its withdrawal states an earlier round or none. So a round drawn by hand
+  is known by naming the entrants of one of the bracket's ties, as the tie
+  itself or each against somebody else, and the round after a round nobody
+  played cannot name both, because one of the two had withdrawn before it
+  was paired. A round drawn by hand that leaves out, of every tie the
+  bracket has there, an entrant who has withdrawn at a time the state does
+  not know and whom no later round names, is read as the round after it,
+  which pairs the same entrants.
 - Everyone a state has seen and no longer lists as active is read as
   withdrawn, also a participant whose place the state does not know (a state
   stored before the entrant list was kept): such a participant is never

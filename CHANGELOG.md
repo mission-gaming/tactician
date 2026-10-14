@@ -1380,6 +1380,20 @@ entry on the engine fingerprint.
     the other, who went on: an entrant who advanced from an uncontested
     final and withdraws afterwards is still first.
 
+    **To a state a round is paired when it is recorded.** An application
+    that pairs a round, has it played and records it only then (the loop
+    in the README) records what happens during that round before the
+    round. A withdrawal is read correctly either way: a round that names a
+    participant, in an event or as a bye, was paired while it was in the
+    stage, and the engines read that before the round its withdrawal
+    states, in all three engines. An adjustment is not: one made while a
+    round is played and recorded before the round is read as known when
+    that round was paired (the ranking of a re-seeded round, and the
+    derivation beside the round in a re-seeded bracket and a Swiss stage).
+    Where adjustments are made while a round is played, record the round
+    when it is paired (`withRoundPlayed($pairing, [])`) and add its results
+    with `withAdditionalResults()`.
+
     **Without a round the time is not known, and it is not guessed.** An
     adjustment or a withdrawal reaches a state without one from a history
     that does not state it, or from data stored by an earlier revision of
@@ -1396,9 +1410,10 @@ entry on the engine fingerprint.
     read from the rounds that name the entrant: of two withdrawn entrants
     of a tie, the one a later recorded round names went on, and neither is
     read as having gone on where a later round names neither (they share
-    the tier of the round); and an entrant a round does not name is taken
-    to have left before it, which misreads a round supplied without its
-    byes once an entrant who had one withdraws. State the rounds, and
+    the tier of the round); and an entrant neither a round nor a later
+    one names is taken to have left before it, which misreads a round
+    supplied without its byes once an entrant who had one withdraws before
+    the next round. State the rounds, and
     supply the byes of every round. A bracket on a fixed path and a double
     elimination bracket rank nothing and refuse no state for this.
   - **The outcome of a bracket says who went on from its last tie.**

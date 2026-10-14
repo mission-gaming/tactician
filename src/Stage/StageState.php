@@ -728,6 +728,12 @@ final readonly class StageState
      * round is still read as having been in it, and where both entrants of
      * a bracket tie have withdrawn, the one who withdrew first gave the tie
      * to the other.
+     *
+     * A round that is recorded after this call and names the participant
+     * (it was paired before the withdrawal and is recorded once it has
+     * been played) is read as paired while the participant was in the
+     * stage: the tie it holds for the participant is given away, and the
+     * round is not read as paired without it.
      */
     public function withoutParticipant(Participant $participant): self
     {
@@ -884,6 +890,14 @@ final readonly class StageState
      * the round may not be after the last recorded one. getAdjustments()
      * therefore returns the adjustment with its round, which is another
      * object than the one given when that one had none.
+     *
+     * The last round the state holds is the last one recorded, not the
+     * last one paired. An adjustment made while a round is played that is
+     * not recorded yet is recorded as made before that round, and is read
+     * as known when the round was paired: nothing in a round says which
+     * adjustments it was paired from. Record a round when it is paired
+     * (withRoundPlayed() with no results, then withAdditionalResults())
+     * where adjustments are made while a round is played.
      *
      * An adjustment with no round reaches a state only through
      * fromHistory(), from an application that does not say it, or from
