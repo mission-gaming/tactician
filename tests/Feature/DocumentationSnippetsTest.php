@@ -692,6 +692,32 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ],
             [],
         ],
+        'the figures of a repack outcome' => [
+            'docs/USAGE.md',
+            '$plain->getLoneEventSessions()',
+            [
+                "0\n0\n[2]\n0\n[\"n08\"]\n"
+                . "{\"unplaced\":0,\"gap_slots\":0,\"lone_event_sessions\":[2],\"idle_sessions\":0,\"moved\":[\"n08\"]}\n",
+            ],
+            [],
+        ],
+        'a repack outcome ranked by its figures' => ['docs/USAGE.md', 'echo json_encode($rank($plain))', ["[0,1,0,0,1]\n"], []],
+        'repack objectives' => [
+            'docs/USAGE.md',
+            '$keeping->getMovedEventIds()',
+            [
+                "[]\n2\n0\n[0,0,1,0,0]\n[0,0,0,0,1]\n"
+                . '{"format_version":1,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,'
+                . "\"throw_on_violations\":false,\"objectives\":[\"least_churn\",\"fewest_idle_sessions\"]}\n",
+            ],
+            [],
+        ],
+        'the shortest grid' => [
+            'docs/USAGE.md',
+            '$shortest->isProvenShortest()',
+            ["bool(true)\n3\n[1,2]\n{\"3\":0}\nbool(true)\n6\nbool(false)\n[1,2,3,4]\n"],
+            [],
+        ],
         'repack step budget flag' => ['docs/USAGE.md', '$starved->isBudgetExhausted()', ["bool(false)\nbool(true)\n"], []],
         // The literal is the documented fingerprint of the section's first repack
         'repack outcome fingerprint' => [

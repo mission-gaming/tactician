@@ -3,7 +3,8 @@
 **Status: IMPLEMENTED** in 0.2.0, with the additions under
 [API additions](#api-additions-022) in 0.2.2, the fixes under
 [Placement fixes](#placement-fixes-023) in 0.2.3 and the changes under
-[Order and contiguity](#order-and-contiguity-030) in 0.3.0. It was built from an external
+[Order and contiguity](#order-and-contiguity-030) and
+[Objectives](#objectives-030) in 0.3.0. It was built from an external
 brief (v2, the revision with an empty pinned set on the reference
 instance). This note doubles as the decisions log of that
 implementation: every judgement call made while building it is recorded
@@ -1091,6 +1092,360 @@ signature changed.
     for them at small budgets and changed its work, and so outcomes, at
     the default.
 
+## Objectives (0.3.0)
+
+Decisions made when the outcome was given figures to rank it by, a
+movable event a current position, the options a list of objectives, and
+the library a search for the shortest grid (issue #50). Everything here
+is additive: a request that names no objective is repacked exactly as
+before, whether or not its events state current positions, and the
+golden fixtures are untouched.
+
+50. **A current position is a position of the request's grid, and a
+    fact.** `MovableEvent` takes a session and a slot, the two indexes a
+    pinned event and an assignment have, so that "moved" is one
+    comparison: an event is moved when it stated a current position and
+    is assigned another one. A session alone was considered as the
+    position (a move within a session is a smaller thing than a move to
+    another night) and not taken: a slot is a time, a participant told
+    20:00 who plays at 21:30 has been moved, and a caller who cares only
+    about sessions can count those from the ids returned. It is a fact
+    and never a demand, so nothing about it is refused but a negative
+    index or half a position. A position the grid does not have is
+    accepted, where a pin there throws (decision 5): a pin must be
+    honoured and an event whose session was taken off the grid simply
+    cannot stay, and refusing it would have made the search for the
+    shortest grid impossible with current positions (every grid shorter
+    than the present one has events beyond it). Such an event counts as
+    moved wherever it is placed. A position held by pinned events (the
+    slot full, or a participant pinned there) is not refused either: the
+    event moves. Two events that cannot both stay where they say they
+    are (one participant in both, or more events than the slot holds)
+    are a current schedule that was not proper, which is the caller's
+    to have and not an error of the request; one of them stays, taken in
+    the repacker's order of events.
+51. **Moved means placed elsewhere.** An event with no current position
+    is never moved, whatever happens to it, and an unplaced event is not
+    moved: it is unplaced, which is counted first. An event whose time
+    is not on the grid and whose caller has no index for it states no
+    position and is not counted; the caller knows those before the
+    repack.
+52. **Five figures, on every outcome, as accessors of the outcome.**
+    Unplaced events and gap slots are counted from the lists an outcome
+    already has (`getUnplacedCount()`, and `getGapSlotCount()`, which
+    adds up the gap slots of the `ContiguityBroken` violations: the
+    issue calls them waits, and the library already had the word).
+    Lone-event sessions, idle sessions and moved events cannot be
+    counted from an outcome, which holds neither the participants of an
+    event nor the pinned events, so the repacker counts them
+    (`Internal\PlacementMetrics`) and the outcome holds them: three
+    constructor arguments after the budget flag, optional, so that an
+    outcome built by hand states them as it states its lists and has
+    none when it states none. A value object for the figures was
+    considered and not added: the acceptance criterion asks for
+    `RepackOutcome` alone, and five accessors are that.
+53. **A lone-event session is a figure of the grid.** A session that
+    holds exactly one event, pinned events counted, where that event is
+    a movable one: a venue opened for one event. The other reading (a
+    participant with a single event in a session) is what the
+    consolidation weight already pursues, and it counts something else:
+    a session of two events between four participants has four such
+    participants and wastes no venue. A session whose one event is
+    pinned is not counted, by the rule of decision 6: it is history the
+    repack did not arrange. An empty session is not counted.
+54. **An idle session lies strictly between a participant's first and
+    last session with an event**, pinned events counted as events, and
+    the figure is the sum over the participants with a placed movable
+    event (decision 6 again: a participant whose events are all pinned
+    is history). The sessions before the first and after the last are
+    not idle: a participant whose season starts late has not waited.
+    Every session between counts, although some cannot be avoided (an
+    odd round robin on sessions of one round has a bye a round).
+55. **The figures are counted over lists of participants.** A repack is
+    pairwise by its types: `MovableEvent` and `PinnedEvent` take two
+    participants each, so there is no event with more for the figures to
+    answer wrongly about, and nothing to refuse (ADR 0003). The counting
+    itself reads an event as a list of participants of any length, so
+    that 2.0 adds a type and not a second way of counting.
+56. **The figures are written, as part of version 1 of the outcome's
+    form.** `toArray()` gains a last key, `metrics`, with the five. The
+    form is written and never read, and 0.3.0 is the release that fixes
+    what version 1 of every form is (ADR 0005), so the key is part of
+    version 1 and the form takes no second version; ADR 0005 names it
+    with the other keys 0.3.0 added. `RepackOptions` gains the optional
+    key `objectives` on the same footing, written only when there is
+    one, so that options with no objective serialize as they did. The
+    fingerprint is unchanged: scheme `v1` names its keys (decision 29),
+    and the figures follow from the request and the assignments, which
+    it covers.
+57. **Objectives are an ordered list of an enum on the options.**
+    `RepackOptions(objectives: [...])`, most important first, each case
+    at most once (`RepackObjective`: `LeastChurn`,
+    `FewestLoneEventSessions`, `FewestIdleSessions`), and the backing
+    strings in plain data. Weights were not used: the two weights the
+    options already have trade one soft preference against another
+    inside the planner's score, where an objective has to rank whole
+    schedules, and a lexicographic order is something a caller can
+    state and a test can hold the repacker to.
+58. **Objectives rank after events placed and gap slots, and never cost
+    either.** The schedule of the request with no objective is made
+    first, on fresh budgets, exactly as a repack without objectives
+    makes it. Every schedule made after it is compared with it by
+    events placed, then gap slots, then the objectives in their order,
+    and it stands on a tie. So a request with objectives never places
+    fewer events than the same request without them, and never as many
+    with more gap slots; this is a property of the construction and not
+    of the searches, and a test holds it. The two weights and the late
+    starts rank after every objective: the weights chose the schedule
+    the objectives start from, and a late start is an objective of the
+    same kind. Putting churn ahead of contiguity was considered,
+    because it is what a caller with a published calendar may want; it
+    was not done, the order of decisions 41 and 42 being the brief of
+    this change, and what it would buy is measured below so that the
+    choice can be made with numbers.
+59. **Inside one schedule's making, the objectives decide only where
+    nothing above them is at stake.** `solve()` is the old body of
+    `repack()` from the round layout to the reasons, and it takes an
+    optional score. With one, it prefers the rounds as laid out over
+    the planned schedule when both place as many events and neither has
+    a gap, and the third schedule over the one before it when both
+    place as many with as many gap slots. In both cases the events
+    placed and the gap slots of what `solve()` returns are what they
+    are with no score: the first choice is made only where the search
+    for fewer gap slots has nothing to do and the third schedule is
+    made or not on the count of events alone.
+60. **The fewest moved events are searched for by holding events in
+    place.** The events that can stay at their current positions are
+    held there as pins are, and the rest are placed around them by
+    `solve()`: the repacker's own steps on a request with more pins.
+    This is the approach that fits the usual request, a season with
+    whole rounds played in which a few events have lost their position
+    or been added: nearly everything is held, a handful of events is
+    placed, and the result has no moved event at all. Three things
+    follow where that is not enough.
+    - *More events left out than the schedule with no objective leaves.*
+      The last placement step is run on the schedule with the held
+      events free again, and stops when as many are placed. An
+      alternating path moves the few events on it and leaves the rest
+      where they are, which is the least-churn way to make room that
+      the library already had.
+    - *As many placed, more gap slots.* The search for fewer gap slots
+      is run in the same way. It changes the events around a gap first.
+    - *Still worse on one of the two.* The held events that had to do
+      with it are let go and the rest are held for another attempt:
+      those a participant with a gap has in the session of the gap, or
+      every event of those sessions when that lets go of nothing; and
+      every event of the participants of an unplaced event when more
+      are unplaced. Three attempts at most (`KEEP_ATTEMPTS`), stopping
+      at the first that is level with the schedule with no objective on
+      events and gap slots, since holding fewer events can only move
+      more.
+
+    Letting go of whole participants at the first sign of trouble was
+    the first version and was replaced: on a season of 36 with five
+    events re-pinned by hand it let go of 276 events to fix six gap
+    slots and ended with the schedule with no objective, 1,057 events
+    moved, where the version above moves 9.
+    Which events are held where two cannot both stay is decided in the
+    repacker's order of events, so by the structure of the request and
+    by an id only between events of the same two participants. The
+    unplaced events of an attempt that the last placement step or the
+    gap search changed get their reasons again by the planner's rule,
+    and the capacity figures of an attempt are those of the request
+    once the held events are added back to the demand and the capacity
+    it was planned with: a participant never has more events held than
+    it has positions free, so every shortfall is what it is with
+    nothing held.
+61. **The other two objectives are a tie-break and a repair.** They
+    decide between the schedules that are made anyway (decision 59),
+    and then `Internal\ObjectivePolish` moves single events to a free
+    position where the schedule is then strictly better on gap slots
+    followed by the objectives in their order: the one event of a
+    lone-event session to a session that has events, or an event of
+    another session into it; an event of a participant with an idle
+    session into another session between that participant's first and
+    last; and, for churn, an event back to its current position. A
+    move is refused when an unplaced event would fit the position it
+    leaves, so that `no_slot_available` stays literally true (decision
+    11). It is a repair, not a search: it stops at the first schedule
+    no single move improves. A search for these two was not built:
+    both are small on the requests the repacker is for (see the
+    figures: a season on a grid sized for it has no lone-event session
+    at all), and what a search would cost is the planner's choice of
+    sessions made again under another score.
+62. **Everything an objective adds runs on what the two budgets have
+    left.** The schedule with no objective spends from fresh budgets as
+    before; the attempts, the repairs they run and the polish spend
+    what is left of the same two, as the third schedule does (decision
+    46), so a repack still spends at most twice `stepBudget`. The
+    polish counts the moves it weighs against a limit of its own
+    (2,000, a share of it below the default budget, as decision 49 has
+    every such limit) and each costs a step of the second budget. The
+    budget flag keeps its meaning: it is true when any search of any
+    schedule was stopped by a budget. What no budget covers is the work
+    that is not counted in steps, done once for each schedule made: the
+    round layout of an attempt runs on its own limit as every layout
+    does. Making the first attempt before the schedule with no
+    objective, and skipping that schedule when the attempt comes back
+    with every event placed and no gap, would make the usual request
+    cheaper than a repack with no objective. It was not done, because
+    the attempt would then spend from the budgets the schedule with no
+    objective needs whole, or a repack would spend up to four times the
+    budget; the figures below say what it would save.
+63. **The shortest grid is searched one number at a time.**
+    `ShortestGridFinder::find()` takes the events, a function from a
+    number of sessions to a grid, and the range to search, and returns
+    the first number, going up, on which a repack leaves nothing
+    unplaced. A bisection was not used because it needs "places
+    everything" to be monotone in the number of sessions, and it is
+    not known to be: the caller's function need not make a larger grid
+    a superset of a smaller one, and the repacker is a bounded search.
+    It was measured (below) and held on every request tried, which is
+    not a proof. Going up one at a time is right whatever the truth is,
+    and costs little, because the numbers that cannot work are skipped
+    without a repack: a grid is ruled out when a pin is off it, when it
+    has fewer places than the request has events, or when a participant
+    has more events than it has positions. The result says which
+    numbers were ruled out (a proof) and which were repacked and left
+    events unplaced (the repacker found no placement, which is not
+    one), and `isProvenShortest()` is true only when no repack failed
+    below the number found. The search is bounded by the largest number
+    the caller allows, and says when it reached it without a result.
+    "Places everything" is no unplaced event; gaps are reported on the
+    outcome and are the caller's to judge.
+
+What was measured (PHP 8.4, no OPcache, on a machine that was doing
+other work at the time, so the times are indications), with a
+reference written outside the repository that shares no code with the
+library or its tests.
+
+*The figures and the hard rules.* 1,640 generated requests of 8 to 40
+participants, each with and without its current positions and under
+five settings of the objectives (none, each one alone, all three),
+14,760 outcomes: 1,200 seasons (a round robin of one or two legs laid
+out round by round on sessions of one to four slots, its first rounds
+played and pinned, every other event at its place, and then one of six
+changes: nothing, one or two rounds postponed, a session a slot
+shorter, new events, the last session taken away, up to three events
+re-pinned by hand elsewhere) and 440 round robins with an eighth to a
+half of their events pinned at positions drawn at random and the rest
+saying where a random proper schedule had them. Every figure of every
+outcome equalled its definition counted by brute force; no participant
+was double-booked, no slot was past its capacity, no event was lost or
+duplicated and no unplaced event fitted a free position; no outcome
+with an objective placed fewer events than the one with none, or as
+many with more gap slots; and a request with current positions and no
+churn objective had the fingerprint of the same request without them.
+Against a copy of the source as it stood before the change, 1,000 of
+those kinds of request at the default budget and 300 at 2,000 steps
+came back with the same assignments, unplaced events, violations,
+fingerprint and budget flag, with current positions stated and no
+objective.
+
+*What the objectives achieve*, in sums over the requests with current
+positions (events placed, gap slots, lone-event sessions, idle
+sessions, moved events):
+
+| Requests | Setting | Placed | Gap slots | Lone | Idle | Moved |
+|---|---|---|---|---|---|---|
+| 1,200 seasons (322,566 events) | none | 320,863 | 1,556 | 13 | 6,340 | 302,521 |
+| | fewest moved | 320,864 | 1,150 | 20 | 3,779 | 40,856 |
+| | fewest lone-event sessions | 320,863 | 1,556 | 0 | 6,327 | 302,520 |
+| | fewest idle sessions | 320,863 | 1,530 | 12 | 4,940 | 302,421 |
+| | all three, in that order | 320,864 | 1,143 | 2 | 3,688 | 40,848 |
+| 440 scattered (95,356 events) | none | 95,356 | 3,665 | 0 | 263 | 81,394 |
+| | fewest moved | 95,356 | 3,192 | 0 | 200 | 50,071 |
+| | fewest idle sessions | 95,356 | 3,661 | 0 | 6 | 81,405 |
+| | all three | 95,356 | 3,191 | 0 | 175 | 50,061 |
+
+By the change made to a season, the events moved with no objective and
+with the fewest moved asked for: nothing changed 52,498 and 7,192; a
+round postponed 51,496 and 5,819; a slot lost 53,150 and 5,241; new
+events 47,568 and 4,412; the last session taken away 49,120 and 7,264;
+events re-pinned by hand 48,689 and 10,928. The seasons in which
+nothing changed and events still move are the ones whose calendar has a
+gap that another schedule avoids (a field of odd size has a bye in the
+middle of a session): contiguity ranks first, so those events move.
+
+*Against every placement.* 6,000 requests of three to six events
+between three to six participants on up to six positions, with up to
+two pins and current positions on most events, some colliding and some
+off the grid. The repacker reached the most events placed and the
+fewest gap slots on all of them. Among the placements with both, it
+reached the fewest moved events on 5,578 (93.0%), with a mean excess of
+0.076 events and a worst of 3 (with no objective: 35.3%, 1.155 and 6);
+the fewest lone-event sessions on 5,807 (96.8%), mean excess 0.032,
+worst 1 (88.2%, 0.125, 3); the fewest idle sessions on 5,746 (95.8%),
+mean excess 0.045, worst 2 (90.3%, 0.136, 4). Where the fewest moved
+events are missed on these, it is often because another event could
+have been the one left out (three of the first six such requests looked
+at): which events stay unplaced is decided by
+the placement steps and not by an objective, and an exchange of an
+unplaced event for a moved one would need its reasons given again and
+was not built.
+
+*Time*, median and 90th percentile in milliseconds, by number of
+participants, with no objective and with the fewest moved events (the
+other two objectives take about what none takes): seasons of 8 to 15, 4
+/ 261 and 6 / 463; of 16 to 23, 32 / 389 and 48 / 766; of 24 to 31, 211
+/ 1,010 and 258 / 1,354; of 32 to 40, 562 / 2,162 and 611 / 2,393.
+Scattered pins of 8 to 15, 39 / 421 and 329 / 1,278; of 16 to 23, 275 /
+486 and 811 / 1,554; of 24 to 31, 477 / 893 and 1,172 / 2,126; of 32 to
+40, 1,076 / 1,820 and 1,928 / 3,483.
+
+*The ids.* Renaming every participant and event (and exchanging the
+two participants of every event) changed nothing that decision 39
+promises (the events at every position, the unplaced counts, the
+violations) on 280 requests with no objective, and on the same 280 with
+the two objectives that are not churn. It does change the count of
+moved events there: the schedule is the same only up to a symmetry of
+the request, and the current positions are not symmetric (a review
+counted 32 of 150 seasons and 5 of 60 scattered requests with another
+count of moved events and nothing else changed, with no objective).
+With the fewest moved events it changed something else as well (the
+count of idle sessions or of late starts, the events at a position) on
+11 of 200 seasons and 4 of 80 scattered requests. The cause is decision
+39 meeting decision 50: the order of
+the participants is made from the request without its current
+positions, an id decides between participants that order cannot tell
+apart, and two such participants can have different current positions.
+Giving the order the current positions would mend it for the schedules
+made around held events and would make the schedule with no objective
+another one under this option than without it, which decision 58 rules
+out; it was left, and stated in the usage guide.
+
+*Two choices that were not taken, in numbers* (400 of the seasons, 150
+of the scattered requests). Holding every event that can stay and
+placing the rest, with no repair and no comparison, which is what churn
+ahead of contiguity and of events placed would mean: the seasons move
+1,364 events (12,271 with the objective as built, 94,169 with none) and
+pay for it with 87 events fewer placed (100,117 of 100,790 for 100,204)
+and 872 gap slots for 367; the scattered requests place 2,287 events
+fewer. Churn ahead of contiguity only, with events placed still first,
+lies between the two and was not measured separately. And making that
+held schedule first: it places everything with no gap on 206 of the
+400 seasons, where it takes 3 milliseconds at the median and 14 at the
+90th percentile against 20 and 425 for the repack with the objective as
+built, because the schedule with no objective is never made; on the
+scattered requests it does so on 1 of 150.
+
+*The shortest grid.* 320 requests (seasons with their played rounds
+pinned, scattered pins, random multigraphs with unequal loads, and
+round robins of an odd number with a few events on top, for which
+counting allows one session fewer than a placement needs), each on a
+grid of sessions of one to five slots. The first number of sessions
+that counting did not rule out placed everything on 319, and the next
+one on the last, so `isProvenShortest()` was true on 319; a search took
+27 milliseconds at the median, 372 at the 90th percentile and 1.6
+seconds at most. The four numbers above the one found placed
+everything too on every request: no case against monotonicity was
+found, and none is needed for the search to be right.
+
+No benchmark subject was added for an objective: `composer
+bench-compare` runs one benchmark class against two copies of the
+source, and a subject that states a current position or an objective
+does not run against a copy from before this change.
+
 ## Testing
 
 Per the brief: property tests over seeded random multigraphs (properness,
@@ -1276,3 +1631,39 @@ gives depends on the greedy set the search starts from, which follows
 the repacker's own order of the events: a test could only repeat what
 the code returns, and none was written. The test file says so where
 the search is tested.
+
+The objectives (decisions 50 to 63) have a feature test of their own
+(`tests/Feature/RepackObjectivesTest.php`), on seasons of 6 to 13
+participants and on requests small enough to try every placement of.
+The figures of every outcome must equal their definitions counted from
+the request and the assignments (`tests/Support/RepackFigures.php`,
+written apart from `PlacementMetrics` and reading no violation, so it
+checks the audit's gap slots too), under six settings of the
+objectives. No setting may place fewer events than none or as many with
+more gap slots; a request with no objective must have the assignments,
+violations and fingerprint of the same request without its current
+positions; the outcome must not depend on the order of the lists; an
+outcome whose budget flag is false must be the outcome of every larger
+budget, with objectives too; and the hard rules are checked from the
+assignments. The fewest moved events are stated on cases a reader can
+check (a season in which nothing changed moves nothing, at four sizes
+up to 40; a postponed round goes to the session added for it), and
+held to a floor against `RepackBruteForce::fewestGapSlotsThenMoved()`
+on 150 small requests: the optimum on nine in ten and never more than
+two events from it, which is what the wider measurement above supports
+and not a property the search guarantees. The other two objectives
+have one stated case each. The
+pairwise limit is tested where it lives: `MovableEvent` and
+`PinnedEvent` take two participants and no list, and
+`PlacementMetrics` counts an event of three. The two internal classes
+and the finder have unit tests, among them each refusal of the repair
+(a gap it would open, a position held by an event, by a pin or full,
+and an unplaced event that would fit the position left). A mutation
+run of each of the two (`composer mutation -- --path=<file>`, with the
+tests of `phpunit.mutation.xml`) reported 89 of 105 changes noticed in
+`PlacementMetrics` and 148 of 176 in `ObjectivePolish`. Most of the
+changes left are equivalent (a sort of a list already in order, a
+shortcut that skips no result, a value stored where only its key is
+read); the rest narrow the moves the repair tries for the two objectives
+that are not churn (a slot or a session fewer in a loop), which no unit
+test states and the feature test does not run under that configuration.
