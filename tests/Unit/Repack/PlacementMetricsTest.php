@@ -61,6 +61,22 @@ describe('PlacementMetrics', function (): void {
             ->and($metrics->idleSessions([]))->toBe(0);
     });
 
+    it('lists the lone-event sessions ascending, whatever order the events come in', function (): void {
+        $metrics = new PlacementMetrics([0 => [0, 1], 1 => [2, 3], 2 => [4, 5]], [], []);
+
+        expect($metrics->loneEventSessions([0 => [4, 0], 1 => [1, 0], 2 => [3, 0]]))->toBe([1, 3, 4]);
+    });
+
+    it('counts the idle sessions of every participant, after one that has none', function (): void {
+        // Participant 0 plays in sessions 0 and 1, with no session between
+        // them; participant 2, met after it, plays in sessions 0 and 3
+        $metrics = new PlacementMetrics([0 => [0, 1], 1 => [0, 3], 2 => [2, 4], 3 => [2, 5]], [], []);
+        $positions = [0 => [0, 0], 1 => [1, 0], 2 => [0, 1], 3 => [3, 0]];
+
+        expect($metrics->idleSessionsByParticipant($positions))->toBe([2 => [1, 2]])
+            ->and($metrics->idleSessions($positions))->toBe(2);
+    });
+
     it('counts a placed event as moved when it is not at its current position', function (): void {
         $metrics = new PlacementMetrics(
             [0 => [0, 1], 1 => [2, 3], 2 => [4, 5], 3 => [6, 7], 4 => [8, 9]],

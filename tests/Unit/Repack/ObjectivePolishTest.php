@@ -116,6 +116,60 @@ describe('ObjectivePolish', function (): void {
             ->and($polish->improve($positions, []))->toBe([0 => [0, 0], 1 => [0, 1]]);
     });
 
+    it('goes on to the next move when one that fits makes nothing better', function (): void {
+        // Event 0 back at slot 0 would open a gap for participant 0 (as
+        // above); event 3, in another session, can go back at no cost
+        $polish = objectivePolish(
+            [RepackObjective::LeastChurn],
+            [0 => [0, 1], 1 => [0, 2], 2 => [1, 3], 3 => [6, 7]],
+            [],
+            [0 => 3, 1 => 2],
+            2,
+            [0 => [0, 0], 3 => [1, 0]],
+            new StepBudget(100)
+        );
+
+        expect($polish->improve([0 => [0, 1], 1 => [0, 2], 2 => [0, 2], 3 => [1, 1]], []))
+            ->toBe([0 => [0, 1], 1 => [0, 2], 2 => [0, 2], 3 => [1, 0]]);
+    });
+
+    it('frees the position an event leaves for the participants it had there', function (): void {
+        // Participant 0 is in both events. Event 1 goes back to slot 1,
+        // which leaves slot 0 free for participant 0, and event 0 then goes
+        // back there
+        $polish = objectivePolish(
+            [RepackObjective::LeastChurn],
+            [0 => [0, 1], 1 => [0, 2]],
+            [],
+            [0 => 3],
+            2,
+            [0 => [0, 0], 1 => [0, 1]],
+            new StepBudget(100)
+        );
+
+        expect($polish->improve([0 => [0, 2], 1 => [0, 0]], []))->toBe([0 => [0, 0], 1 => [0, 1]]);
+    });
+
+    it('keeps an event at its position, for every later move, when its own move was refused', function (): void {
+        // As in the case above: event 0 may not leave slot 1 of session 0
+        // while unplaced event 2 would fit there. Event 3, of participant
+        // 0 as well, says it was at that slot, and must not join event 0
+        // there; participant 2 is pinned in session 1, so event 2 does not
+        // fit where event 3 is
+        $polish = objectivePolish(
+            [RepackObjective::LeastChurn],
+            [0 => [0, 1], 1 => [4, 5], 2 => [2, 3], 3 => [0, 6]],
+            [[[2, 9], 0, 0], [[2, 8], 1, 0]],
+            [0 => 2, 1 => 1],
+            2,
+            [0 => [0, 0], 3 => [0, 1]],
+            new StepBudget(100)
+        );
+        $positions = [0 => [0, 1], 1 => [0, 1], 3 => [1, 0]];
+
+        expect($polish->improve($positions, [2]))->toBe($positions);
+    });
+
     it('moves the one event of a lone-event session to a session that has an event', function (): void {
         $polish = objectivePolish(
             [RepackObjective::FewestLoneEventSessions],
