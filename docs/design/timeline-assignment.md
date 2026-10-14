@@ -89,7 +89,33 @@ Settled decisions beyond the sketch:
   PHP's range long before the seconds do. The limit is on the distance
   from the anchor, so it does not guard a start that is itself near the
   end of PHP's range, and an interval made from a relative string is not
-  under it: that one is still added once per step.
+  under it: that one is still added once per step, and has a limit on
+  its steps instead (below).
+- **A count the caller gives has a stated limit wherever work is done in
+  proportion to it** (0.3.0). Two counts are such: the slots of a round,
+  and a round number under an interval made from a relative string. The
+  slots of a round are visited one by one, by the
+  definition for its first round and by the assigner for every round,
+  because the check that they rise cannot be done by arithmetic: an
+  interval PHP adds as local time, or one of days across a calendar day
+  a timezone skipped, puts two steps at one instant, and only the
+  timezone's clocks say where. A definition of the largest integer of
+  slots therefore looped without end once that check existed, where
+  0.2.3, which checked nothing, built it at once. A round has at most
+  10,000 slots (`TimelineDefinition::MAX_SLOTS_PER_ROUND`): a kickoff a
+  minute for a week, and a few hundredths of a second to check. The
+  check against the next round is two slot times and needs no limit. A
+  round number costs nothing under an interval written as a duration,
+  whose steps are multiplied out, and one addition per step under an
+  interval made from a relative string, which has no multiple: that one
+  takes at most 100,000 steps (`IntervalArithmetic::MAX_RELATIVE_STEPS`,
+  a round a day for 273 years, a twentieth of a second). 0.2.3 added
+  once per round for every interval and had no limit, so a round number
+  near the largest integer did not return. The slots of a round under
+  such an interval are each computed from the one before, in one pass
+  (`IntervalArithmetic::series()`): computing each from the round's
+  first slot cost the square of the slot count in additions, 25 seconds
+  for 10,000 slots.
 - **One check of who plays: nobody is in two events at one instant.** The
   sketch below lists "a participant assigned overlapping slots" among the
   things that fail loudly. The assigner at first validated capacity and

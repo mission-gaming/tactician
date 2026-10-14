@@ -215,11 +215,11 @@ final readonly class TimelineAssigner
         }
 
         // Every slot the round declares, in order: each after the one
-        // before it, and the last before the next round's first
+        // before it, and the last before the next round's first. The
+        // definition limits how many there are, and gives them in one pass
         $slotTimes = [];
         $lastSlot = null;
-        for ($slot = 0; $slot < $timeline->getSlotsPerRound(); ++$slot) {
-            $time = $timeline->getSlotTime($roundNumber, $slot);
+        foreach ($timeline->roundSlotTimes($roundNumber) as $slot => $time) {
             if ($lastSlot !== null && $time <= $lastSlot) {
                 throw new InvalidConfigurationException(
                     "Round {$roundNumber} has two slots that are not at rising times: slot {$slot} is at "

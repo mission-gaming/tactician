@@ -2089,6 +2089,19 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($reason(static fn () => new TimelineDefinition($evening, new DateInterval('PT2H'), 2, new DateInterval('PT1H'))) === null);
                 assert($reason(static fn () => (new TimelineDefinition($evening, new DateInterval('P7D')))->getSlotTime(9_000_000_000_000_000_000))
                     === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                // "a round number has no limit where the interval is a duration", and for an
+                // interval made by createFromDateString() "100,000, which is round 100,001"
+                assert($reason(static fn () => (new TimelineDefinition($evening, new DateInterval('P7D')))->getSlotTime(1_000_000)) === null);
+                $relativeWeek = DateInterval::createFromDateString('1 week');
+                assert($reason(static fn () => (new TimelineDefinition($evening, $relativeWeek))->getSlotTime(100_001)) === null);
+                assert($reason(static fn () => (new TimelineDefinition($evening, $relativeWeek))->getSlotTime(100_002))
+                    === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                // "A round has at most 10,000 slots ... (`TimelineDefinition::MAX_SLOTS_PER_ROUND`)"
+                assert(TimelineDefinition::MAX_SLOTS_PER_ROUND === 10_000);
+                $thousandYears = new DateInterval('P1000Y');
+                assert($reason(static fn () => new TimelineDefinition($evening, $thousandYears, 10_000, new DateInterval('PT1S'))) === null);
+                assert($reason(static fn () => new TimelineDefinition($evening, $thousandYears, 10_001, new DateInterval('PT1S')))
+                    === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
                 PHP,
         ],
         // "A grid with sessions at 20:00 and 20:25 and two slots 25 minutes apart is
@@ -2117,6 +2130,31 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
                     assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::OverlappingTime);
                 }
+                // "A grid has at most 100,000 positions (`SessionGrid::MAX_POSITIONS`) ... The number
+                // of sessions, `slots_per_session`, each slot count in `slots_per_session_overrides`
+                // and their sum are each refused above it", and "`capacity_per_slot` has a limit as
+                // well, of a million million"; under Unbounded Capacity, "a number written to mean
+                // 'no limit' (2,147,483,647, say) is below it and works as before"
+                assert(SessionGrid::MAX_POSITIONS === 100_000);
+                assert(SessionGrid::MAX_CAPACITY_PER_SLOT === 1_000_000_000_000);
+                $tooLarge = [
+                    ['session_count' => 100_001],
+                    ['session_count' => 1, 'slots_per_session' => 100_001],
+                    ['session_count' => 2, 'slots_per_session_overrides' => [1 => 100_001]],
+                    ['session_count' => 1000, 'slots_per_session' => 101],
+                    ['session_count' => 2, 'capacity_per_slot' => 1_000_000_000_001],
+                ];
+                foreach ($tooLarge as $config) {
+                    try {
+                        SessionGrid::fromArray($config);
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                    }
+                }
+                $atTheLimits = SessionGrid::fromArray(['session_count' => 1000, 'slots_per_session' => 100, 'capacity_per_slot' => 1_000_000_000_000]);
+                assert($atTheLimits->getPositionCount() === 100_000);
+                assert(SessionGrid::fromArray(['session_count' => 2, 'capacity_per_slot' => 2_147_483_647])->getCapacityPerSlot() === 2_147_483_647);
                 PHP,
         ],
         // "It refuses a round that puts one participant in two events at the same time ...

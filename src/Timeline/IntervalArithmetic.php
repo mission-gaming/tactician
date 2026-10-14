@@ -6,6 +6,7 @@ namespace MissionGaming\Tactician\Timeline;
 
 use DateInterval;
 use DateTimeImmutable;
+use Generator;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 
@@ -49,7 +50,9 @@ use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
  * date and no error, so it is refused. A fraction of a second is
  * multiplied as whole microseconds, which is how PHP holds it, and its
  * whole seconds are carried. An interval made from a relative string is
- * not under the limit: it is added once per step, however many there are.
+ * not under that limit, having no multiple to measure: it is added once per
+ * step, so it has a limit on the number of steps instead
+ * ({@see self::MAX_RELATIVE_STEPS}).
  *
  * @internal Not public API: the arithmetic behind
  *           TimelineDefinition::getSlotTime() and SessionGrid::getSlotTime(),
@@ -66,13 +69,26 @@ final class IntervalArithmetic
     public const int MAX_DAYS = 100_000_000_000_000;
 
     /**
+     * The most steps of an interval made from a relative date string that
+     * are taken. Such an interval has no multiple, so every step is an
+     * addition of its own and the time a result costs rises with the number
+     * of steps, which is a round number or a slot index the caller gives.
+     * 100,000 steps are a round a day for 273 years, and take about a
+     * twentieth of a second; an interval written as a duration is
+     * multiplied out and is under {@see self::MAX_DAYS} alone.
+     */
+    public const int MAX_RELATIVE_STEPS = 100_000;
+
+    /**
      * The anchor moved on by a number of steps of the interval, in the
      * anchor's timezone.
      *
      * @param int $steps How many intervals to add, 0 or more; 0 returns the anchor
      *
      * @throws InvalidConfigurationException When the steps multiplied out are further from the
-     *                                       anchor than MAX_DAYS
+     *                                       anchor than MAX_DAYS, or there are more than
+     *                                       MAX_RELATIVE_STEPS of an interval made from a
+     *                                       relative date string
      */
     public static function advance(DateTimeImmutable $anchor, DateInterval $interval, int $steps): DateTimeImmutable
     {
@@ -81,6 +97,8 @@ final class IntervalArithmetic
         }
 
         if (self::isRelative($interval)) {
+            self::refuseTooManyRelativeSteps($interval, $steps);
+
             for ($i = 0; $i < $steps; ++$i) {
                 $anchor = $anchor->add($interval);
             }
@@ -132,6 +150,65 @@ final class IntervalArithmetic
         }
 
         return self::firstOfRepeatedLocalTime($result);
+    }
+
+    /**
+     * The anchor and the steps after it, one at a time and in order: what
+     * advance() gives for 0, 1, 2 and so on, up to one less than the count.
+     *
+     * For the slots of one round or session. An interval made from a
+     * relative date string is added once for each time and not once for
+     * each step of each time, which is the same result (each of its steps
+     * is taken from the one before) for a number of additions that rises
+     * with the count and not with its square. The times are produced as
+     * they are asked for, so a caller that stops at the first one it
+     * refuses has computed none after it.
+     *
+     * @param int $count How many times to give, 0 or more
+     *
+     * @return Generator<int, DateTimeImmutable> Keyed by step, from 0
+     *
+     * @throws InvalidConfigurationException As advance() throws, when a time is reached that it
+     *                                       refuses
+     */
+    public static function series(DateTimeImmutable $anchor, DateInterval $interval, int $count): Generator
+    {
+        if (!self::isRelative($interval)) {
+            for ($step = 0; $step < $count; ++$step) {
+                yield $step => self::advance($anchor, $interval, $step);
+            }
+
+            return;
+        }
+
+        $time = $anchor;
+        for ($step = 0; $step < $count; ++$step) {
+            if ($step > 0) {
+                self::refuseTooManyRelativeSteps($interval, $step);
+                $time = $time->add($interval);
+            }
+
+            yield $step => $time;
+        }
+    }
+
+    /**
+     * @throws InvalidConfigurationException When there are more steps than MAX_RELATIVE_STEPS
+     */
+    private static function refuseTooManyRelativeSteps(DateInterval $interval, int $steps): void
+    {
+        if ($steps > self::MAX_RELATIVE_STEPS) {
+            throw new InvalidConfigurationException(
+                "{$steps} steps of an interval made from a relative date string are more than the "
+                    . self::MAX_RELATIVE_STEPS . ' that are added one at a time; write the interval as an ISO 8601 duration',
+                [
+                    'steps' => $steps,
+                    'interval' => TimelineDefinition::formatInterval($interval),
+                    'limit' => self::MAX_RELATIVE_STEPS,
+                ],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
     }
 
     /**
