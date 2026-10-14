@@ -383,6 +383,55 @@ describe('A repack with objectives', function (): void {
         }
     })->with(range(800, 811))->with([1, 7, 60, 900]);
 
+    it('keeps that guarantee where holding the events where they are places fewer of them', function (array $movable, array $pinned, SessionGrid $grid, int $budget): void {
+        // On these requests, at these budgets, the schedule made around the
+        // held events places fewer events or leaves more gap slots than the
+        // schedule made with no objective, and so must not be the one returned
+        $plain = (new ScheduleRepacker())->repack(
+            new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
+        );
+        $outcome = (new ScheduleRepacker())->repack(
+            new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget, objectives: [RepackObjective::LeastChurn]))
+        );
+
+        expect([$outcome->getUnplacedCount(), $outcome->getGapSlotCount()] <=> [$plain->getUnplacedCount(), $plain->getGapSlotCount()])
+            ->toBeLessThanOrEqual(0);
+    })->with(function (): array {
+        $p = [];
+        foreach (range(0, 5) as $i) {
+            $p[$i] = new Participant("p{$i}", "P{$i}");
+        }
+
+        $oneSessionOfThree = SessionGrid::shapeOnly(1, 3, capacityPerSlot: 2);
+        $first = [
+            [
+                new MovableEvent('e4', $p[1], $p[3], 0, 0),
+                new MovableEvent('e0', $p[0], $p[3]),
+                new MovableEvent('e5', $p[1], $p[2], 0, 2),
+                new MovableEvent('e3', $p[4], $p[3]),
+            ],
+            [new PinnedEvent('e1', $p[3], $p[1], 0, 1), new PinnedEvent('e2', $p[4], $p[0], 0, 2)],
+            $oneSessionOfThree,
+        ];
+        $second = [
+            [
+                new MovableEvent('e4', $p[0], $p[2]),
+                new MovableEvent('e5', $p[2], $p[1], 1, 1),
+                new MovableEvent('e1', $p[1], $p[2], 1, 2),
+                new MovableEvent('e0', $p[0], $p[1], 0, 0),
+                new MovableEvent('e2', $p[2], $p[0], 0, 2),
+            ],
+            [new PinnedEvent('e3', $p[2], $p[1], 0, 1)],
+            SessionGrid::shapeOnly(2, 3, capacityPerSlot: null),
+        ];
+
+        return [
+            'one session, budget 1' => [...$first, 1],
+            'one session, budget 7' => [...$first, 7],
+            'two sessions, budget 60' => [...$second, 60],
+        ];
+    });
+
     it('is never worse on its first objective than the repack without one, where the two are level on events and gap slots', function (int $seed): void {
         [$movable, $pinned, $grid] = $seed % 3 === 0 ? smallRequestWithCurrentPositions($seed) : seasonInProgress($seed);
         $plain = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
