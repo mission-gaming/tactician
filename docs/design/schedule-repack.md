@@ -1394,12 +1394,18 @@ Scattered pins of 8 to 15, 39 / 421 and 329 / 1,278; of 16 to 23, 275 /
 40, 1,076 / 1,820 and 1,928 / 3,483.
 
 *The ids.* Renaming every participant and event (and exchanging the
-two participants of every event) changed nothing that can be said
-without an id on 280 requests with no objective, and on the same 280
-with the two objectives that are not churn. With the fewest moved
-events it changed something (the count of moved events, of idle
-sessions or of late starts) on 11 of 200 seasons and 4 of 80 scattered
-requests. The cause is decision 39 meeting decision 50: the order of
+two participants of every event) changed nothing that decision 39
+promises (the events at every position, the unplaced counts, the
+violations) on 280 requests with no objective, and on the same 280 with
+the two objectives that are not churn. It does change the count of
+moved events there: the schedule is the same only up to a symmetry of
+the request, and the current positions are not symmetric (a review
+counted 32 of 150 seasons and 5 of 60 scattered requests with another
+count of moved events and nothing else changed, with no objective).
+With the fewest moved events it changed something else as well (the
+count of idle sessions or of late starts, the events at a position) on
+11 of 200 seasons and 4 of 80 scattered requests. The cause is decision
+39 meeting decision 50: the order of
 the participants is made from the request without its current
 positions, an id decides between participants that order cannot tell
 apart, and two such participants can have different current positions.
@@ -1440,7 +1446,9 @@ bench-compare` runs one benchmark class against two copies of the
 source, and a subject that states a current position or an objective
 does not run against a copy from before this change.
 
+## Testing
 
+Per the brief: property tests over seeded random multigraphs (properness,
 pin immobility, exact assignment/unplaced reconciliation), byte-identical
 determinism under input shuffling, K₈ exactness (must come back with zero
 violations), K₅ honesty (no interval colouring exists; must be reported,

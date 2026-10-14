@@ -1552,9 +1552,10 @@ entry on the engine fingerprint.
   one with `LeastChurn` 40,856, with at least as many events placed on
   every request; against every placement of 6,000 small
   requests it reached the fewest moved events there can be on 93 in 100
-  (35 in 100 with no objective). With `LeastChurn` the count of moved
-  events can depend on the ids of a request, which the outcome of a
-  request with no objective does not.
+  (35 in 100 with no objective). The count of moved events can depend
+  on the ids of a request, with or without an objective, because the
+  schedule is the same under other ids only up to a symmetry of the
+  request; with `LeastChurn` the other figures can depend on them too.
   A repack with objectives takes longer, and still spends at most twice
   the step budget; the usage guide ("Objectives") has the limits and the
   times.

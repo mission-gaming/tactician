@@ -65,7 +65,9 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * participant for participant, up to a symmetry of the request, whenever
  * the id only ever decided between participants that such a symmetry
  * exchanges (see Internal\StructuralOrder for when it can decide between
- * two that are not alike). Pure: no clock reads, no I/O, no persistence.
+ * two that are not alike). The order does not read current positions, so
+ * the moved events can follow the ids with or without objectives, and
+ * with RepackObjective::LeastChurn so can the rest of the outcome. Pure: no clock reads, no I/O, no persistence.
  * Bounded: every search spends from the options' step budget (the steps
  * after the packing from a budget of their own of the same size) or has
  * a limit of its own, which is fixed at the default budget and above and

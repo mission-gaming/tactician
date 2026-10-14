@@ -4722,6 +4722,9 @@ back to the ids. And two participants that differ, in a request in
 which everything the repacker compares about them is equal, are ordered
 by id; that takes a request built for the purpose, and none met in
 testing was one. The lists an outcome returns are still in id order.
+The order does not read the current positions events may state, so the
+count of moved events can follow the ids, and with the objective
+`LeastChurn` the other counts can too ([Objectives](#objectives)).
 
 The repacker is deterministic (same input, same output, independent of
 input list order), pure (no clock reads, no I/O), and bounded in steps
@@ -5192,14 +5195,19 @@ Three limits are worth knowing:
 - **The count of moved events can follow the ids.** The repacker orders
   participants by what the request says of them, without the current
   positions, and lets the ids decide between participants that look
-  alike to it ("The ids decide as little as they can", above). Two such participants can have different
-  current positions, so the same request under other ids can come back
-  with another number of moved events. With `LeastChurn`, 11 of 200
-  seasons and 4 of 80 round robins with scattered pins came back
-  differing in something that can be said without an id (the count of
-  moved events, of idle sessions or of late starts) when every
-  participant and event was renamed; without it, with or without the
-  other two objectives, none of the 280 did.
+  alike to it ("The ids decide as little as they can", above). Two such
+  participants can have different current positions, so the same
+  request under other ids can come back with another number of moved
+  events. That is so with no objective as well: the schedule is the same
+  up to a symmetry of the request, and the current positions are not
+  symmetric. Two events between four participants, on two sessions of
+  one slot, `a`–`b` in session 1 and `c`–`d` in session 0, move none
+  with no objective; renamed `w`–`x` and `c`–`d`, both move. With no
+  objective, or with either of the other two, the move count was the one
+  figure that renaming changed on the requests measured. With
+  `LeastChurn` it can change the others too: 11 of 200 seasons and 4 of 80 round robins with scattered
+  pins came back with another count of moved events, of idle sessions or
+  of late starts when every participant and event was renamed.
 
 **What objectives cost.** The schedule with no objective is always made
 first, on the two budgets as before, so that no objective can cost an
