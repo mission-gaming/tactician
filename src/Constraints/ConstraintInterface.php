@@ -28,9 +28,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *   role assignment of `RoundRobinOptions` a schedule whose constraints
  *   reject the balanced roles is generated again with the roles the
  *   generator proposes, and under a constraint of your own once more with
- *   balanced roles; an event that such a constraint then rejects is put to
- *   it once more against a context that holds no events, an event of a
- *   later leg included, which no generation does.
+ *   balanced roles, in a search of up to 4,000 more events.
  * - Do not depend on how often or in which order the questions come.
  *   Neither is part of the contract, and either can change in any release.
  *
@@ -60,11 +58,7 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  * exception leaves the `schedule()` or `pairNextRound()` call that asked.
  * The exception to that is a constraint that throws one of the library's
  * own `IncompleteScheduleException` or `NoValidPairingException`: a
- * scheduler takes it for a failure of its own. And one question is not a
- * question of a generation: the one the round-robin scheduler asks against
- * a context that holds no events, under the default role assignment (the
- * list above). What a constraint throws there is caught and read as an
- * answer, that its verdict turns on the events before the candidate.
+ * scheduler takes it for a failure of its own.
  *
  * @experimental
  */

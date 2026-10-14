@@ -71,22 +71,17 @@ enum RoleFallback: string
      * closure, a metadata rule, a class of the caller's, a subclass of one
      * of the library's, or any of them in a set with the library's own.
      *
-     * What was put to them: the balanced roles as given in the rotated
-     * participant orders, and in each of those layouts the balanced roles
-     * around every seating the constraints fixed (a rule that names a
-     * participant first in a pairing is solved by that, exactly). What was
-     * left out: the search that goes back one event at a time, which is
-     * what a constraint of unknown reach needs before anything can be said
-     * of every choice. It was not begun where the roles around the fixed
-     * seatings were rejected or do not exist, and everything ended at the
-     * first event such a constraint rejected for what came before it (an
-     * event it accepts with no event before it, as a limit on a streak or
-     * on a running total does, or one it cannot answer for without them
-     * and throws). The whole is held to
-     * `RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND`
-     * events put to the constraints, a backtracking search included, and
-     * that search is made only where the schedule in hand came from a
-     * backtracking search itself.
+     * With that schedule in hand the search for balanced roles is the one
+     * `BalancedRoleAssignment` has, held to 4,000 events put to the
+     * constraints, a backtracking search included: the balanced roles as
+     * given in the rotated participant orders, in each of those layouts
+     * the balanced roles around every seating the constraints fixed, and
+     * the search that goes back one event at a time, which is what a
+     * constraint of unknown reach needs. This case says that the 4,000
+     * events were spent before the search had an answer, or, with
+     * `RoundRobinOptions(backtracking: true)`, that no backtracking search
+     * was made for balanced roles: one is made only where the schedule in
+     * hand came from a backtracking search itself.
      *
      * So this case does not say that no balanced roles exist.
      * `BalancedRoleAssignment` named searches to its full bounds, which

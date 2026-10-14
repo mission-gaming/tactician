@@ -709,11 +709,17 @@ describe('role assignments and constraints', function (): void {
     //   rotated order (with backtracking: in some way to play the leg, which
     //   for a rule about roles alone is any rule that does not fix a pairing
     //   both ways round, and no rule here does): the schedule is the one
-    //   round parity gives, and its mark says that the constraints rejected
-    //   the balanced roles. (Not that none exist: the rule is a closure,
-    //   and with a schedule in hand the scheduler does not go through every
-    //   choice of roles to show it.) These completed up to 0.2.x, and
-    //   failed while the default was the strict balanced role assignment;
+    //   round parity gives, marked. The rule is a closure, so round parity
+    //   is tried before the search for balanced roles, and with its
+    //   schedule in hand that search is held to 4,000 events put to the
+    //   rule, which a field of four is far inside: it goes through every
+    //   choice of balanced roles, and the mark says that none exists. One
+    //   thing is left out with a schedule in hand, under backtracking: the
+    //   backtracking search for a balanced leg, where a rotated order gave
+    //   that schedule and no search. There the mark says that the
+    //   constraints rejected the balanced roles, and no more. These
+    //   completed up to 0.2.x, and failed while the default was the strict
+    //   balanced role assignment;
     // - neither: the failure of round parity, which names the rule.
     //
     // "A balanced leg exists" is counted as in the test before this one.
@@ -810,8 +816,18 @@ describe('role assignments and constraints', function (): void {
             if ($balanced) {
                 $wrong[] = "{$case}: no balanced leg exists, and the schedule is balanced";
             }
-            if ($mark !== RoleFallback::BalancedRolesRejected) {
-                $wrong[] = "{$case}: no balanced leg exists, and the mark is " . ($mark->value ?? 'absent');
+            $aRotatedOrderGaveTheSchedule = true;
+            try {
+                (new RoundRobinScheduler(roleFixedRolesConstraint($firstNamed)))
+                    ->schedule($field, new RoundRobinOptions(roleAssignment: new RoundParityRoleAssignment()));
+            } catch (IncompleteScheduleException) {
+                $aRotatedOrderGaveTheSchedule = false;
+            }
+            $expected = $backtracking && $aRotatedOrderGaveTheSchedule
+                ? RoleFallback::BalancedRolesRejected
+                : RoleFallback::NoBalancedRoles;
+            if ($mark !== $expected) {
+                $wrong[] = "{$case}: no balanced leg exists, and the mark is " . ($mark->value ?? 'absent') . ", not {$expected->value}";
             }
             $withoutTheMark = $schedule->toArray();
             unset($withoutTheMark['metadata'][RoleFallback::METADATA_KEY]);
@@ -856,7 +872,11 @@ describe('role assignments and constraints', function (): void {
     // exists under it. Up to 0.2.x the search stopped at the first leg it
     // found, balanced it and reported the one event the constraints then
     // rejected. The default does not fail: it returns the schedule of the
-    // search, as round parity does, and marks it.
+    // search, as round parity does, and marks it. That schedule came from a
+    // backtracking search, so one is made for a balanced first leg too,
+    // within the 4,000 events of a search with a schedule in hand: it goes
+    // through the same ways to play the leg, and the mark says what the
+    // strict role assignment's failure says.
     it('says that no balanced schedule exists when a constraint leaves none, and falls back under the default', function (): void {
         $placement = rolePlacementConstraint(['p1 + p2' => 1, 'p1 + p3' => 2, 'p1 + p4' => 3]);
         $constraints = ConstraintSet::create()
@@ -895,9 +915,9 @@ describe('role assignments and constraints', function (): void {
         $scheduler = new RoundRobinScheduler($constraints);
         $default = $scheduler->schedule(roleField(4), new RoundRobinOptions(backtracking: true));
 
-        expect(RoleFallback::of($default))->toBe(RoleFallback::BalancedRolesRejected)
+        expect(RoleFallback::of($default))->toBe(RoleFallback::NoBalancedRoles)
             ->and($default->getEvents())->toEqual($searched->getEvents())
-            ->and($default->getMetadata())->toBe($searched->getMetadata() + [RoleFallback::METADATA_KEY => 'balanced_roles_rejected'])
+            ->and($default->getMetadata())->toBe($searched->getMetadata() + [RoleFallback::METADATA_KEY => 'no_balanced_roles'])
             // A schedule was returned: the rejections of the attempts that
             // came before it are not left behind as diagnostics
             ->and($scheduler->getViolationCollector()->hasViolations())->toBeFalse();
