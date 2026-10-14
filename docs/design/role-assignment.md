@@ -356,7 +356,7 @@ question a caller has next, which is whether naming
 |--------|-------|---------------------------------|
 | `no_balanced_roles` | Every choice of balanced roles that is searched was tried | Fails |
 | `search_stopped_at_bound` | A bound stopped the search | Stops at the same bound and fails |
-| `balanced_roles_rejected` | The constraints rejected the balanced roles put to them, and with a schedule in hand the rest was not searched | Searches to its bounds; may find a schedule, may take seconds |
+| `balanced_roles_rejected` | The constraints rejected the balanced roles put to them, and with a schedule in hand the search for others stopped at its 4,000 events, or no backtracking search was made for balance | Searches to its bounds; may find a schedule, may take seconds |
 
 **The order of the attempts.** What decides it is whether the search of
 roles can reason about the constraints exactly
@@ -389,15 +389,18 @@ Where it cannot:
    failure, is kept.
 3. Everything `BalancedRoleAssignment` does, from the first layout again.
    With nothing in hand it has its usual bounds. With a schedule in hand:
-   - it is held to 4,000 events put to the constraints
-     (`RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND`);
-   - the pass that fixes seatings is made in each layout, and the two
-     searches that follow it under the strict role assignment are not,
-     unless it was one of the library's role limits that rejected last;
-   - it ends at the first event a constraint of unknown reach rejects in
-     its context and accepts with no event before it;
+   - it is held to 4,000 events put to the constraints, the rotated
+     orders, the passes that fix seatings and the searches that go back
+     one event at a time together. The count is looked at before a
+     rotated order and not within one, so one layout can pass it: by its
+     own events, and under shuffled legs by the whole search of its later
+     legs' roles, which the count does not stop ("What it costs, and what
+     is short");
    - a backtracking search is made only where the schedule in hand came
      from one, with what is left of the 4,000 as its step budget.
+
+   Nothing else differs, so a schedule found within the 4,000 is the one
+   the strict role assignment finds.
 4. A balanced schedule from step 3, or the schedule of step 2 with the
    reason, or the failure of step 2.
 
@@ -410,15 +413,24 @@ constraint set the library does not know a failure of round parity is
 analysed once for every rotated order, and a schedule the balanced roles
 complete at once should not wait for that. With a schedule in hand, a valid
 answer exists and balance is a preference, so what is still spent on it is
-what is cheap and exact (the seatings a constraint fixes, solved by the
-repair) and not what is expensive and blind. The test for "turns on what
-came before" is one more question to the constraint, with an empty context:
-a rule that fixes a role rejects the event whatever came before it, and a
-limit on a streak or a running total accepts an event that stands alone.
-It is a heuristic about a constraint the library cannot see into, used only
-to decide when to stop looking, never to accept an event: every event of a
-schedule that is returned was accepted by the constraints in its own
-context.
+bounded by a count that is small beside the bounds of the strict role
+assignment: 4,000 events, where that one has 200,000.
+
+**Why a count and nothing more.** As first merged, the search with a
+schedule in hand was cut short in two more ways: the two searches that go
+back one event at a time were left out unless one of the library's role
+limits had rejected last, and everything ended at the first event that a
+constraint of unknown reach rejected in its context and accepted with no
+event before it (a guess that the rejection was a limit on a streak or a
+running total, which the scheduler cannot tell which earlier event to
+change for). That made a fall-back cost about what round parity costs, and
+it gave up schedules the count alone allows: in the second sweep below, 349
+configurations that the strict role assignment balances fell back, and
+265 of them are balanced inside the 4,000 events. The guess also put a
+question to a constraint that no generation asks (an event with an empty
+context), which a constraint may be unable to answer. Both were removed.
+What is left is one rule that can be stated in a sentence: with a schedule
+in hand, the search of the strict role assignment, for 4,000 events.
 
 Each run of the generation starts where a call starts. The shuffles a
 `Randomizer` gives a call are drawn once and read again by every run
@@ -455,7 +467,11 @@ instead of being generated to its end.
   and unmarked wherever balanced roles exist in what is searched, and it is
   marked exactly when its first leg is not balanced
   (`tests/Feature/RoleConstraintsAcrossLegsTest.php`).
-- Against 0.2.x, under default options: 40,888 configurations (fields of
+- Against 0.2.x, under default options, with the search for balanced
+  roles cut short as it first was with a schedule in hand ("Why a count and
+  nothing more"; the point after this one has what the count alone
+  changed, which is the split between balanced and fall-back and nothing
+  else here): 40,888 configurations (fields of
   2 to 20; 1,520 without constraints; the library's role limits alone and
   beside rest, repeat and seed-protection rules; limits, pinned roles and
   metadata rules written as closures, as a class and a subclass of the
@@ -476,30 +492,93 @@ instead of being generated to its end.
     all 4,253 failures without a `Randomizer` that 0.2.x answered within
     the 20 seconds the comparison gave it.
   - Balanced as before: of 27,278 configurations the strict default
-    balanced, 26,952 get the same schedule byte for byte and 326 fall back
-    ("What it costs, and what is short"). Every unmarked schedule compared
-    with `BalancedRoleAssignment` named is its schedule (18,213).
+    balanced, 26,952 got the same schedule byte for byte and 326 fell back.
+    Every unmarked schedule compared with `BalancedRoleAssignment` named
+    was its schedule (18,213).
   - 9,034 configurations that failed in 0.2.x complete with balanced
     roles; among the library's role limits alone (2,720, with and without a
     `Randomizer` and backtracking), 1,366 complete in both, 875 failed and
     complete, 479 fail in both, and none falls back.
+- The search with a schedule in hand, held to the count alone, against the
+  default as first merged: 31,164 configurations under default options
+  (fields of 2 to 14, 16 and 20 with one to four legs, and of 16 to 40 with
+  two to four; 18 sets of the library's constraints, none included, and 31
+  of a caller's, as in the sweep above; the three strategies; with and
+  without a `Randomizer` up to 24 participants; backtracking on and off in
+  the small fields).
+  - Nothing else moved: 23,002 complete before and after, 7,812 fail
+    before and after with the same message, and 350, in fields of 18 and
+    more, were not answered in the time the comparison gave them before or
+    after. No schedule that was balanced changed, and no configuration of
+    the library's own constraints changed in any way.
+  - Of 22,185 configurations the strict role assignment balances, 349
+    fell back as first merged. 265 of them are balanced now, each with the
+    schedule `BalancedRoleAssignment` gives byte for byte: limits on a
+    streak or a running total written as a closure (145), as a class of
+    the caller's (30), as a subclass of the library's limit (30) and
+    inside a subclass of `ConstraintSet` (60), in fields of 5 to 9 and of
+    13. 84 still fall back, because their balanced roles are further than
+    4,000 events away: a limit of two in a row at 10 participants in those
+    four forms (54), and 30 in fields of 20 to 40 (the library's limit
+    beside a metadata rule, which was never cut short by anything but the
+    count, 12; one pinned pairing under repeated and shuffled legs, 12;
+    limits under shuffled legs, 6).
+  - 192 fall-backs changed their reason and nothing else, from
+    `balanced_roles_rejected` to `no_balanced_roles`: rules that leave no
+    balanced leg, in fields of three and four, where the search now goes
+    through every choice inside the 4,000 events. The strict role
+    assignment fails for each of them.
+  - Every unmarked schedule is the one `BalancedRoleAssignment` gives,
+    named (22,101 compared), and every marked one is the one
+    `RoundParityRoleAssignment` gives (901 compared: 192 marked
+    `no_balanced_roles` and 709 `balanced_roles_rejected`).
+  - What a fall-back costs, for the fall-backs under a constraint of the
+    caller's without backtracking that are fall-backs before and after
+    (fastest of three runs, in milliseconds; "before" is the default as
+    first merged, which cost little more than round parity):
+
+    | Participants | Fall-backs | Median, before | Median, now | 90th percentile, before | 90th percentile, now |
+    |---|---|---|---|---|---|
+    | 10 | 54 | 2.5 | 33.3 | 4.9 | 49.3 |
+    | 12 | 54 | 4.3 | 40.6 | 9.0 | 57.9 |
+    | 14 | 54 | 7.0 | 50.6 | 14.8 | 71.0 |
+    | 16 | 54 | 10.7 | 61.9 | 22.5 | 83.1 |
+    | 18 | 36 | 15.9 | 71.0 | 33.1 | 97.9 |
+    | 20 | 63 | 31.1 | 82.6 | 97.1 | 118.0 |
+    | 24 | 46 | 45.8 | 105.2 | 121.9 | 159.9 |
+    | 30 | 14 | 122.7 | 183.7 | 208.5 | 312.2 |
+    | 32 | 18 | 80.0 | 194.4 | 252.8 | 396.2 |
+    | 40 | 18 | 179.6 | 313.1 | 534.6 | 673.8 |
+
+    The search adds 32 to 84 ms at the median and at most 156 ms (four
+    mirrored legs of 32 under the library's limit in a constraint set of
+    the caller's, 409 ms for 253), and never more than 3,990 questions to
+    a constraint beyond what it was asked before. In fields of three and four a fall-back takes 0.5 and
+    1.3 ms at the median where it took 0.3 and 0.7. Seven fall-backs
+    under shuffled legs of 24 to 40 participants are left out of the
+    table: they take 3 to 25 seconds before and after, of which round
+    parity itself takes 2 to 19, the rest being the searches of the later
+    legs' roles in the balanced attempts, which the count does not hold.
 - Time, for the case of the review (two and four mirrored legs under a
-  limit of two in a row written as a closure): the closure is asked 2.0 to 2.3
-  times as often as under round parity over two legs and 1.5 to 1.6 times
-  over four, for every field of even size from 6 to 40; the time is 1.5 to
-  2.0 times that of 0.2.x over two legs and 1.1 to 1.3 times over four.
+  limit of two in a row written as a closure), for every field of even
+  size from 6 to 40. Six and eight participants are balanced, in 2.5 and
+  23 ms over two legs. From ten up the schedule is the one of round parity,
+  marked, and the closure is asked what round parity asks it and 3,271 to
+  5,481 questions more:
 
   | Participants | Two legs, 0.2.x | Two legs, default | Four legs, 0.2.x | Four legs, default |
   |---|---|---|---|---|
-  | 12 | 2.2 ms | 3.8 ms | 8.8 ms | 11.6 ms |
-  | 16 | 5.6 ms | 8.7 ms | 22.7 ms | 27.4 ms |
-  | 20 | 11.3 ms | 17.7 ms | 47.7 ms | 55.2 ms |
-  | 24 | 20.7 ms | 31.0 ms | 89.6 ms | 101.4 ms |
-  | 32 | 50.5 ms | 77.1 ms | 225.4 ms | 253.3 ms |
-  | 40 | 104.3 ms | 159.2 ms | 459.6 ms | 527.4 ms |
+  | 12 | 2.2 ms | 54.0 ms | 8.8 ms | 62.7 ms |
+  | 16 | 5.6 ms | 72.5 ms | 22.7 ms | 92.7 ms |
+  | 20 | 11.3 ms | 90.0 ms | 47.7 ms | 129.4 ms |
+  | 24 | 20.7 ms | 114.6 ms | 89.6 ms | 183.5 ms |
+  | 32 | 50.5 ms | 189.3 ms | 225.4 ms | 367.5 ms |
+  | 40 | 104.3 ms | 304.0 ms | 459.6 ms | 676.5 ms |
 
   (Fastest of five runs. The strict default failed these after 1 to 13
-  seconds over two legs, and after 20 seconds to minutes over four.)
+  seconds over two legs, and after 20 seconds to minutes over four. With
+  the search cut short as it first was, the default took 3.8 ms with 12
+  participants over two legs and 159 with 40.)
 
 ### What it costs, and what is short
 
@@ -510,17 +589,47 @@ instead of being generated to its end.
   the mark does not learn it.** Under the library's own constraints a
   fall-back was not seen in what was measured. Under constraints of the
   caller's it happens in two cases: a rule that leaves no balanced leg, and
-  a limit on what a participant did before, which is not searched for once
-  round parity has completed the schedule. The second is a schedule that
-  `BalancedRoleAssignment` may find: of the 27,278 configurations of the
-  sweeps that the strict default balanced, 26,952 get the same schedule
-  byte for byte, and the other 326 fall back. All 326 are limits on what a
-  participant did before, written as a closure, a class or subclass of the
-  caller's, or inside a subclass of `ConstraintSet`, in fields of 3 to 17
-  (a limit of two in a row at 6, 8 and 10 participants among them), which
-  the strict role assignment finds by going back one event at a time: in
-  tens of milliseconds in the smallest fields, and for the limit of two in
-  a row not at all from 12 participants up.
+  a constraint whose balanced roles the search does not reach within 4,000
+  events once round parity has completed the schedule. The second is a
+  schedule that `BalancedRoleAssignment` may find: of the 22,185
+  configurations of the second sweep that the strict role assignment
+  balances, 22,101 get the same schedule byte for byte, and the other 84
+  fall back ("What was measured" says which). A limit of two in a row
+  written as a closure, over two mirrored legs, is balanced at 6 and 8
+  participants and falls back at 10, where the strict role assignment
+  finds balanced roles in some tenths of a second, and from 12 up, where it
+  finds none within its bounds.
+- **A fall-back under a constraint of the caller's costs the search it
+  is given before the schedule in hand is returned**: the 4,000 events,
+  the balanced roles of the first layout before round parity, and what the
+  last rotated order passes the count by (3,271 to 5,481 questions more
+  than round parity asks in the case of the review). That is 30 to 85 ms
+  more at the
+  median for 10 to 40 participants, which is 14 times what round parity
+  takes at 10 participants, 3 times at 20 and 1.3 times at 40 ("What was
+  measured" has the table). That is the price of the 265 schedules of the
+  sweep that are balanced for it, and it is paid by every league whose
+  limit is written as a closure and is out of reach: such a league gets
+  the schedule 0.2.x gave it, later than 0.2.x gave it.
+- **Under shuffled legs the count does not hold the cost.** The roles of
+  the later legs are searched inside a rotated order
+  (`generateLaterLegsWithRoleSearch()`), with a bound of their own of
+  20,000 rejected roles, and the count is looked at before a rotated order
+  and not within one. So one such search runs to its own end with a
+  schedule in hand, and another before round parity is tried, for the
+  balanced roles of the first layout. Measured in a comparison of 6,616
+  configurations made for the review of this change (one seed for each
+  field): a limit of three in a row written as a closure, over two
+  shuffled legs of 32 participants, falls back after 144,574 questions
+  where round parity asks 62,912, in 2.2 seconds for 0.9; the one search
+  with the schedule in hand put 40,333 events to the closure, and the
+  search before round parity as many. The most that was seen is 82,044
+  questions more than round parity asks, with 40 participants. The search
+  with a schedule in hand was the same before the count stood alone
+  (81,664 and 82,046 questions more), so this is not what that change
+  cost; it is what the count has never held. The first rotated order of
+  that search is the layout whose balanced roles were already searched
+  before round parity, to the same end.
 - Under the library's own constraints a fall-back, or a failure, comes
   after the whole search for balanced roles: one allowance of 20,000
   rejected roles and 200,000 events put to the constraints for all the
@@ -559,8 +668,11 @@ instead of being generated to its end.
   time for such a rejection, and for a rule that truly leaves no schedule (a
   role pinned in every leg, over two mirrored legs) it ends at its bound,
   not with a proof. Under the default with a schedule in hand that search
-  is not made, and the reason says only that the balanced roles were
-  rejected.
+  has 4,000 events. Where it comes to its end inside them, every choice of
+  balanced roles in the layouts was put to the constraint, and the reason
+  is the one the strict role assignment's failure gives: no balanced
+  roles. Where they run out, the reason says only that the balanced roles
+  were rejected.
 - A constraint that keeps state is asked more questions under the default
   than under round parity, before and after, and may answer differently
   for it. The usage guide has always asked for pure predicates; the
@@ -586,9 +698,9 @@ instead of being generated to its end.
   that must not repeat a role three times says so with a
   `ConsecutiveRoleConstraint`: in a field of even size the scheduler then
   reverses those two seatings, which is the balanced leg its search finds
-  (for the library's constraint; the same limit as a closure is not
-  searched for once round parity has completed the schedule, see "Balanced
-  where possible").
+  (for the library's constraint; for the same limit as a closure, once
+  round parity has completed the schedule, only where the search reaches
+  that leg within its 4,000 events, see "Balanced where possible").
   A field of odd size has no fixed seat, and there the search finds a leg
   under a limit of two up to 11 participants and stops at its bound from 13
   up ("What it costs, and what is short"); a limit of three, which rules

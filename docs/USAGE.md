@@ -412,15 +412,10 @@ that an event it is asked about ends up in the schedule:
   default of `RoundRobinOptions` a round robin whose constraints reject the
   balanced roles is generated again with the roles the generator proposes,
   and under a constraint of your own once more with balanced roles
-  ([Balanced where possible](#balanced-where-possible)). With a schedule in
-  hand, an event that a constraint of yours rejected is put to that
-  constraint once more against a context that holds no events, to learn
-  whether the rejection turns on what came before. That is the one context
-  no generation makes for an event of a later leg (the leg is the event's,
-  and the first leg is not in it), so a constraint that reads the first
-  meeting of a pair there may find none. What it throws for that question
-  is taken as the answer that the rejection does turn on what came before,
-  and does not reach you.
+  ([Balanced where possible](#balanced-where-possible)). Each of those
+  questions is one a generation asks, an event with the events laid out
+  before it: an event of a later leg is never put to a constraint without
+  the first leg.
 - **A failure analysis asks about events that were never candidates**: each
   missing pairing, in every round, with either participant first-named,
   against the events of the failed attempt.
@@ -1076,7 +1071,7 @@ echo $fallback?->value, "\n";
 echo $awaySchedule->getMetadataValue(RoleFallback::METADATA_KEY), "\n";
 
 // The mark is plain data
-RoleFallback::of(Schedule::fromArray($awaySchedule->toArray())); // RoleFallback::BalancedRolesRejected
+RoleFallback::of(Schedule::fromArray($awaySchedule->toArray())); // RoleFallback::NoBalancedRoles
 
 // A schedule with balanced roles carries none
 RoleFallback::of((new RoundRobinScheduler())->schedule($participants)); // null
@@ -1095,8 +1090,8 @@ try {
 The block prints:
 
 ```
-balanced_roles_rejected
-balanced_roles_rejected
+no_balanced_roles
+no_balanced_roles
 Balanced, named: no schedule
 ```
 
@@ -1108,9 +1103,9 @@ same input:
 
 | Reason | Stored as | What happened | `BalancedRoleAssignment`, named |
 |--------|-----------|---------------|---------------------------------|
-| `RoleFallback::NoBalancedRoles` | `no_balanced_roles` | Every choice of balanced roles the scheduler searches was tried, and none completes the schedule: in each layout of the circle method that was tried, and with `backtracking: true` in every way to play the first leg. Under the library's own constraints, which the search reasons about exactly | Fails |
+| `RoleFallback::NoBalancedRoles` | `no_balanced_roles` | Every choice of balanced roles the scheduler searches was tried, and none completes the schedule: in each layout of the circle method that was tried, and with `backtracking: true` in every way to play the first leg. Under the library's own constraints, which the search reasons about exactly, and under constraints of your own where the search came to its end inside the bound it then has, as in the example | Fails |
 | `RoleFallback::SearchStoppedAtBound` | `search_stopped_at_bound` | The search for balanced roles stopped at one of its bounds ([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)). Balanced roles may exist beyond it | Stops at the same bound and fails |
-| `RoleFallback::BalancedRolesRejected` | `balanced_roles_rejected` | The constraints rejected the balanced roles the scheduler put to them, and with a schedule already in hand it did not search the others through. Under constraints of your own, see below. It does not say that no balanced roles exist, although for a rule that fixes roles, as in the example, that is what it comes to | Searches to the full bounds, which can take seconds, and returns a balanced schedule or fails |
+| `RoleFallback::BalancedRolesRejected` | `balanced_roles_rejected` | The constraints rejected the balanced roles the scheduler put to them, and with a schedule already in hand it did not search the others through: the search spent the 4,000 events it then has, or, with `backtracking: true`, no backtracking search was made for balance. Under constraints of your own, see below. It does not say that no balanced roles exist | Searches to the full bounds, which can take seconds, and returns a balanced schedule or fails |
 
 More reasons may be added in a later release, so a `match` over them needs
 a `default` arm.
@@ -1142,33 +1137,31 @@ the order depends on what the search of roles can know about them:
      accept them, that is the schedule.
   2. Everything `RoundParityRoleAssignment` does. Its schedule, or its
      failure, is kept.
-  3. Everything `BalancedRoleAssignment` does, from the first layout again.
-     With no schedule in hand it has the bounds it always has. With one in
-     hand it does the two things that cost little and leaves out the one
-     that does not:
+  3. Everything `BalancedRoleAssignment` does, from the first layout again:
      - the balanced roles as given are put to the constraints in each
        rotated participant order;
      - in each of those layouts the seatings a constraint of yours rejects
        are fixed the other way round, and the leg is balanced around them.
        A rule that rejects an event whatever came before it (a fixed role,
        "the first participant is first-named against the second") is solved
-       by this, exactly, as under `BalancedRoleAssignment`;
-     - the search that goes back one event at a time is not made for a
-       constraint of yours. Where the roles around the fixed seatings are
-       rejected too, or none are balanced, the layout is left. And where a
-       constraint of yours rejects an event that it accepts by itself, with
-       no event before it, everything ends at once: such a rejection turns
-       on what came before (a streak, a running total), and the scheduler
-       cannot tell which earlier event to change. A constraint that throws
-       when it is asked about the event by itself is read the same way.
-       (Beside one of the
-       library's role limits the search is still made where it is that
-       limit which rejects, since it knows how to go back for it.)
+       by this, exactly;
+     - where that gives no schedule, the roles of the first leg are
+       searched within the balance, one event at a time for a constraint
+       of yours. This is what a limit on what a participant did before (a
+       streak, a running total) needs, since the scheduler cannot tell
+       which earlier event to change.
 
-     All of it is held to 4,000 events put to the constraints
-     (`RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND`;
-     the count is checked before each rotated order, so it can be passed by
-     the events of one layout). With `backtracking: true`, a backtracking
+     With no schedule in hand all of it has the bounds it always has. With
+     one in hand it is held to 4,000 events put to the constraints (the
+     count is checked before each rotated order, so it can be passed by
+     the events of one layout), and nothing else about it changes: a
+     schedule it finds within them is the one `BalancedRoleAssignment`
+     gives. Under `ShuffledLegStrategy` the count does not stop the search
+     of the later legs' roles in the rotated order under way, which has
+     its own bound of 20,000 rejected roles
+     ([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)):
+     the count is looked at again when that search has ended. With
+     `backtracking: true`, a backtracking
      search for a balanced first leg is made only where the schedule in
      hand came from a backtracking search itself (where a rotated order
      gave it, the schedule needed no search, and none is made for
@@ -1179,19 +1172,28 @@ the order depends on what the search of roles can know about them:
 
 So with a constraint of your own that limits what a participant did before,
 the default gives balanced roles when the balanced roles as given keep the
-limit, and otherwise the round-parity roles when they do, marked
-`balanced_roles_rejected`, at about twice what round parity alone costs. A limit of
+limit or the search finds others that do within 4,000 events, and otherwise
+the round-parity roles when they keep it, marked `balanced_roles_rejected`.
+The search is what such a fall-back costs: up to 4,000 events put to your
+constraint, after the balanced roles of the first layout and the schedule
+of round parity. A limit of
 two in a row written as a closure, over two mirrored legs: round parity
-keeps it in every field of even size from 6 to 40, and the default returns
-that schedule after asking the closure 2.0 to 2.3 times as often as round
-parity asks it, in 1.5 to 2.0 times the time (1.5 to 1.6 times as often
-over four legs, in 1.1 to 1.3 times the time; measured for 6 to 40
-participants).
+keeps it in every field of even size from 6 to 40. The default finds
+balanced roles for 6 and 8 participants, in 2.5 and 23 ms where round
+parity takes under 1, and from 10 up it returns the schedule of round
+parity after 3,271 to 5,481 more questions than round parity asks: in 47 ms
+for 1.3 with 10 participants, 90 for 11 with 20 and 304 for 106 with 40
+(over four legs, 129 ms for 49 with 20 and 677 for 474 with 40).
 Write the limit as the library's `ConsecutiveRoleConstraint` and the search
 finds balanced roles for those fields; or name `BalancedRoleAssignment` and
 the search runs to its bounds for the closure too, and fails where it
 finds none (it found balanced roles for 6, 8 and 10 participants, and
 stopped at a bound, after one to thirteen seconds, from 12 up).
+Shuffled legs can cost far more than the figures above, since the count
+does not stop the search of a layout's later legs: a limit of three in a
+row written as a closure, over two shuffled legs of 32 participants, fell
+back after 81,662 more questions than round parity asks, in 2.2 seconds
+for 0.9 (one seed).
 
 The roles of a fall-back are those of round parity, which
 [Legs after the first](#legs-after-the-first) and the table of
