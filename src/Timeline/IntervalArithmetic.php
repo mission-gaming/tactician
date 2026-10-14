@@ -203,7 +203,10 @@ final class IntervalArithmetic
                     . self::MAX_RELATIVE_STEPS . ' that are added one at a time; write the interval as an ISO 8601 duration',
                 [
                     'steps' => $steps,
-                    'interval' => TimelineDefinition::formatInterval($interval),
+                    // The string it was made from: formatInterval() shows
+                    // amounts of time (`1 week`) as the duration they are
+                    // not (`P7D`), which is what this refusal asks for
+                    'interval' => self::relativeDateString($interval) ?? TimelineDefinition::formatInterval($interval),
                     'limit' => self::MAX_RELATIVE_STEPS,
                 ],
                 reason: InvalidConfigurationReason::ValueOutOfRange

@@ -244,13 +244,7 @@ final readonly class SessionGrid
         }
 
         // Before anything is allocated or visited for each session
-        if ($sessionCount > self::MAX_POSITIONS) {
-            throw new InvalidConfigurationException(
-                'A session grid has at most ' . self::MAX_POSITIONS . ' positions, and so at most that many sessions',
-                ['session_count' => $sessionCount, 'limit' => self::MAX_POSITIONS],
-                reason: InvalidConfigurationReason::ValueOutOfRange
-            );
-        }
+        self::refuseTooManySessions($sessionCount);
 
         $starts = [];
         $previous = null;
@@ -550,6 +544,10 @@ final readonly class SessionGrid
             );
         }
 
+        // Before a start is read: each is parsed and kept, and the list is
+        // as long as the caller made it
+        self::refuseTooManySessions(count($sessions));
+
         $starts = [];
         foreach (array_values($sessions) as $index => $session) {
             $starts[] = ZonedTime::parse($session, $config['timezone'] ?? null, "sessions[{$index}]");
@@ -564,6 +562,20 @@ final readonly class SessionGrid
             $overrides,
             $capacityPerSlot
         );
+    }
+
+    /**
+     * @throws InvalidConfigurationException When there are more sessions than MAX_POSITIONS
+     */
+    private static function refuseTooManySessions(int $sessionCount): void
+    {
+        if ($sessionCount > self::MAX_POSITIONS) {
+            throw new InvalidConfigurationException(
+                'A session grid has at most ' . self::MAX_POSITIONS . ' positions, and so at most that many sessions',
+                ['session_count' => $sessionCount, 'limit' => self::MAX_POSITIONS],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
     }
 
     /**

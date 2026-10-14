@@ -479,9 +479,10 @@ final readonly class TimelineDefinition
      * gives for each slot of the round, with the round's first slot
      * computed once.
      *
-     * The times are produced as they are asked for, so that the assigner,
-     * which refuses a round at the first slot that is not after the one
-     * before it, computes none after that one.
+     * The round is checked, and its first slot computed, when this is
+     * called. The slots after the first are produced as they are asked for,
+     * so that the assigner, which refuses a round at the first slot that is
+     * not after the one before it, computes none after that one.
      *
      * @internal For TimelineAssigner; not part of the public API.
      *
@@ -489,8 +490,9 @@ final readonly class TimelineDefinition
      *
      * @return Generator<int, DateTimeImmutable> Keyed by slot index, from 0
      *
-     * @throws InvalidConfigurationException When the round is out of range, or it or one of its
-     *                                       slots is too far from the start to be computed
+     * @throws InvalidConfigurationException When the round is out of range or too far from the
+     *                                       start to be computed; and, while the slots are read,
+     *                                       when one of them is too far from the round's first
      */
     public function roundSlotTimes(int $round): Generator
     {
@@ -502,8 +504,23 @@ final readonly class TimelineDefinition
             );
         }
 
+        // Not a generator itself, so that the round is refused by this
+        // call and not by the first read of what it returns
+        return $this->utcSlotTimesFrom(IntervalArithmetic::advance($this->start, $this->roundInterval, $round - 1));
+    }
+
+    /**
+     * The slots of a round from its first slot, in UTC.
+     *
+     * @param DateTimeImmutable $first The round's first slot, in the start's timezone
+     *
+     * @return Generator<int, DateTimeImmutable> Keyed by slot index, from 0
+     *
+     * @throws InvalidConfigurationException When a slot is too far from the first to be computed
+     */
+    private function utcSlotTimesFrom(DateTimeImmutable $first): Generator
+    {
         $utc = new DateTimeZone('UTC');
-        $first = IntervalArithmetic::advance($this->start, $this->roundInterval, $round - 1);
         foreach ($this->slotTimesFrom($first) as $slot => $time) {
             yield $slot => $time->setTimezone($utc);
         }

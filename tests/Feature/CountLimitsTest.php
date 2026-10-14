@@ -2,11 +2,17 @@
 
 declare(strict_types=1);
 
+use MissionGaming\Tactician\DTO\Event;
+use MissionGaming\Tactician\DTO\Participant;
+use MissionGaming\Tactician\DTO\Round;
+use MissionGaming\Tactician\DTO\Schedule;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Repack\SessionGrid;
 use MissionGaming\Tactician\Tests\Support\CountLimitCorpus;
 use MissionGaming\Tactician\Timeline\IntervalArithmetic;
+use MissionGaming\Tactician\Timeline\ScheduledEvent;
+use MissionGaming\Tactician\Timeline\TimelineAssigner;
 use MissionGaming\Tactician\Timeline\TimelineDefinition;
 use PHPUnit\Framework\Assert;
 
@@ -180,6 +186,34 @@ describe('The limits on the counts of a timeline and of a session grid', functio
             'A session grid has at most 100000 positions',
             ['positions' => 100_001, 'sessions' => 1000, 'limit' => 100_000],
         ],
+        // The sum is refused before a slot time is computed, as on a shape-only grid
+        'the positions of a grid with instants, where every count is within the limit' => [
+            fn() => SessionGrid::fromArray([
+                'sessions' => ['2026-08-12 20:00', '2026-08-19 20:00'], 'timezone' => 'Europe/London', 'slot_interval' => 'PT1S',
+                'slots_per_session' => 50_001,
+            ]),
+            'A session grid has at most 100000 positions',
+            ['positions' => 100_002, 'sessions' => 2, 'limit' => 100_000],
+        ],
+        // The list is refused for its length before a start is read: not one of these is a date
+        'the session starts of plain data, before any is read' => [
+            fn() => SessionGrid::fromArray([
+                'sessions' => array_fill(0, 100_001, 'not a date'), 'timezone' => 'Europe/London', 'slot_interval' => 'PT1M',
+            ]),
+            'A session grid has at most 100000 positions, and so at most that many sessions',
+            ['session_count' => 100_001, 'limit' => 100_000],
+        ],
+        // Amounts of time in a string are shown as the string and not as the duration
+        // they would be (`P7D`), which is what the refusal asks the caller to write
+        'the steps of an interval made from amounts of time in a string' => [
+            fn() => (new TimelineDefinition(
+                new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')),
+                countLimitRelativeInterval('1 week')
+            ))->getSlotTime(100_002),
+            '100001 steps of an interval made from a relative date string are more than the 100000 that are added one at a time; '
+                . 'write the interval as an ISO 8601 duration',
+            ['steps' => 100_001, 'interval' => '1 week', 'limit' => 100_000],
+        ],
         'the capacity of a slot' => [
             fn() => SessionGrid::fromArray(['session_count' => 2, 'capacity_per_slot' => 1_000_000_000_001]),
             'A slot has a capacity of at most 1000000000000 events, or an unbounded one (null)',
@@ -208,6 +242,30 @@ describe('The limits on the counts of a timeline and of a session grid', functio
             ->and($grid->positionOf(99_999))->toBe(['session' => 999, 'slot' => 99])
             ->and($grid->getCapacityPerSlot())->toBe(1_000_000_000_000)
             ->and(SessionGrid::fromArray($grid->toArray())->getPositionCount())->toBe(100_000);
+    });
+
+    it('assign a round of the most slots a round can have', function (): void {
+        // Every slot a round declares is visited for each round assigned,
+        // so the limit on the slots is what an assignment costs
+        $timeline = TimelineDefinition::fromArray([
+            'start' => '2026-08-01 18:00', 'timezone' => 'UTC', 'round_interval' => 'P1D',
+            'slots_per_round' => 10_000, 'slot_interval' => 'PT1S',
+        ]);
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $c = new Participant('c', 'C');
+        $d = new Participant('d', 'D');
+        $schedule = new Schedule([
+            new Event([$a, $b], new Round(1)), new Event([$c, $d], new Round(1)), new Event([$a, $c], new Round(2)),
+        ]);
+
+        $kickoffs = array_map(
+            static fn(ScheduledEvent $scheduledEvent): string => $scheduledEvent->getKickoff()->format('Y-m-d H:i:s'),
+            (new TimelineAssigner())->assign($schedule, $timeline)->getScheduledEvents()
+        );
+
+        // Round 1 ends at 20:46:39, its 10,000th slot, before round 2 starts
+        expect($kickoffs)->toBe(['2026-08-01 18:00:00', '2026-08-01 18:00:01', '2026-08-02 18:00:00']);
     });
 
     it('leave a round number without a limit of its own where the interval is a duration', function (): void {
@@ -255,7 +313,7 @@ describe('The limits on the counts of a timeline and of a session grid', functio
         Assert::assertSame(0, $result['exitCode']);
 
         expect($result['verdicts'])->toBe($expected)
-            ->and(count($expected))->toBe(46);
+            ->and(count($expected))->toBe(48);
     });
 });
 
@@ -298,6 +356,73 @@ describe('The slots of a round or a session, computed in one pass', function ():
         }
 
         expect($compared)->toBe(11 * 5 * 43);
+    });
+
+    it('are produced as they are asked for, and stop at the limit of steps for an interval made from a relative date string', function (): void {
+        $anchor = new DateTimeImmutable('2026-08-12 20:00', new DateTimeZone('UTC'));
+
+        // Asked for the largest count there is and read for three times,
+        // each kind of interval gives three and computes no more
+        foreach ([new DateInterval('PT1S'), countLimitRelativeInterval('1 second')] as $interval) {
+            $read = [];
+            foreach (IntervalArithmetic::series($anchor, $interval, PHP_INT_MAX) as $step => $time) {
+                $read[$step] = $time->format('H:i:s');
+                if ($step === 2) {
+                    break;
+                }
+            }
+
+            expect($read)->toBe(['20:00:00', '20:00:01', '20:00:02']);
+        }
+
+        // Read to the limit of steps and past it, the relative one is
+        // refused at the step after the limit: the corpus run in a process
+        // of its own has that case, because computing each step from the
+        // anchor again, if the one pass were lost, would take hours
+        expect(CountLimitCorpus::expected())
+            ->toHaveKey('series: a relative second read to the limit of steps', 'loaded')
+            ->toHaveKey('series: a relative second read one step past the limit', 'refused: ValueOutOfRange');
+    });
+
+    it('are, round by round, the times asked for one slot at a time', function (): void {
+        $utc = new DateTimeZone('UTC');
+        $localHour = (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 01:00', $utc));
+
+        // A slot interval of each kind, one definition of a single slot and
+        // no slot interval, and rounds on either side of a clock change
+        $timelines = [
+            new TimelineDefinition(new DateTimeImmutable('2026-03-22 00:30', new DateTimeZone('Europe/London')), new DateInterval('P7D'), 3, $localHour),
+            new TimelineDefinition(new DateTimeImmutable('2026-01-31 19:00', new DateTimeZone('Europe/London')), new DateInterval('P1M'), 4, new DateInterval('PT90M')),
+            new TimelineDefinition(new DateTimeImmutable('2026-10-24 23:30', new DateTimeZone('Europe/London')), countLimitRelativeInterval('1 day'), 5, countLimitRelativeInterval('25 minutes')),
+            new TimelineDefinition(new DateTimeImmutable('2011-12-28 10:00', new DateTimeZone('Pacific/Apia')), new DateInterval('P1D')),
+            new TimelineDefinition(new DateTimeImmutable('2026-08-01 18:00', $utc), new DateInterval('P7D'), 1, new DateInterval('PT1H')),
+        ];
+
+        $compared = 0;
+        foreach ($timelines as $timeline) {
+            foreach ([1, 2, 3, 9, 40] as $round) {
+                $times = iterator_to_array($timeline->roundSlotTimes($round));
+
+                expect(array_keys($times))->toBe(range(0, $timeline->getSlotsPerRound() - 1));
+                foreach ($times as $slot => $time) {
+                    Assert::assertEquals($timeline->getSlotTime($round, $slot), $time);
+                    Assert::assertSame('UTC', $time->getTimezone()->getName());
+                    ++$compared;
+                }
+            }
+        }
+
+        expect($compared)->toBe((3 + 4 + 5 + 1 + 1) * 5);
+    });
+
+    it('refuse a round that is out of range or too far away when the slots are asked for, before one is read', function (): void {
+        $timeline = new TimelineDefinition(new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')), new DateInterval('P7D'), 2, new DateInterval('PT1H'));
+
+        // The generator is never read: the call itself is what is refused
+        expect(countLimitRefusal(fn() => $timeline->roundSlotTimes(0))?->getReason())->toBe(InvalidConfigurationReason::PositionOutOfRange)
+            ->and(countLimitRefusal(fn() => $timeline->roundSlotTimes(-3))?->getReason())->toBe(InvalidConfigurationReason::PositionOutOfRange)
+            ->and(countLimitRefusal(fn() => $timeline->roundSlotTimes(PHP_INT_MAX))?->getReason())->toBe(InvalidConfigurationReason::ValueOutOfRange)
+            ->and(countLimitRefusal(fn() => $timeline->roundSlotTimes(1)))->toBeNull();
     });
 
     it('are, for an interval made from a relative date string, each the one before plus the interval', function (): void {
