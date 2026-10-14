@@ -923,17 +923,17 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($namedDefault->roleAssignment::class === (new RoundRobinOptions())->roleAssignment::class);
                 PHP,
         ],
-        // "The block prints: balanced_roles_rejected / balanced_roles_rejected / Balanced, named: no schedule",
+        // "The block prints: no_balanced_roles / no_balanced_roles / Balanced, named: no schedule",
         // the two values in its comments, and "a schedule that fell back is the one
         // RoundParityRoleAssignment gives ... with one more metadata key"
         'the fall-back of the default, its mark and the strict role assignment' => [
             'docs/USAGE.md',
             '$fallback = RoleFallback::of($awaySchedule);',
             <<<'PHP'
-                assert($fallback === RoleFallback::BalancedRolesRejected);
-                assert($fallback->value === 'balanced_roles_rejected');
-                assert($awaySchedule->getMetadataValue(RoleFallback::METADATA_KEY) === 'balanced_roles_rejected');
-                assert(RoleFallback::of(Schedule::fromArray($awaySchedule->toArray())) === RoleFallback::BalancedRolesRejected);
+                assert($fallback === RoleFallback::NoBalancedRoles);
+                assert($fallback->value === 'no_balanced_roles');
+                assert($awaySchedule->getMetadataValue(RoleFallback::METADATA_KEY) === 'no_balanced_roles');
+                assert(RoleFallback::of(Schedule::fromArray($awaySchedule->toArray())) === RoleFallback::NoBalancedRoles);
                 assert(RoleFallback::of((new RoundRobinScheduler())->schedule($participants)) === null);
                 assert($failure instanceof IncompleteScheduleException);
 

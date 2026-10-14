@@ -328,13 +328,12 @@ what the role search can know about the constraints
 - **Anything else** (a closure, a metadata rule, a class of the caller's, a
   subclass). The balanced roles as given in the first layout; then steps 2
   to 8 with the roles the generator proposes; then steps 2 to 8 with the
-  balanced roles. With a schedule in hand that last run is held to
-  `RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND` events
-  put to the constraints, leaves out the search that goes back one event at
-  a time (the seatings a constraint fixes are still solved for), ends at the
-  first rejection that turns on the events before the rejected one, and
-  makes a backtracking search only where the schedule in hand came from one:
-  the fall-back is not made to wait for a search that can take seconds.
+  balanced roles. With a schedule in hand that last run is held to 4,000
+  events put to the constraints and makes a backtracking search only where
+  the schedule in hand came from one: the fall-back is not made to wait for
+  a search that can take seconds. Within the 4,000 it is the run of
+  `BalancedRoleAssignment`, the search that goes back one event at a time
+  included.
 
 Each run starts where a call starts: the shuffles a `Randomizer` gave the
 call are read again from the first, and a leg strategy that draws is asked

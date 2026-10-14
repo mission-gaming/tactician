@@ -962,16 +962,12 @@ entry on the engine fingerprint.
   search, and it would stop at the same bound and fail;
   `BalancedRolesRejected` (`balanced_roles_rejected`): under a constraint
   of your own the balanced roles put to it were rejected and, with a
-  schedule in hand, the rest was not searched, which it would search to its
-  bounds. `of()` throws an `InvalidInputException` for a value under the
-  key that is none of them. More reasons may be added, so a `match` needs a
-  `default` arm.
-- **`RoundRobinScheduler::ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND`**
-  (4,000): the events the default role assignment may still put to the
-  constraints in search of balanced roles once the roles the generator
-  proposes have completed the schedule, under constraints the search of
-  roles cannot reason about exactly. The usage guide ("Balanced where
-  possible") says what is and is not tried within it.
+  schedule in hand, the search for others stopped after the 4,000 events
+  it may then put to the constraints (or, with `backtracking: true`, no
+  backtracking search was made for balance), where it would search to its
+  full bounds. `of()` throws an `InvalidInputException` for a value under
+  the key that is none of them. More reasons may be added, so a `match`
+  needs a `default` arm.
 - **`RoleAssignment\RoleAssignmentContext`** (experimental), the second
   argument of `assignRoles()`: `$leg` and `$legs` (which leg of how many
   the roles are decided for; the scheduler asks once for each leg), and the
@@ -1827,9 +1823,10 @@ entry on the engine fingerprint.
     a subclass of `ConstraintSet`; one to four legs, the three strategies,
     with and without a `Randomizer`, `backtracking` on and off in the
     small fields). Without a `Randomizer`, no configuration that completed
-    fails. Of the 22,106 that completed in 0.2.x, 17,761 complete with
-    balanced roles and 4,242 fall back; each of the 2,175 fall-backs
-    without a `Randomizer` has the events 0.2.x gave it. The other 103 hold
+    fails. Of the 22,106 that completed in 0.2.x, 22,003 complete: about
+    four in five with balanced roles and the others with a fall-back, and
+    every fall-back without a `Randomizer` has the events 0.2.x gave it.
+    The other 103 hold
     a `Randomizer` and fail: each fails under `RoundParityRoleAssignment`
     too, because its later legs now derive from the first (the entry under
     "Output change (fix)"). Of the configurations that failed in 0.2.x,
@@ -1841,31 +1838,46 @@ entry on the engine fingerprint.
     in all three in a field of four, completes as it did where the
     round-parity roles agree with it, marked.
   - **A limit on roles written as a closure or a class of your own gets
-    balanced roles only where the balanced roles as given keep it.** The
+    balanced roles only where they are found within 4,000 events.** The
     scheduler knows what the library's two role limits read and goes
     straight back to the event that matters; a constraint of yours does not
     say, and a search for it goes back one event at a time and can run to
     its bound in a league of ordinary size. So where such a constraint
-    rejects an event for what came before it and the round-parity roles
-    complete the schedule, the default returns that schedule, marked
-    `balanced_roles_rejected`, and does not search. Measured with a closure
+    rejects the balanced roles and the round-parity roles complete the
+    schedule, the search for other balanced roles is the one
+    `BalancedRoleAssignment` makes, held to 4,000 events put to the
+    constraints. A schedule it finds within them is the one
+    `BalancedRoleAssignment` gives; otherwise the default returns the
+    round-parity schedule, marked `balanced_roles_rejected`, or
+    `no_balanced_roles` where the search went through every choice.
+    Measured with a closure
     that does what `ConsecutiveRoleConstraint::homeAway(2)` does, two and
     four mirrored legs, default options, every field of even size measured
-    from 6 to 40: the default returns the
-    schedule of 0.2.x, marked, after asking the closure 2.0 to 2.3 times
-    as often as 0.2.x asked it over two legs and 1.5 to 1.6 times over
-    four, in 1.5 to 2.0 times the time over two legs (0.6 ms for 0.3 with
-    6 participants, 3.8 for 2.2 with 12, 17.7 for 11.3 with 20, 159 for
-    104 with 40) and 1.1 to 1.3 times over four (11.6 ms for 8.8 with 12,
-    527 for 460 with 40). What to change, if such a schedule should be
+    from 6 to 40: 6 and 8 participants get balanced roles (in 2.5 and 23 ms
+    over two legs, where 0.2.x took 0.3 and 0.6 for its round-parity
+    schedule), and from 10 up the default returns the schedule of 0.2.x,
+    marked, after asking the closure 3,271 to 5,481 more questions than
+    0.2.x asked it: over two legs in 47 ms for 1.3 with 10 participants,
+    54 for 2.2 with 12, 90 for 11.3 with 20 and 304 for 104 with 40, and
+    over four in 63 ms for 8.8 with 12 and 677 for 460 with 40. In a sweep
+    of 31,164 configurations (fields of 2 to 40, the constraints above), a
+    fall-back under a constraint of your own took 33 ms at the median with
+    10 participants, 83 with 20 and 313 with 40, of which the search for
+    balanced roles is 30 to 85 ms; 22,101 of the 22,185 configurations that
+    `BalancedRoleAssignment` balances were balanced by the default, with
+    the same schedule, and the other 84 fell back. What to change, if such
+    a schedule should be
     balanced: use the library's constraint where it says the same
     (`ConsecutiveRoleConstraint`, `RoleBalanceConstraint`), which is
     searched exactly and found for those fields; or name
     `BalancedRoleAssignment`, which searches to its bounds for a constraint
     of yours too (it finds 6, 8 and 10 participants over two legs, and
-    stops at a bound, after 1 to 13 seconds, from 12 up). A rule of yours
-    that fixes the role of a pairing whatever came before is not affected:
-    the scheduler solves for it, with a schedule in hand as without.
+    stops at a bound, after 1 to 13 seconds, from 12 up). What to change,
+    if the time matters more than the balance: name
+    `RoundParityRoleAssignment`. A rule of yours
+    that fixes the role of a pairing whatever came before is solved for
+    and not searched for, with a schedule in hand as without, as far as
+    the 4,000 events go.
   - A `RoleBalanceConstraint` limit that the balanced roles need is lower:
     1 for a single leg of a field of even size and 2 for one of odd size,
     where round parity needs 3 and 4. Repeated legs of balanced roles are
@@ -1882,8 +1894,11 @@ entry on the engine fingerprint.
     13 to 29 participants of odd size, where the search stops at its bound
     and the schedule then fails as it did. Under a constraint of your own
     the round-parity roles are tried before the search, and with their
-    schedule in hand what is still spent on balanced roles is at most 4,000
-    events put to the constraints; with none in hand, a schedule that
+    schedule in hand what is still spent on balanced roles is held to 4,000
+    events put to the constraints (not so the search of the later legs of
+    a shuffled schedule, which keeps its own bound of 20,000 rejected
+    roles; the usage guide, "Balanced where possible", has what that
+    comes to); with none in hand, a schedule that
     failed in 0.2.x fails after the search as well: a role pinned in every leg over
     two mirrored legs, which no schedule has, fails in 0.3, 0.6 and 1.4
     seconds with 8, 12 and 20 participants, where 0.2.x failed in 4, 18
@@ -1948,15 +1963,17 @@ entry on the engine fingerprint.
     the message of the last layout.)
   - **A constraint that counts its calls is asked more often.** The
     default generates a constrained schedule up to three times in a call,
-    and with a schedule in hand puts an event a constraint of yours
-    rejected to it once more with a context that holds no events. The
-    usage guide asks for pure predicates ("What a constraint may rely on"),
-    and what is said above holds for those. That context is one no
-    generation makes for an event of a later leg, where a constraint may
-    rely on the first leg being there (the first meeting of a pair, read
-    for the return meeting): what a constraint throws for that one question
-    is read as "the rejection turns on what came before", the schedule in
-    hand is returned, marked, and the exception does not reach the caller.
+    and under a constraint of yours searches for balanced roles with up to
+    4,000 more events once the round-parity roles have completed the
+    schedule. The usage guide asks for pure predicates ("What a constraint
+    may rely on"), and what is said above holds for those. Every question
+    of those generations is one a generation asks: an event with the events
+    laid out before it, so a constraint that relies on the first leg being
+    there for an event of a later leg (the first meeting of a pair, read
+    for the return meeting) is not asked without it by any of them. The
+    analysis of a failed attempt asks what the usage guide says it asks,
+    under every role assignment: each missing pairing in every round,
+    against the events of that attempt.
 
   **Golden fixtures.** Every fixture of a round robin with default options
   changes, in roles only: `round-robin/mirrored-unseeded.txt`,

@@ -31,7 +31,6 @@ use MissionGaming\Tactician\Validation\ConstraintViolation;
 use MissionGaming\Tactician\Validation\ValidatesScheduleCompleteness;
 use Override;
 use Random\Randomizer;
-use Throwable;
 
 /**
  * Generates a complete round-robin schedule up front: every participant
@@ -97,10 +96,8 @@ use Throwable;
  * failure. Under constraints the search of roles cannot reason about
  * exactly (anything but the library's own classes in a ConstraintSet) the
  * roles the generator proposes are tried before that search, and with
- * their schedule in hand the search is held to
- * ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND events put to the
- * constraints and ends at the first rejection that turns on earlier
- * events, so that the fall-back does not wait for a search that can
+ * their schedule in hand the search is held to 4,000 events put to the
+ * constraints, so that the fall-back does not wait for a search that can
  * take seconds; generateBalancedWherePossible() has the order of the
  * attempts. BalancedRoleAssignment, named, is the strict choice: balanced
  * roles within the bounds above, or a failure.
@@ -151,16 +148,23 @@ class RoundRobinScheduler implements SchedulerInterface
      * constraints are not ones the search reasons about exactly
      * (ConstraintPurity::readsOwnEventsOnly()). It is checked before every
      * rotated order, so the last one tried can pass it by the events of one
-     * layout; a backtracking search has what is left of it as its step
-     * budget, and is made only where the schedule in hand came from a
-     * backtracking search itself. A search this stops is reported as
-     * RoleFallback::BalancedRolesRejected.
+     * layout. Under a leg strategy whose roles are preferences it can pass
+     * it by far more: the search of that layout's later legs
+     * (generateLaterLegsWithRoleSearch()) is counted when it ends and is
+     * not stopped by this count, only by its own
+     * LegRoleSearch::REJECTION_LIMIT. A backtracking search has what is
+     * left of the count as its step budget, and is made only where the
+     * schedule in hand came from a backtracking search itself. Nothing
+     * else is left out for it: within
+     * the bound the search is the one BalancedRoleAssignment has when it is
+     * named, so a schedule it finds is that one's. A search this stops is
+     * reported as RoleFallback::BalancedRolesRejected.
      *
      * A count and not a time: what it costs grows with the field, since a
      * constraint that reads a participant's events reads more of them.
      * docs/design/role-assignment.md has what was measured.
      */
-    public const int ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND = 4_000;
+    private const int ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND = 4_000;
 
     /** @var array<int, string> Participant IDs receiving a bye, keyed by round number */
     private array $roundByes = [];
@@ -205,14 +209,6 @@ class RoundRobinScheduler implements SchedulerInterface
      * part of it from running.
      */
     private bool $searchWasCutShort = false;
-
-    /**
-     * Whether the search for balanced roles under way, with a schedule in
-     * hand, met a rejection it cannot reason about
-     * (aRejectionTurnsOnEarlierEvents()): nothing more is tried for
-     * balanced roles in this schedule() call.
-     */
-    private bool $searchEndedForGood = false;
 
     /**
      * Whether the generation under way began a backtracking search.
@@ -505,7 +501,7 @@ class RoundRobinScheduler implements SchedulerInterface
                 // is left of the events that may still be put to the
                 // constraints as its step budget.
                 $stepBudget = min($stepBudget, $this->attemptsAllowed - $this->attemptsSpent);
-                if ($stepBudget <= 0 || $this->searchEndedForGood || !$this->scheduleInHandWasSearchedFor) {
+                if ($stepBudget <= 0 || !$this->scheduleInHandWasSearchedFor) {
                     $this->searchWasCutShort = true;
 
                     throw $failure;
@@ -558,18 +554,15 @@ class RoundRobinScheduler implements SchedulerInterface
      *    schedule, or its failure, is kept.
      * 3. Everything BalancedRoleAssignment does when it is named, from the
      *    first layout again. With no schedule in hand it has the bounds it
-     *    always has. With one in hand it is held to
-     *    ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND events put to the
-     *    constraints (of which a backtracking search has what is left as
-     *    its step budget, and is made only where the schedule in hand came
-     *    from a backtracking search too), and the search that goes back one event at a
-     *    time is left out for a constraint the search cannot reason about:
-     *    a layout is left where the pass that fixes seatings comes to its
-     *    end without a schedule (searchRolesWithinRule()), and everything
-     *    ends at the first rejection that turns on the events before the
-     *    rejected one (aRejectionTurnsOnEarlierEvents()). So a rule that
-     *    fixes roles is still solved, and a limit on what a participant
-     *    did before is not searched for. A schedule found here is
+     *    always has. With one in hand it is held to 4,000 events put to the
+     *    constraints (ROLE_SEARCH_ATTEMPTS_WITH_A_SCHEDULE_IN_HAND), of
+     *    which a backtracking search has what is left as its step budget,
+     *    and is made only where the schedule in hand came from a
+     *    backtracking search too. Nothing else is left out, so what the
+     *    search does within the bound is what it does under
+     *    BalancedRoleAssignment: a rule that fixes roles is solved, and a
+     *    limit on what a participant did before is searched for one event
+     *    at a time as far as the bound goes. A schedule found here is
      *    returned, and is the one BalancedRoleAssignment gives.
      * 4. The schedule of step 2 with the reason step 3 ended on, or the
      *    failure of step 2.
@@ -722,7 +715,6 @@ class RoundRobinScheduler implements SchedulerInterface
         $this->attemptsAllowed = null;
         $this->attemptsSpent = 0;
         $this->searchWasCutShort = false;
-        $this->searchEndedForGood = false;
         $this->searchStoppedAtABound = false;
         $this->aBacktrackingSearchRan = false;
         $this->scheduleInHandWasSearchedFor = false;
@@ -929,11 +921,10 @@ class RoundRobinScheduler implements SchedulerInterface
             if (
                 $lastFailure instanceof IncompleteScheduleException
                 && $this->attemptsAllowed !== null
-                && ($this->searchEndedForGood || $this->attemptsSpent >= $this->attemptsAllowed)
+                && $this->attemptsSpent >= $this->attemptsAllowed
             ) {
                 // A schedule is in hand, and the events that may still be
-                // put to the constraints for balanced roles are spent, or
-                // a rejection the search cannot reason about ended it
+                // put to the constraints for balanced roles are spent
                 $this->searchWasCutShort = true;
 
                 throw $lastFailure;
@@ -1023,7 +1014,7 @@ class RoundRobinScheduler implements SchedulerInterface
             // A schedule is in hand: the search has what is left of the
             // events that may still be put to the constraints
             $allowance['attempts'] = min($allowance['attempts'], $this->attemptsAllowed - $this->attemptsSpent);
-            if ($allowance['attempts'] <= 0 || $this->searchEndedForGood) {
+            if ($allowance['attempts'] <= 0) {
                 $this->searchWasCutShort = true;
 
                 throw $greedyFailure;
@@ -1107,11 +1098,6 @@ class RoundRobinScheduler implements SchedulerInterface
             }
 
             $stoppedAtABound = $stoppedAtABound || $outcome['stopped'];
-            if ($this->searchEndedForGood) {
-                // With a schedule in hand, a rejection the search cannot
-                // reason about ends it: no other layout is searched
-                break;
-            }
         }
 
         $this->searchStoppedAtABound = $stoppedAtABound;
@@ -1264,20 +1250,6 @@ class RoundRobinScheduler implements SchedulerInterface
 
                 return $this->roleSearchResult(null, $replay, $steps);
             }
-            if (
-                $this->attemptsAllowed !== null
-                && !$this->aConstraintOnOwnEventsRejects($replay->furthestRejections())
-                && $this->aRejectionTurnsOnEarlierEvents($replay->furthestRejections())
-            ) {
-                // A schedule is in hand, and what was rejected is neither a
-                // seating to fix nor a limit the search knows how to go
-                // back for: the search for balanced roles ends here, in
-                // this layout and in every other
-                $this->searchWasCutShort = true;
-                $this->searchEndedForGood = true;
-
-                return ['stopped' => true] + $this->roleSearchResult(null, $replay, $steps);
-            }
             if ($rejected === null || ($rejected >= $eventsPerLeg && $rolesArePreferences)) {
                 // The later legs of a strategy of preferences were searched
                 // and have no roles: no single seating of the first leg is
@@ -1314,23 +1286,6 @@ class RoundRobinScheduler implements SchedulerInterface
 
             $fixed = $withThisOne;
             $rounds = $answer;
-        }
-
-        if ($this->attemptsAllowed !== null && !$this->aConstraintOnOwnEventsRejects($replay->furthestRejections())) {
-            // A schedule is in hand, and the pass that fixes seatings has
-            // come to its end in this layout without one of the library's
-            // role limits rejecting an event: a seating rejected both ways
-            // round, or no balanced leg around the seatings fixed. For a
-            // rule that fixes roles that pass is exact, and the two
-            // searches below could only say the same, one event at a time
-            // and at the cost of the whole allowance. They are left out,
-            // and the fall-back says that the constraints rejected the
-            // balanced roles and not that none exist, since nothing shows
-            // that such a constraint answers the same whatever came before
-            // the event.
-            $this->searchWasCutShort = true;
-
-            return ['stopped' => true] + $this->roleSearchResult(null, $replay, $steps);
         }
 
         $search = new LegRoleSearch(
@@ -1436,106 +1391,6 @@ class RoundRobinScheduler implements SchedulerInterface
         }
 
         return false;
-    }
-
-    /**
-     * Whether one of the rejected events is rejected, for what came before
-     * it, by a constraint the search of roles cannot reason about: one that
-     * is not of a class ConstraintPurity::constraintReadsOwnEventsOnly()
-     * knows, rejects the event in its context, and accepts the same event
-     * put to it with no event before it. For a set that is not
-     * ConstraintSet itself the set is asked as a whole.
-     *
-     * A rule that fixes the role of a pairing rejects its event whatever
-     * came before, and the pass that fixes seatings is made for it. A limit
-     * on what a participant did before (a streak, a running total) written
-     * as a closure or a class of the caller's is the other kind: the event
-     * is fine by itself, and the scheduler cannot know which earlier event
-     * to change. It goes back one event at a time for such a rejection,
-     * which can spend a whole allowance without a result.
-     *
-     * Each event is put to the constraints once more for this, with a
-     * context that holds no events. No generation makes that context for
-     * an event of a later leg, so a constraint may be unable to answer
-     * there and throw: one that reads the first meeting of a pair when it
-     * is asked about the second. That is an answer to this question, and
-     * not a failure of the call: such a constraint turns on earlier events
-     * (acceptsWithNoEventBefore()).
-     *
-     * @param list<array{Event, SchedulingContext}> $rejections
-     */
-    private function aRejectionTurnsOnEarlierEvents(array $rejections): bool
-    {
-        if (!$this->constraints instanceof ConstraintSet) {
-            return false;
-        }
-
-        foreach ($rejections as [$event, $context]) {
-            if ($this->constraints::class !== ConstraintSet::class) {
-                if (!$this->constraints->isSatisfied($event, $context) && $this->acceptsWithNoEventBefore($this->constraints, $event, $context)) {
-                    return true;
-                }
-
-                continue;
-            }
-
-            foreach ($this->constraints->getConstraints() as $constraint) {
-                if (
-                    !ConstraintPurity::constraintReadsOwnEventsOnly($constraint)
-                    && !$constraint->isSatisfied($event, $context)
-                    && $this->acceptsWithNoEventBefore($constraint, $event, $context)
-                ) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Whether a constraint, or a whole set, accepts the event when it is
-     * put to it with the same participants, plan and leg and no event
-     * before it. True as well when it throws: the context is one the
-     * scheduler makes up for this question alone, and a constraint that
-     * cannot answer without the events before it is one whose verdict
-     * turns on them. Nothing it throws there reaches the caller; what it
-     * throws when asked about an event in the context of a generation
-     * still does.
-     */
-    private function acceptsWithNoEventBefore(ConstraintInterface|ConstraintSet $constraints, Event $event, SchedulingContext $context): bool
-    {
-        $byItself = new SchedulingContext(
-            $context->getParticipants(),
-            $context->getPlan(),
-            [],
-            $context->getCurrentLeg(),
-            $context->getParticipantsPerEvent()
-        );
-
-        try {
-            return $constraints->isSatisfied($event, $byItself);
-        } catch (Throwable) {
-            return true;
-        }
-    }
-
-    /**
-     * With a schedule in hand under the default of the options, end the
-     * search for balanced roles when one of these rejections is of the kind
-     * it cannot reason about (aRejectionTurnsOnEarlierEvents()): the
-     * schedule in hand is the answer, marked
-     * RoleFallback::BalancedRolesRejected.
-     * Without one in hand nothing is ended.
-     *
-     * @param list<array{Event, SchedulingContext}> $rejections
-     */
-    private function endTheSearchWhereItCannotReason(array $rejections): void
-    {
-        if ($this->attemptsAllowed !== null && !$this->searchEndedForGood && $this->aRejectionTurnsOnEarlierEvents($rejections)) {
-            $this->searchWasCutShort = true;
-            $this->searchEndedForGood = true;
-        }
     }
 
     /**
@@ -2388,8 +2243,6 @@ class RoundRobinScheduler implements SchedulerInterface
         foreach ($search->furthestRejections() as [$rejected, $rejectedContext]) {
             $this->recordConstraintViolation($rejected, $rejectedContext);
         }
-        $this->endTheSearchWhereItCannotReason($search->furthestRejections());
-
         $generated = [...$legOneEvents, ...$search->furthestEvents()];
 
         throw new IncompleteScheduleException(
@@ -2536,8 +2389,6 @@ class RoundRobinScheduler implements SchedulerInterface
                         if ($this->failureIsNeverShown) {
                             // The leg is short of an event, and nobody
                             // reads what else the constraints reject
-                            $this->endTheSearchWhereItCannotReason([[$event, $context]]);
-
                             return $legEvents;
                         }
                     }
@@ -2875,8 +2726,6 @@ class RoundRobinScheduler implements SchedulerInterface
                         if ($this->failureIsNeverShown) {
                             // The leg is short of an event, and nobody
                             // reads what else the constraints reject
-                            $this->endTheSearchWhereItCannotReason([[$event, $context]]);
-
                             return $events;
                         }
                     }
