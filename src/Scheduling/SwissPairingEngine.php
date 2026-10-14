@@ -341,11 +341,15 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * was known when the round was paired: the rounds recorded before it
      * and their results, the adjustments made before it
      * (Adjustment::getAfterRound()), and the participants who had not
-     * withdrawn by then (StageState::getWithdrawals(); a participant whose
-     * withdrawal has no round is taken to have been in the stage for the
-     * rounds that name it and for those before them). So a round this
-     * engine paired is not reported as manual for what was recorded after
-     * it.
+     * withdrawn by then (StageState::getWithdrawals()). A participant was
+     * in the stage for the rounds that name it and for those before them,
+     * whatever round its withdrawal states, and where it states none, for
+     * no round after the last that names it. So a round this engine paired
+     * is not reported as manual for what was recorded after it, nor for a
+     * withdrawal that was recorded between its pairing and its recording.
+     * An adjustment recorded in that interval is another matter: it is
+     * read as known when the round was paired (see
+     * StageState::withAdjustment()).
      *
      * An engine that holds a Randomizer has no derivation to give: what it
      * drew when the round was paired is not part of the state. Neither has
@@ -442,34 +446,34 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         }
 
         // Who was in the stage when the round was paired: everyone who is
-        // active now, and everyone who withdrew after this round or a
-        // later one was recorded. Where the state does not say when a
-        // participant withdrew, it was in the stage for this round if this
-        // round or a later one names it.
+        // active now, everyone this round or a later one names, and
+        // everyone who withdrew after this round or a later one was
+        // recorded. A round that names a participant was paired while it
+        // was in the stage, whatever the state says of when it left: a
+        // withdrawal is recorded with the last round recorded at that
+        // moment, and a round that was paired before it can be recorded
+        // after it.
         $present = [];
         foreach ($state->getParticipants() as $participant) {
             $present[$participant->getId()] = true;
         }
-        $withdrewEarlier = [];
-        foreach ($state->getWithdrawals() as $withdrawal) {
-            if ($withdrawal->getAfterRound() < $number) {
-                $withdrewEarlier[$withdrawal->getParticipant()->getId()] = $withdrawal;
-            } else {
-                $present[$withdrawal->getParticipant()->getId()] = true;
-            }
-        }
         foreach (array_slice($rounds, $index) as $later) {
             foreach ($later->getEvents() as $event) {
                 foreach ($event->getParticipants() as $participant) {
-                    if (!isset($withdrewEarlier[$participant->getId()])) {
-                        $present[$participant->getId()] = true;
-                    }
+                    $present[$participant->getId()] = true;
                 }
             }
             foreach ($later->getByes() as $bye) {
-                if (!isset($withdrewEarlier[$bye->getId()])) {
-                    $present[$bye->getId()] = true;
-                }
+                $present[$bye->getId()] = true;
+            }
+        }
+        $withdrewEarlier = [];
+        foreach ($state->getWithdrawals() as $withdrawal) {
+            $id = $withdrawal->getParticipant()->getId();
+            if ($withdrawal->getAfterRound() >= $number) {
+                $present[$id] = true;
+            } elseif (!isset($present[$id])) {
+                $withdrewEarlier[$id] = $withdrawal;
             }
         }
 

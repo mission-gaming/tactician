@@ -124,11 +124,18 @@ final class BracketReading
     /**
      * Who had withdrawn when a round was paired, by ID.
      *
-     * A participant whose withdrawal has a round had withdrawn when round
-     * N was paired if it withdrew after a round before N. One whose
-     * withdrawal has none is listed for every round: when it left is not
-     * known, and the recorded rounds say what they can (a round that names
-     * it was paired before it left).
+     * A round that names a participant, in an event or as a bye, was
+     * paired while it was in the stage, and so was every round before it:
+     * nobody who has withdrawn is paired. That is read before anything the
+     * state says of when the participant left, because a withdrawal is
+     * recorded with the last round recorded at that moment, and a round
+     * can be recorded after it was paired: an application that pairs a
+     * round, has it played and records it with its results records a
+     * withdrawal during that round before the round.
+     *
+     * A participant no round from N on names had withdrawn when round N
+     * was paired if its withdrawal has a round before N, or has no round:
+     * when it left is then not known, and no round shows it in the stage.
      *
      * @param int|null $pairedAt The number of the recorded round the pairing was made for, or
      *                           null for a pairing made now, from the state as it stands
@@ -143,6 +150,10 @@ final class BracketReading
 
         $out = [];
         foreach ($this->withdrawn as $id => $_) {
+            if (($this->lastNamedIn[$id] ?? 0) >= $pairedAt) {
+                continue;
+            }
+
             if (!isset($this->withdrawals[$id]) || $this->withdrawals[$id][0] < $pairedAt) {
                 $out[$id] = true;
             }

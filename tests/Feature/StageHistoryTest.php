@@ -1545,7 +1545,8 @@ describe('a withdrawal from a live bracket', function (): void {
     // A round takes no number where the bracket has no tie left to play in
     // it, so a recorded round has to be told from the round after it. A
     // round drawn by hand holds none of the bracket's own ties; it is known
-    // by naming both entrants of one of them.
+    // by naming their entrants: an entrant a round names was in the bracket
+    // when that round was paired, so the ties could be played then.
     it('reads a round drawn by hand as the round it was, when withdrawals have since left the bracket no tie to play in it', function (): void {
         [$h1, $h2, $h3, $h4] = $entrants = historyField(4);
 
@@ -1567,8 +1568,11 @@ describe('a withdrawal from a live bracket', function (): void {
         expect($read)->toHaveCount(1)
             ->and($read[0]->isManual())->toBeTrue()
             ->and($read[0]->getDerivation()?->getLabel())->toBe('semifinal')
-            ->and(historyPairs($read[0]->getDerivation()?->getEvents() ?? []))->toBe([])
-            ->and(historyIds($read[0]->getDerivation()?->getByes() ?? []))->toBe(['h4', 'h3'])
+            // The round beside it is the one this engine pairs from who was
+            // in the bracket then: the round names h1 and h2, so they were,
+            // and it is the fold of the four
+            ->and(historyPairs($read[0]->getDerivation()?->getEvents() ?? []))->toBe(['h1 v h4 leg 1', 'h2 v h3 leg 1'])
+            ->and(historyIds($read[0]->getDerivation()?->getByes() ?? []))->toBe([])
             // The final is between two entrants who have withdrawn: nobody
             // advances from it, so nobody is in the first tier. The two
             // share the tier of the final, and the two who lost the ties

@@ -463,53 +463,24 @@ trait EliminationBracketSupport
     }
 
     /**
-     * Whether a recorded round names both entrants of one of the given
-     * ties, in one event or in two, or among its byes.
-     *
-     * This is how a recorded round is told from the round after it where
-     * the bracket has no tie left to play in a round, because an entrant of
-     * each has withdrawn. Such a round takes no number unless it was
-     * recorded before they withdrew, and then both entrants of a tie were
-     * still in the bracket and the round names them: as the tie itself, or,
-     * in a round that was paired by hand, each against somebody else. The
-     * round after it cannot name both: one of the two had withdrawn before
-     * it was paired, which is why the tie was not played.
-     *
-     * @param list<array{Participant, Participant}> $ties
-     */
-    private function namesBothEntrantsOfOneOf(RoundPairing $recorded, array $ties): bool
-    {
-        $named = [];
-        foreach ($recorded->getEvents() as $event) {
-            foreach ($event->getParticipants() as $participant) {
-                $named[$participant->getId()] = true;
-            }
-        }
-        foreach ($recorded->getByes() as $bye) {
-            $named[$bye->getId()] = true;
-        }
-
-        foreach ($ties as [$first, $second]) {
-            if (isset($named[$first->getId()], $named[$second->getId()])) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Whether the recorded round with the next number is the round the
      * bracket has for the given ties, and whether that round has a tie to
      * play.
      *
      * A round takes a number when it has a tie to play at the moment it is
-     * paired: a tie neither entrant of which had withdrawn. Where the state
-     * knows when every entrant withdrew, that is the whole answer. A tie
-     * that is kept from being played only by a withdrawal the state does
-     * not know the time of may have been paired before that entrant left,
-     * and the recorded round is then known by whom it names (see
-     * namesBothEntrantsOfOneOf()).
+     * paired: a tie neither entrant of which had withdrawn. So a recorded
+     * round is the round the bracket has here when one of the ties could
+     * be played when that round was paired, and is the round after a round
+     * nobody played otherwise.
+     *
+     * Who had withdrawn then is read from the rounds first
+     * (BracketReading::withdrawnWhenPaired()): an entrant the recorded
+     * round or a later one names was in the bracket, whatever the state
+     * says of when it left, or does not say. Where the state does not know
+     * when an entrant left and neither this round nor a later one names
+     * it, the entrant is read as having left before: a round drawn by hand
+     * that leaves such an entrant out of every tie the bracket has here is
+     * read as the round after it.
      *
      * @param list<array{Participant, Participant}> $ties The ties the bracket has in the round
      * @param array<int|string, true> $out Who had withdrawn when the round was paired
@@ -517,30 +488,14 @@ trait EliminationBracketSupport
      * @return array{bool, bool} Whether the round has a tie to play, and whether the recorded
      *                           round is this round
      */
-    private function claimOf(BracketReading $reading, ?RoundPairing $recorded, array $ties, array $out): array
+    private function claimOf(?RoundPairing $recorded, array $ties, array $out): array
     {
         $toPlay = false;
-        $perhaps = [];
         foreach ($ties as [$first, $second]) {
-            $firstOut = isset($out[$first->getId()]);
-            $secondOut = isset($out[$second->getId()]);
-            if (!$firstOut && !$secondOut) {
-                $toPlay = true;
-                continue;
-            }
-
-            if (
-                !($firstOut && $reading->knowsWithdrawalOf($first->getId()))
-                && !($secondOut && $reading->knowsWithdrawalOf($second->getId()))
-            ) {
-                $perhaps[] = [$first, $second];
-            }
+            $toPlay = $toPlay || (!isset($out[$first->getId()]) && !isset($out[$second->getId()]));
         }
 
-        return [
-            $toPlay,
-            $recorded instanceof RoundPairing && ($toPlay || $this->namesBothEntrantsOfOneOf($recorded, $perhaps)),
-        ];
+        return [$toPlay, $toPlay && $recorded instanceof RoundPairing];
     }
 
     /**

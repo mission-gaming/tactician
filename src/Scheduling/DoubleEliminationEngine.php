@@ -559,7 +559,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $recorded = $reading->recorded[$reading->number + 1] ?? null;
         $pairedAt = $recorded instanceof RoundPairing ? $reading->number + 1 : null;
         $out = $reading->withdrawnWhenPaired($pairedAt);
-        [$toPlay, $claimed] = $this->claimOf($reading, $recorded, $ties, $out);
+        [$toPlay, $claimed] = $this->claimOf($recorded, $ties, $out);
         $derivation = $this->buildStagePairing($reading->number + 1, $stageName, $pairs, $out);
         $stopped = ['stopped' => true, 'winners' => [], 'losers' => [], 'out' => []];
 

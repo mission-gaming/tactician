@@ -578,6 +578,183 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
     ]);
 });
 
+describe('a round that is recorded after it was paired', function (): void {
+    // To a state a round is paired at the moment it is recorded, and an
+    // application may record a round only once it has been played: pair,
+    // play, record, as the loop in the README does. A withdrawal while that
+    // round is played is then recorded with the round before it. The round
+    // names the entrant, so it was paired while the entrant was in the
+    // stage, and it is read that way: the same as where the round was
+    // recorded first and the withdrawal after it.
+
+    /**
+     * What an engine says is next, as plain values.
+     *
+     * @return list<mixed>
+     *
+     * @throws InvalidConfigurationException When the engine refuses the state
+     */
+    $next = static function (SingleEliminationEngine|DoubleEliminationEngine $engine, StageState $state): array {
+        $readiness = $engine->getReadiness($state);
+        if (!$readiness->isReady()) {
+            return [$readiness->isComplete() ? 'complete' : 'awaiting', $readiness->getRoundNumber(), count($readiness->getUnresolvedEvents())];
+        }
+        $pairing = $engine->pairNextRound($state);
+
+        return ['ready', $pairing->getRoundNumber(), $pairing->getLabel(), timesPairs($pairing), timesIds($pairing->getByes())];
+    };
+
+    it('is read as the round the engine paired when an entrant of it withdrew before it was recorded', function (
+        SingleEliminationEngine|DoubleEliminationEngine $engine,
+        int $fieldSize
+    ) use ($next): void {
+        $field = timesField($fieldSize);
+        $state = timesPlayRound($engine, StageState::start($field));
+
+        // The second round is paired, and an entrant of its first tie leaves
+        $pairing = $engine->pairNextRound($state);
+        $tie = $pairing->getEvents()[0];
+        $leaves = array_values($tie->getParticipants())[0];
+
+        $recordedWhenPaired = $state->withRoundPlayed($pairing, [])->withoutParticipant($leaves);
+        $recordedWhenPlayed = $state->withoutParticipant($leaves)->withRoundPlayed($pairing, []);
+
+        // The state's clock is the rounds it holds
+        expect($recordedWhenPaired->getWithdrawals()[0]->getAfterRound())->toBe(2)
+            ->and($recordedWhenPlayed->getWithdrawals()[0]->getAfterRound())->toBe(1);
+
+        foreach ([$recordedWhenPaired, $recordedWhenPlayed] as $read) {
+            $rounds = $engine->getRecordedRounds($read);
+
+            // Both rounds are read, the second as the round the engine paired, with the tie nobody played
+            expect($rounds)->toHaveCount(2)
+                ->and($rounds[1]->getPairing())->toBe($pairing)
+                ->and($rounds[1]->isManual())->toBeFalse()
+                ->and($rounds[1]->getDerivation()?->getLabel())->toBe($pairing->getLabel())
+                ->and(timesPairs($rounds[1]->getDerivation() ?? $rounds[0]->getPairing()))->toBe(timesPairs($pairing))
+                ->and(timesIds($rounds[1]->getDerivation()?->getByes() ?? [$leaves]))->toBe(timesIds($pairing->getByes()))
+                ->and($rounds[1]->getUncontestedEvents())->toBe([$tie]);
+        }
+
+        // And everything else is the one history it is
+        expect($next($engine, $recordedWhenPlayed))->toBe($next($engine, $recordedWhenPaired))
+            ->and(timesTiers($engine->getStandings($recordedWhenPlayed)))->toBe(timesTiers($engine->getStandings($recordedWhenPaired)));
+    })->with([
+        'single elimination, the final of three' => [new SingleEliminationEngine(), 3],
+        'single elimination, the semifinals of eight' => [new SingleEliminationEngine(), 8],
+        'single elimination, re-seeded' => [new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true)), 8],
+        'single elimination with a third-place tie, the last round of four' => [new SingleEliminationEngine(new EliminationOptions(thirdPlace: true)), 4],
+        // This state was refused for good: the winners final was read as a round nobody played, and the round as the grand final
+        'double elimination, the winners final of three' => [new DoubleEliminationEngine(), 3],
+        'double elimination, the first losers round of eight' => [new DoubleEliminationEngine(), 8],
+    ]);
+
+    it('is read the same from rows that state the round before it for the withdrawal, and from the stored state', function (): void {
+        $engine = new DoubleEliminationEngine();
+        $field = timesField(3);
+        $state = timesPlayRound($engine, StageState::start($field));
+        $pairing = $engine->pairNextRound($state);
+        $leaves = array_values($pairing->getEvents()[0]->getParticipants())[0];
+        $state = $state->withoutParticipant($leaves)->withRoundPlayed($pairing, []);
+
+        $fromRows = StageState::fromHistory($field, $state->getRoundsPlayed(), $state->getResults(), [new Withdrawal($leaves, 1)]);
+
+        expect($fromRows->toArray())->toBe($state->toArray())
+            ->and($engine->getRecordedRounds($fromRows))->toHaveCount(2)
+            ->and($engine->getRecordedRounds(StageState::fromJson($state->toJson())))->toHaveCount(2)
+            ->and($engine->getReadiness($fromRows)->isReady())->toBeTrue();
+    });
+
+    it('decides a tie both entrants left before it was recorded by who left first', function (int $first, int $second): void {
+        $engine = new SingleEliminationEngine();
+        $field = timesField(4);
+        $state = timesPlayRound($engine, StageState::start($field));
+
+        // The final, p1 v p2, is paired; both leave; it is recorded with no result
+        $final = $engine->pairNextRound($state);
+        $state = $state->withoutParticipant($field[$first])->withoutParticipant($field[$second])->withRoundPlayed($final, []);
+
+        $outcome = $engine->getOutcome($state);
+        assert($outcome instanceof StageOutcome);
+
+        expect($engine->getRecordedRounds($state))->toHaveCount(2)
+            ->and($outcome->getSettledTies())->toEqual([new SettledTie($field[$second], [$field[$first]])])
+            ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([$field[$second]]);
+    })->with([
+        'p1, then p2' => [0, 1],
+        'p2, then p1' => [1, 0],
+    ]);
+
+    it('is read as the round the Swiss engine paired when a participant of it withdrew before it was recorded', function (): void {
+        $engine = new SwissPairingEngine(plannedRounds: 3);
+        $state = StageState::start(timesField(8));
+        $first = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($first, array_map(
+            static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[0]),
+            $first->getEvents()
+        ));
+
+        $pairing = $engine->pairNextRound($state);
+        $leaves = array_values($pairing->getEvents()[0]->getParticipants())[1];
+        $state = $state->withoutParticipant($leaves)->withRoundPlayed($pairing, []);
+
+        $rounds = $engine->getRecordedRounds($state);
+
+        expect($rounds[1]->isManual())->toBeFalse()
+            ->and(timesPairs($rounds[1]->getDerivation() ?? $first))->toBe(timesPairs($pairing));
+    });
+
+    // The same reading where the withdrawal states no round at all: an
+    // entrant a round names was in the stage when that round was paired.
+    it('reads an entrant a round lists among its byes as in that round, also where its withdrawal states no round', function (): void {
+        $engine = new SingleEliminationEngine();
+        $field = timesField(8);
+
+        // p1, p2, p3 and p4 reach the semifinals, p1 v p4 and p2 v p3. p4
+        // withdraws, so p1 has a bye in them; p2 wins the other. Then p1
+        // withdraws, and p2 has the final without playing it.
+        $state = timesPlayRound($engine, StageState::start($field))->withoutParticipant($field[3]);
+        $semifinals = $engine->pairNextRound($state);
+        $state = timesPlayRound($engine, $state)->withoutParticipant($field[0]);
+
+        $unstated = StageState::fromHistory($field, $state->getRoundsPlayed(), $state->getResults(), [$field[3], $field[0]]);
+        $outcome = $engine->getOutcome($unstated);
+        assert($outcome instanceof StageOutcome);
+
+        // p1 went on from the semifinals and is second; it did not go out in them with p4
+        expect(timesIds($semifinals->getByes()))->toBe(['p1'])
+            ->and(timesTiers($engine->getStandings($unstated)))->toBe(timesTiers($engine->getStandings($state)))
+            ->and($outcome->getSettledTies())->toEqual([new SettledTie($field[1], [$field[0]])])
+            ->and(timesTiers($outcome->getStandings())['p1'])->toBe(1)
+            ->and(timesPairs($engine->getRecordedRounds($unstated)[0]->getDerivation() ?? $semifinals))
+            ->toBe(timesPairs($state->getRoundsPlayed()[0]));
+    });
+
+    // What the rounds cannot put right: nothing in a round says which
+    // adjustments it was paired from. An adjustment made while a round is
+    // played, in a state that records the round only afterwards, is read as
+    // known when the round was paired. Recording the round when it is
+    // paired is how an application says otherwise.
+    it('reads an adjustment recorded before a round as known when the round was paired, and one recorded after it as not', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
+        $field = timesField(8);
+        $state = timesPlayRound($engine, StageState::start($field));
+
+        // The semifinals are paired from a table on which all four are level: p1 v p4, p2 v p3
+        $pairing = $engine->pairNextRound($state);
+        $adjustment = new Adjustment('p4', 9.0);
+
+        $recordedWhenPaired = $state->withRoundPlayed($pairing, [])->withAdjustment($adjustment);
+        $recordedWhenPlayed = $state->withAdjustment($adjustment)->withRoundPlayed($pairing, []);
+
+        expect(timesPairs($pairing))->toBe(['p1 v p4', 'p2 v p3'])
+            ->and($engine->getRecordedRounds($recordedWhenPaired)[1]->isManual())->toBeFalse()
+            // With p4 nine points up the engine folds p4 v p3 and p1 v p2: the round is not that one
+            ->and($engine->getRecordedRounds($recordedWhenPlayed)[1]->isManual())->toBeTrue()
+            ->and(timesPairs($engine->getRecordedRounds($recordedWhenPlayed)[1]->getDerivation() ?? $pairing))->toBe(['p3 v p4', 'p1 v p2']);
+    });
+});
+
 describe('the match outcome selector over a bracket a finalist withdrew from', function (): void {
     /**
      * A bracket of four played up to its last tie, which is between the
