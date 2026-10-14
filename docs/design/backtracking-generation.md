@@ -308,7 +308,8 @@ the role assignment keeps it as it is.
   assignment: it is what this one asks for. Under constraints the role
   search cannot reason about exactly, the roles the generator proposes are
   tried before the searches of this section, and with their schedule in
-  hand the search that goes back one event at a time is left out.
+  hand those searches are held, together, to 4,000 events put to the
+  constraints.
 
 [role-assignment.md](role-assignment.md#the-default) has the decision and
 what was measured.
