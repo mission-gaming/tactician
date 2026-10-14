@@ -733,7 +733,28 @@ final readonly class StageState
      * (it was paired before the withdrawal and is recorded once it has
      * been played) is read as paired while the participant was in the
      * stage: the tie it holds for the participant is given away, and the
-     * round is not read as paired without it.
+     * round is not read as paired without it. Two things follow that an
+     * application has to see to.
+     *
+     * The first round is not such a round. While the state holds no round
+     * the participant is removed from the entrant list and no withdrawal
+     * is kept, also where the first round has been paired already, and a
+     * first round recorded afterwards names somebody the state no longer
+     * lists: an engine reads it as a round drawn by hand for the field
+     * without the participant, and a bracket that follows from that fold
+     * can be another one, or be refused. Record the first round when it is
+     * paired (withRoundPlayed() with no results, then
+     * withAdditionalResults()), or build the state with fromHistory() from
+     * the whole entrant list and a Withdrawal after round 1.
+     *
+     * And a round is not to name a participant who had left before it was
+     * paired, among byes listed as everyone without an event for example.
+     * An engine reads such a participant as in the stage for that round
+     * and for every round before it, whatever round the withdrawal states:
+     * the rounds between are then compared with rounds that pair the
+     * participant (RecordedRound::isManual()), and a bracket is read with
+     * the participant still in it, which a double elimination engine can
+     * refuse.
      */
     public function withoutParticipant(Participant $participant): self
     {

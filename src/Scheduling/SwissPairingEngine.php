@@ -346,7 +346,10 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * whatever round its withdrawal states, and where it states none, for
      * no round after the last that names it. So a round this engine paired
      * is not reported as manual for what was recorded after it, nor for a
-     * withdrawal that was recorded between its pairing and its recording.
+     * withdrawal that was recorded between its pairing and its recording,
+     * with the two exceptions StageState::withoutParticipant() describes
+     * (the first round, and a later round that names a participant who had
+     * left before it).
      * An adjustment recorded in that interval is another matter: it is
      * read as known when the round was paired (see
      * StageState::withAdjustment()).

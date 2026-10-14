@@ -1379,10 +1379,18 @@ entry on the engine fingerprint.
     **To a state a round is paired when it is recorded.** An application
     that pairs a round, has it played and records it only then (the loop
     in the README) records what happens during that round before the
-    round. A withdrawal is read correctly either way: a round that names a
-    participant, in an event or as a bye, was paired while it was in the
-    stage, and the engines read that before the round its withdrawal
-    states, in all three engines. An adjustment is not: one made while a
+    round. A withdrawal is read correctly either way from the second round
+    on: a round that names a participant, in an event or as a bye, was
+    paired while it was in the stage, and the engines read that before the
+    round its withdrawal states, in all three engines. Two things it asks
+    of an application: a withdrawal while the first round is played needs
+    that round recorded when it is paired (a state that holds no round
+    removes the entrant and keeps no withdrawal, and a first round recorded
+    afterwards is read as drawn by hand for the field without it), and no
+    round may name a participant who had left before it was paired (among
+    byes listed as everyone without an event, for example: the participant
+    is then read as in the stage for that round and every round before
+    it). An adjustment is not read correctly either way: one made while a
     round is played and recorded before the round is read as known when
     that round was paired (the ranking of a re-seeded round, and the
     derivation beside the round in a re-seeded bracket and a Swiss stage).

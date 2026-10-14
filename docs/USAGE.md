@@ -3990,7 +3990,10 @@ the round the engine pairs from what was known when the recorded round was
 paired: the rounds before it and their results, the adjustments made before
 it, and the entrants who had not withdrawn by then. A round the engine
 paired itself is therefore not reported as manual, whatever was recorded
-after it. What `isManual()` promises, and what it does not:
+after it, unless a later round names somebody who had left before this one
+or it is a first round recorded after an entrant of it withdrew (both under
+[When a Withdrawal or an Adjustment Happened](#when-a-withdrawal-or-an-adjustment-happened)).
+What `isManual()` promises, and what it does not:
 
 - **It compares pairings and nothing else.** Two rounds differ when some
   two participants meet in one and not in the other, or another participant
@@ -4126,11 +4129,31 @@ application that pairs a round, has it played and records it only then
 (the loop in the README) records whatever happens while the round is
 played *before* the round:
 
-- **A withdrawal is read correctly either way.** A round that names a
-  participant, in an event or as a bye, was paired while that participant
-  was in the stage, and the engines read that before the round the
-  withdrawal states: the entrant is in the round, and gives its tie away
-  there.
+- **A withdrawal is read correctly either way, from the second round on.**
+  A round that names a participant, in an event or as a bye, was paired
+  while that participant was in the stage, and the engines read that before
+  the round the withdrawal states: the entrant is in the round, and gives
+  its tie away there.
+- **A withdrawal while the first round is played is not.** A state that
+  holds no round has drawn nothing, so `withoutParticipant()` takes the
+  entrant out of the entrant list and keeps no withdrawal. A first round
+  that is recorded afterwards names somebody the state no longer lists,
+  and nothing in the round says which place it had: the round is read as
+  one drawn by hand for the field without the entrant (`isManual()`), a
+  bracket that follows from that fold can pair another round next, and a
+  double elimination engine can refuse the state
+  (`RecordedRoundMismatch`). Record the first round when it is paired, or
+  build the state from rows: `fromHistory()` with the whole entrant list
+  and a `Withdrawal` after round 1 reads it as it happened.
+- **A round is not to name somebody who had left before it was paired.**
+  The same rule reads every such name as a fact. A list of byes that takes
+  in everyone without an event, a withdrawn entrant among them, says that
+  the entrant was in the stage for that round and for every round before
+  it, whatever round its withdrawal states: the rounds between are then
+  compared with rounds that pair the entrant and can be reported as
+  manual, and a bracket is read with the entrant still in it, which
+  changes the rounds that follow and which a double elimination engine can
+  refuse.
 - **An adjustment is not.** Nothing in a round says which adjustments were
   known when it was paired. One made while round 3 is played and recorded
   before round 3 is read as known when round 3 was paired: a re-seeded

@@ -131,6 +131,21 @@ state as they are and derives only the round that does not exist yet.
      whenever the bracket is read: the answer for a history does not
      depend on the moment an engine was asked.
 
+   The reading of a named entrant has two edges, and both are the
+   application's to keep clear of. It does not reach the first round: a
+   state that holds no round removes an entrant who withdraws and keeps no
+   withdrawal (decision 5), so a first round recorded afterwards names
+   somebody the state does not list, and is read as a round drawn by hand
+   for the field without it; the bracket that follows from that fold can be
+   another, or be refused. And it takes every name as a fact: a round that
+   names an entrant who had left before it was paired (among byes listed as
+   everyone without an event, say) puts the entrant in the stage for that
+   round and for every round before it, so that the rounds between can be
+   reported as manual and a bracket is read with the entrant in it, which a
+   double elimination engine can refuse. Where the round is the one after
+   the round the withdrawal states, nothing a state holds tells it from a
+   round recorded late: the state does not know when a round was paired.
+
    The stored form has two optional keys for it, `after_round` in an
    adjustment and `withdrawals` in a stage state, both of version 1 of
    their forms (ADR 0005: 0.3.0 is not released, and the version of a form
@@ -188,11 +203,13 @@ state as they are and derives only the round that does not exist yet.
   ties and what is read from the ranking alike: whom an entrant would have
   met who had withdrawn before a round was paired, for which the round has
   no event, is taken from the ranking of the time. A round an engine paired
-  is not reported as manual for what was recorded after it.
+  is not reported as manual for what was recorded after it, a later round
+  that names an entrant who had left before it excepted (decision 6).
 - A state whose adjustments and withdrawals carry their rounds, which is
   every state built by the verbs and every history that states them, is
-  read exactly. What is read without them is in the decision above, and it
-  is less: no derivation, one refusal, and two things about a withdrawal
+  read exactly where each round was recorded when it was paired; decision 6
+  says what is read of a round recorded later. What is read without them
+  is in the decision above, and it is less: no derivation, one refusal, and two things about a withdrawal
   that the rounds alone do not show (which of two withdrawn entrants of a
   tie went on, and whether an entrant a round does not name had left
   before it or had a bye in it that the round does not list).

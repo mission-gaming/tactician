@@ -108,10 +108,15 @@ final readonly class RecordedRound
      * What it does say, for a state whose adjustments and withdrawals
      * carry their rounds (every state built by the verbs): a round this
      * engine paired is not reported as manual, whatever was recorded after
-     * it. Where a withdrawal carries no round and neither the round nor a
-     * later one names the entrant, a tie that is missing from the round
-     * because the entrant has withdrawn is not counted as a difference, so
-     * a round drawn by hand can go unreported. And an adjustment made while
+     * it, with two exceptions that StageState::withoutParticipant()
+     * describes: a later round that names a participant who had withdrawn
+     * before this one (the participant is then read as in the stage for
+     * this round too), and a first round that was recorded after a
+     * participant of it withdrew. Where a withdrawal carries no round and
+     * neither the round nor a later one names the entrant, a tie that is
+     * missing from the round because the entrant has withdrawn is not
+     * counted as a difference, so a round drawn by hand can go
+     * unreported. And an adjustment made while
      * a round was played that was recorded only afterwards counts as known
      * when that round was paired (see StageState::withAdjustment()).
      *
