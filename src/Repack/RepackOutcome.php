@@ -61,6 +61,13 @@ final readonly class RepackOutcome
      * constructor neither sorts nor checks them, nor that the lists agree
      * with each other.
      *
+     * The last three arguments are figures the repacker works out from
+     * the request, which an outcome does not hold (it has neither the
+     * participants of an event nor the pinned events). An outcome built
+     * by hand states them, as it states its lists, and one that states
+     * none has none: no lone-event session, no idle session, no moved
+     * event.
+     *
      * @param array<SlotAssignment> $assignments Sorted by event id; when two carry
      *                                           the same id, getAssignmentFor()
      *                                           returns the later one
@@ -68,19 +75,58 @@ final readonly class RepackOutcome
      * @param array<RepackViolation> $violations Sorted by kind, then scope
      * @param bool $budgetExhausted Whether the step budget stopped a search
      *                              while this outcome was computed
+     * @param list<int> $loneEventSessions The sessions holding one event and no
+     *                                     more, ascending
+     * @param int $idleSessions How many sessions participants sit out between
+     *                          sessions they have an event in, summed over the
+     *                          participants
+     * @param list<string> $movedEventIds The ids of the events placed somewhere
+     *                                    other than their current position, sorted
+     *                                    as the assignments are
      *
      * @throws InvalidInputException When a list holds anything other than the
-     *                               objects it is declared to hold
+     *                               objects or values it is declared to hold, or
+     *                               the count of idle sessions is negative
      */
     public function __construct(
         private array $assignments,
         private array $unplaced,
         private array $violations,
-        private bool $budgetExhausted = false
+        private bool $budgetExhausted = false,
+        private array $loneEventSessions = [],
+        private int $idleSessions = 0,
+        private array $movedEventIds = []
     ) {
         self::requireInstances($assignments, SlotAssignment::class, 'assignment');
         self::requireInstances($unplaced, UnplacedEvent::class, 'unplaced event');
         self::requireInstances($violations, RepackViolation::class, 'violation');
+
+        foreach ($loneEventSessions as $key => $session) {
+            if (!is_int($session) || $session < 0) {
+                throw new InvalidInputException(sprintf(
+                    'Every lone-event session of a repack outcome must be a session index of 0 or more; the entry at key %s is %s',
+                    is_int($key) ? (string) $key : "'{$key}'",
+                    is_int($session) ? (string) $session : 'of type ' . get_debug_type($session)
+                ));
+            }
+        }
+
+        if ($idleSessions < 0) {
+            throw new InvalidInputException(sprintf(
+                'The idle sessions of a repack outcome are a count of 0 or more, %d given',
+                $idleSessions
+            ));
+        }
+
+        foreach ($movedEventIds as $key => $eventId) {
+            if (!is_string($eventId)) {
+                throw new InvalidInputException(sprintf(
+                    'Every moved event of a repack outcome must be an event id, a string; the entry at key %s is of type %s',
+                    is_int($key) ? (string) $key : "'{$key}'",
+                    get_debug_type($eventId)
+                ));
+            }
+        }
 
         $byId = [];
         foreach ($assignments as $assignment) {
@@ -220,7 +266,118 @@ final readonly class RepackOutcome
     }
 
     /**
-     * Whether every event was placed with no compromises at all.
+     * How many movable events received no position: the size of
+     * getUnplaced(). The first figure to rank outcomes by: an outcome that
+     * places more events is the better one whatever else it holds.
+     */
+    public function getUnplacedCount(): int
+    {
+        return count($this->unplaced);
+    }
+
+    /**
+     * How many slots participants wait between their own events within a
+     * session: the gap slots of every ContiguityBroken violation, added
+     * up. A participant with events at slots 0 and 3 of a session waits
+     * two slots there.
+     *
+     * It is read from the violations, so it is scoped as they are (a
+     * participant's slots in a session count where the participant has a
+     * movable event in it, pins included in the pattern), and a violation
+     * of a class from outside the library adds nothing to it. A late
+     * start is not a wait in this sense and is not counted; the late
+     * starts are getLateStartViolations().
+     */
+    public function getGapSlotCount(): int
+    {
+        $gapSlots = 0;
+        foreach ($this->violations as $violation) {
+            if ($violation instanceof ContiguityBroken) {
+                $gapSlots += $violation->getGapSlots();
+            }
+        }
+
+        return $gapSlots;
+    }
+
+    /**
+     * The lone-event sessions, as 0-based session indexes, ascending: the
+     * sessions that hold exactly one event, pinned events counted, where
+     * that one event is a movable one. A session is opened for it alone.
+     *
+     * It is a figure of the grid and not of a participant: a session with
+     * two events is not a lone-event session, although each of four
+     * participants has one event in it. A session whose one event is
+     * pinned is not counted: it is history the repack did not arrange. An
+     * empty session is not counted either. The repacker counts events,
+     * however many participants each has.
+     *
+     * @return list<int>
+     */
+    public function getLoneEventSessions(): array
+    {
+        return $this->loneEventSessions;
+    }
+
+    /**
+     * How many lone-event sessions there are: the size of
+     * getLoneEventSessions().
+     */
+    public function getLoneEventSessionCount(): int
+    {
+        return count($this->loneEventSessions);
+    }
+
+    /**
+     * How many idle sessions the schedule has, summed over the
+     * participants. A session is idle for a participant when the
+     * participant has no event in it and has one both in an earlier
+     * session and in a later one; pinned events count as events. A
+     * participant with events in sessions 1, 2 and 5 has two idle
+     * sessions, 3 and 4, and the sessions before 1 and after 5 are not
+     * idle.
+     *
+     * Only participants with a placed movable event are counted: the idle
+     * sessions of a participant whose events are all pinned are history.
+     * A session is counted once for each participant it is idle for, and
+     * a participant is every participant of an event, however many an
+     * event has.
+     */
+    public function getIdleSessionCount(): int
+    {
+        return $this->idleSessions;
+    }
+
+    /**
+     * The ids of the moved events, in ascending byte order: the movable
+     * events that stated a current position (MovableEvent) and were
+     * assigned another one, in another session or at another slot of the
+     * same session.
+     *
+     * An event that stated no current position is never in it, and
+     * neither is an unplaced event, which is in getUnplaced(). An event
+     * whose current position is not on the grid, or is held by pinned
+     * events, is in it whenever it was placed.
+     *
+     * @return list<string>
+     */
+    public function getMovedEventIds(): array
+    {
+        return $this->movedEventIds;
+    }
+
+    /**
+     * How many events moved: the size of getMovedEventIds().
+     */
+    public function getMovedCount(): int
+    {
+        return count($this->movedEventIds);
+    }
+
+    /**
+     * Whether every event was placed with no compromises at all. The
+     * lone-event sessions, the idle sessions and the moved events are
+     * figures, not compromises, and do not make an outcome unclean.
      */
     public function isClean(): bool
     {
@@ -400,7 +557,15 @@ final readonly class RepackOutcome
      * the fingerprint covers the keys that scheme names and never this
      * one, so the two change independently.
      *
-     * @return array{format_version: int, assignments: array<array{event_id: string, session: int, slot: int, kickoff: string|null}>, unplaced: array<array{event_id: string, reason: string, participant: string|null}>, violations: array<array<string, mixed>>}
+     * The last key is `metrics`, the figures an outcome is ranked by:
+     * `unplaced` and `gap_slots` (two counts, which the lists above also
+     * give), `lone_event_sessions` (the session indexes), `idle_sessions`
+     * (a count) and `moved` (the event ids). The last three cannot be
+     * worked out from the lists, which is why they are written. The
+     * fingerprint does not cover them: they follow from the request and
+     * the assignments, which it does cover.
+     *
+     * @return array{format_version: int, assignments: array<array{event_id: string, session: int, slot: int, kickoff: string|null}>, unplaced: array<array{event_id: string, reason: string, participant: string|null}>, violations: array<array<string, mixed>>, metrics: array{unplaced: int, gap_slots: int, lone_event_sessions: list<int>, idle_sessions: int, moved: list<string>}}
      */
     public function toArray(): array
     {
@@ -430,6 +595,13 @@ final readonly class RepackOutcome
             'assignments' => $assignments,
             'unplaced' => $unplaced,
             'violations' => $violations,
+            'metrics' => [
+                'unplaced' => $this->getUnplacedCount(),
+                'gap_slots' => $this->getGapSlotCount(),
+                'lone_event_sessions' => array_values($this->loneEventSessions),
+                'idle_sessions' => $this->idleSessions,
+                'moved' => array_values($this->movedEventIds),
+            ],
         ];
     }
 

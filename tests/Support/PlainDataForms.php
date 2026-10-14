@@ -23,6 +23,7 @@ use MissionGaming\Tactician\Repack\ContiguityBroken;
 use MissionGaming\Tactician\Repack\EventUnplaced;
 use MissionGaming\Tactician\Repack\LateStart;
 use MissionGaming\Tactician\Repack\ParticipantDoubleBooked;
+use MissionGaming\Tactician\Repack\RepackObjective;
 use MissionGaming\Tactician\Repack\RepackOptions;
 use MissionGaming\Tactician\Repack\RepackOutcome;
 use MissionGaming\Tactician\Repack\SessionGrid;
@@ -190,19 +191,26 @@ final class PlainDataForms
             'repack options' => [
                 'class' => RepackOptions::class,
                 'kind' => self::CONFIGURATION,
-                'keys' => ['consolidation_weight', 'early_fill_weight', 'step_budget', 'throw_on_violations'],
+                'keys' => ['consolidation_weight', 'early_fill_weight', 'step_budget', 'throw_on_violations', 'objectives'],
                 'sample' => [
                     'consolidation_weight' => 5,
                     'early_fill_weight' => 2,
                     'step_budget' => 1_000,
                     'throw_on_violations' => true,
+                    'objectives' => ['least_churn', 'fewest_idle_sessions'],
                 ],
                 'read' => static fn(array $data, array $registry): object => RepackOptions::fromArray(self::stringKeyed($data)),
+                // Half of them with objectives, some of the three in a
+                // random order, which writes the key `objectives`; the
+                // rest write no such key
                 'generate' => static fn(Randomizer $random, array $field): object => new RepackOptions(
                     $random->getInt(0, 50),
                     $random->getInt(0, 50),
                     $random->getInt(1, 500_000),
+                    $random->getInt(0, 1) === 1,
                     $random->getInt(0, 1) === 1
+                        ? array_slice($random->shuffleArray(RepackObjective::cases()), 0, $random->getInt(1, 3))
+                        : []
                 ),
             ],
             'win-draw-loss ranking' => [
@@ -696,7 +704,18 @@ final class PlainDataForms
                     }
                 }
 
-                return new RepackOutcome(array_values($assignments), $left, $found, $random->getInt(0, 1) === 1);
+                // The figures, of which half the outcomes state some
+                $stated = $random->getInt(0, 1) === 1;
+
+                return new RepackOutcome(
+                    array_values($assignments),
+                    $left,
+                    $found,
+                    $random->getInt(0, 1) === 1,
+                    $stated ? [$random->getInt(0, 4), $random->getInt(5, 9)] : [],
+                    $stated ? $random->getInt(0, 12) : 0,
+                    $stated ? ['e' . $random->getInt(1, 9_999)] : []
+                );
             },
         ];
 

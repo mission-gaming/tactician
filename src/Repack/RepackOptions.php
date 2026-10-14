@@ -56,6 +56,17 @@ use MissionGaming\Tactician\Serialization\PlainData;
  * more than twenty slots is not planned that way). The usage guide
  * ("The Step Budget") has the measured times.
  *
+ * The objectives name further figures of the outcome to keep low, in the
+ * order given: fewer moved events, fewer lone-event sessions, fewer idle
+ * sessions ({@see RepackObjective}). They rank after events placed and gap
+ * slots and before the two weights, and they are opt-in: with none, a
+ * repack does what it did before they existed. With any, the repacker
+ * makes more schedules to choose from (at most three more for the fewest
+ * moved events) and moves single events afterwards, all of it on what the
+ * two budgets have left, so a repack still spends at most twice the
+ * budget; it takes longer, because the work that is not counted in steps
+ * is done once for each schedule.
+ *
  * The weights are bounded so that the objective stays an integer. The
  * repacker scores a move as at most earlyFillWeight x (sessions - 1) +
  * 2 x consolidationWeight; beyond PHP_INT_MAX PHP computes that as a
@@ -92,16 +103,24 @@ final readonly class RepackOptions
      *                        count their own work
      * @param bool $throwOnViolations Throw RepackViolationsException instead of
      *                                returning an outcome carrying violations
+     * @param list<RepackObjective> $objectives The figures to keep low after events
+     *                                          placed and gap slots, most important
+     *                                          first, each at most once; none by
+     *                                          default, and then a repack is what it
+     *                                          was before objectives existed
      *
      * @throws InvalidConfigurationException When a weight is negative, the consolidation
-     *                                       weight is above MAX_CONSOLIDATION_WEIGHT, or
-     *                                       the budget is not positive
+     *                                       weight is above MAX_CONSOLIDATION_WEIGHT, the
+     *                                       budget is not positive, or the objectives are
+     *                                       not a list of RepackObjective cases with no
+     *                                       case twice
      */
     public function __construct(
         public int $consolidationWeight = 3,
         public int $earlyFillWeight = 1,
         public int $stepBudget = 200_000,
-        public bool $throwOnViolations = false
+        public bool $throwOnViolations = false,
+        public array $objectives = []
     ) {
         if ($consolidationWeight < 0 || $earlyFillWeight < 0) {
             throw new InvalidConfigurationException(
@@ -126,31 +145,64 @@ final readonly class RepackOptions
                 reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
+
+        if (!array_is_list($objectives)) {
+            throw new InvalidConfigurationException(
+                'The objectives must be a list',
+                ['objectives' => array_keys($objectives)],
+                reason: InvalidConfigurationReason::WrongValueType
+            );
+        }
+
+        $seen = [];
+        foreach ($objectives as $index => $objective) {
+            if (!$objective instanceof RepackObjective) {
+                throw new InvalidConfigurationException(
+                    'Every objective must be a RepackObjective',
+                    ['index' => $index, 'given' => get_debug_type($objective)],
+                    reason: InvalidConfigurationReason::WrongValueType
+                );
+            }
+
+            if (isset($seen[$objective->value])) {
+                throw new InvalidConfigurationException(
+                    'An objective can be named once: its place in the list is its rank',
+                    ['objective' => $objective->value],
+                    reason: InvalidConfigurationReason::DuplicateName
+                );
+            }
+            $seen[$objective->value] = true;
+        }
     }
 
     /**
      * Build from plain configuration data:
      * ['consolidation_weight' => 3, 'early_fill_weight' => 1,
-     *  'step_budget' => 200000, 'throw_on_violations' => false].
+     *  'step_budget' => 200000, 'throw_on_violations' => false,
+     *  'objectives' => []].
      *
      * Every key is optional and defaults to the value shown, which is the
-     * constructor's default; a key given as null is read as not given. A
-     * key the method does not know is refused, so that a misspelt option is
-     * not silently read as its default.
+     * constructor's default; a key given as null is read as not given. The
+     * objectives are a list of the backing strings of RepackObjective
+     * (`least_churn`, `fewest_lone_event_sessions`,
+     * `fewest_idle_sessions`), most important first. A key the method does
+     * not know is refused, so that a misspelt option is not silently read
+     * as its default.
      *
      * @param array<string, mixed> $config
      *
      * @throws InvalidConfigurationException When the format version is not one this release reads
      *                                       (reason `UnsupportedFormatVersion`), a key is unknown
      *                                       (`UnknownOptionKey`),
-     *                                       a value is of the wrong type, or is one the
-     *                                       constructor rejects
+     *                                       a value is of the wrong type, an objective is not
+     *                                       one this release knows (`UnknownIdentifier`), or a
+     *                                       value is one the constructor rejects
      */
     public static function fromArray(array $config): self
     {
         PlainData::checkOptions(
             $config,
-            ['consolidation_weight', 'early_fill_weight', 'step_budget', 'throw_on_violations'],
+            ['consolidation_weight', 'early_fill_weight', 'step_budget', 'throw_on_violations', 'objectives'],
             'repack options'
         );
 
@@ -158,6 +210,42 @@ final readonly class RepackOptions
         $earlyFillWeight = $config['early_fill_weight'] ?? 1;
         $stepBudget = $config['step_budget'] ?? 200_000;
         $throwOnViolations = $config['throw_on_violations'] ?? false;
+        $named = $config['objectives'] ?? [];
+
+        if (!is_array($named) || !array_is_list($named)) {
+            throw new InvalidConfigurationException(
+                'objectives must be a list of objective identifiers',
+                ['objectives' => $named],
+                reason: InvalidConfigurationReason::WrongValueType
+            );
+        }
+
+        $objectives = [];
+        foreach ($named as $index => $identifier) {
+            if (!is_string($identifier)) {
+                throw new InvalidConfigurationException(
+                    'An objective is named by its identifier, a string',
+                    ['index' => $index, 'given' => get_debug_type($identifier)],
+                    reason: InvalidConfigurationReason::WrongValueType
+                );
+            }
+
+            $objective = RepackObjective::tryFrom($identifier);
+            if (!$objective instanceof RepackObjective) {
+                throw new InvalidConfigurationException(
+                    'Unknown repack objective',
+                    [
+                        'objective' => $identifier,
+                        'known' => array_map(
+                            static fn(RepackObjective $case): string => $case->value,
+                            RepackObjective::cases()
+                        ),
+                    ],
+                    reason: InvalidConfigurationReason::UnknownIdentifier
+                );
+            }
+            $objectives[] = $objective;
+        }
 
         if (!is_int($consolidationWeight) || !is_int($earlyFillWeight) || !is_int($stepBudget)) {
             throw new InvalidConfigurationException(
@@ -179,24 +267,36 @@ final readonly class RepackOptions
             );
         }
 
-        return new self($consolidationWeight, $earlyFillWeight, $stepBudget, $throwOnViolations);
+        return new self($consolidationWeight, $earlyFillWeight, $stepBudget, $throwOnViolations, $objectives);
     }
 
     /**
      * Serialize back to the plain configuration data fromArray() accepts:
-     * `format_version`, the version of this form (1), then all four
-     * options, always present.
+     * `format_version`, the version of this form (1), then the two
+     * weights, the budget and the flag, always present, and `objectives`
+     * (their backing strings, in order) only when there is one. Options
+     * with no objective are written as they were before objectives
+     * existed.
      *
-     * @return array{format_version: int, consolidation_weight: int, early_fill_weight: int, step_budget: int, throw_on_violations: bool}
+     * @return array{format_version: int, consolidation_weight: int, early_fill_weight: int, step_budget: int, throw_on_violations: bool, objectives?: list<string>}
      */
     public function toArray(): array
     {
-        return [
+        $data = [
             PlainData::VERSION_KEY => PlainData::VERSION,
             'consolidation_weight' => $this->consolidationWeight,
             'early_fill_weight' => $this->earlyFillWeight,
             'step_budget' => $this->stepBudget,
             'throw_on_violations' => $this->throwOnViolations,
         ];
+
+        if ($this->objectives !== []) {
+            $data['objectives'] = array_map(
+                static fn(RepackObjective $objective): string => $objective->value,
+                $this->objectives
+            );
+        }
+
+        return $data;
     }
 }
