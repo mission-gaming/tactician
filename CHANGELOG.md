@@ -1503,6 +1503,70 @@ entry on the engine fingerprint.
   One case of `InvalidConfigurationReason`, `PoolComparisonRequired`
   (`pool_comparison_required`). New example:
   `examples/26-best-next-placed-qualifiers.php`.
+- **Figures to rank a repack outcome by
+  ([#50](https://github.com/mission-gaming/tactician/issues/50)).**
+  `RepackOutcome` has five, each an accessor, counted for every outcome:
+  `getUnplacedCount()`; `getGapSlotCount()`, the gap slots of every
+  `ContiguityBroken` added up (the slots participants wait between their
+  own events in a session); `getLoneEventSessions()` and
+  `getLoneEventSessionCount()`, the sessions that hold exactly one event,
+  pinned events counted, where that one is movable; `getIdleSessionCount()`,
+  the sessions a participant with a placed movable event has no event in
+  between two it has one in, summed over the participants; and
+  `getMovedEventIds()` and `getMovedCount()`, below. Two outcomes can be
+  ranked with nothing but the outcomes. `toArray()` writes them under a
+  new last key, `metrics` (`unplaced`, `gap_slots`, `lone_event_sessions`,
+  `idle_sessions`, `moved`); the form is still version 1 (it is written
+  and never read, and 0.3.0 is the release that fixes version 1), and the
+  fingerprint is unchanged. Code that compares an outcome's `toArray()`
+  with a literal array sees the key. The constructor takes the three
+  figures an outcome cannot count from its lists as optional fifth to
+  seventh arguments (`loneEventSessions`, `idleSessions`,
+  `movedEventIds`).
+- **A movable event can say where it is.** `MovableEvent` takes a current
+  position as optional fourth and fifth arguments, a session and a slot
+  of the request's grid (`hasCurrentPosition()`, `getCurrentSession()`,
+  `getCurrentSlot()`). It is a fact and not a demand: an event placed
+  anywhere else is reported as moved, and nothing else changes. A request
+  that states current positions and names no objective is repacked
+  exactly as the same request without them. A position the grid does not
+  have, or that pinned events hold, is accepted; such an event cannot
+  stay and counts as moved wherever it is placed.
+- **Repack objectives, opt-in.** `RepackOptions` takes an ordered list of
+  `RepackObjective` cases as a fifth argument, `objectives` (and a key of
+  that name in plain data, holding their identifiers; it is written only
+  when there is one, so options with none serialize as before):
+  `LeastChurn` (`least_churn`), `FewestLoneEventSessions`
+  (`fewest_lone_event_sessions`) and `FewestIdleSessions`
+  (`fewest_idle_sessions`). They rank after events placed and gap slots
+  and before the two weights, and never cost either: a request with
+  objectives places at least as many events as the same request without
+  them, with no more gap slots where it places as many. Assignments
+  change only for a request that names an objective. The fewest moved
+  events are searched for (the events that can stay are held in place
+  and the rest placed around them, with up to three attempts); the other
+  two are a tie-break between the schedules the repacker makes anyway
+  and a repair by single moves. None is optimised exactly. Measured: on
+  1,200 generated seasons of 8 to 40 participants with whole rounds
+  played, a repack with no objective moved 302,521 of 322,566 events and
+  one with `LeastChurn` 40,856, with at least as many events placed on
+  every request; against every placement of 6,000 small
+  requests it reached the fewest moved events there can be on 93 in 100
+  (35 in 100 with no objective). With `LeastChurn` the count of moved
+  events can depend on the ids of a request, which the outcome of a
+  request with no objective does not.
+  A repack with objectives takes longer, and still spends at most twice
+  the step budget; the usage guide ("Objectives") has the limits and the
+  times.
+- **The shortest grid that places everything.**
+  `ShortestGridFinder::find()` takes the events, a function from a number
+  of sessions to a `SessionGrid`, and the largest number to try, and
+  returns a `ShortestGridResult`: the fewest sessions on which a repack
+  left nothing unplaced, the grid and the outcome there, which smaller
+  numbers were ruled out by counting and which were repacked and fell
+  short, and whether the number is therefore proven the fewest
+  (`isProvenShortest()`). It tries the numbers one at a time, upwards.
+  New example: `examples/29-rescheduling-with-least-churn.php`.
 
 ### Changed
 
