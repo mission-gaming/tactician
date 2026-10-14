@@ -322,7 +322,8 @@ describe('Swiss pairing order', function (): void {
         // p2 has withdrawn lists the five active ones in list order and p2
         // after them, where no result places it
         $field = positionField(6, 2);
-        $engine = new SwissPairingEngine(plannedRounds: 1);
+        // Nothing is to be played: the round is recorded without results
+        $engine = new SwissPairingEngine(plannedRounds: 1, resultsFree: true);
         $state = StageState::start($field);
         $pairing = $engine->pairNextRound($state);
         $state = $state->withRoundPlayed($pairing, [])->withoutParticipant($field[1]);
@@ -343,7 +344,7 @@ describe('Swiss pairing order', function (): void {
     // events in whatever order the rows came back.
     it('orders level withdrawn participants the same whatever order the recorded events are in', function (int $dressing): void {
         $field = positionField(6, $dressing);
-        $engine = new SwissPairingEngine(plannedRounds: 1);
+        $engine = new SwissPairingEngine(plannedRounds: 1, resultsFree: true);
         $pairing = $engine->pairNextRound(StageState::start($field));
 
         $tables = [];
@@ -470,7 +471,8 @@ describe('a bye in a Swiss stage', function (): void {
                     return (float) count($results);
                 }
             }),
-            plannedRounds: 1
+            plannedRounds: 1,
+            resultsFree: true
         );
         $state = StageState::start(positionField(3, 1));
         $state = $state->withRoundPlayed($engine->pairNextRound($state), []);
@@ -598,9 +600,11 @@ describe('re-seeding an elimination bracket', function (): void {
     // A state stored by 0.2.x. Five entrants, re-seeded: 0.2.x ranked the
     // three who had a bye below the winner of round 1 and paired the second
     // round p4 v p3 and p1 v p2. This engine pairs it p1 v p4 and p2 v p3,
-    // so the recorded round is not a round of its bracket, and reading its
-    // results against other ties would be wrong.
-    it('refuses a stored state whose recorded round was paired in the order of an earlier release', function (): void {
+    // The recorded round is the round that was played. It is read as
+    // recorded, never against the ties this engine would have paired, and it
+    // is reported as manual with this engine's round beside it. The final
+    // is between the two who advanced from the recorded ties.
+    it('reads a stored state whose recorded round was paired in the order of an earlier release, and reports the round as manual', function (): void {
         $field = positionField(5, 1);
         [$p1, $p2, $p3, $p4] = $field;
         $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
@@ -610,33 +614,49 @@ describe('re-seeding an elimination bracket', function (): void {
         $state = $state->withRoundPlayed($first, [new Result($first->getEvents()[0], $p4)]);
 
         $round = new Round(2, ['label' => 'semifinal']);
-        $asStored = $state->withRoundPlayed(
-            new RoundPairing(2, 'semifinal', [new Event([$p4, $p3], $round), new Event([$p1, $p2], $round)]),
-            []
-        );
+        $fourVersusThree = new Event([$p4, $p3], $round);
+        $oneVersusTwo = new Event([$p1, $p2], $round);
+        $asStored = $state->withRoundPlayed(new RoundPairing(2, 'semifinal', [$fourVersusThree, $oneVersusTwo]), []);
         $restored = StageState::fromJson($asStored->toJson());
 
-        foreach ([
-            fn() => $engine->pairNextRound($restored),
-            fn() => $engine->isComplete($restored),
-            fn() => $engine->getOutcome($restored),
-        ] as $call) {
-            try {
-                $call();
-            } catch (InvalidConfigurationException $exception) {
-                expect($exception->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
-                    ->and($exception->getMessage())->toContain('The recorded round 2 is not the round 2 this bracket has')
-                    ->and($exception->getContext()['round'] ?? null)->toBe(2);
+        expect($engine->isComplete($restored))->toBeFalse()
+            ->and($engine->getOutcome($restored))->toBeNull()
+            ->and($engine->getReadiness($restored)->getUnresolvedEvents())->toHaveCount(2);
 
-                continue;
-            }
+        $rounds = $engine->getRecordedRounds($restored);
+        $derivation = $rounds[1]->getDerivation();
+        assert($derivation !== null);
+        $derivedPairs = array_map(
+            static function (Event $event): array {
+                $ids = positionIds($event->getParticipants());
+                sort($ids);
 
-            throw new LogicException('A round paired under other rules was read as a round of this bracket.');
-        }
+                return $ids;
+            },
+            $derivation->getEvents()
+        );
 
-        // The round as this engine pairs it is accepted
+        expect($rounds)->toHaveCount(2)
+            ->and($rounds[0]->isManual())->toBeFalse()
+            ->and($rounds[1]->isManual())->toBeTrue()
+            ->and($derivedPairs)->toBe([['p1', 'p4'], ['p2', 'p3']]);
+
+        // p3 and p2 advance from the ties that were played: they meet in the
+        // final, though this engine's own semifinals had them in one tie
+        $played = $restored->withAdditionalResults([new Result($fourVersusThree, $p3), new Result($oneVersusTwo, $p2)]);
+        $final = $engine->pairNextRound($played);
+        $finalists = positionIds($final->getEvents()[0]->getParticipants());
+        sort($finalists);
+
+        expect($final->getRoundNumber())->toBe(3)
+            ->and($final->getLabel())->toBe('final')
+            ->and($finalists)->toBe(['p2', 'p3']);
+
+        // The round as this engine pairs it is not manual
         $second = $engine->pairNextRound($state);
-        expect($engine->isComplete($state->withRoundPlayed($second, [])))->toBeFalse();
+        $own = $state->withRoundPlayed($second, []);
+        expect($engine->isComplete($own))->toBeFalse()
+            ->and($engine->getRecordedRounds($own)[1]->isManual())->toBeFalse();
     });
 
     it('still reads a stored state whose recorded rounds are the rounds it pairs', function (): void {

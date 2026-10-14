@@ -252,10 +252,12 @@ describe('correcting a result that was entered wrongly', function (): void {
         // The state accepts the draw: it does not know the format.
         $state = $state->withRoundPlayed($semifinals, [new Result($first), new Result($second, $second->getParticipants()[0])]);
 
-        expect(fn() => $engine->isComplete($state))
+        // The draw awaits a decision it will not get: the bracket is not
+        // complete, and the next round is refused
+        expect($engine->isComplete($state))->toBeFalse()
+            ->and($engine->getOutcome($state))->toBeNull();
+        expect(fn() => $engine->pairNextRound($state))
             ->toThrow(InvalidConfigurationException::class, 'Elimination events cannot end in a draw');
-        expect(fn() => $engine->pairNextRound($state))->toThrow(InvalidConfigurationException::class);
-        expect(fn() => $engine->getOutcome($state))->toThrow(InvalidConfigurationException::class);
 
         $state = $state->withResultReplaced(new Result($first, $first->getParticipants()[1]));
 
@@ -347,7 +349,8 @@ describe('correcting a result that was entered wrongly', function (): void {
         $state = $state->withRoundPlayed($final, [new Result($firstLeg, $alice), new Result($secondLeg, $bob)]);
 
         // One leg each and no tie decision: the engine cannot name a winner.
-        expect(fn() => $engine->isComplete($state))->toThrow(InvalidConfigurationException::class);
+        expect($engine->isComplete($state))->toBeFalse()
+            ->and(fn() => $engine->pairNextRound($state))->toThrow(InvalidConfigurationException::class);
 
         // The second leg names the two the other way round from the first;
         // the correction names them as the first leg does, with the leg.

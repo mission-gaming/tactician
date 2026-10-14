@@ -438,7 +438,8 @@ describe('the byes of a schedule', function (): void {
 describe('the byes of a stage state', function (): void {
     it('are listed for every recorded round, as the pairing of the round has them', function (): void {
         $field = byeStageField(5);
-        $engine = new SwissPairingEngine(plannedRounds: 3);
+        // The rounds are recorded without results, which is a mode of the engine
+        $engine = new SwissPairingEngine(plannedRounds: 3, resultsFree: true);
 
         $state = StageState::start($field);
         $expected = [];

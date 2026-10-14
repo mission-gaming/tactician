@@ -1,0 +1,62 @@
+# The results of examples/27-stage-from-application-rows.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Quarter-finals, as the organiser drew them ==
+- R1: 12-15
+- R1: 14-18
+- R1: 13-16
+
+== Went on without a quarter-final ==
+Aiko
+
+== Quarter-finals, as the engine would have drawn them ==
+- R1: 14-15
+- R1: 12-18
+- R1: 13-16
+
+== Reported as paired by hand ==
+true
+
+== With one quarter-final unplayed ==
+Complete: false
+The next round can be paired: false
+Waiting for round: 1
+
+== The quarter-final it waits for ==
+- R1: 13-16
+
+== Semifinals, from the quarter-finals that were played ==
+- R2: 11-18
+- R2: 12-16
+
+== After Noor withdraws: not played ==
+- R2: 11-18
+
+== After Noor withdraws: still to play ==
+- R2: 12-16
+
+== The final ==
+- R3: 11-16
+
+== Final standings ==
+1. 11 played=1 wins=1 draws=0 losses=0 value=3 for=0 against=0
+2. 16 played=3 wins=2 draws=0 losses=1 value=6 for=0 against=0
+3. 12 played=2 wins=1 draws=0 losses=1 value=3 for=0 against=0
+4. 18 played=1 wins=1 draws=0 losses=0 value=3 for=0 against=0
+5. 13 played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
+6. 14 played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
+7. 15 played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
+
+== A fixture for a player who was not entered ==
+MissionGaming\Tactician\Exceptions\InvalidConfigurationException: Invalid scheduler configuration: The history names participant 99 (in an event), who is not one of the entrants
+
+== Its reason ==
+participant_not_an_entrant

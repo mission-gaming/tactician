@@ -15,6 +15,7 @@ use MissionGaming\Tactician\Exceptions\SchedulingException;
 use MissionGaming\Tactician\Exceptions\TacticianException;
 use MissionGaming\Tactician\Exceptions\UnavailableValueException;
 use MissionGaming\Tactician\Exceptions\UndecidedSelectionException;
+use MissionGaming\Tactician\Exceptions\UnresolvedRoundException;
 use MissionGaming\Tactician\Repack\Internal\BudgetExhausted;
 use MissionGaming\Tactician\Tests\Support\ThrowSites;
 use PHPUnit\Framework\Assert;
@@ -208,6 +209,7 @@ describe('everything src/ throws', function () use ($root, $sourceFiles, $source
             TacticianException::class,
             UnavailableValueException::class,
             UndecidedSelectionException::class,
+            UnresolvedRoundException::class,
             BudgetExhausted::class,
         ]);
     });

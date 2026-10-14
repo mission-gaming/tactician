@@ -221,7 +221,10 @@ class SwissScheduler implements SchedulerInterface
         $engine = new SwissPairingEngine(
             constraints: $this->constraints,
             plannedRounds: $rounds,
-            randomizer: $randomizer
+            randomizer: $randomizer,
+            // The rounds are recorded without results on purpose, which the
+            // engine has to be told: it otherwise waits for them
+            resultsFree: true
         );
 
         $state = StageState::start($participants);

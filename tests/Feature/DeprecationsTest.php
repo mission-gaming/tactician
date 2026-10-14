@@ -813,10 +813,19 @@ describe("the deprecated 'tie_winner' metadata key", function () use ($root): vo
         expect(TieWinnerDeprecation::once(fn(): bool => $engine->isComplete($state)))->toBeTrue()
             ->and(TieWinnerDeprecation::once(fn(): ?StageOutcome => $engine->getOutcome($state)))->not->toBeNull()
             ->and(fn() => TieWinnerDeprecation::once(fn() => $engine->pairNextRound($state)))
-            ->toThrow(InvalidConfigurationException::class, 'Bracket is complete');
+            ->toThrow(InvalidConfigurationException::class, 'Bracket is complete')
+            // The calls that read a stage in progress walk the same bracket
+            ->and(TieWinnerDeprecation::once(fn(): bool => $engine->getReadiness($state)->isComplete()))->toBeTrue()
+            ->and(TieWinnerDeprecation::once(fn(): array => $engine->getRecordedRounds($state)))->toHaveCount(2)
+            ->and(TieWinnerDeprecation::once(fn(): int => count($engine->getStandings($state)->getEntries())))->toBe(4);
     });
 
-    it('is raised once by each call of the double elimination engine and of the selector', function (): void {
+    // The outcome of an engine carries its last tie as the engine settled
+    // it, and the selector reads that: the engine read the key, and raised
+    // the deprecation, when it built the outcome. The selector reads the key
+    // itself, and raises the deprecation, for an outcome that carries only
+    // results, as one built by hand does.
+    it('is raised once by each call of the double elimination engine, and by the selector where it reads the results itself', function (): void {
         $engine = new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2));
         $state = StageState::start([new Participant('p1', 'One'), new Participant('p2', 'Two'), new Participant('p3', 'Three')]);
 
@@ -847,8 +856,19 @@ describe("the deprecated 'tie_winner' metadata key", function () use ($root): vo
         $outcome = TieWinnerDeprecation::once(fn(): ?StageOutcome => $engine->getOutcome($state));
         assert($outcome instanceof StageOutcome);
 
-        expect(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::winners()->select($outcome)))->toHaveCount(1)
-            ->and(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::losers()->select($outcome)))->toHaveCount(1);
+        $selected = [];
+        $raisedForTheEngineOutcome = TieWinnerDeprecation::countIn(function () use ($outcome, &$selected): void {
+            $selected = [MatchOutcomeSelector::winners()->select($outcome), MatchOutcomeSelector::losers()->select($outcome)];
+        });
+
+        $byHand = new StageOutcome($outcome->getStandings(), $outcome->getResults(), $outcome->getByes(), $outcome->getFinalRound());
+
+        expect($raisedForTheEngineOutcome)->toBe(0)
+            ->and($selected[0])->toHaveCount(1)
+            ->and($selected[1])->toHaveCount(1)
+            ->and($byHand->getSettledTies())->toBeNull()
+            ->and(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::winners()->select($byHand)))->toBe($selected[0])
+            ->and(TieWinnerDeprecation::once(fn(): array => MatchOutcomeSelector::losers()->select($byHand)))->toBe($selected[1]);
     });
 
     it('is not raised for a bracket that records the decider', function () use ($levelBracket): void {

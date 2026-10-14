@@ -43,10 +43,54 @@ describe('StageState adjustments', function (): void {
 
         $adjusted = $state->withAdjustment($adjustment);
 
-        expect($adjusted->getAdjustments())->toBe([$adjustment])
+        // Recorded with the moment it was made: before the first round
+        expect($adjusted->getAdjustments())->toEqual([new Adjustment('jun', -1.0, 'ruling', 'Late roster', 0)])
             ->and($state->getAdjustments())->toBe([])
             ->and($adjusted->getParticipants())->toBe($this->participants);
     });
+
+    it('records after which round each adjustment was made, with no argument for it', function (): void {
+        $state = StageState::start($this->participants)
+            ->withAdjustment(new Adjustment('jun', -1.0))
+            ->withRoundPlayed(($this->round)(1), [])
+            ->withAdjustment(new Adjustment('ines', 0.5))
+            ->withRoundPlayed(($this->round)(2), [])
+            ->withRoundPlayed(($this->round)(3), [])
+            ->withAdjustment(new Adjustment('kofi', 2.0))
+            ->withAdjustment(new Adjustment('jun', 1.0));
+
+        expect(array_map(
+            static fn(Adjustment $adjustment): array => [$adjustment->getParticipantId(), $adjustment->getAfterRound()],
+            $state->getAdjustments()
+        ))->toBe([['jun', 0], ['ines', 1], ['kofi', 3], ['jun', 3]]);
+    });
+
+    it('records after the number of the last round, not after how many rounds there are', function (): void {
+        // The verbs accept a gap in the round numbers, and a round is known by its number
+        $state = StageState::start($this->participants)
+            ->withRoundPlayed(($this->round)(1), [])
+            ->withRoundPlayed(($this->round)(4), [])
+            ->withAdjustment(new Adjustment('jun', -1.0));
+
+        expect($state->getAdjustments()[0]->getAfterRound())->toBe(4);
+    });
+
+    it('keeps the round an adjustment states, so that one made earlier can be recorded late', function (): void {
+        $state = StageState::start($this->participants)
+            ->withRoundPlayed(($this->round)(1), [])
+            ->withRoundPlayed(($this->round)(2), []);
+        $earlier = (new Adjustment('jun', -1.0, 'ruling'))->madeAfterRound(1);
+
+        expect($state->withAdjustment($earlier)->getAdjustments())->toBe([$earlier])
+            ->and($state->withAdjustment((new Adjustment('jun', -1.0))->madeAfterRound(0))->getAdjustments()[0]->getAfterRound())->toBe(0)
+            ->and($state->withAdjustment((new Adjustment('jun', -1.0))->madeAfterRound(2))->getAdjustments()[0]->getAfterRound())->toBe(2);
+    });
+
+    it('refuses an adjustment said to be made after a round that is not recorded yet', function (): void {
+        StageState::start($this->participants)
+            ->withRoundPlayed(($this->round)(1), [])
+            ->withAdjustment((new Adjustment('jun', -1.0))->madeAfterRound(2));
+    })->throws(InvalidInputException::class, 'is said to be made after round 2, and the last round recorded is round 1');
 
     it('keeps adjustments in the order recorded and never merges two for one participant', function (): void {
         $first = new Adjustment('jun', -1.0, 'ruling');
@@ -58,7 +102,7 @@ describe('StageState adjustments', function (): void {
             ->withAdjustment($second)
             ->withAdjustment($third);
 
-        expect($state->getAdjustments())->toBe([$first, $second, $third]);
+        expect($state->getAdjustments())->toEqual([$first->madeAfterRound(0), $second->madeAfterRound(0), $third->madeAfterRound(0)]);
     });
 
     it('rejects an adjustment for a participant the stage has not seen', function (): void {
@@ -66,7 +110,8 @@ describe('StageState adjustments', function (): void {
     })->throws(InvalidInputException::class, 'Adjustment references participant mona who is not in the stage');
 
     it('keeps the adjustments through every other verb', function (): void {
-        $adjustment = new Adjustment('jun', -1.0);
+        // One that states its round is kept as the object it is
+        $adjustment = new Adjustment('jun', -1.0, null, null, 0);
         $pairing = ($this->round)(1);
         $first = new Result($pairing->getEvents()[0], $this->ines);
         $second = new Result($pairing->getEvents()[1], $this->kofi);
@@ -122,12 +167,41 @@ describe('StageState adjustments', function (): void {
         // An adjustment is a part of the state: it carries no version of its own
         expect(array_keys($data))->toBe(['format_version', 'participants', 'active', 'rounds', 'results', 'engine_fingerprint', 'adjustments'])
             ->and($data['adjustments'] ?? null)->toBe([
-                ['participant' => 'jun', 'amount' => -1.0, 'label' => 'ruling', 'reason' => 'Late roster'],
-                ['participant' => 'ines', 'amount' => 0.5, 'label' => null, 'reason' => null],
+                ['participant' => 'jun', 'amount' => -1.0, 'label' => 'ruling', 'reason' => 'Late roster', 'after_round' => 0],
+                ['participant' => 'ines', 'amount' => 0.5, 'label' => null, 'reason' => null, 'after_round' => 0],
             ])
             ->and(StageState::fromArray($data)->getAdjustments())->toEqual($state->getAdjustments())
             ->and(StageState::fromArray($data)->toArray())->toBe($data);
     });
+
+    // What was stored before an adjustment said its round: the four keys
+    // and no more. Nothing is assumed about when it was made, and the state
+    // is written back as it was read.
+    it('reads an adjustment stored without its round as one whose time is not known', function (): void {
+        $data = StageState::start($this->participants)
+            ->withRoundPlayed(($this->round)(1), [])
+            ->withAdjustment(new Adjustment('jun', -1.0, 'ruling'))
+            ->toArray();
+        assert(isset($data['adjustments']));
+        unset($data['adjustments'][0]['after_round']);
+
+        $read = StageState::fromArray($data);
+
+        expect($read->getAdjustments())->toEqual([new Adjustment('jun', -1.0, 'ruling')])
+            ->and($read->getAdjustments()[0]->getAfterRound())->toBeNull()
+            ->and($read->toArray())->toBe($data);
+    });
+
+    it('refuses stored data whose adjustment is made after a round the state does not hold', function (): void {
+        $data = StageState::start($this->participants)
+            ->withRoundPlayed(($this->round)(1), [])
+            ->withAdjustment(new Adjustment('jun', -1.0))
+            ->toArray();
+        assert(isset($data['adjustments']));
+        $data['adjustments'][0]['after_round'] = 2;
+
+        StageState::fromArray($data);
+    })->throws(InvalidInputException::class, 'is said to be made after round 2, and the last recorded round is round 1');
 
     it('round-trips awarded results and adjustments through the JSON of the state', function (): void {
         $pairing = ($this->round)(1);

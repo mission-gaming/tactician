@@ -161,6 +161,7 @@ describe('every type in src/', function () use ($policy, $sourceFiles, $sourceTy
             // states, handed out as a ConstraintInterface
             'RoleAssignment\LegBalanceRule',
             'Scheduling\BacktrackingRoundRobinGenerator',
+            'Scheduling\BracketReading',
             'Scheduling\ConstraintPurity',
             'Scheduling\EliminationBracketSupport',
             'Scheduling\EventIndex',

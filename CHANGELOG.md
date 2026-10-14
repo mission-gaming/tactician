@@ -1208,11 +1208,12 @@ entry on the engine fingerprint.
     played, the decider who goes on.
   - A level tie without a decider leaves its round unresolved, as before,
     and the engines now say which tie it is: the `UndecidedTie` exception
-    of `isComplete()`, `pairNextRound()` and `getOutcome()` carries the
-    round beside the two participants in its context (`['round' => 1,
-    'participants' => ['p1', 'p4']]`). Two entrants can meet twice in a
-    bracket, in the grand final and its reset, so the pair alone did not
-    say.
+    of `pairNextRound()` carries the round beside the two participants in
+    its context (`['round' => 1, 'participants' => ['p1', 'p4']]`). Two
+    entrants can meet twice in a bracket, in the grand final and its
+    reset, so the pair alone did not say. Reading a bracket with such a
+    tie no longer throws: see **Changed**, "a bracket round that is
+    recorded and not finished is no longer an error to read".
   - A result writes the decider under the key `decider` (`participants`,
     `label`, `reason`), only when it has one, so the array of every other
     result is unchanged, an array written by an earlier release loads
@@ -1247,6 +1248,196 @@ entry on the engine fingerprint.
   rejected). `ShuffledLegStrategy` says true; the mirrored and the repeated
   strategy, and every strategy written before the flag existed, say false
   and are treated as they were.
+- **Stages resolved from a history the caller holds** (#57, first part). An
+  application that keeps its fixtures and results in its own tables no
+  longer has to store a `StageState` beside them.
+  - `StageState::fromHistory(array $entrants, array $rounds, array $results
+    = [], array $withdrawals = [], array $adjustments = []): StageState`
+    builds a state from the entrants in their order, the rounds that were
+    paired (`RoundPairing`), whatever results exist, who has withdrawn and
+    the adjustments made, each of the last two with the round it happened
+    after where the rows say it (see "A state says when" below). The rounds
+    and the results may be supplied in any order. The state is equal to the
+    one built by `start()`, `withRoundPlayed()` for each round with its
+    results in the order of its events, and `withoutParticipant()` and
+    `withAdjustment()` at the moments the history states; it is recorded
+    through the same verbs as a state read by `fromArray()`. A history is
+    held to three rules more, because rows can state what no engine
+    paired: round numbers 1, 2, 3 with none left out or given twice
+    (`RoundOutOfSequence`), every participant an entrant (the new reason
+    `ParticipantNotAnEntrant`, `participant_not_an_entrant`) and nobody in
+    a round twice (the new reason `ParticipantTwiceInRound`,
+    `participant_twice_in_round`; the two legs of a tie are one
+    appearance). Two results of one event are refused (`DuplicateResult`).
+    `fromArray()`, `fromJson()` and the verbs accept what they accepted.
+  - **History is supplied, never recomputed.** An engine reads the rounds
+    recorded on a state as they are and derives only the round that does
+    not exist yet (ADR 0007,
+    `docs/adr/0007-recorded-rounds-are-read-not-derived.md`).
+  - `Stage\HistoryReadingEngine` (new interface, implemented by the three
+    engines and kept out of `StageEngineInterface`) asks an engine how it
+    reads a stage in progress, without an exception for a round that is
+    still being played: `getReadiness(StageState): PairingReadiness`,
+    `getRecordedRounds(StageState): list<RecordedRound>` and
+    `getStandings(StageState): Standings`, the table so far (for a bracket
+    that is not finished, the entrants still in it share the first tier).
+  - `Stage\PairingReadiness` (new) says one of three things: the next round
+    can be paired (`isReady()`), a recorded round awaits results
+    (`isAwaitingResults()`, `getUnresolvedEvents()`, `getRoundNumber()`),
+    or the stage is complete (`isComplete()`). A bracket that awaits the
+    decision of a tie that finished level lists the events of that tie
+    apart (`getUndecidedEvents()`).
+  - `Stage\RecordedRound` (new) is one recorded round as the engine reads
+    it: `getPairing()`, `getDerivation()` (the round the engine would have
+    paired from the rounds before it, or null where it cannot say: a Swiss
+    engine that holds a `Randomizer`), `isManual()`,
+    `getUnresolvedEvents()`, `getUndecidedEvents()`, `isResolved()`,
+    `getUncontestedEvents()` and `isPairedOnIncompleteResults()`. **A recorded round the engine would
+    have paired otherwise is accepted and reported as manual**, with the
+    engine's own round beside it; it is never refused for that.
+  - `Exceptions\UnresolvedRoundException` (new, an
+    `InvalidConfigurationException` with the reason
+    `RoundPartiallyResolved`) is what `pairNextRound()` throws while an
+    event of a recorded round awaits its result. It carries the events
+    (`getUnresolvedEvents()`) and the round (`getRoundNumber()`).
+  - `SwissPairingEngine::pairNextRoundOnIncompleteResults(StageState):
+    RoundPairing` pairs a round before the last results are in, on
+    purpose. The pairing it returns is marked:
+    `RoundPairing::isPairedOnIncompleteResults()`, a fifth constructor
+    argument of `RoundPairing` (default `false`), written to plain data as
+    `paired_on_incomplete_results` only when it is set.
+  - **Results-free mode**: `new SwissPairingEngine(resultsFree: true)`, a
+    fifth constructor argument (default `false`), is the engine for rounds
+    recorded without results on purpose. `SwissScheduler` pairs in it. It
+    is part of the engine fingerprint when it is on
+    (`;results-free=yes`); with it off the fingerprint is the one it was.
+  - **A withdrawal from a bracket under way gives the tie away and draws
+    nothing again.** `StageState::withoutParticipant()` keeps the entrant
+    in its place once a round is recorded (`getEntrants()`,
+    `getWithdrawnEntrants()`, both new; written to plain data as the
+    optional key `entrants` only when somebody has withdrawn that way).
+    The bracket engines fold from that list: a tie of a withdrawn entrant
+    that has no complete result is not played, the other entrant advances
+    and is listed among the byes of the round, and in double elimination
+    the withdrawn entrant takes the loss. Before the first round is
+    recorded a withdrawal removes the entrant, as it always did. A bracket
+    state stored before the entrant list was kept (by 0.2.x, whose bracket
+    engines refused a bracket somebody had withdrawn from) does not know
+    the place of a participant who had withdrawn: it is folded from the
+    active list, so `getRecordedRounds()` can report its recorded rounds as
+    manual, and the withdrawn participant is never paired again (a tie it
+    had advanced to is uncontested).
+  - `StageState::getEventsWithoutResult(): list<Event>` lists the recorded
+    events that have no result.
+  - `paired_on_incomplete_results`, `entrants`, `withdrawals` and the
+    `after_round` of an adjustment are optional keys of version 1 of their
+    forms: an array without them is read as before, and a state that needs
+    none of them is written with the keys it always had, so no golden wire
+    fixture changed and data stored by 0.2.x loads as it did.
+  - **A state says when an adjustment was made and when a participant
+    withdrew, and a round is read from what was known when it was paired**
+    (#154, its option 2; ADR 0007, "A state says when"). Each is recorded
+    with the number of the last round that was recorded at that moment:
+    - `Adjustment::getAfterRound(): ?int`, a fifth constructor argument of
+      `Adjustment` (`?int $afterRound = null`; 0 is before the first round)
+      and `Adjustment::madeAfterRound(int): Adjustment`.
+      `StageState::withAdjustment()` records an adjustment that states no
+      round as made after the last round the state holds, so nothing is
+      passed between rounds; one that states a round keeps it, and a round
+      after the last recorded one is refused (`InvalidInputException`).
+      `getAdjustments()` returns the adjustment with its round, which is
+      another object than the one given when that one stated none.
+    - `Stage\Withdrawal` (new: `getParticipant()`, `getAfterRound()`) and
+      `StageState::getWithdrawals(): list<Withdrawal>`.
+      `withoutParticipant()` records one, once a round is recorded, in the
+      order the withdrawals happen.
+    - `StageState::fromHistory()` takes a `Withdrawal` in the place of a
+      plain participant among its withdrawals, and reads the round of each
+      adjustment. A round after the last one supplied is refused
+      (`ValueOutOfRange`, with `participant`, `after_round` and
+      `last_round` in the context).
+    - Plain data: an adjustment writes `after_round` when it says one, and
+      a stage state writes `withdrawals`
+      (`[['participant' => id, 'after_round' => n], ...]`, in the order
+      they happened) when it holds one. `fromArray()` refuses a round after
+      the last recorded one, and a withdrawal of an active participant, of
+      one listed twice, or out of the order of the rounds.
+
+    What the engines do with it. A re-seeded bracket ranks the survivors of
+    a recorded round from the adjustments made before that round, so an
+    adjustment recorded at any point leaves every recorded round as it was:
+    its ties, what is read of an entrant who had withdrawn before it, and
+    the round paired next. The round shown beside a recorded one
+    (`RecordedRound::getDerivation()`, and with it `isManual()`) is paired
+    from the same knowledge in all three engines: a round an engine paired
+    is no longer reported as manual for an adjustment or a withdrawal
+    recorded after it. Where both entrants of a bracket tie have withdrawn
+    and its results are not complete, the first to withdraw gave the tie to
+    the other, who went on: an entrant who advanced from an uncontested
+    final and withdraws afterwards is still first.
+
+    **To a state a round is paired when it is recorded.** An application
+    that pairs a round, has it played and records it only then (the loop
+    in the README) records what happens during that round before the
+    round. A withdrawal is read correctly either way from the second round
+    on: a round that names a participant, in an event or as a bye, was
+    paired while it was in the stage, and the engines read that before the
+    round its withdrawal states, in all three engines. Two things it asks
+    of an application: a withdrawal while the first round is played needs
+    that round recorded when it is paired (a state that holds no round
+    removes the entrant and keeps no withdrawal, and a first round recorded
+    afterwards is read as drawn by hand for the field without it), and no
+    round may name a participant who had left before it was paired (among
+    byes listed as everyone without an event, for example: the participant
+    is then read as in the stage for that round and every round before
+    it). An adjustment is not read correctly either way: one made while a
+    round is played and recorded before the round is read as known when
+    that round was paired (the ranking of a re-seeded round, and the
+    derivation beside the round in a re-seeded bracket and a Swiss stage).
+    Where adjustments are made while a round is played, record the round
+    when it is paired (`withRoundPlayed($pairing, [])`) and add its results
+    with `withAdditionalResults()`.
+
+    **Without a round the time is not known, and it is not guessed.** An
+    adjustment or a withdrawal reaches a state without one from a history
+    that does not state it, or from data stored by an earlier revision of
+    this release. Such data loads. It is read neither as "after the last
+    round" nor as "before the first": an adjustment counts in the tables
+    and in the round paired next; the engine gives no derivation, and
+    reports nothing as manual, for a recorded round it could have changed
+    (every round of a Swiss stage, every round after the first of a
+    re-seeded bracket); and a re-seeded bracket refuses a recorded round
+    after the first that an entrant had withdrawn before
+    (`RecordedRoundMismatch`, with `round`, `adjusted_without_round` and
+    `withdrawn` in the context), because what became of that entrant
+    depends on a ranking that is not known. A withdrawal without a round is
+    read from the rounds that name the entrant: of two withdrawn entrants
+    of a tie, the one a later recorded round names went on, and neither is
+    read as having gone on where a later round names neither (they share
+    the tier of the round); and an entrant neither a round nor a later
+    one names is taken to have left before it, which misreads a round
+    supplied without its byes once an entrant who had one withdraws before
+    the next round. State the rounds, and
+    supply the byes of every round. A bracket on a fixed path and a double
+    elimination bracket rank nothing and refuse no state for this.
+  - **The outcome of a bracket says who went on from its last tie.**
+    `StageOutcome::getSettledTies(): ?list<SettledTie>`, an eighth
+    constructor argument of `StageOutcome` (`?array $settledTies = null`),
+    and `Stage\SettledTie` (new: `getAdvancer()`, `getEliminated()`). The
+    two elimination engines give the final (not the third-place tie), or
+    the grand final or its reset, as they settled it; an outcome of a Swiss
+    stage, a pooled one and one built without them have none (null).
+    `MatchOutcomeSelector` reads the settled ties where an outcome carries
+    them: see **Changed**.
+  - A new example, `examples/27-stage-from-application-rows.php`, resolves
+    a knockout from fixture rows on every request: its fixtures, the byes
+    of its rounds (a bye is no fixture, and has a row of its own) and its
+    withdrawals with their rounds. The usage guide has the whole of it
+    under "Stages Resolved from Your Own Rows".
+
+  Not in this release yet, and tracked by the same issue: replayable seeded
+  Swiss (each round's draw from the seed and the round number), the
+  structured bracket view, and a round-robin engine over the same state.
 - **Awarded results.** A `Result` can say that its event was not played and
   that the application gave it this outcome: `new Result($event, $winner,
   $scores, award: new Award('label', 'reason'))`. `DTO\Award` (new) is the
@@ -1298,10 +1489,10 @@ entry on the engine fingerprint.
   $adjustment)` and `getAdjustments()`, written under the key
   `adjustments` only when there is one. Every table an engine builds from
   the state has them: the next Swiss round is paired from the adjusted
-  totals, a re-seeded bracket folds its survivors by them (record its
-  adjustments before its second round is paired: a later one can change a
-  round already played, and the engine then refuses the state with
-  `RecordedRoundMismatch`), and the table of
+  totals, a re-seeded bracket folds the survivors of the round it pairs
+  next by them (an adjustment can be recorded at any point: a round already
+  recorded is read as recorded, see "stages resolved from a history the
+  caller holds" above), and the table of
   an outcome shows each beside what was earned, where it orders the
   entrants a bracket put out in the same round and moves nobody between
   tiers. `StageOutcome::combining()` keeps the adjustment of each pool
@@ -1420,8 +1611,9 @@ entry on the engine fingerprint.
   `BracketTie::winnerRank()` is 1 or 3. The third-place tie has the legs of
   every tie of the bracket and is decided as they are, a level one through
   its decider, and the stage is complete when both ties are
-  decided (one of the two decided is `RoundPartiallyResolved`, as in every
-  round). The outcome's table then gives places 1 to 4, each in a tier of
+  decided (with one of the two decided the bracket is not complete and the
+  next round is refused, `RoundPartiallyResolved`, as in every round). The
+  outcome's table then gives places 1 to 4, each in a tier of
   its own: the entrant who advanced from the final, the other finalist, the
   entrant who advanced from the third-place tie, the other one.
   `MatchOutcomeSelector` reads the final and leaves the third-place tie
@@ -1443,10 +1635,12 @@ entry on the engine fingerprint.
   and the constant `THIRD_PLACE_MINIMUM`; `getTotalRounds()` does not
   change. The option is part of the engine fingerprint when it is on
   (`;third-place=yes`), so a state stamped with it is refused by an engine
-  without it, and the other way round. A state without a stamp is refused
-  too once its last round is recorded (`RecordedRoundMismatch`): by an
-  engine with the option when the round lacks the tie, and by one without
-  it when the round holds an event marked `'third-place'`.
+  without it, and the other way round. A state without a stamp is told
+  apart by its last round, once that is recorded: an engine without the
+  option refuses it when the round holds an event marked `'third-place'`
+  (`RecordedRoundMismatch`), and an engine with the option reads a last
+  round that lacks the tie as a round paired by hand, which decides places
+  1 and 2 only.
   With the option off nothing changes: every pairing, every event (none
   carries `bracket_tie`), every table and every fingerprint is what it was,
   and no existing golden fixture changed; the new fixture
@@ -1916,8 +2110,11 @@ entry on the engine fingerprint.
   value of a bye as one more value of the scale. With a bye worth a win,
   which is every stage paired before, nothing changes.
 - **The message of an undecided tie names the decider.** A level
-  elimination tie with no decision is refused as before, with the reason
-  `UndecidedTie`; its message told the caller to record `'tie_winner'`
+  elimination tie with no decision still has the reason `UndecidedTie`
+  (which calls refuse it has changed in this release: reading the bracket
+  no longer throws for it and only `pairNextRound()` does, see "The same
+  holds for a tie that finished level and has no decider" under the
+  breaking change for a bracket round that is not finished); its message told the caller to record `'tie_winner'`
   metadata, which is deprecated (see **Deprecated**), and now says to
   record the decider: "... the event is level, so record who advances as
   the decider of its result", and for two legs "... the legs are level, so
@@ -1948,6 +2145,111 @@ entry on the engine fingerprint.
   records the decision, what counts as unequal (the number of entries of
   the pools' tables, not the events played) and what a comparison per
   event does and does not do with tiebreaker values.
+- **`MatchOutcomeSelector` reads the last tie of a bracket as the engine
+  settled it.** For an outcome that carries settled ties
+  (`StageOutcome::getSettledTies()`, which the outcomes of the two
+  elimination engines do), `winners()` is the entrant who went on from each
+  and `losers()` the entrants who did not; the results and the final round
+  of the outcome are not read. For a final that was played this is the
+  selection it was. It differs where the results alone gave another answer
+  or none:
+  - a final a finalist withdrew from, recorded without a result: the
+    selection threw `UndecidedTie` for a bracket that was complete, and is
+    now the finalist who stayed (`winners()`) and the one who left
+    (`losers()`);
+  - a final that was never paired because a finalist had withdrawn: the
+    outcome's final round is then the round before it, and `winners()` gave
+    the entrants who went on from that round (both finalists in single
+    elimination, the withdrawn one in double elimination). It now gives the
+    finalist who stayed;
+  - a round recorded on the state after the bracket's last: it took the
+    place of the final in the selection, and no longer does;
+  - a last round with a third-place tie whose events were recorded without
+    their `bracket_tie` marks: the selection held a participant of each of
+    the two ties, and is now the final's.
+
+  Who is affected: a composition that takes the winner or the loser of a
+  bracket by selector from an outcome of one of those four kinds. An
+  outcome without settled ties (a Swiss stage, a pooled outcome, one built
+  by hand without the new argument) is read from its results as before,
+  with the refusals it had. Before: `MatchOutcomeSelector::winners()
+  ->select($engine->getOutcome($stateWhoseFinalistWithdrew))` threw or
+  returned the wrong entrant. After: it returns the entrant the table has
+  first.
+- **Breaking: the Swiss engine waits for the results of a recorded round.**
+  `SwissPairingEngine::pairNextRound()` paired the next round from whatever
+  results a state held, so a round that was still being played, a round
+  whose results had not been entered and a schedule drawn up front without
+  results were the same thing to it, and the first two gave a round paired
+  from a table that was not finished. It now refuses while an event of a
+  recorded round has no result, with an `UnresolvedRoundException` (an
+  `InvalidConfigurationException`, reason `RoundPartiallyResolved`) that
+  lists the events; `isComplete()` is false and `getOutcome()` is null
+  until the last planned round has its results (#57). Who is affected: code
+  that records a Swiss round with some or none of its results and asks the
+  same engine for the next round, or reads the outcome of a stage whose
+  last round has an event without a result. `SwissScheduler` is not
+  affected and gives the schedules it gave. What to change, one of three:
+  - record the results first (an event that is never played gets an
+    awarded result), which is what a results-driven stage does anyway;
+  - pair early on purpose with `pairNextRoundOnIncompleteResults()`, which
+    gives the round `pairNextRound()` used to give and marks it. Once that
+    round is recorded, the result that was missing is supplied with the
+    history (`StageState::fromHistory()`): `withAdditionalResults()` adds
+    to the last recorded round only, and its refusal of a result of an
+    earlier recorded round now says so and names that way (the reason
+    `EventNotInRound` and the context are the ones it had);
+  - build the engine with `resultsFree: true` where the rounds are to have
+    no results at all, as the whole-schedule preset does. A state stamped
+    by an engine without the mode is refused by one with it
+    (`EngineFingerprintMismatch`); stamp it again.
+
+  Before: `$state = $state->withRoundPlayed($engine->pairNextRound($state),
+  []); $engine->pairNextRound($state);` returned round 2. After: it throws,
+  and `(new SwissPairingEngine(resultsFree: true))->pairNextRound($state)`
+  or `$engine->pairNextRoundOnIncompleteResults($state)` returns it.
+- **Breaking: a bracket round that is recorded and not finished is no
+  longer an error to read, and is not paired again.** The elimination
+  engines threw from `isComplete()` and `getOutcome()` as well as from
+  `pairNextRound()` while a round had some of its results
+  (`RoundPartiallyResolved`), and answered `pairNextRound()` with the same
+  round again while it had none. `isComplete()` is now false and
+  `getOutcome()` null for both, and `pairNextRound()` throws an
+  `UnresolvedRoundException` for both, with the events that await a result
+  (#57). The reason is the one it was, and the exception is still an
+  `InvalidConfigurationException`; its message and context are new (the
+  context holds `round` and `unresolved`, where it held `resolved` and
+  `playable`). Who is affected: code that caught the exception around
+  `isComplete()` or `getOutcome()` to learn that a round was still in
+  play, and code that asked for a recorded round a second time. What to
+  change: ask `getReadiness()`, which lists the events without an
+  exception, and read a recorded round from the state (`getLastRound()`).
+  Before: `$engine->isComplete($stateWithHalfARound)` threw. After: it is
+  `false`.
+
+  **The same holds for a tie that finished level and has no decider.** It
+  awaits the application's decision as another tie awaits a result, so
+  reading the bracket no longer throws for it either: `isComplete()` is
+  false and `getOutcome()` null, where both threw `UndecidedTie`.
+  `pairNextRound()` throws what it threw, an `InvalidConfigurationException`
+  with the reason `UndecidedTie`, the round and the two participants, and
+  throws it before the `UnresolvedRoundException` where the round awaits a
+  result as well. Where two ties of the round await a decision it names the
+  first in bracket order, the final before the third-place tie, and its two
+  participants in the order of its first leg, whatever order the events of
+  the round are recorded in. `getReadiness()` lists the
+  events of such ties
+  (`PairingReadiness::getUndecidedEvents()`), `getRecordedRounds()` lists
+  them for their round (`RecordedRound::getUndecidedEvents()`), and
+  `getStandings()` gives the table, in which the level event is a draw. An
+  entrant of such a tie who withdraws gives it away. A state the engine
+  cannot read at all is still refused by every call: two results of one
+  event, a winner outside the tie, a decider on a tie its results decide.
+  Who is affected: code that called `isComplete()` or `getOutcome()` and
+  caught `UndecidedTie` to learn that a tie needs a decision. What to
+  change: read `getReadiness($state)->getUndecidedEvents()`, or keep the
+  catch around `pairNextRound()`. Before:
+  `$engine->isComplete($stateWithALevelTie)` threw. After: it is `false`.
 - **Breaking: every array a `toArray()` returns starts with
   `format_version`, and a version the library does not know is refused.**
   No serialized form said which release's rules it was written under, so
@@ -2237,29 +2539,43 @@ entry on the engine fingerprint.
     `pairNextRound()` can answer with other pairs, and results for the
     published events are then refused as not part of the round
     (`EventNotInRound`).
-  - *Re-seeded single elimination*: the bracket is replayed from its
-    entrant list on every call. Where 0.3.0 pairs a recorded round as
-    0.2.x did, the recorded rounds stand, and the next round is paired by
-    the new order, which can be another round than 0.2.x would have made
-    of the same results. Where it does not (a field
-    that is not a power of two, or level survivors whose list order is not
-    their seed and label order), the engine refuses the state, stamped or
-    not, with the new reason `RecordedRoundMismatch`, on `pairNextRound()`,
-    `isComplete()` and `getOutcome()`: the recorded results belong to ties
-    the bracket no longer has. Finish such a bracket on 0.2.x, or rebuild
-    the state from the rounds that stand.
+  - *Re-seeded single elimination*: the recorded rounds stand, whatever
+    order 0.2.x folded them in. A recorded round is read as it was
+    recorded, and the next round is folded by the new order from the
+    entrants who advanced from it, which can be another round than 0.2.x
+    would have made of the same results. Where 0.3.0 would have paired a
+    recorded round otherwise (a field that is not a power of two, or level
+    survivors whose list order is not their seed and label order),
+    `getRecordedRounds()` reports that round as manual, with the round
+    0.3.0 would have paired beside it.
 
   What to change: after the upgrade, `$state =
   $state->withEngineFingerprint($engine->getFingerprint())` for each stored
   stamped state you have decided to carry on.
-- **Breaking: a single-elimination state whose recorded round lacks a tie
-  of the bracket is refused** (`RecordedRoundMismatch`). The engine used to
-  answer such a state with a round the state already held under other
-  pairings, which `withRoundPlayed()` then refused as out of sequence. That
-  is the refusal the entry above relies on; it also meets a state whose
-  participant list changed after a round was recorded (a withdrawal, which
-  the bracket engines do not support). A recorded round that holds more
-  than the bracket's ties is still accepted.
+- **Breaking: the bracket engines read the rounds recorded on a state, and
+  no longer work the bracket out again from the participant list.** Through
+  0.2.x both elimination engines derived every round on every call and
+  looked the recorded results up against the ties they had derived. A
+  recorded round that was not the round the engine derives (drawn by hand,
+  paired under another order, or of a bracket somebody had withdrawn from)
+  made the single elimination engine answer with a round the state already
+  held, which `withRoundPlayed()` then refused as out of sequence, and made
+  the double elimination engine offer its own round again. A recorded
+  round is now the round that was played: its ties are settled from its
+  results, the entrants who advance from it are the next round, and a
+  round the engine would have paired otherwise is reported as manual
+  instead (see **Added**, "stages resolved from a history the caller
+  holds", and ADR 0007). Nothing changes for a state whose rounds the
+  engine paired itself: every pairing, table and golden fixture is what it
+  was. Who is affected: an application that recorded bracket rounds of its
+  own making and relied on them being ignored or refused. Two refusals
+  with the reason `RecordedRoundMismatch` exist: a single elimination
+  engine without the third-place option refuses a state that holds a tie
+  marked as one, and a double elimination stage recorded so that it leaves
+  another number of entrants in the bracket than the stage has places is
+  refused. An event of a bracket round between two entrants neither of
+  whom is in the round, or with an entrant who is in another tie of that
+  round, is read by nothing, as before.
 - **Breaking: a re-seeded bracket that has a bye needs a ranking strategy
   that says what a bye is worth.** Crediting the bye needs a value for it, so
   `SingleEliminationEngine` with `reseedEachRound` and a `RankingStrategy`
@@ -2717,9 +3033,13 @@ entry on the engine fingerprint.
     library raises the notice itself: a call that takes an advancer from
     the key emits one `E_USER_DEPRECATED` notice, whatever the number of
     ties the key decided in that call, and on every PHP version, PHP 8.3
-    included. Those calls are `isComplete()`, `pairNextRound()` and
-    `getOutcome()` of the two elimination engines,
-    `MatchOutcomeSelector::select()` and `TieDecision::advancer()`. An
+    included. Those calls are `isComplete()`, `pairNextRound()`,
+    `getOutcome()`, `getReadiness()`, `getRecordedRounds()` and
+    `getStandings()` of the two elimination engines,
+    `TieDecision::advancer()`, and `MatchOutcomeSelector::select()` where
+    it reads the results itself (an outcome that carries no settled ties;
+    for the outcome of an engine the notice came from the `getOutcome()`
+    call that built it). An
     application that turns every notice into an exception will see them
     fail until it records deciders. The constant carries the `@deprecated`
     tag and the `#[\Deprecated]` attribute, as the deprecated methods do,

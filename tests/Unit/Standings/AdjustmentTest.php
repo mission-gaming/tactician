@@ -40,6 +40,67 @@ describe('Adjustment', function (): void {
         '-INF' => [-INF],
     ])->throws(InvalidInputException::class, 'must be a finite number');
 
+    // When it was made, in the rounds of a stage: after which recorded round.
+    // An adjustment says it or does not, and one that does not is of unknown
+    // time, not of any time that suits.
+    it('says after which round it was made, or does not', function (): void {
+        $plain = new Adjustment('p1', -3.0, 'ruling', 'Late');
+        $dated = $plain->madeAfterRound(2);
+
+        expect($plain->getAfterRound())->toBeNull()
+            ->and($dated->getAfterRound())->toBe(2)
+            ->and($dated)->not->toBe($plain)
+            // Everything else is kept, and the one it was called on is unchanged
+            ->and($dated)->toEqual(new Adjustment('p1', -3.0, 'ruling', 'Late', 2))
+            ->and($plain->madeAfterRound(0)->getAfterRound())->toBe(0)
+            ->and($dated->madeAfterRound(5)->getAfterRound())->toBe(5);
+    });
+
+    it('refuses a round below 0, built and said later', function (Closure $build): void {
+        $build();
+    })->with([
+        'constructed' => [fn() => new Adjustment('p1', 1.0, null, null, -1)],
+        'said later' => [fn() => (new Adjustment('p1', 1.0))->madeAfterRound(-1)],
+    ])->throws(InvalidInputException::class, 'cannot be made after round -1');
+
+    it('writes the round only when it says one, so that one that says none is written as it always was', function (): void {
+        $plain = new Adjustment('p1', -3.0);
+        $dated = $plain->madeAfterRound(0);
+
+        expect(array_keys($plain->toArray()))->toBe(['format_version', 'participant', 'amount', 'label', 'reason'])
+            ->and($dated->toArray())->toBe([
+                'format_version' => 1,
+                'participant' => 'p1',
+                'amount' => -3.0,
+                'label' => null,
+                'reason' => null,
+                'after_round' => 0,
+            ])
+            ->and(Adjustment::fromArray($dated->toArray()))->toEqual($dated)
+            ->and(Adjustment::fromArray($plain->toArray()))->toEqual($plain);
+    });
+
+    it('reads data without the round, and data whose round is null, as an adjustment of unknown time', function (array $data): void {
+        expect(Adjustment::fromArray($data)->getAfterRound())->toBeNull();
+    })->with([
+        'no key: what was stored before the key existed' => [['participant' => 'p1', 'amount' => 1]],
+        'null' => [['participant' => 'p1', 'amount' => 1, 'after_round' => null]],
+    ]);
+
+    it('refuses a round in data that is no integer of 0 or above', function (mixed $round, string $message): void {
+        expect(fn() => Adjustment::fromArray(['participant' => 'p1', 'amount' => 1, 'after_round' => $round]))
+            ->toThrow(InvalidInputException::class, $message);
+    })->with([
+        'a string' => ['2', 'requires a round that is an integer or null'],
+        'a float' => [2.0, 'requires a round that is an integer or null'],
+        'a boolean' => [true, 'requires a round that is an integer or null'],
+        'below 0' => [-1, 'cannot be made after round -1'],
+    ]);
+
+    it('refuses the round key misspelt, where it would read the adjustment as one of unknown time', function (): void {
+        Adjustment::fromArray(['participant' => 'p1', 'amount' => 1, 'afterRound' => 2]);
+    })->throws(InvalidInputException::class, "Unknown key in adjustment data: 'afterRound'");
+
     it('round-trips through its array form, with all four keys always written', function (): void {
         $adjustment = new Adjustment('p1', -3.0, 'ruling', 'Fielded an unregistered player');
 

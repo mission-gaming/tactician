@@ -591,7 +591,8 @@ describe('Swiss pairing where dead ends are common', function (): void {
             $state = $state->withRoundPlayed(new RoundPairing($round + 1, null, $events), []);
         }
 
-        expect(fn() => (new SwissPairingEngine())->pairNextRound($state))->toThrow(NoValidPairingException::class);
+        // The rounds are recorded without results, which is results-free mode
+        expect(fn() => (new SwissPairingEngine(resultsFree: true))->pairNextRound($state))->toThrow(NoValidPairingException::class);
     });
 
     it('lets a constraint of the caller\'s fail in a branch that holds no pairing', function (): void {
@@ -633,11 +634,12 @@ describe('Swiss pairing where dead ends are common', function (): void {
             'Cannot judge one pairing'
         )]);
 
-        expect(fn() => (new SwissPairingEngine($constraints))->pairNextRound($state))
+        expect(fn() => (new SwissPairingEngine($constraints, resultsFree: true))->pairNextRound($state))
             ->toThrow(LogicException::class, 'This constraint cannot judge s7 against s9');
         // The state itself has no pairing: without the constraint, that is
         // what the engine reports.
-        expect(fn() => (new SwissPairingEngine())->pairNextRound($state))->toThrow(NoValidPairingException::class);
+        // The rounds are recorded without results, which is results-free mode
+        expect(fn() => (new SwissPairingEngine(resultsFree: true))->pairNextRound($state))->toThrow(NoValidPairingException::class);
     });
 
     it('schedules 24 participants over 5 rounds under a role streak limit of 2', function (): void {

@@ -42,17 +42,22 @@ interface StageEngineInterface
      * draws nothing; an engine that was given a randomizer draws from it
      * on every call.
      *
+     * The recorded rounds are facts: an engine reads them as recorded and
+     * derives only the round that does not exist yet. A recorded round
+     * that still awaits a result is not paired again and nothing is paired
+     * after it: the library's engines refuse with an
+     * UnresolvedRoundException that lists the events, and
+     * HistoryReadingEngine::getReadiness() says the same without throwing.
+     *
      * Ask isComplete() first. What an engine does when it is asked to
-     * pair a complete stage is not part of this contract: today a bracket
-     * engine refuses it, and the Swiss engine pairs a round beyond its
-     * planned ones, or refuses a stage that has fewer than 2 active
-     * participants.
+     * pair a complete stage is not part of this contract: the library's
+     * engines refuse it.
      *
      * @throws \MissionGaming\Tactician\Exceptions\NoValidPairingException When no complete pairing exists for the round
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the state cannot be paired (too few
      *                                                                          participants, malformed configuration, a
-     *                                                                          bracket round with only some of its
-     *                                                                          results, a bracket that is complete)
+     *                                                                          recorded round that awaits results, a
+     *                                                                          stage that is complete)
      */
     public function pairNextRound(StageState $state): RoundPairing;
 
@@ -63,7 +68,9 @@ interface StageEngineInterface
      *
      * A stage with no length of its own (a Swiss stage configured without
      * a number of rounds) does not become complete by being played: the
-     * driver loop then needs a stopping rule of the application's.
+     * driver loop then needs a stopping rule of the application's. A
+     * stage whose last round is recorded with some of its results, or
+     * none, is not complete, and that is not an error.
      *
      * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException When the recorded state is malformed
      */

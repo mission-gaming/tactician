@@ -267,7 +267,10 @@ compose from pools and progression selectors (`PoolDistributor`,
 `RankRangeSelector`, `BestOfRankSelector`, `MatchOutcomeSelector`) — see the
 [usage guide](docs/USAGE.md). Stage state and schedules serialize to JSON
 (`StageState::toJson()`, `$schedule->toJson()`), so platforms persist
-between rounds instead of re-deriving.
+between rounds instead of re-deriving. A platform that keeps its fixtures
+and results in its own tables stores no state and builds one from them on
+each request (`StageState::fromHistory()`): the rounds it holds are read
+as they are, and the engine derives only the next one.
 
 ## Versioning and stability
 

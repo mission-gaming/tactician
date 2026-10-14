@@ -30,13 +30,33 @@ final readonly class RoundPairing
      * @param string|null $label Human-readable round label ('semifinal', 'losers round 2'); null for Swiss
      * @param array<Event> $events The paired events for this round
      * @param array<Participant> $byes Participants advancing or sitting out without playing
+     * @param bool $pairedOnIncompleteResults Whether the round was paired, on purpose, while an
+     *                                        event of an earlier round still awaited its result
      */
     public function __construct(
         private int $roundNumber,
         private ?string $label,
         private array $events,
-        private array $byes = []
+        private array $byes = [],
+        private bool $pairedOnIncompleteResults = false
     ) {}
+
+    /**
+     * Whether the round was paired while an event of an earlier round
+     * still awaited its result.
+     *
+     * An engine pairs such a round only when it is asked to in so many
+     * words (SwissPairingEngine::pairNextRoundOnIncompleteResults()), and
+     * marks the pairing it returns. The mark is recorded and stored with
+     * the round, so that the table the round was paired from can be told
+     * from the table the results give once they are all in. An application
+     * that rebuilds its rounds from its own rows keeps the mark with them
+     * and passes it here.
+     */
+    public function isPairedOnIncompleteResults(): bool
+    {
+        return $this->pairedOnIncompleteResults;
+    }
 
     /**
      * The 1-based number of the round, which each of its events carries
@@ -93,9 +113,12 @@ final readonly class RoundPairing
      *
      * Events and byes reference participants by ID; pair with a participant
      * registry to rehydrate. The first key is `format_version`, the
-     * version of this form (1); the events are written without one.
+     * version of this form (1); the events are written without one. The
+     * key `paired_on_incomplete_results` is written, as true, only for a
+     * round that carries that mark (see isPairedOnIncompleteResults()), so
+     * every other round has the keys it has always had.
      *
-     * @return array{format_version: int, round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>}
+     * @return array{format_version: int, round: int, label: string|null, events: array<int, array{participants: array<string>, round: array{number: int, metadata: array<string, mixed>}|null, metadata: array<string, mixed>}>, byes: array<string>, paired_on_incomplete_results?: true}
      */
     public function toArray(): array
     {
@@ -106,19 +129,26 @@ final readonly class RoundPairing
             $events[$key] = $data;
         }
 
-        return [
+        $data = [
             PlainData::VERSION_KEY => PlainData::VERSION,
             'round' => $this->roundNumber,
             'label' => $this->label,
             'events' => $events,
             'byes' => array_map(fn(Participant $participant) => $participant->getId(), $this->byes),
         ];
+
+        if ($this->pairedOnIncompleteResults) {
+            $data['paired_on_incomplete_results'] = true;
+        }
+
+        return $data;
     }
 
     /**
      * Recreate a pairing from its array representation, as toArray()
-     * gives it. `round` is required; `label`, `events` and `byes` may be
-     * left out. Any other key is refused.
+     * gives it. `round` is required; `label`, `events`, `byes` and
+     * `paired_on_incomplete_results` may be left out. Any other key is
+     * refused.
      *
      * @param array<string, mixed> $data
      * @param array<string, Participant> $participantsById Registry resolving participant IDs
@@ -129,7 +159,16 @@ final readonly class RoundPairing
      */
     public static function fromArray(array $data, array $participantsById): self
     {
-        PlainData::checkFields($data, ['round', 'label', 'events', 'byes'], 'round pairing data');
+        PlainData::checkFields(
+            $data,
+            ['round', 'label', 'events', 'byes', 'paired_on_incomplete_results'],
+            'round pairing data'
+        );
+
+        $pairedOnIncompleteResults = $data['paired_on_incomplete_results'] ?? false;
+        if (!is_bool($pairedOnIncompleteResults)) {
+            throw new InvalidInputException('Round pairing paired_on_incomplete_results must be a boolean');
+        }
 
         $roundNumber = $data['round'] ?? null;
         if (!is_int($roundNumber)) {
@@ -168,6 +207,6 @@ final readonly class RoundPairing
             $byes[] = $participantsById[$byeId];
         }
 
-        return new self($roundNumber, $label, $events, $byes);
+        return new self($roundNumber, $label, $events, $byes, $pairedOnIncompleteResults);
     }
 }

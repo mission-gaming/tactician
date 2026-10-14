@@ -201,8 +201,11 @@ describe('SingleEliminationEngine', function (): void {
             new Result($round1->getEvents()[0], $participants[0]),
         ]);
 
+        // The exception is still an InvalidConfigurationException, and it
+        // names the three events the round waits for
         expect(fn() => $engine->pairNextRound($state))
-            ->toThrow(InvalidConfigurationException::class, 'partially resolved');
+            ->toThrow(InvalidConfigurationException::class, 'Round 1 is not finished: 3 events await a result')
+            ->and($engine->getReadiness($state)->getUnresolvedEvents())->toBe(array_slice($round1->getEvents(), 1));
     });
 
     it('completes a partially recorded round via additional results', function (): void {
@@ -385,7 +388,8 @@ describe('SingleEliminationEngine', function (): void {
                 new Result($leg2, $participants[1]),
             ]);
 
-            expect(fn() => $engine->isComplete($undecided))
+            expect($engine->isComplete($undecided))->toBeFalse()
+                ->and(fn() => $engine->pairNextRound($undecided))
                 ->toThrow(InvalidConfigurationException::class, "the decider of one leg's result");
 
             // The decision is recorded as the decider of a leg result

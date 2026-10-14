@@ -118,7 +118,8 @@ describe('SwissPairingEngine', function (): void {
     });
 
     // Repeat avoidance reads the recorded pairings, not the results, so
-    // rounds recorded without results still exclude their pairings
+    // rounds recorded without results still exclude their pairings. Pairing
+    // on from such rounds is results-free mode.
     it('avoids repeats from rounds recorded without results', function (): void {
         $roundOneEvents = [
             new Event([$this->alice, $this->bob], new Round(1)),
@@ -127,7 +128,7 @@ describe('SwissPairingEngine', function (): void {
         $state = StageState::start($this->participants)
             ->withRoundPlayed(new RoundPairing(1, null, $roundOneEvents), []);
 
-        $pairing = (new SwissPairingEngine())->pairNextRound($state);
+        $pairing = (new SwissPairingEngine(resultsFree: true))->pairNextRound($state);
 
         expect($pairing->getRoundNumber())->toBe(2);
         expect(swissPairKeys($pairing->getEvents()))->not->toContain('p1-p2');
@@ -321,7 +322,7 @@ describe('SwissPairingEngine', function (): void {
                 new Event([$this->carol, $this->dave], new Round(6)),
             ]), []);
 
-        $pairing = (new SwissPairingEngine())->pairNextRound($state);
+        $pairing = (new SwissPairingEngine(resultsFree: true))->pairNextRound($state);
 
         expect($pairing->getRoundNumber())->toBe(7);
         foreach ($pairing->getEvents() as $event) {
@@ -538,7 +539,7 @@ describe('SwissPairingEngine', function (): void {
     // The bracket engines refuse a round after the last one. A Swiss stage
     // with planned rounds ends too, and paired a round beyond them.
     it('refuses to pair a round beyond the planned rounds', function (): void {
-        $engine = new SwissPairingEngine(plannedRounds: 1);
+        $engine = new SwissPairingEngine(plannedRounds: 1, resultsFree: true);
         $state = StageState::start($this->participants);
         $state = $state->withRoundPlayed($engine->pairNextRound($state), []);
 
@@ -557,11 +558,11 @@ describe('SwissPairingEngine', function (): void {
     });
 
     it('pairs the last planned round, and any round of an open-ended stage', function (): void {
-        $planned = new SwissPairingEngine(plannedRounds: 2);
+        $planned = new SwissPairingEngine(plannedRounds: 2, resultsFree: true);
         $state = StageState::start($this->participants);
         $state = $state->withRoundPlayed($planned->pairNextRound($state), []);
 
         expect($planned->pairNextRound($state)->getRoundNumber())->toBe(2)
-            ->and((new SwissPairingEngine())->pairNextRound($state)->getRoundNumber())->toBe(2);
+            ->and((new SwissPairingEngine(resultsFree: true))->pairNextRound($state)->getRoundNumber())->toBe(2);
     });
 });
