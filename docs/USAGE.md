@@ -1156,7 +1156,12 @@ the order depends on what the search of roles can know about them:
      count is checked before each rotated order, so it can be passed by
      the events of one layout), and nothing else about it changes: a
      schedule it finds within them is the one `BalancedRoleAssignment`
-     gives. With `backtracking: true`, a backtracking
+     gives. Under `ShuffledLegStrategy` the count does not stop the search
+     of the later legs' roles in the rotated order under way, which has
+     its own bound of 20,000 rejected roles
+     ([Leg Strategies and Role Constraints](#leg-strategies-and-role-constraints)):
+     the count is looked at again when that search has ended. With
+     `backtracking: true`, a backtracking
      search for a balanced first leg is made only where the schedule in
      hand came from a backtracking search itself (where a rotated order
      gave it, the schedule needed no search, and none is made for
@@ -1184,6 +1189,11 @@ finds balanced roles for those fields; or name `BalancedRoleAssignment` and
 the search runs to its bounds for the closure too, and fails where it
 finds none (it found balanced roles for 6, 8 and 10 participants, and
 stopped at a bound, after one to thirteen seconds, from 12 up).
+Shuffled legs can cost far more than the figures above, since the count
+does not stop the search of a layout's later legs: a limit of three in a
+row written as a closure, over two shuffled legs of 32 participants, fell
+back after 81,662 more questions than round parity asks, in 2.2 seconds
+for 0.9 (one seed).
 
 The roles of a fall-back are those of round parity, which
 [Legs after the first](#legs-after-the-first) and the table of

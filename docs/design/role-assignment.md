@@ -391,7 +391,11 @@ Where it cannot:
    With nothing in hand it has its usual bounds. With a schedule in hand:
    - it is held to 4,000 events put to the constraints, the rotated
      orders, the passes that fix seatings and the searches that go back
-     one event at a time together;
+     one event at a time together. The count is looked at before a
+     rotated order and not within one, so one layout can pass it: by its
+     own events, and under shuffled legs by the whole search of its later
+     legs' roles, which the count does not stop ("What it costs, and what
+     is short");
    - a backtracking search is made only where the schedule in hand came
      from one, with what is left of the 4,000 as its step budget.
 
@@ -595,15 +599,37 @@ instead of being generated to its end.
   participants and falls back at 10, where the strict role assignment
   finds balanced roles in some tenths of a second, and from 12 up, where it
   finds none within its bounds.
-- **A fall-back under a constraint of the caller's costs up to 4,000
-  events more than round parity does**, since that is what the search is
-  given before the schedule in hand is returned: 30 to 85 ms more at the
+- **A fall-back under a constraint of the caller's costs the search it
+  is given before the schedule in hand is returned**: the 4,000 events,
+  the balanced roles of the first layout before round parity, and what the
+  last rotated order passes the count by (3,271 to 5,481 questions more
+  than round parity asks in the case of the review). That is 30 to 85 ms
+  more at the
   median for 10 to 40 participants, which is 14 times what round parity
   takes at 10 participants, 3 times at 20 and 1.3 times at 40 ("What was
   measured" has the table). That is the price of the 265 schedules of the
   sweep that are balanced for it, and it is paid by every league whose
   limit is written as a closure and is out of reach: such a league gets
   the schedule 0.2.x gave it, later than 0.2.x gave it.
+- **Under shuffled legs the count does not hold the cost.** The roles of
+  the later legs are searched inside a rotated order
+  (`generateLaterLegsWithRoleSearch()`), with a bound of their own of
+  20,000 rejected roles, and the count is looked at before a rotated order
+  and not within one. So one such search runs to its own end with a
+  schedule in hand, and another before round parity is tried, for the
+  balanced roles of the first layout. Measured in a comparison of 6,616
+  configurations made for the review of this change (one seed for each
+  field): a limit of three in a row written as a closure, over two
+  shuffled legs of 32 participants, falls back after 144,574 questions
+  where round parity asks 62,912, in 2.2 seconds for 0.9; the one search
+  with the schedule in hand put 40,333 events to the closure, and the
+  search before round parity as many. The most that was seen is 82,044
+  questions more than round parity asks, with 40 participants. The search
+  with a schedule in hand was the same before the count stood alone
+  (81,664 and 82,046 questions more), so this is not what that change
+  cost; it is what the count has never held. The first rotated order of
+  that search is the layout whose balanced roles were already searched
+  before round parity, to the same end.
 - Under the library's own constraints a fall-back, or a failure, comes
   after the whole search for balanced roles: one allowance of 20,000
   rejected roles and 200,000 events put to the constraints for all the
@@ -672,9 +698,9 @@ instead of being generated to its end.
   that must not repeat a role three times says so with a
   `ConsecutiveRoleConstraint`: in a field of even size the scheduler then
   reverses those two seatings, which is the balanced leg its search finds
-  (for the library's constraint; the same limit as a closure is not
-  searched for once round parity has completed the schedule, see "Balanced
-  where possible").
+  (for the library's constraint; for the same limit as a closure, once
+  round parity has completed the schedule, only where the search reaches
+  that leg within its 4,000 events, see "Balanced where possible").
   A field of odd size has no fixed seat, and there the search finds a leg
   under a limit of two up to 11 participants and stops at its bound from 13
   up ("What it costs, and what is short"); a limit of three, which rules

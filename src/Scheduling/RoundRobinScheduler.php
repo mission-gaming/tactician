@@ -148,9 +148,14 @@ class RoundRobinScheduler implements SchedulerInterface
      * constraints are not ones the search reasons about exactly
      * (ConstraintPurity::readsOwnEventsOnly()). It is checked before every
      * rotated order, so the last one tried can pass it by the events of one
-     * layout; a backtracking search has what is left of it as its step
-     * budget, and is made only where the schedule in hand came from a
-     * backtracking search itself. Nothing else is left out for it: within
+     * layout. Under a leg strategy whose roles are preferences it can pass
+     * it by far more: the search of that layout's later legs
+     * (generateLaterLegsWithRoleSearch()) is counted when it ends and is
+     * not stopped by this count, only by its own
+     * LegRoleSearch::REJECTION_LIMIT. A backtracking search has what is
+     * left of the count as its step budget, and is made only where the
+     * schedule in hand came from a backtracking search itself. Nothing
+     * else is left out for it: within
      * the bound the search is the one BalancedRoleAssignment has when it is
      * named, so a schedule it finds is that one's. A search this stops is
      * reported as RoleFallback::BalancedRolesRejected.

@@ -28,7 +28,9 @@ use MissionGaming\Tactician\Scheduling\SchedulingContext;
  *   role assignment of `RoundRobinOptions` a schedule whose constraints
  *   reject the balanced roles is generated again with the roles the
  *   generator proposes, and under a constraint of your own once more with
- *   balanced roles, in a search of up to 4,000 more events.
+ *   balanced roles: in a search of some 4,000 more events where the roles
+ *   the generator proposes completed the schedule, and to the full bounds
+ *   of that search where they did not.
  * - Do not depend on how often or in which order the questions come.
  *   Neither is part of the contract, and either can change in any release.
  *

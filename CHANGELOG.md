@@ -1708,8 +1708,11 @@ entry on the engine fingerprint.
     13 to 29 participants of odd size, where the search stops at its bound
     and the schedule then fails as it did. Under a constraint of your own
     the round-parity roles are tried before the search, and with their
-    schedule in hand what is still spent on balanced roles is at most 4,000
-    events put to the constraints; with none in hand, a schedule that
+    schedule in hand what is still spent on balanced roles is held to 4,000
+    events put to the constraints (not so the search of the later legs of
+    a shuffled schedule, which keeps its own bound of 20,000 rejected
+    roles; the usage guide, "Balanced where possible", has what that
+    comes to); with none in hand, a schedule that
     failed in 0.2.x fails after the search as well: a role pinned in every leg over
     two mirrored legs, which no schedule has, fails in 0.3, 0.6 and 1.4
     seconds with 8, 12 and 20 participants, where 0.2.x failed in 4, 18
@@ -1778,10 +1781,13 @@ entry on the engine fingerprint.
     4,000 more events once the round-parity roles have completed the
     schedule. The usage guide asks for pure predicates ("What a constraint
     may rely on"), and what is said above holds for those. Every question
-    is one a generation asks: an event with the events laid out before it,
-    so a constraint that relies on the first leg being there for an event
-    of a later leg (the first meeting of a pair, read for the return
-    meeting) is never asked without it.
+    of those generations is one a generation asks: an event with the events
+    laid out before it, so a constraint that relies on the first leg being
+    there for an event of a later leg (the first meeting of a pair, read
+    for the return meeting) is not asked without it by any of them. The
+    analysis of a failed attempt asks what the usage guide says it asks,
+    under every role assignment: each missing pairing in every round,
+    against the events of that attempt.
 
   **Golden fixtures.** Every fixture of a round robin with default options
   changes, in roles only: `round-robin/mirrored-unseeded.txt`,
