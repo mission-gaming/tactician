@@ -1168,19 +1168,25 @@ describe('the default, balanced where possible', function (): void {
     // - the roles of round parity: one question for each event of the
     //   schedule, which is asserted;
     // - the balanced roles as given in the first layout, before round
-    //   parity is tried: at most the events of the schedule again;
-    // - the search for balanced roles with the schedule in hand: at most
-    //   4,000, each rotated order it begins with included;
-    // - what is not counted against the 4,000: the bound is looked at
-    //   before a rotated order and not within one, and an event a rotated
-    //   order ends on is put to the closure once more for the record. A
-    //   third time the events of the schedule is more than both can be.
+    //   parity is tried: at most the events of the schedule again, and
+    //   the event it ends on once more, for the record;
+    // - the search for balanced roles with the schedule in hand. The
+    //   bound is looked at before a rotated order and not within one: at
+    //   most 3,999 when the last order is begun, which can add the events
+    //   of the schedule. A search of roles after the rotated orders has
+    //   what is left of the 4,000 and no more;
+    // - the event each rotated order ends on, once more for the record,
+    //   which is not counted: as many as there are participants here.
+    //
+    // Together: three times the events of the schedule, 4,000, and the
+    // number of participants.
     //
     // Measured: 3,414 questions for 12 participants, 3,959 for 16 and
-    // 4,593 for 20, against bounds of 4,396, 4,720 and 5,140 (round parity
-    // alone asks 132, 240 and 380). The strict role assignment, which has
-    // its full bounds, puts 200,000 events to the constraints before it
-    // fails: a search that ran on would pass the bound here at once.
+    // 4,593 for 20, against bounds of 4,408, 4,736 and 5,160 (round parity
+    // alone asks 132, 240 and 380). A search that ran on would pass the
+    // bound here at once: with the allowance of the strict role assignment
+    // in the place of the 4,000, the closure was asked 37,800, 41,760 and
+    // 49,692 times before the fall-back.
     it('completes a league under a limit written as a closure with the roles of round parity, marked, within the bound of a search with a schedule in hand', function (int $size): void {
         $field = roleSweepField($size);
         $asked = 0;
@@ -1205,9 +1211,13 @@ describe('the default, balanced where possible', function (): void {
             ->and(roleSweepFaults($schedule, $field, 2, 'mirrored', RoleScheduleOracle::streakRule(2)))->toBe([])
             // One event of the schedule, one question, under round parity
             ->and($askedUnderRoundParity)->toBe($size * ($size - 1))
-            ->and($asked)->toBeLessThanOrEqual(4_000 + 3 * $askedUnderRoundParity)
-            // The search was made: more than the three passes over the
-            // schedule that were all the default asked before it was
+            ->and($asked)->toBeLessThanOrEqual(4_000 + 3 * $askedUnderRoundParity + $size)
+            // Nothing ended at the first rejection: three passes over the
+            // schedule were all the default asked while a rejection that
+            // turned on earlier events ended everything. This does not show
+            // that the roles were searched, since the rotated orders alone
+            // ask more than that. The fields of eight below show it, which
+            // nothing but that search balances.
             ->and($asked)->toBeGreaterThan(3 * $askedUnderRoundParity);
 
         // The same limit as the library's own constraint, which the search
@@ -1231,12 +1241,19 @@ describe('the default, balanced where possible', function (): void {
     // assignment gives; in a field of twelve it spends its 4,000 events
     // first, and the schedule is the one of round parity, marked.
     //
+    // The constraint counts the times it was asked that way as well as
+    // throwing, so that the test does not rest on the exception reaching
+    // it: a scheduler that asked and caught what was thrown, as the
+    // default did while it put a rejected event to the constraint against
+    // an empty context, completes the league too.
+    //
     // The same inside a constraint set of the caller's.
     it('asks a constraint about an event of a later leg only with the first leg before it', function (int $size, ?RoleFallback $reason, bool $inASetOfTheCallers): void {
         $field = roleSweepField($size);
         $limit = ConsecutiveRoleConstraint::homeAway(2);
+        $askedWithoutTheFirstMeeting = 0;
         $constraints = ConstraintSet::create()->custom(
-            static function (Event $event, SchedulingContext $context) use ($limit): bool {
+            static function (Event $event, SchedulingContext $context) use ($limit, &$askedWithoutTheFirstMeeting): bool {
                 if (!$limit->isSatisfied($event, $context)) {
                     return false;
                 }
@@ -1247,6 +1264,8 @@ describe('the default, balanced where possible', function (): void {
                 [$first, $second] = $event->getParticipants();
                 $meetings = array_values($context->getEventsBetween($first, $second));
                 if ($meetings === []) {
+                    ++$askedWithoutTheFirstMeeting;
+
                     throw new LogicException('A return meeting was put to the constraint without the first meeting.');
                 }
 
@@ -1262,6 +1281,7 @@ describe('the default, balanced where possible', function (): void {
         $schedule = (new RoundRobinScheduler($constraints))->schedule($field, new RoundRobinOptions(2));
 
         expect(RoleFallback::of($schedule))->toBe($reason)
+            ->and($askedWithoutTheFirstMeeting)->toBe(0)
             ->and(roleSweepFaults($schedule, $field, 2, 'mirrored', RoleScheduleOracle::streakRule(2)))->toBe([]);
 
         if ($reason === null) {
