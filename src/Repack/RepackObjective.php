@@ -41,8 +41,11 @@ enum RepackObjective: string
      * slots needs them to, then lets go of the ones that had to do with
      * what is still worse and tries again, three times at most. It never
      * returns a schedule that is worse on events placed or on gap slots
-     * than the one made with no objective. It needs events with current
-     * positions to act on, and does nothing without them.
+     * than the one made with no objective. So where the calendar as it
+     * stands has gap slots that another schedule avoids, events move to
+     * close them, and the result can be the schedule made with no
+     * objective, in which most events have moved. It needs events with
+     * current positions to act on, and does nothing without them.
      */
     case LeastChurn = 'least_churn';
 
