@@ -354,6 +354,35 @@ describe('A repack with objectives', function (): void {
         }
     })->with(range(100, 190));
 
+    it('keeps that guarantee under a budget that runs out, in every order of the objectives', function (int $seed, int $budget): void {
+        [$movable, $pinned, $grid] = $seed % 2 === 0 ? smallRequestWithCurrentPositions($seed) : seasonInProgress($seed);
+        $plain = (new ScheduleRepacker())->repack(
+            new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget))
+        );
+
+        // Every list of one, two or three objectives, in every order
+        $lists = [];
+        $extend = static function (array $list) use (&$extend, &$lists): void {
+            foreach (RepackObjective::cases() as $objective) {
+                if (!in_array($objective, $list, true)) {
+                    $lists[] = [...$list, $objective];
+                    $extend([...$list, $objective]);
+                }
+            }
+        };
+        $extend([]);
+        expect($lists)->toHaveCount(15);
+
+        foreach ($lists as $objectives) {
+            $outcome = (new ScheduleRepacker())->repack(
+                new RepackRequest($movable, $pinned, $grid, new RepackOptions(stepBudget: $budget, objectives: $objectives))
+            );
+
+            expect([$outcome->getUnplacedCount(), $outcome->getGapSlotCount()] <=> [$plain->getUnplacedCount(), $plain->getGapSlotCount()])
+                ->toBeLessThanOrEqual(0);
+        }
+    })->with(range(800, 811))->with([1, 7, 60, 900]);
+
     it('is never worse on its first objective than the repack without one, where the two are level on events and gap slots', function (int $seed): void {
         [$movable, $pinned, $grid] = $seed % 3 === 0 ? smallRequestWithCurrentPositions($seed) : seasonInProgress($seed);
         $plain = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid));
