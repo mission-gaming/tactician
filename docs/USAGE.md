@@ -4327,8 +4327,8 @@ The rules of the mechanism:
   every slot the round declares, when the definition is built and again
   for each round assigned: no arithmetic says where a timezone's clocks
   put two local times at one instant. 10,000 slots are a kickoff every
-  minute, day and night, for a week, and are checked in a few hundredths
-  of a second.
+  minute, day and night, for a week; `docs/design/timeline-assignment.md`
+  says why the limit has that value.
 - **Deterministic filling.** A round's events fill its slots in schedule
   order against slot time order — the same schedule and timeline always
   produce the same kickoffs.
@@ -4623,12 +4623,10 @@ of sessions (`session_count`, or the length of `sessions`),
 `slots_per_session`, each slot count in `slots_per_session_overrides`
 and their sum are each refused above it, with the reason
 `ValueOutOfRange`, before anything of that size is allocated or visited.
-The limit is the same for both forms of grid. Its value comes from the
-instant-based one, which keeps the instant of every position and checks
-each against the one before it: at the limit that is some 40 MB and
-about a sixth of a second, and ten times as many would not fit PHP's
-default memory limit. 100,000 positions are a slot every five minutes,
-day and night, for nearly a year.
+The limit is the same for both forms of grid, and its value comes from
+the instant-based one, which keeps the instant of every position
+(`docs/design/schedule-repack.md` says why). 100,000 positions are a
+slot every five minutes, day and night, for nearly a year.
 `capacity_per_slot` has a limit as well, of a million million
 (`SessionGrid::MAX_CAPACITY_PER_SLOT`); see
 [Unbounded Capacity](#unbounded-capacity).
