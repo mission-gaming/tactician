@@ -1658,5 +1658,12 @@ pairwise limit is tested where it lives: `MovableEvent` and
 `PlacementMetrics` counts an event of three. The two internal classes
 and the finder have unit tests, among them each refusal of the repair
 (a gap it would open, a position held by an event, by a pin or full,
-and an unplaced event that would fit the position left). The mutation
-run of the two new classes has not been made.
+and an unplaced event that would fit the position left). A mutation
+run of each of the two (`composer mutation -- --path=<file>`, with the
+tests of `phpunit.mutation.xml`) reported 89 of 105 changes noticed in
+`PlacementMetrics` and 148 of 176 in `ObjectivePolish`. Most of the
+changes left are equivalent (a sort of a list already in order, a
+shortcut that skips no result, a value stored where only its key is
+read); the rest narrow the moves the repair tries for the two objectives
+that are not churn (a slot or a session fewer in a loop), which no unit
+test states and the feature test does not run under that configuration.
