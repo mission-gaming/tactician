@@ -154,6 +154,21 @@ describe('assign() compares the rounds the schedule holds', function (): void {
             ->and($assigner->assign(roundsHeldSchedule(1, 4, 5), $timeline))->toHaveCount(3);
     });
 
+    it('names the two rounds in round order, whatever the order of the events in the schedule', function (): void {
+        // The same night: rounds 2 and 4 are one kickoff, and round 6 is
+        // clear of both. The events are given latest round first
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-03-29 00:30', new DateTimeZone('Europe/London')),
+            roundsHeldLocalHalfHour()
+        );
+
+        $refusal = roundsHeldRefusal(fn() => (new TimelineAssigner())->assign(roundsHeldSchedule(6, 4, 2), $timeline));
+
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::OverlappingTime)
+            ->and($refusal?->getContext()['round'] ?? null)->toBe(2)
+            ->and($refusal?->getContext()['next_round'] ?? null)->toBe(4);
+    });
+
     it('does not refuse a round for running into a round the schedule does not hold', function (): void {
         // Monthly rounds from 31 December, two slots 30 days apart. Round 2
         // is 31 January and 2 March; round 3 starts on 28 February, the last
@@ -294,6 +309,38 @@ describe('assignRound() compares the round with the one before it', function ():
         }
 
         expect($checked)->toBe(60);
+    });
+
+    it('refuses a pairing of a round below 1 for its number, and compares it with no round before it', function (int $round): void {
+        $timeline = new TimelineDefinition(new DateTimeImmutable('2026-08-01 18:00', new DateTimeZone('UTC')), new DateInterval('P7D'));
+        $pairing = new RoundPairing($round, null, [new Event([new Participant('a', 'A'), new Participant('b', 'B')], new Round(1))]);
+
+        $refusal = roundsHeldRefusal(fn() => (new TimelineAssigner())->assignRound($pairing, $timeline));
+
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::PositionOutOfRange)
+            ->and($refusal?->getContext())->toBe(['round' => $round]);
+    })->with([0, -1, PHP_INT_MIN]);
+
+    it('compares the round with the one before it by number, whether or not that one was played', function (): void {
+        // The monthly timeline above: round 2 runs into round 3. A caller
+        // that plays rounds 1 and 3 and skips 2 has round 3 compared with
+        // round 2 all the same, and refused; the schedule of the rounds it
+        // played is assigned
+        $timeline = new TimelineDefinition(
+            new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')),
+            new DateInterval('P1M'),
+            slotsPerRound: 2,
+            slotInterval: new DateInterval('P30D')
+        );
+        $assigner = new TimelineAssigner();
+
+        expect($assigner->assignRound(roundsHeldPairing(1), $timeline))->toHaveCount(1);
+
+        $refusal = roundsHeldRefusal(fn() => $assigner->assignRound(roundsHeldPairing(3), $timeline));
+        expect($refusal?->getReason())->toBe(InvalidConfigurationReason::OverlappingTime)
+            ->and($refusal?->getContext()['round'] ?? null)->toBe(2)
+            ->and($refusal?->getContext()['next_round'] ?? null)->toBe(3)
+            ->and($assigner->assign(roundsHeldSchedule(1, 3), $timeline))->toHaveCount(2);
     });
 
     it('compares round 1 with nothing, and a pairing with no events with nothing', function (): void {

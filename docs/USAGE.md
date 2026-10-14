@@ -4303,7 +4303,13 @@ The rules of the mechanism:
   one before it by number, which a stage that plays its rounds in order
   from round 1 has played. Round 1 is compared with nothing, and so is
   no round with the one after it: an overlap of two rounds is reported
-  when the later of them is assigned.
+  when the later of them is assigned. The round before is the one before
+  by number whether or not it was played. A caller whose rounds have a
+  gap (a number skipped, or a pairing with no events) has a round
+  compared with one nobody played, which can refuse it, and the two
+  played rounds on either side of the gap compared with each other by
+  no call; `assign()` given a schedule of the rounds played compares
+  exactly those.
 - **A round too far away is refused.** A round whose time is more than
   some 270 billion years from the start, which is past what PHP's
   timestamps hold, fails with the reason `ValueOutOfRange`; PHP would
@@ -4411,8 +4417,8 @@ $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
 ```
 
 `assignRound()` makes the checks `assign()` makes, on the one round: the
-round fits, its slots rise, it starts after the round before it has
-ended, and it satisfies the rules the assigner was built with (see
+round fits, its slots rise, it starts after the round numbered before it
+has ended, and it satisfies the rules the assigner was built with (see
 [Time-Aware Rules](#time-aware-rules)). A rule is shown this round's
 events and no others, since the assigner keeps nothing between calls.
 

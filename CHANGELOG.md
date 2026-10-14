@@ -2463,7 +2463,10 @@ entry on the engine fingerprint.
   by number, which a stage played in order from round 1 has played, and
   round 1 with nothing: the last round of a stage is not refused for a
   round after it that does not exist, and an overlap of two rounds is
-  reported when the later of them is assigned. The context of the
+  reported when the later of them is assigned. The round before is the
+  one before by number whether or not it was played, so where a caller's
+  rounds have a gap `assignRound()` compares a round with one nobody
+  played, and `assign()` on the rounds played is the check of them. The context of the
   exception names the later round under `next_round`, beside `round`,
   and the message names it too (`Round 2 is still being played when
   round 4 starts`). What to check: nothing for `assign()`; code that

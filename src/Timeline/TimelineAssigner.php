@@ -37,8 +37,8 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  * change can make a later round shorter than the first. The check is of
  * the slots the timeline declares for a round, filled or not.
  *
- * Which rounds are compared is decided by what is played, and a round
- * nobody plays is never one of them:
+ * Which rounds are compared is decided by what is played, as far as each
+ * call can see it:
  *
  * - assign() compares the rounds the schedule holds, in round order, each
  *   with the next one it holds. A schedule of rounds 1 and 3 has round 1
@@ -50,7 +50,9 @@ use MissionGaming\Tactician\Stage\RoundPairing;
  *   compares the round with the one before it by number, which a stage
  *   that plays its rounds in order from round 1 has played; round 1 is
  *   compared with nothing, and so is no round with the one after it,
- *   which the stage may not have.
+ *   which the stage may not have. The round before is the one before by
+ *   number, played or not: where a caller's rounds have a gap, assign()
+ *   on the rounds played is the call that compares them.
  *
  * A round that puts one participant in two events at the same instant
  * fails as well, with or without rules: a slot with two or more resources
@@ -187,6 +189,12 @@ final readonly class TimelineAssigner
      * nothing, and no round with the one after it, which the stage may not
      * have: its last round is refused for nothing that would follow it. A
      * pairing with no events is assigned nothing and checked for nothing.
+     * The round before is the one before by number whether or not it was
+     * played: after a gap in a caller's rounds (a number skipped, or a
+     * pairing with no events) the round is compared with one nobody played,
+     * which can refuse it, and with no played round before the gap. To
+     * compare the rounds that were played, give them to assign() as one
+     * schedule.
      *
      * @return array<ScheduledEvent> In slot order, the pairing's events in their order
      *

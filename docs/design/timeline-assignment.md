@@ -99,8 +99,16 @@ Settled decisions beyond the sketch:
   nothing, and each consecutive pair is still compared, when the later
   round is assigned. The price is that the overlap is reported one
   round later than a comparison with the round after would report it,
-  and that a stage whose first round on the timeline is not round 1 is
-  compared with a round before it that nobody played.
+  and that a stage whose first round on the timeline is not round 1, or
+  whose rounds have a gap (a number skipped, or a pairing with no
+  events), has a round compared with one before it that nobody played,
+  and the played rounds either side of the gap compared by no call. A
+  generated comparison (46,000 timelines, of which 33,009 built, each
+  with a random set of rounds) found 231 sets of rounds with a gap that
+  `assignRound()` refused and `assign()` assigned, and 10 that `assign()`
+  refused and no `assignRound()` call did, all 10 under a hand-built
+  interval with a negative part. For rounds played in order from round 1
+  the two calls agreed in every case.
 - **A round has a furthest time** (0.3.0): the steps are multiplied out,
   and PHP adds an interval too large for its timestamps without an error
   and returns a date that has wrapped round. `IntervalArithmetic` refuses
