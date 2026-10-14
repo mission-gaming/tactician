@@ -2102,6 +2102,31 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($reason(static fn () => new TimelineDefinition($evening, $thousandYears, 10_000, new DateInterval('PT1S'))) === null);
                 assert($reason(static fn () => new TimelineDefinition($evening, $thousandYears, 10_001, new DateInterval('PT1S')))
                     === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                // "Monthly rounds (`P1M`) from 31 December with two slots 30 days apart have round 2 on
+                // 31 January and 2 March, and round 3 from 28 February: a schedule of rounds 1 and 2 is
+                // assigned, and one that holds round 3 as well is refused", and for `assignRound()`
+                // "an overlap of two rounds is reported when the later of them is assigned"
+                $monthly = new TimelineDefinition(new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')), new DateInterval('P1M'), 2, new DateInterval('P30D'));
+                assert($monthly->getSlotTime(2, 0)->format('j M') === '31 Jan' && $monthly->getSlotTime(2, 1)->format('j M') === '2 Mar');
+                assert($monthly->getSlotTime(3, 0)->format('j M') === '28 Feb');
+                $one = new \MissionGaming\Tactician\DTO\Participant('one', 'One');
+                $two = new \MissionGaming\Tactician\DTO\Participant('two', 'Two');
+                $inRound = static fn (int $round): \MissionGaming\Tactician\DTO\Event => new \MissionGaming\Tactician\DTO\Event([$one, $two], new \MissionGaming\Tactician\DTO\Round($round));
+                $holding = static fn (int ...$rounds): \MissionGaming\Tactician\DTO\Schedule => new \MissionGaming\Tactician\DTO\Schedule(array_map($inRound, $rounds));
+                $pairingOf = static fn (int $round): \MissionGaming\Tactician\Stage\RoundPairing => new \MissionGaming\Tactician\Stage\RoundPairing($round, null, [$inRound($round)]);
+                $overlapping = \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::OverlappingTime;
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(1, 2), $monthly)) === null);
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(1, 2, 4), $monthly)) === null);
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(1, 2, 3), $monthly)) === $overlapping);
+                assert($reason(static fn () => (new TimelineAssigner())->assignRound($pairingOf(2), $monthly)) === null);
+                assert($reason(static fn () => (new TimelineAssigner())->assignRound($pairingOf(3), $monthly)) === $overlapping);
+                // "a schedule of rounds 1 and 3 has round 1 compared with round 3": rounds half a local
+                // hour apart on the night London skips an hour, where rounds 2 and 4 are one instant
+                $utc = new DateTimeZone('UTC');
+                $localHalfHour = (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 00:30', $utc));
+                $night = new TimelineDefinition(new DateTimeImmutable('2026-03-29 00:30', $londonTime), $localHalfHour);
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(2, 3), $night)) === null);
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(2, 4), $night)) === $overlapping);
                 PHP,
         ],
         // "A grid with sessions at 20:00 and 20:25 and two slots 25 minutes apart is

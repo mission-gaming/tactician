@@ -4282,11 +4282,28 @@ The rules of the mechanism:
   next round. Hourly rounds of two slots an hour apart are refused
   (`OverlappingTime`): the second slot of one round and the first slot of
   the next would be the same kickoff on the same resources. The definition
-  checks its first two rounds when it is built; the assigner checks every
-  round it assigns, because a short month or a clock change can make a
+  checks its first two rounds when it is built; the assigner checks the
+  rounds it assigns, because a short month or a clock change can make a
   later round shorter than the first. The assigner checks the slots the
-  timeline declares for the round, whether or not the round fills them,
-  and against the round after it whether or not the schedule has one.
+  timeline declares for a round, whether or not the round fills them.
+- **The rounds compared are the rounds played.** `assign()` compares the
+  rounds the schedule holds, in round order, each with the next one it
+  holds: a schedule of rounds 1 and 3 has round 1 compared with round 3,
+  and its last round is compared with nothing. The slots of every round
+  rise, so that covers every pair: no slot of a round the schedule holds
+  is at or after a slot of a later round it holds. A round the schedule
+  does not hold is never looked at, so no round is refused for running
+  into one that nobody plays. Monthly rounds (`P1M`) from 31 December
+  with two slots 30 days apart have round 2 on 31 January and 2 March,
+  and round 3 from 28 February: a schedule of rounds 1 and 2 is
+  assigned, and one that holds round 3 as well is refused. The order is
+  the order of the round numbers, so a later round at an earlier time is
+  refused like one at the same time. `assignRound()` is given one round
+  and keeps nothing between calls, so it compares that round with the
+  one before it by number, which a stage that plays its rounds in order
+  from round 1 has played. Round 1 is compared with nothing, and so is
+  no round with the one after it: an overlap of two rounds is reported
+  when the later of them is assigned.
 - **A round too far away is refused.** A round whose time is more than
   some 270 billion years from the start, which is past what PHP's
   timestamps hold, fails with the reason `ValueOutOfRange`; PHP would
@@ -4394,8 +4411,8 @@ $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
 ```
 
 `assignRound()` makes the checks `assign()` makes, on the one round: the
-round fits, it ends before the next round starts, and it satisfies the
-rules the assigner was built with (see
+round fits, its slots rise, it starts after the round before it has
+ended, and it satisfies the rules the assigner was built with (see
 [Time-Aware Rules](#time-aware-rules)). A rule is shown this round's
 events and no others, since the assigner keeps nothing between calls.
 

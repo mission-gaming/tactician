@@ -78,6 +78,29 @@ Settled decisions beyond the sketch:
   `Pacific/Apia` skipped 30 December 2011). The check is of the slots a round
   declares, not of the ones it fills, so that a timeline is valid or not
   whatever is placed on it.
+- **The rounds compared are the rounds played** (0.3.0). The check first
+  compared each round assigned with the round numbered after it, played
+  or not. Two rounds on either side of a gap were then never compared
+  with each other (rounds half a local hour apart on the night the
+  clocks skip an hour put rounds 2 and 4 at one instant, and a schedule
+  of those two was assigned), and a sound schedule was refused for a
+  round it does not hold (`P1M` from 31 December with two slots 30 days
+  apart: round 2 runs into a round 3 nobody plays). `assign()` now
+  compares the rounds the schedule holds, in round order, each with the
+  next one it holds, and the last with nothing. That is every pair and
+  needs no comparison further on: the slots of each round rise, so a
+  round that ends before the next held one starts ends before every
+  later one. The order is that of the round numbers, so rounds whose
+  times do not rise with their numbers (an interval with a negative
+  part) are refused, as they were. `assignRound()` has one round and no
+  memory, so it must name the other round by number, and it names the
+  one before: a stage played in order from round 1 has played that
+  round and may have none after, so its last round is refused for
+  nothing, and each consecutive pair is still compared, when the later
+  round is assigned. The price is that the overlap is reported one
+  round later than a comparison with the round after would report it,
+  and that a stage whose first round on the timeline is not round 1 is
+  compared with a round before it that nobody played.
 - **A round has a furthest time** (0.3.0): the steps are multiplied out,
   and PHP adds an interval too large for its timestamps without an error
   and returns a date that has wrapped round. `IntervalArithmetic` refuses

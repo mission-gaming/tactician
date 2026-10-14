@@ -2430,18 +2430,45 @@ entry on the engine fingerprint.
   kickoff. `new TimelineDefinition(...)` and `TimelineDefinition::fromArray()`
   now throw an `InvalidConfigurationException` (`OverlappingTime`) when the
   first round's last slot is at or after the second round's first slot, and
-  `TimelineAssigner::assign()` and `assignRound()` throw the same for any
-  round they assign whose last slot is at or after the next round's first
+  `TimelineAssigner::assign()` and `assignRound()` throw the same for a
+  round they assign whose last slot is at or after the first slot of the
+  next round that is played
   (a short month or a clock change can shorten a later round). Before and
   after: hourly rounds (`PT1H`) of two slots an hour apart were built, and
   round 1 slot 1 and round 2 slot 0 were both 19:00; the definition is now
   refused. Who is affected: a timeline with more than one slot per round
   whose slots span the round interval or more. What to check: make the
   round interval longer than (slots − 1) × slot interval; stored
-  configuration of such a timeline no longer loads. The assigner compares
-  every slot the timeline declares for the round, filled or not, with the
-  first slot of the round after it, whether or not the schedule has that
-  round: a timeline is valid for a round or not, whatever is placed on it.
+  configuration of such a timeline no longer loads. The assigner checks
+  every slot the timeline declares for a round, filled or not; which
+  rounds it compares is the next entry.
+- **The assigner compares the rounds that are played.** This settles the
+  check of the entry above before its first release; 0.2.3 compared no
+  rounds, so it is no change from 0.2.3 beyond that entry. As first
+  written, the check compared each round assigned with the round numbered
+  after it, whether or not the schedule had that round (#152). Two rounds
+  on either side of a gap were then never compared with each other: with
+  rounds half a local hour apart (an interval from `diff()`) from 00:30 in
+  `Europe/London` on 29 March 2026, rounds 2 and 4 are both 02:00, and a
+  schedule of those two rounds was assigned. And a sound schedule was
+  refused for a round it does not hold: with `P1M` from 31 December and
+  two slots 30 days apart, round 2 ends on 2 March and round 3 would
+  start on 28 February, so a schedule of rounds 1 and 2 was refused. Now
+  `TimelineAssigner::assign()` compares the rounds the schedule holds, in
+  round order, each with the next one it holds, and its last round with
+  nothing; since the slots of every round rise, no slot of a round the
+  schedule holds is at or after a slot of a later round it holds, or the
+  schedule is refused. `assignRound()`, which is given one round and
+  keeps nothing between calls, compares the round with the one before it
+  by number, which a stage played in order from round 1 has played, and
+  round 1 with nothing: the last round of a stage is not refused for a
+  round after it that does not exist, and an overlap of two rounds is
+  reported when the later of them is assigned. The context of the
+  exception names the later round under `next_round`, beside `round`,
+  and the message names it too (`Round 2 is still being played when
+  round 4 starts`). What to check: nothing for `assign()`; code that
+  assigns round by round is told of two overlapping rounds one call
+  later than the first form of the check told it.
 - **A session grid whose sessions overlap is rejected.** `SessionGrid`
   checked only that session starts ascend. The constructor and
   `fromArray()` now throw an `InvalidConfigurationException`
