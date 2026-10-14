@@ -78,6 +78,37 @@ Settled decisions beyond the sketch:
   `Pacific/Apia` skipped 30 December 2011). The check is of the slots a round
   declares, not of the ones it fills, so that a timeline is valid or not
   whatever is placed on it.
+- **The rounds compared are the rounds played** (0.3.0). The check first
+  compared each round assigned with the round numbered after it, played
+  or not. Two rounds on either side of a gap were then never compared
+  with each other (rounds half a local hour apart on the night the
+  clocks skip an hour put rounds 2 and 4 at one instant, and a schedule
+  of those two was assigned), and a sound schedule was refused for a
+  round it does not hold (`P1M` from 31 December with two slots 30 days
+  apart: round 2 runs into a round 3 nobody plays). `assign()` now
+  compares the rounds the schedule holds, in round order, each with the
+  next one it holds, and the last with nothing. That is every pair and
+  needs no comparison further on: the slots of each round rise, so a
+  round that ends before the next held one starts ends before every
+  later one. The order is that of the round numbers, so rounds whose
+  times do not rise with their numbers (an interval with a negative
+  part) are refused, as they were. `assignRound()` has one round and no
+  memory, so it must name the other round by number, and it names the
+  one before: a stage played in order from round 1 has played that
+  round and may have none after, so its last round is refused for
+  nothing, and each consecutive pair is still compared, when the later
+  round is assigned. The price is that the overlap is reported one
+  round later than a comparison with the round after would report it,
+  and that a stage whose first round on the timeline is not round 1, or
+  whose rounds have a gap (a number skipped, or a pairing with no
+  events), has a round compared with one before it that nobody played,
+  and the played rounds either side of the gap compared by no call. A
+  generated comparison (46,000 timelines, of which 33,009 built, each
+  with a random set of rounds) found 231 sets of rounds with a gap that
+  `assignRound()` refused and `assign()` assigned, and 10 that `assign()`
+  refused and no `assignRound()` call did, all 10 under a hand-built
+  interval with a negative part. For rounds played in order from round 1
+  the two calls agreed in every case.
 - **A round has a furthest time** (0.3.0): the steps are multiplied out,
   and PHP adds an interval too large for its timestamps without an error
   and returns a date that has wrapped round. `IntervalArithmetic` refuses
@@ -89,7 +120,33 @@ Settled decisions beyond the sketch:
   PHP's range long before the seconds do. The limit is on the distance
   from the anchor, so it does not guard a start that is itself near the
   end of PHP's range, and an interval made from a relative string is not
-  under it: that one is still added once per step.
+  under it: that one is still added once per step, and has a limit on
+  its steps instead (below).
+- **A count the caller gives has a stated limit wherever work is done in
+  proportion to it** (0.3.0). Two counts are such: the slots of a round,
+  and a round number under an interval made from a relative string. The
+  slots of a round are visited one by one, by the
+  definition for its first round and by the assigner for every round,
+  because the check that they rise cannot be done by arithmetic: an
+  interval PHP adds as local time, or one of days across a calendar day
+  a timezone skipped, puts two steps at one instant, and only the
+  timezone's clocks say where. A definition of the largest integer of
+  slots therefore looped without end once that check existed, where
+  0.2.3, which checked nothing, built it at once. A round has at most
+  10,000 slots (`TimelineDefinition::MAX_SLOTS_PER_ROUND`): a kickoff a
+  minute for a week, and a few hundredths of a second to check. The
+  check against the next round is two slot times and needs no limit. A
+  round number costs nothing under an interval written as a duration,
+  whose steps are multiplied out, and one addition per step under an
+  interval made from a relative string, which has no multiple: that one
+  takes at most 100,000 steps (`IntervalArithmetic::MAX_RELATIVE_STEPS`,
+  a round a day for 273 years, a twentieth of a second). 0.2.3 added
+  once per round for every interval and had no limit, so a round number
+  near the largest integer did not return. The slots of a round under
+  such an interval are each computed from the one before, in one pass
+  (`IntervalArithmetic::series()`): computing each from the round's
+  first slot cost the square of the slot count in additions, 25 seconds
+  for 10,000 slots.
 - **One check of who plays: nobody is in two events at one instant.** The
   sketch below lists "a participant assigned overlapping slots" among the
   things that fail loudly. The assigner at first validated capacity and

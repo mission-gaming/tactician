@@ -4282,15 +4282,53 @@ The rules of the mechanism:
   next round. Hourly rounds of two slots an hour apart are refused
   (`OverlappingTime`): the second slot of one round and the first slot of
   the next would be the same kickoff on the same resources. The definition
-  checks its first two rounds when it is built; the assigner checks every
-  round it assigns, because a short month or a clock change can make a
+  checks its first two rounds when it is built; the assigner checks the
+  rounds it assigns, because a short month or a clock change can make a
   later round shorter than the first. The assigner checks the slots the
-  timeline declares for the round, whether or not the round fills them,
-  and against the round after it whether or not the schedule has one.
+  timeline declares for a round, whether or not the round fills them.
+- **The rounds compared are the rounds played.** `assign()` compares the
+  rounds the schedule holds, in round order, each with the next one it
+  holds: a schedule of rounds 1 and 3 has round 1 compared with round 3,
+  and its last round is compared with nothing. The slots of every round
+  rise, so that covers every pair: no slot of a round the schedule holds
+  is at or after a slot of a later round it holds. A round the schedule
+  does not hold is never looked at, so no round is refused for running
+  into one that nobody plays. Monthly rounds (`P1M`) from 31 December
+  with two slots 30 days apart have round 2 on 31 January and 2 March,
+  and round 3 from 28 February: a schedule of rounds 1 and 2 is
+  assigned, and one that holds round 3 as well is refused. The order is
+  the order of the round numbers, so a later round at an earlier time is
+  refused like one at the same time. `assignRound()` is given one round
+  and keeps nothing between calls, so it compares that round with the
+  one before it by number, which a stage that plays its rounds in order
+  from round 1 has played. Round 1 is compared with nothing, and so is
+  no round with the one after it: an overlap of two rounds is reported
+  when the later of them is assigned. The round before is the one before
+  by number whether or not it was played. A caller whose rounds have a
+  gap (a number skipped, or a pairing with no events) has a round
+  compared with one nobody played, which can refuse it, and the two
+  played rounds on either side of the gap compared with each other by
+  no call; `assign()` given a schedule of the rounds played compares
+  exactly those.
 - **A round too far away is refused.** A round whose time is more than
   some 270 billion years from the start, which is past what PHP's
   timestamps hold, fails with the reason `ValueOutOfRange`; PHP would
-  return a date that has wrapped round.
+  return a date that has wrapped round. Short of that a round number has
+  no limit where the interval is a duration: the steps are multiplied
+  out, so round a million costs what round two costs. An interval made by
+  `DateInterval::createFromDateString()` has no multiple and is added once
+  for each step, so it has a limit on the steps instead: 100,000, which
+  is round 100,001 (a round a day for 273 years), and a round past it
+  fails with the same reason.
+- **A round has at most 10,000 slots.** A definition with more
+  (`TimelineDefinition::MAX_SLOTS_PER_ROUND`) is refused when it is built,
+  with the reason `ValueOutOfRange`, before any slot is computed. The
+  limit is there because the check that the slots of a round rise visits
+  every slot the round declares, when the definition is built and again
+  for each round assigned: no arithmetic says where a timezone's clocks
+  put two local times at one instant. 10,000 slots are a kickoff every
+  minute, day and night, for a week; `docs/design/timeline-assignment.md`
+  says why the limit has that value.
 - **Deterministic filling.** A round's events fill its slots in schedule
   order against slot time order — the same schedule and timeline always
   produce the same kickoffs.
@@ -4379,8 +4417,8 @@ $scheduledEvents = (new TimelineAssigner())->assignRound($pairing, $timeline);
 ```
 
 `assignRound()` makes the checks `assign()` makes, on the one round: the
-round fits, it ends before the next round starts, and it satisfies the
-rules the assigner was built with (see
+round fits, its slots rise, it starts after the round numbered before it
+has ended, and it satisfies the rules the assigner was built with (see
 [Time-Aware Rules](#time-aware-rules)). A rule is shown this round's
 events and no others, since the assigner keeps nothing between calls.
 
@@ -4578,6 +4616,20 @@ day the timezone skipped, as `Pacific/Apia` skipped 30 December 2011). A
 shape-only grid has no instants and is not
 checked. Every slot time is computed from its session's start, never from
 the slot before it.
+
+**A grid has at most 100,000 positions** (`SessionGrid::MAX_POSITIONS`):
+the slot counts of its sessions added up, overrides applied. The number
+of sessions (`session_count`, or the length of `sessions`),
+`slots_per_session`, each slot count in `slots_per_session_overrides`
+and their sum are each refused above it, with the reason
+`ValueOutOfRange`, before anything of that size is allocated or visited.
+The limit is the same for both forms of grid, and its value comes from
+the instant-based one, which keeps the instant of every position
+(`docs/design/schedule-repack.md` says why). 100,000 positions are a
+slot every five minutes, day and night, for nearly a year.
+`capacity_per_slot` has a limit as well, of a million million
+(`SessionGrid::MAX_CAPACITY_PER_SLOT`); see
+[Unbounded Capacity](#unbounded-capacity).
 
 Events carry an opaque caller-supplied id — the library never invents
 one, never parses it, and orders results by nothing else. The same pair
@@ -4832,8 +4884,13 @@ and wrong for events that need nothing shared, where the only limit is
 that no participant is in two events at once. Pass `null` for
 **unbounded capacity** (`'capacity_per_slot' => SessionGrid::UNBOUNDED`,
 the string `'unbounded'`, in plain data). It is the way to say "no
-limit": do not pass a very large integer for that, because the planner
-multiplies the capacity by the number of slots.
+limit": do not pass a very large integer for that. The planner adds the
+capacity up over the positions of the grid, so a capacity above a
+million million (`SessionGrid::MAX_CAPACITY_PER_SLOT`) is refused when
+the grid is built, with the reason `ValueOutOfRange`; that number times
+the most positions a grid can have is still an integer PHP holds, and a
+number written to mean "no limit" (2,147,483,647, say) is below it and
+works as before.
 
 ```php
 $events = [
@@ -5299,7 +5356,10 @@ builds an instant-based grid from a list of session starts and a slot
 interval. The integer and the null in the first two types are how
 `shapeOnly()` reaches the constructor (a session count and no interval);
 do not pass them yourself, call `shapeOnly()`. The constant `SessionGrid::UNBOUNDED` is
-the plain-data word for an unbounded capacity.
+the plain-data word for an unbounded capacity; `SessionGrid::MAX_POSITIONS`
+(100,000) is the most positions, sessions or slots of one session a grid
+can have, and `SessionGrid::MAX_CAPACITY_PER_SLOT` (a million million) the
+largest capacity that is a number.
 
 | Method | Returns |
 |---|---|

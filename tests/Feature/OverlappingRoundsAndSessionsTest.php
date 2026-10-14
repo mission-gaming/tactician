@@ -140,15 +140,25 @@ describe('A timeline whose rounds overlap', function (): void {
         $early = new Schedule([new Event([$a, $b], new Round(1)), new Event([$b, $a], new Round(11))]);
         expect($assigner->assign($early, $timeline))->toHaveCount(2);
 
-        $late = new Schedule([new Event([$a, $b], new Round(1)), new Event([$b, $a], new Round(12))]);
+        $late = new Schedule([new Event([$a, $b], new Round(12)), new Event([$b, $a], new Round(13))]);
         expect(fn() => $assigner->assign($late, $timeline))
             ->toThrow(InvalidConfigurationException::class, 'Round 12 is still being played when round 13 starts')
             ->and(overlapReason(fn() => $assigner->assign($late, $timeline)))
             ->toBe(InvalidConfigurationReason::OverlappingTime);
 
-        // The round-by-round path makes the same check
-        $pairing = new RoundPairing(12, null, [new Event([$a, $b], new Round(12))]);
-        expect(overlapReason(fn() => $assigner->assignRound($pairing, $timeline)))
+        // Round 12 runs into a round 13 only where round 13 is played: a
+        // schedule that ends with round 12 is assigned
+        $endsAtTwelve = new Schedule([new Event([$a, $b], new Round(1)), new Event([$b, $a], new Round(12))]);
+        expect($assigner->assign($endsAtTwelve, $timeline))->toHaveCount(2);
+
+        // The round-by-round path makes the same check, when it is given
+        // the later of the two rounds
+        $twelfth = new RoundPairing(12, null, [new Event([$a, $b], new Round(12))]);
+        $thirteenth = new RoundPairing(13, null, [new Event([$a, $b], new Round(13))]);
+        expect($assigner->assignRound($twelfth, $timeline))->toHaveCount(1)
+            ->and(fn() => $assigner->assignRound($thirteenth, $timeline))
+            ->toThrow(InvalidConfigurationException::class, 'Round 12 is still being played when round 13 starts')
+            ->and(overlapReason(fn() => $assigner->assignRound($thirteenth, $timeline)))
             ->toBe(InvalidConfigurationReason::OverlappingTime);
     });
 });
@@ -215,10 +225,19 @@ describe('A timeline with two slots at one time', function (): void {
         $b = new Participant('b', 'B');
         $assigner = new TimelineAssigner();
 
+        $rounds = fn(int ...$numbers) => new Schedule(array_map(fn(int $number) => new Event([$a, $b], new Round($number)), $numbers));
+
         expect($timeline->getSlotTime(2)->format('H:i'))->toBe('01:30')
             ->and($timeline->getSlotTime(3)->format('H:i'))->toBe('01:30')
-            ->and($assigner->assign(new Schedule([new Event([$a, $b], new Round(1))]), $timeline))->toHaveCount(1)
-            ->and(overlapReason(fn() => $assigner->assign(new Schedule([new Event([$a, $b], new Round(2))]), $timeline)))
+            ->and($assigner->assign($rounds(1, 2), $timeline))->toHaveCount(2)
+            ->and(overlapReason(fn() => $assigner->assign($rounds(2, 3), $timeline)))
+            ->toBe(InvalidConfigurationReason::OverlappingTime)
+            // Either of the two rounds alone is at a time of its own
+            ->and($assigner->assign($rounds(2), $timeline))->toHaveCount(1)
+            ->and($assigner->assign($rounds(1, 3), $timeline))->toHaveCount(2)
+            // Round by round, it is the later of the two that is refused
+            ->and($assigner->assignRound(new RoundPairing(2, null, [new Event([$a, $b], new Round(2))]), $timeline))->toHaveCount(1)
+            ->and(overlapReason(fn() => $assigner->assignRound(new RoundPairing(3, null, [new Event([$a, $b], new Round(3))]), $timeline)))
             ->toBe(InvalidConfigurationReason::OverlappingTime);
     });
 
