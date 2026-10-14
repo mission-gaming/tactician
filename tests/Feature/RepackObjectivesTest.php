@@ -361,16 +361,22 @@ describe('A repack with objectives', function (): void {
         );
 
         // Every list of one, two or three objectives, in every order
+        $cases = RepackObjective::cases();
         $lists = [];
-        $extend = static function (array $list) use (&$extend, &$lists): void {
-            foreach (RepackObjective::cases() as $objective) {
-                if (!in_array($objective, $list, true)) {
-                    $lists[] = [...$list, $objective];
-                    $extend([...$list, $objective]);
+        foreach ($cases as $first) {
+            $lists[] = [$first];
+            foreach ($cases as $second) {
+                if ($second === $first) {
+                    continue;
+                }
+                $lists[] = [$first, $second];
+                foreach ($cases as $third) {
+                    if ($third !== $first && $third !== $second) {
+                        $lists[] = [$first, $second, $third];
+                    }
                 }
             }
-        };
-        $extend([]);
+        }
         expect($lists)->toHaveCount(15);
 
         foreach ($lists as $objectives) {
