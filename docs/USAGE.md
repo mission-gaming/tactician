@@ -4774,9 +4774,11 @@ back to the ids. And two participants that differ, in a request in
 which everything the repacker compares about them is equal, are ordered
 by id; that takes a request built for the purpose, and none met in
 testing was one. The lists an outcome returns are still in id order.
-The order does not read the current positions events may state, so the
-count of moved events can follow the ids, and with the objective
-`LeastChurn` the other counts can too ([Objectives](#objectives)).
+Without the objective `LeastChurn` the order does not read the current
+positions events may state, so the count of moved events can follow the
+ids; with it, the current positions decide before the ids do, and the
+count of moved events does not follow them either
+([Objectives](#objectives)).
 
 The repacker is deterministic (same input, same output, independent of
 input list order), pure (no clock reads, no I/O), and bounded in steps
@@ -5249,22 +5251,42 @@ Three limits are worth knowing:
   every event fits, the events that stay unplaced are the ones the
   placement steps leave, and a schedule that left out another event and
   moved one fewer is not looked for.
-- **The count of moved events can follow the ids.** The repacker orders
-  participants by what the request says of them, without the current
-  positions, and lets the ids decide between participants that look
-  alike to it ("The ids decide as little as they can", above). Two such
+- **Without `LeastChurn`, the count of moved events can follow the
+  ids.** The repacker orders participants by what the request says of
+  them and lets the ids decide between participants that look alike to
+  it ("The ids decide as little as they can", above). Two such
   participants can have different current positions, so the same
   request under other ids can come back with another number of moved
-  events. That is so with no objective as well: the schedule is the same
-  up to a symmetry of the request, and the current positions are not
-  symmetric. Two events between four participants, on two sessions of
-  one slot, `a`–`b` in session 1 and `c`–`d` in session 0, move none
-  with no objective; renamed `w`–`x` and `c`–`d`, both move. With no
-  objective, or with either of the other two, the move count was the one
-  figure that renaming changed on the requests measured. With
-  `LeastChurn` it can change the others too: 11 of 200 seasons and 4 of 80 round robins with scattered
-  pins came back with another count of moved events, of idle sessions or
-  of late starts when every participant and event was renamed.
+  events: the schedule is the same up to a symmetry of the request, and
+  the current positions are not symmetric. Two events between four
+  participants, on two sessions of one slot, `a`–`b` in session 1 and
+  `c`–`d` in session 0, move none with no objective; renamed `w`–`x` and
+  `c`–`d`, both move. With no objective, or with either of the other
+  two, that count is the one figure renaming changed on the requests
+  measured (60 of 400 seasons and 36 of 160 round robins with scattered
+  pins).
+
+  With `LeastChurn` the current positions decide before the ids:
+  between participants that look alike, and between events of the same
+  two participants. The same request under other ids then comes back
+  with the same figures, the moved events among them, and the same
+  events at every position and the same violations but for the names in
+  them, under the condition of "The ids decide as little as they can":
+  wherever the ids would decide only between participants that a
+  symmetry of the request exchanges. Renaming every participant and
+  event changed nothing on 400 seasons and 160 round robins with
+  scattered pins, under `LeastChurn` alone and with all three
+  objectives; before the current positions decided, 10 of the seasons
+  and 9 of the round robins came back with other figures. The ids still
+  decide where the current positions say nothing either (two
+  participants whose events are at the same positions against
+  opponents that look alike, or no current positions at all), and in
+  the two exceptions given there. The schedule made with no objective, which
+  no outcome with an objective is worse than on events placed or gap
+  slots, is made in this order too: the same schedule up to a symmetry
+  of the request, and on all 560 requests the same events placed, the
+  same gap slots and the same number of events at every position as the
+  repack with no objective.
 
 **What objectives cost.** The schedule with no objective is always made
 first, on the two budgets as before, so that no objective can cost an

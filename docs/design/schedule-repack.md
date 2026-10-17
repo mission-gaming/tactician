@@ -1341,6 +1341,38 @@ golden fixtures are untouched.
     the caller allows, and says when it reached it without a result.
     "Places everything" is no unplaced event; gaps are reported on the
     outcome and are the caller's to judge.
+64. **Under the fewest moved events, the current positions decide where
+    an id would.** Decision 39 leaves the ids to decide between
+    participants the request does not tell apart, and between events of
+    the same two participants; with current positions those are not
+    alike for churn, so under `LeastChurn` the held events, and with
+    them every figure, followed the ids (measured below). Under that
+    objective, and only under it, `StructuralOrder` is given the current
+    positions and reads them at the two places an id decides between
+    participants after refinement: the order of a class whose members
+    can be exchanged, and the choice between trials with equal
+    descriptions. A participant's key there is its current positions in
+    grid order, each with the class of the opponent at it, so it names
+    no participant. Events of the same two participants are ordered by
+    current position before id (an event that states none last). The
+    refinement itself does not read them, so the classes, and the order
+    up to which participant of a class goes where, are those of the
+    request without objectives: the schedule made first, the one no
+    other may be worse than (decision 58), is the schedule with no
+    objective up to a symmetry of the request wherever the ids would
+    decide only between participants a symmetry exchanges. That is the
+    condition of decision 39, and outside it (its two exceptions) the
+    schedule made first can be another one, with no promise on events
+    placed or gap slots against the repack with no objective; on 560
+    generated requests it was never that, with the same events placed,
+    gap slots, events at every position and violations on every one.
+    Reading the positions only where the trials leave every class with
+    one participant, where equal descriptions are known to be a
+    symmetry, was tried and left 10 of 400 seasons with other figures
+    under other ids: the choice between equal descriptions with larger
+    classes is the one that decides them. Reading them in the refinement
+    was not tried: it would change the classes, and with them the
+    schedule made first, for every request with current positions.
 
 What was measured (PHP 8.4, no OPcache, on a machine that was doing
 other work at the time, so the times are indications), with a
@@ -1432,15 +1464,26 @@ counted 32 of 150 seasons and 5 of 60 scattered requests with another
 count of moved events and nothing else changed, with no objective).
 With the fewest moved events it changed something else as well (the
 count of idle sessions or of late starts, the events at a position) on
-11 of 200 seasons and 4 of 80 scattered requests. The cause is decision
-39 meeting decision 50: the order of
-the participants is made from the request without its current
-positions, an id decides between participants that order cannot tell
-apart, and two such participants can have different current positions.
-Giving the order the current positions would mend it for the schedules
-made around held events and would make the schedule with no objective
-another one under this option than without it, which decision 58 rules
-out; it was left, and stated in the usage guide.
+11 of 200 seasons and 4 of 80 scattered requests. The cause was
+decision 39 meeting decision 50: the order of the participants was made
+from the request without its current positions, an id decided between
+participants that order cannot tell apart, and two such participants
+can have different current positions. Decision 64 mends it. Measured
+on another generator (400 seasons of 8 to 40 participants under six
+changes, 160 round robins with a twentieth to under a third of their
+events pinned at scattered positions, every participant and event
+renamed by a seeded bijection): before it, renaming changed a figure
+on 10 seasons and 9 round robins under `LeastChurn` (10 and 9 with all
+three objectives), and after it on none, the schedule mapped back by
+event being the same on every one. The events moved, `LeastChurn`
+alone: 5,757 on the seasons and 5,159 on the round robins before,
+5,825 and 4,894 after (10,916 and 10,719 in all), with the same events
+placed, and gap slots 89 and 116 before, 91 and 115 after. With no
+objective nothing changed: the 560 outcomes are byte for byte those of
+the code before, and 1,200 requests without current positions those of
+the code before the objectives were added. On 9,000 small requests against every
+placement, the fewest moved events were reached on 8,291 (8,296
+before), worst excess 3 on both.
 
 *Two choices that were not taken, in numbers* (400 of the seasons, 150
 of the scattered requests). Holding every event that can stay and

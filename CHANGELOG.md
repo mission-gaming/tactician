@@ -1552,10 +1552,18 @@ entry on the engine fingerprint.
   one with `LeastChurn` 40,856, with at least as many events placed on
   every request; against every placement of 6,000 small
   requests it reached the fewest moved events there can be on 93 in 100
-  (35 in 100 with no objective). The count of moved events can depend
-  on the ids of a request, with or without an objective, because the
-  schedule is the same under other ids only up to a symmetry of the
-  request; with `LeastChurn` the other figures can depend on them too.
+  (35 in 100 with no objective). Under `LeastChurn` the current
+  positions also decide where the request would leave it to the ids
+  (between participants it does not otherwise tell apart, and between
+  events of the same two participants), so the same request under other
+  ids comes back with the same figures, moved events included, wherever
+  the ids would decide only between participants a symmetry of the
+  request exchanges; renaming every participant and event changed no
+  figure on 560 generated requests, where 19 changed before the current
+  positions decided. Without `LeastChurn` the order is the one a request
+  with no objective has, and the count of moved events can depend on the
+  ids, because the schedule is the same under other ids only up to a
+  symmetry of the request.
   A repack with objectives takes longer, and still spends at most twice
   the step budget; the usage guide ("Objectives") has the limits and the
   times.
