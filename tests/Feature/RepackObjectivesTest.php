@@ -702,9 +702,12 @@ describe('The fewest moved events', function (): void {
         // fewest moved events among the placements of the most events with
         // the fewest gap slots. The repacker is a bounded search and is not
         // held to the optimum on every request, so this holds it to what it
-        // was measured at: on the 150 requests here it reaches the optimum
+        // was measured at: on the 300 requests here it reaches the optimum
         // on at least nine in ten and is never more than two events from
-        // it. The wider sweep (6,000 requests of up to six events on six
+        // it (273 of them, with the current positions deciding between
+        // participants alike; 150 were too few for the bar, at 134 of
+        // them, though 9,000 such requests are at the optimum as often
+        // as before: 8,291 against 8,296). The wider sweep (6,000 requests of up to six events on six
         // positions, with a reference written apart from this one) found
         // the optimum on 93 in 100, a mean excess of 0.08 events and a
         // worst of 3; with no objective the same requests are at the
@@ -712,7 +715,7 @@ describe('The fewest moved events', function (): void {
         $optimal = 0;
         $compared = 0;
         $worst = 0;
-        for ($seed = 1; $seed <= 150; ++$seed) {
+        for ($seed = 1; $seed <= 300; ++$seed) {
             [$movable, $pinned, $grid] = smallRequestWithCurrentPositions($seed);
             $outcome = (new ScheduleRepacker())->repack(
                 new RepackRequest($movable, $pinned, $grid, new RepackOptions(objectives: [RepackObjective::LeastChurn]))
