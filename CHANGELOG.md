@@ -2430,18 +2430,48 @@ entry on the engine fingerprint.
   kickoff. `new TimelineDefinition(...)` and `TimelineDefinition::fromArray()`
   now throw an `InvalidConfigurationException` (`OverlappingTime`) when the
   first round's last slot is at or after the second round's first slot, and
-  `TimelineAssigner::assign()` and `assignRound()` throw the same for any
-  round they assign whose last slot is at or after the next round's first
+  `TimelineAssigner::assign()` and `assignRound()` throw the same for a
+  round they assign whose last slot is at or after the first slot of the
+  next round that is played
   (a short month or a clock change can shorten a later round). Before and
   after: hourly rounds (`PT1H`) of two slots an hour apart were built, and
   round 1 slot 1 and round 2 slot 0 were both 19:00; the definition is now
   refused. Who is affected: a timeline with more than one slot per round
   whose slots span the round interval or more. What to check: make the
   round interval longer than (slots − 1) × slot interval; stored
-  configuration of such a timeline no longer loads. The assigner compares
-  every slot the timeline declares for the round, filled or not, with the
-  first slot of the round after it, whether or not the schedule has that
-  round: a timeline is valid for a round or not, whatever is placed on it.
+  configuration of such a timeline no longer loads. The assigner checks
+  every slot the timeline declares for a round, filled or not; which
+  rounds it compares is the next entry.
+- **The assigner compares the rounds that are played.** This settles the
+  check of the entry above before its first release; 0.2.3 compared no
+  rounds, so it is no change from 0.2.3 beyond that entry. As first
+  written, the check compared each round assigned with the round numbered
+  after it, whether or not the schedule had that round (#152). Two rounds
+  on either side of a gap were then never compared with each other: with
+  rounds half a local hour apart (an interval from `diff()`) from 00:30 in
+  `Europe/London` on 29 March 2026, rounds 2 and 4 are both 02:00, and a
+  schedule of those two rounds was assigned. And a sound schedule was
+  refused for a round it does not hold: with `P1M` from 31 December and
+  two slots 30 days apart, round 2 ends on 2 March and round 3 would
+  start on 28 February, so a schedule of rounds 1 and 2 was refused. Now
+  `TimelineAssigner::assign()` compares the rounds the schedule holds, in
+  round order, each with the next one it holds, and its last round with
+  nothing; since the slots of every round rise, no slot of a round the
+  schedule holds is at or after a slot of a later round it holds, or the
+  schedule is refused. `assignRound()`, which is given one round and
+  keeps nothing between calls, compares the round with the one before it
+  by number, which a stage played in order from round 1 has played, and
+  round 1 with nothing: the last round of a stage is not refused for a
+  round after it that does not exist, and an overlap of two rounds is
+  reported when the later of them is assigned. The round before is the
+  one before by number whether or not it was played, so where a caller's
+  rounds have a gap `assignRound()` compares a round with one nobody
+  played, and `assign()` on the rounds played is the check of them. The context of the
+  exception names the later round under `next_round`, beside `round`,
+  and the message names it too (`Round 2 is still being played when
+  round 4 starts`). What to check: nothing for `assign()`; code that
+  assigns round by round is told of two overlapping rounds one call
+  later than the first form of the check told it.
 - **A session grid whose sessions overlap is rejected.** `SessionGrid`
   checked only that session starts ascend. The constructor and
   `fromArray()` now throw an `InvalidConfigurationException`
@@ -2484,6 +2514,79 @@ entry on the engine fingerprint.
   10^14 days (some 270 billion years) from the start it is counted from.
   Nothing that returned a time before is affected: such a round was never
   reached, one addition per round.
+- **The counts of a timeline and of a session grid have stated limits.**
+  A count in configuration is an integer the caller gives, and building a
+  definition or a grid no longer costs time or memory in proportion to
+  one unless it has a limit; a value above its limit is refused with an
+  `InvalidConfigurationException` (`ValueOutOfRange`, with the limit in
+  the context under `limit`) before anything of that size is visited or
+  allocated (#153). Two of the cases are this release's own, from the
+  checks of rising slot times above, and were never released; the limits
+  themselves are new against 0.2.3, which had none. Each, with what 0.2.3
+  did:
+  - *Slots per round: at most 10,000*
+    (`TimelineDefinition::MAX_SLOTS_PER_ROUND`). `slots_per_round` at the
+    largest integer looped without end, in the check of rising slots
+    this release added, which visits every slot of the first round (a
+    million slots took 1.5 seconds). 0.2.3 checked nothing and built any
+    count at once. The check cannot be done by arithmetic, since only a
+    timezone's clocks say where two local times are one instant, so the
+    count has a limit: a kickoff every minute, day and night, for a
+    week, checked in a few hundredths of a second. Who is affected: a
+    definition of more than 10,000 slots per round, which 0.2.3 built
+    and this release refuses.
+  - *Positions of a grid: at most 100,000* (`SessionGrid::MAX_POSITIONS`),
+    for the number of sessions, `slots_per_session`, each slot count of
+    `slots_per_session_overrides`, and their sum. A slot count at the
+    largest integer looped without end on an instant-based grid, in this
+    release's check of the sessions; 0.2.3 built such a grid at once, and
+    raised a `TypeError` from `getPositionCount()` when two sessions of
+    that size were added up. The limit is set by the instant-based grid,
+    which keeps the instant of every position: some 40 MB and a sixth of
+    a second at the limit, a slot every five minutes, day and night, for
+    nearly a year. Who is affected: a grid of more than 100,000
+    positions, of either form, which 0.2.3 built.
+  - *Steps of an interval made by `DateInterval::createFromDateString()`:
+    at most 100,000*, which is round 100,001 of a timeline (a round a day
+    for 273 years). Such an interval has no multiple and is added once
+    per step. 0.2.3 added once per round for every interval, so it
+    returned round 200,000 of any timeline in a tenth of a second and did
+    not return from a round number near the largest integer; this
+    release multiplies a duration out (the entry above) and now refuses
+    what is left. Who is affected: a round number above 100,001 under
+    such an interval. What to check: write the interval as a duration
+    (`P7D`), which has no limit of steps.
+  - *Capacity per slot: at most a million million*
+    (`SessionGrid::MAX_CAPACITY_PER_SLOT`), or unbounded. See **Fixed**.
+    Who is affected: a `capacity_per_slot` above 10^12, which 0.2.3
+    accepted, and repacked where the capacity times the positions of the
+    grid was still an integer.
+
+  A count at its limit loads, and nothing below a limit changes: the slot
+  times and the positions are the ones this release gave before. What to
+  check: nothing, for a competition; a stored definition or grid above a
+  limit no longer loads. The usage guide states each limit where it
+  describes the count ("Timeline Assignment", "Schedule Repacking",
+  "Unbounded Capacity"), and `docs/design/timeline-assignment.md` and
+  `docs/design/schedule-repack.md` say why each has the value it has.
+- **The slots of a round or a session under an interval made from a
+  relative date string are computed in one pass.** This release computes
+  every slot from its round's or its session's first slot (above), and
+  for an interval made by `DateInterval::createFromDateString()`, which
+  is added one step at a time, that was one addition for each step of
+  each slot: 1,000 slots `25 minutes` apart took a quarter of a second to
+  build and 10,000 took 25 seconds, where 0.2.3 built both at once. Each
+  slot is now the one before it plus the interval, which is the same
+  time for a number of additions equal to the slot count. Never
+  released; the slot times are unchanged (#153).
+- **A slot count override that is not an integer is refused for its
+  type.** `slots_per_session_overrides` with a value that is not an
+  integer (`'3'`, `3.0`, `true`) was refused with the reason
+  `ValueOutOfRange` and the message that a session needs at least one
+  slot, in 0.2.3 as well. The reason is now `WrongValueType` and the
+  message says the override must be an integer, as for
+  `slots_per_session` itself. Who is affected: code that matches on that
+  reason for an override. An integer below 1 is refused as before.
 - **`TimelineAssigner::assignRound()` applies the assigner's rules.** It
   ignored them: an assigner built with a `BlackoutRule` refused a kickoff
   inside the window from `assign()` and scheduled it from `assignRound()`.
@@ -2741,6 +2844,23 @@ entry on the engine fingerprint.
     because the library does not choose between two answers.
 
 ### Fixed
+- **A session grid given a very large `session_count` or capacity is
+  refused, where it raised a PHP error.** Both are in 0.2.3 as well.
+  `SessionGrid::fromArray(['session_count' => PHP_INT_MAX])` and
+  `SessionGrid::shapeOnly(PHP_INT_MAX)` raised a `ValueError` from
+  `array_fill()`. A grid with a `capacity_per_slot` near the largest
+  integer was built, and `ScheduleRepacker::repack()` then raised a
+  `TypeError`: the planner adds the capacity up over the positions of the
+  grid, and the sum was no longer an integer. Both are now refused when
+  the grid is built, with an `InvalidConfigurationException`
+  (`ValueOutOfRange`): the sessions above 100,000
+  (`SessionGrid::MAX_POSITIONS`) and the capacity above a million million
+  (`SessionGrid::MAX_CAPACITY_PER_SLOT`), a number whose sum over the
+  most positions a grid can have is far inside PHP's integers. A number
+  written to mean "no limit" that is below it (2,147,483,647, say) is
+  accepted and repacked as before; the way to say it is a capacity of
+  null (`'unbounded'` in plain data). The entry on stated limits under
+  **Changed** has the other counts (#153).
 - **A schedule with shuffled legs can be repeated from its configuration.**
   `RoundRobinOptions::fromArray(['strategy' => 'shuffled'])` could not seed
   the strategy it built, so a scheduler with a seeded `Randomizer` gave a

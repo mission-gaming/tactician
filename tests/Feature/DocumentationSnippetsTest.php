@@ -2089,6 +2089,44 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 assert($reason(static fn () => new TimelineDefinition($evening, new DateInterval('PT2H'), 2, new DateInterval('PT1H'))) === null);
                 assert($reason(static fn () => (new TimelineDefinition($evening, new DateInterval('P7D')))->getSlotTime(9_000_000_000_000_000_000))
                     === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                // "a round number has no limit where the interval is a duration", and for an
+                // interval made by createFromDateString() "100,000, which is round 100,001"
+                assert($reason(static fn () => (new TimelineDefinition($evening, new DateInterval('P7D')))->getSlotTime(1_000_000)) === null);
+                $relativeWeek = DateInterval::createFromDateString('1 week');
+                assert($reason(static fn () => (new TimelineDefinition($evening, $relativeWeek))->getSlotTime(100_001)) === null);
+                assert($reason(static fn () => (new TimelineDefinition($evening, $relativeWeek))->getSlotTime(100_002))
+                    === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                // "A round has at most 10,000 slots ... (`TimelineDefinition::MAX_SLOTS_PER_ROUND`)"
+                assert(TimelineDefinition::MAX_SLOTS_PER_ROUND === 10_000);
+                $thousandYears = new DateInterval('P1000Y');
+                assert($reason(static fn () => new TimelineDefinition($evening, $thousandYears, 10_000, new DateInterval('PT1S'))) === null);
+                assert($reason(static fn () => new TimelineDefinition($evening, $thousandYears, 10_001, new DateInterval('PT1S')))
+                    === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                // "Monthly rounds (`P1M`) from 31 December with two slots 30 days apart have round 2 on
+                // 31 January and 2 March, and round 3 from 28 February: a schedule of rounds 1 and 2 is
+                // assigned, and one that holds round 3 as well is refused", and for `assignRound()`
+                // "an overlap of two rounds is reported when the later of them is assigned"
+                $monthly = new TimelineDefinition(new DateTimeImmutable('2026-12-31 19:00', new DateTimeZone('UTC')), new DateInterval('P1M'), 2, new DateInterval('P30D'));
+                assert($monthly->getSlotTime(2, 0)->format('j M') === '31 Jan' && $monthly->getSlotTime(2, 1)->format('j M') === '2 Mar');
+                assert($monthly->getSlotTime(3, 0)->format('j M') === '28 Feb');
+                $one = new \MissionGaming\Tactician\DTO\Participant('one', 'One');
+                $two = new \MissionGaming\Tactician\DTO\Participant('two', 'Two');
+                $inRound = static fn (int $round): \MissionGaming\Tactician\DTO\Event => new \MissionGaming\Tactician\DTO\Event([$one, $two], new \MissionGaming\Tactician\DTO\Round($round));
+                $holding = static fn (int ...$rounds): \MissionGaming\Tactician\DTO\Schedule => new \MissionGaming\Tactician\DTO\Schedule(array_map($inRound, $rounds));
+                $pairingOf = static fn (int $round): \MissionGaming\Tactician\Stage\RoundPairing => new \MissionGaming\Tactician\Stage\RoundPairing($round, null, [$inRound($round)]);
+                $overlapping = \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::OverlappingTime;
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(1, 2), $monthly)) === null);
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(1, 2, 4), $monthly)) === null);
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(1, 2, 3), $monthly)) === $overlapping);
+                assert($reason(static fn () => (new TimelineAssigner())->assignRound($pairingOf(2), $monthly)) === null);
+                assert($reason(static fn () => (new TimelineAssigner())->assignRound($pairingOf(3), $monthly)) === $overlapping);
+                // "a schedule of rounds 1 and 3 has round 1 compared with round 3": rounds half a local
+                // hour apart on the night London skips an hour, where rounds 2 and 4 are one instant
+                $utc = new DateTimeZone('UTC');
+                $localHalfHour = (new DateTimeImmutable('2026-01-01 00:00', $utc))->diff(new DateTimeImmutable('2026-01-01 00:30', $utc));
+                $night = new TimelineDefinition(new DateTimeImmutable('2026-03-29 00:30', $londonTime), $localHalfHour);
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(2, 3), $night)) === null);
+                assert($reason(static fn () => (new TimelineAssigner())->assign($holding(2, 4), $night)) === $overlapping);
                 PHP,
         ],
         // "A grid with sessions at 20:00 and 20:25 and two slots 25 minutes apart is
@@ -2117,6 +2155,31 @@ describe('Documented values', function () use ($extracted, $autoload): void {
                 } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
                     assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::OverlappingTime);
                 }
+                // "A grid has at most 100,000 positions (`SessionGrid::MAX_POSITIONS`) ... The number
+                // of sessions, `slots_per_session`, each slot count in `slots_per_session_overrides`
+                // and their sum are each refused above it", and "`capacity_per_slot` has a limit as
+                // well, of a million million"; under Unbounded Capacity, "a number written to mean
+                // 'no limit' (2,147,483,647, say) is below it and works as before"
+                assert(SessionGrid::MAX_POSITIONS === 100_000);
+                assert(SessionGrid::MAX_CAPACITY_PER_SLOT === 1_000_000_000_000);
+                $tooLarge = [
+                    ['session_count' => 100_001],
+                    ['session_count' => 1, 'slots_per_session' => 100_001],
+                    ['session_count' => 2, 'slots_per_session_overrides' => [1 => 100_001]],
+                    ['session_count' => 1000, 'slots_per_session' => 101],
+                    ['session_count' => 2, 'capacity_per_slot' => 1_000_000_000_001],
+                ];
+                foreach ($tooLarge as $config) {
+                    try {
+                        SessionGrid::fromArray($config);
+                        assert(false);
+                    } catch (\MissionGaming\Tactician\Exceptions\InvalidConfigurationException $e) {
+                        assert($e->getReason() === \MissionGaming\Tactician\Exceptions\InvalidConfigurationReason::ValueOutOfRange);
+                    }
+                }
+                $atTheLimits = SessionGrid::fromArray(['session_count' => 1000, 'slots_per_session' => 100, 'capacity_per_slot' => 1_000_000_000_000]);
+                assert($atTheLimits->getPositionCount() === 100_000);
+                assert(SessionGrid::fromArray(['session_count' => 2, 'capacity_per_slot' => 2_147_483_647])->getCapacityPerSlot() === 2_147_483_647);
                 PHP,
         ],
         // "It refuses a round that puts one participant in two events at the same time ...
