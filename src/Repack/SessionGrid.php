@@ -68,8 +68,15 @@ use MissionGaming\Tactician\Timeline\ZonedTime;
  * The capacity of a slot is a positive integer or null. Null is unbounded:
  * a slot hosts any number of concurrent events, and the only limit left is
  * that no participant is in two of them. The default is 1. Null is the way
- * to say "no limit": a very large integer is not, because the planner
- * multiplies the capacity by the number of slots.
+ * to say "no limit": a very large integer is not, because the planner adds
+ * the capacity up over the slots, and one above
+ * {@see self::MAX_CAPACITY_PER_SLOT} is refused.
+ *
+ * A grid has at most {@see self::MAX_POSITIONS} positions, so that building
+ * one costs time and memory in proportion to a count with a stated limit:
+ * the number of sessions, a slot count and the sum of the slot counts are
+ * each refused above it (reason `ValueOutOfRange`), before anything of that
+ * size is allocated or visited.
  *
  * The grid owns the mechanism only: which positions exist. Which events
  * are movable, and policy about times, stay application-side. Events that
@@ -87,6 +94,30 @@ final readonly class SessionGrid
      * read a null there as "not given" and applied the default of 1.
      */
     public const string UNBOUNDED = 'unbounded';
+
+    /**
+     * The most positions a grid can have: the slot counts of its sessions
+     * added up, overrides applied. 100,000 are a slot every five minutes,
+     * day and night, for nearly a year. An instant-based grid keeps the
+     * instant of every position and checks each against the one before it,
+     * which at the limit takes some 40 MB and about a sixth of a second;
+     * a count ten times larger would not fit PHP's default memory limit.
+     * Every session has a slot, so this is also the most sessions a grid
+     * can have and the most slots one session can have.
+     */
+    public const int MAX_POSITIONS = 100_000;
+
+    /**
+     * The largest capacity per slot that is a number: a million million.
+     * The repacker adds the capacity up over the positions of the grid, and
+     * this many times {@see self::MAX_POSITIONS} is an integer PHP holds
+     * with room to spare, where the largest integer times two is not. The
+     * limit is far above any number of events and above the numbers written
+     * to mean "no limit" (2,147,483,647, say), which keep working; the way
+     * to say it is a capacity of null ({@see self::UNBOUNDED} in plain
+     * data).
+     */
+    public const int MAX_CAPACITY_PER_SLOT = 1_000_000_000_000;
 
     /**
      * The keys fromArray() reads, of an instant-based grid and of a
@@ -138,14 +169,19 @@ final readonly class SessionGrid
      * @param DateInterval|null $slotInterval Time between consecutive slots within a
      *                                        session; null for a shape-only grid, and
      *                                        only for one
-     * @param int $slotsPerSession Default slot count for every session
+     * @param int $slotsPerSession Default slot count for every session, from 1 to
+     *                             MAX_POSITIONS
      * @param array<int, int> $slotsPerSessionOverrides 0-based session index => slot count,
      *                                                  for sessions deeper or shallower
      *                                                  than the default
-     * @param int|null $capacityPerSlot How many events may share one slot; null for
-     *                                  unbounded
+     * @param int|null $capacityPerSlot How many events may share one slot, from 1 to
+     *                                  MAX_CAPACITY_PER_SLOT; null for unbounded
      *
-     * @throws InvalidConfigurationException When there is no session, a start is not a
+     * @throws InvalidConfigurationException When there are more sessions than MAX_POSITIONS, a
+     *                                       slot count or the sum of the slot counts is above
+     *                                       MAX_POSITIONS, or the capacity is above
+     *                                       MAX_CAPACITY_PER_SLOT (all `ValueOutOfRange`);
+     *                                       when there is no session, a start is not a
      *                                       DateTimeImmutable, is in another timezone than
      *                                       the first or is not after the one before it,
      *                                       the slot interval is missing or does not move
@@ -207,6 +243,9 @@ final readonly class SessionGrid
             $sessionCount = count($sessionStarts);
         }
 
+        // Before anything is allocated or visited for each session
+        self::refuseTooManySessions($sessionCount);
+
         $starts = [];
         $previous = null;
         $timezone = null;
@@ -252,6 +291,14 @@ final readonly class SessionGrid
             );
         }
 
+        if ($slotsPerSession > self::MAX_POSITIONS) {
+            throw new InvalidConfigurationException(
+                'A session grid has at most ' . self::MAX_POSITIONS . ' positions, and so a session at most that many slots',
+                ['slots_per_session' => $slotsPerSession, 'limit' => self::MAX_POSITIONS],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
+
         if ($slotInterval instanceof DateInterval && IntervalArithmetic::advance($starts[0], $slotInterval, 1) <= $starts[0]) {
             throw new InvalidConfigurationException(
                 'The slot interval must move time forward',
@@ -268,6 +315,14 @@ final readonly class SessionGrid
             );
         }
 
+        if ($capacityPerSlot !== null && $capacityPerSlot > self::MAX_CAPACITY_PER_SLOT) {
+            throw new InvalidConfigurationException(
+                'A slot has a capacity of at most ' . self::MAX_CAPACITY_PER_SLOT . ' events, or an unbounded one (null)',
+                ['capacity_per_slot' => $capacityPerSlot, 'limit' => self::MAX_CAPACITY_PER_SLOT],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
+
         $slotCounts = array_fill(0, $sessionCount, $slotsPerSession);
         foreach ($slotsPerSessionOverrides as $session => $slots) {
             if (!is_int($session) || !isset($slotCounts[$session])) {
@@ -278,7 +333,15 @@ final readonly class SessionGrid
                 );
             }
 
-            if (!is_int($slots) || $slots < 1) {
+            if (!is_int($slots)) {
+                throw new InvalidConfigurationException(
+                    'A slot count override must be an integer',
+                    ['session' => $session, 'slots' => $slots],
+                    reason: InvalidConfigurationReason::WrongValueType
+                );
+            }
+
+            if ($slots < 1) {
                 throw new InvalidConfigurationException(
                     'An overridden session still needs at least 1 slot',
                     ['session' => $session, 'slots' => $slots],
@@ -286,7 +349,27 @@ final readonly class SessionGrid
                 );
             }
 
+            if ($slots > self::MAX_POSITIONS) {
+                throw new InvalidConfigurationException(
+                    'A session grid has at most ' . self::MAX_POSITIONS . ' positions, and so a session at most that many slots',
+                    ['session' => $session, 'slots' => $slots, 'limit' => self::MAX_POSITIONS],
+                    reason: InvalidConfigurationReason::ValueOutOfRange
+                );
+            }
+
             $slotCounts[$session] = $slots;
+        }
+
+        // Each count is at most the limit and there are at most the limit
+        // of them, so the sum is an integer. Checked before a slot time is
+        // computed: an instant-based grid keeps one for every position
+        $positions = array_sum($slotCounts);
+        if ($positions > self::MAX_POSITIONS) {
+            throw new InvalidConfigurationException(
+                'A session grid has at most ' . self::MAX_POSITIONS . ' positions',
+                ['positions' => $positions, 'sessions' => $sessionCount, 'limit' => self::MAX_POSITIONS],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
         }
 
         // Two positions at one instant, or out of grid order, are what the
@@ -298,8 +381,11 @@ final readonly class SessionGrid
             foreach ($starts as $session => $start) {
                 $lastSlot = $start;
                 $slotTimes[$session] = [$start];
-                for ($slot = 1; $slot < $slotCounts[$session]; ++$slot) {
-                    $time = IntervalArithmetic::advance($start, $slotInterval, $slot);
+                foreach (IntervalArithmetic::series($start, $slotInterval, $slotCounts[$session]) as $slot => $time) {
+                    if ($slot === 0) {
+                        continue;
+                    }
+
                     if ($time <= $lastSlot) {
                         throw new InvalidConfigurationException(
                             "The slots of session {$session} must be at rising times: slot {$slot} is at "
@@ -353,13 +439,17 @@ final readonly class SessionGrid
      * event; the assignments carry no kickoff
      * ({@see SlotAssignment::hasKickoff()}).
      *
-     * @param int $sessions How many sessions the grid has
-     * @param int $slotsPerSession Default slot count for every session
+     * @param int $sessions How many sessions the grid has, from 1 to MAX_POSITIONS
+     * @param int $slotsPerSession Default slot count for every session, from 1 to
+     *                             MAX_POSITIONS
      * @param array<int, int> $slotsPerSessionOverrides Session index => slot count
-     * @param int|null $capacityPerSlot How many events may share one slot; null for
-     *                                  unbounded
+     * @param int|null $capacityPerSlot How many events may share one slot, from 1 to
+     *                                  MAX_CAPACITY_PER_SLOT; null for unbounded
      *
-     * @throws InvalidConfigurationException When the shape is invalid
+     * @throws InvalidConfigurationException When the shape is invalid: a count below 1, an
+     *                                       override for a session the grid does not have, or
+     *                                       a count, the sum of the slot counts or the
+     *                                       capacity above its limit (`ValueOutOfRange`)
      */
     public static function shapeOnly(
         int $sessions,
@@ -395,8 +485,15 @@ final readonly class SessionGrid
      * shape-only grid that also gives `timezone` or `slot_interval` is
      * rejected.
      *
-     * `capacity_per_slot` is a positive integer or the string
+     * `capacity_per_slot` is a positive integer, at most
+     * {@see self::MAX_CAPACITY_PER_SLOT}, or the string
      * {@see self::UNBOUNDED}; left out, or null, it is 1.
+     *
+     * The counts are integers with a stated limit, and one above it is
+     * refused with the reason `ValueOutOfRange` before the grid is built:
+     * `session_count` (or the number of `sessions`), `slots_per_session`,
+     * each slot count of `slots_per_session_overrides` and the positions
+     * they add up to are each at most {@see self::MAX_POSITIONS}.
      *
      * A key that is none of those named above is refused, so that a
      * misspelt `slots_per_session` is not silently read as 1.
@@ -447,6 +544,10 @@ final readonly class SessionGrid
             );
         }
 
+        // Before a start is read: each is parsed and kept, and the list is
+        // as long as the caller made it
+        self::refuseTooManySessions(count($sessions));
+
         $starts = [];
         foreach (array_values($sessions) as $index => $session) {
             $starts[] = ZonedTime::parse($session, $config['timezone'] ?? null, "sessions[{$index}]");
@@ -461,6 +562,20 @@ final readonly class SessionGrid
             $overrides,
             $capacityPerSlot
         );
+    }
+
+    /**
+     * @throws InvalidConfigurationException When there are more sessions than MAX_POSITIONS
+     */
+    private static function refuseTooManySessions(int $sessionCount): void
+    {
+        if ($sessionCount > self::MAX_POSITIONS) {
+            throw new InvalidConfigurationException(
+                'A session grid has at most ' . self::MAX_POSITIONS . ' positions, and so at most that many sessions',
+                ['session_count' => $sessionCount, 'limit' => self::MAX_POSITIONS],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
     }
 
     /**

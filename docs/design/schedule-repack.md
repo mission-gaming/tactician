@@ -468,6 +468,34 @@ returned; the changelog lists what changed for the others.
     (`Timeline\IntervalArithmetic`, internal). Slot intervals of hours
     and minutes, which is what a session has, are unchanged.
 
+**The counts of a grid have stated limits** (0.3.0, with decision 37). A
+grid that checks and keeps the instant of every position costs time and
+memory in proportion to its positions, and the counts that make them up
+are integers a caller gives: a `session_count` at the largest integer
+raised a `ValueError` from `array_fill()` (as it did in 0.2.3), and a
+slot count there looped without end in the check decision 37 added,
+where 0.2.3 had built the grid at once and failed later, when the
+positions of two such sessions were counted. No arithmetic replaces the check: where two slots
+fall on one instant depends on the timezone's clocks. So the positions
+are limited (`SessionGrid::MAX_POSITIONS`, 100,000) and every count is
+refused above the limit before anything of its size is allocated or
+visited. The value is set by the instant-based grid, some 40 MB and a
+sixth of a second at the limit, and applies to the shape-only one too,
+so that one number describes a grid; one limit on the positions was
+chosen over a limit for each count because the positions are what is
+paid for. The capacity has a limit for another reason
+(`MAX_CAPACITY_PER_SLOT`, a million million): the planner adds it up
+over the positions, and that sum left PHP's integers for a capacity near
+the largest integer (a `TypeError` inside the repacker, in 0.2.3 as
+well). The limit is the largest round number whose sum over the most
+positions is far inside the integers, and it is far above the numbers
+written to mean "no limit", which therefore keep working; a lower one
+would have refused grids that 0.2.3 repacked. Within a session, the
+slots of an interval made from a relative date string are now each
+computed from the one before, which is what that interval's steps are:
+computing each from the session's start cost the square of the slot
+count in additions.
+
 ## Order and contiguity (0.3.0)
 
 Decisions made when two things were changed in a minor release (issue
