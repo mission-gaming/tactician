@@ -65,9 +65,16 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * participant for participant, up to a symmetry of the request, whenever
  * the id only ever decided between participants that such a symmetry
  * exchanges (see Internal\StructuralOrder for when it can decide between
- * two that are not alike). The order does not read current positions, so
- * the moved events can follow the ids with or without objectives, and
- * with RepackObjective::LeastChurn so can the rest of the outcome. Pure: no clock reads, no I/O, no persistence.
+ * two that are not alike). With no objective, or without
+ * RepackObjective::LeastChurn, the order does not read current positions,
+ * so which of such participants takes which place follows the ids, and
+ * the count of moved events with it. With LeastChurn the current
+ * positions decide that before an id does, and between events of the
+ * same two participants: under the same condition the outcome is then
+ * the same, figure for figure, whatever the ids, the moved events
+ * included, and the id decides only between participants and events
+ * whose current positions are alike as well. Pure: no clock reads, no
+ * I/O, no persistence.
  * Bounded: every search spends from the options' step budget (the steps
  * after the packing from a budget of their own of the same size) or has
  * a limit of its own, which is fixed at the default budget and above and
@@ -89,7 +96,11 @@ use MissionGaming\Tactician\Repack\Internal\StructuralOrder;
  * events may state are read for one thing only: the outcome's list of
  * moved events. With any, the schedule described above is made first and
  * is the one no other may be worse than on events placed, then on gap
- * slots. For the fewest moved events, further schedules are then made
+ * slots. With LeastChurn it is made in the order the current positions
+ * help to decide, which is the order without them up to a symmetry of
+ * the request wherever the ids decide only between participants such a
+ * symmetry exchanges (above): the same schedule, then, with the
+ * participants a symmetry exchanges in other places. For the fewest moved events, further schedules are then made
  * with the events that can stay at their current positions held there
  * and the others placed around them; where one places fewer events or
  * leaves more gap slots, the held events may move again along the paths
@@ -228,11 +239,29 @@ final readonly class ScheduleRepacker
             ];
         }
 
+        // Where the fewest moved events are asked for, the current positions
+        // decide between participants, and between events of the same two,
+        // that the request does not otherwise tell apart, where an id would
+        // decide: the events that can stay are then the same events, and
+        // the schedule the same, whatever the ids. With no such objective
+        // they decide nothing, and the order is the one it always was
+        $byCurrent = in_array(RepackObjective::LeastChurn, $options->objectives, true);
+        $rankedCurrent = [];
+        if ($byCurrent) {
+            foreach ($movables as $at => $movable) {
+                $currentSession = $movable->getCurrentSession();
+                $currentSlot = $movable->getCurrentSlot();
+                if ($currentSession !== null && $currentSlot !== null) {
+                    $rankedCurrent[] = [...$rankedEvents[$at], $currentSession, $currentSlot];
+                }
+            }
+        }
+
         /** @var array<string, int> $participantIndexes */
         $participantIndexes = [];
         /** @var array<Participant> $participants */
         $participants = [];
-        foreach (StructuralOrder::of(count($inIdOrder), $rankedEvents, $rankedPins) as $rank) {
+        foreach (StructuralOrder::of(count($inIdOrder), $rankedEvents, $rankedPins, StructuralOrder::WORK_LIMIT, $rankedCurrent) as $rank) {
             $participantIndexes[$inIdOrder[$rank]->getId()] = count($participants);
             $participants[] = $inIdOrder[$rank];
         }
@@ -244,16 +273,27 @@ final readonly class ScheduleRepacker
 
         // The events by their two participants, lower index first, and by
         // id only between events of the same two: which of those is which
-        // is all an event id decides. This is the repacker's order of
-        // events, and the index of an event from here on
+        // is all an event id decides. Where the fewest moved events are
+        // asked for, the current positions decide between those first
+        // (an event that states none after those that do). This is the
+        // repacker's order of events, and the index of an event from here on
         $byPair = [];
+        $byPosition = [];
         foreach ($movables as $at => $movable) {
             $a = $participantIndexes[$movable->getParticipantA()->getId()];
             $b = $participantIndexes[$movable->getParticipantB()->getId()];
             $byPair[$at] = [min($a, $b), max($a, $b)];
+            $currentSession = $movable->getCurrentSession();
+            $currentSlot = $movable->getCurrentSlot();
+            $byPosition[$at] = !$byCurrent || $currentSession === null || $currentSlot === null
+                ? [1, 0, 0]
+                : [0, $currentSession, $currentSlot];
         }
         $order = array_keys($byPair);
-        usort($order, static fn(int $x, int $y): int => [$byPair[$x], $x] <=> [$byPair[$y], $y]);
+        usort(
+            $order,
+            static fn(int $x, int $y): int => [$byPair[$x], $byPosition[$x], $x] <=> [$byPair[$y], $byPosition[$y], $y]
+        );
 
         /** @var list<array{int, int}> $pairs */
         $pairs = [];

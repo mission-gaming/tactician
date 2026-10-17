@@ -101,6 +101,27 @@ describe('StructuralOrder', function (): void {
         expect(StructuralOrder::of(5, $events, []))->toBe([0, 1, 2, 3, 4]);
     });
 
+    it('puts participants that can be exchanged in the order of their current positions, where it is given them', function (): void {
+        // A complete round robin of four. 0-1 says it is at the second
+        // position and 2-3 at the first; the other events say nothing
+        $events = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
+        $current = [[0, 1, 1, 0], [2, 3, 0, 0]];
+
+        expect(StructuralOrder::of(4, $events, [], StructuralOrder::WORK_LIMIT, $current))->toBe([2, 3, 0, 1])
+            // Numbered the other way round, the same two come first
+            ->and(StructuralOrder::of(4, $events, [], StructuralOrder::WORK_LIMIT, [[2, 3, 1, 0], [0, 1, 0, 0]]))->toBe([0, 1, 2, 3])
+            // And with no current positions the numbers decide, as before
+            ->and(StructuralOrder::of(4, $events, []))->toBe([0, 1, 2, 3]);
+    });
+
+    it('reads current positions only between participants that nothing else tells apart', function (): void {
+        // 1 plays the three others: it comes first however the current
+        // positions put the others. Of those, 2 states none, then 3 is at
+        // the first position and 0 at the second
+        expect(StructuralOrder::of(4, [[0, 1], [1, 2], [3, 1]], [], StructuralOrder::WORK_LIMIT, [[3, 1, 0, 0], [0, 1, 1, 0]]))
+            ->toBe([1, 2, 3, 0]);
+    });
+
     it('orders a request alike however its participants are numbered', function (int $count, array $events, array $pins): void {
         $form = structuralForm($count, $events, $pins);
 

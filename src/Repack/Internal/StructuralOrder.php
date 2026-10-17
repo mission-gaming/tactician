@@ -20,25 +20,39 @@ namespace MissionGaming\Tactician\Repack\Internal;
  *    refinement: a class of participants is split by the classes of its
  *    members' opponents, counted with the number of events against each,
  *    and of their pinned opponents by position, until no class splits);
- * 4. their ids, in the order the caller of of() numbered them.
+ * 4. where the caller gives the current positions of the movable events
+ *    (the repacker does when the fewest moved events are asked for),
+ *    those positions, but only between participants the steps above
+ *    leave alike (see below);
+ * 5. their ids, in the order the caller of of() numbered them.
  *
  * When classes of more than one participant are left after step 3, the
  * first of them is settled, and the refinement goes on from there:
  *
  * - If exchanging any two of its participants leaves the request as it
  *   was (each has the same events against every third participant and
- *   the same pins), the class is put in id order, which then decides
- *   nothing but names.
+ *   the same pins), the class is put in the order of the current
+ *   positions of their events (each position with the class of the
+ *   opponent there), and in id order where those are the same. Any
+ *   order of such a class gives the same refinement up to the exchange,
+ *   so this order changes nothing but which participant has which place
+ *   in a schedule that is otherwise the same.
  * - Otherwise each of its participants in turn is tried as the one to
  *   put first, and the one is chosen whose choice gives the refined
  *   classes the smallest description (the sizes of the classes and what
  *   the members of each have against each other class: something that
- *   is the same for two requests that differ only in the ids). The id
- *   decides between participants whose descriptions are equal.
+ *   is the same for two requests that differ only in the ids). Between
+ *   participants whose descriptions are equal the current positions
+ *   decide, as above, and then the id.
  *
  * So the order is the same for two requests that differ only in the ids
  * whenever the id only ever decides between participants that a symmetry
- * of the request maps onto each other. Two participants with equal
+ * of the request maps onto each other. Where current positions are given,
+ * they decide before the id at the two places above, which are the only
+ * places they are read: a request with them is put in the order the
+ * request without them has, up to a symmetry of that request, and the
+ * id decides only where the current positions do not either (two
+ * participants with the same positions against opponents of one class). Two participants with equal
  * descriptions are that when the description is of classes of one
  * participant each, because it is then the whole request written in
  * that order. It is not guaranteed when the classes are still larger
@@ -50,7 +64,8 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * budget, so the order never depends on the
  * caller's budget; past the limit no class is split further and no
  * further participant is tried, and the classes still left are put in id
- * order as they stand. The order of such a request does depend on its
+ * order as they stand (in the order of their current positions first,
+ * where those are given). The order of such a request does depend on its
  * ids, and so can its outcome. That is why this limit, alone among the
  * repacker's work limits, is not made smaller by a step budget below
  * the default (StepBudget::workLimit()): a share of it would send
@@ -85,6 +100,9 @@ final class StructuralOrder
     /** @var array<int, list<array{int, int}>> Participant => [position number, opponent] of each pin */
     private array $pinned = [];
 
+    /** @var array<int, list<array{int, int}>> Participant => [position number, opponent] of each current position */
+    private array $placed = [];
+
     /** One more than the most events any two participants have between them */
     private int $base = 2;
 
@@ -93,12 +111,14 @@ final class StructuralOrder
     /**
      * @param array<int, array{int, int}> $events
      * @param array<int, array{int, int, int, int}> $pins
+     * @param array<int, array{int, int, int, int}> $current
      */
     private function __construct(
         private readonly int $count,
         array $events,
         private readonly array $pins,
-        private readonly int $workLimit
+        private readonly int $workLimit,
+        private readonly array $current
     ) {
         $this->opponents = array_fill(0, $count, []);
         foreach ($events as [$a, $b]) {
@@ -114,16 +134,27 @@ final class StructuralOrder
      * @param array<int, array{int, int, int, int}> $pins The pinned events: [participant, participant, session, slot]
      * @param int $workLimit Work done before the rest falls to id order; the repacker always
      *                       passes WORK_LIMIT, and the unit tests pass a smaller one to see the fallback
+     * @param array<int, array{int, int, int, int}> $current The current positions of the movable
+     *                                                       events that state one:
+     *                                                       [participant, participant, session, slot].
+     *                                                       Read only between participants nothing
+     *                                                       else tells apart; none leaves the order
+     *                                                       what it is without them
      *
      * @return list<int> The participants' numbers, in structural order
      */
-    public static function of(int $count, array $events, array $pins, int $workLimit = self::WORK_LIMIT): array
-    {
+    public static function of(
+        int $count,
+        array $events,
+        array $pins,
+        int $workLimit = self::WORK_LIMIT,
+        array $current = []
+    ): array {
         if ($count === 0) {
             return [];
         }
 
-        return (new self($count, $events, $pins, $workLimit))->order();
+        return (new self($count, $events, $pins, $workLimit, $current))->order();
     }
 
     /**
@@ -152,6 +183,21 @@ final class StructuralOrder
             $this->pinned[$b][] = [$number, $a];
         }
 
+        // The current positions, numbered in grid order too, apart from
+        // the pins: they are read only where the classes leave a choice
+        $this->placed = array_fill(0, $this->count, []);
+        $currentNumbers = [];
+        foreach ($this->current as [, , $session, $slot]) {
+            $currentNumbers[sprintf('%010d.%010d', $session, $slot)] = 0;
+        }
+        ksort($currentNumbers, SORT_STRING);
+        $currentNumbers = array_flip(array_keys($currentNumbers));
+        foreach ($this->current as [$a, $b, $session, $slot]) {
+            $number = $currentNumbers[sprintf('%010d.%010d', $session, $slot)];
+            $this->placed[$a][] = [$number, $b];
+            $this->placed[$b][] = [$number, $a];
+        }
+
         $keys = [];
         for ($pid = 0; $pid < $this->count; ++$pid) {
             $at = array_column($this->pinned[$pid], 0);
@@ -171,12 +217,18 @@ final class StructuralOrder
             $class = $classes[$at];
 
             if ($this->interchangeable($class)) {
-                array_splice($classes, $at, 1, array_map(static fn(int $pid): array => [$pid], $class));
+                array_splice(
+                    $classes,
+                    $at,
+                    1,
+                    array_map(static fn(int $pid): array => [$pid], $this->byCurrentPositions($class, $classes))
+                );
                 continue;
             }
 
             $best = null;
             $bestDescription = '';
+            $bestPlaced = '';
             foreach ($class as $first) {
                 if ($this->work > $this->workLimit) {
                     break;
@@ -190,16 +242,19 @@ final class StructuralOrder
                     // describes is not as far as the others were taken
                     break;
                 }
-                if ($best === null || strcmp($description, $bestDescription) < 0) {
+                $byDescription = $best === null ? -1 : strcmp($description, $bestDescription);
+                $placed = $this->current === [] ? '' : $this->placedKey($first, $classes);
+                if ($byDescription < 0 || ($byDescription === 0 && strcmp($placed, $bestPlaced) < 0)) {
                     $best = $refined;
                     $bestDescription = $description;
+                    $bestPlaced = $placed;
                 }
             }
             if ($best === null) {
                 // Out of work: what is left is put in id order as it stands
                 $settled = [];
                 foreach ($classes as $left) {
-                    foreach ($left as $pid) {
+                    foreach ($this->byCurrentPositions($left, $classes) as $pid) {
                         $settled[] = [$pid];
                     }
                 }
@@ -298,6 +353,56 @@ final class StructuralOrder
         }
 
         return $result;
+    }
+
+    /**
+     * The members of a class in the order of their current positions,
+     * and in id order where those are the same; in id order when no
+     * current positions were given.
+     *
+     * @param list<int> $class In id order
+     * @param list<list<int>> $classes
+     *
+     * @return list<int>
+     */
+    private function byCurrentPositions(array $class, array $classes): array
+    {
+        if ($this->current === [] || count($class) < 2) {
+            return $class;
+        }
+
+        $keyed = [];
+        foreach ($class as $pid) {
+            $keyed[] = [$this->placedKey($pid, $classes), $pid];
+        }
+        usort($keyed, static fn(array $x, array $y): int => strcmp($x[0], $y[0]) !== 0 ? strcmp($x[0], $y[0]) : $x[1] <=> $y[1]);
+
+        return array_column($keyed, 1);
+    }
+
+    /**
+     * What a participant's current positions say about it, naming no
+     * participant: each position's number in grid order with the class
+     * of the opponent there, sorted. Two participants that a symmetry of
+     * the request with its current positions exchanges have the same key.
+     *
+     * @param list<list<int>> $classes
+     */
+    private function placedKey(int $pid, array $classes): string
+    {
+        $classOf = [];
+        foreach ($classes as $at => $members) {
+            foreach ($members as $member) {
+                $classOf[$member] = $at;
+            }
+        }
+        $seen = [];
+        foreach ($this->placed[$pid] as [$number, $other]) {
+            $seen[] = sprintf('%010d.%010d', $number, $classOf[$other]);
+        }
+        sort($seen);
+
+        return implode(',', $seen);
     }
 
     /**

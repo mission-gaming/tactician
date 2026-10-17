@@ -46,6 +46,16 @@ enum RepackObjective: string
      * close them, and the result can be the schedule made with no
      * objective, in which most events have moved. It needs events with
      * current positions to act on, and does nothing without them.
+     *
+     * Under this objective the current positions also decide where the
+     * request would leave it to the ids: between participants it does not
+     * otherwise tell apart, and between events of the same two
+     * participants. So the same request under other ids comes back with
+     * the same figures, the moved events included, wherever the ids would
+     * decide only between participants that a symmetry of the request
+     * exchanges; the schedule made with no objective, which this one is
+     * never worse than, is made in that order too, and is the same
+     * schedule up to such a symmetry ({@see ScheduleRepacker}).
      */
     case LeastChurn = 'least_churn';
 

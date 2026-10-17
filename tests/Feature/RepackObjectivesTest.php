@@ -196,6 +196,152 @@ function rankOf(RepackOutcome $outcome): array
     ];
 }
 
+/**
+ * A round robin laid out in a shuffled order of its rounds, so that the
+ * pins fall at scattered positions: some events of every round are played
+ * and pinned, the rest say where they are, and then something changes
+ * (nothing, a few events say they are elsewhere, or a few lose their
+ * position).
+ *
+ * @return array{list<MovableEvent>, list<PinnedEvent>, SessionGrid}
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ */
+function roundRobinWithScatteredPins(int $seed): array
+{
+    $random = new Randomizer(new Xoshiro256StarStar($seed));
+    $count = $random->getInt(6, 14);
+    $participants = [];
+    for ($i = 0; $i < $count; ++$i) {
+        $participants[] = new Participant(sprintf('p%02d', $i), "Participant {$i}");
+    }
+    $seats = $count % 2 === 1 ? [...$participants, null] : $participants;
+    $rounds = [];
+    for ($round = 0; $round < count($seats) - 1; ++$round) {
+        $pairs = [];
+        for ($i = 0; $i < intdiv(count($seats), 2); ++$i) {
+            $a = $seats[$i];
+            $b = $seats[count($seats) - 1 - $i];
+            if ($a instanceof Participant && $b instanceof Participant) {
+                $pairs[] = [$a, $b];
+            }
+        }
+        $rounds[] = $pairs;
+        array_splice($seats, 1, 0, [array_pop($seats)]);
+    }
+
+    $slots = $random->getInt(1, 3);
+    $sessions = intdiv(count($rounds) + $slots - 1, $slots);
+    $change = $random->getInt(0, 2);
+    $movable = [];
+    $pinned = [];
+    $next = 0;
+    foreach ($random->shuffleArray($rounds) as $at => $pairs) {
+        foreach ($pairs as [$a, $b]) {
+            $id = sprintf('e%03d', $next++);
+            $session = intdiv($at, $slots);
+            $slot = $at % $slots;
+            if ($random->getInt(1, 5) === 1) {
+                $pinned[] = new PinnedEvent($id, $a, $b, $session, $slot);
+            } elseif ($change === 1 && $random->getInt(1, 8) === 1) {
+                $movable[] = new MovableEvent($id, $a, $b, $random->getInt(0, $sessions - 1), $random->getInt(0, $slots - 1));
+            } elseif ($change === 2 && $random->getInt(1, 4) === 1) {
+                $movable[] = new MovableEvent($id, $a, $b);
+            } else {
+                $movable[] = new MovableEvent($id, $a, $b, $session, $slot);
+            }
+        }
+    }
+
+    return [$movable, $pinned, SessionGrid::shapeOnly($sessions, $slots, capacityPerSlot: intdiv($count, 2))];
+}
+
+/**
+ * The same request with every participant and every event under another
+ * id, chosen by a seeded bijection, and its lists in another order; the
+ * current positions and the pins are where they were.
+ *
+ * @param list<MovableEvent> $movable
+ * @param list<PinnedEvent> $pinned
+ *
+ * @throws MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+ */
+function underOtherIds(array $movable, array $pinned, SessionGrid $grid, RepackOptions $options, int $seed): RepackRequest
+{
+    $random = new Randomizer(new Xoshiro256StarStar($seed));
+    $renamed = [];
+    foreach ([...$movable, ...$pinned] as $event) {
+        foreach ($event->getParticipants() as $participant) {
+            $renamed[$participant->getId()] ??= null;
+        }
+    }
+    $names = $random->shuffleArray(array_map(static fn(int $i): string => sprintf('z%03d', $i), range(1, count($renamed))));
+    foreach (array_keys($renamed) as $at => $id) {
+        $renamed[$id] = new Participant($names[$at], "Renamed {$names[$at]}");
+    }
+    $of = static fn(Participant $participant): Participant => $renamed[$participant->getId()] ?? $participant;
+
+    $eventNames = $random->shuffleArray(array_map(static fn(int $i): string => sprintf('x%04d', $i), range(1, count($movable) + count($pinned))));
+    $newMovable = [];
+    foreach ($movable as $at => $event) {
+        $newMovable[] = new MovableEvent(
+            $eventNames[$at],
+            $of($event->getParticipantB()),
+            $of($event->getParticipantA()),
+            $event->getCurrentSession(),
+            $event->getCurrentSlot()
+        );
+    }
+    $newPinned = [];
+    foreach ($pinned as $at => $pin) {
+        $newPinned[] = new PinnedEvent(
+            $eventNames[count($movable) + $at],
+            $of($pin->getParticipantA()),
+            $of($pin->getParticipantB()),
+            $pin->getSession(),
+            $pin->getSlot()
+        );
+    }
+
+    return new RepackRequest($random->shuffleArray($newMovable), $random->shuffleArray($newPinned), $grid, $options);
+}
+
+/**
+ * Everything an outcome says that names no participant and no event: its
+ * figures, how many events each position holds, and every violation with
+ * its numbers and without its names.
+ *
+ * @return array<string, mixed>
+ *
+ * @throws JsonException
+ */
+function idFreeFigures(RepackOutcome $outcome): array
+{
+    $positions = [];
+    foreach ($outcome->getAssignments() as $assignment) {
+        $key = "{$assignment->getSession()}:{$assignment->getSlot()}";
+        $positions[$key] = ($positions[$key] ?? 0) + 1;
+    }
+    ksort($positions);
+    $violations = [];
+    foreach ($outcome->getViolations() as $violation) {
+        $shape = $violation->toArray();
+        unset($shape['event_id'], $shape['event_ids']);
+        if (isset($shape['participant'])) {
+            $shape['participant'] = 'somebody';
+        }
+        $violations[] = json_encode($shape, JSON_THROW_ON_ERROR);
+    }
+    sort($violations);
+
+    return [
+        'rank' => rankOf($outcome),
+        'positions' => $positions,
+        'violations' => $violations,
+        'budget exhausted' => $outcome->isBudgetExhausted(),
+    ];
+}
+
 describe('The figures of a repack outcome', function (): void {
     it('are what their definitions give, counted from the request and the assignments, under every setting of the objectives', function (int $seed): void {
         [$movable, $pinned, $grid] = $seed % 2 === 0 ? seasonInProgress($seed) : smallRequestWithCurrentPositions($seed);
@@ -809,6 +955,27 @@ describe('The fewest lone-event sessions and the fewest idle sessions', function
         expect([$both->getUnplacedCount(), $both->getGapSlotCount(), $both->getIdleSessionCount()])
             ->toBe([$first->getUnplacedCount(), $first->getGapSlotCount(), $first->getIdleSessionCount()]);
     })->with(range(800, 860));
+});
+
+describe('The fewest moved events under other ids', function (): void {
+    it('gives the same figures, positions and violations when every participant and event is renamed', function (int $seed): void {
+        // The current positions decide where the request leaves the ids to
+        // decide, so the same events can stay whatever they are called.
+        // Before they did, 5 of the 60 requests here came back with other
+        // figures under other ids
+        [$movable, $pinned, $grid] = $seed % 2 === 0 ? seasonInProgress($seed) : roundRobinWithScatteredPins($seed);
+
+        foreach ([objectiveSettings()['churn'], objectiveSettings()['all, churn last']] as $objectives) {
+            $options = new RepackOptions(objectives: $objectives);
+            $outcome = (new ScheduleRepacker())->repack(new RepackRequest($movable, $pinned, $grid, $options));
+
+            foreach ([1, 2] as $renaming) {
+                $renamed = (new ScheduleRepacker())->repack(underOtherIds($movable, $pinned, $grid, $options, 1000 * $seed + $renaming));
+
+                expect(idFreeFigures($renamed))->toBe(idFreeFigures($outcome));
+            }
+        }
+    })->with(range(1, 60));
 });
 
 describe('The pairwise limit of a repack', function (): void {
