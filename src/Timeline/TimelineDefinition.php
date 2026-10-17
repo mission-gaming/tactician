@@ -8,6 +8,7 @@ use DateInterval;
 use DateTimeImmutable;
 use DateTimeZone;
 use Exception;
+use Generator;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Serialization\PlainData;
@@ -57,9 +58,15 @@ use MissionGaming\Tactician\Serialization\PlainData;
  *
  * The slots of one round are at rising times, and all of them before the
  * first slot of the next round. The constructor checks that for the first
- * two rounds, and {@see TimelineAssigner} for every round it assigns (the
+ * two rounds, and {@see TimelineAssigner} for the rounds it assigns: the
+ * slots of each, and each round against the next one that is played (the
  * length of a month, and a clock change, can make a later round shorter
  * than the first, or put two of its slots at one time).
+ *
+ * A round has at most {@see self::MAX_SLOTS_PER_ROUND} slots. The check of
+ * rising times visits every slot of a round, because no arithmetic says
+ * where a timezone's clocks put two local times at one instant, so the
+ * count it visits has a stated limit.
  *
  * The definition owns the mechanism only: which slots exist. Parsing
  * competition config into a slot pattern, persistence, notifications,
@@ -69,6 +76,17 @@ use MissionGaming\Tactician\Serialization\PlainData;
  */
 final readonly class TimelineDefinition
 {
+    /**
+     * The most slots a round can have. 10,000 are a kickoff every minute,
+     * day and night, for a week, which no competition plays as one round;
+     * a definition with more is refused when it is built (reason
+     * `ValueOutOfRange`). The limit is what bounds the time a definition
+     * takes to check and a round takes to assign: every slot a round
+     * declares is visited, filled or not, and 10,000 take a few hundredths
+     * of a second.
+     */
+    public const int MAX_SLOTS_PER_ROUND = 10_000;
+
     /** @var array<string> Re-indexed 0..N-1 so index-based access always agrees with the capacity */
     private array $resources;
 
@@ -86,14 +104,16 @@ final readonly class TimelineDefinition
      * @param DateInterval $roundInterval Time between one round's first slot and the next's
      *                                    (see the class description for date parts and time
      *                                    parts across a daylight-saving change)
-     * @param int $slotsPerRound How many kickoff slots each round has (1 = round-aligned)
+     * @param int $slotsPerRound How many kickoff slots each round has (1 = round-aligned),
+     *                           from 1 to MAX_SLOTS_PER_ROUND
      * @param DateInterval|null $slotInterval Time between a round's slots; required when slotsPerRound > 1
      * @param array<string> $resources Named resources hosting concurrent events per slot
      *                                 (venue, pitch, court, board...); empty means one
      *                                 anonymous resource, i.e. one event per slot. Their
      *                                 order is the order a slot's events are given them in
      *
-     * @throws InvalidConfigurationException When there is less than one slot per round, several
+     * @throws InvalidConfigurationException When there is less than one slot per round or more
+     *                                       than MAX_SLOTS_PER_ROUND (`ValueOutOfRange`), several
      *                                       slots without a slot interval, an interval that
      *                                       does not move the start forward, a first round
      *                                       with two slots at one time or whose last slot is
@@ -113,6 +133,16 @@ final readonly class TimelineDefinition
             throw new InvalidConfigurationException(
                 'A round needs at least 1 slot',
                 ['slots_per_round' => $slotsPerRound],
+                reason: InvalidConfigurationReason::ValueOutOfRange
+            );
+        }
+
+        // Before any slot is visited: the checks below cost one step for
+        // each slot, and so does every round the assigner is given
+        if ($slotsPerRound > self::MAX_SLOTS_PER_ROUND) {
+            throw new InvalidConfigurationException(
+                'A round has at most ' . self::MAX_SLOTS_PER_ROUND . ' slots',
+                ['slots_per_round' => $slotsPerRound, 'limit' => self::MAX_SLOTS_PER_ROUND],
                 reason: InvalidConfigurationReason::ValueOutOfRange
             );
         }
@@ -143,9 +173,12 @@ final readonly class TimelineDefinition
 
         // An interval PHP adds as local time (one from diff()) can put two
         // slots of a round at one instant where the clocks skip an hour
-        $lastSlot = $this->slotTime(1, 0);
-        for ($slot = 1; $slot < $slotsPerRound; ++$slot) {
-            $time = $this->slotTime(1, $slot);
+        $lastSlot = $start;
+        foreach ($this->slotTimesFrom($start) as $slot => $time) {
+            if ($slot === 0) {
+                continue;
+            }
+
             if ($time <= $lastSlot) {
                 throw new InvalidConfigurationException(
                     'The slots of a round must be at rising times: slot ' . $slot . ' of round 1 is at '
@@ -218,7 +251,9 @@ final readonly class TimelineDefinition
      * `Z` and `+00:00` are rejected. "Timeline Assignment" in the usage
      * guide describes the rule.
      *
-     * `round_interval` is required; `slots_per_round` (default 1),
+     * `round_interval` is required; `slots_per_round` (default 1, at most
+     * {@see self::MAX_SLOTS_PER_ROUND}; more is refused with the reason
+     * `ValueOutOfRange` before any slot is computed),
      * `slot_interval` and `resources` are optional. The intervals are ISO
      * 8601 duration strings, read by parseInterval(). A key that is none of
      * these is refused, so that a misspelt `slots_per_round` is not
@@ -413,7 +448,10 @@ final readonly class TimelineDefinition
      *                                       round is so far from the start that its time
      *                                       cannot be computed (reason `ValueOutOfRange`:
      *                                       some 270 billion years, the range of PHP's
-     *                                       own timestamps)
+     *                                       own timestamps; for an interval made by
+     *                                       `DateInterval::createFromDateString()`, which
+     *                                       is added one step at a time, more than
+     *                                       100,000 steps, which is round 100,001)
      */
     public function getSlotTime(int $round, int $slot = 0): DateTimeImmutable
     {
@@ -434,6 +472,79 @@ final readonly class TimelineDefinition
         }
 
         return $this->slotTime($round, $slot)->setTimezone(new DateTimeZone('UTC'));
+    }
+
+    /**
+     * Every slot of one round in slot order, in UTC: what getSlotTime()
+     * gives for each slot of the round, with the round's first slot
+     * computed once.
+     *
+     * The round is checked, and its first slot computed, when this is
+     * called. The slots after the first are produced as they are asked for,
+     * so that the assigner, which refuses a round at the first slot that is
+     * not after the one before it, computes none after that one.
+     *
+     * @internal For TimelineAssigner; not part of the public API.
+     *
+     * @param int $round 1-based round number
+     *
+     * @return Generator<int, DateTimeImmutable> Keyed by slot index, from 0
+     *
+     * @throws InvalidConfigurationException When the round is out of range or too far from the
+     *                                       start to be computed; and, while the slots are read,
+     *                                       when one of them is too far from the round's first
+     */
+    public function roundSlotTimes(int $round): Generator
+    {
+        if ($round < 1) {
+            throw new InvalidConfigurationException(
+                'Round numbers are 1-based',
+                ['round' => $round],
+                reason: InvalidConfigurationReason::PositionOutOfRange
+            );
+        }
+
+        // Not a generator itself, so that the round is refused by this
+        // call and not by the first read of what it returns
+        return $this->utcSlotTimesFrom(IntervalArithmetic::advance($this->start, $this->roundInterval, $round - 1));
+    }
+
+    /**
+     * The slots of a round from its first slot, in UTC.
+     *
+     * @param DateTimeImmutable $first The round's first slot, in the start's timezone
+     *
+     * @return Generator<int, DateTimeImmutable> Keyed by slot index, from 0
+     *
+     * @throws InvalidConfigurationException When a slot is too far from the first to be computed
+     */
+    private function utcSlotTimesFrom(DateTimeImmutable $first): Generator
+    {
+        $utc = new DateTimeZone('UTC');
+        foreach ($this->slotTimesFrom($first) as $slot => $time) {
+            yield $slot => $time->setTimezone($utc);
+        }
+    }
+
+    /**
+     * The slots of a round from its first slot, in the start's timezone.
+     *
+     * @param DateTimeImmutable $first The round's first slot
+     *
+     * @return Generator<int, DateTimeImmutable> Keyed by slot index, from 0
+     *
+     * @throws InvalidConfigurationException When a slot is too far from the first to be computed
+     */
+    private function slotTimesFrom(DateTimeImmutable $first): Generator
+    {
+        if ($this->slotInterval === null) {
+            // Only a definition of one slot per round has no slot interval
+            yield 0 => $first;
+
+            return;
+        }
+
+        yield from IntervalArithmetic::series($first, $this->slotInterval, $this->slotsPerRound);
     }
 
     /**
