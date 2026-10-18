@@ -827,7 +827,11 @@ final readonly class StageState
      * withdrawn entrant on without an event. Where both entrants of a tie
      * its results do not decide have withdrawn, the one still in the stage
      * when its next tie was paired went on, and where neither was, the tie
-     * is void: it sends nobody on (see Withdrawal). Before the first round
+     * is void: it sends nobody on (see Withdrawal). A last tie, which has
+     * no next tie, is decided the moment one of its entrants leaves while
+     * the other is in the stage, and once a bracket is over a withdrawal
+     * takes nothing back: the order of withdrawals is kept
+     * (getWithdrawals()). Before the first round
      * is recorded nothing has been drawn as far as the state knows: the
      * participant is out of the draw (getEntrants() does not list it), and
      * the first round is paired from those who remain. The first round,

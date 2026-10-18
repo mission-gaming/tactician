@@ -21,7 +21,8 @@ there is not repeated here.
 | [0009](0009-a-bye-is-worth-what-the-ranking-strategy-says.md) | A bye is worth what the ranking strategy says |
 | [0010](0010-a-tiebreaker-between-the-tied-participants-is-computed-by-the-calculator.md) | A tiebreaker between the tied participants is computed by the calculator, and a run of them is one small table |
 | [0011](0011-a-tie-both-entrants-left-is-void.md) | A tie both entrants left is void |
-| [0012](0012-a-withdrawal-states-its-round.md) | A withdrawal states its round |
+| [0012](0012-a-withdrawal-states-its-round.md) | A withdrawal states its round (amended: an adjustment does too) |
+| [0013](0013-a-finished-bracket-keeps-its-winner.md) | A finished bracket keeps its winner |
 
 ## Adding a record
 

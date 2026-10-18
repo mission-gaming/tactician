@@ -894,10 +894,10 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Ada\nBo\nAda\nsemifinal\n"],
             ["\nfinal\n"],
         ],
-        'a final both finalists withdrew from is void, and the selector names no winner' => [
+        'a finalist who withdraws after the final was given to it keeps it' => [
             'docs/USAGE.md',
-            '$nobodyLeft = StageState::fromHistory(',
-            ["0\nAda, Bo\n1 1 2 2\n"],
+            '$bothLeft = StageState::fromHistory(',
+            ["Ada\n0 1 2 2\n"],
             [],
         ],
         'the verbs record after which round an adjustment and a withdrawal happened, and rows that say it give the same state' => [

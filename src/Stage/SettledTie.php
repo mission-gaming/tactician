@@ -19,8 +19,11 @@ use MissionGaming\Tactician\DTO\Participant;
  * (StageOutcome::getSettledTies()) and MatchOutcomeSelector reads them.
  *
  * Where both entrants have withdrawn and no result decides the tie, it is
- * void: nobody went on from it (the advancer is null) and both are
- * eliminated (see Withdrawal).
+ * void unless one of them was still in the stage when it was decided: a
+ * last tie is decided the moment the first of the two leaves, and goes to
+ * the other. A void tie sent nobody on (the advancer is null) and both
+ * are eliminated (see Withdrawal). A last tie is void only in a state
+ * stored by 0.2.x, whose withdrawals carry no time.
  *
  * There is no winner or loser here on purpose: an entrant can go on from a
  * tie nobody played.

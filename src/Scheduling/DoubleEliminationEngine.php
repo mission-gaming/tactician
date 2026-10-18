@@ -171,7 +171,12 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * unless it had withdrawn by then: it then goes out there, as an
      * entrant who stands alone and has withdrawn always does. The two
      * entrants of a void winners tie go out with those the next losers
-     * round puts out; a void grand final, or reset, leaves the bracket with
+     * round puts out. The grand final, and its reset where it is played,
+     * is decided the moment its results or the withdrawal of a finalist
+     * decide it, and the bracket is over then: a later withdrawal takes
+     * nothing back, the winner's included. Only a state stored by 0.2.x,
+     * whose withdrawals carry no time, can hold a grand final both
+     * finalists left at times nobody knows: it is void, and the bracket has
      * nobody in its first tier.
      *
      * Round numbers are 1-based and count the stages that have an event to
@@ -376,7 +381,20 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
 
-        return $this->walk($state, $entrants);
+        // The bracket is read as it stood when it was over: a withdrawal
+        // after its last tie was decided takes nothing back (see
+        // readUntilOver())
+        $deprecationRaised = false;
+
+        return $this->readUntilOver(
+            $state,
+            function (?int $counted, array $heldFrom) use ($state, $entrants, &$deprecationRaised): BracketReading {
+                $reading = $this->walk($state, $entrants, $counted, $heldFrom, $deprecationRaised);
+                $deprecationRaised = $reading->tieWinnerDeprecationRaised;
+
+                return $reading;
+            }
+        );
     }
 
     /**
@@ -391,13 +409,22 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * dropper goes out with the next losers round's exits.
      *
      * @param list<Participant> $entrants
+     * @param int|null $counted How many of the withdrawals of the state count (see beginReading())
+     * @param array<int|string, int> $heldFrom Whose withdrawals from a given number on do not count
+     * @param bool $deprecationRaised Whether an earlier walk of the call raised the deprecation of
+     *                                the 'tie_winner' key
      *
      * @throws InvalidConfigurationException When a tie is broken, or a recorded stage does not fit
      *                                       the stage it is read as
      */
-    private function walk(StageState $state, array $entrants): BracketReading
-    {
-        $reading = $this->beginReading($state);
+    private function walk(
+        StageState $state,
+        array $entrants,
+        ?int $counted = null,
+        array $heldFrom = [],
+        bool $deprecationRaised = false
+    ): BracketReading {
+        $reading = $this->beginReading($state, $counted, $heldFrom, $deprecationRaised);
         $slots = $this->buildInitialSlots($entrants);
         $winnersRounds = (int) log(count($slots), 2);
 
@@ -551,6 +578,7 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         }
 
         // Grand final
+        $reading->lastRoundReached = true;
         $stage = $this->resolveStage([$winnersSlots[0] ?? null, $losersChampion], 'grand final', $reading, $grandFinalContended);
         $revive($stage['revived']);
         if ($stage['stopped']) {
@@ -577,8 +605,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         // The last tie played (the grand final, or its reset) puts its
         // loser out and leaves the entrant who advanced from it first.
         // Everyone else is placed by the stage that put them out, the
-        // latest first. A last tie both finalists left is void, and puts
-        // both out.
+        // latest first. A last tie both finalists left at times the state
+        // does not know (0.2.x) is void, and puts both out.
         $noteExits($stage['out']);
         foreach ($wentOutAt as $id => $exit) {
             $reading->placement[$id] = $exits - $exit + 1;

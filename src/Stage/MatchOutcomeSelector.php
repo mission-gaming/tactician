@@ -152,8 +152,11 @@ final readonly class MatchOutcomeSelector implements ProgressionSelector
      * also right where it was not: a final a finalist withdrew from gives
      * the other finalist in winners mode and the withdrawn one in losers
      * mode, whether the round was recorded without a result or never
-     * paired, and a final both finalists had withdrawn from gives nobody
-     * in winners mode and both in losers mode. Nothing is refused for such
+     * paired, and a final void because both finalists left at times nobody
+     * knows (0.2.x data) gives nobody in winners mode and both in losers
+     * mode. A finalist who withdraws after the final was decided changes
+     * nothing here: the engine reads the bracket as it was when it was
+     * over. Nothing is refused for such
      * an outcome, the final round is not needed, and the deprecation of
      * 'tie_winner' is not raised here: the engine raised it when it
      * settled the tie for the outcome.

@@ -412,8 +412,11 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
     // (ADR 0011). A tie its results do not decide is given to the entrant
     // who stays where one of the two has left; it goes to nobody where both
     // have left before the bracket moved on from it, which is before the
-    // round after it was paired, or for the last tie of a bracket at any
-    // time. A tie its results decide is never void.
+    // round after it was paired. A last tie (the final, the third-place
+    // tie, the grand final or its reset) has no round after it: it is
+    // decided the moment its results or the withdrawal of one of its
+    // entrants decide it, and a later withdrawal takes nothing back
+    // (ADR 0013). A tie its results decide is never void.
 
     /**
      * Four entrants on a fixed path: the semifinals are played, p1 and p2
@@ -430,14 +433,15 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
         return [$engine, $finalRecorded ? $state->withRoundPlayed($engine->pairNextRound($state), []) : $state, $field];
     };
 
-    it('sends nobody on from a final both finalists left before it was played, in whichever order they left', function (
+    it('keeps the final for the finalist who stayed when the other left, whatever it does afterwards', function (
         bool $finalRecorded,
         int $first,
         int $second
     ) use ($beforeTheFinal): void {
         [$engine, $state, $field] = $beforeTheFinal($finalRecorded);
 
-        // One finalist leaves: the other has the final without playing it
+        // One finalist leaves: the other has the final without playing it,
+        // and the bracket is over
         $one = $state->withoutParticipant($field[$first]);
         $outcome = $engine->getOutcome($one);
         assert($outcome instanceof StageOutcome);
@@ -445,22 +449,22 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
         expect(MatchOutcomeSelector::winners()->select($outcome))->toBe([$field[$second]])
             ->and($outcome->getStandings()->getTiers())->toBe([0, 1, 2, 2]);
 
-        // The other leaves too: there is nobody to take the final. The
-        // bracket is over, with no entrant in the first tier: the two
-        // finalists share the tier of the final, in the order of their
-        // records and then of the entrant list
+        // The other leaves too, after the bracket was over: that belongs to
+        // whatever comes next, and the bracket is read as it ended
         $both = $one->withoutParticipant($field[$second]);
-        $outcome = $engine->getOutcome($both);
-        assert($outcome instanceof StageOutcome);
+        $after = $engine->getOutcome($both);
+        assert($after instanceof StageOutcome);
 
         expect($engine->isComplete($both))->toBeTrue()
             ->and($engine->getReadiness($both)->isComplete())->toBeTrue()
-            ->and(timesIds(array_map(static fn($entry): Participant => $entry->getParticipant(), $outcome->getStandings()->getEntries())))
-            ->toBe(['p1', 'p2', 'p3', 'p4'])
-            ->and($outcome->getStandings()->getTiers())->toBe([1, 1, 2, 2])
-            ->and($outcome->getSettledTies())->toEqual([new SettledTie(null, [$field[0], $field[1]])])
-            ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([])
-            ->and(MatchOutcomeSelector::losers()->select($outcome))->toBe([$field[0], $field[1]]);
+            ->and(timesIds(array_map(static fn($entry): Participant => $entry->getParticipant(), $after->getStandings()->getEntries())))
+            ->toBe(timesIds(array_map(static fn($entry): Participant => $entry->getParticipant(), $outcome->getStandings()->getEntries())))
+            ->and($after->getStandings()->getTiers())->toBe([0, 1, 2, 2])
+            ->and($after->getSettledTies())->toEqual([new SettledTie($field[$second], [$field[$first]])])
+            ->and(MatchOutcomeSelector::winners()->select($after))->toBe([$field[$second]])
+            ->and(MatchOutcomeSelector::losers()->select($after))->toBe([$field[$first]])
+            ->and(timesTiers($engine->getStandings($both)))->toBe(timesTiers($engine->getStandings($one)))
+            ->and($engine->getRecordedRounds($both))->toEqual($engine->getRecordedRounds($one));
     })->with([
         'the final recorded, the second finalist leaves first' => [true, 1, 0],
         'the final recorded, the first finalist leaves first' => [true, 0, 1],
@@ -468,7 +472,9 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
         'the final never paired, the first finalist leaves first' => [false, 0, 1],
     ]);
 
-    it('is read the same from rows, whatever the order of the withdrawals', function () use ($beforeTheFinal): void {
+    // The order two withdrawals after one round happened in is part of the
+    // history: rows give it as the order of the withdrawals of that round
+    it('is read from rows in the order the withdrawals after one round are given', function () use ($beforeTheFinal): void {
         [$engine, $state, $field] = $beforeTheFinal(true);
 
         $rows = static fn(array $withdrawals): StageState => StageState::fromHistory(
@@ -479,8 +485,10 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
         );
         $settled = static fn(StageState $state): ?array => $engine->getOutcome($state)?->getSettledTies();
 
-        expect($settled($rows([new Withdrawal($field[1], 2), new Withdrawal($field[0], 2)])))->toEqual([new SettledTie(null, [$field[0], $field[1]])])
-            ->and($settled($rows([new Withdrawal($field[0], 2), new Withdrawal($field[1], 2)])))->toEqual([new SettledTie(null, [$field[0], $field[1]])]);
+        expect($settled($rows([new Withdrawal($field[1], 2), new Withdrawal($field[0], 2)])))->toEqual([new SettledTie($field[0], [$field[1]])])
+            ->and($settled($rows([new Withdrawal($field[0], 2), new Withdrawal($field[1], 2)])))->toEqual([new SettledTie($field[1], [$field[0]])])
+            ->and($settled($rows([new Withdrawal($field[1], 2), new Withdrawal($field[0], 2)])))
+            ->toEqual($settled($state->withoutParticipant($field[1])->withoutParticipant($field[0])));
     });
 
     it('is settled by its results where they are complete, whoever withdraws and in whatever order', function () use ($beforeTheFinal): void {
@@ -678,7 +686,7 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
             ->and($tiers['p7'])->toBe($tiers['p5']);
     });
 
-    it('sends nobody on from a grand final, or its reset, both finalists left before it was played', function (bool $reset): void {
+    it('gives a grand final, or its reset, to the finalist who stayed when the other left, and keeps it there', function (bool $reset): void {
         $engine = new DoubleEliminationEngine();
         $state = StageState::start(timesField(4));
         for ($rounds = 4; $rounds > 0; --$rounds) {
@@ -692,19 +700,25 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
             $state = $state->withRoundPlayed($grandFinal, [new Result($grandFinal->getEvents()[0], $losersChampion)]);
         }
         $last = $engine->pairNextRound($state);
-        $state = $state->withRoundPlayed($last, [])->withoutParticipant($winnersChampion)->withoutParticipant($losersChampion);
+        $state = $state->withRoundPaired($last)->withoutParticipant($winnersChampion);
+        $over = $engine->getOutcome($state);
+        $state = $state->withoutParticipant($losersChampion);
 
         $outcome = $engine->getOutcome($state);
         assert($outcome instanceof StageOutcome);
         $tiers = $outcome->getStandings()->getTiers();
 
+        // The winners champion leaves first: the losers champion has the
+        // last tie and the bracket, and leaving afterwards changes neither
         expect($last->getLabel())->toBe($reset ? 'grand final reset' : 'grand final')
+            ->and($over)->toEqual($outcome)
             ->and($engine->isComplete($state))->toBeTrue()
-            ->and($outcome->getSettledTies())->toEqual([new SettledTie(null, [$winnersChampion, $losersChampion])])
-            ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([])
-            ->and($tiers[0])->toBe($tiers[1])
-            ->and($tiers[0])->toBeGreaterThan(0)
-            ->and($tiers[2])->toBeGreaterThan($tiers[1]);
+            ->and($outcome->getSettledTies())->toEqual([new SettledTie($losersChampion, [$winnersChampion])])
+            ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([$losersChampion])
+            ->and($outcome->getStandings()->getEntries()[0]->getParticipant())->toBe($losersChampion)
+            ->and($tiers[0])->toBe(0)
+            ->and($tiers[1])->toBe(1)
+            ->and($engine->getRecordedRounds($state)[count($state->getRoundsPlayed()) - 1]->getUncontestedEvents())->toBe($last->getEvents());
     })->with([
         'the grand final' => [false],
         'the reset' => [true],
@@ -713,11 +727,13 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
     // A void tie leaves the slot it would have filled empty, so the entrant
     // who would have met its winner stands alone. Where that entrant had
     // withdrawn by the time its tie was due, nobody is there to go through
-    // either: it goes out in that round, and a last tie it stands alone in
-    // has no winner
-    it('crowns nobody where the only entrant left to take the last tie had withdrawn, in whichever order everyone left', function (
+    // either: it goes out in that round. So the bracket is won by the entrant
+    // still in it when everyone else had left: at that moment the bracket is
+    // over, and its own withdrawal comes after
+    it('crowns the entrant still in the stage when everyone else had left, and keeps it there when it leaves too', function (
         SingleEliminationEngine|DoubleEliminationEngine $engine,
-        array $order
+        array $order,
+        string $champion
     ): void {
         $field = timesField(3);
 
@@ -735,15 +751,15 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
 
         expect(timesPairs($first))->toBe(['p2 v p3'])
             ->and($engine->isComplete($state))->toBeTrue()
-            ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([])
-            ->and($tiers['p1'])->toBeGreaterThan(0)
-            ->and($tiers['p1'])->toBeLessThan($tiers['p2'])
-            ->and($tiers['p2'])->toBe($tiers['p3']);
+            ->and(timesIds(MatchOutcomeSelector::winners()->select($outcome)))->toBe([$champion])
+            ->and($tiers[$champion])->toBe(0);
     })->with([
-        'single elimination, p1 leaves last' => [new SingleEliminationEngine(), [1, 2, 0]],
-        'single elimination, p1 leaves first' => [new SingleEliminationEngine(), [0, 1, 2]],
-        'double elimination, p1 leaves last' => [new DoubleEliminationEngine(), [1, 2, 0]],
-        'double elimination, p1 leaves first' => [new DoubleEliminationEngine(), [0, 1, 2]],
+        // p2 and p3 leave their tie, which is void: p1, who had the bye, is alone
+        'single elimination, p1 leaves last' => [new SingleEliminationEngine(), [1, 2, 0], 'p1'],
+        // p1 leaves, then p2 gives p3 the tie: p3 is alone
+        'single elimination, p1 leaves first' => [new SingleEliminationEngine(), [0, 1, 2], 'p3'],
+        'double elimination, p1 leaves last' => [new DoubleEliminationEngine(), [1, 2, 0], 'p1'],
+        'double elimination, p1 leaves first' => [new DoubleEliminationEngine(), [0, 1, 2], 'p3'],
     ]);
 
     it('puts out in its round an entrant who had withdrawn when it stood alone there, and not a round later', function (): void {
@@ -787,6 +803,67 @@ describe('a tie both of whose entrants have withdrawn', function (): void {
             ->and($tiers['p1'])->toBe($tiers['p3'])
             ->and($tiers['p4'])->toBe($tiers['p5'])
             ->and($tiers['p4'])->toBeGreaterThan($tiers['p1']);
+    });
+});
+
+describe('a finished bracket keeps its winner', function (): void {
+    // A last tie is decided the moment its results, or the withdrawal of one
+    // of its entrants while the other is still in the stage, decide it, and
+    // the final and the third-place tie are each decided on their own
+    // (ADR 0013). Four entrants with a third-place tie: the semifinals
+    // p1 v p4 and p2 v p3 are won by p1 and p2, so the final is p1 v p2 and
+    // the third-place tie p4 v p3.
+    $semifinalsPlayed = function (): array {
+        $engine = new SingleEliminationEngine(new EliminationOptions(thirdPlace: true));
+        $field = timesField(4);
+
+        return [$engine, timesPlayRound($engine, StageState::start($field)), $field];
+    };
+
+    it('keeps the final for the finalist it was given to while the third-place tie is still played, and lists it among the byes', function () use ($semifinalsPlayed): void {
+        [$engine, $state, $field] = $semifinalsPlayed();
+
+        // p2 leaves, which gives p1 the final; p1 leaves before the last round is paired
+        $given = $state->withoutParticipant($field[1]);
+        $left = $given->withoutParticipant($field[0]);
+        $lastRound = $engine->pairNextRound($left);
+
+        // The round holds the third-place tie, and names p1 as the entrant
+        // who went on from the final without playing it, as it did before p1 left
+        expect(timesPairs($lastRound))->toBe(['p3 v p4'])
+            ->and(timesIds($lastRound->getByes()))->toBe(['p1'])
+            ->and($lastRound)->toEqual($engine->pairNextRound($given));
+
+        $state = $left->withRoundPaired($lastRound)->withAdditionalResults([new Result($lastRound->getEvents()[0], $field[2])]);
+        $outcome = $engine->getOutcome($state);
+        assert($outcome instanceof StageOutcome);
+
+        expect(MatchOutcomeSelector::winners()->select($outcome))->toBe([$field[0]])
+            ->and($outcome->getSettledTies())->toEqual([new SettledTie($field[0], [$field[1]])])
+            ->and(timesTiers($outcome->getStandings()))->toBe(['p1' => 0, 'p2' => 1, 'p3' => 2, 'p4' => 3]);
+    });
+
+    it('keeps the third place for the entrant it was given to while the final is still played', function () use ($semifinalsPlayed): void {
+        [$engine, $state, $field] = $semifinalsPlayed();
+        $lastRound = $engine->pairNextRound($state);
+        $final = array_values(array_filter(
+            $lastRound->getEvents(),
+            static fn(Event $event): bool => $event->hasParticipant($field[0])
+        ))[0];
+
+        // p4 leaves, which gives p3 the third place; p3 leaves; then the final is played
+        $state = $state->withRoundPaired($lastRound)
+            ->withoutParticipant($field[3])
+            ->withoutParticipant($field[2]);
+        $whilePlayed = $engine->getRecordedRounds($state)[1];
+        $state = $state->withAdditionalResults([new Result($final, $field[1])]);
+        $outcome = $engine->getOutcome($state);
+        assert($outcome instanceof StageOutcome);
+
+        // While the final is played the third-place tie awaits nothing more
+        expect($whilePlayed->getUnresolvedEvents())->toBe([$final])
+            ->and(timesTiers($outcome->getStandings()))->toBe(['p1' => 1, 'p2' => 0, 'p3' => 2, 'p4' => 3])
+            ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([$field[1]]);
     });
 });
 
@@ -1021,7 +1098,10 @@ describe('a round that is recorded after it was paired', function (): void {
             ->and($engine->getReadiness($fromRows)->isReady())->toBeTrue();
     });
 
-    it('sends nobody on from a tie both entrants left before it was recorded, in whichever order', function (int $first, int $second): void {
+    // The round names both finalists, so both left after it was paired, in
+    // the order the state holds: the first gave the final to the second,
+    // and the bracket was over then
+    it('gives a final both finalists left before it was recorded to the one who left second', function (int $first, int $second): void {
         $engine = new SingleEliminationEngine();
         $field = timesField(4);
         $state = timesPlayRound($engine, StageState::start($field));
@@ -1035,8 +1115,8 @@ describe('a round that is recorded after it was paired', function (): void {
 
         expect($engine->getRecordedRounds($state))->toHaveCount(2)
             ->and($engine->getRecordedRounds($state)[1]->isManual())->toBeFalse()
-            ->and($outcome->getSettledTies())->toEqual([new SettledTie(null, [$field[0], $field[1]])])
-            ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([]);
+            ->and($outcome->getSettledTies())->toEqual([new SettledTie($field[$second], [$field[$first]])])
+            ->and(MatchOutcomeSelector::winners()->select($outcome))->toBe([$field[$second]]);
     })->with([
         'p1, then p2' => [0, 1],
         'p2, then p1' => [1, 0],

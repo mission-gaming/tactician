@@ -1576,16 +1576,16 @@ describe('a withdrawal from a live bracket', function (): void {
             // and it is the fold of the four
             ->and(historyPairs($read[0]->getDerivation()?->getEvents() ?? []))->toBe(['h1 v h4 leg 1', 'h2 v h3 leg 1'])
             ->and(historyIds($read[0]->getDerivation()?->getByes() ?? []))->toBe([])
-            // The final is between two entrants who have withdrawn: nobody
-            // advances from it, so nobody is in the first tier. The two
-            // share the tier of the final, and the two who lost the ties
-            // that were played the tier of the round before it.
+            // The final is between two entrants who have withdrawn, h1
+            // first: that gave h2 the final, and the bracket was over then,
+            // h2's withdrawal after it. The two who lost the ties that were
+            // played share the tier of the round before the final.
             ->and($engine->isComplete($state))->toBeTrue()
             ->and(historyIds(array_map(
                 static fn(StandingEntry $entry): Participant => $entry->getParticipant(),
                 $engine->getStandings($state)->getEntries()
-            )))->toBe(['h1', 'h2', 'h3', 'h4'])
-            ->and($engine->getStandings($state)->getTiers())->toBe([1, 1, 2, 2]);
+            )))->toBe(['h2', 'h1', 'h3', 'h4'])
+            ->and($engine->getStandings($state)->getTiers())->toBe([0, 1, 2, 2]);
 
         // Double elimination: the same first round, the losers round the
         // engine pairs from it, and then the two withdrawals. The state used

@@ -346,14 +346,125 @@ trait EliminationBracketSupport
     }
 
     /**
+     * Read a bracket as it stood when it was over, and each of its last
+     * ties as it stood when it was decided.
+     *
+     * A bracket is over at the first moment it is complete: every last tie
+     * (the final and the third-place tie, or the grand final and, where it
+     * is played, its reset) is decided by its results, or by the
+     * withdrawal of one of its entrants while the other was still in the
+     * stage, or has nobody left to decide it. A last tie is decided at the
+     * first moment one of those holds, even where the bracket is not over
+     * yet (a final given away while the third-place tie is still to play).
+     * What happens to its entrants afterwards belongs to no tie of this
+     * bracket: a withdrawal after that moment takes back neither the tie
+     * nor any placing. A withdrawal of an entrant after the bracket is over
+     * changes nothing in it.
+     *
+     * The moments are those of the state's clock: the rounds in their
+     * order, and the withdrawals in the order they happened
+     * (StageState::getWithdrawals()). A withdrawal of an entrant whom the
+     * last recorded round names happened after that round was paired,
+     * whatever round it states, as everywhere. So the bracket is read with
+     * the withdrawals counted one by one from the first that happened after
+     * the last recorded round was paired, until it is complete; every
+     * earlier withdrawal counts in every reading. A withdrawal the state
+     * does not know the time of (data stored by 0.2.x) counts in every
+     * reading too: when it happened is not known.
+     *
+     * Only a walk that reaches the last round of the bracket can find a
+     * last tie decided, so a bracket that is still short of it is read
+     * once, as it stands.
+     *
+     * @param \Closure(int|null, array<int|string, int>): BracketReading $walk A walk through the
+     *                                                                          bracket that counts the
+     *                                                                          withdrawals of the state
+     *                                                                          below the given number
+     *                                                                          (all of them for null),
+     *                                                                          and of a participant in
+     *                                                                          the map only those below
+     *                                                                          its number
+     *
+     * @throws InvalidConfigurationException When a walk does
+     */
+    private function readUntilOver(StageState $state, \Closure $walk): BracketReading
+    {
+        $full = $walk(null, []);
+        if (!$full->lastRoundReached) {
+            return $full;
+        }
+
+        $lastRound = $state->getLastRound()?->getRoundNumber() ?? 0;
+        $lastNamedIn = [];
+        foreach ($state->getRoundsPlayed() as $pairing) {
+            foreach ($pairing->getEvents() as $event) {
+                foreach ($event->getParticipants() as $participant) {
+                    $lastNamedIn[$participant->getId()] = max($lastNamedIn[$participant->getId()] ?? 0, $pairing->getRoundNumber());
+                }
+            }
+            foreach ($pairing->getByes() as $bye) {
+                $lastNamedIn[$bye->getId()] = max($lastNamedIn[$bye->getId()] ?? 0, $pairing->getRoundNumber());
+            }
+        }
+
+        $withdrawals = $state->getWithdrawals();
+        $from = null;
+        foreach ($withdrawals as $index => $withdrawal) {
+            $id = $withdrawal->getParticipant()->getId();
+            if (max($withdrawal->getAfterRound(), $lastNamedIn[$id] ?? 0) >= $lastRound) {
+                $from = $index;
+                break;
+            }
+        }
+        if ($from === null) {
+            return $full;
+        }
+
+        $heldFrom = [];
+        for ($counted = $from, $count = count($withdrawals); $counted < $count; ++$counted) {
+            $reading = $walk($counted, $heldFrom);
+            if ($reading->isComplete()) {
+                return $reading;
+            }
+
+            foreach ($reading->lastTies as $tie) {
+                if ($tie['settled']) {
+                    foreach ($tie['entrants'] as $entrant) {
+                        $heldFrom[$entrant->getId()] ??= $counted;
+                    }
+                }
+            }
+        }
+
+        return $heldFrom === [] ? $full : $walk(null, $heldFrom);
+    }
+
+    /**
      * A new walk through the bracket of a state: its recorded rounds by
      * number, its results by leg, and the participants who have withdrawn,
      * which is everyone the state has seen and no longer lists as active.
      *
+     * A walk can be told to count only some of the withdrawals the state
+     * knows the time of (see readUntilOver()): those below a number in the
+     * order they happened, and of a participant in `$heldFrom` only those
+     * below its number. A participant whose withdrawal does not count is
+     * read as active.
+     *
+     * @param int|null $counted How many of the withdrawals count, in the order they happened;
+     *                          null for all of them
+     * @param array<int|string, int> $heldFrom Of a participant whose withdrawal from a given
+     *                                         number on does not count, that number, by ID
+     * @param bool $deprecationRaised Whether an earlier walk of the same call raised the
+     *                                deprecation of the 'tie_winner' key, which a call raises once
+     *
      * @throws InvalidConfigurationException When a result cannot be indexed (see indexResults())
      */
-    private function beginReading(StageState $state): BracketReading
-    {
+    private function beginReading(
+        StageState $state,
+        ?int $counted = null,
+        array $heldFrom = [],
+        bool $deprecationRaised = false
+    ): BracketReading {
         $recorded = [];
         $lastNamedIn = [];
         foreach ($state->getRoundsPlayed() as $pairing) {
@@ -386,16 +497,24 @@ trait EliminationBracketSupport
         }
 
         // A withdrawal the state knows the time of counts only for the one
-        // who is still withdrawn
+        // who is still withdrawn, and only where this walk counts it
         $withdrawals = [];
-        foreach ($state->getWithdrawals() as $withdrawal) {
+        foreach ($state->getWithdrawals() as $index => $withdrawal) {
             $id = $withdrawal->getParticipant()->getId();
-            if (isset($withdrawn[$id])) {
-                $withdrawals[$id] = $withdrawal->getAfterRound();
+            if (!isset($withdrawn[$id])) {
+                continue;
             }
+            if ($index >= ($counted ?? PHP_INT_MAX) || $index >= ($heldFrom[$id] ?? PHP_INT_MAX)) {
+                unset($withdrawn[$id]);
+                continue;
+            }
+            $withdrawals[$id] = $withdrawal->getAfterRound();
         }
 
-        return new BracketReading($recorded, $this->indexResults($state->getResults()), $withdrawn, $lastNamedIn, $withdrawals);
+        $reading = new BracketReading($recorded, $this->indexResults($state->getResults()), $withdrawn, $lastNamedIn, $withdrawals);
+        $reading->tieWinnerDeprecationRaised = $deprecationRaised;
+
+        return $reading;
     }
 
     /**

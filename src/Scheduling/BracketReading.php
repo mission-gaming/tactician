@@ -69,6 +69,24 @@ final class BracketReading
     public ?array $undecidedTie = null;
 
     /**
+     * Whether the walk reached the last round of the bracket: the round of
+     * the final, or the grand final.
+     */
+    public bool $lastRoundReached = false;
+
+    /**
+     * The last ties of the bracket as this walk found them, once it reached
+     * the last round: the entrants of each and whether it is decided (by
+     * its results, by a withdrawal, or because nobody is left to decide
+     * it). Only the final and the third-place tie of a single elimination
+     * bracket are listed; a double elimination bracket's last tie decides
+     * the bracket, and its walk is complete when it is decided.
+     *
+     * @var list<array{entrants: list<Participant>, settled: bool}>
+     */
+    public array $lastTies = [];
+
+    /**
      * Whether this walk has raised the deprecation of the 'tie_winner'
      * metadata key: it is raised once for a call of the engine, however
      * many ties the key decides.

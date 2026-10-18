@@ -89,11 +89,14 @@ use Override;
  * MatchOutcomeSelector::winners() returns for the outcome: the outcome
  * carries the final as this engine settled it
  * (StageOutcome::getSettledTies()), also where a finalist withdrew and
- * the final has no result or was never paired. A final both finalists
- * withdrew from, with no result that decides it, is void: nobody advances
- * from it, the table has nobody in its first tier, and the selector names
- * nobody (see Withdrawal and the usage guide, "Withdrawals from a
- * Bracket").
+ * the final has no result or was never paired. The final is decided the
+ * moment its result or the withdrawal of a finalist decides it, and the
+ * bracket is over once the final and the third-place tie are: a later
+ * withdrawal takes nothing back, the winner's included (see Withdrawal and
+ * the usage guide, "Withdrawals from a Bracket"). Only a state stored by
+ * 0.2.x, whose withdrawals carry no time, can hold a final both finalists
+ * left at times nobody knows: it is void, nobody advances from it, the
+ * table has nobody in its first tier, and the selector names nobody.
  *
  * @experimental
  */
@@ -380,10 +383,13 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *
      * A third-place tie decides two places more: the entrant who advanced
      * from it is rank 3 and the other rank 4, each alone in its tier, and
-     * the tiers of the earlier rounds follow. A last tie that is void (both
-     * of its entrants withdrew; see Withdrawal) leaves its upper tier
-     * empty: the two finalists of a void final share the second tier, and
-     * the two of a void third-place tie the fourth. Its results count in the
+     * the tiers of the earlier rounds follow. A last tie is decided the
+     * moment its results or a withdrawal decide it, and a withdrawal after
+     * that moves nobody (see Withdrawal). A last tie that is void (both of
+     * its entrants withdrew, at times nobody knows, in a state stored by
+     * 0.2.x) leaves its upper tier empty: the two finalists of a void final
+     * share the second tier, and the two of a void third-place tie the
+     * fourth. Its results count in the
      * records as those of every tie do. The outcome's final round then
      * holds both ties. MatchOutcomeSelector reads the final and leaves the
      * third-place tie out, which it knows by its mark: winners() gives
@@ -449,6 +455,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * round of its withdrawal does: it is that round when one of the ties
      * the bracket has there could be played then (see claimOf()).
      *
+     * The bracket is read as it stood when it was over, and the final and
+     * the third-place tie each as it stood when it was decided: a
+     * withdrawal after that takes nothing back (see readUntilOver()).
+     *
      * @throws InvalidConfigurationException When a tie is broken, a recorded round holds a
      *                                       third-place tie this engine does not play, a bye
      *                                       cannot be credited, or the state is stamped with
@@ -464,7 +474,31 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         $this->requireAThirdPlaceToDecide(count($entrants));
         $this->requireNoThirdPlaceTieRecorded($state);
 
-        $reading = $this->beginReading($state);
+        $deprecationRaised = false;
+
+        return $this->readUntilOver(
+            $state,
+            function (?int $counted, array $heldFrom) use ($state, $entrants, &$deprecationRaised): BracketReading {
+                $reading = $this->walkBracket($state, $entrants, $counted, $heldFrom, $deprecationRaised);
+                $deprecationRaised = $reading->tieWinnerDeprecationRaised;
+
+                return $reading;
+            }
+        );
+    }
+
+    /**
+     * One walk through the bracket (see resolveBracket()), counting the
+     * withdrawals readUntilOver() says.
+     *
+     * @param list<Participant> $entrants The entrant list of the state
+     * @param array<int|string, int> $heldFrom
+     *
+     * @throws InvalidConfigurationException When a tie is broken, or a bye cannot be credited
+     */
+    private function walkBracket(StageState $state, array $entrants, ?int $counted, array $heldFrom, bool $deprecationRaised): BracketReading
+    {
+        $reading = $this->beginReading($state, $counted, $heldFrom, $deprecationRaised);
         $legsPerTie = $this->options->legsPerTie;
 
         $slots = array_values($this->buildInitialSlots($entrants));
@@ -556,8 +590,14 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             [$toPlay, $claimed] = $this->claimOf($recorded, $ties, $out);
             $derivation = $this->buildRoundPairing($reading->number + 1, count($slots), $pairs, $thirdPlaceTie, $out);
 
+            $isLastRound = count($slots) === 2;
+            $reading->lastRoundReached = $reading->lastRoundReached || $isLastRound;
+
             if (!$claimed && $toPlay) {
                 $reading->pending = $derivation;
+                if ($isLastRound) {
+                    $reading->lastTies = $this->lastTiesToPair($slots, $thirdPlaceTie, $out);
+                }
                 break;
             }
 
@@ -573,6 +613,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 $thirdPlaceTie,
                 $pairedAt
             );
+
+            if ($isLastRound) {
+                $reading->lastTies = $this->lastTiesRead($slots, $thirdPlaceTie, $read);
+            }
 
             if ($claimed && $recorded instanceof RoundPairing) {
                 $reading->rounds[] = new RecordedRound(
@@ -648,6 +692,69 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         }
 
         return $reading;
+    }
+
+    /**
+     * The last ties of a round that is still to be paired: the final, which
+     * is decided where it has an entrant who has withdrawn or fewer than
+     * two entrants, and the third-place tie, decided where an entrant of it
+     * has withdrawn.
+     *
+     * @param list<Participant|null> $slots The two slots of the final
+     * @param array{Participant, Participant}|null $thirdPlaceTie
+     * @param array<int|string, true> $out Who had withdrawn when the round was paired
+     *
+     * @return list<array{entrants: list<Participant>, settled: bool}>
+     */
+    private function lastTiesToPair(array $slots, ?array $thirdPlaceTie, array $out): array
+    {
+        $finalists = array_values(array_filter($slots, static fn(?Participant $slot): bool => $slot instanceof Participant));
+        $settled = count($finalists) < 2;
+        foreach ($finalists as $finalist) {
+            $settled = $settled || isset($out[$finalist->getId()]);
+        }
+        $ties = [['entrants' => $finalists, 'settled' => $settled]];
+
+        if ($thirdPlaceTie !== null) {
+            $ties[] = [
+                'entrants' => [$thirdPlaceTie[0], $thirdPlaceTie[1]],
+                'settled' => isset($out[$thirdPlaceTie[0]->getId()]) || isset($out[$thirdPlaceTie[1]->getId()]),
+            ];
+        }
+
+        return $ties;
+    }
+
+    /**
+     * The last ties of a round that has been read (see readRound()): each
+     * is decided where it sends one entrant on, or nobody and somebody out.
+     *
+     * @param list<Participant|null> $slots The two slots of the final
+     * @param array{Participant, Participant}|null $thirdPlaceTie
+     * @param array{units: list<array{winner: Participant|null, losers: list<Participant>}>, extra: array{winner: Participant|null, losers: list<Participant>}|null} $read
+     *
+     * @return list<array{entrants: list<Participant>, settled: bool}>
+     */
+    private function lastTiesRead(array $slots, ?array $thirdPlaceTie, array $read): array
+    {
+        $finalists = array_values(array_filter($slots, static fn(?Participant $slot): bool => $slot instanceof Participant));
+        $winners = 0;
+        $open = false;
+        foreach ($read['units'] as $unit) {
+            $winners += $unit['winner'] instanceof Participant ? 1 : 0;
+            $open = $open || (!$unit['winner'] instanceof Participant && $unit['losers'] === []);
+        }
+        $ties = [['entrants' => $finalists, 'settled' => count($finalists) < 2 || ($winners < 2 && !$open)]];
+
+        if ($thirdPlaceTie !== null) {
+            $extra = $read['extra'];
+            $ties[] = [
+                'entrants' => [$thirdPlaceTie[0], $thirdPlaceTie[1]],
+                'settled' => $extra !== null && ($extra['winner'] instanceof Participant || $extra['losers'] !== []),
+            ];
+        }
+
+        return $ties;
     }
 
     /**

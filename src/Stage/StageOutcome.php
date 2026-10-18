@@ -268,8 +268,10 @@ final readonly class StageOutcome
      * tie, and it says who went on from it also where no result does: a
      * final a finalist withdrew from is uncontested, the other finalist
      * went on, and the bracket may hold no round for it at all, in which
-     * case getFinalRound() is the round before. A final both finalists had
-     * withdrawn from, with no result that decides it, is void and sends
+     * case getFinalRound() is the round before. The final is decided the
+     * moment its result or a finalist's withdrawal decides it, and a
+     * withdrawal after that changes nothing. A final both finalists left at
+     * times nobody knows (a state stored by 0.2.x) is void and sends
      * nobody on: its settled tie has no advancer and both finalists among
      * the eliminated, and the standings have nobody in their first tier.
      *

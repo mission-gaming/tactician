@@ -35,7 +35,9 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * tie to play and was not recorded: an entrant who went on alone from
  * such a round and leaves while the next winners round is played is
  * placed one stage lower when the withdrawal is recorded before that
- * winners round than when the round is recorded first.
+ * winners round than when the round is recorded first. A round recorded
+ * when it is paired (StageState::withRoundPaired()) comes before every
+ * withdrawal while it is played, and has no such limit.
  *
  * Round 0 covers the first round in the same way. A participant who
  * withdrew after round 0 was in the draw when the first round names it
@@ -51,8 +53,18 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * it: the tie is void (see StageState::withoutParticipant()). An entrant
  * who stands alone, the other slot of its tie empty, and had withdrawn
  * when the round was paired goes nowhere either: it goes out in that
- * round. The order of two withdrawals after the same round is kept as
- * given and decides nothing.
+ * round.
+ *
+ * A last tie (the final, the third-place tie, the grand final or its
+ * reset) has no tie after it: it is decided the moment its results, or the
+ * withdrawal of one of its entrants while the other is still in the stage,
+ * decide it, and the bracket is over once its last ties are decided. A
+ * withdrawal after that takes nothing back: the winner of a finished
+ * bracket stays its winner, and a withdrawal from what comes next belongs
+ * to the state of the next stage. So the order of the withdrawals after
+ * one round is part of the history: StageState::getWithdrawals() keeps it,
+ * and a history gives the withdrawals of one round in the order they
+ * happened.
  *
  * @experimental
  */
