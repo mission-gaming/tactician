@@ -7399,6 +7399,7 @@ identifier for logs and stored data):
 | `ParticipantNotAnEntrant` | `participant_not_an_entrant` | A history given to `StageState::fromHistory()` names a participant who is not one of its entrants |
 | `ParticipantTwiceInRound` | `participant_twice_in_round` | A round of a history given to `StageState::fromHistory()` holds one participant twice |
 | `WithdrawalWithoutRound` | `withdrawal_without_round` | A history given to `StageState::fromHistory()` holds rounds and a withdrawal that does not say after which round it happened |
+| `AdjustmentWithoutRound` | `adjustment_without_round` | A history given to `StageState::fromHistory()` holds rounds and an adjustment that does not say after which round it was made |
 | `EventNotInRound` | `event_not_in_round` | An event, or the event of a result, does not belong to the round it was recorded with (one with no round number at all is `EventWithoutRoundNumber`) |
 | `NoRoundRecorded` | `no_round_recorded` | Results were added or replaced in a stage with no recorded round |
 | `ResultNotRecorded` | `result_not_recorded` | A result was to be replaced for an event that has no recorded result |

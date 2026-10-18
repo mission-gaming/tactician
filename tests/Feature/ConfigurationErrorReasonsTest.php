@@ -34,6 +34,7 @@ use MissionGaming\Tactician\Stage\RoundPairing;
 use MissionGaming\Tactician\Stage\RoundRobinPlan;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Timeline\BlackoutRule;
 use MissionGaming\Tactician\Timeline\MinimumRestRule;
 use MissionGaming\Tactician\Timeline\TimelineAssigner;
@@ -261,6 +262,7 @@ describe('the reason of a configuration error', function (): void {
             'ParticipantNotAnEntrant' => 'participant_not_an_entrant',
             'ParticipantTwiceInRound' => 'participant_twice_in_round',
             'WithdrawalWithoutRound' => 'withdrawal_without_round',
+            'AdjustmentWithoutRound' => 'adjustment_without_round',
             'EventNotInRound' => 'event_not_in_round',
             'NoRoundRecorded' => 'no_round_recorded',
             'ResultNotRecorded' => 'result_not_recorded',
@@ -629,6 +631,18 @@ describe('the reason of a configuration error', function (): void {
                 );
             },
             InvalidConfigurationReason::WithdrawalWithoutRound,
+        ],
+        'a history with rounds and an adjustment that does not say its round' => [
+            function (): void {
+                $alice = new Participant('a', 'Alice');
+                $bob = new Participant('b', 'Bob');
+                StageState::fromHistory(
+                    [$alice, $bob],
+                    [new RoundPairing(1, null, [new Event([$alice, $bob], new Round(1))])],
+                    adjustments: [new Adjustment('b', -1.0)]
+                );
+            },
+            InvalidConfigurationReason::AdjustmentWithoutRound,
         ],
         'a history with a round left out' => [
             function (): void {

@@ -66,11 +66,8 @@ final readonly class RecordedRound
      * withdrawn by then (StageState::getWithdrawals()).
      *
      * Null when the engine cannot say: it draws from a randomizer, whose
-     * draw at the time is not part of the state; it finds no pairing of
-     * its own for the round; or the state holds an adjustment that does
-     * not say when it was made, and the round is one whose pairing an
-     * adjustment can change (every round of a Swiss stage, every round
-     * after the first of a bracket that re-seeds).
+     * draw at the time is not part of the state, or it finds no pairing of
+     * its own for the round.
      *
      * It is there to be shown beside a manual round. Nothing is paired
      * from it. A withdrawal the state does not know the time of (data

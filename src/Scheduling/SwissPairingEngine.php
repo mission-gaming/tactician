@@ -25,6 +25,7 @@ use MissionGaming\Tactician\Stage\StageOutcome;
 use MissionGaming\Tactician\Stage\StageState;
 use MissionGaming\Tactician\Stage\SwissPlan;
 use MissionGaming\Tactician\Stage\Withdrawal;
+use MissionGaming\Tactician\Standings\Adjustment;
 use MissionGaming\Tactician\Standings\EntryOrder;
 use MissionGaming\Tactician\Standings\StandingEntry;
 use MissionGaming\Tactician\Standings\Standings;
@@ -351,14 +352,13 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
      * (the first round, and a later round that names a participant who had
      * left before it).
      * An adjustment recorded in that interval is another matter: it is
-     * read as known when the round was paired (see
-     * StageState::withAdjustment()).
+     * read as known when the round was paired, so a round is recorded when
+     * it is paired (StageState::withRoundPlayed() with no results) where adjustments are
+     * made while it is played.
      *
      * An engine that holds a Randomizer has no derivation to give: what it
      * drew when the round was paired is not part of the state. Neither has
-     * a state that holds an adjustment which does not say when it was
-     * made: the table the round was paired from is then not known, and no
-     * round is reported as manual. Neither has an engine whose search
+     * an engine whose search
      * finds no pairing for the round, or a state whose earlier rounds
      * StageState::fromHistory() would refuse.
      *
@@ -436,17 +436,11 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
         $number = $rounds[$index]->getRoundNumber();
 
         // The table the round was paired from has the adjustments made
-        // before it. One that does not say when it was made may or may not
-        // be among them, and the engine does not guess.
-        $adjustments = [];
-        foreach ($state->getAdjustments() as $adjustment) {
-            if ($adjustment->getAfterRound() === null) {
-                return null;
-            }
-            if ($adjustment->getAfterRound() < $number) {
-                $adjustments[] = $adjustment;
-            }
-        }
+        // before it (a stage state says of each when it was made)
+        $adjustments = array_values(array_filter(
+            $state->getAdjustments(),
+            static fn(Adjustment $adjustment): bool => ($adjustment->getAfterRound() ?? 0) < $number
+        ));
 
         // Who was in the stage when the round was paired: everyone who is
         // active now, everyone this round or a later one names, and

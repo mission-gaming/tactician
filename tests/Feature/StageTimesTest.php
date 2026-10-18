@@ -241,161 +241,100 @@ describe('a re-seeded bracket with a withdrawal and adjustments made after a rou
 describe('an adjustment that does not say after which round it was made', function (): void {
     /**
      * The bracket above from rows that state the round of the withdrawal
-     * or not, and of none of the adjustments.
-     *
-     * @param list<Participant|Withdrawal> $withdrawals
+     * and of none of the adjustments.
      *
      * @throws InvalidConfigurationException When the history is refused
      */
-    $fromRows = function (EliminationOptions $options, array $withdrawals): array {
-        $engine = new SingleEliminationEngine($options);
+    $fromRows = function (SingleEliminationEngine|DoubleEliminationEngine $engine): StageState {
         $field = timesField(16);
         $played = timesPlayRound($engine, timesPlayRound($engine, StageState::start($field))->withoutParticipant($field[0]));
 
-        return [$engine, StageState::fromHistory(
+        return StageState::fromHistory(
             $field,
             $played->getRoundsPlayed(),
             $played->getResults(),
-            $withdrawals,
+            [new Withdrawal($field[0], 1)],
             [new Adjustment('p7', 1.0), new Adjustment('p8', -4.0), new Adjustment('p4', -4.0)]
-        )];
+        );
     };
 
-    // What became of an entrant who had withdrawn before a round was paired
-    // depends on the order the survivors were folded in, and that order is
-    // not known. The engine does not take one: it refuses, on every call.
-    it('is refused by a re-seeded bracket for a recorded round an entrant had withdrawn before, with the round and who is concerned', function (
-        Closure $call
+    // A round is read from the adjustments made before it was paired, and
+    // nobody knows whether one without its round was among them. Once a
+    // history holds a round every adjustment says its round, as every
+    // withdrawal does (ADR 0012), so no engine is ever handed an adjustment
+    // whose time it would have to guess.
+    it('is refused in a history that holds rounds, with the participant and the last round', function (
+        SingleEliminationEngine|DoubleEliminationEngine $engine
     ) use ($fromRows): void {
-        [$engine, $state] = $fromRows(new EliminationOptions(reseedEachRound: true), [new Withdrawal(timesField(16)[0], 1)]);
-
         try {
-            $call($engine, $state);
-            $this->fail('The state was read.');
+            $fromRows($engine);
+            $this->fail('The history was accepted.');
         } catch (InvalidConfigurationException $exception) {
-            expect($exception->getReason())->toBe(InvalidConfigurationReason::RecordedRoundMismatch)
-                ->and($exception->getContext())->toBe([
-                    'round' => 2,
-                    'adjusted_without_round' => ['p7', 'p8', 'p4'],
-                    'withdrawn' => ['p1'],
-                ])
-                ->and($exception->getConfigurationIssue())->toContain('Adjustment::madeAfterRound()')
-                ->and($exception->getConfigurationIssue())->toContain('The recorded round 2 of this re-seeded bracket cannot be read');
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::AdjustmentWithoutRound)
+                ->and($exception->getContext())->toBe(['participant' => 'p7', 'last_round' => 2])
+                ->and($exception->getConfigurationIssue())->toContain('Adjustment::madeAfterRound()');
         }
     })->with([
-        'pairNextRound()' => [fn($engine, $state) => $engine->pairNextRound($state)],
-        'isComplete()' => [fn($engine, $state) => $engine->isComplete($state)],
-        'getOutcome()' => [fn($engine, $state) => $engine->getOutcome($state)],
-        'getReadiness()' => [fn($engine, $state) => $engine->getReadiness($state)],
-        'getRecordedRounds()' => [fn($engine, $state) => $engine->getRecordedRounds($state)],
-        'getStandings()' => [fn($engine, $state) => $engine->getStandings($state)],
+        'fixed path' => [new SingleEliminationEngine()],
+        're-seeded' => [new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true))],
+        'double elimination' => [new DoubleEliminationEngine()],
     ]);
 
-    // A withdrawal is never without its round once rounds are supplied:
-    // such rows are refused before an engine reads them
-    it('comes with a withdrawal that says its round: rows whose withdrawal does not are refused first', function () use ($fromRows): void {
-        expect(fn() => $fromRows(new EliminationOptions(reseedEachRound: true), [timesField(16)[0]]))
-            ->toThrow(InvalidConfigurationException::class, 'does not say after which round');
+    it('is refused in a Swiss history that holds rounds', function (): void {
+        $engine = new SwissPairingEngine(plannedRounds: 3);
+        $field = timesField(6);
+        $pairing = $engine->pairNextRound(StageState::start($field));
+
+        expect(fn() => StageState::fromHistory($field, [$pairing], [], [], [new Adjustment('p6', 9.0)]))
+            ->toThrow(InvalidConfigurationException::class, 'does not say after which round it was made');
     });
 
-    it('is read once the adjustments say their rounds', function () use ($fromRows): void {
-        [$engine, $state] = $fromRows(new EliminationOptions(reseedEachRound: true), [new Withdrawal(timesField(16)[0], 1)]);
+    it('is read once the adjustments say their rounds', function (): void {
+        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
+        $field = timesField(16);
+        $played = timesPlayRound($engine, timesPlayRound($engine, StageState::start($field))->withoutParticipant($field[0]));
 
         $stated = StageState::fromHistory(
-            $state->getEntrants(),
-            $state->getRoundsPlayed(),
-            $state->getResults(),
-            $state->getWithdrawals(),
-            array_map(static fn(Adjustment $adjustment): Adjustment => $adjustment->madeAfterRound(2), $state->getAdjustments())
+            $field,
+            $played->getRoundsPlayed(),
+            $played->getResults(),
+            [new Withdrawal($field[0], 1)],
+            [
+                (new Adjustment('p7', 1.0))->madeAfterRound(2),
+                (new Adjustment('p8', -4.0))->madeAfterRound(2),
+                (new Adjustment('p4', -4.0))->madeAfterRound(2),
+            ]
         );
 
         expect($engine->pairNextRound($stated)->getLabel())->toBe('semifinal');
     });
 
-    // Nobody had withdrawn before the round: every survivor is in a tie of
-    // it or went on, whatever the order they were folded in, so the round is
-    // read. The engine still has no round of its own to show beside it.
-    it('is read by a re-seeded bracket where no entrant had withdrawn before the round, with no derivation for the rounds it could have changed', function (): void {
-        // p1 withdrew after the quarter-finals were recorded: it is not in them
-        // (it lost nothing: the bye of p8 is recorded), and nobody is left out
-        $engine = new SingleEliminationEngine(new EliminationOptions(reseedEachRound: true));
-        $field = timesField(8);
-        $played = timesPlayRound($engine, timesPlayRound($engine, StageState::start($field)));
+    // Before the first round there is only one time it can have been made
+    it('is made after round 0 in a history with no round, as withAdjustment() records it', function (): void {
+        $field = timesField(4);
 
-        $state = StageState::fromHistory(
-            $field,
-            $played->getRoundsPlayed(),
-            $played->getResults(),
-            [new Withdrawal($field[3], 2)],
-            [new Adjustment('p2', -4.0)]
-        );
-        $rounds = $engine->getRecordedRounds($state);
+        $fromRows = StageState::fromHistory($field, [], [], [], [new Adjustment('p3', 2.0)]);
+        $live = StageState::start($field)->withAdjustment(new Adjustment('p3', 2.0));
 
-        // The first round is the fold of the entrant list: no ranking, so
-        // the adjustment has no say in it and the engine shows its round
-        expect($rounds[0]->getDerivation())->toBeInstanceOf(RoundPairing::class)
-            ->and($rounds[0]->isManual())->toBeFalse()
-            ->and($rounds[1]->getDerivation())->toBeNull()
-            ->and($rounds[1]->isManual())->toBeFalse()
-            // Round 2 had p1 v p4 and p2 v p3; p1 and p2 won
-            ->and(timesPairs($engine->pairNextRound($state)))->toBe(['p1 v p2'])
-            // The adjustment counts in the table, whenever it was made
-            ->and($engine->getStandings($state)->getEntries()[1]->getAdjustment())->toBe(-4.0);
+        expect($fromRows->getAdjustments()[0]->getAfterRound())->toBe(0)
+            ->and($fromRows->toArray())->toBe($live->toArray());
     });
 
-    it('is never refused by a bracket that ranks nothing: a fixed path and a double elimination bracket', function (string $variant) use ($fromRows): void {
-        $field = timesField(16);
+    // Only a revision of 0.3.0 that was never released stored an adjustment
+    // without its round (0.2.x stored no adjustments): a stored state with
+    // rounds is refused as rows are, and one with none is read as after
+    // round 0.
+    it('is refused in a stored state that holds rounds, and read as after round 0 in one that holds none', function (): void {
+        $field = timesField(4);
+        $engine = new SingleEliminationEngine();
 
-        if ($variant === 'fixed path') {
-            [$engine, $state] = $fromRows(new EliminationOptions(), [new Withdrawal($field[0], 1)]);
-        } else {
-            $engine = new DoubleEliminationEngine();
-            $played = timesPlayRound($engine, timesPlayRound($engine, StageState::start($field))->withoutParticipant($field[0]));
-            $state = StageState::fromHistory(
-                $field,
-                $played->getRoundsPlayed(),
-                $played->getResults(),
-                [new Withdrawal($field[0], 1)],
-                [new Adjustment('p7', 1.0), new Adjustment('p8', -4.0)]
-            );
-        }
+        $withRounds = timesPlayRound($engine, StageState::start($field))->withAdjustment(new Adjustment('p3', 2.0))->toArray();
+        unset($withRounds['adjustments'][0]['after_round']);
+        $withoutRounds = StageState::start($field)->withAdjustment(new Adjustment('p3', 2.0))->toArray();
+        unset($withoutRounds['adjustments'][0]['after_round']);
 
-        $rounds = $engine->getRecordedRounds($state);
-
-        expect($rounds)->toHaveCount(2)
-            ->and($rounds[1]->getDerivation())->toBeInstanceOf(RoundPairing::class)
-            ->and($rounds[1]->isManual())->toBeFalse()
-            ->and($engine->getReadiness($state)->isReady())->toBeTrue();
-    })->with(['fixed path', 'double elimination']);
-
-    // A Swiss round is paired from the table, and the table of the time is
-    // not known. The engine shows no round of its own and reports nothing
-    // as manual; it pairs the next round from every adjustment, as it must.
-    it('leaves a Swiss stage without derivations, and counts in the table and in the round paired next', function (): void {
-        $engine = new SwissPairingEngine(plannedRounds: 3);
-        $field = timesField(6);
-
-        $state = StageState::start($field);
-        foreach ([1, 2] as $ignored) {
-            $pairing = $engine->pairNextRound($state);
-            $state = $state->withRoundPlayed($pairing, array_map(
-                static fn(Event $event): Result => new Result($event, array_values($event->getParticipants())[0]),
-                $pairing->getEvents()
-            ));
-        }
-
-        $stated = $state->withAdjustment(new Adjustment('p6', 9.0));
-        $unstated = StageState::fromHistory($field, $state->getRoundsPlayed(), $state->getResults(), [], [new Adjustment('p6', 9.0)]);
-
-        $derivations = static fn(StageState $state): array => array_map(
-            static fn(RecordedRound $round): array => [$round->getDerivation() instanceof RoundPairing, $round->isManual()],
-            $engine->getRecordedRounds($state)
-        );
-
-        expect($derivations($stated))->toBe([[true, false], [true, false]])
-            ->and($derivations($unstated))->toBe([[false, false], [false, false]])
-            ->and(timesPairs($engine->pairNextRound($unstated)))->toBe(timesPairs($engine->pairNextRound($stated)))
-            ->and($engine->getStandings($unstated)->getEntries()[0]->getParticipant()->getId())->toBe('p6');
+        expect(fn() => StageState::fromArray($withRounds))->toThrow(InvalidInputException::class, 'does not say after which round it was made')
+            ->and(StageState::fromArray($withoutRounds)->getAdjustments()[0]->getAfterRound())->toBe(0);
     });
 });
 
@@ -1206,7 +1145,7 @@ describe('a round that is recorded after it was paired', function (): void {
 
 describe('the match outcome selector over a bracket a finalist withdrew from', function (): void {
     /**
-     * A bracket of four played up to its last tie, which is between the
+     * A bracket of four played up to its last tie, which is between the.
     // The limit of that reading: a round names only its own entrants. In
     // double elimination a losers round with no tie to play is not
     // recorded, and is read from who was in the stage when the round after

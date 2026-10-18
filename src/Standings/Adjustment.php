@@ -132,17 +132,14 @@ final readonly class Adjustment
      * records an adjustment made during round 3 with 2, and it is then
      * read as known when round 3 was paired, which it was not. Record a
      * round when it is paired (StageState::withRoundPlayed() with no
-     * results, then withAdditionalResults()) where adjustments are made
-     * while a round is played.
+     * results, then withAdditionalResults()) where adjustments are made while a round is
+     * played.
      *
-     * Null says that the time is not known, and nothing more: it is never
-     * read as "before the first round" or as "after the last". Where the
-     * reading of a recorded round depends on when such an adjustment was
-     * made, an engine does not guess: it shows no round of its own beside
-     * the recorded one (RecordedRound::getDerivation() is null), and a
-     * bracket that re-seeds each round refuses a recorded round it cannot
-     * read without the ranking of the time (see
-     * StageState::withAdjustment()).
+     * Null says that the time is not known. An adjustment of a stage state
+     * is never null: StageState::withAdjustment() records the round, and a
+     * history that holds rounds states it (StageState::fromHistory()
+     * refuses one without it). Null is for an adjustment that belongs to no
+     * stage, given to a table calculated on its own.
      */
     public function getAfterRound(): ?int
     {
@@ -202,8 +199,9 @@ final readonly class Adjustment
      * 'reason' is null. The amount may be an int or a float; a numeric
      * string is refused. 'after_round' is optional: an integer of 0 or
      * above, and where it is left out, or null, the adjustment does not say
-     * when it was made (getAfterRound() is null), which is how every
-     * adjustment stored before the key existed is read. Any other key is
+     * when it was made (getAfterRound() is null). A stage state requires it
+     * of every adjustment of a state that holds a round
+     * (StageState::fromArray()). Any other key is
      * refused. That the participant exists is checked where the adjustment
      * is used, against the table or the stage it is given to.
      *

@@ -256,6 +256,13 @@ enum InvalidConfigurationReason: string
     case WithdrawalWithoutRound = 'withdrawal_without_round';
 
     /**
+     * A history supplied to `StageState::fromHistory()` holds rounds and an
+     * adjustment that does not say after which of them it was made: an
+     * `Standings\Adjustment` without `madeAfterRound()`.
+     */
+    case AdjustmentWithoutRound = 'adjustment_without_round';
+
+    /**
      * An event, or the event of a result, does not belong to the round it
      * was recorded with: it carries another round number, or the round's
      * pairing does not hold it. An event that carries no round number at

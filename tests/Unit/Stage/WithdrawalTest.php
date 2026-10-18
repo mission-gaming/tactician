@@ -269,19 +269,21 @@ describe('StageState withdrawals', function (): void {
         ],
     ]);
 
-    it('keeps an adjustment given to a history without a round as one of unknown time', function (): void {
-        $state = StageState::fromHistory(
-            $this->participants,
-            [($this->round)(1), ($this->round)(2)],
-            [],
-            [],
-            [new Adjustment('jun', 1.0), (new Adjustment('ines', -1.0))->madeAfterRound(1)]
-        );
-
-        // Not "after the last round", which is what the verb would have said
-        expect(array_map(
-            static fn(Adjustment $adjustment): ?int => $adjustment->getAfterRound(),
-            $state->getAdjustments()
-        ))->toBe([null, 1]);
+    // Not "after the last round", which is what the verb would have said,
+    // and not "of unknown time": the rows are asked to say it
+    it('refuses an adjustment given to a history with rounds without its round, as it refuses such a withdrawal', function (): void {
+        try {
+            StageState::fromHistory(
+                $this->participants,
+                [($this->round)(1), ($this->round)(2)],
+                [],
+                [],
+                [(new Adjustment('ines', -1.0))->madeAfterRound(1), new Adjustment('jun', 1.0)]
+            );
+            $this->fail('The history was accepted.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::AdjustmentWithoutRound)
+                ->and($exception->getContext())->toBe(['participant' => 'jun', 'last_round' => 2]);
+        }
     });
 });

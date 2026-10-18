@@ -167,12 +167,13 @@ final readonly class StageState
      * plain participant is a withdrawal after round 0, which is the only
      * time it can be.
      *
-     * An adjustment that states no round is kept without one: its time is
-     * not known, and it is not read as made after the last round or before
-     * the first. An engine then reads it as withAdjustment() describes (no
-     * derivation beside the rounds it could have changed, and a refusal
-     * from a re-seeded bracket that cannot read a round without it). State
-     * the rounds wherever the rows have them.
+     * The same holds for an adjustment: once the history holds a round,
+     * every adjustment states the round it was made after
+     * (Adjustment::madeAfterRound()), and one that does not is refused
+     * (`AdjustmentWithoutRound`). A round is ranked and shown from the
+     * adjustments made before it was paired, and that is not known of an
+     * adjustment without its round. With no round supplied an adjustment
+     * without one is recorded as made after round 0.
      *
      * The state carries no engine fingerprint; stamp it with
      * withEngineFingerprint() where the application keeps one.
@@ -185,8 +186,9 @@ final readonly class StageState
      *                                                   after; a plain participant only where no
      *                                                   round is supplied
      * @param array<Adjustment> $adjustments The adjustments made, in the order they are to be kept
-     *                                       in, each with the round it was made after where
-     *                                       that is known (Adjustment::madeAfterRound())
+     *                                       in, each with the round it was made after
+     *                                       (Adjustment::madeAfterRound()); one without it only
+     *                                       where no round is supplied
      *
      * @throws InvalidConfigurationException When two entrants share an ID
      *                                       (`DuplicateParticipantIds`), one of the three rules
@@ -194,7 +196,9 @@ final readonly class StageState
      *                                       (`DuplicateResult`), the history holds rounds and a
      *                                       withdrawal that does not say its round
      *                                       (`WithdrawalWithoutRound`, with the participant and
-     *                                       the last round in the context), a withdrawal or an adjustment
+     *                                       the last round in the context) or an adjustment that
+     *                                       does not (`AdjustmentWithoutRound`, the same context),
+     *                                       a withdrawal or an adjustment
      *                                       states a round after the last one supplied
      *                                       (`ValueOutOfRange`), or the history is one
      *                                       withRoundPlayed() refuses (`ValueOutOfRange`,
@@ -350,13 +354,26 @@ final readonly class StageState
                     reason: InvalidConfigurationReason::ParticipantNotAnEntrant
                 );
             }
-            if ($adjustment->getAfterRound() !== null) {
-                $requireRecordedRound($adjustment->getAfterRound(), 'the adjustment for', $id);
-            }
+            // Once there are rounds, an adjustment says which it was made
+            // after; before them it can only be before the first
+            $afterRound = $adjustment->getAfterRound();
+            if ($afterRound === null) {
+                if ($lastRound > 0) {
+                    throw new InvalidConfigurationException(
+                        "The history holds rounds and an adjustment for participant {$id} that does not say after which"
+                            . ' round it was made. Give it with Adjustment::madeAfterRound() and the number of the last round'
+                            . ' recorded when it was made (0 before the first): a round is read from the adjustments made'
+                            . ' before it was paired.',
+                        ['participant' => $id, 'last_round' => $lastRound],
+                        reason: InvalidConfigurationReason::AdjustmentWithoutRound
+                    );
+                }
 
-            // An adjustment that states no round is kept without one:
-            // withAdjustment() would record it as made now, after the last
-            // round, which the history does not say.
+                $adjustment = $adjustment->madeAfterRound(0);
+                $afterRound = 0;
+            }
+            $requireRecordedRound($afterRound, 'the adjustment for', $id);
+
             $participant = null;
             foreach ($state->getAllSeenParticipants() as $seen) {
                 if ($seen->getId() === $id) {
@@ -989,28 +1006,14 @@ final readonly class StageState
      * therefore returns the adjustment with its round, which is another
      * object than the one given when that one had none.
      *
-     * The last round the state holds is the last one recorded, not the
-     * last one paired. An adjustment made while a round is played that is
-     * not recorded yet is recorded as made before that round, and is read
-     * as known when the round was paired: nothing in a round says which
-     * adjustments it was paired from. Record a round when it is paired
-     * (withRoundPlayed() with no results, then withAdditionalResults())
-     * where adjustments are made while a round is played.
-     *
-     * An adjustment with no round reaches a state only through
-     * fromHistory(), from an application that does not say it, or from
-     * data stored before the round was kept. Its time is not known, and
-     * the engines do not guess it. It counts in every table and in the
-     * round paired next, for which the time makes no difference. Beside a
-     * recorded round whose pairing it could have changed, an engine shows
-     * no round of its own (RecordedRound::getDerivation() is null, and the
-     * round is not reported as manual): every recorded round of a Swiss
-     * stage, and every recorded round after the first of a bracket that
-     * re-seeds. Such a bracket is refused (`RecordedRoundMismatch`) where
-     * it cannot read a recorded round without the ranking of the time,
-     * which is where an entrant had withdrawn before that round was
-     * paired. A bracket on a fixed path and a double elimination bracket
-     * rank nothing and read every state.
+     * The last round the state holds is the last one recorded, so record
+     * a round when it is paired (withRoundPlayed() with no results) and add
+     * its results as they come (withAdditionalResults()). An adjustment made while a round
+     * is played is then recorded after that round, and is not read as known
+     * when the round was paired. A round recorded only once it has been
+     * played comes after such an adjustment, and the adjustment is read as
+     * known when the round was paired: nothing in a round says which
+     * adjustments it was paired from.
      *
      * Adjustments are kept in the order recorded and are never merged: two
      * for one participant are two entries of getAdjustments(), and the
@@ -1380,9 +1383,8 @@ final readonly class StageState
      * (see getWithdrawals()): one entry for each entrant in `entrants` who
      * is not in `active`, in the order they happened, with the ID under
      * `participant` and the round under `after_round`, 0 before the first
-     * round. An adjustment carries an `after_round` key only
-     * when it says after which round it was made, which every adjustment
-     * recorded with withAdjustment() does.
+     * round. Every adjustment carries an `after_round` key: a state records
+     * after which round each was made.
      *
      * The first key is `format_version`, the version of this form (1). It
      * says how the array is to be read and is written once, here: the
@@ -1503,13 +1505,13 @@ final readonly class StageState
      * registry. So is `entrants`: data without it, which is all data
      * stored before the key existed, loads with the active list as its
      * entrant list, so a participant who had withdrawn has no place in it
-     * (see getEntrants()). So is `withdrawals`, and so is the `after_round`
-     * of an adjustment: data without them, which is all data stored before
-     * they existed, loads with adjustments whose time is not known
-     * (Adjustment::getAfterRound() is null), read as withAdjustment() says
-     * such a state is read, and with no withdrawal: a participant who had
-     * withdrawn then (0.2.x wrote neither key) is read with no place and no
-     * time, and nothing is assumed about when it left. So is
+     * (see getEntrants()). So is `withdrawals`: data without it, which is
+     * all data stored before it existed, loads with no withdrawal, and a
+     * participant who had withdrawn then (0.2.x wrote neither key) is read
+     * with no place and no time, and nothing is assumed about when it left.
+     * The `after_round` of an adjustment is required where the state holds
+     * a round, and read as 0 where it holds none (0.2.x wrote no
+     * adjustments). So is
      * `format_version`: data without it is read as version 1, the form the
      * releases before 0.3.0 wrote. A version this release does not know is
      * refused.
@@ -1523,8 +1525,9 @@ final readonly class StageState
      * to the last recorded one that is not below the round of the entry
      * before it (and round 0 only for a participant the first recorded
      * round names, where one is recorded), and that every entrant who is
-     * not active has an entry there. The round of an adjustment may not be
-     * after the last recorded round either.
+     * not active has an entry there. Every adjustment of a state with a
+     * recorded round says its round, which may not be after the last
+     * recorded round either.
      *
      * This is the reader of what toArray() wrote. An application that
      * holds its rounds and results in rows of its own does not build this
@@ -1683,11 +1686,23 @@ final readonly class StageState
         foreach ($rounds as $round) {
             $lastRound = max($lastRound, $round->getRoundNumber());
         }
-        foreach ($adjustments as ['adjustment' => $adjustment]) {
-            if (($adjustment->getAfterRound() ?? 0) > $lastRound) {
+        foreach ($adjustments as $index => ['adjustment' => $adjustment]) {
+            $afterRound = $adjustment->getAfterRound();
+            if ($afterRound === null) {
+                // Only a revision before 0.3.0 that was never released wrote
+                // an adjustment without its round; 0.2.x wrote none at all
+                if ($lastRound > 0) {
+                    throw new InvalidInputException(
+                        "Stage state adjustment for participant {$adjustment->getParticipantId()} does not say after which"
+                            . ' round it was made, and the state holds rounds: every adjustment of a state with rounds has'
+                            . ' an after_round'
+                    );
+                }
+                $adjustments[$index]['adjustment'] = $adjustment->madeAfterRound(0);
+            } elseif ($afterRound > $lastRound) {
                 throw new InvalidInputException(
                     "Stage state adjustment for participant {$adjustment->getParticipantId()} is said to be made after round"
-                        . " {$adjustment->getAfterRound()}, and the last recorded round is round {$lastRound}"
+                        . " {$afterRound}, and the last recorded round is round {$lastRound}"
                 );
             }
         }

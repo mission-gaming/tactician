@@ -174,22 +174,32 @@ describe('StageState adjustments', function (): void {
             ->and(StageState::fromArray($data)->toArray())->toBe($data);
     });
 
-    // What was stored before an adjustment said its round: the four keys
-    // and no more. Nothing is assumed about when it was made, and the state
-    // is written back as it was read.
-    it('reads an adjustment stored without its round as one whose time is not known', function (): void {
-        $data = StageState::start($this->participants)
+    // What a revision before 0.3.0 that was never released stored: the four
+    // keys and no more (0.2.x stored no adjustments). Nothing is assumed
+    // about when it was made where that matters: a state with rounds is
+    // refused, and one without is read as made after round 0, the only
+    // time it can have been made.
+    it('refuses an adjustment stored without its round in a state with rounds, and reads it as after round 0 in one without', function (): void {
+        $withRounds = StageState::start($this->participants)
             ->withRoundPlayed(($this->round)(1), [])
             ->withAdjustment(new Adjustment('jun', -1.0, 'ruling'))
             ->toArray();
-        assert(isset($data['adjustments']));
-        unset($data['adjustments'][0]['after_round']);
+        assert(isset($withRounds['adjustments']));
+        unset($withRounds['adjustments'][0]['after_round']);
 
-        $read = StageState::fromArray($data);
+        $withoutRounds = StageState::start($this->participants)
+            ->withAdjustment(new Adjustment('jun', -1.0, 'ruling'))
+            ->toArray();
+        assert(isset($withoutRounds['adjustments']));
+        $written = $withoutRounds;
+        unset($withoutRounds['adjustments'][0]['after_round']);
 
-        expect($read->getAdjustments())->toEqual([new Adjustment('jun', -1.0, 'ruling')])
-            ->and($read->getAdjustments()[0]->getAfterRound())->toBeNull()
-            ->and($read->toArray())->toBe($data);
+        $read = StageState::fromArray($withoutRounds);
+
+        expect(fn() => StageState::fromArray($withRounds))
+            ->toThrow(InvalidInputException::class, 'Stage state adjustment for participant jun does not say after which round it was made')
+            ->and($read->getAdjustments())->toEqual([(new Adjustment('jun', -1.0, 'ruling'))->madeAfterRound(0)])
+            ->and($read->toArray())->toBe($written);
     });
 
     it('refuses stored data whose adjustment is made after a round the state does not hold', function (): void {
