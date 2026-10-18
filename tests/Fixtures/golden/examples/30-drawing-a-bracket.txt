@@ -1,0 +1,319 @@
+# The results of examples/30-drawing-a-bracket.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Single elimination, two legs, third place ==
+-
+  Round: quarterfinal
+  Played as: round 1
+  Tie: 1
+  First: Ines
+  Second: bye
+  Where it stands: Ines through on a bye
+-
+  Round: quarterfinal
+  Played as: round 1
+  Tie: 2
+  First: Wren
+  Second: Kasia
+  Where it stands: Kasia through over 2 legs
+-
+  Round: quarterfinal
+  Played as: round 1
+  Tie: 3
+  First: Tomas
+  Second: bye
+  Where it stands: Tomas through on a bye
+-
+  Round: quarterfinal
+  Played as: round 1
+  Tie: 4
+  First: Olu
+  Second: Raf
+  Where it stands: Olu through over 2 legs
+-
+  Round: semifinal
+  Played as: round 2
+  Tie: 1
+  First: Ines
+  Second: Kasia
+  Where it stands: in play
+-
+  Round: semifinal
+  Played as: round 2
+  Tie: 2
+  First: Tomas
+  Second: Olu
+  Where it stands: in play
+-
+  Round: final
+  Played as:
+  Tie: 1
+  First: winner of semifinal 1
+  Second: winner of semifinal 2
+  Where it stands: waiting
+-
+  Round: final
+  Played as:
+  Tie: third place
+  First: loser of semifinal 1
+  Second: loser of semifinal 2
+  Where it stands: waiting
+
+== The semifinal first legs ==
+- R2: ines-kasia{"tie_leg":1} => ines
+- R2: tomas-olu{"tie_leg":1} => tomas
+
+== Double elimination, Merlins withdrawn, in play ==
+-
+  Round: winners round 1
+  Played as: round 1
+  Tie: 1
+  First: Harriers
+  Second: bye
+  Where it stands: Harriers through on a bye
+-
+  Round: winners round 1
+  Played as: round 1
+  Tie: 2
+  First: Merlins (withdrawn)
+  Second: Swifts
+  Where it stands: Swifts through
+-
+  Round: winners round 1
+  Played as: round 1
+  Tie: 3
+  First: Kestrels
+  Second: bye
+  Where it stands: Kestrels through on a bye
+-
+  Round: winners round 1
+  Played as: round 1
+  Tie: 4
+  First: Ospreys
+  Second: bye
+  Where it stands: Ospreys through on a bye
+-
+  Round: losers round 1
+  Played as:
+  Tie: 1
+  First: bye
+  Second: Merlins (withdrawn)
+  Where it stands: void, nobody through
+-
+  Round: losers round 1
+  Played as:
+  Tie: 2
+  First: bye
+  Second: bye
+  Where it stands: empty
+-
+  Round: winners round 2
+  Played as: round 2
+  Tie: 1
+  First: Harriers
+  Second: Swifts
+  Where it stands: Harriers through
+-
+  Round: winners round 2
+  Played as: round 2
+  Tie: 2
+  First: Kestrels
+  Second: Ospreys
+  Where it stands: Kestrels through
+-
+  Round: losers round 2
+  Played as:
+  Tie: 1
+  First: Ospreys
+  Second: nobody (void)
+  Where it stands: Ospreys through on a bye
+-
+  Round: losers round 2
+  Played as:
+  Tie: 2
+  First: Swifts
+  Second: bye
+  Where it stands: Swifts through on a bye
+-
+  Round: losers round 3
+  Played as: paired next
+  Tie: 1
+  First: Ospreys
+  Second: Swifts
+  Where it stands: to be paired
+-
+  Round: winners final
+  Played as:
+  Tie: 1
+  First: Harriers
+  Second: Kestrels
+  Where it stands: to be paired
+-
+  Round: losers final
+  Played as:
+  Tie: 1
+  First: loser of winners final
+  Second: winner of losers round 3
+  Where it stands: waiting
+-
+  Round: grand final
+  Played as:
+  Tie: 1
+  First: winner of winners final
+  Second: winner of losers final
+  Where it stands: waiting
+-
+  Round: grand final reset
+  Played as:
+  Tie: 1
+  First: loser of grand final
+  Second: winner of grand final
+  Where it stands: waiting
+
+== The round its engine pairs next ==
+R3 [losers round 3]: ospreys-swifts
+
+== The same bracket, finished ==
+-
+  Round: winners round 1
+  Played as: round 1
+  Tie: 1
+  First: Harriers
+  Second: bye
+  Where it stands: Harriers through on a bye
+-
+  Round: winners round 1
+  Played as: round 1
+  Tie: 2
+  First: Merlins (withdrawn)
+  Second: Swifts
+  Where it stands: Swifts through
+-
+  Round: winners round 1
+  Played as: round 1
+  Tie: 3
+  First: Kestrels
+  Second: bye
+  Where it stands: Kestrels through on a bye
+-
+  Round: winners round 1
+  Played as: round 1
+  Tie: 4
+  First: Ospreys
+  Second: bye
+  Where it stands: Ospreys through on a bye
+-
+  Round: losers round 1
+  Played as:
+  Tie: 1
+  First: bye
+  Second: Merlins (withdrawn)
+  Where it stands: void, nobody through
+-
+  Round: losers round 1
+  Played as:
+  Tie: 2
+  First: bye
+  Second: bye
+  Where it stands: empty
+-
+  Round: winners round 2
+  Played as: round 2
+  Tie: 1
+  First: Harriers
+  Second: Swifts
+  Where it stands: Harriers through
+-
+  Round: winners round 2
+  Played as: round 2
+  Tie: 2
+  First: Kestrels
+  Second: Ospreys
+  Where it stands: Kestrels through
+-
+  Round: losers round 2
+  Played as:
+  Tie: 1
+  First: Ospreys
+  Second: nobody (void)
+  Where it stands: Ospreys through on a bye
+-
+  Round: losers round 2
+  Played as:
+  Tie: 2
+  First: Swifts
+  Second: bye
+  Where it stands: Swifts through on a bye
+-
+  Round: losers round 3
+  Played as: round 3
+  Tie: 1
+  First: Ospreys
+  Second: Swifts
+  Where it stands: Ospreys through
+-
+  Round: winners final
+  Played as: round 4
+  Tie: 1
+  First: Harriers
+  Second: Kestrels
+  Where it stands: Harriers through
+-
+  Round: losers final
+  Played as: round 5
+  Tie: 1
+  First: Kestrels
+  Second: Ospreys
+  Where it stands: Ospreys through
+-
+  Round: grand final
+  Played as: round 6
+  Tie: 1
+  First: Harriers
+  Second: Ospreys
+  Where it stands: Ospreys through
+-
+  Round: grand final reset
+  Played as: round 7
+  Tie: 1
+  First: Harriers
+  Second: Ospreys
+  Where it stands: Ospreys through
+
+== Final standings ==
+1. ospreys played=5 wins=4 draws=0 losses=1 value=12 for=0 against=0
+2. harriers played=4 wins=2 draws=0 losses=2 value=6 for=0 against=0
+3. kestrels played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+4. swifts played=3 wins=1 draws=0 losses=2 value=3 for=0 against=0
+5. merlins played=1 wins=0 draws=0 losses=1 value=0 for=0 against=0
+
+== Re-seeded, before the first round ==
+-
+  Round: semifinal
+  Played as: paired next
+  Tie: 1
+  First: Ines
+  Second: Wren
+  Where it stands: to be paired
+-
+  Round: semifinal
+  Played as: paired next
+  Tie: 2
+  First: Tomas
+  Second: Olu
+  Where it stands: to be paired
+-
+  Round: final
+  Played as:
+  Tie: 1
+  First: to be re-seeded
+  Second: to be re-seeded
+  Where it stands: waiting

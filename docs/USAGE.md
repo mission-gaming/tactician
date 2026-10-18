@@ -75,6 +75,11 @@ anything else that competes.
 | **Tie (elimination)** | One knockout pairing, played over one event or two mirrored legs (`legsPerTie`). A tie that finishes level (a drawn single event, or two legs that do not decide) is decided by the application under its own rules, and the participant who advances is recorded as the **decider** of the event's result, or of one leg's result. Ties are not legs: brackets have no legs concept. |
 | **Third-place tie** | An opt-in second tie in the last round of a single elimination bracket (`EliminationOptions(thirdPlace: true)`), between the two entrants who went out in the round before it. It decides places 3 and 4, which the bracket otherwise leaves to the records. It is in the same round as the final and has the same round label, so each event of that round carries which tie it belongs to (**bracket tie**). See [A third-place tie](#a-third-place-tie). |
 | **Bracket tie** | The typed statement of which tie of a bracket's last round an event belongs to (`BracketTie`: `Final` or `ThirdPlace`), written by the engine as a string under `bracket_tie` in the event's metadata and read back with `BracketTie::of()`. Present only on the events of the last round of a bracket with a third-place tie option. |
+| **Bracket view** | The structured view of an elimination bracket as its engine reads a stage state (`Bracket`, from `BracketViewEngine::getBracket()`): every round of every side, the rounds still to come included, each with its nodes and slots. It is enough to draw the bracket, and the English round labels are a rendering of it. See [Drawing the Bracket](#drawing-the-bracket). |
+| **Side (of a bracket)** | The part of a bracket a round belongs to (`BracketSide`): `Main` in single elimination; `Winners`, `Losers` and `GrandFinal` (the grand final and its reset) in double elimination. |
+| **Structural round** | A round of the shape of a bracket, counted 1, 2, 3 on its side whether or not it is played (`BracketRound::getRound()`), as against the number of a recorded round, which counts only the rounds that had an event to play, across sides. |
+| **Node (of a bracket)** | A tie at its place in a bracket view (`BracketNode`), identified as `<side>:<round>:<position>`, with its slots, its status (`BracketNodeStatus`), who went through and its recorded events. A pair of slots with one entrant or none is a node too. |
+| **Slot** | One place of a node (`BracketSlot`): the entrant who stands in it, or a **placeholder** (`SlotPlaceholder`) that says whom it waits for (the advancer or the loser of a node, or a re-seeded entrant) or why it will hold nobody (a bye, a void node before it, a node not played). |
 | **Options** | The typed per-algorithm configuration object a scheduler accepts (`RoundRobinOptions`, `SwissOptions`, `PotDrawOptions`): legs mean legs, rounds mean rounds, and passing another algorithm's options fails loudly. All options are plain-data constructible (`fromArray()`/`toArray()`) with stable identifiers for config-driven platforms. |
 | **Stage engine** | A results-driven pairing engine (`StageEngineInterface`): it consumes a `StageState` and produces the next `RoundPairing`, reports structural completion (`isComplete()`), and yields the `StageOutcome`. One driver loop covers every engine-based format. |
 | **Stage state** | The record of a results-driven stage between rounds (`StageState`): the entrant list, who has withdrawn, the recorded pairings (with byes), results, and adjustments. It is built verb by verb and stored (`toJson()`), or built on each request from a history the application holds (`StageState::fromHistory()`). Withdrawals are `withoutParticipant()`, a result of the last recorded round is corrected with `withResultReplaced()`, and an adjustment is recorded with `withAdjustment()`. |
@@ -3761,6 +3766,124 @@ $notPlayed = StageState::start([$alice, $bob, $carol, $dave])->withRoundPlayed($
 [$final] = $engine->pairNextRound($notPlayed)->getEvents();
 echo implode(' v ', array_map(fn (Participant $p) => $p->getLabel(), $final->getParticipants())) . "\n"; // Dave v Bob
 ```
+
+### Drawing the Bracket
+
+`getBracket()` gives the whole bracket as its engine reads the state: every
+round of every side, the rounds still to come included, each with its
+**nodes** (a tie at its place in the bracket) and each node with its
+**slots**. It is enough to draw a bracket of any kind without asking the
+engine anything else: byes, two-legged ties, a third-place tie, a losers
+bracket, withdrawals. Both elimination engines offer it
+(`BracketViewEngine`), and it can be asked at any point of the stage,
+before the first round, with a round in play or a tie that awaits its
+decider, and once the bracket is complete: it throws only for a state the
+engine cannot read at all.
+
+```php
+use MissionGaming\Tactician\Stage\BracketNode;
+use MissionGaming\Tactician\Stage\BracketSlot;
+
+$field = array_map(fn (string $name) => new Participant(strtolower($name), $name), ['Ana', 'Ben', 'Cy', 'Di', 'Ed']);
+$knockout = new SingleEliminationEngine();
+
+$slotText = fn (BracketSlot $slot): string => $slot->getParticipant()?->getLabel()
+    ?? trim($slot->getPlaceholder()?->value . ' ' . implode(',', $slot->getSourceNodes()));
+$draw = function (StageState $state) use ($knockout, $slotText): void {
+    foreach ($knockout->getBracket($state)->getRounds() as $round) {
+        echo $round->getLabel(), ': ', implode(' | ', array_map(
+            fn (BracketNode $node): string => implode(' v ', array_map($slotText, $node->getSlots())) . " ({$node->getStatus()->value})",
+            $round->getNodes()
+        )), "\n";
+    }
+};
+
+$draw(StageState::start($field));
+// quarterfinal: Ana v bye (bye) | Di v Ed (to-be-paired) | Ben v bye (bye) | Cy v bye (bye)
+// semifinal: Ana v advancer-of main:1:2 (awaiting-entrants) | Ben v Cy (to-be-paired)
+// final: advancer-of main:2:1 v advancer-of main:2:2 (awaiting-entrants)
+
+$quarterfinal = $knockout->pairNextRound(StageState::start($field));
+$draw(StageState::start($field)
+    ->withRoundPaired($quarterfinal)
+    ->withAdditionalResults([new Result($quarterfinal->getEvents()[0], $field[4])]));
+// quarterfinal: Ana v bye (bye) | Di v Ed (decided) | Ben v bye (bye) | Cy v bye (bye)
+// semifinal: Ana v Ed (to-be-paired) | Ben v Cy (to-be-paired)
+// final: advancer-of main:2:1 v advancer-of main:2:2 (awaiting-entrants)
+```
+
+A round (`BracketRound`) has a **side** (`BracketSide`: `Main` for single
+elimination; `Winners`, `Losers` and `GrandFinal` for double elimination),
+a **structural round** on that side (1, 2, 3 from the side's first round,
+played or not), the number of slots it is entered with, and its nodes in
+bracket order, top first. `getRoundNumber()` is the number of the recorded
+round it was read from, and null for a round still to come or a round
+nobody played because of withdrawals; `isNext()` marks the round
+`pairNextRound()` pairs, and `Bracket::getNextRound()` finds it.
+`getRounds()` lists the rounds in the order they are played: in double
+elimination winners round 1, losers round 1, then each later winners round
+followed by the losers rounds it feeds, the grand final and its reset.
+
+**The labels are a rendering of the view.** The engines label every round
+they pair with `BracketRoundLabel::of()` over the round's side, structural
+round and slot count, and `BracketRound::getLabel()` is the same call, so
+`'quarterfinal'`, `'losers round 3'` and `'grand final reset'` say nothing
+the view does not. An application that wants other words renders its own
+from the same values.
+
+A node (`BracketNode`) has an ID, `<side>:<round>:<position>` (`main:2:1`,
+`losers:3:2`, `grand-final:2:1`), by which a later slot names it and
+`Bracket::getNode()` finds it. Its status (`BracketNodeStatus`) says where
+it stands:
+
+| Status | The node |
+|--------|----------|
+| `AwaitingEntrants` | A slot still waits for the node it is filled from |
+| `ToBePaired` | Both entrants are known and in the stage, and it is not recorded yet (a node an entrant has left is `Uncontested`, or `Void` where both have, as its pairing will settle it) |
+| `InPlay` | It is recorded and an event of it awaits a result |
+| `AwaitingDecision` | Every result is in, the tie is level, and it awaits its decider |
+| `Decided` | Its results decided who went through |
+| `Uncontested` | An entrant withdrew and the other went through without the tie being played to its end |
+| `Bye` | One entrant stood alone and went through |
+| `Void` | Nobody went through: both entrants withdrew before either went through, or the one who stood alone had withdrawn |
+| `Empty` | Neither slot holds anybody |
+| `NotPlayed` | The bracket does not play it: a reset that is not due, a third-place tie a last round drawn by hand left out |
+
+`getAdvancer()` and `getLosers()` say who went through and who did not,
+`getEvents()` gives the recorded events of the node in leg order (two for a
+two-legged tie), and `getKind()` is `BracketTie::Final` for the final of a
+single elimination bracket and `BracketTie::ThirdPlace` for its
+third-place tie, which is a node of its own after the final in the last
+round, its slots filled from the losers of the two nodes before the final.
+
+A slot (`BracketSlot`) holds an entrant or a placeholder, exactly one of
+the two, and always says where it is filled from (`getSource()`:
+`Draw` for the entry fold, with the position in the entrant list;
+`AdvancerOf` or `LoserOf` a node, named by `getSourceNodes()`). Where it
+holds no entrant, its placeholder (`SlotPlaceholder`) says why:
+
+| Placeholder | Pending | The slot holds |
+|-------------|---------|----------------|
+| `AdvancerOf` | yes | The entrant who goes through from the node it names, once that is settled |
+| `LoserOf` | yes | The entrant who does not: a dropper to the losers bracket, an entrant of the third-place tie, the winners champion in the reset |
+| `Reseeded` | yes | One of the entrants who go through from the round before, placed by re-seeding once that round is settled |
+| `Bye` | no | Nobody: the entry fold gives the slot no entrant, or the node it is filled from had nobody to drop |
+| `Void` | no | Nobody: the node it is filled from sent nobody through |
+| `NotPlayed` | no | Nobody: the node is not played |
+
+`isWithdrawn()` marks an entrant who has withdrawn, as the bracket reads
+it: a withdrawal after the bracket was over is not read (see
+[Withdrawals from a Bracket](#withdrawals-from-a-bracket)).
+
+A round drawn by hand
+([Rounds the engine would have paired otherwise](#rounds-the-engine-would-have-paired-otherwise))
+is shown as it was recorded: a node for each of its ties, standing where
+the earlier of its two entrants stood, and one for each entrant it left
+alone. Such a round is `isManual()`, and the rounds after it are shaped from
+the nodes it has. The view is the engine's reading and is never stored: it
+has no `toArray()`, and the state stays the one record. Example
+[30](../examples/30-drawing-a-bracket.php) draws brackets of every kind
+from the view alone.
 
 ## Stages Resolved from Your Own Rows
 
