@@ -64,13 +64,12 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * participant each, because it is then the whole request written in
  * that order. It is not guaranteed when the classes are still larger
  * (two descriptions can be equal for participants that are not alike),
- * nor past the work limit below. The refinements that read the current
- * positions count their work apart, against the same limit, so that
- * reading them never cuts the refinement without them short; past it
- * they decide no more, and a choice they made before stays. They need
- * about twice the work of the refinement without them, so the hardest
- * request (below) is past their limit from 36 participants, and from
- * there its current positions decide only part of the order.
+ * nor past the work limits below. The refinements that read the current
+ * positions count their work apart, against a limit of twice the one
+ * without them (they need about twice the work, so that both are sized
+ * for the same requests), so that reading them never cuts the
+ * refinement without them short; past it they decide no more, and a
+ * choice they made before stays.
  *
  * The work is bounded by a count of its own (WORK_LIMIT: one for every
  * participant looked at and one for each of its opponents), not by a step
@@ -85,7 +84,7 @@ namespace MissionGaming\Tactician\Repack\Internal;
  * requests back to their ids that the whole limit orders, and the ids
  * would decide more at a small budget than at a large one. It costs at
  * most about a tenth of a second whatever the request and the budget,
- * and as much again where current positions are given.
+ * and about two tenths more where current positions are given.
  *
  * @internal
  */
@@ -99,14 +98,26 @@ final class StructuralOrder
      * is for this ordering: a complete round robin with a single round
      * played, in which everybody is alike and no two can simply be
      * exchanged, so that every participant left has to be tried at every
-     * step. That one needs about 1,300,000 (under a tenth of a second on
+     * step. That one needs about 1,340,000 (under a tenth of a second on
      * the machine it was measured on); with 36 participants it needs
-     * 870,000, with 44 it needs 1,900,000 and is past the limit, and its
+     * 880,000, with 42 it needs 1,620,000 and is past the limit, and its
      * participants are then put in id order from where the limit is
      * reached. Rounds played beyond the first tell the participants apart
      * and need far less.
      */
     public const int WORK_LIMIT = 1_500_000;
+
+    /**
+     * The limit of the refinements that read the current positions:
+     * twice WORK_LIMIT, sized for the same request. With every event of
+     * that round robin of 40 at a current position they need 2,610,000
+     * (about two tenths of a second), with 36 participants 1,720,000,
+     * and with 42 3,180,000, past this limit as the refinement without
+     * them is past its own. A limit of WORK_LIMIT stopped them from 36
+     * participants, and the moved events of such a request then followed
+     * the ids.
+     */
+    public const int POSITIONS_WORK_LIMIT = 2 * self::WORK_LIMIT;
 
     /** @var array<int, array<int, int>> Participant => opponent => movable events between them */
     private array $opponents;
@@ -122,8 +133,11 @@ final class StructuralOrder
 
     private int $work = 0;
 
-    /** What the refinements that read the current positions have looked at, against the same limit */
+    /** What the refinements that read the current positions have looked at, against $placedWorkLimit */
     private int $placedWork = 0;
+
+    /** Twice the work limit: POSITIONS_WORK_LIMIT when the work limit is WORK_LIMIT */
+    private readonly int $placedWorkLimit;
 
     /**
      * @param array<int, array{int, int}> $events
@@ -137,6 +151,7 @@ final class StructuralOrder
         private readonly int $workLimit,
         private readonly array $current
     ) {
+        $this->placedWorkLimit = $workLimit > intdiv(PHP_INT_MAX, 2) ? PHP_INT_MAX : 2 * $workLimit;
         $this->opponents = array_fill(0, $count, []);
         foreach ($events as [$a, $b]) {
             $this->opponents[$a][$b] = ($this->opponents[$a][$b] ?? 0) + 1;
@@ -150,7 +165,8 @@ final class StructuralOrder
      * @param array<int, array{int, int}> $events The movable events, as pairs of those numbers
      * @param array<int, array{int, int, int, int}> $pins The pinned events: [participant, participant, session, slot]
      * @param int $workLimit Work done before the rest falls to id order; the repacker always
-     *                       passes WORK_LIMIT, and the unit tests pass a smaller one to see the fallback
+     *                       passes WORK_LIMIT, and the unit tests pass a smaller one to see the fallback;
+     *                       the refinements that read the current positions may do twice as much
      * @param array<int, array{int, int, int, int}> $current The current positions of the movable
      *                                                       events that state one:
      *                                                       [participant, participant, session, slot].
@@ -251,7 +267,7 @@ final class StructuralOrder
             // Whether the current positions still decide between trials
             // with equal descriptions: not once their refinement is past
             // the limit
-            $byPlaced = $this->current !== [] && $this->placedWork <= $this->workLimit;
+            $byPlaced = $this->current !== [] && $this->placedWork <= $this->placedWorkLimit;
             foreach ($class as $first) {
                 if ($this->work > $this->workLimit) {
                     break;
@@ -511,8 +527,8 @@ final class StructuralOrder
      * refine(), with the current positions of each participant's events
      * read as well: each with its position in grid order and the class of
      * the opponent there. Its work is counted apart from refine()'s,
-     * against the same limit, so that reading the positions never stops
-     * the refinement the order is made from any sooner.
+     * against twice the work limit, so that reading the positions never
+     * stops the refinement the order is made from any sooner.
      *
      * @param list<list<int>> $classes
      *
@@ -523,7 +539,7 @@ final class StructuralOrder
         $positions = count($this->pins) + 1;
         $placedPositions = count($this->current) + 1;
         while (true) {
-            if ($this->placedWork > $this->workLimit) {
+            if ($this->placedWork > $this->placedWorkLimit) {
                 return [$classes, '', false];
             }
 

@@ -375,13 +375,17 @@ describe('StructuralOrder', function (): void {
         expect(StructuralOrder::of(40, $events, $pins))->toBe(StructuralOrder::of(40, $events, $pins, PHP_INT_MAX));
     });
 
-    it('never cuts the refinement short for reading the current positions', function (): void {
+    it('orders that round robin of forty with its current positions within their limit, and never cuts the refinement short for them', function (): void {
         // The same round robin of forty, every event where it was laid out.
-        // Reading the positions takes about twice the work and is past the
-        // limit here, but it is counted apart: the refinement without them
-        // still finishes, and the order is the one without them up to a
-        // symmetry of the request. Counted together, the refinement was
-        // cut short and the participants left fell to their positions alone
+        // Reading the positions takes about twice the work, 2,610,000, and
+        // has twice the limit: within it the order is the one unlimited
+        // work gives, so the ids decide nothing the positions could (at
+        // the limit of the refinement without them, 1,500,000, the
+        // positions stopped deciding from 36 participants). Their work is
+        // counted apart, so the refinement without them still finishes,
+        // and the order is the one without them up to a symmetry of the
+        // request; counted together, that refinement was cut short and the
+        // participants left fell to their positions alone
         $events = [];
         $pins = [];
         $current = [];
@@ -415,8 +419,10 @@ describe('StructuralOrder', function (): void {
             return $written;
         };
 
-        expect($form(StructuralOrder::of(40, $events, $pins, StructuralOrder::WORK_LIMIT, $current)))
-            ->toBe($form(StructuralOrder::of(40, $events, $pins)));
+        $order = StructuralOrder::of(40, $events, $pins, StructuralOrder::WORK_LIMIT, $current);
+
+        expect($order)->toBe(StructuralOrder::of(40, $events, $pins, PHP_INT_MAX, $current))
+            ->and($form($order))->toBe($form(StructuralOrder::of(40, $events, $pins)));
     });
 
     it('orders no participants as nothing, and participants with no events by their numbers', function (): void {

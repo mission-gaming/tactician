@@ -49,7 +49,7 @@ use MissionGaming\Tactician\Serialization\PlainData;
  * request (reading it, the passes over the events, one look at every
  * position for every event in the layout and the last placement step,
  * the audit), ordering the participants, which is bounded by a limit of
- * its own of about a tenth of a second (two under the objective
+ * its own of about a tenth of a second (a third under the objective
  * LeastChurn, which has the current positions read too) and is left
  * whole so that the
  * ids of a request decide no more at a small budget than at a large

@@ -553,7 +553,7 @@ signature changed.
     participants: a complete round robin with one round played, where
     everybody is alike and no two can simply be exchanged, needs
     1,330,000 (under a tenth of a second), with 36 participants 870,000
-    and with 44 participants 1,940,000, which is past it. The limit was
+    and with 42 participants 1,620,000, which is past it. The limit was
     600,000 at first, on the reasoning that five rounds played need
     100,000 to 500,000; with one round played a round robin of 36, 38 or
     40 then came back with other counts under other ids (40 on sessions
@@ -965,7 +965,7 @@ signature changed.
       three rounds played came back as other schedules under other
       participant ids at a budget below the default. Left whole it costs
       what it costs at the default, at most about a tenth of a second
-      whatever the request, as much again under `LeastChurn` (12 milliseconds on the seasons of 40 measured
+      whatever the request, up to about a third under `LeastChurn` (12 milliseconds on the seasons of 40 measured
       here), and the invariance holds at every budget as decision 39
       states it, with its two exceptions and no third: 2,840 requests
       at budgets of 1, 100, 2,000 and 20,000 steps, each under three
@@ -1359,18 +1359,32 @@ golden fixtures are untouched.
     kept, until no member is alike; between trials with equal
     descriptions, the one whose classes refine with the positions to the
     smaller description is chosen. That refinement counts its work
-    apart, against the same limit, and settles nothing but the choice;
+    apart, against a limit of its own (below), and settles nothing but the choice;
     one cut short by the limit decides nothing, and the trial chosen
     before it stays (when an empty description counted as the smallest,
     the trial under way at the limit was chosen, whichever it was). It
     takes about twice the work of the refinement without positions: a
     complete round robin with one round played and every other event
-    where it was laid out takes 1,370,000 at 34 participants and
-    2,610,000 at 40, so from 36 the positions decide only part of the
-    order, and the moved events of such a request can follow the ids
-    again (one of 36 with a few events elsewhere moved 85 to 147 under
-    four namings, one of 34 moved 72 under each). Sizing it for 40
-    would take about a tenth of a second more in that case.
+    where it was laid out takes 1,720,000 at 36 participants, 2,610,000
+    at 40 and 3,180,000 at 42. Its limit is therefore twice the other,
+    3,000,000, so that both are sized for that round robin of 40. With
+    the same limit as the other, the positions stopped deciding partway
+    through the order from 36 participants, and the moved events of
+    such a request followed the ids again: one of 36 with a few events
+    elsewhere moved 85 to 147 under four namings, one of 40 112 to 197.
+    With twice the limit, three such requests each of 36, 38 and 40,
+    renamed eight times, gave the same figures every time (61 to 322
+    moved events); from 42, past both limits, they differ (224 to 241
+    under four namings of one of 42). The ordering of that round robin
+    takes about 0.3 seconds then, against 0.2 with the same limit and
+    0.1 without positions, at 40 to 60 participants; requests whose
+    classes split sooner take what they took.
+    In a class whose members can be exchanged, the trial with the
+    smallest description is kept rather than the first in id order.
+    That is what makes the choice independent of the ids in general,
+    but no request found tells the two apart (9,000 complete graphs
+    with random current positions, renamed three times each, among
+    them): it is a safeguard no test shows to be needed.
     Events of the same two participants are ordered by
     current position before id (an event that states none last). The
     refinement itself does not read them, so the classes, and the order

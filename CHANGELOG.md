@@ -613,7 +613,7 @@ entry on the engine fingerprint.
   there are two known exceptions in which the ids decide and the counts
   differ. The ordering may do a fixed amount of work, sized for 40
   participants: in a larger request in which everybody is alike and no
-  two participants can simply be exchanged (a complete round robin of 44
+  two participants can simply be exchanged (a complete round robin of 42
   or more with one round already played) it stops and falls back to the
   ids. And two participants that differ, but are equal in everything the
   ordering compares, are ordered by id: a request built for the purpose
@@ -1561,9 +1561,13 @@ entry on the engine fingerprint.
   request exchanges; renaming every participant and event changed no
   figure on 3,455 generated requests, double round robins among them,
   where 19 of 560 changed before the current positions decided. Reading
-  the current positions has a work limit of its own, which a complete
-  round robin with one round played passes from 36 participants; the
-  moved events of such a request can then follow the ids. Without
+  the current positions takes about twice the work of the ordering and
+  has a work limit of its own, twice the ordering's, so that both are
+  sized for a complete round robin of 40 with one round played: on such
+  round robins of 36, 38 and 40 with some events elsewhere, renamed eight
+  times each, no figure changed (with the limit of the ordering, they
+  stopped deciding from 36 and the moved events followed the ids); from
+  42, past both limits, they can follow the ids. Without
   `LeastChurn` the order is the one a request with no objective has, and
   the count of moved events can depend on the ids, because the schedule
   is the same under other ids only up to a symmetry of the request.
