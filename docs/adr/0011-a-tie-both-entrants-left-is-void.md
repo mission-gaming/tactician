@@ -43,8 +43,13 @@ everywhere else: a round that names an entrant, in an event or as a bye, was
 paired while it was in, whatever round its withdrawal states. Reading the
 moment at the next tie, and not at the next round, means that a withdrawal
 recorded before a round that does not name the entrant (a winners round, for
-an entrant in the losers bracket) changes nothing; the two orders of recording
-read the same.
+an entrant in the losers bracket) changes nothing for a tie the entrant was
+paired in. One reading is left that a round that does not name the entrant
+cannot settle: a losers round with no tie to play is not recorded, and is read
+from who was in the stage when the next recorded round was paired. An entrant
+who went on alone from it and withdraws while that round (a winners round) is
+played is placed one stage lower when the withdrawal is recorded first; who
+goes on, the rounds and the winner are the same.
 
 **The last tie of a bracket has no next tie.** The final, the third-place tie,
 the grand final and its reset are void whenever both of their entrants have
@@ -83,8 +88,8 @@ A tie is pairwise, and so is this rule ([0003](0003-multi-participant-events-are
 
 ## Consequences
 
-- A history read where every withdrawal states its round is read as it was
-  played, measured against a model that knows when everything happened (see
+- A history whose rounds are recorded when they are paired, and whose
+  withdrawals state their rounds, is read as it was played, measured against a model that knows when everything happened (see
   the pull request that introduced this record for the figures).
 - A bracket can end with nobody in its first tier. Every selector that reads
   ranks reads a table whose first tier holds two withdrawn finalists, level:
@@ -101,4 +106,6 @@ A tie is pairwise, and so is this rule ([0003](0003-multi-participant-events-are
   withdrawn") holds the cases, and `tests/Feature/EliminationInvariantsTest.php`
   the sweeps: a withdrawal takes back nothing a result decided, and a bracket
   is read the same whether a round or the withdrawals during it are recorded
-  first.
+  first (in double elimination, of the entrants the round names; the case
+  above where it does not is pinned in `StageTimesTest`, "a round that is
+  recorded after it was paired").

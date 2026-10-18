@@ -1412,11 +1412,16 @@ entry on the engine fingerprint.
     **To a state a round is paired when it is recorded.** An application
     that pairs a round, has it played and records it only then (the loop
     in the README) records what happens during that round before the
-    round. A withdrawal is read correctly either way, the first round
-    included: a round that names a participant, in an event or as a bye,
-    was paired while it was in the stage, and the engines read that before
-    the round its withdrawal states, in all three engines. One thing it
-    asks of an application: no
+    round. A withdrawal of an entrant the round names is read correctly
+    either way, the first round included: a round that names a
+    participant, in an event or as a bye, was paired while it was in the
+    stage, and the engines read that before the round its withdrawal
+    states, in all three engines. A round says nothing of an entrant it
+    does not name: in double elimination an entrant who went on alone from
+    a losers round with no tie to play (which is not recorded) and
+    withdraws while the next winners round is played is placed one stage
+    lower when the withdrawal is recorded first; who goes on and every
+    round are the same. One thing it asks of an application: no
     round may name a participant who had left before it was paired (among
     byes listed as everyone without an event, for example: the participant
     is then read as in the stage for that round and every round before

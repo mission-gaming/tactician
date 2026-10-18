@@ -1516,8 +1516,27 @@ it('reads a bracket the same whether a round or the withdrawals during it are re
                 // the first round included: a state that holds no round keeps the
                 // withdrawal with round 0, and the first round says the entrant was in
                 // the draw
+                // In double elimination they are entrants the round names: a
+                // round of one bracket does not name an entrant of the other,
+                // and the limit that leaves is pinned in StageTimesTest ("a
+                // round that is recorded after it was paired")
                 $leaving = [];
                 $active = array_values($whenPaired->getParticipants());
+                if (str_starts_with($variant, 'double')) {
+                    $named = [];
+                    foreach ($pairing->getEvents() as $event) {
+                        foreach ($event->getParticipants() as $participant) {
+                            $named[$participant->getId()] = true;
+                        }
+                    }
+                    foreach ($pairing->getByes() as $participant) {
+                        $named[$participant->getId()] = true;
+                    }
+                    $active = array_values(array_filter(
+                        $active,
+                        static fn(Participant $participant): bool => isset($named[$participant->getId()])
+                    ));
+                }
                 for ($i = $rng->getInt(0, 2); $i > 0 && count($active) > count($leaving); --$i) {
                     $leaving[$active[$rng->getInt(0, count($active) - 1)]->getId()] = true;
                 }

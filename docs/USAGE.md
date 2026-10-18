@@ -4176,13 +4176,22 @@ application that pairs a round, has it played and records it only then
 (the loop in the README) records whatever happens while the round is
 played *before* the round:
 
-- **A withdrawal is read correctly either way.** A round that names a
-  participant, in an event or as a bye, was paired while that participant
-  was in the stage, and the engines read that before the round the
-  withdrawal states: the entrant is in the round, and gives its tie away
-  there. That holds for the first round too: a withdrawal before any round
-  is recorded is kept after round 0, and the first round, recorded
-  afterwards, gives the entrant its place back where it names it.
+- **A withdrawal of an entrant the round names is read correctly either
+  way.** A round that names a participant, in an event or as a bye, was
+  paired while that participant was in the stage, and the engines read
+  that before the round the withdrawal states: the entrant is in the
+  round, and gives its tie away there. That holds for the first round
+  too: a withdrawal before any round is recorded is kept after round 0,
+  and the first round, recorded afterwards, gives the entrant its place
+  back where it names it. A round that does not name an entrant says
+  nothing of it, and that shows in one place: in double elimination, a
+  losers round with no tie to play is not recorded, and is read from who
+  was in the stage when the next recorded round, often a winners round,
+  was paired. An entrant who went on alone from such a losers round and
+  withdraws while that winners round is played is placed one stage
+  lower when the withdrawal is recorded before the winners round than
+  when the round is recorded first. Who goes on, every round and the
+  winner are the same either way.
 - **A round is not to name somebody who had left before it was paired.**
   The same rule reads every such name as a fact. A list of byes that takes
   in everyone without an event, a withdrawn entrant among them, says that

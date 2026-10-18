@@ -1091,6 +1091,43 @@ describe('a round that is recorded after it was paired', function (): void {
 describe('the match outcome selector over a bracket a finalist withdrew from', function (): void {
     /**
      * A bracket of four played up to its last tie, which is between the
+    // The limit of that reading: a round names only its own entrants. In
+    // double elimination a losers round with no tie to play is not
+    // recorded, and is read from who was in the stage when the round after
+    // it was paired, which can be a winners round that does not name its
+    // entrant. A withdrawal while that winners round is played, recorded
+    // before it, is then read as made before the losers round: the entrant
+    // is placed one stage lower. Nothing else changes.
+    it('places one stage lower, in double elimination, an entrant of an unrecorded losers round who leaves during the next winners round, recorded first', function () use ($next): void {
+        $engine = new DoubleEliminationEngine();
+        $field = timesField(4);
+
+        // Winners round 1 is p1 v p4 and p2 v p3: p1 leaves, p3 wins. The
+        // first losers round, p1 v p2, has no tie to play and is not recorded:
+        // p2 goes on alone. The winners final, p3 v p4, is paired and won by
+        // p3, and p2 leaves while it is played.
+        $state = StageState::start($field);
+        $first = $engine->pairNextRound($state);
+        $state = $state->withRoundPlayed($first, [])->withoutParticipant($field[0])
+            ->withAdditionalResults([new Result($first->getEvents()[1], $field[2])]);
+        $winnersFinal = $engine->pairNextRound($state);
+        $results = [new Result($winnersFinal->getEvents()[0], $field[2])];
+
+        $recordedWhenPaired = $state->withRoundPlayed($winnersFinal, $results)->withoutParticipant($field[1]);
+        $recordedWhenPlayed = $state->withoutParticipant($field[1])->withRoundPlayed($winnersFinal, $results);
+
+        // Recorded first, the round says p2 left during it: p2 went through
+        // the first losers round and goes out in the losers final. Recorded
+        // after the withdrawal, which states round 1, nothing says p2 was
+        // still in when the first losers round was due: it goes out there,
+        // with p1
+        expect(timesPairs($first))->toBe(['p1 v p4', 'p2 v p3'])
+            ->and($winnersFinal->getLabel())->toBe('winners final')
+            ->and($next($engine, $recordedWhenPlayed))->toBe($next($engine, $recordedWhenPaired))
+            ->and(timesTiers($engine->getStandings($recordedWhenPaired)))->toBe(['p1' => 2, 'p2' => 1, 'p3' => 0, 'p4' => 0])
+            ->and(timesTiers($engine->getStandings($recordedWhenPlayed)))->toBe(['p1' => 2, 'p2' => 2, 'p3' => 0, 'p4' => 0]);
+    });
+
      * two entrants returned.
      *
      * @return array{SingleEliminationEngine|DoubleEliminationEngine, StageState, Participant, Participant}

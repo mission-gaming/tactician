@@ -28,7 +28,14 @@ use MissionGaming\Tactician\Exceptions\InvalidInputException;
  * paired while the participant was in the stage, and so is every round
  * before it, whatever round its withdrawal states: a round is not to name a
  * participant who had left before it was paired (see
- * StageState::withoutParticipant()).
+ * StageState::withoutParticipant()). A round that does not name a
+ * participant says nothing of it, and a withdrawal recorded before that
+ * round is read as made before it was paired. In double elimination that
+ * includes a winners round for an entrant of a losers round that had no
+ * tie to play and was not recorded: an entrant who went on alone from
+ * such a round and leaves while the next winners round is played is
+ * placed one stage lower when the withdrawal is recorded before that
+ * winners round than when the round is recorded first.
  *
  * Round 0 covers the first round in the same way. A participant who
  * withdrew after round 0 was in the draw when the first round names it
