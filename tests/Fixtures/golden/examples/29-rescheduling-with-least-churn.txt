@@ -1,0 +1,136 @@
+# The results of examples/29-rescheduling-with-least-churn.php, one section per named result.
+# Schedules, pairings and repack outcomes are written as in the other
+# golden files; a played event is `R<round>: a-b => winner`, a standings
+# row lists its counts, ranking value and tiebreaker values, and a value
+# measured while the example runs is written as its unit and the reason
+# it is not pinned.
+#
+# A difference from this file means the example now computes something
+# else, because the library changed or because the script was edited.
+# Review it, then regenerate with `composer golden-update`.
+
+== Games by id ==
+g01: Rink Aspen v Rink Juniper
+g02: Rink Birch v Rink Hazel
+g03: Rink Cedar v Rink Fir
+g04: Rink Dogwood v Rink Elm
+g05: Rink Aspen v Rink Hazel
+g06: Rink Juniper v Rink Fir
+g07: Rink Birch v Rink Elm
+g08: Rink Cedar v Rink Dogwood
+g09: Rink Aspen v Rink Fir
+g10: Rink Hazel v Rink Elm
+g11: Rink Juniper v Rink Dogwood
+g12: Rink Birch v Rink Cedar
+g13: Rink Aspen v Rink Elm
+g14: Rink Fir v Rink Dogwood
+g15: Rink Hazel v Rink Cedar
+g16: Rink Juniper v Rink Birch
+g17: Rink Aspen v Rink Dogwood
+g18: Rink Elm v Rink Cedar
+g19: Rink Fir v Rink Birch
+g20: Rink Hazel v Rink Juniper
+g21: Rink Aspen v Rink Cedar
+g22: Rink Dogwood v Rink Birch
+g23: Rink Elm v Rink Juniper
+g24: Rink Fir v Rink Hazel
+g25: Rink Aspen v Rink Birch
+g26: Rink Cedar v Rink Juniper
+g27: Rink Dogwood v Rink Hazel
+g28: Rink Elm v Rink Fir
+
+== Where each game was ==
+g01: 2026-11-06T00:30:00Z
+g02: 2026-11-06T00:30:00Z
+g03: 2026-11-06T00:30:00Z
+g04: 2026-11-06T00:30:00Z
+g05: 2026-11-06T02:45:00Z
+g06: 2026-11-06T02:45:00Z
+g07: 2026-11-06T02:45:00Z
+g08: 2026-11-06T02:45:00Z
+g09: 2026-11-13T00:30:00Z
+g10: 2026-11-13T00:30:00Z
+g11: 2026-11-13T00:30:00Z
+g12: 2026-11-13T00:30:00Z
+g13: 2026-11-13T02:45:00Z
+g14: 2026-11-13T02:45:00Z
+g15: 2026-11-13T02:45:00Z
+g16: 2026-11-13T02:45:00Z
+g17: no time: its night was lost
+g18: no time: its night was lost
+g19: no time: its night was lost
+g20: no time: its night was lost
+g21: no time: its night was lost
+g22: no time: its night was lost
+g23: no time: its night was lost
+g24: no time: its night was lost
+g25: 2026-11-27T00:30:00Z
+g26: 2026-11-27T00:30:00Z
+g27: 2026-11-27T00:30:00Z
+g28: 2026-11-27T00:30:00Z
+
+== Repacked with the fewest moved games ==
+assignments: 20
+  g09 => session 1, slot 0, kickoff 2026-11-13T00:30:00Z
+  g10 => session 1, slot 0, kickoff 2026-11-13T00:30:00Z
+  g11 => session 1, slot 0, kickoff 2026-11-13T00:30:00Z
+  g12 => session 1, slot 0, kickoff 2026-11-13T00:30:00Z
+  g13 => session 1, slot 1, kickoff 2026-11-13T02:45:00Z
+  g14 => session 1, slot 1, kickoff 2026-11-13T02:45:00Z
+  g15 => session 1, slot 1, kickoff 2026-11-13T02:45:00Z
+  g16 => session 1, slot 1, kickoff 2026-11-13T02:45:00Z
+  g17 => session 3, slot 0, kickoff 2026-12-04T00:30:00Z
+  g18 => session 3, slot 1, kickoff 2026-12-04T02:45:00Z
+  g19 => session 2, slot 1, kickoff 2026-11-27T02:45:00Z
+  g20 => session 2, slot 1, kickoff 2026-11-27T02:45:00Z
+  g21 => session 2, slot 1, kickoff 2026-11-27T02:45:00Z
+  g22 => session 3, slot 1, kickoff 2026-12-04T02:45:00Z
+  g23 => session 3, slot 0, kickoff 2026-12-04T00:30:00Z
+  g24 => session 3, slot 0, kickoff 2026-12-04T00:30:00Z
+  g25 => session 2, slot 0, kickoff 2026-11-27T00:30:00Z
+  g26 => session 2, slot 0, kickoff 2026-11-27T00:30:00Z
+  g27 => session 2, slot 0, kickoff 2026-11-27T00:30:00Z
+  g28 => session 2, slot 0, kickoff 2026-11-27T00:30:00Z
+unplaced: 0
+violations: 2
+  late_start participant=birch session=3 first_slot=1
+  late_start participant=cedar session=3 first_slot=1
+
+== Moved, with the objective ==
+(none)
+
+== Moved, without it ==
+- g09
+- g10
+- g11
+- g12
+- g13
+- g14
+- g15
+- g16
+- g25
+- g26
+- g27
+- g28
+
+== Figures ==
+-
+  Repack: With no objective
+  Unplaced: 0
+  Gap slots: 0
+  Lone-event sessions: 0
+  Idle sessions: 0
+  Moved: 12
+-
+  Repack: Fewest moved games
+  Unplaced: 0
+  Gap slots: 0
+  Lone-event sessions: 0
+  Idle sessions: 0
+  Moved: 0
+
+== Fewest nights that hold the season ==
+Nights: 4
+Ruled out by counting: 1, 2, 3
+Repacks run: 1
+Proven the fewest: true

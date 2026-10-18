@@ -131,6 +131,11 @@ where a link is given.
 - **Some intervals have no plain-data form.** A timeline or a grid built with an interval from `DateInterval::createFromDateString()`, with one from `diff()` that has hours, minutes or seconds, or with one that has a fraction of a second or a sign, works and cannot be written by `toArray()` ([usage guide](USAGE.md#timeline-assignment)).
 - **`ScheduleOptimizer` samples; it does not search.** It keeps the best of N seeded candidates and works with whole-schedule generators only ([design note](design/schedule-quality.md)).
 
+**Repack**
+
+- **Repack objectives are not optimised exactly, and rank after events placed and gap slots.** `RepackObjective::LeastChurn` is searched for by holding events where they are and letting go of them where that costs an event or a gap slot; the other two objectives are a tie-break and a repair by single moves. Where the schedule that exists has a gap another schedule avoids, the fewest moved events can end as the schedule made with no objective, in which most events move. Which events stay unplaced is not chosen by an objective, and without `LeastChurn` the count of moved events can depend on the ids of the request ([usage guide](USAGE.md#objectives), [design note](design/schedule-repack.md#objectives-030)).
+- **The shortest grid is the shortest the repacker finds.** `ShortestGridFinder` tries one number of sessions after another and proves a smaller number impossible by counting only; where a repack leaves an event unplaced on a smaller grid, that grid may still hold a placement ([usage guide](USAGE.md#the-shortest-grid)).
+
 ## Deferred work
 
 Not planned. Each item waits for a concrete need.

@@ -36,7 +36,9 @@ jobs:
   # changes took 35 minutes on twelve cores, which is about 0.12 minutes a
   # change on the four cores of a standard runner. The shards of
   # src/Scheduling hold about 650 to 700 changes each (some 80 minutes at
-  # that rate), the first two of src/Repack/Internal about 440 each, and the
+  # that rate), the first two of src/Repack/Internal about 440 each (the
+  # second of them before the two files of the outcome's figures joined it,
+  # which have not been measured), and the
   # recolouring shard, four files, not yet measured. The limit is
   # more than twice the estimate, because the rate is not even: a change that
   # makes a search run for ever costs its whole time limit.
@@ -84,7 +86,7 @@ jobs:
           - shard: repack load planning
             path: src/Repack/Internal/LoadPlanner.php,src/Repack/Internal/LoadPlan.php,src/Repack/Internal/StepBudget.php,src/Repack/Internal/BudgetExhausted.php,src/Repack/Internal/CanonicalEncoding.php
           - shard: repack session packing
-            path: src/Repack/Internal/SessionPacker.php,src/Repack/Internal/ContiguityTargets.php,src/Repack/Internal/IntervalPlacement.php,src/Repack/Internal/RepackAuditor.php
+            path: src/Repack/Internal/SessionPacker.php,src/Repack/Internal/ContiguityTargets.php,src/Repack/Internal/IntervalPlacement.php,src/Repack/Internal/RepackAuditor.php,src/Repack/Internal/PlacementMetrics.php,src/Repack/Internal/ObjectivePolish.php
           - shard: repack recolouring
             path: src/Repack/Internal/LeftoverRecolourer.php,src/Repack/Internal/RoundColouring.php,src/Repack/Internal/StructuralOrder.php,src/Repack/Internal/GapSearch.php
 

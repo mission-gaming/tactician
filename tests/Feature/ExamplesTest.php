@@ -1265,6 +1265,54 @@ $demonstrations = [
             'Not level with Seal' => 'orca',
         ]);
     },
+
+    // A night is lost and one is added: asked for the fewest moved events, the repack leaves every event
+    // that says where it is at its time and places the eight of the lost night in the free slots; without
+    // the objective the same events are placed and twelve of them move. The shortest grid is proven
+    '29-rescheduling-with-least-churn' => function (array $results): void {
+        $keeping = exampleResult($results, 'Repacked with the fewest moved games', RepackOutcome::class);
+        $was = exampleArray($results, 'Where each game was');
+
+        // 28 games: eight played, twelve with a time, eight whose night was lost
+        $lost = array_keys(array_filter($was, static fn(mixed $at): bool => !$at instanceof DateTimeImmutable));
+        expect($was)->toHaveCount(28)
+            ->and($lost)->toBe(['g17', 'g18', 'g19', 'g20', 'g21', 'g22', 'g23', 'g24'])
+            ->and($keeping->getAssignments())->toHaveCount(20)
+            ->and($keeping->getUnplacedCount())->toBe(0)
+            ->and($keeping->getGapSlotCount())->toBe(0);
+
+        // Every game that had a time on the new grid is still at it
+        foreach ($keeping->getAssignments() as $assignment) {
+            $at = $was[$assignment->getEventId()];
+            if ($at instanceof DateTimeImmutable) {
+                expect($assignment->getKickoff()->getTimestamp())->toBe($at->getTimestamp());
+            }
+        }
+
+        // The games of the lost night are in the two draws that were free and on the night that was added
+        $taken = [];
+        foreach ($lost as $id) {
+            $assignment = $keeping->getAssignmentFor($id);
+            assert($assignment !== null);
+            $taken["{$assignment->getSession()}/{$assignment->getSlot()}"] = true;
+        }
+        ksort($taken);
+        expect(array_keys($taken))->toBe(['2/1', '3/0', '3/1']);
+
+        expect($results['Moved, with the objective'])->toBe([])
+            ->and($results['Moved, without it'])->toHaveCount(12)
+            ->and($results['Figures'])->toBe([
+                ['Repack' => 'With no objective', 'Unplaced' => 0, 'Gap slots' => 0, 'Lone-event sessions' => 0, 'Idle sessions' => 0, 'Moved' => 12],
+                ['Repack' => 'Fewest moved games', 'Unplaced' => 0, 'Gap slots' => 0, 'Lone-event sessions' => 0, 'Idle sessions' => 0, 'Moved' => 0],
+            ])
+            // Seven games a rink need seven draws: three nights of two are ruled out by counting
+            ->and($results['Fewest nights that hold the season'])->toBe([
+                'Nights' => 4,
+                'Ruled out by counting' => '1, 2, 3',
+                'Repacks run' => 1,
+                'Proven the fewest' => true,
+            ]);
+    },
 ];
 
 /**

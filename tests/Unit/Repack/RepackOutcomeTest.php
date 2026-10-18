@@ -159,8 +159,80 @@ describe('RepackOutcome construction', function (): void {
     });
 
     it('keeps the budget flag out of the plain data', function (): void {
-        expect((new RepackOutcome([], [], [], true))->toArray())->toBe(['format_version' => 1, 'assignments' => [], 'unplaced' => [], 'violations' => []]);
+        expect((new RepackOutcome([], [], [], true))->toArray())->toBe([
+            'format_version' => 1,
+            'assignments' => [],
+            'unplaced' => [],
+            'violations' => [],
+            'metrics' => ['unplaced' => 0, 'gap_slots' => 0, 'lone_event_sessions' => [], 'idle_sessions' => 0, 'moved' => []],
+        ]);
     });
+});
+
+describe('RepackOutcome figures', function (): void {
+    it('counts the unplaced events and the gap slots from its own lists', function (): void {
+        $a = new Participant('a', 'A');
+        $b = new Participant('b', 'B');
+        $outcome = new RepackOutcome(
+            [],
+            [new UnplacedEvent('m1', UnplacedReason::NoSlotAvailable), new UnplacedEvent('m2', UnplacedReason::NoSlotAvailable)],
+            [
+                new ContiguityBroken($a, 0, 2, [0, 3]),
+                new ContiguityBroken($b, 1, 1, [0, 2]),
+                // A late start is no wait between two events
+                new LateStart($a, 2, 4),
+            ]
+        );
+
+        expect($outcome->getUnplacedCount())->toBe(2)
+            ->and($outcome->getGapSlotCount())->toBe(3);
+    });
+
+    it('holds the lone-event sessions, the idle sessions and the moved events it is given, and none when given none', function (): void {
+        $stated = new RepackOutcome([], [], [], false, [1, 4], 3, ['m2', 'm7']);
+        $silent = new RepackOutcome([], [], []);
+
+        expect($stated->getLoneEventSessions())->toBe([1, 4])
+            ->and($stated->getLoneEventSessionCount())->toBe(2)
+            ->and($stated->getIdleSessionCount())->toBe(3)
+            ->and($stated->getMovedEventIds())->toBe(['m2', 'm7'])
+            ->and($stated->getMovedCount())->toBe(2)
+            ->and($silent->getLoneEventSessions())->toBe([])
+            ->and($silent->getIdleSessionCount())->toBe(0)
+            ->and($silent->getMovedEventIds())->toBe([])
+            ->and($silent->getMovedCount())->toBe(0);
+    });
+
+    it('writes the figures last in its plain data, and leaves them out of the fingerprint', function (): void {
+        $stated = new RepackOutcome([], [new UnplacedEvent('m1', UnplacedReason::NoSlotAvailable)], [], false, [1, 4], 3, ['m2', 'm7']);
+        $silent = new RepackOutcome([], [new UnplacedEvent('m1', UnplacedReason::NoSlotAvailable)], []);
+
+        expect(array_keys($stated->toArray()))->toBe(['format_version', 'assignments', 'unplaced', 'violations', 'metrics'])
+            ->and($stated->toArray()['metrics'])->toBe([
+                'unplaced' => 1,
+                'gap_slots' => 0,
+                'lone_event_sessions' => [1, 4],
+                'idle_sessions' => 3,
+                'moved' => ['m2', 'm7'],
+            ])
+            ->and($stated->fingerprint())->toBe($silent->fingerprint());
+    });
+
+    it('does not call an outcome unclean for a figure', function (): void {
+        expect((new RepackOutcome([], [], [], false, [0], 2, ['m1']))->isClean())->toBeTrue();
+    });
+
+    it('refuses figures that are not what they are declared to be', function (array $lone, int $idle, array $moved, string $message): void {
+        // Through reflection, because the declared types of the arguments
+        // are the very thing these values break
+        expect(static fn(): RepackOutcome => (new ReflectionClass(RepackOutcome::class))->newInstance([], [], [], false, $lone, $idle, $moved))
+            ->toThrow(InvalidInputException::class, $message);
+    })->with([
+        'a session that is no integer' => [['1'], 0, [], 'Every lone-event session of a repack outcome must be a session index of 0 or more; the entry at key 0 is of type string'],
+        'a negative session' => [[0, -1], 0, [], 'Every lone-event session of a repack outcome must be a session index of 0 or more; the entry at key 1 is -1'],
+        'a negative count of idle sessions' => [[], -1, [], 'The idle sessions of a repack outcome are a count of 0 or more, -1 given'],
+        'a moved event that is no id' => [[], 0, ['m1', 7], 'Every moved event of a repack outcome must be an event id, a string; the entry at key 1 is of type int'],
+    ]);
 });
 
 describe('SlotAssignment without a kickoff', function (): void {

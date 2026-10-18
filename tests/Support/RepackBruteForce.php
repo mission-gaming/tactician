@@ -6,7 +6,10 @@ namespace MissionGaming\Tactician\Tests\Support;
 
 use MissionGaming\Tactician\Repack\MovableEvent;
 use MissionGaming\Tactician\Repack\PinnedEvent;
+use MissionGaming\Tactician\Repack\RepackOutcome;
+use MissionGaming\Tactician\Repack\RepackRequest;
 use MissionGaming\Tactician\Repack\SessionGrid;
+use MissionGaming\Tactician\Repack\SlotAssignment;
 
 /**
  * The most movable events any placement of a repack request can hold,
@@ -181,6 +184,87 @@ final class RepackBruteForce
         $search(0, 0);
 
         return $fewest;
+    }
+
+    /**
+     * The fewest moved events any placement can have that places the most
+     * events with the fewest gap slots: the reference for "least churn".
+     * A placed event is moved when it states a current position and is
+     * somewhere else; an event that is left out is not moved.
+     *
+     * Every legal placement of maxPlaced() events is tried, and no bound
+     * but the count of events cuts a branch. The gap slots and the moved
+     * events of a finished placement are counted by RepackFigures, from
+     * their definitions.
+     *
+     * @param array<MovableEvent> $movable
+     * @param array<PinnedEvent> $pinned
+     *
+     * @return array{int, int} The fewest gap slots, and the fewest moved events among the
+     *                         placements that have them
+     *
+     * @throws \MissionGaming\Tactician\Exceptions\InvalidConfigurationException
+     *         Never in practice: only positions the grid has are asked for
+     * @throws \MissionGaming\Tactician\Exceptions\InvalidInputException Never in practice
+     */
+    public static function fewestGapSlotsThenMoved(array $movable, array $pinned, SessionGrid $grid): array
+    {
+        $most = self::maxPlaced($movable, $pinned, $grid);
+        $request = new RepackRequest($movable, $pinned, $grid);
+        $movable = array_values($movable);
+        $capacity = $grid->getCapacityLimit() ?? count($movable) + count($pinned);
+
+        $positions = [];
+        $room = [];
+        $busy = [];
+        for ($session = 0; $session < $grid->getSessionCount(); ++$session) {
+            for ($slot = 0; $slot < $grid->getSlotCount($session); ++$slot) {
+                $positions[] = [$session, $slot];
+                $room["{$session}:{$slot}"] = $capacity;
+            }
+        }
+        foreach ($pinned as $pin) {
+            --$room["{$pin->getSession()}:{$pin->getSlot()}"];
+            foreach ($pin->getParticipants() as $participant) {
+                $busy["{$pin->getSession()}:{$pin->getSlot()}:{$participant->getId()}"] = true;
+            }
+        }
+
+        $best = [PHP_INT_MAX, PHP_INT_MAX];
+        /** @var array<int, SlotAssignment> $assigned */
+        $assigned = [];
+        $search = static function (int $next) use (&$search, &$best, &$assigned, &$room, &$busy, $movable, $positions, $most, $request): void {
+            if (count($assigned) + count($movable) - $next < $most) {
+                return;
+            }
+            if ($next === count($movable)) {
+                $outcome = new RepackOutcome(array_values($assigned), [], []);
+                $best = min($best, [RepackFigures::gapSlots($request, $outcome), count(RepackFigures::moved($request, $outcome))]);
+
+                return;
+            }
+
+            $event = $movable[$next];
+            $a = $event->getParticipantA()->getId();
+            $b = $event->getParticipantB()->getId();
+            foreach ($positions as [$session, $slot]) {
+                $at = "{$session}:{$slot}";
+                if ($room[$at] < 1 || isset($busy["{$at}:{$a}"]) || isset($busy["{$at}:{$b}"])) {
+                    continue;
+                }
+                --$room[$at];
+                $busy["{$at}:{$a}"] = true;
+                $busy["{$at}:{$b}"] = true;
+                $assigned[$next] = new SlotAssignment($event->getId(), $session, $slot, null);
+                $search($next + 1);
+                ++$room[$at];
+                unset($busy["{$at}:{$a}"], $busy["{$at}:{$b}"], $assigned[$next]);
+            }
+            $search($next + 1);
+        };
+        $search(0);
+
+        return $best;
     }
 
     private function search(int $next, int $placed): void

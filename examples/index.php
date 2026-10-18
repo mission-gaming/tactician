@@ -44,6 +44,7 @@ $examples = [
         '15-timeline-assignment.php' => 'Kickoff times and resources for every event, under time rules',
         '17-schedule-optimization.php' => 'Scoring schedule quality and keeping the best of many samples',
         '19-repacking-a-season.php' => 'Repacking outstanding events around pinned ones onto an irregular grid of sessions',
+        '29-rescheduling-with-least-churn.php' => 'A league loses a night and gains one: the games that have a time keep it, the figures of each outcome rank it, and the shortest grid is found',
     ],
     'In an application' => [
         '18-stateless-web-flow.php' => 'A stage kept as JSON between stateless requests',

@@ -100,6 +100,13 @@ anything else that competes.
 | **Pinned event** | An event already on the grid that must not move (`PinnedEvent`). It occupies its position for both participants, consumes slot capacity, and may name participants absent from the movable set. Which events are pinned is caller policy about historical provenance. |
 | **Repack violation** | One structured compromise in a repack outcome (`RepackViolation`): double-booking (audited, never produced), unplaced events, interior gaps, late starts, exceeded capacity — data with participant/session/magnitude, never prose. The caller renders its own messages and decides what is fatal. |
 | **Unplaced event** | A movable event the repack gave no position (`UnplacedEvent`), with the reason (`UnplacedReason`). Every movable event is either assigned or unplaced. |
+| **Current position** | Where a movable event is before a repack, when the caller says so (`MovableEvent`'s last two arguments): a session and a slot of the request's grid. A statement of fact and never a demand; it need not be a position the grid has, nor a free one. An event that states none is new to the grid. |
+| **Moved event** | A movable event that states a **current position** and is placed at another one, in another session or at another slot of the same session (`RepackOutcome::getMovedEventIds()`). An event with no current position is never moved, and neither is an unplaced one. How many events move is the churn of a repack. |
+| **Gap slot** | A slot a participant waits through between two of its own events in one session: with events at slots 0 and 3, slots 1 and 2. `ContiguityBroken` reports them for a participant and a session, and `RepackOutcome::getGapSlotCount()` adds them up. A late start is not one. |
+| **Lone-event session** | A session of a repacked grid that holds exactly one event, pinned events counted, where that event is a movable one (`RepackOutcome::getLoneEventSessions()`): the session is opened for it alone. A figure of the grid, not of a participant. |
+| **Idle session** | A session a participant has no event in, between two sessions it has one in, pinned events counted (`RepackOutcome::getIdleSessionCount()`, summed over the participants that have a placed movable event). The sessions before a participant's first and after its last are not idle. |
+| **Repack objective** | A figure of the outcome a repack is asked to keep low (`RepackObjective`, listed in order in `RepackOptions(objectives: ...)`): moved events, lone-event sessions, idle sessions. Objectives rank after events placed and gap slots, which they never cost, and before the two weights. None is the default. |
+| **Shortest grid** | The fewest sessions on which a repack places every event (`ShortestGridFinder`), for a grid the caller describes as a function of its number of sessions. Searched one number at a time, upwards, and reported with what happened at every smaller number. |
 | **Step budget** | The number of search steps a repack may spend (`RepackOptions(stepBudget: ...)`): the load planning and packing searches share one budget of that size, and the steps after the packing (the last placement step and the search for fewer gap slots) have a second one of their own, so a repack can spend up to twice that number. Steps, not time, so the result is the same on every machine. The searches that count their own work and not steps (laying the events out before any session is chosen, the last placement step, the search for fewer gap slots) have limits that are fixed at the default budget and above, and the same share of those limits as the budget is of the default below it, so a smaller budget shortens every search. `RepackOutcome::isBudgetExhausted()` says whether a budget stopped a search. |
 | **Last placement step** | The part of a repack that runs only when an event is still unplaced: it moves placed events along alternating paths, and exchanges one placed event for one unplaced event where that lets a further one in, to place events the earlier phases left over. It never double-books, never moves a pin and never exceeds a slot's capacity. |
 | **Outcome fingerprint** | A short string identifying what a repack outcome holds (`RepackOutcome::fingerprint()`): equal for the same assignments, unplaced events and violations, different when any differs, and the same on every PHP version and platform. For detecting that a plan computed again is not the plan that was shown. |
@@ -4762,11 +4769,16 @@ ids). There are two exceptions, in which the ids do decide and the
 counts can differ. The ordering has a fixed amount of work it may do,
 sized for 40 participants: in a larger request in which everybody is
 alike and no two participants can simply be exchanged (a complete round
-robin of 44 or more with one round already played), it stops and falls
+robin of 42 or more with one round already played), it stops and falls
 back to the ids. And two participants that differ, in a request in
 which everything the repacker compares about them is equal, are ordered
 by id; that takes a request built for the purpose, and none met in
 testing was one. The lists an outcome returns are still in id order.
+Without the objective `LeastChurn` the order does not read the current
+positions events may state, so the count of moved events can follow the
+ids; with it, the current positions decide before the ids do, and the
+count of moved events does not follow them either
+([Objectives](#objectives)).
 
 The repacker is deterministic (same input, same output, independent of
 input list order), pure (no clock reads, no I/O), and bounded in steps
@@ -5001,6 +5013,393 @@ left with both participants free, and then `getParticipant()` is null.
 Each over-capacity participant has at least its shortfall of events
 unplaced as `participant_over_capacity`.
 
+### Figures to Rank an Outcome By
+
+The violations say what is wrong with a schedule. Five figures say how
+good it is, and each is an accessor of the outcome, so two outcomes can
+be compared without the request they came from:
+
+| Figure | Accessor | What it counts |
+|---|---|---|
+| Unplaced events | `getUnplacedCount()` | The movable events with no position: the size of `getUnplaced()`. It comes first: an outcome that places more events is the better one. |
+| Gap slots | `getGapSlotCount()` | The slots participants wait through between two of their own events in a session: the gap slots of every `ContiguityBroken`, added up. |
+| Lone-event sessions | `getLoneEventSessionCount()`, `getLoneEventSessions()` | The sessions that hold exactly one event, pinned events counted, where that one is a movable event: a session opened for a single event. |
+| Idle sessions | `getIdleSessionCount()` | For each participant with a placed movable event, the sessions it has no event in between two sessions it has one in, pinned events counted; summed over the participants. |
+| Moved events | `getMovedCount()`, `getMovedEventIds()` | The events placed somewhere other than their **current position** (below). |
+
+Every outcome has all five, whatever the options were. They are figures
+and not compromises: `isClean()` does not look at the last three. Three
+of them need defining exactly:
+
+- A **lone-event session** is a figure of the grid, not of a
+  participant: a session with two events is not one, although each of
+  four participants has a single event in it. A session whose one event
+  is pinned is not counted, because the repack did not arrange it, and
+  an empty session is not counted either.
+- An **idle session** lies strictly between a participant's first and
+  last session with an event. With events in sessions 1, 2 and 5, the
+  participant has two idle sessions, 3 and 4; sessions 0 and 6 are not
+  idle for it. A session is counted once for each participant it is
+  idle for. A participant whose events are all pinned is left out: its
+  idle sessions are history.
+- A **gap slot** is counted where a participant has a movable event in
+  the session, with its pinned slots as part of the pattern, exactly as
+  `ContiguityBroken` reports it. A late start is not a gap slot.
+
+```php
+use MissionGaming\Tactician\Repack\RepackOutcome;
+
+// Three sessions of two slots, two events to a slot. Three events are
+// fixed where they are; the others say where they are now, and one, which
+// was postponed, has no position
+$napoli = new Participant('napoli', 'Napoli');
+$nights = SessionGrid::shapeOnly(sessions: 3, slotsPerSession: 2, capacityPerSlot: 2);
+$fixed = [
+    new PinnedEvent('n01', $celtic, $athletic, 0, 0),
+    new PinnedEvent('n02', $livorno, $rayo, 0, 0),
+    new PinnedEvent('n03', $celtic, $napoli, 0, 1),
+];
+$outstanding = [
+    new MovableEvent('n04', $celtic, $livorno, 1, 0),
+    new MovableEvent('n05', $athletic, $rayo, 1, 0),
+    new MovableEvent('n06', $celtic, $rayo, 1, 1),
+    new MovableEvent('n07', $athletic, $napoli, 2, 0),
+    new MovableEvent('n08', $livorno, $napoli, 2, 1),
+    new MovableEvent('n09', $athletic, $livorno),
+];
+
+$plain = (new ScheduleRepacker())->repack(new RepackRequest($outstanding, $fixed, $nights));
+
+echo $plain->getUnplacedCount(), "\n";                          // 0
+echo $plain->getGapSlotCount(), "\n";                           // 0
+echo json_encode($plain->getLoneEventSessions()), "\n";         // [2]
+echo $plain->getIdleSessionCount(), "\n";                       // 0
+echo json_encode($plain->getMovedEventIds()), "\n";             // ["n08"]
+
+echo json_encode($plain->toArray()['metrics']), "\n";
+// {"unplaced":0,"gap_slots":0,"lone_event_sessions":[2],"idle_sessions":0,"moved":["n08"]}
+```
+
+The repack moved `n08` from the last session to the middle one, where
+its two participants already play, and left `n07` alone in the last:
+that is the consolidation weight at work, and the figures show what it
+cost. `toArray()` writes the five under `metrics`, because three of them
+cannot be worked out from the rest of the array (it holds neither the
+participants of an event nor the pinned events). The fingerprint does
+not cover them: they follow from the request and the assignments, which
+it does cover.
+
+To rank outcomes, put the figures in the order that matters to the
+application and compare the lists. Unplaced events first is the one
+order the library itself never departs from:
+
+```php
+$rank = static fn(RepackOutcome $outcome): array => [
+    $outcome->getUnplacedCount(),
+    $outcome->getLoneEventSessionCount(),
+    $outcome->getIdleSessionCount(),
+    $outcome->getGapSlotCount(),
+    $outcome->getMovedCount(),
+];
+
+echo json_encode($rank($plain)), "\n";   // [0,1,0,0,1]
+```
+
+### Current Positions and Moved Events
+
+A movable event may say where it is now: a session and a slot of the
+request's grid, the fourth and fifth arguments of `MovableEvent`, as a
+pinned event has them. It is a statement of fact and never a demand.
+The repacker is free to put the event elsewhere, and reports every
+event it placed anywhere but there as **moved**, whether the move is to
+another session or to another slot of the same one.
+
+- An event that states no current position (a new event, a postponed
+  one) is never counted as moved, wherever it is placed. Neither is an
+  unplaced event, which is in `getUnplaced()`.
+- A current position need not be a position the grid has. An event
+  whose session was taken off the grid states the position it had; it
+  cannot stay there, so it counts as moved wherever it is placed. Only a
+  negative index, or a session without a slot, is refused
+  (`InvalidConfigurationException`).
+- Nothing checks current positions against the pins or against each
+  other. Where a pinned event holds the position (the slot is full, or
+  one of the participants is pinned there), the event moves. Where two
+  events cannot both stay (one participant in both, or more events than
+  the slot holds), at most one does.
+- The sessions and slots are indexes into this request's grid. When the
+  grid itself changed (a session removed from the middle), translate
+  each position to the new grid first, and state a position the grid
+  does not have, or none, for an event whose session is gone.
+
+**Current positions alone change nothing.** A request that states them
+and names no objective is repacked exactly as the same request without
+them: the same assignments, unplaced events and violations, and the
+same fingerprint. Only `getMovedEventIds()` knows the difference. To
+have the repacker keep events where they are, name the objective.
+
+### Objectives
+
+`RepackOptions(objectives: [...])` names figures for the repacker to
+keep low, most important first. There are three (`RepackObjective`):
+
+| Objective | Keeps low | Identifier in plain data |
+|---|---|---|
+| `LeastChurn` | Moved events | `least_churn` |
+| `FewestLoneEventSessions` | Lone-event sessions | `fewest_lone_event_sessions` |
+| `FewestIdleSessions` | Idle sessions | `fewest_idle_sessions` |
+
+```php
+use MissionGaming\Tactician\Repack\RepackObjective;
+
+$keeping = (new ScheduleRepacker())->repack(new RepackRequest(
+    $outstanding,
+    $fixed,
+    $nights,
+    new RepackOptions(objectives: [RepackObjective::LeastChurn])
+));
+
+echo json_encode($keeping->getMovedEventIds()), "\n";      // []
+echo $keeping->getAssignmentFor('n08')?->getSession(), "\n";   // 2
+echo $keeping->getAssignmentFor('n09')?->getSession(), "\n";   // 0
+echo json_encode($rank($keeping)), "\n";                   // [0,0,1,0,0]
+
+$together = (new ScheduleRepacker())->repack(new RepackRequest(
+    $outstanding,
+    $fixed,
+    $nights,
+    new RepackOptions(objectives: [RepackObjective::FewestLoneEventSessions])
+));
+echo json_encode($rank($together)), "\n";                  // [0,0,0,0,1]
+
+echo json_encode(RepackOptions::fromArray(['objectives' => ['least_churn', 'fewest_idle_sessions']])->toArray()), "\n";
+// {"format_version":1,"consolidation_weight":3,"early_fill_weight":1,"step_budget":200000,"throw_on_violations":false,"objectives":["least_churn","fewest_idle_sessions"]}
+```
+
+With the fewest moved events asked for, every event stays where it is
+and the postponed one takes a free slot of the first session. Napoli now
+sits out the middle session, which is the idle session in the rank: the
+objective asked for was churn, and it was not traded for anything.
+
+**Where objectives rank.** A repack places as many events as it can,
+then leaves as few gap slots as it can, and no objective is ever paid
+for with either: a request with objectives places at least as many
+events as the same request without them, and where it places as many,
+has no more gap slots. Among schedules level on those two, the
+objectives decide in the order given, a later one only between schedules
+level on every earlier one. The two weights and the late starts come
+after every objective. An objective can be named once; its place in the
+list is its rank.
+
+**What each objective does, and how well.** None of the three is
+optimised exactly, and they are not pursued alike:
+
+- **`LeastChurn` is searched for.** The repacker first makes the
+  schedule it would make with no objective. Then it holds every event
+  that can stay at its current position there, as if pinned, and places
+  the others around them. Where that places fewer events, it lets held
+  events move again along the alternating paths of the last placement
+  step until as many are placed; where it leaves more gap slots, the
+  search for fewer gap slots moves the events around the gaps. Where the
+  result is still worse than the schedule made with no objective, the
+  held events that had to do with the difference are let go and it
+  tries again, three times at most. The best schedule of all these, the
+  one with no objective included, is returned. It needs events with
+  current positions to act on.
+- **`FewestLoneEventSessions` and `FewestIdleSessions` are a tie-break
+  and a repair.** They decide between the schedules the repacker makes
+  anyway where those are level on everything that ranks before them.
+  Then single events are moved to a free position (the one event of a
+  lone-event session to a session that has events, or another event
+  into it; an event of a participant into a session that participant
+  sits out) wherever that makes the figure smaller and makes nothing
+  that ranks before it worse.
+
+How close that comes was measured against every placement of 6,000 small
+requests (three to six events on up to six positions), among the
+placements that place the most events with the fewest gap slots:
+
+| Objective | At the fewest there can be | Mean excess | Worst | With no objective |
+|---|---|---|---|---|
+| `LeastChurn` | 93.0% of the requests | 0.08 events | 3 | 35.3%, mean excess 1.16 |
+| `FewestLoneEventSessions` | 96.8% | 0.03 sessions | 1 | 88.2%, mean excess 0.13 |
+| `FewestIdleSessions` | 95.8% | 0.05 sessions | 2 | 90.3%, mean excess 0.14 |
+
+No such reference exists for a request of real size, so there the
+figures are compared with the same request and no objective. On 1,200
+seasons of 8 to 40 participants with whole rounds played and pinned and
+every other event at its place in the calendar (and then one of six
+changes: none, a round postponed, a slot lost, new events, the last
+session taken away, a few events re-pinned by hand), a repack with no
+objective moved 302,521 of 322,566 events and `LeastChurn` moved 40,856,
+with one event more placed in all and 1,150 gap slots for 1,556. On 440
+round robins with pins at scattered positions it moved 50,071 for
+81,394. `FewestIdleSessions` left 4,940 idle sessions for 6,340 on the
+seasons and 6 for 263 on the scattered pins; `FewestLoneEventSessions`
+left none of the 13 lone-event sessions of the seasons (a grid sized for
+its events has few to begin with).
+
+Three limits are worth knowing:
+
+- **Contiguity comes before churn.** Where the schedule that exists has
+  a gap that another schedule avoids (a round robin of an odd number
+  has a participant sitting out a slot in the middle of a session), the
+  events around the gap move, and where no schedule with few moves is
+  found that is level on gap slots with the one made with no objective,
+  the repacker returns that one, in which most events have moved.
+- **Which events are left out is not chosen by an objective.** When not
+  every event fits, the events that stay unplaced are the ones the
+  placement steps leave, and a schedule that left out another event and
+  moved one fewer is not looked for.
+- **Without `LeastChurn`, the count of moved events can follow the
+  ids.** The repacker orders participants by what the request says of
+  them and lets the ids decide between participants that look alike to
+  it ("The ids decide as little as they can", above). Two such
+  participants can have different current positions, so the same
+  request under other ids can come back with another number of moved
+  events: the schedule is the same up to a symmetry of the request, and
+  the current positions are not symmetric. Two events between four
+  participants, on two sessions of one slot, `a`–`b` in session 1 and
+  `c`–`d` in session 0, move none with no objective; renamed `w`–`x` and
+  `c`–`d`, both move. With no objective, or with either of the other
+  two, that count is the one figure renaming changed on the requests
+  measured (60 of 400 seasons and 36 of 160 round robins with scattered
+  pins).
+
+  With `LeastChurn` the current positions decide before the ids:
+  between participants that look alike, and between events of the same
+  two participants. The same request under other ids then comes back
+  with the same figures, the moved events among them, and the same
+  events at every position and the same violations but for the names in
+  them, under the condition of "The ids decide as little as they can":
+  wherever the ids would decide only between participants that a
+  symmetry of the request exchanges. Renaming every participant and
+  event changed nothing on 400 seasons, 160 round robins with scattered
+  pins and 2,895 requests of other shapes (double round robins among
+  them), under `LeastChurn` alone and with all three objectives; before
+  the current positions decided, 10 of the seasons and 9 of the round
+  robins came back with other figures. The ids still decide where the
+  current positions say nothing either (participants they do not tell
+  apart even when each is put first in turn and the others are told
+  apart by where they meet it, or no current positions at all), and in
+  the two exceptions given there. Reading the current positions takes
+  about twice the work of the ordering and has a limit of its own, twice
+  the ordering's, so that both are sized for the same requests: a
+  complete round robin of 40 with one round played and some events
+  elsewhere gives the same figures under every naming (36, 38 and 40
+  participants, three such requests of each, eight namings), and from
+  42, past both limits, the count of moved events can follow the ids. The schedule made with no objective, which
+  no outcome with an objective is worse than on events placed or gap
+  slots, is made in this order too: the same schedule up to a symmetry
+  of the request, and on all of those requests the same events placed,
+  the same gap slots and the same number of events at every position as
+  the repack with no objective.
+
+**What objectives cost.** The schedule with no objective is always made
+first, on the two budgets as before, so that no objective can cost an
+event. Everything the objectives add runs on the steps those two budgets
+have left, so a repack still spends at most twice `stepBudget`, and
+`isBudgetExhausted()` means what it meant. The work that is not counted
+in steps is done once for each schedule made, so a repack with
+objectives takes longer. On the requests above (PHP 8.4, no OPcache,
+on a machine doing other work, so read them as proportions), the median
+and the 90th percentile in milliseconds:
+
+| Requests | No objective | `LeastChurn` | Either of the other two, at most |
+|---|---|---|---|
+| Seasons of 8 to 15 participants | 4 / 261 | 6 / 463 | 4 / 274 |
+| Seasons of 16 to 23 | 32 / 389 | 48 / 766 | 38 / 411 |
+| Seasons of 24 to 31 | 211 / 1,010 | 258 / 1,354 | 211 / 1,087 |
+| Seasons of 32 to 40 | 562 / 2,162 | 611 / 2,393 | 566 / 2,301 |
+| Scattered pins, 8 to 15 | 39 / 421 | 329 / 1,278 | 25 / 446 |
+| Scattered pins, 16 to 23 | 275 / 486 | 811 / 1,554 | 268 / 489 |
+| Scattered pins, 24 to 31 | 477 / 893 | 1,172 / 2,126 | 497 / 859 |
+| Scattered pins, 32 to 40 | 1,076 / 1,820 | 1,928 / 3,483 | 1,030 / 1,866 |
+
+The fewest moved events cost little on a season, where nearly every
+event is held and few are placed, and two to three times the repack on
+scattered pins, where the schedule that exists rarely survives and the
+attempts are whole repacks.
+
+### The Shortest Grid
+
+`ShortestGridFinder` answers "how many sessions does this take?". The
+caller says what a grid of a given number of sessions is, as a function
+from that number to a `SessionGrid` (which dates, how many slots, what
+capacity: the library knows nothing of calendars), and the finder
+returns a `ShortestGridResult`: the fewest sessions on which a repack
+places every event, and what happened at every smaller number.
+
+```php
+use MissionGaming\Tactician\Repack\ShortestGridFinder;
+
+$shortest = (new ShortestGridFinder())->find(
+    movableEvents: $outstanding,
+    pinnedEvents: $fixed,
+    gridOf: static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, slotsPerSession: 2, capacityPerSlot: 2),
+    maxSessions: 6
+);
+
+var_dump($shortest->isFound());                                // bool(true)
+echo $shortest->getSessionCount(), "\n";                       // 3
+echo json_encode($shortest->getRuledOut()), "\n";              // [1,2]
+echo json_encode($shortest->getUnplacedBySessionCount()), "\n";   // {"3":0}
+var_dump($shortest->isProvenShortest());                       // bool(true)
+echo count($shortest->getOutcome()?->getAssignments() ?? []), "\n";   // 6
+
+// One event to a slot: nine events need nine positions, and four
+// sessions of two slots have eight
+$tooShort = (new ShortestGridFinder())->find(
+    $outstanding,
+    $fixed,
+    static fn(int $sessions): SessionGrid => SessionGrid::shapeOnly($sessions, slotsPerSession: 2),
+    maxSessions: 4
+);
+var_dump($tooShort->isFound());                                // bool(false)
+echo json_encode($tooShort->getRuledOut()), "\n";              // [1,2,3,4]
+```
+
+It tries the numbers one at a time, from `minSessions` (1 unless given)
+to `maxSessions`, and stops at the first that places everything. It
+never skips ahead: a search that halves the range would need "places
+everything" to hold for every number above the first that works, and
+nothing guarantees that. The caller's function may give a larger number
+a grid that does not contain the smaller one, and the repacker is a
+bounded search that can find a placement on one grid and miss one on a
+larger. (On 320 generated requests the four numbers above the one found
+placed everything too, every time. That is a measurement, not a
+guarantee.)
+
+What happened at each smaller number is in the result, because it
+decides what the answer means:
+
+- **Ruled out** (`getRuledOut()`): counting alone shows the events do
+  not fit, so no repack was run. A pinned event is at a position that
+  grid does not have, the grid has fewer places (positions times
+  capacity) than the request has events, or a participant has more
+  events than the grid has positions. That is a proof.
+- **Repacked** (`getUnplacedBySessionCount()`): a repack ran and left
+  that many events unplaced. That shows the repacker found no placement
+  there, not that none exists.
+
+`isProvenShortest()` is true when a grid was found and every smaller
+number was ruled out by counting. Otherwise the number is the shortest
+the repacker found. When no number up to `maxSessions` places
+everything, `isFound()` is false and `getOutcome()` is the outcome on
+the largest grid that was repacked (null when every number was ruled
+out), which says how far short it is.
+
+"Places everything" means no unplaced event and nothing more: the
+outcome on the grid found can have gaps and late starts, and reports
+them. The options are those of every repack the search runs, objectives
+included, except that `throwOnViolations` is not applied. The cost is
+one repack for each number that counting does not rule out. On the 320
+requests above (seasons, scattered pins, uneven loads and round robins
+of an odd number, 8 to 40 participants) the first number counting let
+through placed everything on 319 and the second on the other one, so a
+search cost one repack: 27 milliseconds at the median, 372 at the 90th
+percentile and 1.6 seconds at most.
+
 ### The Step Budget
 
 `RepackOptions(stepBudget: ...)` is counted in search steps, not in
@@ -5111,7 +5510,8 @@ events than the 12 positions: 36 milliseconds at the default, 160 to
 step the largest was a few milliseconds (12 for 11). What no budget
 shortens is in the first column: reading the request, ordering the
 participants (bounded by a fixed limit of its own, at most about a
-tenth of a second and 12 milliseconds on these seasons; it is left
+tenth of a second and 12 milliseconds on these seasons, and up to
+about a third of a second under the objective `LeastChurn`; it is left
 whole so that the ids of a request decide no more at a small budget
 than at a large one), the passes over the events that are not searches,
 one position check for every event and position in the layout and the
@@ -5326,8 +5726,10 @@ itself throws an `InvalidConfigurationException`; see
 
 #### `MovableEvent`
 
-`new MovableEvent(string $id, Participant $participantA, Participant $participantB)`.
-The ID is not empty and the two participants differ.
+`new MovableEvent(string $id, Participant $participantA, Participant $participantB, ?int $currentSession = null, ?int $currentSlot = null)`.
+The ID is not empty and the two participants differ. The last two are
+the event's current position, given together or not at all, each 0 or
+more; see [Current Positions and Moved Events](#current-positions-and-moved-events).
 
 | Method | Returns |
 |---|---|
@@ -5335,6 +5737,9 @@ The ID is not empty and the two participants differ.
 | `getParticipantA()` | The first participant |
 | `getParticipantB()` | The second participant |
 | `getParticipants()` | Both, as a list of two |
+| `hasCurrentPosition()` | Whether the event says where it is now |
+| `getCurrentSession()` | The 0-based session it is in now, or null |
+| `getCurrentSlot()` | The 0-based slot within that session, or null |
 
 #### `PinnedEvent`
 
@@ -5382,16 +5787,24 @@ largest capacity that is a number.
 
 #### `RepackOptions`
 
-`new RepackOptions(int $consolidationWeight = 3, int $earlyFillWeight = 1, int $stepBudget = 200_000, bool $throwOnViolations = false)`.
-The four are public read-only properties: `$consolidationWeight`,
-`$earlyFillWeight`, `$stepBudget` and `$throwOnViolations`. The constant
+`new RepackOptions(int $consolidationWeight = 3, int $earlyFillWeight = 1, int $stepBudget = 200_000, bool $throwOnViolations = false, array $objectives = [])`.
+The first four are public read-only properties: `$consolidationWeight`,
+`$earlyFillWeight`, `$stepBudget` and `$throwOnViolations`. So is the
+fifth, `$objectives`, a list of `RepackObjective` cases in order of
+importance with no case twice. The constant
 `RepackOptions::MAX_CONSOLIDATION_WEIGHT` is the largest consolidation
 weight.
 
 | Method | Returns |
 |---|---|
-| `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget` and `throw_on_violations` (static) |
-| `toArray()` | The same plain data, with `format_version` first |
+| `fromArray(array $config)` | Options from plain data with the keys `consolidation_weight`, `early_fill_weight`, `step_budget`, `throw_on_violations` and `objectives`, a list of objective identifiers (static) |
+| `toArray()` | The same plain data, with `format_version` first; `objectives` is written only when there is one |
+
+#### `RepackObjective`
+
+An enum. Cases: `LeastChurn` (`least_churn`), `FewestLoneEventSessions`
+(`fewest_lone_event_sessions`) and `FewestIdleSessions`
+(`fewest_idle_sessions`). See [Objectives](#objectives).
 
 #### `RepackOutcome`
 
@@ -5410,15 +5823,25 @@ The constant `RepackOutcome::FINGERPRINT_SCHEME` is the scheme
 | `getContiguityBrokenViolations()` | The `ContiguityBroken` violations |
 | `getLateStartViolations()` | The `LateStart` violations |
 | `getCapacityExceededViolations()` | The `CapacityExceeded` violations |
+| `getUnplacedCount()` | How many movable events have no position |
+| `getGapSlotCount()` | The gap slots of every `ContiguityBroken`, added up |
+| `getLoneEventSessions()` | The sessions holding one event and no more, that one movable, ascending |
+| `getLoneEventSessionCount()` | How many of those there are |
+| `getIdleSessionCount()` | The idle sessions, summed over the participants |
+| `getMovedEventIds()` | The IDs of the events placed anywhere but at their current position, ascending |
+| `getMovedCount()` | How many of those there are |
 | `isClean()` | Whether nothing is unplaced and there is no violation |
 | `isBudgetExhausted()` | Whether the step budget stopped a search |
 | `fingerprint()` | The outcome's fingerprint |
-| `toArray()` | `['format_version' => 1, 'assignments' => ..., 'unplaced' => ..., 'violations' => ...]`, each list holding the `toArray()` of its records without their own `format_version` (see [Format Versions](#format-versions)) |
+| `toArray()` | `['format_version' => 1, 'assignments' => ..., 'unplaced' => ..., 'violations' => ..., 'metrics' => ...]`, each list holding the `toArray()` of its records without their own `format_version` (see [Format Versions](#format-versions)), and `metrics` the five figures: `unplaced`, `gap_slots`, `lone_event_sessions`, `idle_sessions`, `moved` |
 
 Building one by hand takes the three lists and, optionally, the budget
-flag: `new RepackOutcome(array $assignments, array $unplaced, array $violations, bool $budgetExhausted = false)`.
-A list that holds anything other than the objects it is for throws an
-`InvalidInputException`.
+flag and the three figures an outcome cannot work out from its lists:
+`new RepackOutcome(array $assignments, array $unplaced, array $violations, bool $budgetExhausted = false, array $loneEventSessions = [], int $idleSessions = 0, array $movedEventIds = [])`.
+A list that holds anything other than the objects or values it is for,
+or a negative count of idle sessions, throws an `InvalidInputException`.
+An outcome built without the figures has none: no lone-event session, no
+idle session, no moved event.
 
 #### `SlotAssignment`
 
@@ -5533,9 +5956,34 @@ typed accessors, each of which returns objects of its own class.
 | `getShortfall()` | How many events do not fit: the demand less the capacity, never below zero |
 | `toArray()` | `format_version`, `kind`, `participant`, `demand`, `capacity` and `shortfall` |
 
+#### `ShortestGridFinder`
+
+`new ShortestGridFinder(ScheduleRepacker $repacker = new ScheduleRepacker())`.
+
+| Method | Returns |
+|---|---|
+| `find(array $movableEvents, array $pinnedEvents, callable $gridOf, int $maxSessions, int $minSessions = 1, RepackOptions $options = new RepackOptions())` | A `ShortestGridResult`. `$gridOf` takes a number of sessions and returns the `SessionGrid` of that many. Throws an `InvalidConfigurationException` for a range that is not `1 <= $minSessions <= $maxSessions` (`ValueOutOfRange`), a function that returns something other than a grid (`WrongValueType`) or a grid of another number of sessions (`IncompatibleOptions`), and whatever a `RepackRequest` throws for the events |
+
+#### `ShortestGridResult`
+
+`new ShortestGridResult(?int $sessionCount, ?SessionGrid $grid, ?RepackOutcome $outcome, array $unplacedBySessionCount, array $ruledOut)`.
+The finder builds these; the constructor is for a result built by hand.
+
+| Method | Returns |
+|---|---|
+| `isFound()` | Whether a number of sessions placed every event |
+| `getSessionCount()` | That number, or null |
+| `getGrid()` | The grid of that many sessions, or null |
+| `getOutcome()` | The outcome on that grid; when nothing was found, the outcome on the largest grid repacked, or null when none was |
+| `getUnplacedBySessionCount()` | Number of sessions => events left unplaced, for every repack that ran, ascending |
+| `getRuledOut()` | The numbers of sessions refused by counting, without a repack, ascending |
+| `isProvenShortest()` | Whether a grid was found and every smaller number was ruled out by counting |
+
 See `examples/19-repacking-a-season.php` for a complete runnable
-walkthrough, and `docs/design/schedule-repack.md` for the algorithm and
-its design decisions.
+walkthrough, `examples/29-rescheduling-with-least-churn.php` for current
+positions, objectives and the shortest grid, and
+`docs/design/schedule-repack.md` for the algorithm and its design
+decisions.
 
 ## Schedule Quality and Optimization
 
