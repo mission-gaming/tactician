@@ -7,6 +7,7 @@ use MissionGaming\Tactician\DTO\Event;
 use MissionGaming\Tactician\DTO\Participant;
 use MissionGaming\Tactician\DTO\Result;
 use MissionGaming\Tactician\Exceptions\InvalidConfigurationException;
+use MissionGaming\Tactician\Exceptions\InvalidConfigurationReason;
 use MissionGaming\Tactician\Exceptions\NoValidPairingException;
 use MissionGaming\Tactician\Scheduling\DoubleEliminationEngine;
 use MissionGaming\Tactician\Scheduling\EliminationOptions;
@@ -156,6 +157,46 @@ describe('a tiebreaker between the tied participants in the table of a bracket',
                 static fn($set): array => array_map(static fn(StandingEntry $entry): string => $entry->getParticipant()->getId(), $set->getEntries()),
                 $table->getTiedSets()
             ))->toContain(['p1', 'p4']);
+    });
+
+    // A subclass of the calculator forms its tied sets over the whole table
+    // in its own calculate(), so it cannot form them inside a tier, and the
+    // table of every bracket has tiers. That is known from the engine
+    // alone, so the bracket is refused before its first round is paired,
+    // and not once it has been played to the end and its table is asked for.
+    it('refuses a subclass of the calculator with such a tiebreaker before the first round', function (StageEngineInterface $engine): void {
+        $state = StageState::start(bracketTableField(4));
+
+        try {
+            $engine->pairNextRound($state);
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::IncompatibleOptions)
+                ->and($exception->getMessage())->toContain('subclass');
+
+            return;
+        }
+
+        throw new LogicException('A bracket whose table the calculator cannot form was paired.');
+    })->with(function (): array {
+        $calculator = new readonly class (new WinDrawLossRanking(), [new BetweenTiedParticipants(new RankingValueTiebreaker())]) extends StandingsCalculator {};
+
+        return [
+            'single elimination' => [new SingleEliminationEngine(new EliminationOptions(), $calculator)],
+            'double elimination' => [new DoubleEliminationEngine(new EliminationOptions(), $calculator)],
+        ];
+    });
+
+    it('plays a bracket with a subclass of the calculator without such a tiebreaker', function (StageEngineInterface $engine): void {
+        $state = bracketTablePlayed($engine, bracketTableField(6), 7);
+
+        expect($engine->getOutcome($state)?->getStandings()->getTiers())->toHaveCount(6);
+    })->with(function (): array {
+        $calculator = new readonly class (new WinDrawLossRanking(), [new ScoreDifferenceTiebreaker()]) extends StandingsCalculator {};
+
+        return [
+            'single elimination' => [new SingleEliminationEngine(new EliminationOptions(), $calculator)],
+            'double elimination' => [new DoubleEliminationEngine(new EliminationOptions(), $calculator)],
+        ];
     });
 });
 

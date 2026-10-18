@@ -1165,7 +1165,9 @@ entry on the engine fingerprint.
   own `calculate()`, and refused tiers (`IncompatibleOptions`) when its
   chain holds a tiebreaker between the tied participants, whose sets its
   `calculate()` forms over the whole table. The bracket engines give the
-  calculator their tiers.
+  calculator their tiers, so a bracket whose calculator is such a subclass
+  is refused before its first round is paired (`IncompatibleOptions`), and
+  not once it has been played and its table is asked for.
 - **The value of a bye is the caller's choice.** A ranking strategy says
   what one bye adds to a ranking value by implementing the optional
   interface `Standings\RankingStrategyWithByeValue` (`getByeValue(): float`).

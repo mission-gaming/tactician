@@ -23,6 +23,7 @@ use MissionGaming\Tactician\Standings\EntryOrder;
 use MissionGaming\Tactician\Standings\RankingStrategyWithByeValue;
 use MissionGaming\Tactician\Standings\Standings;
 use MissionGaming\Tactician\Standings\StandingsCalculator;
+use MissionGaming\Tactician\Standings\TiedParticipantsTiebreaker;
 
 /**
  * Shared bracket mechanics for the elimination presets: positional fold
@@ -315,6 +316,41 @@ trait EliminationBracketSupport
             ['ranking_strategy' => $rankingStrategy::class, 'participant_count' => $participantCount],
             reason: InvalidConfigurationReason::IncompatibleOptions
         );
+    }
+
+    /**
+     * Refuse a calculator that cannot form the tied sets of the table of
+     * the bracket.
+     *
+     * The table of every bracket has tiers, and a tiebreaker between the
+     * tied participants forms its tied sets inside a tier
+     * (StandingsCalculator::calculateWith()). A subclass of the calculator
+     * forms them over the whole table in its own calculate(), and the
+     * calculator refuses it tiers. The engine says all of that before a
+     * round is paired, so the bracket is refused then, on every call, and
+     * not once it has been played to its end and its table is asked for.
+     *
+     * @throws InvalidConfigurationException When the calculator is a subclass of StandingsCalculator
+     *                                       with a tiebreaker between the tied participants
+     *                                       (reason `IncompatibleOptions`)
+     */
+    private function requireTiedSetsInsideATier(StandingsCalculator $calculator): void
+    {
+        if ($calculator::class === StandingsCalculator::class) {
+            return;
+        }
+
+        foreach ($calculator->getTiebreakers() as $tiebreaker) {
+            if ($tiebreaker instanceof TiedParticipantsTiebreaker) {
+                throw new InvalidConfigurationException(
+                    'The table of a bracket has tiers, and a tiebreaker between the tied participants forms its tied sets'
+                        . ' inside a tier, which a subclass of StandingsCalculator cannot do: its own calculate() forms them'
+                        . ' over the whole table. Use StandingsCalculator itself, or a chain without a tiebreaker of that kind',
+                    ['calculator' => $calculator::class, 'tiebreaker' => $tiebreaker->getName()],
+                    reason: InvalidConfigurationReason::IncompatibleOptions
+                );
+            }
+        }
     }
 
     /**

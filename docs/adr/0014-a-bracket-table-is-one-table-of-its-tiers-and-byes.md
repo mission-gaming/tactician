@@ -101,7 +101,9 @@ bracket has been played.
   `calculate()`, which forms the tied sets over the whole table: given
   tiers with a tiebreaker between the tied participants, it is refused
   (`IncompatibleOptions`). Without such a tiebreaker its table is put into
-  tiers after `calculate()`, in the order `calculate()` gave.
+  tiers after `calculate()`, in the order `calculate()` gave. The table of
+  every bracket has tiers, so a bracket engine given such a subclass is
+  refused before its first round is paired, as a bye it cannot credit is.
 - The consequence of 0010 that the tied sets are read without regard to
   tiers, and the known limitation in the roadmap, no longer hold.
 - `tests/Feature/BracketTablesTest.php` pins both examples and holds the

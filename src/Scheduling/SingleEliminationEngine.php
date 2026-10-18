@@ -519,7 +519,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *
      * @throws InvalidConfigurationException When a tie is broken, a recorded round holds a
      *                                       third-place tie this engine does not play, a bye
-     *                                       cannot be credited, or the state is stamped with
+     *                                       cannot be credited, the calculator cannot form the
+     *                                       tied sets of the table, or the state is stamped with
      *                                       another engine's fingerprint
      */
     private function resolveBracket(StageState $state, bool $capture = false): BracketReading
@@ -529,6 +530,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
         $this->requireByesToBeCreditable($this->standingsCalculator, count($entrants));
+        $this->requireTiedSetsInsideATier($this->standingsCalculator);
         $this->requireAThirdPlaceToDecide(count($entrants));
         $this->requireNoThirdPlaceTieRecorded($state);
 
