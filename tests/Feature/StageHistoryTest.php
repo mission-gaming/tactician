@@ -784,7 +784,7 @@ describe('a bracket tie that is level and awaits its decider', function (): void
         $results = [new Result($h1VsH4), new Result($h2VsH3, $h2VsH3->getParticipants()[0])];
 
         $waiting = StageState::fromHistory($entrants, [$first], $results);
-        $withdrawn = StageState::fromHistory($entrants, [$first], $results, [$h4]);
+        $withdrawn = StageState::fromHistory($entrants, [$first], $results, [new Withdrawal($h4, 1)]);
         $read = $engine->getRecordedRounds($withdrawn)[0];
         $next = $engine->pairNextRound($withdrawn);
         $named = [...historyIds($next->getByes())];
@@ -1470,9 +1470,12 @@ describe('a withdrawal from a live bracket', function (): void {
         $remaining = array_values(array_filter($entrants, static fn(Participant $entrant): bool => $entrant !== $h3));
 
         $withdrawn = StageState::start($entrants)->withoutParticipant($h3);
+        $pairing = $engine->pairNextRound($withdrawn);
 
-        expect($withdrawn->toArray())->toBe(StageState::start($remaining)->toArray())
-            ->and($engine->pairNextRound($withdrawn)->toArray())->toBe($engine->pairNextRound(StageState::start($remaining))->toArray());
+        // Once the first round is recorded without it, the entrant was never in the stage
+        expect(historyIds($withdrawn->getEntrants()))->toBe(historyIds($remaining))
+            ->and($pairing->toArray())->toBe($engine->pairNextRound(StageState::start($remaining))->toArray())
+            ->and($withdrawn->withRoundPlayed($pairing, [])->toArray())->toBe(StageState::start($remaining)->withRoundPlayed($pairing, [])->toArray());
     })->with(array_keys(historyEngines()));
 
     // Any number of entrants withdrawing at any point. The bracket is
@@ -1559,7 +1562,7 @@ describe('a withdrawal from a live bracket', function (): void {
             $entrants,
             [new RoundPairing(1, 'semifinal', $events)],
             [new Result($events[0], $h1), new Result($events[1], $h2)],
-            [$h1, $h2]
+            [new Withdrawal($h1, 1), new Withdrawal($h2, 1)]
         );
 
         $engine = new SingleEliminationEngine();
@@ -1648,7 +1651,7 @@ describe('a withdrawal from a live bracket', function (): void {
             )), 0, 4))->toBe(['h1', 'h2', 'h3', 'h4']);
     });
 
-    it('places two entrants who both withdrew from a tie by their slots, whatever order the round names them in', function (): void {
+    it('puts out both entrants of a void tie, in the order of their slots, whatever order the round names them in', function (): void {
         $engine = new DoubleEliminationEngine(new EliminationOptions(legsPerTie: 2));
         [, $h2, $h3] = $entrants = historyField(3);
 
@@ -1662,7 +1665,7 @@ describe('a withdrawal from a live bracket', function (): void {
                 $entrants,
                 [new RoundPairing(1, $first->getLabel(), $order, $first->getByes())],
                 [],
-                [$h2, $h3]
+                [new Withdrawal($h3, 1), new Withdrawal($h2, 1)]
             );
             $reading[] = historyReading($engine, $state);
         }
@@ -1692,8 +1695,9 @@ describe('a withdrawal from a live bracket', function (): void {
         ));
 
         // h1 won its tie and then withdrew; stored without the entrant list
+        // and the withdrawals, as 0.2.x stored it
         $stored = $state->withoutParticipant($h1)->toArray();
-        unset($stored['entrants']);
+        unset($stored['entrants'], $stored['withdrawals']);
         $read = StageState::fromArray($stored);
         $rng = new Randomizer(new Mt19937(7));
 
@@ -1753,7 +1757,7 @@ describe('the stored form of a state', function (): void {
         [, $h2] = $entrants = historyField(4);
         $state = StageState::start($entrants);
         $stored = $state->withRoundPlayed($engine->pairNextRound($state), [])->withoutParticipant($h2)->toArray();
-        unset($stored['entrants']);
+        unset($stored['entrants'], $stored['withdrawals']);
 
         $read = StageState::fromArray($stored);
 

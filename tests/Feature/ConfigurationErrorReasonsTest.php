@@ -260,6 +260,7 @@ describe('the reason of a configuration error', function (): void {
             'RoundOutOfSequence' => 'round_out_of_sequence',
             'ParticipantNotAnEntrant' => 'participant_not_an_entrant',
             'ParticipantTwiceInRound' => 'participant_twice_in_round',
+            'WithdrawalWithoutRound' => 'withdrawal_without_round',
             'EventNotInRound' => 'event_not_in_round',
             'NoRoundRecorded' => 'no_round_recorded',
             'ResultNotRecorded' => 'result_not_recorded',
@@ -615,6 +616,19 @@ describe('the reason of a configuration error', function (): void {
                 );
             },
             InvalidConfigurationReason::ParticipantTwiceInRound,
+        ],
+        'a history with rounds and a withdrawal that does not say its round' => [
+            function (): void {
+                $alice = new Participant('a', 'Alice');
+                $bob = new Participant('b', 'Bob');
+                StageState::fromHistory(
+                    [$alice, $bob],
+                    [new RoundPairing(1, null, [new Event([$alice, $bob], new Round(1))])],
+                    [],
+                    [$bob]
+                );
+            },
+            InvalidConfigurationReason::WithdrawalWithoutRound,
         ],
         'a history with a round left out' => [
             function (): void {

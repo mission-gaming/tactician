@@ -107,11 +107,10 @@ final class BracketReading
      *                                           lists as active
      * @param array<int|string, int> $lastNamedIn The number of the last recorded round that names
      *                                            each participant, in an event or as a bye, by ID
-     * @param array<int|string, array{int, int}> $withdrawals Of each withdrawal whose time the
-     *                                                        state knows, by ID: the number of
-     *                                                        the last round recorded when it
-     *                                                        happened, and its place in the order
-     *                                                        the withdrawals happened in
+     * @param array<int|string, int> $withdrawals Of each withdrawal whose time the state knows, by
+     *                                            ID: the number of the last round recorded when it
+     *                                            happened (0 before the first). Only a state stored
+     *                                            by 0.2.x has a withdrawal it does not know the time of
      */
     public function __construct(
         public readonly array $recorded,
@@ -134,8 +133,9 @@ final class BracketReading
      * withdrawal during that round before the round.
      *
      * A participant no round from N on names had withdrawn when round N
-     * was paired if its withdrawal has a round before N, or has no round:
-     * when it left is then not known, and no round shows it in the stage.
+     * was paired if its withdrawal has a round before N, or has no round
+     * (a state stored by 0.2.x): when it left is then not known, and no
+     * round shows it in the stage.
      *
      * @param int|null $pairedAt The number of the recorded round the pairing was made for, or
      *                           null for a pairing made now, from the state as it stands
@@ -154,20 +154,12 @@ final class BracketReading
                 continue;
             }
 
-            if (!isset($this->withdrawals[$id]) || $this->withdrawals[$id][0] < $pairedAt) {
+            if (!isset($this->withdrawals[$id]) || $this->withdrawals[$id] < $pairedAt) {
                 $out[$id] = true;
             }
         }
 
         return $out;
-    }
-
-    /**
-     * Whether the state says when the participant withdrew.
-     */
-    public function knowsWithdrawalOf(string $id): bool
-    {
-        return isset($this->withdrawals[$id]);
     }
 
     /**

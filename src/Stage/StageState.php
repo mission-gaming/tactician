@@ -51,9 +51,11 @@ final readonly class StageState
      *                                                         for, by ID, so that one who has
      *                                                         withdrawn since is still known
      * @param list<Participant> $entrants The active participants and, each in the place it had,
-     *                                    those who withdrew after a round was recorded
-     * @param list<Withdrawal> $withdrawals The withdrawals from the live stage whose round is
-     *                                      known, in the order they happened
+     *                                    those who withdrew: from the live stage, or before the
+     *                                    first round was recorded (out of the draw until that
+     *                                    round names them)
+     * @param list<Withdrawal> $withdrawals The withdrawal of every entrant in that list who is not
+     *                                      active, with its round, in the order they happened
      */
     private function __construct(
         private array $participants,
@@ -143,8 +145,9 @@ final readonly class StageState
      * The entrants are the list the first round was paired from, in that
      * order: an entrant who has withdrawn since stays in it and is named
      * among the withdrawals, so that it keeps its place (see
-     * withoutParticipant()). With no round supplied a withdrawal removes
-     * the entrant from the list, as that verb does before the first round.
+     * withoutParticipant()). An entrant who withdrew before the draw may be
+     * left out of the list, or listed with a Withdrawal after round 0 that
+     * the first round does not name: either way it is no entrant.
      *
      * When a withdrawal or an adjustment happened is part of the history,
      * and the verbs record it by themselves (the number of the last round
@@ -152,21 +155,24 @@ final readonly class StageState
      * as a Withdrawal with its round, an adjustment with
      * Adjustment::madeAfterRound(). The withdrawals are put in the order of
      * their rounds, and those after the same round stay in the order
-     * given, which is the order they happened in. A round stated here is
-     * one of the supplied rounds or, for an adjustment, 0
+     * given. A round stated here is 0 or one of the supplied rounds
      * (`ValueOutOfRange` otherwise).
      *
-     * One that states no round (a plain participant among the withdrawals,
-     * an adjustment as constructed) is kept without one: its time is not
-     * known, and it is not read as made after the last round or before the
-     * first. An engine then reads what the recorded rounds show and guesses
-     * nothing: a round that names a withdrawn entrant was paired before it
-     * left; where both entrants of a bracket tie have withdrawn and no
-     * later round names either, neither is read as having gone on; and an
-     * adjustment is treated as withAdjustment() describes (no derivation
-     * beside the rounds it could have changed, and a refusal from a
-     * re-seeded bracket that cannot read a round without it). State the
-     * rounds wherever the rows have them.
+     * Once the history holds a round, every withdrawal states its round: a
+     * plain participant among the withdrawals is refused
+     * (`WithdrawalWithoutRound`). Which of two entrants of a bracket tie
+     * went on, or whether the tie is void, depends on when each left, and
+     * rows that do not say it were read otherwise than the stage was played
+     * as soon as two withdrawals met in one tie. With no round supplied a
+     * plain participant is a withdrawal after round 0, which is the only
+     * time it can be.
+     *
+     * An adjustment that states no round is kept without one: its time is
+     * not known, and it is not read as made after the last round or before
+     * the first. An engine then reads it as withAdjustment() describes (no
+     * derivation beside the rounds it could have changed, and a refusal
+     * from a re-seeded bracket that cannot read a round without it). State
+     * the rounds wherever the rows have them.
      *
      * The state carries no engine fingerprint; stamp it with
      * withEngineFingerprint() where the application keeps one.
@@ -174,10 +180,10 @@ final readonly class StageState
      * @param array<Participant> $entrants The list the stage was drawn from, in its order
      * @param array<RoundPairing> $rounds The rounds that were paired, in any order
      * @param array<Result> $results The results recorded so far, of any of the rounds, in any order
-     * @param array<Participant|Withdrawal> $withdrawals The entrants who have withdrawn: each as
-     *                                                   a Withdrawal with the round it withdrew
-     *                                                   after, or as a plain participant where
-     *                                                   that is not known
+     * @param array<Participant|Withdrawal> $withdrawals The entrants who have withdrawn, each as a
+     *                                                   Withdrawal with the round it withdrew
+     *                                                   after; a plain participant only where no
+     *                                                   round is supplied
      * @param array<Adjustment> $adjustments The adjustments made, in the order they are to be kept
      *                                       in, each with the round it was made after where
      *                                       that is known (Adjustment::madeAfterRound())
@@ -185,7 +191,10 @@ final readonly class StageState
      * @throws InvalidConfigurationException When two entrants share an ID
      *                                       (`DuplicateParticipantIds`), one of the three rules
      *                                       above is broken, an event has two results
-     *                                       (`DuplicateResult`), a withdrawal or an adjustment
+     *                                       (`DuplicateResult`), the history holds rounds and a
+     *                                       withdrawal that does not say its round
+     *                                       (`WithdrawalWithoutRound`, with the participant and
+     *                                       the last round in the context), a withdrawal or an adjustment
      *                                       states a round after the last one supplied
      *                                       (`ValueOutOfRange`), or the history is one
      *                                       withRoundPlayed() refuses (`ValueOutOfRange`,
@@ -301,16 +310,27 @@ final readonly class StageState
         };
 
         // The withdrawals in the order they happened: by round, and those
-        // of one round in the order given. One whose round is not known
-        // has no place in that order and is kept without one.
+        // of one round in the order given. Once there are rounds, each says
+        // which it happened after; before them it can only be before the
+        // first.
         $timed = [];
         foreach (array_values($withdrawals) as $index => $withdrawal) {
             $withdrawn = $withdrawal instanceof Withdrawal ? $withdrawal->getParticipant() : $withdrawal;
             $requireEntrant($withdrawn, 'as withdrawn', null);
 
             if (!$withdrawal instanceof Withdrawal) {
-                $state = $state->withdrawn($withdrawn, null);
-                continue;
+                if ($lastRound > 0) {
+                    throw new InvalidConfigurationException(
+                        "The history holds rounds and the withdrawal of participant {$withdrawn->getId()}, which does not say"
+                            . ' after which round it happened. Give it as a Withdrawal with the number of the last round'
+                            . ' recorded when the participant withdrew (0 before the first): a tie both of whose entrants'
+                            . ' withdrew is read from when they did.',
+                        ['participant' => $withdrawn->getId(), 'last_round' => $lastRound],
+                        reason: InvalidConfigurationReason::WithdrawalWithoutRound
+                    );
+                }
+
+                $withdrawal = new Withdrawal($withdrawn, 0);
             }
 
             $requireRecordedRound($withdrawal->getAfterRound(), 'the withdrawal of', $withdrawn->getId());
@@ -476,6 +496,29 @@ final readonly class StageState
 
         $this->assertResultsBelongTo($pairing, $results);
 
+        // The first round says who was in the draw: of those who withdrew
+        // before it was recorded, the ones it names keep their place, and
+        // the others withdrew before the draw and are no entrants
+        $entrants = $this->entrants;
+        $withdrawals = $this->withdrawals;
+        if ($this->roundsPlayed === [] && $withdrawals !== []) {
+            $outOfTheDraw = [];
+            foreach ($withdrawals as $withdrawal) {
+                $id = $withdrawal->getParticipant()->getId();
+                if (!self::names($pairing, $id)) {
+                    $outOfTheDraw[$id] = true;
+                }
+            }
+            $entrants = array_values(array_filter(
+                $entrants,
+                static fn(Participant $entrant): bool => !isset($outOfTheDraw[$entrant->getId()])
+            ));
+            $withdrawals = array_values(array_filter(
+                $withdrawals,
+                static fn(Withdrawal $withdrawal): bool => !isset($outOfTheDraw[$withdrawal->getParticipant()->getId()])
+            ));
+        }
+
         return new self(
             $this->participants,
             [...$this->roundsPlayed, $pairing],
@@ -483,8 +526,8 @@ final readonly class StageState
             $this->engineFingerprint,
             $this->adjustments,
             $this->adjustedParticipants,
-            $this->entrants,
-            $this->withdrawals
+            $entrants,
+            $withdrawals
         );
     }
 
@@ -711,43 +754,34 @@ final readonly class StageState
      * changes nothing and is not an error. There is no verb that puts a
      * withdrawn participant back.
      *
+     * Every withdrawal is recorded with its time: the number of the last
+     * round recorded at this moment, 0 before the first (see
+     * getWithdrawals() and Withdrawal). The state needs no argument for
+     * it, because it knows its rounds.
+     *
      * Once a round is recorded the stage is live, and a participant who
      * withdraws from it keeps its place in the entrant list (see
      * getEntrants()): nothing that was drawn from the list is drawn
      * again. A bracket engine reads the place and sends the opponent of a
-     * withdrawn entrant on without an event. Before the first round is
-     * recorded nothing has been drawn, and the participant is removed from
-     * the list altogether, so the first round is paired from those who
-     * remain.
-     *
-     * A withdrawal from a live stage is recorded with its time: the number
-     * of the last round recorded at this moment (see getWithdrawals() and
-     * Withdrawal). The state needs no argument for it, because it knows
-     * its rounds. An engine reads a recorded round from who was in the
-     * stage when it was paired, so a participant who withdraws after a
-     * round is still read as having been in it, and where both entrants of
-     * a bracket tie have withdrawn, the one who withdrew first gave the tie
-     * to the other.
+     * withdrawn entrant on without an event. Where both entrants of a tie
+     * its results do not decide have withdrawn, the one still in the stage
+     * when its next tie was paired went on, and where neither was, the tie
+     * is void: it sends nobody on (see Withdrawal). Before the first round
+     * is recorded nothing has been drawn as far as the state knows: the
+     * participant is out of the draw (getEntrants() does not list it), and
+     * the first round is paired from those who remain. The first round,
+     * once recorded, says whether it was in the draw after all.
      *
      * A round that is recorded after this call and names the participant
      * (it was paired before the withdrawal and is recorded once it has
      * been played) is read as paired while the participant was in the
      * stage: the tie it holds for the participant is given away, and the
-     * round is not read as paired without it. Two things follow that an
-     * application has to see to.
+     * round is not read as paired without it. That holds for the first
+     * round as well: a participant it names keeps its place in the entrant
+     * list, with its withdrawal after round 0, and one it does not name
+     * withdrew before the draw, is no entrant and keeps no withdrawal.
      *
-     * The first round is not such a round. While the state holds no round
-     * the participant is removed from the entrant list and no withdrawal
-     * is kept, also where the first round has been paired already, and a
-     * first round recorded afterwards names somebody the state no longer
-     * lists: an engine reads it as a round drawn by hand for the field
-     * without the participant, and a bracket that follows from that fold
-     * can be another one, or be refused. Record the first round when it is
-     * paired (withRoundPlayed() with no results, then
-     * withAdditionalResults()), or build the state with fromHistory() from
-     * the whole entrant list and a Withdrawal after round 1.
-     *
-     * And a round is not to name a participant who had left before it was
+     * A round is not to name a participant who had left before it was
      * paired, among byes listed as everyone without an event for example.
      * An engine reads such a participant as in the stage for that round
      * and for every round before it, whatever round the withdrawal states:
@@ -758,32 +792,36 @@ final readonly class StageState
      */
     public function withoutParticipant(Participant $participant): self
     {
-        $lastRound = $this->getLastRound();
-
-        return $this->withdrawn($participant, $lastRound?->getRoundNumber());
+        return $this->withdrawn($participant, $this->getLastRound()?->getRoundNumber() ?? 0);
     }
 
     /**
      * The state without a participant, who is said to have withdrawn after
-     * the given round, or at a time that is not known (null).
+     * the given round (0 before the first round was recorded).
      *
-     * A withdrawal is kept with its round only for a participant who was
-     * active and keeps its place: before the first round the participant
-     * is removed altogether, and one who is not active has nothing to
-     * withdraw from.
+     * A participant who is not active has nothing to withdraw from, and
+     * the state is returned as it is. One who withdrew after round 0 and
+     * whom the first round, recorded already, does not name was not in the
+     * draw: it is removed from the entrant list, and no withdrawal is
+     * kept. Every other withdrawal is kept with its round, and the entrant
+     * keeps its place.
      */
-    private function withdrawn(Participant $participant, ?int $afterRound): self
+    private function withdrawn(Participant $participant, int $afterRound): self
     {
-        $remains = static fn(Participant $other): bool => $other->getId() !== $participant->getId();
-
-        $withdrawals = $this->withdrawals;
-        if ($afterRound !== null && $this->roundsPlayed !== []) {
-            foreach ($this->participants as $active) {
-                if ($active->getId() === $participant->getId()) {
-                    $withdrawals[] = new Withdrawal($active, $afterRound);
-                }
+        $withdrawing = null;
+        foreach ($this->participants as $active) {
+            if ($active->getId() === $participant->getId()) {
+                $withdrawing = $active;
             }
         }
+        if ($withdrawing === null) {
+            return $this;
+        }
+
+        $remains = static fn(Participant $other): bool => $other->getId() !== $participant->getId();
+        $beforeTheDraw = $afterRound === 0
+            && $this->roundsPlayed !== []
+            && !self::names($this->roundsPlayed[0], $participant->getId());
 
         return new self(
             array_values(array_filter($this->participants, $remains)),
@@ -792,22 +830,44 @@ final readonly class StageState
             $this->engineFingerprint,
             $this->adjustments,
             $this->adjustedParticipants,
-            $this->roundsPlayed === [] ? array_values(array_filter($this->entrants, $remains)) : $this->entrants,
-            $withdrawals
+            $beforeTheDraw ? array_values(array_filter($this->entrants, $remains)) : $this->entrants,
+            $beforeTheDraw ? $this->withdrawals : [...$this->withdrawals, new Withdrawal($withdrawing, $afterRound)]
         );
     }
 
     /**
-     * The withdrawals from the live stage whose round the state knows, in
-     * the order they happened; empty when there are none.
+     * Whether a round names a participant, in an event or as a bye.
+     */
+    private static function names(RoundPairing $pairing, string $id): bool
+    {
+        foreach ($pairing->getEvents() as $event) {
+            foreach ($event->getParticipants() as $participant) {
+                if ($participant->getId() === $id) {
+                    return true;
+                }
+            }
+        }
+        foreach ($pairing->getByes() as $bye) {
+            if ($bye->getId() === $id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The withdrawals from the stage, each with the round it happened
+     * after, in the order they happened; empty when there are none.
      *
-     * Every participant withdrawn with withoutParticipant() once a round is
-     * recorded has one, with the number of the last round recorded at that
-     * moment. A participant who is among getWithdrawnEntrants() and has
-     * none withdrew at a time the state does not know: it was supplied to
-     * fromHistory() as a plain participant, or the state was stored before
-     * withdrawals were kept. A participant withdrawn before the first
-     * round has none either, and is in neither list.
+     * Every entrant among getWithdrawnEntrants() has one, with the number
+     * of the last round recorded when it withdrew. While no round is
+     * recorded the withdrawals are after round 0, and their participants
+     * are out of the draw: getEntrants() does not list them until the first
+     * round is recorded and names them. A participant the first round does
+     * not name withdrew before the draw, and its withdrawal is not kept. A
+     * state stored by 0.2.x has none: a participant who had withdrawn then
+     * has no place and no time.
      *
      * @return list<Withdrawal>
      */
@@ -819,7 +879,10 @@ final readonly class StageState
     /**
      * The entrant list of the stage: the active participants in the order
      * the stage was started with and, each in the place it had, the
-     * participants who withdrew after a round was recorded.
+     * participants who withdrew from the live stage, the first round
+     * included where that round names them. Before the first round is
+     * recorded it is the list that round is paired from: a participant who
+     * has withdrawn is not in it.
      *
      * A bracket is folded from this list, so that a withdrawal does not
      * move anybody. getParticipants() is this list without the withdrawn.
@@ -831,7 +894,21 @@ final readonly class StageState
      */
     public function getEntrants(): array
     {
-        return $this->entrants;
+        if ($this->roundsPlayed !== [] || $this->withdrawals === []) {
+            return $this->entrants;
+        }
+
+        // Before the first round is recorded, whoever has withdrawn is out
+        // of the draw until that round names it
+        $withdrawn = [];
+        foreach ($this->withdrawals as $withdrawal) {
+            $withdrawn[$withdrawal->getParticipant()->getId()] = true;
+        }
+
+        return array_values(array_filter(
+            $this->entrants,
+            static fn(Participant $entrant): bool => !isset($withdrawn[$entrant->getId()])
+        ));
     }
 
     /**
@@ -848,7 +925,7 @@ final readonly class StageState
         }
 
         return array_values(array_filter(
-            $this->entrants,
+            $this->getEntrants(),
             static fn(Participant $entrant): bool => !isset($active[$entrant->getId()])
         ));
     }
@@ -1270,7 +1347,7 @@ final readonly class StageState
 
         // An entrant who withdrew from a live stage and is named by nothing
         // recorded is still an entrant of it
-        foreach ($this->entrants as $participant) {
+        foreach ($this->getEntrants() as $participant) {
             $add($participant);
         }
 
@@ -1293,14 +1370,17 @@ final readonly class StageState
      * a round a `paired_on_incomplete_results` key only when it carries
      * that mark.
      * The `entrants` key, the IDs of the entrant list in its order (see
-     * getEntrants()), is present only when an entrant has withdrawn from
-     * the live stage and kept its place: `active` is then that list
-     * without the withdrawn, and a state nobody has withdrawn from says
-     * its entrant list with `active` alone, as it always did.
-     * The `withdrawals` key is present only when the state knows the round
-     * of a withdrawal (see getWithdrawals()): one entry for each, in the
-     * order they happened, with the ID under `participant` and the round
-     * under `after_round`. An adjustment carries an `after_round` key only
+     * getEntrants()), is present only when an entrant has withdrawn and
+     * kept its place: `active` is then that list without the withdrawn,
+     * and a state nobody has withdrawn from says its entrant list with
+     * `active` alone, as it always did. Before the first round is recorded
+     * the list holds a participant who has withdrawn, in its place, until
+     * that round says whether it was in the draw.
+     * The `withdrawals` key is present only when somebody has withdrawn
+     * (see getWithdrawals()): one entry for each entrant in `entrants` who
+     * is not in `active`, in the order they happened, with the ID under
+     * `participant` and the round under `after_round`, 0 before the first
+     * round. An adjustment carries an `after_round` key only
      * when it says after which round it was made, which every adjustment
      * recorded with withAdjustment() does.
      *
@@ -1425,23 +1505,26 @@ final readonly class StageState
      * entrant list, so a participant who had withdrawn has no place in it
      * (see getEntrants()). So is `withdrawals`, and so is the `after_round`
      * of an adjustment: data without them, which is all data stored before
-     * they existed, loads with withdrawals and adjustments whose time is
-     * not known (getWithdrawals() is empty, Adjustment::getAfterRound() is
-     * null), and is read as withAdjustment() and fromHistory() say such
-     * a state is read: nothing is assumed about when they happened. So is
-     * `format_version`: data without it is read as
-     * version 1, the form the releases before 0.3.0 wrote. A version this
-     * release does not know is refused.
+     * they existed, loads with adjustments whose time is not known
+     * (Adjustment::getAfterRound() is null), read as withAdjustment() says
+     * such a state is read, and with no withdrawal: a participant who had
+     * withdrawn then (0.2.x wrote neither key) is read with no place and no
+     * time, and nothing is assumed about when it left. So is
+     * `format_version`: data without it is read as version 1, the form the
+     * releases before 0.3.0 wrote. A version this release does not know is
+     * refused.
      *
      * The shape is checked, that the data holds no key but the version and
      * the eight toArray() writes, that every ID resolves in the `participants`
      * registry, that no ID is listed twice in `participants`, in `active`, in
      * `entrants` or in `withdrawals`, that `entrants` holds every active
-     * participant in the order of `active`, and that each entry of
-     * `withdrawals` names a participant who is not active, with a round
-     * from 1 to the last recorded one that is not below the round of the
-     * entry before it. The round of an adjustment may not be after the
-     * last recorded round either.
+     * participant in the order of `active`, that each entry of
+     * `withdrawals` names an entrant who is not active, with a round from 0
+     * to the last recorded one that is not below the round of the entry
+     * before it (and round 0 only for a participant the first recorded
+     * round names, where one is recorded), and that every entrant who is
+     * not active has an entry there. The round of an adjustment may not be
+     * after the last recorded round either.
      *
      * This is the reader of what toArray() wrote. An application that
      * holds its rounds and results in rows of its own does not build this
@@ -1617,9 +1700,13 @@ final readonly class StageState
         foreach ($active as $participant) {
             $activeIds[$participant->getId()] = true;
         }
+        $entrantIds = [];
+        foreach ($entrants ?? $active as $entrant) {
+            $entrantIds[$entrant->getId()] = true;
+        }
         $withdrawals = [];
         $withdrawnIds = [];
-        $previousRound = 1;
+        $previousRound = 0;
         foreach ($withdrawalsData as $withdrawalData) {
             if (!is_array($withdrawalData)) {
                 throw new InvalidInputException('Each stage state withdrawal must be an array');
@@ -1641,6 +1728,11 @@ final readonly class StageState
             if (isset($activeIds[$withdrawnId])) {
                 throw new InvalidInputException("Stage state withdrawal names participant {$withdrawnId}, who is active");
             }
+            if (!isset($entrantIds[$withdrawnId])) {
+                throw new InvalidInputException(
+                    "Stage state withdrawal names participant {$withdrawnId}, who is not one of the entrants"
+                );
+            }
             if (isset($withdrawnIds[$withdrawnId])) {
                 throw new InvalidInputException("Stage state lists the withdrawal of participant {$withdrawnId} twice");
             }
@@ -1650,13 +1742,29 @@ final readonly class StageState
             if (!is_int($afterRound) || $afterRound < $previousRound || $afterRound > $lastRound) {
                 throw new InvalidInputException(
                     "Stage state withdrawal of participant {$withdrawnId} requires the round it happened after: an integer"
-                        . " from 1 to the last recorded round ({$lastRound}), not below the round of the withdrawal listed"
+                        . " from 0 to the last recorded round ({$lastRound}), not below the round of the withdrawal listed"
                         . ' before it'
+                );
+            }
+            if ($afterRound === 0 && $rounds !== [] && !self::names($rounds[0], $withdrawnId)) {
+                throw new InvalidInputException(
+                    "Stage state withdrawal of participant {$withdrawnId} after round 0 is of a participant the first round"
+                        . ' does not name: such a participant withdrew before the draw and is no entrant'
                 );
             }
             $previousRound = $afterRound;
 
             $withdrawals[] = new Withdrawal($registry[$withdrawnId], $afterRound);
+        }
+
+        // Every entrant who is not active withdrew at a time the state knows
+        foreach (array_keys($entrantIds) as $entrantId) {
+            if (!isset($activeIds[$entrantId]) && !isset($withdrawnIds[$entrantId])) {
+                throw new InvalidInputException(
+                    "In the stage state, participant {$entrantId} is not active and has no withdrawal: every entrant who"
+                        . ' has withdrawn is listed under withdrawals with the round it happened after'
+                );
+            }
         }
 
         return self::recorded($active, $rounds, $results, $fingerprint, $adjustments, $entrants ?? $active, $withdrawals);

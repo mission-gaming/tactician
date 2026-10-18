@@ -269,7 +269,9 @@ final readonly class StageOutcome
      * final a finalist withdrew from is uncontested, the other finalist
      * went on, and the bracket may hold no round for it at all, in which
      * case getFinalRound() is the round before. A final both finalists had
-     * withdrawn from sends nobody on.
+     * withdrawn from, with no result that decides it, is void and sends
+     * nobody on: its settled tie has no advancer and both finalists among
+     * the eliminated, and the standings have nobody in their first tier.
      *
      * MatchOutcomeSelector reads these where the outcome has them, and the
      * results of getFinalRound() where it has not: an outcome of a Swiss

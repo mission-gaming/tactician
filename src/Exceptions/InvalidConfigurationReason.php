@@ -249,6 +249,13 @@ enum InvalidConfigurationReason: string
     case ParticipantTwiceInRound = 'participant_twice_in_round';
 
     /**
+     * A history supplied to `StageState::fromHistory()` holds rounds and a
+     * withdrawal that does not say after which of them it happened: a plain
+     * participant where a `Stage\Withdrawal` is required.
+     */
+    case WithdrawalWithoutRound = 'withdrawal_without_round';
+
+    /**
      * An event, or the event of a result, does not belong to the round it
      * was recorded with: it carries another round number, or the round's
      * pairing does not hold it. An event that carries no round number at

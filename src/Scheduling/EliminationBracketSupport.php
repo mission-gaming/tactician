@@ -388,10 +388,10 @@ trait EliminationBracketSupport
         // A withdrawal the state knows the time of counts only for the one
         // who is still withdrawn
         $withdrawals = [];
-        foreach ($state->getWithdrawals() as $order => $withdrawal) {
+        foreach ($state->getWithdrawals() as $withdrawal) {
             $id = $withdrawal->getParticipant()->getId();
             if (isset($withdrawn[$id])) {
-                $withdrawals[$id] = [$withdrawal->getAfterRound(), $order];
+                $withdrawals[$id] = $withdrawal->getAfterRound();
             }
         }
 
@@ -513,17 +513,10 @@ trait EliminationBracketSupport
      * throws. Where an entrant of such a tie has withdrawn, the withdrawal
      * gives the tie away as it does any tie the results do not decide.
      *
-     * Where both have withdrawn, the order of the two withdrawals decides,
-     * when the state knows it (StageState::getWithdrawals()): the first of
-     * them to withdraw gave the tie to the other, who went on and left
-     * later. That holds whether the round holds the tie or not, and
-     * whenever the bracket is read: the answer for a history does not
-     * depend on the moment an engine was asked for it.
-     *
-     * Where the state does not know when one of them withdrew, the
-     * recorded rounds say what they can: the one that a later recorded
-     * round names went on from the tie, and where a later round names
-     * neither, or both, neither is read as having gone on.
+     * Where both have withdrawn, the tie sends nobody on from here, and
+     * both of its entrants are listed as going out: a unit with no winner
+     * and two losers. Whether one of them went on after all is read where
+     * its next tie is (wentOnFrom()); otherwise the tie is void.
      *
      * @param array<int|string, true> $out Who counts as withdrawn for this tie, by ID: everyone
      *                                     who has withdrawn for a tie the round holds, and for a
@@ -592,20 +585,9 @@ trait EliminationBracketSupport
         }
 
         if ($firstOut && $secondOut) {
-            $nobody = ['winner' => null, 'losers' => [$first, $second], 'open' => false, 'uncontested' => true, 'undecided' => false, 'refusal' => null];
-
-            if ($reading->knowsWithdrawalOf($first->getId()) && $reading->knowsWithdrawalOf($second->getId())) {
-                // The one who left first gave the tie away
-                $firstOut = $reading->withdrawals[$first->getId()][1] < $reading->withdrawals[$second->getId()][1];
-            } else {
-                $firstWentOn = ($reading->lastNamedIn[$first->getId()] ?? 0) > $reading->number;
-                $secondWentOn = ($reading->lastNamedIn[$second->getId()] ?? 0) > $reading->number;
-                if ($firstWentOn === $secondWentOn) {
-                    return $nobody;
-                }
-
-                $firstOut = !$firstWentOn;
-            }
+            // Both have left: who of the two, if either, went on is said by
+            // the round of the tie after this one (wentOnFrom())
+            return ['winner' => null, 'losers' => [$first, $second], 'open' => false, 'uncontested' => true, 'undecided' => false, 'refusal' => null];
         }
 
         return [
@@ -616,6 +598,46 @@ trait EliminationBracketSupport
             'undecided' => false,
             'refusal' => null,
         ];
+    }
+
+    /**
+     * Who went on from a tie both of whose entrants have withdrawn: the one
+     * still in the stage when the round of the tie after it was paired, or
+     * nobody.
+     *
+     * If both entrants of a tie withdraw, nobody is there to go through,
+     * and the tie is void: it sends nobody on, the slot it would fill is
+     * empty, and its entrants go out in it. An entrant who was given the
+     * tie because the other had left went through it only where it was
+     * still in the stage when its next tie was paired; leaving before that,
+     * it left nobody to go on. Who was in the stage when a round was paired
+     * is read as everywhere (BracketReading::withdrawnWhenPaired()): a
+     * round that names an entrant was paired while it was in, whatever
+     * round its withdrawal states. The order of the two withdrawals decides
+     * nothing. A tie that has no tie after it (the final, the third-place
+     * tie, the grand final or its reset) is read with no round after it,
+     * and is void whenever its two entrants left.
+     *
+     * @param list<Participant> $contenders The two entrants of the tie, in the order of their slots
+     * @param array<int|string, true> $out Who had withdrawn when the round of the next tie was paired
+     * @param int|null $pairedAt The number of that round, or null where it is paired now
+     */
+    private function wentOnFrom(BracketReading $reading, array $contenders, array $out, ?int $pairedAt): ?Participant
+    {
+        $in = array_values(array_filter(
+            $contenders,
+            static fn(Participant $contender): bool => !isset($out[$contender->getId()])
+        ));
+        if (count($in) > 1) {
+            // Both were, by what their withdrawals say: the one the round,
+            // or a round after it, names went on
+            $in = array_values(array_filter(
+                $in,
+                static fn(Participant $contender): bool => ($reading->lastNamedIn[$contender->getId()] ?? 0) >= ($pairedAt ?? PHP_INT_MAX)
+            ));
+        }
+
+        return count($in) === 1 ? $in[0] : null;
     }
 
     /**
@@ -714,8 +736,8 @@ trait EliminationBracketSupport
             [$first, $second] = $tie['participants'];
 
             // The two are read in the order of their slots, whichever the
-            // round names first: where the order shows (both have withdrawn
-            // and neither went on), it is the bracket's and not that of the
+            // round names first: where the order shows (a void tie lists
+            // both as going out), it is the bracket's and not that of the
             // events, which a history may supply in any order.
             if (($position[$second->getId()] ?? PHP_INT_MAX) < ($position[$first->getId()] ?? PHP_INT_MAX)) {
                 [$first, $second] = [$second, $first];

@@ -18,6 +18,10 @@ use MissionGaming\Tactician\DTO\Participant;
  * which is why the outcome of a bracket carries its last ties in this form
  * (StageOutcome::getSettledTies()) and MatchOutcomeSelector reads them.
  *
+ * Where both entrants have withdrawn and no result decides the tie, it is
+ * void: nobody went on from it (the advancer is null) and both are
+ * eliminated (see Withdrawal).
+ *
  * There is no winner or loser here on purpose: an entrant can go on from a
  * tie nobody played.
  *
@@ -30,7 +34,7 @@ final readonly class SettledTie
 
     /**
      * @param Participant|null $advancer The entrant who went on from the tie; null when nobody
-     *                                   did, because both entrants had withdrawn
+     *                                   did, because the tie is void: both entrants withdrew
      * @param array<Participant> $eliminated The entrants of the tie who did not go on: one, both
      *                                       where nobody went on, or none for an entrant who
      *                                       stood alone

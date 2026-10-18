@@ -164,7 +164,13 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * advances and is listed among the byes of the stage, and the
      * withdrawn entrant takes the loss, so it drops to the losers bracket
      * from the winners bracket and gives the next tie away there. Nothing
-     * is drawn again.
+     * is drawn again. A tie both of whose entrants have withdrawn before
+     * either went through it is void (see Withdrawal): it sends nobody on
+     * and drops nobody, so the entrant who would have met its winner, or
+     * the dropper from it, goes on alone and is listed among the byes. The
+     * two entrants of a void winners tie go out with those the next losers
+     * round puts out; a void grand final, or reset, leaves the bracket with
+     * nobody in its first tier.
      *
      * Round numbers are 1-based and count the stages that have an event to
      * play, in the order they are played; a stage in which every
@@ -368,26 +374,77 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $entrants = $state->getEntrants();
         $this->validateParticipants($entrants);
 
+        // Who went on from a winners tie both entrants have left is read at
+        // the next winners stage, and the other of the two is the one who
+        // dropped to the losers bracket, which the walk reaches first. So a
+        // walk that finds such an entrant is walked again, knowing it; the
+        // stages between do not depend on it, so the second walk finds the
+        // same.
+        $wentOn = [];
+        for ($walks = 1; ; ++$walks) {
+            $found = [];
+            $reading = $this->walk($state, $entrants, $wentOn, $found);
+            if ($found === $wentOn || $walks === 3) {
+                return $reading;
+            }
+            $wentOn = $found;
+        }
+    }
+
+    /**
+     * One walk through the fixed stage sequence (see resolveState()).
+     *
+     * @param list<Participant> $entrants
+     * @param array<string, array<int, string>> $wentOn Of each winners tie both entrants have left,
+     *                                                  by stage and place: the ID of the one who
+     *                                                  went on from it, as an earlier walk found
+     * @param array<string, array<int, string>> $found The same, as this walk finds it
+     *
+     * @throws InvalidConfigurationException When a tie is broken, or a recorded stage does not fit
+     *                                       the stage it is read as
+     */
+    private function walk(StageState $state, array $entrants, array $wentOn, array &$found): BracketReading
+    {
         $reading = $this->beginReading($state);
         $slots = $this->buildInitialSlots($entrants);
         $winnersRounds = (int) log(count($slots), 2);
 
         // Who went out, and after how many of the stages that put an
         // entrant out: a loss in the winners bracket only drops an entrant,
-        // so those stages are not counted.
+        // so those stages are not counted. The two entrants of a void
+        // winners tie drop nobody to the losers bracket: they go out
+        // together with those the next stage that puts an entrant out puts
+        // out.
         $wentOutAt = [];
         $exits = 0;
-        $noteExits = static function (array $out) use (&$wentOutAt, &$exits): void {
+        /** @var list<Participant> $voided */
+        $voided = [];
+        $noteExits = static function (array $out) use (&$wentOutAt, &$exits, &$voided): void {
             ++$exits;
-            foreach ($out as $entrant) {
+            foreach ([...$voided, ...$out] as $entrant) {
                 if ($entrant instanceof Participant) {
                     $wentOutAt[$entrant->getId()] = $exits;
                 }
             }
+            $voided = [];
+        };
+        // An entrant read as going out of a tie both entrants had left, who
+        // was still in the stage when its next tie was paired, went on
+        $revive = static function (array $revived) use (&$wentOutAt, &$voided): void {
+            foreach ($revived as $entrant) {
+                unset($wentOutAt[$entrant->getId()]);
+                $voided = array_values(array_filter(
+                    $voided,
+                    static fn(Participant $other): bool => $other->getId() !== $entrant->getId()
+                ));
+            }
         };
         // Of a bracket that is not finished, the entrants who are not out
         // are level in the first tier, ahead of those who are.
-        $unfinished = static function () use ($reading, $entrants, &$wentOutAt, &$exits): BracketReading {
+        $unfinished = static function () use ($reading, $entrants, &$wentOutAt, &$exits, &$voided, $noteExits): BracketReading {
+            if ($voided !== []) {
+                $noteExits([]);
+            }
             foreach ($entrants as $entrant) {
                 $reading->placement[$entrant->getId()] = 0;
             }
@@ -398,20 +455,47 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             return $reading;
         };
 
+        // The losers of a winners stage: of a tie both entrants have left,
+        // the one who did not go on from it where one did
+        $droppersOf = static function (array $stage, string $stageName) use ($wentOn): array {
+            $droppers = $stage['losers'];
+            foreach ($stage['contended'] as $place => $contenders) {
+                foreach ($contenders as $index => $contender) {
+                    if (($wentOn[$stageName][$place] ?? null) === $contender->getId()) {
+                        $droppers[$place] = $contenders[1 - $index];
+                    }
+                }
+            }
+
+            return $droppers;
+        };
+        // Who went on from such a tie is found in the stage its place leads to
+        $note = static function (array $stage, string $fromStage, array $places) use (&$found): void {
+            foreach ($stage['revived'] as $index => $entrant) {
+                if (isset($places[$index])) {
+                    $found[$fromStage][$places[$index]] = $entrant->getId();
+                }
+            }
+        };
+
         // Winners round 1
-        $stage = $this->resolveStage($slots, $this->winnersStageName(1, $winnersRounds), $reading);
+        $winnersStage = $this->winnersStageName(1, $winnersRounds);
+        $stage = $this->resolveStage($slots, $winnersStage, $reading);
         if ($stage['stopped']) {
             return $unfinished();
         }
         $winnersSlots = $stage['winners'];
+        $winnersContended = $stage['contended'];
+        $voided = $stage['void'];
+        $losersChampionContended = [];
 
         if ($winnersRounds === 1) {
-            $losersChampion = $stage['losers'][0] ?? null;
+            $losersChampion = $droppersOf($stage, $winnersStage)[0] ?? null;
         } else {
             // Losers round 1: winners-round-1 losers pair up
             $losersStructuralRound = 1;
             $stage = $this->resolveStage(
-                $stage['losers'],
+                $droppersOf($stage, $winnersStage),
                 $this->losersStageName($losersStructuralRound, $winnersRounds),
                 $reading
             );
@@ -420,19 +504,22 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             }
             $noteExits($stage['out']);
             $losersSurvivors = $stage['winners'];
+            $losersContended = $stage['contended'];
             $losersChampion = null;
 
             for ($winnersRound = 2; $winnersRound <= $winnersRounds; ++$winnersRound) {
-                $stage = $this->resolveStage(
-                    $winnersSlots,
-                    $this->winnersStageName($winnersRound, $winnersRounds),
-                    $reading
-                );
+                $previousStage = $winnersStage;
+                $winnersStage = $this->winnersStageName($winnersRound, $winnersRounds);
+                $stage = $this->resolveStage($winnersSlots, $winnersStage, $reading, $winnersContended);
+                $revive($stage['revived']);
+                $note($stage, $previousStage, array_combine(array_keys($winnersContended), array_keys($winnersContended)));
                 if ($stage['stopped']) {
                     return $unfinished();
                 }
                 $winnersSlots = $stage['winners'];
-                $droppers = $stage['losers'];
+                $winnersContended = $stage['contended'];
+                $droppers = $droppersOf($stage, $winnersStage);
+                $voided = [...$voided, ...$stage['void']];
 
                 // Major round: survivors meet the latest droppers. Reverse the
                 // dropper order on even winners rounds to defer rematches.
@@ -440,17 +527,23 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                     $droppers = array_reverse($droppers);
                 }
                 $majorSlots = [];
+                $majorContended = [];
                 foreach (array_values($losersSurvivors) as $index => $survivor) {
                     $majorSlots[] = $droppers[$index] ?? null;
                     $majorSlots[] = $survivor;
+                    if (isset($losersContended[$index])) {
+                        $majorContended[2 * $index + 1] = $losersContended[$index];
+                    }
                 }
 
                 ++$losersStructuralRound;
                 $stage = $this->resolveStage(
                     $majorSlots,
                     $this->losersStageName($losersStructuralRound, $winnersRounds),
-                    $reading
+                    $reading,
+                    $majorContended
                 );
+                $revive($stage['revived']);
                 if ($stage['stopped']) {
                     return $unfinished();
                 }
@@ -462,15 +555,19 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
                     $stage = $this->resolveStage(
                         $stage['winners'],
                         $this->losersStageName($losersStructuralRound, $winnersRounds),
-                        $reading
+                        $reading,
+                        $stage['contended']
                     );
+                    $revive($stage['revived']);
                     if ($stage['stopped']) {
                         return $unfinished();
                     }
                     $noteExits($stage['out']);
                     $losersSurvivors = $stage['winners'];
+                    $losersContended = $stage['contended'];
                 } else {
                     $losersChampion = $stage['winners'][0] ?? null;
+                    $losersChampionContended = $stage['contended'];
                 }
             }
         }
@@ -478,13 +575,22 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         // Each bracket gives a champion unless every entrant left in it has
         // withdrawn; the grand final is then a stage with an empty slot,
         // and the other champion advances from it without playing.
-        $winnersChampion = $winnersSlots[0] ?? null;
+        $grandFinalContended = [];
+        if (isset($winnersContended[0])) {
+            $grandFinalContended[0] = $winnersContended[0];
+        }
+        if (isset($losersChampionContended[0])) {
+            $grandFinalContended[1] = $losersChampionContended[0];
+        }
 
         // Grand final
-        $stage = $this->resolveStage([$winnersChampion, $losersChampion], 'grand final', $reading);
+        $stage = $this->resolveStage([$winnersSlots[0] ?? null, $losersChampion], 'grand final', $reading, $grandFinalContended);
+        $revive($stage['revived']);
+        $note($stage, $winnersStage, isset($grandFinalContended[0]) ? [0 => 0] : []);
         if ($stage['stopped']) {
             return $unfinished();
         }
+        [$winnersChampion, $losersChampion] = $stage['entered'];
         $grandFinalWinner = $stage['winners'][0] ?? null;
 
         if (
@@ -505,7 +611,8 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         // The last tie played (the grand final, or its reset) puts its
         // loser out and leaves the entrant who advanced from it first.
         // Everyone else is placed by the stage that put them out, the
-        // latest first.
+        // latest first. A last tie both finalists left is void, and puts
+        // both out.
         $noteExits($stage['out']);
         foreach ($wentOutAt as $id => $exit) {
             $reading->placement[$id] = $exits - $exit + 1;
@@ -530,18 +637,50 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
      * consuming a round number, unless it is recorded: it was recorded
      * when the entrants withdrew after it was paired (see claimOf()).
      *
+     * A tie both of whose entrants have withdrawn (see settleTie()) sends
+     * nobody on from here and has no loser to drop: its place holds nobody
+     * in `winners` and in `losers`, its two entrants are in `out` and in
+     * `void`, and they are in `contended` by its place. Whether one of them
+     * went on after all is read where its next tie is: the stage that
+     * place leads to is given them by the place they would fill
+     * (`$contended`), and puts the one still in the stage when it was
+     * paired there (wentOnFrom()). That one is in `revived`, by its slot
+     * here. The slots the stage was entered with, after that, are
+     * `entered`.
+     *
      * @param array<Participant|null> $slots
-     * @return array{stopped: bool, winners: list<Participant|null>, losers: list<Participant|null>, out: list<Participant>}
-     *                                                                                                                         The winners and the losers are by place,
-     *                                                                                                                         one for each pair of slots; `out` lists
-     *                                                                                                                         everyone who did not advance
+     * @param array<int, list<Participant>> $contended The two entrants of a tie of an earlier stage
+     *                                                 both of whom have withdrawn, by the slot the
+     *                                                 one who went on from it would fill here
+     * @return array{stopped: bool, winners: list<Participant|null>, losers: list<Participant|null>, out: list<Participant>, void: list<Participant>, contended: array<int, list<Participant>>, revived: array<int, Participant>, entered: list<Participant|null>}
+     *                                                                                                                                                                                                                       The winners and the losers are by place,
+     *                                                                                                                                                                                                                       one for each pair of slots; `out` lists
+     *                                                                                                                                                                                                                       everyone who did not advance
      *
      * @throws InvalidConfigurationException When a tie is broken, or the recorded stage leaves
      *                                       another number of entrants than the stage has places
      */
-    private function resolveStage(array $slots, string $stageName, BracketReading $reading): array
+    private function resolveStage(array $slots, string $stageName, BracketReading $reading, array $contended = []): array
     {
         $slots = array_values($slots);
+
+        // The stage is read from who was in the bracket when it was paired:
+        // for the recorded round with the next number where there is one,
+        // and from the state as it stands otherwise.
+        $recorded = $reading->recorded[$reading->number + 1] ?? null;
+        $pairedAt = $recorded instanceof RoundPairing ? $reading->number + 1 : null;
+        $out = $reading->withdrawnWhenPaired($pairedAt);
+
+        $revived = [];
+        foreach ($contended as $index => $contenders) {
+            $wentOn = $this->wentOnFrom($reading, $contenders, $out, $pairedAt);
+            if ($wentOn instanceof Participant) {
+                $slots[$index] = $wentOn;
+                $revived[$index] = $wentOn;
+            }
+        }
+        $slots = array_values($slots);
+
         $pairs = array_chunk($slots, 2);
 
         $ties = [];
@@ -553,15 +692,9 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
             }
         }
 
-        // The stage is read from who was in the bracket when it was paired:
-        // for the recorded round with the next number where there is one,
-        // and from the state as it stands otherwise.
-        $recorded = $reading->recorded[$reading->number + 1] ?? null;
-        $pairedAt = $recorded instanceof RoundPairing ? $reading->number + 1 : null;
-        $out = $reading->withdrawnWhenPaired($pairedAt);
         [$toPlay, $claimed] = $this->claimOf($recorded, $ties, $out);
         $derivation = $this->buildStagePairing($reading->number + 1, $stageName, $pairs, $out);
-        $stopped = ['stopped' => true, 'winners' => [], 'losers' => [], 'out' => []];
+        $stopped = ['stopped' => true, 'winners' => [], 'losers' => [], 'out' => [], 'void' => [], 'contended' => [], 'revived' => $revived, 'entered' => $slots];
 
         if (!$claimed && $toPlay) {
             $reading->pending = $derivation;
@@ -615,11 +748,20 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         $winners = [];
         $losers = [];
         $out = [];
-        foreach ($read['units'] as $unit) {
+        $void = [];
+        $nextContended = [];
+        foreach ($read['units'] as $place => $unit) {
+            $isVoid = !$unit['winner'] instanceof Participant && count($unit['losers']) === 2;
             $winners[] = $unit['winner'];
-            $losers[] = $unit['losers'][0] ?? null;
+            $losers[] = $isVoid ? null : ($unit['losers'][0] ?? null);
             foreach ($unit['losers'] as $loser) {
                 $out[] = $loser;
+                if ($isVoid) {
+                    $void[] = $loser;
+                }
+            }
+            if ($isVoid) {
+                $nextContended[$place] = $unit['losers'];
             }
         }
 
@@ -627,7 +769,16 @@ final readonly class DoubleEliminationEngine implements StageEngineInterface, Fi
         // the grand final, or its reset
         $reading->decidingTies = $read['units'];
 
-        return ['stopped' => false, 'winners' => $winners, 'losers' => $losers, 'out' => $out];
+        return [
+            'stopped' => false,
+            'winners' => $winners,
+            'losers' => $losers,
+            'out' => $out,
+            'void' => $void,
+            'contended' => $nextContended,
+            'revived' => $revived,
+            'entered' => $slots,
+        ];
     }
 
     /**

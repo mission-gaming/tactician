@@ -73,9 +73,10 @@ final readonly class RecordedRound
      * after the first of a bracket that re-seeds).
      *
      * It is there to be shown beside a manual round. Nothing is paired
-     * from it. A withdrawal the state does not know the time of is read
-     * from the recorded rounds: the entrant was in the stage for every
-     * round that names it, and for none after the last that does.
+     * from it. A withdrawal the state does not know the time of (data
+     * stored by 0.2.x) is read from the recorded rounds: the entrant was in
+     * the stage for every round that names it, and for none after the last
+     * that does.
      */
     public function getDerivation(): ?RoundPairing
     {

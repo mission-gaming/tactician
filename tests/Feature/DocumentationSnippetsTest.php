@@ -868,6 +868,12 @@ describe('Documented values', function () use ($extracted, $autoload): void {
             ["Ada\nBo\nAda\nsemifinal\n"],
             ["\nfinal\n"],
         ],
+        'a final both finalists withdrew from is void, and the selector names no winner' => [
+            'docs/USAGE.md',
+            '$nobodyLeft = StageState::fromHistory(',
+            ["0\nAda, Bo\n1 1 2 2\n"],
+            [],
+        ],
         'the verbs record after which round an adjustment and a withdrawal happened, and rows that say it give the same state' => [
             'docs/USAGE.md',
             '$live = StageState::start([$ada, $bo, $cy, $di])',

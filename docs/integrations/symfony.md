@@ -379,12 +379,11 @@ $stateFromRows = static function (array $playerRows, array $fixtureRows, array $
     The order places the entrants of a bracket and decides every order
     that results leave open.
   - **When each of them withdrew**: the number of the last round that
-    was on record at that moment, as a `Withdrawal`, and those of one
-    round in the order they left. An engine reads a round from who was
-    in the stage when it was paired. A withdrawal given as a plain
-    participant is one whose time is not known: the engine then reads
-    what the rounds show and guesses nothing, which leaves two things
-    open that the round would settle (see
+    was on record at that moment (0 before the first), as a
+    `Withdrawal`. An engine reads a round from who was in the stage when
+    it was paired, and whether a tie both entrants left is void from when
+    each left. Once your rows hold a round, a withdrawal given as a plain
+    participant is refused (`WithdrawalWithoutRound`; see
     [When a Withdrawal or an Adjustment Happened](../USAGE.md#when-a-withdrawal-or-an-adjustment-happened)).
   - **Their IDs, and nothing else about them, for the pairing order.**
     No stage reads a label or a seed attribute to order entrants, so a
@@ -502,7 +501,10 @@ An entrant who withdraws from a bracket under way keeps its slot
 (`withoutParticipant()`, or the `withdrawals` of a history). The tie it
 was in is not played, its opponent advances, and no fixture you have
 published moves; the events of that tie which you had created are listed
-by `RecordedRound::getUncontestedEvents()`, for you to cancel.
+by `RecordedRound::getUncontestedEvents()`, for you to cancel. Where both
+entrants of a tie withdraw before either went through it, the tie is void
+and nobody advances: the entrant who would have met its winner goes on
+alone ([Withdrawals from a Bracket](../USAGE.md#withdrawals-from-a-bracket)).
 
 **One result for each event is yours to guarantee.**
 `withAdditionalResults()` adds what it is given and does not look for a

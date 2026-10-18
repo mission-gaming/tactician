@@ -1350,15 +1350,47 @@ it('leaves the bracket where it is when an adjustment is recorded, at every poin
     ['double'],
 ]);
 
+/**
+ * Whether the last tie of a finished bracket was decided by its results:
+ * the tie between the two who met in it last, unless that meeting was a
+ * grand final the losers champion won, which makes a reset due.
+ */
+function knownThenLastTiePlayed(StageState $state, Participant $winner, Participant $loser, bool $resetDue): bool
+{
+    $last = null;
+    foreach ($state->getResults() as $result) {
+        $ids = array_map(static fn(Participant $participant): string => $participant->getId(), array_values($result->getEvent()->getParticipants()));
+        if (in_array($winner->getId(), $ids, true) && in_array($loser->getId(), $ids, true)) {
+            $last = $result;
+        }
+    }
+    if ($last === null) {
+        return false;
+    }
+
+    // A grand final the losers champion (named second) won makes the reset the last tie
+    $grandFinal = $last->getEvent()->getRound()?->getMetadataValue('label') === 'grand final';
+    $first = array_values($last->getEvent()->getParticipants())[$last->getEvent()->getMetadataValue('tie_leg') === 2 ? 1 : 0];
+
+    return !$grandFinal || !$resetDue || $last->getWinner()?->getId() === $first->getId();
+}
+
 // A withdrawal gives away the ties the entrant has not finished. It takes
-// back nothing that was decided: whoever had gone out stays in the round
+// back nothing a result decided: whoever had gone out stays in the round
 // it went out in, an entrant who had gone on from a tie still went on from
 // it, and a bracket that was over is over with the same table, also where
-// the entrant who withdraws is the one who won it.
-it('takes back nothing that was decided when an entrant withdraws, the winner of the bracket included', function (string $variant): void {
+// the entrant who withdraws is the one who won it. A tie its results did
+// not decide is another matter (ADR 0011): an entrant who was given it went
+// through only where it was still in the stage when its next tie was
+// paired, and the last tie of a bracket has none. So where the last tie was
+// given away and the entrant it was given to withdraws as well, nobody
+// won it: the bracket has no winner, the two share the first tier, and
+// nobody else moves.
+it('takes back nothing a result decided when an entrant withdraws, the winner of the bracket included', function (string $variant): void {
     $engine = deciderSweepEngine($variant);
     $finished = 0;
     $winnersWithdrawn = 0;
+    $voided = 0;
 
     foreach ([3, 4, 5, 6, 8, 13] as $fieldSize) {
         foreach ([1, 2, 3] as $seed) {
@@ -1378,6 +1410,8 @@ it('takes back nothing that was decided when an entrant withdraws, the winner of
             foreach ($losers as $loser) {
                 expect($tiers[$loser->getId()])->toBe(1, $where);
             }
+            $played = $winners !== [] && $losers !== []
+                && knownThenLastTiePlayed($state, $winners[0], $losers[0], !str_contains($variant, 'no reset'));
 
             // Everybody still in the stage withdraws, one after another,
             // the winner among them
@@ -1385,11 +1419,43 @@ it('takes back nothing that was decided when an entrant withdraws, the winner of
                 $state = $state->withoutParticipant($leaving);
                 $after = $engine->getOutcome($state);
                 assert($after instanceof StageOutcome);
+                $afterTiers = knownThenTiers($engine, $state);
 
-                expect($engine->isComplete($state))->toBeTrue($where)
-                    ->and(knownThenTiers($engine, $state))->toBe($tiers, $where)
-                    ->and(MatchOutcomeSelector::winners()->select($after))->toEqual($winners)
-                    ->and(MatchOutcomeSelector::losers()->select($after))->toEqual($losers);
+                expect($engine->isComplete($state))->toBeTrue($where);
+
+                // Only the entrant who was given a last tie no result decided
+                // moves, once it has left too: down to the tier of the other,
+                // who left first. Nobody else moves.
+                $active = array_map(static fn(Participant $participant): string => $participant->getId(), $state->getParticipants());
+                foreach ($afterTiers as $id => $tier) {
+                    if ($tier === $tiers[$id]) {
+                        continue;
+                    }
+                    $partners = array_keys(array_filter(
+                        $tiers,
+                        static fn(int $before, string $otherId): bool => $before === $tiers[$id] + 1
+                            && $afterTiers[$otherId] === $tier
+                            && !in_array($otherId, $active, true),
+                        ARRAY_FILTER_USE_BOTH
+                    ));
+                    expect(in_array($id, $active, true))->toBeFalse($where)
+                        ->and($tier)->toBe($tiers[$id] + 1, $where)
+                        ->and($partners)->not->toBe([], "{$where}: {$id} moved from tier {$tiers[$id]} to {$tier}");
+                    ++$voided;
+                }
+
+                $winnerMoved = $winners !== [] && $afterTiers[$winners[0]->getId()] !== 0;
+                if ($winnerMoved) {
+                    // Nobody won the bracket: its last tie had no result
+                    expect($played)->toBeFalse($where)
+                        ->and(MatchOutcomeSelector::winners()->select($after))->toBe([], $where)
+                        ->and(array_map(static fn(Participant $participant): string => $participant->getId(), MatchOutcomeSelector::losers()->select($after)))
+                        ->toEqualCanonicalizing([$winners[0]->getId(), $losers[0]->getId()])
+                        ->and(in_array(0, $afterTiers, true))->toBeFalse($where);
+                } else {
+                    expect(MatchOutcomeSelector::winners()->select($after))->toEqual($winners)
+                        ->and(MatchOutcomeSelector::losers()->select($after))->toEqual($losers);
+                }
                 $winnersWithdrawn += $winners !== [] && $leaving->getId() === $winners[0]->getId() ? 1 : 0;
             }
             ++$finished;
@@ -1398,6 +1464,9 @@ it('takes back nothing that was decided when an entrant withdraws, the winner of
 
     expect($finished)->toBe(18)
         ->and($winnersWithdrawn)->toBeGreaterThan(5);
+
+    // Some of the brackets of the sweep end with a last tie nobody won
+    expect($voided)->toBeGreaterThanOrEqual(str_starts_with($variant, 'single') ? 1 : 0);
 })->with([
     ['single'],
     ['single, re-seeded'],
@@ -1443,16 +1512,14 @@ it('reads a bracket the same whether a round or the withdrawals during it are re
                 $pairing = $engine->pairNextRound($whenPaired);
                 expect(knownThenShape($engine->pairNextRound($whenPlayed)))->toBe(knownThenShape($pairing), $where);
 
-                // Up to two of those still in the stage leave while the round is played.
-                // Not while the first is: a state that holds no round takes the entrant
-                // out of its list, and the two orders are then two histories (the limit
-                // the usage guide states; StageTimesTest has what keeps the entrant)
+                // Up to two of those still in the stage leave while the round is played,
+                // the first round included: a state that holds no round keeps the
+                // withdrawal with round 0, and the first round says the entrant was in
+                // the draw
                 $leaving = [];
-                if ($whenPaired->getRoundsPlayed() !== []) {
-                    $active = array_values($whenPaired->getParticipants());
-                    for ($i = $rng->getInt(0, 2); $i > 0 && count($active) > count($leaving); --$i) {
-                        $leaving[$active[$rng->getInt(0, count($active) - 1)]->getId()] = true;
-                    }
+                $active = array_values($whenPaired->getParticipants());
+                for ($i = $rng->getInt(0, 2); $i > 0 && count($active) > count($leaving); --$i) {
+                    $leaving[$active[$rng->getInt(0, count($active) - 1)]->getId()] = true;
                 }
                 $leaving = array_values(array_filter(
                     $whenPaired->getParticipants(),

@@ -500,7 +500,10 @@ readonly class SwissPairingEngine implements StageEngineInterface, Fingerprinted
                     static fn(Result $result): bool => ($result->getEvent()->getRound()?->getNumber() ?? 0) < $number
                 )),
                 array_map(
-                    static fn(Participant $entrant): Participant|Withdrawal => $withdrewEarlier[$entrant->getId()] ?? $entrant,
+                    // A participant whose withdrawal has no round (a state
+                    // stored by 0.2.x) had left when no round from this one
+                    // on names it
+                    static fn(Participant $entrant): Withdrawal => $withdrewEarlier[$entrant->getId()] ?? new Withdrawal($entrant, $index),
                     array_values(array_filter(
                         $entrants,
                         static fn(Participant $entrant): bool => !isset($present[$entrant->getId()])

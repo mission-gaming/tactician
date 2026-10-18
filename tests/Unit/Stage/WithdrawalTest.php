@@ -25,9 +25,13 @@ describe('Withdrawal', function (): void {
             ->and($withdrawal->getAfterRound())->toBe(3);
     });
 
-    it('refuses a round below 1: before the first round a withdrawn participant is left out of the list', function (int $round): void {
+    it('holds round 0 for a participant who withdrew before the first round was recorded', function (): void {
+        expect((new Withdrawal(new Participant('ines', 'Ines'), 0))->getAfterRound())->toBe(0);
+    });
+
+    it('refuses a round below 0', function (int $round): void {
         new Withdrawal(new Participant('ines', 'Ines'), $round);
-    })->with([0, -2])->throws(InvalidInputException::class, 'a withdrawal is recorded with the number of the last recorded round');
+    })->with([-1, -2])->throws(InvalidInputException::class, 'which is 0 before the first round is recorded');
 });
 
 describe('StageState withdrawals', function (): void {
@@ -62,12 +66,35 @@ describe('StageState withdrawals', function (): void {
             ->and($state->getWithdrawals()[0]->getParticipant())->toBe($this->lena);
     });
 
-    it('records none before the first round: the participant is removed and has no place to keep', function (): void {
+    // Before the first round is recorded nothing has been drawn as far as
+    // the state knows. The participant is out of the draw, and the first
+    // round says whether it was in it after all: it was paired and the
+    // participant left while it was played.
+    it('records round 0 before the first round, and keeps it where the first round names the participant', function (): void {
         $state = StageState::start($this->participants)->withoutParticipant($this->lena);
+        $ids = static fn(array $participants): array => array_map(static fn(Participant $participant): string => $participant->getId(), $participants);
 
-        expect($state->getWithdrawals())->toBe([])
+        expect(($this->timed)($state))->toBe([['lena', 0]])
+            ->and($ids($state->getEntrants()))->toBe(['ines', 'jun', 'kofi'])
             ->and($state->getWithdrawnEntrants())->toBe([])
-            ->and(array_key_exists('withdrawals', $state->toArray()))->toBeFalse();
+            ->and($ids($state->getAllSeenParticipants()))->toBe(['ines', 'jun', 'kofi'])
+            ->and($state->toArray()['withdrawals'] ?? null)->toBe([['participant' => 'lena', 'after_round' => 0]])
+            ->and(StageState::fromArray($state->toArray()))->toEqual($state);
+
+        // The first round names her: she was in the draw and keeps her place
+        $named = $state->withRoundPlayed(($this->round)(1), []);
+        expect(($this->timed)($named))->toBe([['lena', 0]])
+            ->and($ids($named->getEntrants()))->toBe(['ines', 'jun', 'kofi', 'lena'])
+            ->and($ids($named->getWithdrawnEntrants()))->toBe(['lena']);
+
+        // It does not: she left before the draw, and is no entrant
+        $without = $state->withRoundPlayed(new RoundPairing(1, null, [
+            new Event([$this->ines, $this->kofi], new Round(1)),
+        ], [$this->jun]), []);
+        expect($without->getWithdrawals())->toBe([])
+            ->and($ids($without->getEntrants()))->toBe(['ines', 'jun', 'kofi'])
+            ->and(array_key_exists('entrants', $without->toArray()))->toBeFalse()
+            ->and(array_key_exists('withdrawals', $without->toArray()))->toBeFalse();
     });
 
     it('records nothing for a participant who is not active: withdrawn already, or never in the stage', function (): void {
@@ -112,21 +139,18 @@ describe('StageState withdrawals', function (): void {
             ->and(StageState::fromJson($state->toJson())->toArray())->toBe($data);
     });
 
-    // What was stored before a withdrawal said its round: the entrant list
-    // and no more. Nothing is assumed about when the participant left, and
-    // the state is written back as it was read.
-    it('reads a state stored without the withdrawals as one that does not know when anybody withdrew', function (): void {
+    // Every entrant who has withdrawn has a withdrawal with its round. No
+    // release wrote an entrant list without them: 0.2.x wrote neither key,
+    // and such data is read as it always was.
+    it('refuses a stored entrant list with an entrant who withdrew and no withdrawal', function (): void {
         $data = StageState::start($this->participants)
             ->withRoundPlayed(($this->round)(1), [])
             ->withoutParticipant($this->lena)
             ->toArray();
         unset($data['withdrawals']);
 
-        $read = StageState::fromArray($data);
-
-        expect($read->getWithdrawals())->toBe([])
-            ->and(array_map(static fn(Participant $participant): string => $participant->getId(), $read->getWithdrawnEntrants()))->toBe(['lena'])
-            ->and($read->toArray())->toBe($data);
+        expect(fn() => StageState::fromArray($data))
+            ->toThrow(InvalidInputException::class, 'participant lena is not active and has no withdrawal');
     });
 
     it('refuses stored withdrawals that no state could have recorded', function (mixed $withdrawals, string $message): void {
@@ -150,7 +174,7 @@ describe('StageState withdrawals', function (): void {
         ],
         'no round' => [[['participant' => 'lena']], 'requires the round it happened after'],
         'a round that is no integer' => [[['participant' => 'lena', 'after_round' => '1']], 'requires the round it happened after'],
-        'round 0' => [[['participant' => 'lena', 'after_round' => 0]], 'requires the round it happened after'],
+        'a round below 0' => [[['participant' => 'lena', 'after_round' => -1]], 'requires the round it happened after'],
         'a round after the last recorded' => [[['participant' => 'lena', 'after_round' => 3]], 'the last recorded round (2)'],
         'rounds that go back' => [
             [['participant' => 'lena', 'after_round' => 2], ['participant' => 'kofi', 'after_round' => 1]],
@@ -182,18 +206,38 @@ describe('StageState withdrawals', function (): void {
             ->and($state)->toEqual($verbs);
     });
 
-    it('keeps a withdrawal given to a history as a plain participant without a round, and does not make one up', function (): void {
+    it('refuses a withdrawal given to a history with rounds as a plain participant, and does not make a round up', function (): void {
+        try {
+            StageState::fromHistory(
+                $this->participants,
+                [($this->round)(1), ($this->round)(2)],
+                [],
+                [new Withdrawal($this->jun, 2), $this->lena]
+            );
+            $this->fail('The history was accepted.');
+        } catch (InvalidConfigurationException $exception) {
+            expect($exception->getReason())->toBe(InvalidConfigurationReason::WithdrawalWithoutRound)
+                ->and($exception->getContext())->toBe(['participant' => 'lena', 'last_round' => 2]);
+        }
+    });
+
+    it('takes a withdrawal after round 0 in a history with rounds, for a participant the first round names', function (): void {
         $state = StageState::fromHistory(
             $this->participants,
             [($this->round)(1), ($this->round)(2)],
             [],
-            [$this->lena, new Withdrawal($this->jun, 2)]
+            [new Withdrawal($this->jun, 2), new Withdrawal($this->lena, 0)]
         );
 
-        // Lena has withdrawn and keeps her place; when she did is not said
-        expect(($this->timed)($state))->toBe([['jun', 2]])
-            ->and(array_map(static fn(Participant $participant): string => $participant->getId(), $state->getWithdrawnEntrants()))->toBe(['jun', 'lena'])
-            ->and($state->toArray()['withdrawals'] ?? null)->toBe([['participant' => 'jun', 'after_round' => 2]]);
+        expect(($this->timed)($state))->toBe([['lena', 0], ['jun', 2]])
+            ->and($state->toArray())->toBe(
+                StageState::start($this->participants)
+                    ->withoutParticipant($this->lena)
+                    ->withRoundPlayed(($this->round)(1), [])
+                    ->withRoundPlayed(($this->round)(2), [])
+                    ->withoutParticipant($this->jun)
+                    ->toArray()
+            );
     });
 
     it('refuses a history whose withdrawal or adjustment happened after a round it does not hold', function (Closure $history, array $context): void {

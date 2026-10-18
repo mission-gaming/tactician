@@ -89,7 +89,11 @@ use Override;
  * MatchOutcomeSelector::winners() returns for the outcome: the outcome
  * carries the final as this engine settled it
  * (StageOutcome::getSettledTies()), also where a finalist withdrew and
- * the final has no result or was never paired.
+ * the final has no result or was never paired. A final both finalists
+ * withdrew from, with no result that decides it, is void: nobody advances
+ * from it, the table has nobody in its first tier, and the selector names
+ * nobody (see Withdrawal and the usage guide, "Withdrawals from a
+ * Bracket").
  *
  * @experimental
  */
@@ -200,14 +204,21 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      * (StageState::withoutParticipant()) keeps its slot. A tie it is in
      * and has no complete result for is not played: the other entrant of
      * the tie advances and is listed among the byes of the round, and no
-     * event is paired for it. Nothing is drawn again.
+     * event is paired for it. Nothing is drawn again. A tie both of whose
+     * entrants have withdrawn before either went through it is void: it
+     * sends nobody on, and the entrant who would have met its winner
+     * stands alone and is listed among the byes (see Withdrawal).
      *
      * Round numbers are 1-based, and the round carries its label ('round
      * of 16', 'quarterfinal', 'semifinal', 'final'). The events are in
      * bracket order, top of the bracket first; a two-legged tie is two
      * consecutive events with the roles reversed, marked 'tie_leg' 1 and 2
      * in their metadata. The byes are the participants who advance without
-     * playing, which happens in the first round only.
+     * playing: in the first round those whom the fold gives no opponent,
+     * and in any round those whose opponent has withdrawn or whose
+     * opponent's slot a void tie left empty. The entrant who takes the
+     * third place from a third-place tie the other has withdrawn from is
+     * listed after them.
      *
      * With the third-place option the last round, labelled 'final', lists
      * the events of the final and then those of the third-place tie, and
@@ -378,7 +389,10 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *
      * A third-place tie decides two places more: the entrant who advanced
      * from it is rank 3 and the other rank 4, each alone in its tier, and
-     * the tiers of the earlier rounds follow. Its results count in the
+     * the tiers of the earlier rounds follow. A last tie that is void (both
+     * of its entrants withdrew; see Withdrawal) leaves its upper tier
+     * empty: the two finalists of a void final share the second tier, and
+     * the two of a void third-place tie the fourth. Its results count in the
      * records as those of every tie do. The outcome's final round then
      * holds both ties. MatchOutcomeSelector reads the final and leaves the
      * third-place tie out, which it knows by its mark: winners() gives
@@ -466,7 +480,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         $structural = 0;
         $byes = [];
         $wentOutIn = [];
-        $wentOutInPreviousRound = [];
+        $previousUnits = [];
+        $thirdPlaceSettled = false;
         $thirdPlaceAdvancer = null;
 
         while (count($slots) > 1) {
@@ -479,6 +494,42 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             $recorded = $reading->recorded[$reading->number + 1] ?? null;
             $pairedAt = $recorded instanceof RoundPairing ? $reading->number + 1 : null;
             $out = $reading->withdrawnWhenPaired($pairedAt);
+
+            // A tie of the round before both of whose entrants have
+            // withdrawn sent on the one still in the stage when this round
+            // was paired, if either was; it is void otherwise, and its slot
+            // here is empty
+            foreach ($previousUnits as $index => $unit) {
+                if ($unit['winner'] !== null || count($unit['losers']) !== 2) {
+                    continue;
+                }
+                $wentOn = $this->wentOnFrom($reading, $unit['losers'], $out, $pairedAt);
+                if ($wentOn instanceof Participant) {
+                    $slots[$index] = $wentOn;
+                    unset($wentOutIn[$wentOn->getId()]);
+                    $byes[$wentOn->getId()] = ($byes[$wentOn->getId()] ?? 0) + 1;
+                    $previousUnits[$index] = [
+                        'winner' => $wentOn,
+                        'losers' => array_values(array_filter(
+                            $unit['losers'],
+                            static fn(Participant $loser): bool => $loser->getId() !== $wentOn->getId()
+                        )),
+                    ];
+                }
+            }
+
+            $slots = array_values($slots);
+
+            // The third-place tie is between the losers of the two ties
+            // before the final, one from each. A void tie sends the first of
+            // its two entrants, who has withdrawn, so that the other tie's
+            // loser is third without a tie being played.
+            $wentOutInPreviousRound = [];
+            foreach ($previousUnits as $unit) {
+                if ($unit['losers'] !== []) {
+                    $wentOutInPreviousRound[] = $unit['losers'][0];
+                }
+            }
 
             // Re-seeded path: after the entry round, survivors are
             // re-ranked by standings and re-folded each round. Only
@@ -550,17 +601,16 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
                 );
             }
 
-            $wentOutInPreviousRound = [];
             foreach ($read['units'] as $unit) {
                 foreach ($unit['losers'] as $wentOut) {
                     $wentOutIn[$wentOut->getId()] = $structural;
-                    $wentOutInPreviousRound[] = $wentOut;
                 }
             }
             foreach ($read['unplayed'] as $advanced) {
                 $byes[$advanced->getId()] = ($byes[$advanced->getId()] ?? 0) + 1;
             }
             if ($read['extra'] !== null) {
+                $thirdPlaceSettled = true;
                 $thirdPlaceAdvancer = $read['extra']['winner'];
             }
 
@@ -572,6 +622,7 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             }
 
             $reading->decidingTies = $read['units'];
+            $previousUnits = $read['units'];
             $slots = array_map(static fn(array $unit): ?Participant => $unit['winner'], $read['units']);
         }
 
@@ -580,8 +631,11 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
         // the final's is the second, the semifinals' the third. A
         // third-place tie splits the tier of the semifinals in two, its
         // winner above the other, and every earlier round is a tier lower.
-        // In a bracket that is not finished, everyone still in it is level
-        // in the first tier.
+        // A last tie nobody won (both of its entrants withdrew) leaves its
+        // upper tier empty: the two of a void final share the second, and
+        // those of a void third-place tie the one below the third. In a
+        // bracket that is not finished, everyone still in it is level in
+        // the first tier.
         $complete = $reading->isComplete();
         foreach ($slots as $slot) {
             if ($slot !== null) {
@@ -596,8 +650,8 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             }
 
             $tier = $structural - $round + 1;
-            if ($complete && $thirdPlaceAdvancer instanceof Participant && $round < $structural) {
-                $tier += $round < $structural - 1 || (string) $id !== $thirdPlaceAdvancer->getId() ? 1 : 0;
+            if ($complete && $thirdPlaceSettled && $round < $structural) {
+                $tier += $round < $structural - 1 || (string) $id !== $thirdPlaceAdvancer?->getId() ? 1 : 0;
             }
             $reading->placement[$id] = $tier;
         }
@@ -770,8 +824,9 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
      *
      * A tie an entrant has withdrawn from is not played: the round holds
      * no event for it, and the other entrant is listed among the byes
-     * with those who stand alone in a pair of slots. Nobody is listed for
-     * a tie both entrants have withdrawn from.
+     * with those who stand alone in a pair of slots, after them the one who
+     * takes the third place from a third-place tie the other has withdrawn
+     * from. Nobody is listed for a tie both entrants have withdrawn from.
      *
      * With the third-place option, every event of the last round says
      * which tie it belongs to (see BracketTie), also in a field of 3,
@@ -820,18 +875,20 @@ final readonly class SingleEliminationEngine implements StageEngineInterface, Fi
             }
         }
 
-        if (
-            $thirdPlaceTie !== null
-            && !isset($withdrawn[$thirdPlaceTie[0]->getId()])
-            && !isset($withdrawn[$thirdPlaceTie[1]->getId()])
-        ) {
-            $events = [...$events, ...$this->buildTieEvents(
-                $thirdPlaceTie[0],
-                $thirdPlaceTie[1],
-                $round,
-                $this->options->legsPerTie,
-                [BracketTie::METADATA_KEY => BracketTie::ThirdPlace->value]
-            )];
+        if ($thirdPlaceTie !== null) {
+            $firstOut = isset($withdrawn[$thirdPlaceTie[0]->getId()]);
+            $secondOut = isset($withdrawn[$thirdPlaceTie[1]->getId()]);
+            if (!$firstOut && !$secondOut) {
+                $events = [...$events, ...$this->buildTieEvents(
+                    $thirdPlaceTie[0],
+                    $thirdPlaceTie[1],
+                    $round,
+                    $this->options->legsPerTie,
+                    [BracketTie::METADATA_KEY => BracketTie::ThirdPlace->value]
+                )];
+            } elseif (!$firstOut || !$secondOut) {
+                $byes[] = $firstOut ? $thirdPlaceTie[1] : $thirdPlaceTie[0];
+            }
         }
 
         return new RoundPairing($roundNumber, $label, $events, $byes);
