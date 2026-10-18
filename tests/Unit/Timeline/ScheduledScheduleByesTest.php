@@ -128,5 +128,14 @@ describe('The byes of a scheduled schedule', function (): void {
         'not a list' => ['p1'],
         'not a string' => [[1]],
         'keyed' => [['x' => 'p1']],
+        'an ID twice' => [['p1', 'p2', 'p1']],
     ]);
+
+    it('refuses an entrant list that holds one participant twice', function (): void {
+        [$a, $b] = scheduledByesField(2);
+        $events = [new ScheduledEvent(new Event([$a, $b], new Round(1)), new DateTimeImmutable('2026-08-01T18:00:00Z'))];
+
+        expect(fn() => new ScheduledSchedule($events, [$a, $b, new Participant('p1', 'Participant 1 again')]))
+            ->toThrow(InvalidInputException::class, 'p1');
+    });
 });

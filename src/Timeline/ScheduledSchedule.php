@@ -54,6 +54,8 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
      *                                          the participants of the events, in the order
      *                                          they first appear. Not checked against the
      *                                          events
+     *
+     * @throws InvalidInputException When two entrants share an ID
      */
     public function __construct(
         private array $scheduledEvents,
@@ -61,6 +63,13 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
     ) {
         $this->entrantsGiven = $entrants !== null;
         if ($entrants !== null) {
+            $seen = [];
+            foreach ($entrants as $entrant) {
+                if (isset($seen[$entrant->getId()])) {
+                    throw new InvalidInputException("Participant {$entrant->getId()} is in the entrant list of the scheduled schedule twice");
+                }
+                $seen[$entrant->getId()] = true;
+            }
             $this->entrants = array_values($entrants);
 
             return;
@@ -286,7 +295,7 @@ final readonly class ScheduledSchedule implements Countable, IteratorAggregate, 
      *                               a key is unknown (`participants`, `events` and
      *                               `entrants` are the keys), the data is malformed, an
      *                               event or the entrant list names a participant the data
-     *                               does not list, or a kickoff does not state an instant by
+     *                               does not list, the entrant list names one twice, or a kickoff does not state an instant by
      *                               itself
      */
     public static function fromArray(array $data): self

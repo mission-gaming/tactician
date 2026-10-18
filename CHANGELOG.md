@@ -1859,7 +1859,8 @@ entry on the engine fingerprint.
   `ScheduledSchedule::getByesByRound()`, `getByeCounts()` and
   `getEntrants()` give what the schedule assigned gives.
   `TimelineAssigner::assign()` hands the scheduled schedule the entrant list
-  of the schedule (a second, optional constructor parameter), and the plain
+  of the schedule (a second, optional constructor parameter, which refuses
+  an entrant list that holds one participant twice), and the plain
   data writes it under a new optional key, `entrants` (the IDs in order),
   only where it was given. A scheduled schedule built without one reads the
   entrants from its events, as do arrays without the key. With the byes of
